@@ -330,55 +330,160 @@ export default async function HomePage() {
 
   // Schema: zamiast samego Organization -> LocalBusiness + EventPlanner (lokalna intencja)
   const customSchema = globalConfig
-    ? {
-        '@context': 'https://schema.org',
-        '@type': ['LocalBusiness', 'EventPlanner'],
-        name: globalConfig.organization_name,
-        description: metadata?.description,
-        url: globalConfig.organization_url,
-        logo: globalConfig.organization_logo,
-        image: [globalConfig.organization_logo].filter(Boolean),
-        telephone: globalConfig.telephone,
-        email: globalConfig.email,
+  ? {
+      '@context': 'https://schema.org',
+      '@type': 'LocalBusiness',
+      name: globalConfig.organization_name,
+      description: metadata?.description,
+      url: globalConfig.organization_url,
+      logo: globalConfig.organization_logo,
+      image: [globalConfig.organization_logo].filter(Boolean),
+      telephone: globalConfig.telephone,
+      email: globalConfig.email,
 
-        address: {
-          '@type': 'PostalAddress',
-          streetAddress: globalConfig.street_address,
-          addressLocality: globalConfig.locality || 'Olsztyn',
-          postalCode: globalConfig.postal_code,
-          addressRegion: globalConfig.region,
-          addressCountry: globalConfig.country || 'PL',
-        },
+      address: {
+        '@type': 'PostalAddress',
+        streetAddress: globalConfig.street_address,
+        addressLocality: globalConfig.locality || 'Olsztyn',
+        postalCode: globalConfig.postal_code,
+        addressRegion: globalConfig.region,
+        addressCountry: globalConfig.country || 'PL',
+      },
 
-        sameAs: [
-          globalConfig.facebook_url,
-          globalConfig.instagram_url,
-          globalConfig.linkedin_url,
-          globalConfig.youtube_url,
-          globalConfig.twitter_url,
-        ].filter(Boolean),
+      sameAs: [
+        globalConfig.facebook_url,
+        globalConfig.instagram_url,
+        globalConfig.linkedin_url,
+        globalConfig.youtube_url,
+        globalConfig.twitter_url,
+      ].filter(Boolean),
 
-        // kluczowe: obszar + oferta
-        areaServed,
-        hasOfferCatalog: offerCatalog,
+      areaServed,
 
-        // sygnały tematyczne (często wspomaga dopasowanie do intencji)
-        serviceType: [
-          'Agencja eventowa',
-          'Organizacja eventów firmowych',
-          'Teambuilding',
-          'Integracje firmowe',
-          'Wieczory tematyczne',
-          'Casino Night (kasyno)',
-          'Technika sceniczna',
-          'Riderowe nagłośnienie',
-          'Oświetlenie sceniczne',
-          'Streaming konferencji',
-          'Realizacja wideo',
-          'Obsługa konferencji i multimediów',
+      // ✅ zamiast serviceType na LocalBusiness:
+      keywords: [
+        'agencja eventowa Olsztyn',
+        'organizacja eventów',
+        'teambuilding',
+        'integracje firmowe',
+        'technika sceniczna',
+        'nagłośnienie riderowe',
+        'oświetlenie sceniczne',
+        'streaming konferencji',
+        'wieczór kasyno',
+        'casino night',
+      ],
+
+      knowsAbout: [
+        'Organizacja eventów firmowych',
+        'Teambuilding i integracje',
+        'Wieczory tematyczne (Casino Night)',
+        'Technika sceniczna',
+        'Nagłośnienie riderowe',
+        'Oświetlenie sceniczne',
+        'Streaming konferencji i wydarzeń',
+        'Realizacja wideo i multimedia',
+      ],
+
+      // ✅ usługi opisujemy jako katalog ofert (Service + serviceType jest OK)
+      hasOfferCatalog: {
+        '@type': 'OfferCatalog',
+        name: 'Oferta – Agencja eventowa Olsztyn',
+        itemListElement: [
+          {
+            '@type': 'OfferCatalog',
+            name: 'Eventy firmowe, integracje i teambuilding',
+            itemListElement: [
+              {
+                '@type': 'Offer',
+                itemOffered: {
+                  '@type': 'Service',
+                  name: 'Organizacja eventów firmowych',
+                  serviceType: 'Event management',
+                  areaServed,
+                },
+              },
+              {
+                '@type': 'Offer',
+                itemOffered: {
+                  '@type': 'Service',
+                  name: 'Teambuildingi i integracje firmowe',
+                  serviceType: 'Teambuilding',
+                  areaServed,
+                },
+              },
+              {
+                '@type': 'Offer',
+                itemOffered: {
+                  '@type': 'Service',
+                  name: 'Wieczory tematyczne – Casino Night (kasyno)',
+                  serviceType: 'Themed event',
+                  areaServed,
+                },
+              },
+            ],
+          },
+          {
+            '@type': 'OfferCatalog',
+            name: 'Technika sceniczna i produkcja',
+            itemListElement: [
+              {
+                '@type': 'Offer',
+                itemOffered: {
+                  '@type': 'Service',
+                  name: 'Technika sceniczna',
+                  serviceType: 'Stage production',
+                  areaServed,
+                },
+              },
+              {
+                '@type': 'Offer',
+                itemOffered: {
+                  '@type': 'Service',
+                  name: 'Riderowe nagłośnienie i realizacja dźwięku',
+                  serviceType: 'Sound reinforcement',
+                  areaServed,
+                },
+              },
+              {
+                '@type': 'Offer',
+                itemOffered: {
+                  '@type': 'Service',
+                  name: 'Oświetlenie sceniczne',
+                  serviceType: 'Event lighting',
+                  areaServed,
+                },
+              },
+            ],
+          },
+          {
+            '@type': 'OfferCatalog',
+            name: 'Streaming i multimedia',
+            itemListElement: [
+              {
+                '@type': 'Offer',
+                itemOffered: {
+                  '@type': 'Service',
+                  name: 'Streaming konferencji i wydarzeń',
+                  serviceType: 'Live streaming',
+                  areaServed,
+                },
+              },
+              {
+                '@type': 'Offer',
+                itemOffered: {
+                  '@type': 'Service',
+                  name: 'Obsługa multimediów i prezentacji',
+                  serviceType: 'AV production',
+                  areaServed,
+                },
+              },
+            ],
+          },
         ],
-      }
-    : undefined;
+      },
+    }
+  : undefined;
 
   return (
     <PageLayout pageSlug="home" customSchema={customSchema}>
