@@ -1,16 +1,11 @@
 import React, { FC } from 'react';
-import { iconMap } from '../ConferencesPage';
-import { Settings } from 'lucide-react';
+import { getIconFunction } from '@/components/ConferencesServicesAccordion';
 
 interface ProblemAndSolutionProps {
   problems: any[];
 }
 
 export const ProblemAndSolution:FC<ProblemAndSolutionProps> = ({ problems,  }) => {
-  const getIcon = (iconName: string) => {
-    const Icon = iconMap[iconName] || Settings;
-    return Icon;
-  };
   return (
     <section className="py-20 px-6 bg-[#1c1f33]/30">
     <div className="max-w-7xl mx-auto">
@@ -23,7 +18,7 @@ export const ProblemAndSolution:FC<ProblemAndSolutionProps> = ({ problems,  }) =
 
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
         {problems.map((problem) => {
-          const Icon = getIcon(problem.icon_name);
+          const Icon = getIconFunction(problem.icon_name);
           return (
             <div key={problem.id} className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6 hover:border-[#d3bb73]/40 transition-all">
               <div className="w-12 h-12 bg-[#d3bb73]/10 rounded-full flex items-center justify-center mb-4">

@@ -43,6 +43,7 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
 import PageLayout from '@/components/Layout/PageLayout';
 import { Metadata } from 'next';
+import { getIconFunction } from '@/components/ConferencesServicesAccordion';
 
 const iconMap: Record<string, any> = {
   Mic,
@@ -70,7 +71,8 @@ const iconMap: Record<string, any> = {
 };
 
 const getIcon = (iconName: string) => {
-  return iconMap[iconName] || Settings;
+  if (!iconName) return null;
+  return iconMap[iconName] ?? null;
 };
 
 export function UslugiPageClient() {
@@ -346,8 +348,7 @@ export function UslugiPageClient() {
         <section className="px-6 py-20">
           <div className="mx-auto max-w-7xl space-y-16">
             {filteredCategories.map((category, idx) => {
-              const Icon = getIcon(category.icon);
-
+              const Icon = getIconFunction(category.icon);
               return (
                 <div
                   key={category.id}

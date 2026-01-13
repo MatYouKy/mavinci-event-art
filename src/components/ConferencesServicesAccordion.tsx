@@ -16,11 +16,12 @@ import { supabase } from '@/lib/supabase';
 import { useEditMode } from '@/contexts/EditModeContext';
 import { useMobile } from '@/hooks/useMobile';
 
-const getIcon = (iconName: string) => {
+export const getIconFunction = (iconName: string | null) => {
+  if (!iconName) return CheckCircle;
   const icons: any = {
     CheckCircle,
   };
-  return icons[iconName] || CheckCircle;
+  return icons[iconName] ?? CheckCircle;
 };
 
 interface ServiceItem {
@@ -208,7 +209,7 @@ export default function ConferencesServicesAccordion() {
     <DragDropContext onDragEnd={onDragEnd}>
       <div className="space-y-4">
         {categories.map((category) => {
-          const Icon = getIcon(category.icon);
+          const Icon = getIconFunction(category.icon);
           const isExpanded = expandedCategory === category.id;
           const isEditing = editingCategory?.id === category.id;
           const isAddingHere = isAddingItem === category.id;

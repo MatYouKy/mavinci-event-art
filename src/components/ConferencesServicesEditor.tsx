@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { X, Plus, Edit2, ChevronDown, ChevronUp } from 'lucide-react';
+import { div } from 'framer-motion/client';
+import { useEditMode } from '@/contexts/EditModeContext';
 
 interface Service {
   id: string;
@@ -16,7 +18,6 @@ interface Service {
 
 interface Props {
   services: Service[];
-  onUpdate: () => void;
 }
 
 const availableIcons = [
@@ -24,7 +25,8 @@ const availableIcons = [
   'Video', 'Music', 'Presentation', 'Package'
 ];
 
-export function ConferencesServicesEditor({ services, onUpdate }: Props) {
+export function ConferencesServicesEditor({ services }: Props) {
+  const { isEditMode } = useEditMode();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<Service>>({});
   const [newServiceItem, setNewServiceItem] = useState('');
@@ -44,7 +46,6 @@ export function ConferencesServicesEditor({ services, onUpdate }: Props) {
     if (!error) {
       setEditingId(null);
       setEditData({});
-      onUpdate();
     }
   };
 
@@ -57,7 +58,6 @@ export function ConferencesServicesEditor({ services, onUpdate }: Props) {
       .eq('id', id);
 
     if (!error) {
-      onUpdate();
     }
   };
 
@@ -74,7 +74,6 @@ export function ConferencesServicesEditor({ services, onUpdate }: Props) {
       });
 
     if (!error) {
-      onUpdate();
     }
   };
 
@@ -104,6 +103,11 @@ export function ConferencesServicesEditor({ services, onUpdate }: Props) {
     }
     setExpandedServices(newExpanded);
   };
+
+  if (!isEditMode) return <div>
+<h1>Zakres obsługi technicznej</h1>
+
+  </div>;
 
   return (
     <div className="bg-[#1c1f33] border-2 border-[#d3bb73] rounded-xl p-6 mb-8">

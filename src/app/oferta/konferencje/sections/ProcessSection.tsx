@@ -1,33 +1,26 @@
+'use client';
 import React, { FC, useState } from 'react';
-import { iconMap } from '../ConferencesPage';
-import { Settings } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useMobile } from '@/hooks/useMobile';
+import { getIconFunction } from '@/components/ConferencesServicesAccordion';
+import { useEditMode } from '@/contexts/EditModeContext';
 
 interface ProcessSectionProps {
-  isEditMode: boolean;
   process: any[];
   isEditingProcess: boolean;
-  loadData: () => Promise<void>;
   setIsEditingProcess: (isEditing: boolean) => void;
 }
 
 export const ProcessSection: FC<ProcessSectionProps> = ({
-  isEditMode,
   process,
   setIsEditingProcess,
   isEditingProcess,
-  loadData,
 }) => {
+  const {isEditMode} = useEditMode();
   const { showSnackbar } = useSnackbar();
   const isMobile = useMobile();
   const [editingProcessStep, setEditingProcessStep] = useState<any>(null);
-
-  const getIcon = (iconName: string) => {
-    const Icon = iconMap[iconName] || Settings;
-    return Icon;
-  };
 
   const handleSaveProcessStep = async (stepData: any) => {
     try {
@@ -43,7 +36,6 @@ export const ProcessSection: FC<ProcessSectionProps> = ({
 
       if (error) throw error;
 
-      await loadData();
       setEditingProcessStep(null);
       showSnackbar('Krok procesu zaktualizowany!', 'success');
     } catch (error) {
@@ -85,7 +77,7 @@ export const ProcessSection: FC<ProcessSectionProps> = ({
 
         <div className="space-y-6">
           {process.map((step) => {
-            const Icon = getIcon(step.icon_name);
+            const Icon = getIconFunction(step.icon_name);
             const isEditing = editingProcessStep?.id === step.id;
 
             return (

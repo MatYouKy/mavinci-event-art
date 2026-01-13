@@ -13,7 +13,6 @@ interface RelatedServicesSectionProps {
   relatedServices: any[];
   setSelectedServiceIds: (ids: Set<string>) => void;
   allServiceItems: any[];
-  loadData: () => void;
   tableName?: string;
 }
 
@@ -22,7 +21,6 @@ export const RelatedServicesSection: FC<RelatedServicesSectionProps> = ({
   selectedServiceIds,
   setSelectedServiceIds,
   allServiceItems,
-  loadData,
   relatedServices,
   tableName = 'conferences_related_services',
 }) => {
@@ -188,7 +186,6 @@ export const RelatedServicesSection: FC<RelatedServicesSectionProps> = ({
               </div>
 
               <button
-                onClick={() => loadData()}
                 className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
               >
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -84,6 +84,7 @@ export default function CityPageSEOModal({
   };
 
   const handleSave = async () => {
+    console.log('CLIENT SUPABASE URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
     try {
       setSaving(true);
 

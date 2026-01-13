@@ -1,24 +1,16 @@
+'use client';
 import React, { FC } from 'react';
 import { ConferencesServicesEditor } from '@/components/ConferencesServicesEditor';
 import { CheckCircle, Settings } from 'lucide-react';
-import { iconMap } from '../ConferencesPage';
+import { getIconFunction } from '@/components/ConferencesServicesAccordion';
 
 interface TechnicalServicesProps {
   services: any[];
-  isEditMode: boolean;
-  loadData: () => void;
 }
 
 export const TechnicalServices: FC<TechnicalServicesProps> = ({
   services,
-  isEditMode,
-  loadData,
 }) => {
-  const getIcon = (iconName: string) => {
-    const Icon = iconMap[iconName] || Settings;
-    return Icon;
-  };
-
   return (
     <section className="py-12 px-4 sm:px-6 lg:py-20">
       <div className="max-w-7xl mx-auto">
@@ -29,15 +21,13 @@ export const TechnicalServices: FC<TechnicalServicesProps> = ({
           Kompleksowa realizacja audio-video dla Twojej konferencji
         </p>
 
-        {isEditMode && (
           <div className="mb-10">
-            <ConferencesServicesEditor services={services} onUpdate={loadData} />
+              <ConferencesServicesEditor services={services} />
           </div>
-        )}
 
         <div className="grid gap-6 sm:gap-8 md:grid-cols-2 lg:grid-cols-3">
           {services.map((service) => {
-            const Icon = getIcon(service.icon_name);
+            const Icon = getIconFunction(service?.icon_name) ?? CheckCircle;
             return (
               <div
                 key={service.id}

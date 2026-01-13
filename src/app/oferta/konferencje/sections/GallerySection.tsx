@@ -1,12 +1,7 @@
 import ConferencesGalleryEditor from './ConferencesGalleryEditor';
-import React, { FC } from 'react';
+import React from 'react';
 
-interface GallerySectionProps {
-  isEditMode: boolean;
-  gallery: any[];
-  loadData: () => void;
-}
 
-export const GallerySection: FC<GallerySectionProps> = ({ isEditMode, gallery, loadData }) => {
+export const GallerySection = () => {
   return <ConferencesGalleryEditor />;
 }

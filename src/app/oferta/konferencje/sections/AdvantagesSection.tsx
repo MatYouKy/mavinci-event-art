@@ -1,7 +1,7 @@
+'use client';
 import React, { FC } from 'react';
-import { Package } from 'lucide-react';
-import { iconMap } from '../ConferencesPage';
 import { useMobile } from '@/hooks/useMobile';
+import { getIconFunction } from '@/components/ConferencesServicesAccordion';
 
 interface AdvantagesSectionProps {
   advantages: any[];
@@ -9,10 +9,6 @@ interface AdvantagesSectionProps {
 
 export const AdvantagesSection: FC<AdvantagesSectionProps> = ({ advantages }) => {
   const isMobile = useMobile();
-  const getIcon = (iconName: string) => {
-    const Icon = iconMap[iconName] || Package;
-    return Icon;
-  };
   return (
     <section className="bg-[#1c1f33]/30 px-6 py-12 md:px-12 md:py-20">
       <div className="mx-auto max-w-7xl">
@@ -22,7 +18,8 @@ export const AdvantagesSection: FC<AdvantagesSectionProps> = ({ advantages }) =>
 
         <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
           {advantages.map((adv) => {
-            const Icon = getIcon(adv.icon_name);
+            const Icon = getIconFunction(adv.icon_name);
+
             return isMobile ? (
               <AdvantageMobileItem title={adv.title} description={adv.description} Icon={Icon} />
             ) : (

@@ -21,10 +21,9 @@ interface GalleryImage {
 interface ServiceGalleryEditorProps {
   serviceId: string;
   gallery: GalleryImage[];
-  onUpdate: () => void;
 }
 
-export function ServiceGalleryEditor({ serviceId, gallery = [], onUpdate }: ServiceGalleryEditorProps) {
+export function ServiceGalleryEditor({ serviceId, gallery = [] }: ServiceGalleryEditorProps) {
   const { showSnackbar } = useSnackbar();
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [isAdding, setIsAdding] = useState(false);
@@ -60,7 +59,6 @@ export function ServiceGalleryEditor({ serviceId, gallery = [], onUpdate }: Serv
       showSnackbar('Zdjęcie dodane', 'success');
       setIsAdding(false);
       setNewImageData(null);
-      onUpdate();
     } catch (error) {
       console.error('Error uploading image:', error);
       showSnackbar('Błąd podczas wgrywania zdjęcia', 'error');
@@ -96,7 +94,6 @@ export function ServiceGalleryEditor({ serviceId, gallery = [], onUpdate }: Serv
       showSnackbar('Zdjęcie zaktualizowane', 'success');
       setEditingIndex(null);
       setEditImageData(null);
-      onUpdate();
     } catch (error) {
       console.error('Error updating image:', error);
       showSnackbar('Błąd podczas aktualizacji zdjęcia', 'error');
@@ -120,7 +117,6 @@ export function ServiceGalleryEditor({ serviceId, gallery = [], onUpdate }: Serv
       if (error) throw error;
 
       showSnackbar('Zdjęcie usunięte', 'success');
-      onUpdate();
     } catch (error) {
       console.error('Error deleting image:', error);
       showSnackbar('Błąd podczas usuwania zdjęcia', 'error');
@@ -160,7 +156,6 @@ export function ServiceGalleryEditor({ serviceId, gallery = [], onUpdate }: Serv
       }
 
       showSnackbar('Kolejność zaktualizowana', 'success');
-      onUpdate();
     } catch (error) {
       console.error('Error updating order:', error);
       showSnackbar('Błąd podczas aktualizacji kolejności', 'error');

@@ -30,7 +30,8 @@ export const iconMap: Record<string, any> = {
   Award, Shield, Users, Video, FileSearch, MapPin,
   MessageSquare, Search, FileText, CheckCircle, Play, Package,
   Music, Presentation,
-  Volume2: Mic, Truck: Package
+  Truck: Package,
+  Volume2: Mic,
 };
 
 type Props = {
@@ -48,6 +49,9 @@ type Props = {
   initialRelatedServices: any[];
   initialAllServiceItems: any[];
   initialSelectedServiceIds: string[];
+
+  localIntro?: React.ReactNode;
+  cityAnchorId?: string;
 };
 
 export default function ConferencesPageClient({
@@ -65,6 +69,7 @@ export default function ConferencesPageClient({
   initialRelatedServices,
   initialAllServiceItems,
   initialSelectedServiceIds,
+  localIntro,
 }: Props) {
   const { isEditMode } = useEditMode();
   const { showSnackbar } = useSnackbar();
@@ -100,70 +105,6 @@ export default function ConferencesPageClient({
   const [newCityName, setNewCityName] = useState('');
 
   // ✅ Opcjonalnie: tylko w edit mode dociągamy świeże dane po stronie klienta
-  useEffect(() => {
-    if (isEditMode) loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEditMode]);
-
-  const loadData = async () => {
-    const [
-      heroRes,
-      servicesRes,
-      caseStudiesRes,
-      advantagesRes,
-      processRes,
-      pricingRes,
-      faqRes,
-      portfolioRes,
-      citiesRes,
-      serviceCategoriesRes,
-      relatedServicesRes,
-      allServiceItemsRes,
-      galleryRes,
-    ] = await Promise.all([
-      supabase.from('conferences_hero').select('*').eq('is_active', true).single(),
-      supabase.from('conferences_services').select('*').eq('is_active', true).order('display_order'),
-      supabase.from('conferences_case_studies').select('*').eq('is_active', true).order('display_order'),
-      supabase.from('conferences_advantages').select('*').eq('is_active', true).order('display_order'),
-      supabase.from('conferences_process').select('*').eq('is_active', true).order('display_order'),
-      supabase.from('conferences_pricing').select('*').eq('is_active', true).order('display_order'),
-      supabase.from('conferences_faq').select('*').eq('is_active', true).order('display_order'),
-      supabase.from('portfolio_projects').select('*').contains('tags', ['konferencje']).order('order_index'),
-      supabase.from('conferences_cities').select('*').eq('is_active', true).order('display_order'),
-      supabase
-        .from('conferences_service_categories')
-        .select(`*, items:conferences_service_items(*)`)
-        .eq('is_active', true)
-        .order('display_order'),
-      supabase
-        .from('conferences_related_services')
-        .select(`*, service_item:conferences_service_items(*)`)
-        .eq('is_active', true)
-        .order('display_order'),
-      supabase.from('conferences_service_items').select('*').eq('is_active', true).order('name'),
-      supabase.from('conferences_gallery').select('*').eq('is_active', true).order('display_order'),
-    ]);
-
-    if (heroRes.data) setHeroData(heroRes.data);
-
-    if (servicesRes.data) setServices(servicesRes.data);
-    if (caseStudiesRes.data) setCaseStudies(caseStudiesRes.data);
-    if (advantagesRes.data) setAdvantages(advantagesRes.data);
-    if (processRes.data) setProcess(processRes.data);
-    if (pricingRes.data) setPricing(pricingRes.data);
-    if (faqRes.data) setFaq(faqRes.data);
-    if (portfolioRes.data) setPortfolioProjects(portfolioRes.data);
-    if (citiesRes.data) setCities(citiesRes.data);
-    if (serviceCategoriesRes.data) setServiceCategories(serviceCategoriesRes.data);
-    if (allServiceItemsRes.data) setAllServiceItems(allServiceItemsRes.data);
-    if (galleryRes.data) setGallery(galleryRes.data);
-
-    if (relatedServicesRes.data) {
-      const items = relatedServicesRes.data.map((r: any) => r.service_item).filter(Boolean);
-      setRelatedServices(items);
-      setSelectedServiceIds(new Set(relatedServicesRes.data.map((r: any) => r.service_item_id).filter(Boolean)));
-    }
-  };
 
   const handleAddCity = async () => {
     if (!newCityName.trim()) return;
@@ -187,7 +128,6 @@ export default function ConferencesPageClient({
 
       if (error) throw error;
 
-      await loadData();
       setNewCityName('');
       setIsAddingCity(false);
       showSnackbar('Miasto dodane!', 'success');
@@ -210,7 +150,6 @@ export default function ConferencesPageClient({
 
       if (error) throw error;
 
-      await loadData();
       setEditingCity(null);
       showSnackbar('Miasto zaktualizowane!', 'success');
     } catch (error) {
@@ -230,7 +169,6 @@ export default function ConferencesPageClient({
 
       if (error) throw error;
 
-      await loadData();
       showSnackbar('Miasto usunięte!', 'success');
     } catch (error) {
       console.error('Error deleting city:', error);
@@ -242,11 +180,10 @@ export default function ConferencesPageClient({
   // Jeśli heroData jest null, nadal renderujemy resztę (a Hero masz w OfferLayout)
   return (
     <div className="min-h-screen bg-[#0f1119]">
-      <TechnicalServices services={services} isEditMode={isEditMode} loadData={loadData} />
+      {localIntro}
+      <TechnicalServices services={services} />
 
-      {(gallery.length > 0 || isEditMode) && (
-        <GallerySection isEditMode={isEditMode} gallery={gallery} loadData={loadData} />
-      )}
+        {/* <GallerySection  /> */}
 
       <AdvantagesSection advantages={advantages} />
 
@@ -259,11 +196,9 @@ export default function ConferencesPageClient({
       )}
 
       <ProcessSection
-        isEditMode={isEditMode}
         process={process}
         setIsEditingProcess={setIsEditingProcess}
         isEditingProcess={isEditingProcess}
-        loadData={loadData}
       />
 
       {faq.length > 0 && (
@@ -278,7 +213,6 @@ export default function ConferencesPageClient({
           selectedServiceIds={selectedServiceIds}
           setSelectedServiceIds={setSelectedServiceIds}
           allServiceItems={allServiceItems}
-          loadData={loadData}
           relatedServices={relatedServices}
         />
       )}
