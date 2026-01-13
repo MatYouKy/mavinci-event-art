@@ -164,7 +164,8 @@ export default function ServiceDetailClient({
       router.refresh();
     } catch (error) {
       console.error('Error uploading image:', error);
-      showSnackbar('Błąd podczas wgrywania zdjęcia', 'error');
+      const errorMessage = error instanceof Error ? error.message : 'Nieznany błąd';
+      showSnackbar(`Błąd uploadu: ${errorMessage}`, 'error');
     } finally {
       setUploading(false);
     }

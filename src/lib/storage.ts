@@ -31,67 +31,121 @@ const compressAndResizeImage = async (
     format = 'webp',
   } = options;
 
+  // Validate file type
+  if (!file.type.startsWith('image/')) {
+    throw new Error('Plik nie jest obrazem');
+  }
+
+  // Validate file size (max 50MB)
+  const maxFileSize = 50 * 1024 * 1024;
+  if (file.size > maxFileSize) {
+    throw new Error(`Plik jest zbyt duży (max ${maxFileSize / 1024 / 1024}MB)`);
+  }
+
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.readAsDataURL(file);
+
+    // Set timeout for FileReader
+    const readerTimeout = setTimeout(() => {
+      reject(new Error('Przekroczono limit czasu odczytu pliku'));
+    }, 30000); // 30 seconds
+
     reader.onload = (event) => {
+      clearTimeout(readerTimeout);
+
+      const dataUrl = event.target?.result as string;
+      if (!dataUrl) {
+        reject(new Error('Nie udało się odczytać pliku'));
+        return;
+      }
+
       const img = new Image();
-      img.src = event.target?.result as string;
+
+      // Set timeout for image loading
+      const imgTimeout = setTimeout(() => {
+        reject(new Error('Przekroczono limit czasu ładowania obrazu. Sprawdź czy plik nie jest uszkodzony.'));
+      }, 30000); // 30 seconds
+
       img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
+        clearTimeout(imgTimeout);
 
-        // Calculate new dimensions maintaining aspect ratio
-        if (width > maxWidth || height > maxHeight) {
-          const aspectRatio = width / height;
-          if (width > height) {
-            width = Math.min(width, maxWidth);
-            height = width / aspectRatio;
-          } else {
-            height = Math.min(height, maxHeight);
-            width = height * aspectRatio;
+        try {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+
+          // Validate image dimensions
+          if (width === 0 || height === 0) {
+            reject(new Error('Nieprawidłowe wymiary obrazu'));
+            return;
           }
-        }
 
-        // Round to avoid subpixel rendering
-        canvas.width = Math.round(width);
-        canvas.height = Math.round(height);
-
-        const ctx = canvas.getContext('2d', { alpha: format === 'png' });
-        if (!ctx) {
-          reject(new Error('Failed to get canvas context'));
-          return;
-        }
-
-        // Use better image smoothing
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-        // Convert to specified format
-        const mimeType = format === 'webp'
-          ? 'image/webp'
-          : format === 'png'
-          ? 'image/png'
-          : 'image/jpeg';
-
-        canvas.toBlob(
-          (blob) => {
-            if (!blob) {
-              reject(new Error('Compression failed'));
-              return;
+          // Calculate new dimensions maintaining aspect ratio
+          if (width > maxWidth || height > maxHeight) {
+            const aspectRatio = width / height;
+            if (width > height) {
+              width = Math.min(width, maxWidth);
+              height = width / aspectRatio;
+            } else {
+              height = Math.min(height, maxHeight);
+              width = height * aspectRatio;
             }
-            resolve(blob);
-          },
-          mimeType,
-          quality
-        );
+          }
+
+          // Round to avoid subpixel rendering
+          canvas.width = Math.round(width);
+          canvas.height = Math.round(height);
+
+          const ctx = canvas.getContext('2d', { alpha: format === 'png' });
+          if (!ctx) {
+            reject(new Error('Nie udało się utworzyć kontekstu canvas'));
+            return;
+          }
+
+          // Use better image smoothing
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+          // Convert to specified format
+          const mimeType = format === 'webp'
+            ? 'image/webp'
+            : format === 'png'
+            ? 'image/png'
+            : 'image/jpeg';
+
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) {
+                reject(new Error('Nie udało się skompresować obrazu'));
+                return;
+              }
+              resolve(blob);
+            },
+            mimeType,
+            quality
+          );
+        } catch (err) {
+          reject(new Error(`Błąd przetwarzania obrazu: ${err instanceof Error ? err.message : 'Nieznany błąd'}`));
+        }
       };
-      img.onerror = () => reject(new Error('Image load failed'));
+
+      img.onerror = (err) => {
+        clearTimeout(imgTimeout);
+        console.error('Image load error:', err);
+        reject(new Error('Nie udało się załadować obrazu. Plik może być uszkodzony lub w nieobsługiwanym formacie.'));
+      };
+
+      img.src = dataUrl;
     };
-    reader.onerror = () => reject(new Error('File read failed'));
+
+    reader.onerror = () => {
+      clearTimeout(readerTimeout);
+      reject(new Error('Błąd podczas odczytu pliku'));
+    };
+
+    reader.readAsDataURL(file);
   });
 };
 
