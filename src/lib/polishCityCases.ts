@@ -1,8 +1,20 @@
 export type PolishCityCases = {
   nominative: string; // Mianownik
-  genitive: string;   // Dopełniacz (kogo? czego?)
-  locative: string;   // Miejscownik (w kim? w czym?)
+  genitive: string; // Dopełniacz (kogo? czego?)
+  locative: string; // Miejscownik (w kim? w czym?)
 };
+
+function capitalizeWord(word: string): string {
+  if (!word) return word;
+  return word[0].toUpperCase() + word.slice(1);
+}
+
+function capitalizePhrase(phrase: string): string {
+  return phrase
+    .split(' ')
+    .map((w) => (isUppercaseWord(w) ? w : capitalizeWord(w)))
+    .join(' ');
+}
 
 type PartCases = { genitive: string; locative: string };
 
@@ -10,14 +22,16 @@ const VOWELS = /[aeiouyąęó]/i;
 
 // Minimalny zestaw wyjątków – tylko te, które często psują reguły
 const EXCEPTIONS: Record<string, PolishCityCases> = {
-  'Łódź': { nominative: 'Łódź', genitive: 'Łodzi', locative: 'Łodzi' },
-  'Gdańsk': { nominative: 'Gdańsk', genitive: 'Gdańska', locative: 'Gdańsku' },
-  'Kraków': { nominative: 'Kraków', genitive: 'Krakowa', locative: 'Krakowie' },
-  'Wrocław': { nominative: 'Wrocław', genitive: 'Wrocławia', locative: 'Wrocławiu' },
-  'Poznań': { nominative: 'Poznań', genitive: 'Poznania', locative: 'Poznaniu' },
-  'Toruń': { nominative: 'Toruń', genitive: 'Torunia', locative: 'Toruniu' },
-  'Szczecin': { nominative: 'Szczecin', genitive: 'Szczecina', locative: 'Szczecinie' }, // -in ma zwykle -ie
-  'Lublin': { nominative: 'Lublin', genitive: 'Lublina', locative: 'Lublinie' },         // -in ma zwykle -ie
+  łódź: { nominative: 'Łódź', genitive: 'Łodzi', locative: 'Łodzi' },
+  gdańsk: { nominative: 'Gdańsk', genitive: 'Gdańska', locative: 'Gdańsku' },
+  kraków: { nominative: 'Kraków', genitive: 'Krakowa', locative: 'Krakowie' },
+  wrocław: { nominative: 'Wrocław', genitive: 'Wrocławia', locative: 'Wrocławiu' },
+  poznań: { nominative: 'Poznań', genitive: 'Poznania', locative: 'Poznaniu' },
+  toruń: { nominative: 'Toruń', genitive: 'Torunia', locative: 'Toruniu' },
+  szczecin: { nominative: 'Szczecin', genitive: 'Szczecina', locative: 'Szczecinie' },
+  lublin: { nominative: 'Lublin', genitive: 'Lublina', locative: 'Lublinie' },
+  bydgoszcz: { nominative: 'Bydgoszcz', genitive: 'Bydgoszczy', locative: 'Bydgoszczy' },
+  brodnica: { nominative: 'Brodnica', genitive: 'Brodnicy', locative: 'Brodnicy' },
 };
 
 function isUppercaseWord(w: string) {
@@ -129,51 +143,45 @@ function inflectSingle(word: string): PartCases {
  * - Jeśli zaczyna się od "Nowy/Nowa/Nowe" to odmienia też przymiotnik
  */
 export function getPolishCityCasesSmart(cityName: string): PolishCityCases {
-  const name = cityName.trim();
+  const raw = cityName.trim();
+  const key = raw.toLowerCase();
 
-  // 1) wyjątki pełne
-  if (EXCEPTIONS[name]) return EXCEPTIONS[name];
+  // 1) wyjątki pełne (case-insensitive)
+  if (EXCEPTIONS[key]) return EXCEPTIONS[key];
 
-  // 2) rozbij na słowa (zostawiając wielkie litery)
-  const words = name.split(/\s+/).filter(Boolean);
-  if (words.length === 0) {
-    return { nominative: '', genitive: '', locative: '' };
-  }
+  // dalej bez zmian...
+  const words = raw.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return { nominative: '', genitive: '', locative: '' };
 
-  // 3) odmiana ostatniego członu
   const last = words[words.length - 1];
   const lastInf = inflectSingle(last);
 
-  // 4) specjalny wzorzec: "Nowy/Nowa/Nowe X"
+  let result: PolishCityCases;
   if (words.length >= 2) {
-    const first = words[0];
-    const firstLower = first.toLowerCase();
-
-    if (firstLower === 'nowy' || firstLower === 'nowa' || firstLower === 'nowe') {
-      // dopełniacz: Nowego/Nowej/Nowego
-      const firstGen =
-        firstLower === 'nowy' ? 'Nowego' :
-        firstLower === 'nowa' ? 'Nowej' :
-        'Nowego';
-
-      // miejscownik: Nowym/Nowej/Nowym
-      const firstLoc =
-        firstLower === 'nowy' ? 'Nowym' :
-        firstLower === 'nowa' ? 'Nowej' :
-        'Nowym';
-
-      const rest = words.slice(1, -1); // środkowe człony bez ostatniego
-      const gen = [firstGen, ...rest, lastInf.genitive].join(' ');
-      const loc = [firstLoc, ...rest, lastInf.locative].join(' ');
-
-      return { nominative: name, genitive: gen, locative: loc };
+    const first = words[0].toLowerCase();
+    if (first === 'nowy' || first === 'nowa' || first === 'nowe') {
+      const firstGen = first === 'nowy' ? 'Nowego' : first === 'nowa' ? 'Nowej' : 'Nowego';
+      const firstLoc = first === 'nowy' ? 'Nowym'  : first === 'nowa' ? 'Nowej' : 'Nowym';
+      const rest = words.slice(1, -1);
+      result = {
+        nominative: raw,
+        genitive: [firstGen, ...rest, lastInf.genitive].join(' '),
+        locative: [firstLoc, ...rest, lastInf.locative].join(' '),
+      };
+    } else {
+      result = {
+        nominative: raw,
+        genitive: [...words.slice(0, -1), lastInf.genitive].join(' '),
+        locative: [...words.slice(0, -1), lastInf.locative].join(' '),
+      };
     }
+  } else {
+    result = { nominative: raw, genitive: lastInf.genitive, locative: lastInf.locative };
   }
 
-  // 5) standard: tylko ostatni wyraz odmieniony
-  const base = words.slice(0, -1);
-  const genitive = [...base, lastInf.genitive].join(' ');
-  const locative = [...base, lastInf.locative].join(' ');
-
-  return { nominative: name, genitive, locative };
+  return {
+    nominative: capitalizePhrase(result.nominative),
+    genitive: capitalizePhrase(result.genitive),
+    locative: capitalizePhrase(result.locative),
+  };
 }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Mail, Phone, MapPin, Facebook, Instagram, Linkedin } from 'lucide-react';
 import ContactForm from './ContactForm';
+import CityMapEmbed from './CityMapEmbed/CityMapEmbed';
 
 export default function Contact() {
   const [formCategory, setFormCategory] = useState<'event_inquiry' | 'team_join'>('event_inquiry');
@@ -115,6 +116,7 @@ export default function Contact() {
                   </p>
                 </div>
               </div>
+              <CityMapEmbed query={`Olsztyn, Polska`} />
             </div>
           </div>
 

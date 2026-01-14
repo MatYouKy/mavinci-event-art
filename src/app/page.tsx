@@ -15,7 +15,18 @@ import Contact from '@/components/Contact';
 import WebsiteEditPanel from '@/components/WebsiteEditPanel';
 import PageLayout from '@/components/Layout/PageLayout';
 import { getSeoForPage } from '@/lib/seo';
+import { getPremiumConferenceCategories } from '@/lib/Pages/Home/getPremiumCategories';
+import { getHeroServices } from '@/lib/Pages/Home/getHeroServices';
+import { servicePages } from '@/lib/Pages/Services/servicePages';
 
+import { cache } from 'react';
+import { getPortfolioProjects } from '@/lib/Pages/Home/getPortfolioProjects';
+import { getTeamMembers } from '@/lib/Pages/Home/getTeamMembers';
+
+export const getPremiumConferenceCategoriesCached = cache(getPremiumConferenceCategories);
+export const getHeroServicesCached = cache(getHeroServices);
+export const getPortfolioProjectsCached = cache(getPortfolioProjects);
+export const getTeamMembersCached = cache(getTeamMembers);
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -328,7 +339,6 @@ export default async function HomePage() {
     ],
   };
 
-  // Schema: zamiast samego Organization -> LocalBusiness + EventPlanner (lokalna intencja)
   const customSchema = globalConfig
   ? {
       '@context': 'https://schema.org',
@@ -485,17 +495,22 @@ export default async function HomePage() {
     }
   : undefined;
 
+  const categories = await getPremiumConferenceCategoriesCached();
+  const services = await getHeroServicesCached(servicePages);
+  const portfolioProjects = await getPortfolioProjectsCached();
+  const teamMembers = await getTeamMembersCached();
+  const isEditMode = false;
   return (
     <PageLayout pageSlug="home" customSchema={customSchema}>
       <div className="min-h-screen">
         <Hero />
         <Stats />
         <Divider />
-        <Services />
-        <OfertaSection />
-        <Portfolio />
+        <Services categories={categories} />
+        <OfertaSection services={services} />
+        <Portfolio portfolioProjects={portfolioProjects} />
         <DividerTwo />
-        <Team />
+        <Team teamMembers={teamMembers} isEditMode={isEditMode}/>
         <DividerThree />
         <Process />
         <DividerFour />

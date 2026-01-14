@@ -7,6 +7,7 @@ import { Providers } from './providers';
 import '@/index.css';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import { buildBreadcrumbList } from '@/lib/SEO/breadcrumbs';
 
 const SITE_URL = 'https://mavinci.pl';
 const OG_IMAGE = '/logo-mavinci-crm.png';
@@ -143,17 +144,24 @@ export const metadata: Metadata = {
   other: {
     'geo.region': 'PL-WN',
     'geo.placename': 'Olsztyn',
-    'ICBM': 'Olsztyn, Poland', // bez współrzędnych, bo ich nie podajesz
+    ICBM: 'Olsztyn, Poland', // bez współrzędnych, bo ich nie podajesz
   },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  // JSON-LD: LocalBusiness + EventPlanner + OfferCatalog + Service (mocny sygnał „agencja eventowa Olsztyn”)
-  const jsonLd = {
+export default function RootLayout({ children, params }: { children: React.ReactNode, params: { pathname: string } }) {
+  const breadcrumbSchema = buildBreadcrumbList(params.pathname);
+
+
+  const localBusiness = {
     '@context': 'https://schema.org',
-    '@type': ['LocalBusiness', 'EventPlanner'],
+    '@type': 'LocalBusiness',
     name: 'MAVINCI Event & ART',
     url: SITE_URL,
+    potentialAction: {
+      '@type': 'SearchAction',
+      target: 'https://mavinci.pl/szukaj?q={search_term_string}',
+      'query-input': 'required name=search_term_string',
+    },
     logo: `${SITE_URL}${OG_IMAGE}`,
     image: [`${SITE_URL}${OG_IMAGE}`],
     description: PRIMARY_DESC,
@@ -175,10 +183,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       { '@type': 'Country', name: 'Poland' },
     ],
 
-    sameAs: [
-      'https://www.facebook.com/mavinci.pl',
-      'https://www.instagram.com/mavinci.pl',
-    ],
+    sameAs: ['https://www.facebook.com/mavinci.pl', 'https://www.instagram.com/mavinci.pl'],
 
     contactPoint: [
       {
@@ -286,6 +291,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         },
       ],
     },
+  };
+
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      localBusiness,
+      breadcrumbSchema, // <- osobny typ BreadcrumbList
+    ].filter(Boolean),
   };
 
   return (

@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { Linkedin, Mail, MoreVertical } from 'lucide-react';
 import { TeamMember, supabase } from '../lib/supabase';
-import { useEditMode } from '@/contexts/EditModeContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import ImagePositionEditor from '@/components/crm/ImagePositionEditor';
 
@@ -18,60 +17,14 @@ interface ImageMetadata {
   };
 }
 
-export default function Team() {
+export default function Team({ teamMembers, isEditMode = false }: { teamMembers: TeamMember[], isEditMode?: boolean }) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
-  const [loading, setLoading] = useState(true);
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [editingImageUrl, setEditingImageUrl] = useState<string | null>(null);
   const [editingMetadata, setEditingMetadata] = useState<ImageMetadata | null>(null);
 
-  const { isEditMode } = useEditMode();
   const { employee: currentEmployee, canManageModule, loading: employeeLoading } = useCurrentEmployee();
   const canEdit = !employeeLoading && canManageModule && canManageModule('employees');
-
-  useEffect(() => {
-    fetchTeamMembers();
-  }, []);
-
-  const fetchTeamMembers = async () => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('employees')
-        .select('id, name, surname, nickname, email, avatar_url, avatar_metadata, team_page_metadata, occupation, role, website_bio, linkedin_url, instagram_url, facebook_url, order_index, access_level')
-        .eq('show_on_website', true)
-        .order('order_index', { ascending: true })
-        .order('created_at', { ascending: true });
-
-      if (error) {
-        console.error('Supabase error:', error);
-        throw error;
-      }
-
-      // Transform employees to team members format
-      const transformed = (data || []).map((emp: any) => ({
-        id: emp.id,
-        name: `${emp.name || ''} ${emp.surname || ''}`.trim() || emp.nickname || 'Pracownik',
-        position: emp.occupation || emp.role || '',
-        role: emp.role || emp.occupation || '',
-        email: emp.email,
-        image: emp.avatar_url,
-        image_metadata: emp.team_page_metadata,
-        alt: `${emp.name || ''} ${emp.surname || ''}`.trim(),
-        bio: emp.website_bio,
-        linkedin: emp.linkedin_url,
-        instagram: emp.instagram_url,
-        facebook: emp.facebook_url,
-      }));
-
-      setTeamMembers(transformed);
-    } catch (error) {
-      console.error('Error fetching team members:', error);
-      setTeamMembers([]);
-    }
-    setLoading(false);
-  };
 
   const handleEditImagePosition = (member: TeamMember) => {
     setEditingMemberId(member.id);
@@ -90,7 +43,6 @@ export default function Team() {
 
       if (error) throw error;
 
-      await fetchTeamMembers();
       setEditingMemberId(null);
       setEditingImageUrl(null);
       setEditingMetadata(null);
@@ -135,16 +87,7 @@ export default function Team() {
           </div>
         </div>
 
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="text-[#d3bb73] text-lg">Ładowanie zespołu...</div>
-          </div>
-        ) : teamMembers.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-[#e5e4e2]/60">Brak członków zespołu do wyświetlenia</p>
-          </div>
-        ) : (
-          <div className="flex flex-wrap justify-center gap-8">
+        <div className="flex flex-wrap justify-center gap-8">
             {teamMembers.map((member, index) => (
             <div
               key={member.id}
@@ -246,8 +189,7 @@ export default function Team() {
               <div className="absolute -inset-1 bg-gradient-to-br from-[#d3bb73]/0 via-[#d3bb73]/0 to-[#d3bb73]/0 group-hover:from-[#d3bb73]/20 group-hover:via-[#d3bb73]/5 group-hover:to-[#d3bb73]/20 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-all duration-700 -z-10"></div>
             </div>
           ))}
-          </div>
-        )}
+        </div>
 
         <div className="text-center mt-16 animate-[fadeIn_1.2s_ease-out]">
           <p className="text-[#e5e4e2]/70 text-base md:text-lg font-light mb-6 max-w-2xl mx-auto">

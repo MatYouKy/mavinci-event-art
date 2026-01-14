@@ -19,9 +19,6 @@ export default function CityMapEmbed({ query, height = 360 }: Props) {
           style={{ border: 0 }}
         />
       </div>
-      <p className="mt-2 text-xs text-[#e5e4e2]/50">
-        Pokazujemy przybliżoną lokalizację (obszar miasta), bez dokładnego adresu.
-      </p>
     </section>
   );
 }

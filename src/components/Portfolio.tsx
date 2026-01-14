@@ -1,45 +1,20 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Eye, ArrowUpRight } from 'lucide-react';
+import { useState } from 'react';
+import { ArrowUpRight } from 'lucide-react';
 import Link from 'next/link';
-import { PortfolioProject, supabase } from '../lib/supabase';
+import { PortfolioProject } from '@/lib/Pages/Home/getPortfolioProjects';
 
-export default function Portfolio() {
+export default function Portfolio({ portfolioProjects }: { portfolioProjects: PortfolioProject[] }) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const [projects, setProjects] = useState<PortfolioProject[]>([]);
-  const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
-  useEffect(() => {
-    fetchProjects();
-  }, []);
 
-  const fetchProjects = async () => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('portfolio_projects')
-        .select('*')
-        .order('order_index', { ascending: true });
 
-      if (error) {
-        console.error('Supabase error:', error);
-        throw error;
-      }
-
-      setProjects(data || []);
-    } catch (error) {
-      console.error('Error fetching projects:', error);
-      setProjects([]);
-    }
-    setLoading(false);
-  };
-
-  const categories = ['all', ...Array.from(new Set(projects.map(p => p.category)))];
+  const categories = ['all', ...Array.from(new Set(portfolioProjects.map(p => p.category)))];
   const filteredProjects = selectedCategory === 'all'
-    ? projects.slice(0, 6)
-    : projects.filter(p => p.category === selectedCategory).slice(0, 6);
+    ? portfolioProjects.slice(0, 6)
+    : portfolioProjects.filter(p => p.category === selectedCategory).slice(0, 6);
 
   return (
     <section id="portfolio" className="relative py-24 md:py-32 bg-[#1c1f33] overflow-hidden" aria-labelledby="portfolio-heading">
@@ -91,16 +66,7 @@ export default function Portfolio() {
           ))}
         </div>
 
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="text-[#d3bb73] text-lg">Ładowanie projektów...</div>
-          </div>
-        ) : projects.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-[#e5e4e2]/60">Brak projektów do wyświetlenia</p>
-          </div>
-        ) : (
-          <div className="flex flex-wrap justify-center gap-3 md:gap-4">
+        <div className="flex flex-wrap justify-center gap-3 md:gap-4">
             {filteredProjects.map((project, index) => (
             <Link
               href={`/portfolio/${project.slug}`}
@@ -153,8 +119,7 @@ export default function Portfolio() {
               </div>
             </Link>
           ))}
-          </div>
-        )}
+        </div>
 
         <div className="text-center mt-16 animate-[fadeIn_1.2s_ease-out]">
           <Link href="/portfolio" className="group inline-flex items-center gap-3 px-8 py-4 bg-transparent border-2 border-[#d3bb73] text-[#d3bb73] rounded-full font-light hover:bg-[#d3bb73] hover:text-[#1c1f33] transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-[#d3bb73]/30">

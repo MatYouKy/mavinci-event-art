@@ -7,6 +7,7 @@ import ConferencesPageClient from './ConferencesPage';
 
 import { createSupabaseServerClient } from '@/lib/server';
 import { getConferencesData } from '@/lib/conferences-data';
+import CityMapEmbed from '@/components/CityMapEmbed/CityMapEmbed';
 
 const pageSlug = 'oferta/konferencje';
 
@@ -37,6 +38,7 @@ export default async function Page() {
         initialAllServiceItems={allServiceItems ?? []}
         initialSelectedServiceIds={[...relatedServices]}
       />
+       <CityMapEmbed query={`Olsztyn, Polska`} />
     </OfferLayout>
   );
 }   

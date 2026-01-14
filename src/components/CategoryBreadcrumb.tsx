@@ -166,7 +166,7 @@ export function CategoryBreadcrumb({ productName, pageSlug, hideMetadataButton }
                       <BreadcrumbSeparator className="text-white/40" />
                       <BreadcrumbItem className="text-white">
                         {isLast ? (
-                          <BreadcrumbPage className="text-[#d3bb73] font-medium">
+                          <BreadcrumbPage className="text-[#d3bb73] font-medium" >
                             {item.label}
                           </BreadcrumbPage>
                         ) : (
@@ -174,7 +174,7 @@ export function CategoryBreadcrumb({ productName, pageSlug, hideMetadataButton }
                             asChild
                             className="text-white/80 hover:text-[#d3bb73] transition-colors"
                           >
-                            <Link href={item.href}>{item.label}</Link>
+                            <Link href={item.href} aria-label={item.label}>{item.label}</Link>
                           </BreadcrumbLink>
                         )}
                       </BreadcrumbItem>

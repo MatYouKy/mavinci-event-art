@@ -3,22 +3,25 @@ import React, { FC } from 'react';
 import { ConferencesServicesEditor } from '@/components/ConferencesServicesEditor';
 import { CheckCircle, Settings } from 'lucide-react';
 import { getIconFunction } from '@/components/ConferencesServicesAccordion';
+import { PolishCityCases } from '@/lib/polishCityCases';
 
 interface TechnicalServicesProps {
   services: any[];
+  cityCases?: PolishCityCases;
 }
 
 export const TechnicalServices: FC<TechnicalServicesProps> = ({
   services,
+  cityCases,
 }) => {
   return (
     <section className="py-12 px-4 sm:px-6 lg:py-20">
       <div className="max-w-7xl mx-auto">
         <h2 className="text-3xl sm:text-4xl font-light text-[#e5e4e2] mb-3 sm:mb-4 text-center">
-          Zakres obsługi technicznej
+          Zakres obsługi technicznej Konferencji w {cityCases?.locative ? cityCases.locative : 'Olsztynie'}
         </h2>
         <p className="text-[#e5e4e2]/60 text-center mb-10 sm:mb-16 text-sm sm:text-base">
-          Kompleksowa realizacja audio-video dla Twojej konferencji
+          Kompleksowa realizacja audio-video dla Twojej konferencji w {cityCases?.locative ? cityCases.locative : 'Olsztynie'}
         </p>
 
           <div className="mb-10">

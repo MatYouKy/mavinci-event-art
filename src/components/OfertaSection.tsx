@@ -1,90 +1,12 @@
 'use client';
 
-import { Service, servicePages } from '@/app/oferta/OfertaPageClient';
-import { PortfolioProject, supabase } from '@/lib/supabase';
-import { Icon } from '@mui/material';
-import {
-  ArrowRight,
-  Mic,
-  Presentation,
-  Monitor,
-  Gamepad2,
-  Sparkles,
-  Users,
-  Video,
-  Lamp,
-  Dices,
-  Eye,
-  ArrowUpRight,
-  Loader2,
-} from 'lucide-react';
+import { Service } from '@/app/oferta/OfertaPageClient';
+
+import { ArrowRight } from 'lucide-react';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
 import { ServiceCard } from './ServiceCard';
 
-export default function OfertaSection() {
-  const [services, setServices] = useState<Service[]>([]);
-  const [loading, setLoading] = useState(true);
-  async function loadServices() {
-    try {
-      const servicesData: Service[] = [];
-
-      for (const page of servicePages) {
-        try {
-          const { data, error } = await supabase
-            .from(page.table)
-            .select('*')
-            .eq('section', 'hero')
-            .eq('is_active', true)
-            .maybeSingle();
-
-          if (error) {
-            console.error(`Error loading ${page.table}:`, error);
-            continue;
-          }
-
-          if (data) {
-            servicesData.push({
-              id: data.id,
-              slug: page.slug,
-              title: data.title || page.slug,
-              description: data.description || '',
-              icon_name: page.icon,
-              color_from: 'blue-500/20',
-              color_to: 'blue-600/20',
-              border_color: 'border-blue-500/30',
-              hero_image_url: data.image_url,
-              hero_opacity: parseFloat(data.opacity) || 1,
-              order_index: page.order,
-              image_metadata: data.image_metadata,
-            });
-          }
-        } catch (err) {
-          console.error(`Error processing ${page.slug}:`, err);
-        }
-      }
-
-      servicesData.sort((a, b) => a.order_index - b.order_index);
-      setServices(servicesData);
-    } catch (error) {
-      console.error('Error loading services:', error);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    loadServices();
-  }, []);
-
-  if (loading) {
-    return (
-      <section className="flex justify-center items-center h-full">
-        <Loader2 className="h-10 w-10 animate-spin text-[#d3bb73]" />
-      </section>
-    );
-  }
-
+export default function OfertaSection({ services }: { services: Service[] }) {
   return (
     <section
       id="oferta"

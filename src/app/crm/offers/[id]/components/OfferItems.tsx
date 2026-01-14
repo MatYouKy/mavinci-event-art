@@ -48,7 +48,6 @@ export default function OfferItems({
   const { showSnackbar } = useSnackbar();
   const router = useRouter();
   const [updating, setUpdating] = useState(false);
-
   const handleDragEnd = async (result: DropResult) => {
     if (!result.destination) return;
 
@@ -119,7 +118,7 @@ export default function OfferItems({
                 ref={provided.innerRef}
                 className="space-y-2"
               >
-                {items
+                {[...items]
                   .sort((a, b) => a.display_order - b.display_order)
                   .map((item, index) => (
                     <Draggable

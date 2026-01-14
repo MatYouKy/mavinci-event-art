@@ -64,7 +64,7 @@ async function loadCityData(city: string) {
   const canonicalUrl = `https://mavinci.pl/oferta/konferencje/${city}`;
 
   const defaultTitle = `Obsługa Konferencji w ${cityCases.locative} - Profesjonalne Nagłośnienie i Multimedia | MAVINCI`;
-  const defaultDescription = `Profesjonalna obsługa konferencji w ${cityCases.locative}: nagłośnienie, multimedia, streaming live, realizacja wideo. Kompleksowe wsparcie techniczne dla wydarzeń biznesowych w ${cityCases.locative} i okolicach.`;
+  const defaultDescription = `Profesjonalna obsługa konferencji w ${cityCases.genitive}: nagłośnienie, multimedia, streaming live, realizacja wideo. Kompleksowe wsparcie techniczne dla wydarzeń biznesowych w ${cityCases.locative} i okolicach.`;
 
   const title = defaultTitle || cityPageSeo?.title;
   const description = defaultDescription || cityPageSeo?.seo_description;
@@ -93,7 +93,7 @@ export async function generateMetadata({
   const data = await loadCityData(params.miasto);
 
   if (!data) {
-    return { title: 'Miasto nie znalezione - MAVINCI Event & ART' };
+    return { title: 'Obsługa Konferencji - MAVINCI Event & ART' };
   }
 
   const { title, description, keywords, canonicalUrl, image, cityCases } = data;
@@ -129,9 +129,9 @@ export default async function CityConferencePage({ params }: { params: { miasto:
   const cityCases = getPolishCityCasesSmart(city.name);
   const canonicalUrl = `https://mavinci.pl/oferta/konferencje/${city.locality}`;
 
-  const defaultTitle = `Obsługa Konferencji w ${cityCases.locative} - Profesjonalne Nagłośnienie i Multimedia | MAVINCI`;
+  const defaultTitle = `Profesjonalna obsługa techniczna konferencji w ${cityCases.locative} – nagłośnienie, multimedia, streaming, oświetlenie i realizacja wydarzeń biznesowych. Zapytaj o ofertę!`;
   const defaultDescription = `Profesjonalna obsługa konferencji w ${cityCases.locative}: nagłośnienie, multimedia, streaming live, realizacja wideo. Kompleksowe wsparcie techniczne dla wydarzeń biznesowych w ${cityCases.locative} i okolicach.`;
-
+  
   const pageSlug = `oferta/konferencje/${city.locality}`;
 
   // ✅ Naprawione schema: priceRange NIE w Offer
@@ -322,7 +322,7 @@ export default async function CityConferencePage({ params }: { params: { miasto:
           defaultTitle={defaultTitle}
           defaultDescription={defaultDescription}
         />
-        <TechnicalServices services={services} />
+        <TechnicalServices services={services} cityCases={cityCases} />
         <AdvantagesSection advantages={advantages} />
 
         {/* {serviceCategories.length > 0 && <DetailedServices setIsContactFormOpen={() => {}} />} */}
