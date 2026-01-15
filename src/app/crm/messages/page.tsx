@@ -591,11 +591,14 @@ export default function MessagesPage() {
     const now = new Date();
     const diff = now.getTime() - messageDate.getTime();
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const time = messageDate.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
 
     if (days === 0) {
-      return messageDate.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+      return time;
     } else if (days === 1) {
-      return 'Wczoraj';
+      return `wczoraj o ${time}`;
+    } else if (days === 2) {
+      return `przedwczoraj o ${time}`;
     } else if (days < 7) {
       return `${days} dni temu`;
     } else {
