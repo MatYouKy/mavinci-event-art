@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Plus, Trash2, Image as ImageIcon, Edit } from 'lucide-react';
-import { GalleryImage } from '@/lib/supabase';
+import { GalleryImage } from '@/lib/supabase/types';
 import { uploadImage } from '@/lib/storage';
 import { SimpleImageUploader } from './SimpleImageUploader';
 import { IUploadImage } from '@/types/image';
@@ -194,7 +194,7 @@ export function PortfolioGalleryEditor({ gallery = [], onChange }: PortfolioGall
                       setEditImageData({
                         alt: image.alt || '',
                         image_metadata: image.image_metadata,
-                      } as IUploadImage);
+                      } as unknown as IUploadImage);
                     }}
                     className="p-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
                   >

@@ -1,7 +1,7 @@
 // lib/rtk/supabaseBaseQuery.ts
 import type { BaseQueryFn } from "@reduxjs/toolkit/query";
 import type { PostgrestError } from "@supabase/supabase-js";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase/browser";
 
 type SupabaseArgs =
   | { fn: "employees.list"; payload?: { activeOnly?: boolean } }

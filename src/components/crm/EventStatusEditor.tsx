@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 import { X } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 

@@ -1,19 +1,16 @@
-import { cache } from 'react';
-import { createClient } from '@supabase/supabase-js';
 
-function getServerSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!; // UWAGA: tylko jeśli to CRM admin-only i świadomie
-  return createClient(url, key, { auth: { persistSession: false } });
-}
+import { createSupabaseServerClient } from '@/lib/supabase/server.app';
+import { cache } from 'react';
+import { cookies } from 'next/headers';
 
 export const getOffersData = cache(async () => {
-  const supabase = getServerSupabase();
+  const supabase = createSupabaseServerClient(cookies());
 
   // 1) offers + event + creator
   const { data: offers, error: offersError } = await supabase
     .from('offers')
-    .select(`
+    .select(
+      `
       *,
       event:events!event_id(
         name,
@@ -22,19 +19,16 @@ export const getOffersData = cache(async () => {
         contact_person_id
       ),
       creator:employees!created_by(name, surname)
-    `)
+    `,
+    )
     .order('created_at', { ascending: false });
 
   if (offersError) throw offersError;
 
   // 2) dogrywamy org/contact (batch)
-  const orgIds = (offers ?? [])
-    .map((o: any) => o?.event?.organization_id)
-    .filter(Boolean);
+  const orgIds = (offers ?? []).map((o: any) => o?.event?.organization_id).filter(Boolean);
 
-  const contactIds = (offers ?? [])
-    .map((o: any) => o?.event?.contact_person_id)
-    .filter(Boolean);
+  const contactIds = (offers ?? []).map((o: any) => o?.event?.contact_person_id).filter(Boolean);
 
   const uniqueOrgIds = Array.from(new Set(orgIds));
   const uniqueContactIds = Array.from(new Set(contactIds));
@@ -55,10 +49,10 @@ export const getOffersData = cache(async () => {
   if (contactRes.error) throw contactRes.error;
 
   const orgsMap: Record<string, any> = Object.fromEntries(
-    (orgRes.data ?? []).map((o: any) => [o.id, o])
+    (orgRes.data ?? []).map((o: any) => [o.id, o]),
   );
   const contactsMap: Record<string, any> = Object.fromEntries(
-    (contactRes.data ?? []).map((c: any) => [c.id, c])
+    (contactRes.data ?? []).map((c: any) => [c.id, c]),
   );
 
   const enrichedOffers = (offers ?? []).map((offer: any) => {
@@ -74,27 +68,22 @@ export const getOffersData = cache(async () => {
 
   // 3) reszta równolegle
   const [categoriesRes, productsRes, templatesRes] = await Promise.all([
-    supabase
-      .from('event_categories')
-      .select('*')
-      .eq('is_active', true)
-      .order('order_index'),
+    supabase.from('event_categories').select('*').eq('is_active', true).order('order_index'),
 
     supabase
       .from('offer_products')
-      .select(`
+      .select(
+        `
         *,
         category:event_categories(
           id, name, icon_id,
           custom_icon:custom_icons(id, name, svg_code, preview_color)
         )
-      `)
+      `,
+      )
       .order('display_order'),
 
-    supabase
-      .from('offer_templates')
-      .select('*')
-      .order('is_default', { ascending: false }),
+    supabase.from('offer_templates').select('*').order('is_default', { ascending: false }),
   ]);
 
   if (categoriesRes.error) throw categoriesRes.error;

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 import {
   isAdmin as checkIsAdmin,
   canView,
@@ -7,7 +7,7 @@ import {
   canCreate,
   canManagePermissions as checkCanManagePermissions,
 } from '@/lib/permissions';
-import { IEmployee } from '@/app/crm/employees/type';
+import { IEmployee } from '@/app/(crm)/crm/employees/type';
 
 interface CurrentEmployeeData {
   employee: IEmployee | null;
@@ -131,7 +131,9 @@ export function useCurrentEmployee(): CurrentEmployeeData {
 
   const isAdmin = employee ? checkIsAdmin(employee as unknown as IEmployee) : false;
 
-  const canManagePermissions = employee ? checkCanManagePermissions(employee as unknown as IEmployee) : false;
+  const canManagePermissions = employee
+    ? checkCanManagePermissions(employee as unknown as IEmployee)
+    : false;
 
   const hasScope = (scope: string): boolean => {
     if (!employee) return false;
@@ -140,17 +142,26 @@ export function useCurrentEmployee(): CurrentEmployeeData {
 
   const canViewModule = (module: string): boolean => {
     if (!employee) return false;
-    return checkIsAdmin(employee as unknown as IEmployee) || canView(employee as unknown as IEmployee, module);
+    return (
+      checkIsAdmin(employee as unknown as IEmployee) ||
+      canView(employee as unknown as IEmployee, module)
+    );
   };
 
   const canManageModule = (module: string): boolean => {
     if (!employee) return false;
-    return checkIsAdmin(employee as unknown as IEmployee) || canManage(employee as unknown as IEmployee, module);
+    return (
+      checkIsAdmin(employee as unknown as IEmployee) ||
+      canManage(employee as unknown as IEmployee, module)
+    );
   };
 
   const canCreateInModule = (module: string): boolean => {
     if (!employee) return false;
-    return checkIsAdmin(employee as unknown as IEmployee) || canCreate(employee as unknown as IEmployee, module);
+    return (
+      checkIsAdmin(employee as unknown as IEmployee) ||
+      canCreate(employee as unknown as IEmployee, module)
+    );
   };
 
   const refresh = async () => {

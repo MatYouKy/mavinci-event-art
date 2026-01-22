@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 import { canEditWebsite } from '@/lib/permissions';
 
 interface Employee {
@@ -32,7 +32,9 @@ export function useWebsiteEdit() {
 
   const checkPermissions = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
       if (!session?.user) {
         setCanEdit(false);

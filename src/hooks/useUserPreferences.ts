@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 import { useCurrentEmployee } from './useCurrentEmployee';
 
 type ViewMode = 'list' | 'grid' | 'cards' | 'detailed';
@@ -63,10 +63,39 @@ export function useUserPreferences() {
   };
 
   const getViewMode = (module: string): ViewMode => {
-    return preferences[module as keyof Preferences]?.viewMode || 'cards';
+    // Ensure we only read .viewMode from modules supporting ViewModePreference
+    const viewModeModules: Array<keyof Preferences> = [
+      'clients',
+      'equipment',
+      'events',
+      'tasks',
+      'offers',
+      'contracts',
+      'fleet',
+      'employees',
+    ];
+    if (viewModeModules.includes(module as keyof Preferences)) {
+      const pref = preferences[module as keyof Preferences] as ViewModePreference | undefined;
+      return pref?.viewMode || 'cards';
+    }
+    return 'cards';
   };
 
   const setViewMode = async (module: string, viewMode: ViewMode) => {
+    // Only apply setViewMode to eligible modules
+    const viewModeModules: Array<keyof Preferences> = [
+      'clients',
+      'equipment',
+      'events',
+      'tasks',
+      'offers',
+      'contracts',
+      'fleet',
+      'employees',
+    ];
+    if (!viewModeModules.includes(module as keyof Preferences)) {
+      return;
+    }
     const newPreferences = {
       ...preferences,
       [module]: { viewMode },

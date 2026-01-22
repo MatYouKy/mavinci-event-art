@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { X, Mail, Server, Lock, Globe, CheckCircle2, Building2, Users } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
@@ -56,7 +56,7 @@ export default function AddSystemEmailModal({
       return;
     }
     if (!employeeId && formData.accountType === 'personal') {
-      setFormData(prev => ({ ...prev, accountType: isAdmin ? 'shared' : 'personal' }));
+      setFormData((prev) => ({ ...prev, accountType: isAdmin ? 'shared' : 'personal' }));
     }
   }, [employeeId, isAdmin, formData.accountType]);
 
@@ -71,7 +71,12 @@ export default function AddSystemEmailModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.accountName || !formData.emailAddress || !formData.smtpHost || !formData.receiveHost) {
+    if (
+      !formData.accountName ||
+      !formData.emailAddress ||
+      !formData.smtpHost ||
+      !formData.receiveHost
+    ) {
       showSnackbar('Wypełnij wszystkie wymagane pola', 'error');
       return;
     }
@@ -89,7 +94,7 @@ export default function AddSystemEmailModal({
           .from('employee_email_accounts')
           .update({
             is_system_account: false,
-            account_type: 'shared'
+            account_type: 'shared',
           })
           .eq('account_type', 'system');
       }
@@ -167,7 +172,7 @@ export default function AddSystemEmailModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-[#1c1f33] rounded-xl border border-[#d3bb73]/20 shadow-2xl">
+      <div className="relative max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] shadow-2xl">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#d3bb73]/20 bg-[#1c1f33] p-6">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#d3bb73]/10">
@@ -188,7 +193,7 @@ export default function AddSystemEmailModal({
 
         <form onSubmit={handleSubmit} className="p-6">
           <div className="space-y-6">
-            {(!employeeId && isAdmin) && (
+            {!employeeId && isAdmin && (
               <div className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-6">
                 <h3 className="mb-4 flex items-center gap-2 text-lg font-medium text-[#d3bb73]">
                   <Users className="h-5 w-5" />
@@ -198,7 +203,7 @@ export default function AddSystemEmailModal({
                 <div className="grid grid-cols-3 gap-3">
                   <button
                     type="button"
-                    onClick={() => setFormData(prev => ({ ...prev, accountType: 'personal' }))}
+                    onClick={() => setFormData((prev) => ({ ...prev, accountType: 'personal' }))}
                     className={`flex flex-col items-center gap-2 rounded-lg border p-4 text-sm font-medium transition-colors ${
                       formData.accountType === 'personal'
                         ? 'border-[#d3bb73] bg-[#d3bb73]/10 text-[#d3bb73]'
@@ -212,7 +217,7 @@ export default function AddSystemEmailModal({
 
                   <button
                     type="button"
-                    onClick={() => setFormData(prev => ({ ...prev, accountType: 'shared' }))}
+                    onClick={() => setFormData((prev) => ({ ...prev, accountType: 'shared' }))}
                     className={`flex flex-col items-center gap-2 rounded-lg border p-4 text-sm font-medium transition-colors ${
                       formData.accountType === 'shared'
                         ? 'border-[#d3bb73] bg-[#d3bb73]/10 text-[#d3bb73]'
@@ -226,7 +231,7 @@ export default function AddSystemEmailModal({
 
                   <button
                     type="button"
-                    onClick={() => setFormData(prev => ({ ...prev, accountType: 'system' }))}
+                    onClick={() => setFormData((prev) => ({ ...prev, accountType: 'system' }))}
                     className={`flex flex-col items-center gap-2 rounded-lg border p-4 text-sm font-medium transition-colors ${
                       formData.accountType === 'system'
                         ? 'border-[#d3bb73] bg-[#d3bb73]/10 text-[#d3bb73]'
@@ -257,9 +262,11 @@ export default function AddSystemEmailModal({
                     value={formData.accountName}
                     onChange={(e) => handleInputChange('accountName', e.target.value)}
                     placeholder={
-                      formData.accountType === 'system' ? 'np. Email systemowy Mavinci' :
-                      formData.accountType === 'shared' ? 'np. Biuro, Finanse, Kadry' :
-                      'np. Moje konto robocze'
+                      formData.accountType === 'system'
+                        ? 'np. Email systemowy Mavinci'
+                        : formData.accountType === 'shared'
+                          ? 'np. Biuro, Finanse, Kadry'
+                          : 'np. Moje konto robocze'
                     }
                     className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33] px-4 py-2.5 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none focus:ring-1 focus:ring-[#d3bb73]"
                     required
@@ -358,11 +365,15 @@ export default function AddSystemEmailModal({
                     className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33] px-4 py-2.5 text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none focus:ring-1 focus:ring-[#d3bb73]"
                     required
                   />
-                  <p className="mt-1 text-xs text-[#e5e4e2]/50">Zazwyczaj 587 (TLS) lub 465 (SSL)</p>
+                  <p className="mt-1 text-xs text-[#e5e4e2]/50">
+                    Zazwyczaj 587 (TLS) lub 465 (SSL)
+                  </p>
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Użytkownik SMTP</label>
+                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                    Użytkownik SMTP
+                  </label>
                   <input
                     type="text"
                     value={formData.smtpUsername}
@@ -373,7 +384,9 @@ export default function AddSystemEmailModal({
                 </div>
 
                 <div className="md:col-span-2">
-                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Hasło SMTP</label>
+                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                    Hasło SMTP
+                  </label>
                   <input
                     type="password"
                     value={formData.smtpPassword}
@@ -468,7 +481,9 @@ export default function AddSystemEmailModal({
                     required
                   />
                   <p className="mt-1 text-xs text-[#e5e4e2]/50">
-                    {receiveProtocol === 'imap' ? '993 (SSL) lub 143 (STARTTLS)' : '995 (SSL) lub 110 (bez szyfrowania)'}
+                    {receiveProtocol === 'imap'
+                      ? '993 (SSL) lub 143 (STARTTLS)'
+                      : '995 (SSL) lub 110 (bez szyfrowania)'}
                   </p>
                 </div>
 
@@ -508,7 +523,9 @@ export default function AddSystemEmailModal({
                     />
                     <div className="flex-1">
                       <div className="text-sm font-medium text-[#e5e4e2]">Użyj SSL</div>
-                      <div className="text-xs text-[#e5e4e2]/60">Zalecane dla bezpiecznych połączeń</div>
+                      <div className="text-xs text-[#e5e4e2]/60">
+                        Zalecane dla bezpiecznych połączeń
+                      </div>
                     </div>
                     <Lock className="h-5 w-5 text-[#d3bb73]/60" />
                   </label>
@@ -529,7 +546,9 @@ export default function AddSystemEmailModal({
                   />
                   <div className="flex-1">
                     <div className="text-sm font-medium text-[#e5e4e2]">Konto aktywne</div>
-                    <div className="text-xs text-[#e5e4e2]/60">Konto może być używane do wysyłania i odbierania wiadomości</div>
+                    <div className="text-xs text-[#e5e4e2]/60">
+                      Konto może być używane do wysyłania i odbierania wiadomości
+                    </div>
                   </div>
                   <CheckCircle2 className="h-5 w-5 text-[#d3bb73]/60" />
                 </label>
@@ -537,11 +556,12 @@ export default function AddSystemEmailModal({
                 {formData.accountType === 'system' && (
                   <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-4">
                     <div className="flex items-start gap-3">
-                      <Server className="h-5 w-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                      <Server className="mt-0.5 h-5 w-5 flex-shrink-0 text-blue-400" />
                       <div className="text-sm text-blue-200">
-                        <p className="font-medium mb-1">Konto systemowe</p>
+                        <p className="mb-1 font-medium">Konto systemowe</p>
                         <p className="text-xs text-blue-200/70">
-                          To konto będzie używane do automatycznego wysyłania zaproszeń, ofert, faktur i innych wiadomości systemowych.
+                          To konto będzie używane do automatycznego wysyłania zaproszeń, ofert,
+                          faktur i innych wiadomości systemowych.
                         </p>
                       </div>
                     </div>
@@ -551,11 +571,12 @@ export default function AddSystemEmailModal({
                 {formData.accountType === 'shared' && (
                   <div className="rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-4">
                     <div className="flex items-start gap-3">
-                      <Building2 className="h-5 w-5 text-[#d3bb73] flex-shrink-0 mt-0.5" />
+                      <Building2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-[#d3bb73]" />
                       <div className="text-sm text-[#e5e4e2]">
-                        <p className="font-medium mb-1">Konto wspólne</p>
+                        <p className="mb-1 font-medium">Konto wspólne</p>
                         <p className="text-xs text-[#e5e4e2]/70">
-                          Po dodaniu konta, możesz przypisać do niego pracowników w ustawieniach kont email.
+                          Po dodaniu konta, możesz przypisać do niego pracowników w ustawieniach
+                          kont email.
                         </p>
                       </div>
                     </div>

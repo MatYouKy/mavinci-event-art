@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
-import { canView, isAdmin, type Employee } from '@/lib/permissions';
+import { supabase } from '@/lib/supabase/browser';
+import { canView, isAdmin } from '@/lib/permissions';
 import { RefreshCw, ShieldAlert } from 'lucide-react';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface Props {
   children: React.ReactNode;
@@ -13,29 +14,27 @@ interface Props {
   fallbackPath?: string;
 }
 
-export default function PermissionGuard({ children, module, permission, fallbackPath = '/crm' }: Props) {
+export default function PermissionGuard({
+  children,
+  module,
+  permission,
+  fallbackPath = '/crm',
+}: Props) {
   const [loading, setLoading] = useState(true);
   const [hasAccess, setHasAccess] = useState(false);
   const router = useRouter();
 
+  const { employee } = useCurrentEmployee();
+
   useEffect(() => {
     const checkPermission = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
 
         if (!session) {
-          router.push('/crm/login');
-          return;
-        }
-
-        const { data: employee } = await supabase
-          .from('employees')
-          .select('id, role, access_level, permissions')
-          .eq('email', session.user.email)
-          .maybeSingle();
-
-        if (!employee) {
-          router.push('/crm/login');
+          router.push('/login');
           return;
         }
 
@@ -43,7 +42,8 @@ export default function PermissionGuard({ children, module, permission, fallback
 
         if (permission) {
           // Sprawdź konkretny permission (np. event_categories_manage)
-          hasPermissionCheck = isAdmin(employee) || employee.permissions?.includes(permission) || false;
+          hasPermissionCheck =
+            isAdmin(employee) || employee.permissions?.includes(permission) || false;
         } else if (module) {
           // Sprawdź moduł (np. events_view lub events_manage)
           hasPermissionCheck = isAdmin(employee) || canView(employee, module);
@@ -71,18 +71,18 @@ export default function PermissionGuard({ children, module, permission, fallback
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <RefreshCw className="w-8 h-8 text-[#d3bb73] animate-spin" />
+      <div className="flex min-h-[400px] items-center justify-center">
+        <RefreshCw className="h-8 w-8 animate-spin text-[#d3bb73]" />
       </div>
     );
   }
 
   if (!hasAccess) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] px-6">
-        <ShieldAlert className="w-16 h-16 text-red-400 mb-4" />
-        <h2 className="text-2xl font-light text-[#e5e4e2] mb-2">Brak uprawnień</h2>
-        <p className="text-[#e5e4e2]/60 text-center max-w-md">
+      <div className="flex min-h-[400px] flex-col items-center justify-center px-6">
+        <ShieldAlert className="mb-4 h-16 w-16 text-red-400" />
+        <h2 className="mb-2 text-2xl font-light text-[#e5e4e2]">Brak uprawnień</h2>
+        <p className="max-w-md text-center text-[#e5e4e2]/60">
           Nie masz uprawnień do przeglądania tej strony. Za chwilę zostaniesz przekierowany...
         </p>
       </div>

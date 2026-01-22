@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Home, Edit2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 import { useEditMode } from '@/contexts/EditModeContext';
 import { PageMetadataModal } from './PageMetadataModal';
 
@@ -27,7 +27,11 @@ interface CategoryBreadcrumbProps {
   hideMetadataButton?: boolean;
 }
 
-export function CategoryBreadcrumb({ productName, pageSlug, hideMetadataButton }: CategoryBreadcrumbProps) {
+export function CategoryBreadcrumb({
+  productName,
+  pageSlug,
+  hideMetadataButton,
+}: CategoryBreadcrumbProps) {
   const pathname = usePathname();
   const { isEditMode } = useEditMode();
   const [dynamicTree, setDynamicTree] = useState<CategoryNode[] | null>(null);
@@ -40,14 +44,16 @@ export function CategoryBreadcrumb({ productName, pageSlug, hideMetadataButton }
       try {
         const { data, error } = await supabase
           .from('conferences_service_categories')
-          .select(`
+          .select(
+            `
             id,
             name,
             slug,
             is_active,
             display_order,
             items:conferences_service_items(*)
-          `)
+          `,
+          )
           .eq('is_active', true)
           .order('display_order');
 
@@ -63,9 +69,7 @@ export function CategoryBreadcrumb({ productName, pageSlug, hideMetadataButton }
           })) ?? [];
 
         const updatedTree = categoryNavLinks.map((node) =>
-          node.href === '/uslugi'
-            ? { ...node, children: servicesChildren }
-            : node
+          node.href === '/uslugi' ? { ...node, children: servicesChildren } : node,
         );
 
         setDynamicTree(updatedTree);
@@ -87,8 +91,7 @@ export function CategoryBreadcrumb({ productName, pageSlug, hideMetadataButton }
       if (node.href.startsWith('/#')) continue;
 
       const isExactMatch = path === node.href;
-      const isChildPath =
-        path !== '/' && node.href !== '/' && path.startsWith(node.href + '/');
+      const isChildPath = path !== '/' && node.href !== '/' && path.startsWith(node.href + '/');
 
       if (isExactMatch || isChildPath) {
         if (node.children?.length) {
@@ -131,25 +134,22 @@ export function CategoryBreadcrumb({ productName, pageSlug, hideMetadataButton }
         {!loading && trail.length > 0 && (
           <motion.div
             key={currentPageSlug || pathname}
-            initial={{ opacity: 0, y: -32 }}        // start: wyżej, niewidoczny
-            animate={{ opacity: 1, y: 0 }}          // koniec: w swoim miejscu
-            exit={{ opacity: 0, y: -32 }}           // przy przejściu na inną stronę
+            initial={{ opacity: 0, y: -32 }} // start: wyżej, niewidoczny
+            animate={{ opacity: 1, y: 0 }} // koniec: w swoim miejscu
+            exit={{ opacity: 0, y: -32 }} // przy przejściu na inną stronę
             transition={{
-              delay: 1,                             // ⬅️ 1 sekunda po załadowaniu
+              delay: 1, // ⬅️ 1 sekunda po załadowaniu
               duration: 0.45,
               ease: 'easeOut',
             }}
-            className="flex items-center gap-3 mb-4"
+            className="mb-4 flex items-center gap-3"
           >
             <Breadcrumb className="flex-1">
               <BreadcrumbList className="text-white">
                 {/* HOME */}
                 <BreadcrumbItem>
                   <BreadcrumbLink asChild>
-                    <Link
-                      href="/"
-                      className="text-white/80 hover:text-[#d3bb73] transition-colors"
-                    >
+                    <Link href="/" className="text-white/80 transition-colors hover:text-[#d3bb73]">
                       <span className="inline-flex items-center gap-1.5">
                         <Home className="h-4 w-4" />
                         <span className="hidden sm:inline">Start</span>
@@ -166,15 +166,17 @@ export function CategoryBreadcrumb({ productName, pageSlug, hideMetadataButton }
                       <BreadcrumbSeparator className="text-white/40" />
                       <BreadcrumbItem className="text-white">
                         {isLast ? (
-                          <BreadcrumbPage className="text-[#d3bb73] font-medium" >
+                          <BreadcrumbPage className="font-medium text-[#d3bb73]">
                             {item.label}
                           </BreadcrumbPage>
                         ) : (
                           <BreadcrumbLink
                             asChild
-                            className="text-white/80 hover:text-[#d3bb73] transition-colors"
+                            className="text-white/80 transition-colors hover:text-[#d3bb73]"
                           >
-                            <Link href={item.href} aria-label={item.label}>{item.label}</Link>
+                            <Link href={item.href} aria-label={item.label}>
+                              {item.label}
+                            </Link>
                           </BreadcrumbLink>
                         )}
                       </BreadcrumbItem>
@@ -187,10 +189,10 @@ export function CategoryBreadcrumb({ productName, pageSlug, hideMetadataButton }
             {isEditMode && currentPageSlug && !hideMetadataButton && (
               <button
                 onClick={() => setIsMetadataModalOpen(true)}
-                className="px-3 py-1.5 bg-[#d3bb73]/20 text-[#d3bb73] rounded hover:bg-[#d3bb73]/30 transition-colors flex items-center gap-2 text-sm"
+                className="flex items-center gap-2 rounded bg-[#d3bb73]/20 px-3 py-1.5 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30"
                 title="Edytuj metadata strony (keywords, title, description)"
               >
-                <Edit2 className="w-4 h-4" />
+                <Edit2 className="h-4 w-4" />
                 <span className="hidden sm:inline">Metadata</span>
               </button>
             )}

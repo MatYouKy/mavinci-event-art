@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 import { getSiteImage } from '@/lib/siteImages';
 import type { SiteImage } from '@/lib/siteImages';
 import { uploadImage } from '@/lib/storage';
@@ -53,7 +53,7 @@ export function useHeroImage(
     defaultImage = 'https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/site-images/hero/1760341625716-d0b65e.jpg',
     defaultOpacity = 0.2,
     pageSlug,
-  }: UseHeroImageOptions = {}
+  }: UseHeroImageOptions = {},
 ): UseHeroImageReturn {
   const { showSnackbar } = useSnackbar();
 
@@ -110,10 +110,7 @@ export function useHeroImage(
 
     try {
       // nowy system: *_page_images lub service_hero_images
-      let query = supabase
-        .from(pageTableName)
-        .select('*')
-        .eq('is_active', true);
+      let query = supabase.from(pageTableName).select('*').eq('is_active', true);
 
       // Dla uniwersalnej tabeli używamy page_slug, dla dedykowanych section='hero'
       if (isUniversalTable && pageSlug) {
@@ -185,7 +182,7 @@ export function useHeroImage(
     }
 
     setLoading(false);
-  },  [section, getTableName, defaultOpacity, defaultImage, pageSlug, screenMode, showSnackbar]);
+  }, [section, getTableName, defaultOpacity, defaultImage, pageSlug, screenMode, showSnackbar]);
 
   useEffect(() => {
     loadImage();
@@ -201,81 +198,91 @@ export function useHeroImage(
   }, [screenMode, desktopPosition, mobilePosition]);
 
   // Override setPosition to update the correct position based on screenMode
-  const setPositionWithMode = useCallback((pos: HeroPosition) => {
-    setPosition(pos);
-    if (screenMode === 'desktop') {
-      setDesktopPosition(pos);
-    } else {
-      setMobilePosition(pos);
-    }
-  }, [screenMode]);
+  const setPositionWithMode = useCallback(
+    (pos: HeroPosition) => {
+      setPosition(pos);
+      if (screenMode === 'desktop') {
+        setDesktopPosition(pos);
+      } else {
+        setMobilePosition(pos);
+      }
+    },
+    [screenMode],
+  );
 
-  const savePosition = useCallback(async (positionToSave?: HeroPosition) => {
-    setSaving(true);
-    const pageTableName = getTableName(section);
-    const isUniversalTable = pageTableName === 'service_hero_images';
+  const savePosition = useCallback(
+    async (positionToSave?: HeroPosition) => {
+      setSaving(true);
+      const pageTableName = getTableName(section);
+      const isUniversalTable = pageTableName === 'service_hero_images';
 
-    const currentPosition = positionToSave || (screenMode === 'desktop' ? desktopPosition : mobilePosition);
+      const currentPosition =
+        positionToSave || (screenMode === 'desktop' ? desktopPosition : mobilePosition);
 
-    try {
-      // próba: nowy system
       try {
-        // Build query depending on table type
-        let query = supabase
-          .from(pageTableName)
-          .select('id, image_metadata');
+        // próba: nowy system
+        try {
+          // Build query depending on table type
+          let query = supabase.from(pageTableName).select('id, image_metadata');
 
-        if (isUniversalTable && pageSlug) {
-          query = query.eq('page_slug', pageSlug);
-        } else {
-          query = query.eq('section', 'hero');
-        }
-
-        const { data: existing, error: selectError } = await query.maybeSingle();
-
-        if (selectError) {
-          throw selectError;
-        }
-
-        // Zawsze próbuj utworzyć rekord jeśli nie istnieje
-        if (!existing) {
-
-          const insertData: any = {
-            name: `Hero ${section}`,
-            description: `Hero image for ${section} page`,
-            image_url: siteImage?.desktop_url || defaultImage,
-            alt_text: section,
-            opacity,
-            image_metadata: {
-              desktop: {
-                position: screenMode === 'desktop' ? currentPosition : { posX: 0, posY: 0, scale: 1 },
-                objectFit: 'cover',
-              },
-              mobile: {
-                position: screenMode === 'mobile' ? currentPosition : { posX: 0, posY: 0, scale: 1 },
-                objectFit: 'cover',
-              },
-            },
-          };
-
-          // Dla uniwersalnej tabeli dodaj page_slug, dla dedykowanych section='hero'
           if (isUniversalTable && pageSlug) {
-            insertData.page_slug = pageSlug;
-            insertData.section = section;
+            query = query.eq('page_slug', pageSlug);
           } else {
-            insertData.section = 'hero';
+            query = query.eq('section', 'hero');
           }
 
-          const { error } = await supabase.from(pageTableName).insert(insertData);
-          if (error) {
-            throw error;
+          const { data: existing, error: selectError } = await query.maybeSingle();
+
+          if (selectError) {
+            throw selectError;
           }
-        } else {
+
+          // Zawsze próbuj utworzyć rekord jeśli nie istnieje
+          if (!existing) {
+            const insertData: any = {
+              name: `Hero ${section}`,
+              description: `Hero image for ${section} page`,
+              image_url: siteImage?.desktop_url || defaultImage,
+              alt_text: section,
+              opacity,
+              image_metadata: {
+                desktop: {
+                  position:
+                    screenMode === 'desktop' ? currentPosition : { posX: 0, posY: 0, scale: 1 },
+                  objectFit: 'cover',
+                },
+                mobile: {
+                  position:
+                    screenMode === 'mobile' ? currentPosition : { posX: 0, posY: 0, scale: 1 },
+                  objectFit: 'cover',
+                },
+              },
+            };
+
+            // Dla uniwersalnej tabeli dodaj page_slug, dla dedykowanych section='hero'
+            if (isUniversalTable && pageSlug) {
+              insertData.page_slug = pageSlug;
+              insertData.section = section;
+            } else {
+              insertData.section = 'hero';
+            }
+
+            const { error } = await supabase.from(pageTableName).insert(insertData);
+            if (error) {
+              throw error;
+            }
+          } else {
             const currentMetadata = existing.image_metadata || {};
 
             const updatedMetadata = {
-              desktop: currentMetadata.desktop || { position: { posX: 0, posY: 0, scale: 1 }, objectFit: 'cover' },
-              mobile: currentMetadata.mobile || { position: { posX: 0, posY: 0, scale: 1 }, objectFit: 'cover' },
+              desktop: currentMetadata.desktop || {
+                position: { posX: 0, posY: 0, scale: 1 },
+                objectFit: 'cover',
+              },
+              mobile: currentMetadata.mobile || {
+                position: { posX: 0, posY: 0, scale: 1 },
+                objectFit: 'cover',
+              },
             };
 
             if (screenMode === 'desktop') {
@@ -289,7 +296,6 @@ export function useHeroImage(
                 position: currentPosition,
               };
             }
-
 
             const { error } = await supabase
               .from(pageTableName)
@@ -307,172 +313,190 @@ export function useHeroImage(
           await loadImage();
           showSnackbar('Pozycja zapisana pomyślnie', 'success');
           return;
-      } catch (err) {
-        throw err;
-      }
+        } catch (err) {
+          throw err;
+        }
 
-      // stary system
-      if (!siteImage) {
-        const { data, error } = await supabase
-          .from('site_images')
-          .insert({
-            section,
-            name: `Hero ${section}`,
-            description: `Hero image for ${section} page`,
-            desktop_url: defaultImage,
-            alt_text: section,
-            opacity,
-            image_metadata: {
-              desktop: {
-                src: defaultImage,
-                position,
-                objectFit: 'cover',
-              },
-              mobile: {
-                src: defaultImage,
-                position,
-                objectFit: 'cover',
-              },
-            },
-          })
-          .select()
-          .single();
-
-        if (error) throw error;
-        setSiteImage(data);
-      } else {
-        const { error } = await supabase
-          .from('site_images')
-          .update({
-            image_metadata: {
-              ...siteImage.image_metadata,
-              desktop: {
-                ...siteImage.image_metadata?.desktop,
-                src: siteImage.desktop_url,
-                position,
-                objectFit: siteImage.image_metadata?.desktop?.objectFit || 'cover',
-              },
-              mobile: {
-                ...siteImage.image_metadata?.mobile,
-                src: siteImage.mobile_url || siteImage.desktop_url,
-                position,
-                objectFit: siteImage.image_metadata?.mobile?.objectFit || 'cover',
-              },
-            },
-          })
-          .eq('id', siteImage.id);
-
-        if (error) throw error;
-        await loadImage();
-      }
-
-      showSnackbar('Pozycja zapisana pomyślnie', 'success');
-    } catch (error) {
-      showSnackbar('Błąd podczas zapisywania pozycji', 'error');
-    } finally {
-      setSaving(false);
-    }
-  }, [section, siteImage, desktopPosition, mobilePosition, opacity, defaultImage, getTableName, loadImage, showSnackbar, screenMode, pageSlug, position]);
-
-  const saveOpacity = useCallback(async (opacityValue?: number) => {
-    const valueToSave = opacityValue ?? opacity;
-    setSaving(true);
-    const pageTableName = getTableName(section);
-
-    try {
-      // nowy system
-      try {
-        const { data: existing } = await supabase
-          .from(pageTableName)
-          .select('id')
-          .eq('section', 'hero')
-          .maybeSingle();
-
-        if (existing || section.includes('zespol') || section.includes('team')) {
-          if (!existing) {
-            const { error } = await supabase.from(pageTableName).insert({
-              section: 'hero',
+        // stary system
+        if (!siteImage) {
+          const { data, error } = await supabase
+            .from('site_images')
+            .insert({
+              section,
               name: `Hero ${section}`,
               description: `Hero image for ${section} page`,
-              image_url: siteImage?.desktop_url || defaultImage,
+              desktop_url: defaultImage,
+              alt_text: section,
+              opacity,
+              image_metadata: {
+                desktop: {
+                  src: defaultImage,
+                  position,
+                  objectFit: 'cover',
+                },
+                mobile: {
+                  src: defaultImage,
+                  position,
+                  objectFit: 'cover',
+                },
+              },
+            })
+            .select()
+            .single();
+
+          if (error) throw error;
+          setSiteImage(data);
+        } else {
+          const { error } = await supabase
+            .from('site_images')
+            .update({
+              image_metadata: {
+                ...siteImage.image_metadata,
+                desktop: {
+                  ...siteImage.image_metadata?.desktop,
+                  src: siteImage.desktop_url,
+                  position,
+                  objectFit: siteImage.image_metadata?.desktop?.objectFit || 'cover',
+                },
+                mobile: {
+                  ...siteImage.image_metadata?.mobile,
+                  src: siteImage.mobile_url || siteImage.desktop_url,
+                  position,
+                  objectFit: siteImage.image_metadata?.mobile?.objectFit || 'cover',
+                },
+              },
+            })
+            .eq('id', siteImage.id);
+
+          if (error) throw error;
+          await loadImage();
+        }
+
+        showSnackbar('Pozycja zapisana pomyślnie', 'success');
+      } catch (error) {
+        showSnackbar('Błąd podczas zapisywania pozycji', 'error');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [
+      section,
+      siteImage,
+      desktopPosition,
+      mobilePosition,
+      opacity,
+      defaultImage,
+      getTableName,
+      loadImage,
+      showSnackbar,
+      screenMode,
+      pageSlug,
+      position,
+    ],
+  );
+
+  const saveOpacity = useCallback(
+    async (opacityValue?: number) => {
+      const valueToSave = opacityValue ?? opacity;
+      setSaving(true);
+      const pageTableName = getTableName(section);
+
+      try {
+        // nowy system
+        try {
+          const { data: existing } = await supabase
+            .from(pageTableName)
+            .select('id')
+            .eq('section', 'hero')
+            .maybeSingle();
+
+          if (existing || section.includes('zespol') || section.includes('team')) {
+            if (!existing) {
+              const { error } = await supabase.from(pageTableName).insert({
+                section: 'hero',
+                name: `Hero ${section}`,
+                description: `Hero image for ${section} page`,
+                image_url: siteImage?.desktop_url || defaultImage,
+                alt_text: section,
+                opacity: valueToSave,
+                image_metadata: {
+                  desktop: {
+                    position: { posX: 0, posY: 0, scale: 1 },
+                    objectFit: 'cover',
+                  },
+                  mobile: {
+                    position: { posX: 0, posY: 0, scale: 1 },
+                    objectFit: 'cover',
+                  },
+                },
+              });
+              if (error) throw error;
+            } else {
+              const { error } = await supabase
+                .from(pageTableName)
+                .update({
+                  opacity: valueToSave,
+                })
+                .eq('section', 'hero');
+              if (error) throw error;
+            }
+
+            await loadImage();
+            showSnackbar('Przezroczystość zapisana pomyślnie', 'success');
+            return;
+          }
+        } catch {
+          showSnackbar('Używam starych tabel (saveOpacity)', 'error');
+        }
+
+        // stary system
+        if (!siteImage) {
+          const { data, error } = await supabase
+            .from('site_images')
+            .insert({
+              section,
+              name: `Hero ${section}`,
+              description: `Hero image for ${section} page`,
+              desktop_url: defaultImage,
               alt_text: section,
               opacity: valueToSave,
               image_metadata: {
                 desktop: {
+                  src: defaultImage,
                   position: { posX: 0, posY: 0, scale: 1 },
                   objectFit: 'cover',
                 },
                 mobile: {
+                  src: defaultImage,
                   position: { posX: 0, posY: 0, scale: 1 },
                   objectFit: 'cover',
                 },
               },
-            });
-            if (error) throw error;
-          } else {
-            const { error } = await supabase
-              .from(pageTableName)
-              .update({
-                opacity: valueToSave,
-              })
-              .eq('section', 'hero');
-            if (error) throw error;
-          }
+            })
+            .select()
+            .single();
 
+          if (error) throw error;
+          setSiteImage(data);
+        } else {
+          const { error } = await supabase
+            .from('site_images')
+            .update({ opacity: valueToSave })
+            .eq('id', siteImage.id);
+
+          if (error) throw error;
           await loadImage();
-          showSnackbar('Przezroczystość zapisana pomyślnie', 'success');
-          return;
         }
-      } catch {
-        showSnackbar('Używam starych tabel (saveOpacity)', 'error');
+
+        showSnackbar('Przezroczystość zapisana pomyślnie', 'success');
+      } catch (error) {
+        showSnackbar('Błąd podczas zapisywania przezroczystości', 'error');
+      } finally {
+        setSaving(false);
       }
-
-      // stary system
-      if (!siteImage) {
-        const { data, error } = await supabase
-          .from('site_images')
-          .insert({
-            section,
-            name: `Hero ${section}`,
-            description: `Hero image for ${section} page`,
-            desktop_url: defaultImage,
-            alt_text: section,
-            opacity: valueToSave,
-            image_metadata: {
-              desktop: {
-                src: defaultImage,
-                position: { posX: 0, posY: 0, scale: 1 },
-                objectFit: 'cover',
-              },
-              mobile: {
-                src: defaultImage,
-                position: { posX: 0, posY: 0, scale: 1 },
-                objectFit: 'cover',
-              },
-            },
-          })
-          .select()
-          .single();
-
-        if (error) throw error;
-        setSiteImage(data);
-      } else {
-        const { error } = await supabase
-          .from('site_images')
-          .update({ opacity: valueToSave })
-          .eq('id', siteImage.id);
-
-        if (error) throw error;
-        await loadImage();
-      }
-
-      showSnackbar('Przezroczystość zapisana pomyślnie', 'success');
-    } catch (error) {
-      showSnackbar('Błąd podczas zapisywania przezroczystości', 'error');
-    } finally {
-      setSaving(false);
-    }
-  }, [section, siteImage, opacity, defaultImage, getTableName, loadImage, showSnackbar]);
+    },
+    [section, siteImage, opacity, defaultImage, getTableName, loadImage, showSnackbar],
+  );
 
   const uploadHeroImage = useCallback(
     async (file: File) => {
@@ -586,7 +610,7 @@ export function useHeroImage(
         setUploading(false);
       }
     },
-    [section, siteImage, position, opacity, getTableName, loadImage, showSnackbar]
+    [section, siteImage, position, opacity, getTableName, loadImage, showSnackbar],
   );
 
   const resetPosition = useCallback(async () => {

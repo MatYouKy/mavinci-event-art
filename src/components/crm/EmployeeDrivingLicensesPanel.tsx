@@ -1,8 +1,18 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Shield, Edit, Save, X, AlertCircle, CheckCircle, Calendar } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import {
+  Plus,
+  Trash2,
+  Shield,
+  Edit,
+  Save,
+  X,
+  AlertCircle,
+  CheckCircle,
+  Calendar,
+} from 'lucide-react';
+import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
 interface DrivingLicense {
@@ -62,7 +72,8 @@ export default function EmployeeDrivingLicensesPanel({
       setLoading(true);
       const { data, error } = await supabase
         .from('employee_driving_licenses')
-        .select(`
+        .select(
+          `
           id,
           license_category_id,
           obtained_date,
@@ -70,7 +81,8 @@ export default function EmployeeDrivingLicensesPanel({
           license_number,
           notes,
           license_category:driving_license_categories(id, code, name, description, order_index)
-        `)
+        `,
+        )
         .eq('employee_id', employeeId);
 
       if (error) throw error;
@@ -110,16 +122,14 @@ export default function EmployeeDrivingLicensesPanel({
     }
 
     try {
-      const { error } = await supabase
-        .from('employee_driving_licenses')
-        .insert({
-          employee_id: employeeId,
-          license_category_id: formData.license_category_id,
-          obtained_date: formData.obtained_date || null,
-          expiry_date: formData.expiry_date || null,
-          license_number: formData.license_number || null,
-          notes: formData.notes || null,
-        });
+      const { error } = await supabase.from('employee_driving_licenses').insert({
+        employee_id: employeeId,
+        license_category_id: formData.license_category_id,
+        obtained_date: formData.obtained_date || null,
+        expiry_date: formData.expiry_date || null,
+        license_number: formData.license_number || null,
+        notes: formData.notes || null,
+      });
 
       if (error) throw error;
 
@@ -214,41 +224,41 @@ export default function EmployeeDrivingLicensesPanel({
   const isExpiringSoon = (expiryDate: string | null) => {
     if (!expiryDate) return false;
     const daysUntilExpiry = Math.floor(
-      (new Date(expiryDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+      (new Date(expiryDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24),
     );
     return daysUntilExpiry > 0 && daysUntilExpiry <= 30;
   };
 
   const availableCategoriesForAdd = availableCategories.filter(
-    (cat) => !licenses.some((lic) => lic.license_category_id === cat.id)
+    (cat) => !licenses.some((lic) => lic.license_category_id === cat.id),
   );
 
   if (loading) {
-    return <div className="text-[#e5e4e2]/60 text-center py-8">Ładowanie...</div>;
+    return <div className="py-8 text-center text-[#e5e4e2]/60">Ładowanie...</div>;
   }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Shield className="w-5 h-5 text-[#d3bb73]" />
+          <Shield className="h-5 w-5 text-[#d3bb73]" />
           <h3 className="text-lg font-medium text-[#e5e4e2]">Prawa jazdy</h3>
         </div>
         {canEdit && (
           <button
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 px-3 py-1.5 bg-[#d3bb73]/10 hover:bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg text-sm transition-colors"
+            className="flex items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-3 py-1.5 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="h-4 w-4" />
             Dodaj prawo jazdy
           </button>
         )}
       </div>
 
       {licenses.length === 0 ? (
-        <div className="text-center py-8">
-          <Shield className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-3" />
-          <p className="text-[#e5e4e2]/60 text-sm">Brak praw jazdy</p>
+        <div className="py-8 text-center">
+          <Shield className="mx-auto mb-3 h-12 w-12 text-[#e5e4e2]/20" />
+          <p className="text-sm text-[#e5e4e2]/60">Brak praw jazdy</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -260,19 +270,19 @@ export default function EmployeeDrivingLicensesPanel({
             return (
               <div
                 key={license.id}
-                className={`p-4 rounded-lg border transition-colors ${
+                className={`rounded-lg border p-4 transition-colors ${
                   expired
-                    ? 'bg-red-500/5 border-red-500/30'
+                    ? 'border-red-500/30 bg-red-500/5'
                     : expiringSoon
-                    ? 'bg-orange-500/5 border-orange-500/30'
-                    : 'bg-[#0f1119] border-[#d3bb73]/10'
+                      ? 'border-orange-500/30 bg-orange-500/5'
+                      : 'border-[#d3bb73]/10 bg-[#0f1119]'
                 }`}
               >
                 {isEditing ? (
                   <div className="space-y-3">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs text-[#e5e4e2]/60 mb-1">
+                        <label className="mb-1 block text-xs text-[#e5e4e2]/60">
                           Data uzyskania
                         </label>
                         <input
@@ -281,11 +291,11 @@ export default function EmployeeDrivingLicensesPanel({
                           onChange={(e) =>
                             setFormData({ ...formData, obtained_date: e.target.value })
                           }
-                          className="w-full px-2 py-1.5 bg-[#1c1f33] border border-[#d3bb73]/20 rounded text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/40"
+                          className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-2 py-1.5 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs text-[#e5e4e2]/60 mb-1">
+                        <label className="mb-1 block text-xs text-[#e5e4e2]/60">
                           Data ważności
                         </label>
                         <input
@@ -294,12 +304,12 @@ export default function EmployeeDrivingLicensesPanel({
                           onChange={(e) =>
                             setFormData({ ...formData, expiry_date: e.target.value })
                           }
-                          className="w-full px-2 py-1.5 bg-[#1c1f33] border border-[#d3bb73]/20 rounded text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/40"
+                          className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-2 py-1.5 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none"
                         />
                       </div>
                     </div>
                     <div>
-                      <label className="block text-xs text-[#e5e4e2]/60 mb-1">
+                      <label className="mb-1 block text-xs text-[#e5e4e2]/60">
                         Numer prawa jazdy
                       </label>
                       <input
@@ -308,33 +318,31 @@ export default function EmployeeDrivingLicensesPanel({
                         onChange={(e) =>
                           setFormData({ ...formData, license_number: e.target.value })
                         }
-                        className="w-full px-2 py-1.5 bg-[#1c1f33] border border-[#d3bb73]/20 rounded text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/40"
+                        className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-2 py-1.5 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-[#e5e4e2]/60 mb-1">Notatki</label>
+                      <label className="mb-1 block text-xs text-[#e5e4e2]/60">Notatki</label>
                       <textarea
                         value={formData.notes}
-                        onChange={(e) =>
-                          setFormData({ ...formData, notes: e.target.value })
-                        }
-                        className="w-full px-2 py-1.5 bg-[#1c1f33] border border-[#d3bb73]/20 rounded text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73]/40 resize-none"
+                        onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                        className="w-full resize-none rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-2 py-1.5 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none"
                         rows={2}
                       />
                     </div>
                     <div className="flex gap-2">
                       <button
                         onClick={() => handleUpdate(license.id)}
-                        className="flex items-center gap-1 px-3 py-1.5 bg-[#d3bb73] hover:bg-[#d3bb73]/90 text-[#1c1f33] rounded text-sm transition-colors"
+                        className="flex items-center gap-1 rounded bg-[#d3bb73] px-3 py-1.5 text-sm text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
                       >
-                        <Save className="w-3 h-3" />
+                        <Save className="h-3 w-3" />
                         Zapisz
                       </button>
                       <button
                         onClick={cancelEdit}
-                        className="flex items-center gap-1 px-3 py-1.5 bg-[#0f1119] hover:bg-[#0f1119]/80 text-[#e5e4e2] rounded text-sm transition-colors"
+                        className="flex items-center gap-1 rounded bg-[#0f1119] px-3 py-1.5 text-sm text-[#e5e4e2] transition-colors hover:bg-[#0f1119]/80"
                       >
-                        <X className="w-3 h-3" />
+                        <X className="h-3 w-3" />
                         Anuluj
                       </button>
                     </div>
@@ -342,22 +350,22 @@ export default function EmployeeDrivingLicensesPanel({
                 ) : (
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="px-3 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg text-sm font-bold">
+                      <div className="mb-2 flex items-center gap-2">
+                        <span className="rounded-lg bg-[#d3bb73]/20 px-3 py-1 text-sm font-bold text-[#d3bb73]">
                           {license.license_category.code}
                         </span>
-                        <span className="text-[#e5e4e2] font-medium">
+                        <span className="font-medium text-[#e5e4e2]">
                           {license.license_category.name}
                         </span>
                         {expired && (
                           <span className="flex items-center gap-1 text-xs text-red-400">
-                            <AlertCircle className="w-3 h-3" />
+                            <AlertCircle className="h-3 w-3" />
                             Wygasło
                           </span>
                         )}
                         {!expired && expiringSoon && (
                           <span className="flex items-center gap-1 text-xs text-orange-400">
-                            <AlertCircle className="w-3 h-3" />
+                            <AlertCircle className="h-3 w-3" />
                             Wygasa wkrótce
                           </span>
                         )}
@@ -366,7 +374,7 @@ export default function EmployeeDrivingLicensesPanel({
                         {license.obtained_date && (
                           <div>
                             <span className="text-[#e5e4e2]/60">Uzyskano:</span>
-                            <span className="text-[#e5e4e2] ml-2">
+                            <span className="ml-2 text-[#e5e4e2]">
                               {new Date(license.obtained_date).toLocaleDateString('pl-PL')}
                             </span>
                           </div>
@@ -379,8 +387,8 @@ export default function EmployeeDrivingLicensesPanel({
                                 expired
                                   ? 'text-red-400'
                                   : expiringSoon
-                                  ? 'text-orange-400'
-                                  : 'text-[#e5e4e2]'
+                                    ? 'text-orange-400'
+                                    : 'text-[#e5e4e2]'
                               }`}
                             >
                               {new Date(license.expiry_date).toLocaleDateString('pl-PL')}
@@ -389,28 +397,28 @@ export default function EmployeeDrivingLicensesPanel({
                         )}
                       </div>
                       {license.license_number && (
-                        <div className="text-sm mt-2">
+                        <div className="mt-2 text-sm">
                           <span className="text-[#e5e4e2]/60">Numer:</span>
-                          <span className="text-[#e5e4e2] ml-2">{license.license_number}</span>
+                          <span className="ml-2 text-[#e5e4e2]">{license.license_number}</span>
                         </div>
                       )}
                       {license.notes && (
-                        <p className="text-xs text-[#e5e4e2]/60 mt-2">{license.notes}</p>
+                        <p className="mt-2 text-xs text-[#e5e4e2]/60">{license.notes}</p>
                       )}
                     </div>
                     {canEdit && (
                       <div className="flex gap-2">
                         <button
                           onClick={() => startEdit(license)}
-                          className="p-1.5 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded transition-colors"
+                          className="rounded p-1.5 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
                         >
-                          <Edit className="w-4 h-4" />
+                          <Edit className="h-4 w-4" />
                         </button>
                         <button
                           onClick={() => handleDelete(license.id)}
-                          className="p-1.5 text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                          className="rounded p-1.5 text-red-400 transition-colors hover:bg-red-500/10"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
                     )}
@@ -423,16 +431,16 @@ export default function EmployeeDrivingLicensesPanel({
       )}
 
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6 max-w-md w-full">
-            <h3 className="text-lg font-medium text-[#e5e4e2] mb-4 flex items-center gap-2">
-              <Shield className="w-5 h-5 text-[#d3bb73]" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+            <h3 className="mb-4 flex items-center gap-2 text-lg font-medium text-[#e5e4e2]">
+              <Shield className="h-5 w-5 text-[#d3bb73]" />
               Dodaj prawo jazdy
             </h3>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">
                   Kategoria prawa jazdy *
                 </label>
                 <select
@@ -440,7 +448,7 @@ export default function EmployeeDrivingLicensesPanel({
                   onChange={(e) =>
                     setFormData({ ...formData, license_category_id: e.target.value })
                   }
-                  className="w-full px-3 py-2 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/40"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none"
                 >
                   <option value="">Wybierz kategorię</option>
                   {availableCategoriesForAdd.map((cat) => (
@@ -453,64 +461,52 @@ export default function EmployeeDrivingLicensesPanel({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                    Data uzyskania
-                  </label>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data uzyskania</label>
                   <input
                     type="date"
                     value={formData.obtained_date}
-                    onChange={(e) =>
-                      setFormData({ ...formData, obtained_date: e.target.value })
-                    }
-                    className="w-full px-3 py-2 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/40"
+                    onChange={(e) => setFormData({ ...formData, obtained_date: e.target.value })}
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                    Data ważności
-                  </label>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data ważności</label>
                   <input
                     type="date"
                     value={formData.expiry_date}
-                    onChange={(e) =>
-                      setFormData({ ...formData, expiry_date: e.target.value })
-                    }
-                    className="w-full px-3 py-2 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/40"
+                    onChange={(e) => setFormData({ ...formData, expiry_date: e.target.value })}
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-                  Numer prawa jazdy
-                </label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Numer prawa jazdy</label>
                 <input
                   type="text"
                   value={formData.license_number}
-                  onChange={(e) =>
-                    setFormData({ ...formData, license_number: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, license_number: e.target.value })}
                   placeholder="np. ABC123456"
-                  className="w-full px-3 py-2 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/40"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Notatki</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Notatki</label>
                 <textarea
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                   placeholder="Dodatkowe informacje..."
-                  className="w-full px-3 py-2 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/40 resize-none"
+                  className="w-full resize-none rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none"
                   rows={3}
                 />
               </div>
             </div>
 
-            <div className="flex gap-3 mt-6">
+            <div className="mt-6 flex gap-3">
               <button
                 onClick={handleAdd}
-                className="flex-1 px-4 py-2 bg-[#d3bb73] hover:bg-[#d3bb73]/90 text-[#1c1f33] rounded-lg font-medium transition-colors"
+                className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
               >
                 Dodaj
               </button>
@@ -519,7 +515,7 @@ export default function EmployeeDrivingLicensesPanel({
                   setShowAddModal(false);
                   resetForm();
                 }}
-                className="flex-1 px-4 py-2 bg-[#0f1119] hover:bg-[#0f1119]/80 text-[#e5e4e2] rounded-lg transition-colors"
+                className="flex-1 rounded-lg bg-[#0f1119] px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#0f1119]/80"
               >
                 Anuluj
               </button>

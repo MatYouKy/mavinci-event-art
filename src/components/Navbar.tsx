@@ -7,10 +7,10 @@ import { useEditMode } from '../contexts/EditModeContext';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAppSelector } from '../store/hooks';
-import { supabase } from '@/lib/supabase';
 import { useMobile } from '@/hooks/useMobile';
 import NotificationCenter from './crm/NotificationCenter';
 import { canEditWebsite } from '@/lib/permissions';
+import { supabase } from '@/lib/supabase/browser';
 
 const navLinks = [
   { label: 'O Nas', href: '/o-nas' },
@@ -75,6 +75,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
   const navRef = useRef<HTMLElement>(null);
   const lastScrollY = useRef(0);
   const { signOut, user } = useAuth();
+
   const isMobile = useMobile();
   const { isEditMode, toggleEditMode } = useEditMode();
   const router = useRouter();
@@ -177,7 +178,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
   };
 
   const handleLoginClick = () => {
-    router.push('/crm/login');
+    router.push('/login');
   };
 
   const handleDashboardClick = () => {
@@ -231,7 +232,6 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
     authUser?.user_avatar?.image_metadata?.desktop?.src ||
     authUser?.user_avatar;
   const userEmail = crmUser?.email || authUser?.user_email?.address;
-
   return (
     <>
       <div

@@ -1,8 +1,26 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Edit, Trash2, Save, X, FileText, Building2, DollarSign, CheckCircle, Upload, Image as ImageIcon, Settings, Move, Type, ChevronDown, ChevronRight, Tag } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import {
+  Plus,
+  Edit,
+  Trash2,
+  Save,
+  X,
+  FileText,
+  Building2,
+  DollarSign,
+  CheckCircle,
+  Upload,
+  Image as ImageIcon,
+  Settings,
+  Move,
+  Type,
+  ChevronDown,
+  ChevronRight,
+  Tag,
+} from 'lucide-react';
+import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
@@ -65,10 +83,30 @@ interface TemplateContent {
 }
 
 const templateTypes = [
-  { value: 'cover', label: 'Strona tytułowa', icon: FileText, description: 'Pierwsza strona oferty z logo i danymi' },
-  { value: 'about', label: 'O nas', icon: Building2, description: 'Informacje o firmie i doświadczeniu' },
-  { value: 'pricing', label: 'Wycena', icon: DollarSign, description: 'Podsumowanie cenowe i warunki' },
-  { value: 'final', label: 'Strona końcowa', icon: CheckCircle, description: 'Warunki techniczne i dane sprzedawcy' },
+  {
+    value: 'cover',
+    label: 'Strona tytułowa',
+    icon: FileText,
+    description: 'Pierwsza strona oferty z logo i danymi',
+  },
+  {
+    value: 'about',
+    label: 'O nas',
+    icon: Building2,
+    description: 'Informacje o firmie i doświadczeniu',
+  },
+  {
+    value: 'pricing',
+    label: 'Wycena',
+    icon: DollarSign,
+    description: 'Podsumowanie cenowe i warunki',
+  },
+  {
+    value: 'final',
+    label: 'Strona końcowa',
+    icon: CheckCircle,
+    description: 'Warunki techniczne i dane sprzedawcy',
+  },
 ];
 
 const sectionTypes: Record<string, string[]> = {
@@ -114,7 +152,7 @@ export default function OfferPageTemplatesEditor() {
       setCategories(data || []);
 
       if (data && data.length > 0) {
-        const defaultCategory = data.find(c => c.is_default);
+        const defaultCategory = data.find((c) => c.is_default);
         if (defaultCategory) {
           setExpandedCategories(new Set([defaultCategory.id]));
         }
@@ -177,10 +215,7 @@ export default function OfferPageTemplatesEditor() {
     if (!confirmed) return;
 
     try {
-      const { error } = await supabase
-        .from('offer_page_templates')
-        .delete()
-        .eq('id', template.id);
+      const { error } = await supabase.from('offer_page_templates').delete().eq('id', template.id);
 
       if (error) throw error;
 
@@ -192,7 +227,7 @@ export default function OfferPageTemplatesEditor() {
   };
 
   const getTypeInfo = (type: string) => {
-    return templateTypes.find(t => t.value === type);
+    return templateTypes.find((t) => t.value === type);
   };
 
   const handleUploadPdf = async (template: OfferPageTemplate, file: File) => {
@@ -240,9 +275,7 @@ export default function OfferPageTemplatesEditor() {
     if (!confirmed) return;
 
     try {
-      await supabase.storage
-        .from('offer-template-pages')
-        .remove([template.pdf_url]);
+      await supabase.storage.from('offer-template-pages').remove([template.pdf_url]);
 
       const { error } = await supabase
         .from('offer_page_templates')
@@ -277,7 +310,7 @@ export default function OfferPageTemplatesEditor() {
   };
 
   const getTemplatesForCategory = (categoryId: string, type: string) => {
-    return templates.filter(t => t.template_category_id === categoryId && t.type === type);
+    return templates.filter((t) => t.template_category_id === categoryId && t.type === type);
   };
 
   const handleEditCategory = (category: OfferTemplateCategory) => {
@@ -295,26 +328,28 @@ export default function OfferPageTemplatesEditor() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-light text-[#e5e4e2]">Szablony stron ofert</h2>
-          <p className="text-sm text-[#e5e4e2]/60 mt-1">
+          <p className="mt-1 text-sm text-[#e5e4e2]/60">
             Zarządzaj kategoriami i szablonami stron dla różnych typów eventów
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={handleCreateCategory}
-            className="flex items-center gap-2 px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/30 text-[#e5e4e2] rounded-lg hover:bg-[#d3bb73]/10 transition-colors"
+            className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10"
           >
-            <Tag className="w-4 h-4" />
+            <Tag className="h-4 w-4" />
             Nowa kategoria
           </button>
           <button
             onClick={() => {
-              setSelectedCategoryId(categories.find(c => c.is_default)?.id || categories[0]?.id || null);
+              setSelectedCategoryId(
+                categories.find((c) => c.is_default)?.id || categories[0]?.id || null,
+              );
               handleCreateTemplate();
             }}
-            className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="h-4 w-4" />
             Nowy szablon
           </button>
         </div>
@@ -326,30 +361,33 @@ export default function OfferPageTemplatesEditor() {
           const isExpanded = expandedCategories.has(category.id);
 
           return (
-            <div key={category.id} className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl overflow-hidden">
+            <div
+              key={category.id}
+              className="overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]"
+            >
               {/* Header kategorii */}
               <button
                 onClick={() => toggleCategory(category.id)}
-                className="w-full p-4 flex items-center justify-between hover:bg-[#d3bb73]/5 transition-colors"
+                className="flex w-full items-center justify-between p-4 transition-colors hover:bg-[#d3bb73]/5"
               >
                 <div className="flex items-center gap-3">
                   <div
-                    className="w-10 h-10 rounded-lg flex items-center justify-center"
+                    className="flex h-10 w-10 items-center justify-center rounded-lg"
                     style={{ backgroundColor: category.color }}
                   >
-                    <Tag className="w-5 h-5 text-white" />
+                    <Tag className="h-5 w-5 text-white" />
                   </div>
                   <div className="text-left">
                     <div className="flex items-center gap-2">
                       <h3 className="text-lg font-medium text-[#e5e4e2]">{category.name}</h3>
                       {category.is_default && (
-                        <span className="px-2 py-0.5 text-xs bg-[#d3bb73] text-[#1c1f33] rounded">
+                        <span className="rounded bg-[#d3bb73] px-2 py-0.5 text-xs text-[#1c1f33]">
                           Domyślna
                         </span>
                       )}
                     </div>
                     {category.description && (
-                      <p className="text-sm text-[#e5e4e2]/60 mt-0.5">{category.description}</p>
+                      <p className="mt-0.5 text-sm text-[#e5e4e2]/60">{category.description}</p>
                     )}
                   </div>
                 </div>
@@ -359,22 +397,22 @@ export default function OfferPageTemplatesEditor() {
                       e.stopPropagation();
                       handleEditCategory(category);
                     }}
-                    className="p-2 text-[#e5e4e2]/60 hover:text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+                    className="rounded-lg p-2 text-[#e5e4e2]/60 transition-colors hover:bg-[#d3bb73]/10 hover:text-[#d3bb73]"
                     title="Edytuj kategorię"
                   >
-                    <Edit className="w-4 h-4" />
+                    <Edit className="h-4 w-4" />
                   </button>
                   {isExpanded ? (
-                    <ChevronDown className="w-5 h-5 text-[#e5e4e2]/60" />
+                    <ChevronDown className="h-5 w-5 text-[#e5e4e2]/60" />
                   ) : (
-                    <ChevronRight className="w-5 h-5 text-[#e5e4e2]/60" />
+                    <ChevronRight className="h-5 w-5 text-[#e5e4e2]/60" />
                   )}
                 </div>
               </button>
 
               {/* Rozwinięta zawartość - typy stron i szablony */}
               {isExpanded && (
-                <div className="border-t border-[#d3bb73]/10 p-4 space-y-4">
+                <div className="space-y-4 border-t border-[#d3bb73]/10 p-4">
                   {templateTypes.map((type) => {
                     const Icon = type.icon;
                     const categoryTemplates = getTemplatesForCategory(category.id, type.value);
@@ -383,9 +421,9 @@ export default function OfferPageTemplatesEditor() {
                       <div key={type.value} className="space-y-2">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <Icon className="w-4 h-4 text-[#d3bb73]" />
+                            <Icon className="h-4 w-4 text-[#d3bb73]" />
                             <h4 className="font-medium text-[#e5e4e2]">{type.label}</h4>
-                            <span className="px-2 py-0.5 bg-[#d3bb73]/20 text-[#d3bb73] text-xs rounded">
+                            <span className="rounded bg-[#d3bb73]/20 px-2 py-0.5 text-xs text-[#d3bb73]">
                               {categoryTemplates.length}
                             </span>
                           </div>
@@ -395,7 +433,7 @@ export default function OfferPageTemplatesEditor() {
                               setSelectedType(type.value);
                               handleCreateTemplate();
                             }}
-                            className="text-sm px-3 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded hover:bg-[#d3bb73]/30 transition-colors"
+                            className="rounded bg-[#d3bb73]/20 px-3 py-1 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30"
                           >
                             + Dodaj
                           </button>
@@ -406,35 +444,39 @@ export default function OfferPageTemplatesEditor() {
                             {categoryTemplates.map((template) => (
                               <div
                                 key={template.id}
-                                className="bg-[#0a0d1a] border border-[#d3bb73]/10 rounded-lg p-3 hover:border-[#d3bb73]/20 transition-colors"
+                                className="rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a] p-3 transition-colors hover:border-[#d3bb73]/20"
                               >
                                 <div className="flex items-center justify-between">
                                   <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <h5 className="text-sm font-medium text-[#e5e4e2]">{template.name}</h5>
+                                    <div className="mb-1 flex items-center gap-2">
+                                      <h5 className="text-sm font-medium text-[#e5e4e2]">
+                                        {template.name}
+                                      </h5>
                                       {template.is_default && (
-                                        <span className="px-2 py-0.5 bg-[#d3bb73]/20 text-[#d3bb73] text-xs rounded">
+                                        <span className="rounded bg-[#d3bb73]/20 px-2 py-0.5 text-xs text-[#d3bb73]">
                                           Domyślny
                                         </span>
                                       )}
                                       {!template.is_active && (
-                                        <span className="px-2 py-0.5 bg-gray-500/20 text-gray-400 text-xs rounded">
+                                        <span className="rounded bg-gray-500/20 px-2 py-0.5 text-xs text-gray-400">
                                           Nieaktywny
                                         </span>
                                       )}
                                     </div>
                                     {template.description && (
-                                      <p className="text-xs text-[#e5e4e2]/60">{template.description}</p>
+                                      <p className="text-xs text-[#e5e4e2]/60">
+                                        {template.description}
+                                      </p>
                                     )}
-                                    <div className="flex items-center gap-2 mt-1">
+                                    <div className="mt-1 flex items-center gap-2">
                                       {template.pdf_url ? (
-                                        <span className="flex items-center gap-1 px-2 py-0.5 bg-green-500/20 text-green-400 text-xs rounded">
-                                          <FileText className="w-3 h-3" />
+                                        <span className="flex items-center gap-1 rounded bg-green-500/20 px-2 py-0.5 text-xs text-green-400">
+                                          <FileText className="h-3 w-3" />
                                           PDF
                                         </span>
                                       ) : (
-                                        <span className="flex items-center gap-1 px-2 py-0.5 bg-red-500/20 text-red-400 text-xs rounded">
-                                          <FileText className="w-3 h-3" />
+                                        <span className="flex items-center gap-1 rounded bg-red-500/20 px-2 py-0.5 text-xs text-red-400">
+                                          <FileText className="h-3 w-3" />
                                           Brak PDF
                                         </span>
                                       )}
@@ -452,32 +494,35 @@ export default function OfferPageTemplatesEditor() {
                                           if (file) handleUploadPdf(template, file);
                                         }}
                                       />
-                                      <div className="p-1.5 text-blue-400 hover:bg-blue-400/10 rounded transition-colors" title="Upload PDF">
-                                        <Upload className="w-4 h-4" />
+                                      <div
+                                        className="rounded p-1.5 text-blue-400 transition-colors hover:bg-blue-400/10"
+                                        title="Upload PDF"
+                                      >
+                                        <Upload className="h-4 w-4" />
                                       </div>
                                     </label>
                                     {template.pdf_url && (
                                       <button
                                         onClick={() => handleEditTextFields(template)}
-                                        className="p-1.5 text-green-400 hover:bg-green-400/10 rounded transition-colors"
+                                        className="rounded p-1.5 text-green-400 transition-colors hover:bg-green-400/10"
                                         title="Konfiguruj pola"
                                       >
-                                        <Type className="w-4 h-4" />
+                                        <Type className="h-4 w-4" />
                                       </button>
                                     )}
                                     <button
                                       onClick={() => handleEditTemplate(template)}
-                                      className="p-1.5 text-[#e5e4e2]/60 hover:text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded transition-colors"
+                                      className="rounded p-1.5 text-[#e5e4e2]/60 transition-colors hover:bg-[#d3bb73]/10 hover:text-[#d3bb73]"
                                       title="Edytuj"
                                     >
-                                      <Edit className="w-4 h-4" />
+                                      <Edit className="h-4 w-4" />
                                     </button>
                                     <button
                                       onClick={() => handleDeleteTemplate(template)}
-                                      className="p-1.5 text-[#e5e4e2]/60 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                                      className="rounded p-1.5 text-[#e5e4e2]/60 transition-colors hover:bg-red-500/10 hover:text-red-400"
                                       title="Usuń"
                                     >
-                                      <Trash2 className="w-4 h-4" />
+                                      <Trash2 className="h-4 w-4" />
                                     </button>
                                   </div>
                                 </div>
@@ -485,7 +530,7 @@ export default function OfferPageTemplatesEditor() {
                             ))}
                           </div>
                         ) : (
-                          <div className="pl-6 text-sm text-[#e5e4e2]/40 italic">
+                          <div className="pl-6 text-sm italic text-[#e5e4e2]/40">
                             Brak szablonów
                           </div>
                         )}
@@ -499,14 +544,14 @@ export default function OfferPageTemplatesEditor() {
         })}
 
         {categories.length === 0 && (
-          <div className="text-center py-12 text-[#e5e4e2]/60">
-            <Tag className="w-12 h-12 mx-auto mb-4 text-[#e5e4e2]/20" />
+          <div className="py-12 text-center text-[#e5e4e2]/60">
+            <Tag className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
             <p className="mb-4">Brak kategorii szablonów</p>
             <button
               onClick={handleCreateCategory}
-              className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors inline-flex items-center gap-2"
+              className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="h-4 w-4" />
               Utwórz pierwszą kategorię
             </button>
           </div>
@@ -518,35 +563,39 @@ export default function OfferPageTemplatesEditor() {
         {templateTypes.map((type) => {
           const Icon = type.icon;
           const isSelected = selectedType === type.value;
-          const count = templates.filter(t => t.type === type.value).length;
+          const count = templates.filter((t) => t.type === type.value).length;
 
           return (
             <button
               key={type.value}
               onClick={() => setSelectedType(type.value)}
-              className={`relative p-4 rounded-xl border transition-all ${
+              className={`relative rounded-xl border p-4 transition-all ${
                 isSelected
-                  ? 'bg-[#d3bb73]/10 border-[#d3bb73]/30'
-                  : 'bg-[#1c1f33] border-[#d3bb73]/10 hover:border-[#d3bb73]/20'
+                  ? 'border-[#d3bb73]/30 bg-[#d3bb73]/10'
+                  : 'border-[#d3bb73]/10 bg-[#1c1f33] hover:border-[#d3bb73]/20'
               }`}
             >
               <div className="flex items-start gap-3">
-                <div className={`p-2 rounded-lg ${
-                  isSelected ? 'bg-[#d3bb73]/20' : 'bg-[#d3bb73]/10'
-                }`}>
-                  <Icon className={`w-5 h-5 ${isSelected ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60'}`} />
+                <div
+                  className={`rounded-lg p-2 ${isSelected ? 'bg-[#d3bb73]/20' : 'bg-[#d3bb73]/10'}`}
+                >
+                  <Icon
+                    className={`h-5 w-5 ${isSelected ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60'}`}
+                  />
                 </div>
                 <div className="flex-1 text-left">
-                  <h3 className={`font-medium mb-1 ${
-                    isSelected ? 'text-[#d3bb73]' : 'text-[#e5e4e2]'
-                  }`}>
+                  <h3
+                    className={`mb-1 font-medium ${
+                      isSelected ? 'text-[#d3bb73]' : 'text-[#e5e4e2]'
+                    }`}
+                  >
                     {type.label}
                   </h3>
                   <p className="text-xs text-[#e5e4e2]/60">{type.description}</p>
                 </div>
               </div>
               {count > 0 && (
-                <span className="absolute top-2 right-2 px-2 py-0.5 bg-[#d3bb73]/20 text-[#d3bb73] text-xs rounded-full">
+                <span className="absolute right-2 top-2 rounded-full bg-[#d3bb73]/20 px-2 py-0.5 text-xs text-[#d3bb73]">
                   {count}
                 </span>
               )}
@@ -556,22 +605,20 @@ export default function OfferPageTemplatesEditor() {
       </div>
 
       {/* Lista szablonów */}
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-        <h3 className="text-lg font-light text-[#e5e4e2] mb-4">
+      <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+        <h3 className="mb-4 text-lg font-light text-[#e5e4e2]">
           {getTypeInfo(selectedType)?.label}
         </h3>
 
         {templates.length === 0 ? (
-          <div className="text-center py-12">
-            <FileText className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-4" />
-            <p className="text-[#e5e4e2]/60 mb-4">
-              Brak szablonów dla tego typu strony
-            </p>
+          <div className="py-12 text-center">
+            <FileText className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
+            <p className="mb-4 text-[#e5e4e2]/60">Brak szablonów dla tego typu strony</p>
             <button
               onClick={handleCreateTemplate}
-              className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors inline-flex items-center gap-2"
+              className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="h-4 w-4" />
               Utwórz szablon
             </button>
           </div>
@@ -580,19 +627,19 @@ export default function OfferPageTemplatesEditor() {
             {templates.map((template) => (
               <div
                 key={template.id}
-                className="bg-[#0a0d1a] border border-[#d3bb73]/10 rounded-lg p-4 hover:border-[#d3bb73]/20 transition-colors"
+                className="rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a] p-4 transition-colors hover:border-[#d3bb73]/20"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-1">
+                    <div className="mb-1 flex items-center gap-3">
                       <h4 className="font-medium text-[#e5e4e2]">{template.name}</h4>
                       {template.is_default && (
-                        <span className="px-2 py-0.5 bg-[#d3bb73]/20 text-[#d3bb73] text-xs rounded">
+                        <span className="rounded bg-[#d3bb73]/20 px-2 py-0.5 text-xs text-[#d3bb73]">
                           Domyślny
                         </span>
                       )}
                       {!template.is_active && (
-                        <span className="px-2 py-0.5 bg-gray-500/20 text-gray-400 text-xs rounded">
+                        <span className="rounded bg-gray-500/20 px-2 py-0.5 text-xs text-gray-400">
                           Nieaktywny
                         </span>
                       )}
@@ -600,15 +647,15 @@ export default function OfferPageTemplatesEditor() {
                     {template.description && (
                       <p className="text-sm text-[#e5e4e2]/60">{template.description}</p>
                     )}
-                    <div className="flex items-center gap-2 mt-2">
+                    <div className="mt-2 flex items-center gap-2">
                       {template.pdf_url ? (
-                        <span className="flex items-center gap-2 px-2 py-1 bg-green-500/20 text-green-400 text-xs rounded">
-                          <FileText className="w-3 h-3" />
+                        <span className="flex items-center gap-2 rounded bg-green-500/20 px-2 py-1 text-xs text-green-400">
+                          <FileText className="h-3 w-3" />
                           PDF załączony
                         </span>
                       ) : (
-                        <span className="flex items-center gap-2 px-2 py-1 bg-red-500/20 text-red-400 text-xs rounded">
-                          <FileText className="w-3 h-3" />
+                        <span className="flex items-center gap-2 rounded bg-red-500/20 px-2 py-1 text-xs text-red-400">
+                          <FileText className="h-3 w-3" />
                           Brak PDF
                         </span>
                       )}
@@ -626,41 +673,44 @@ export default function OfferPageTemplatesEditor() {
                           if (file) handleUploadPdf(template, file);
                         }}
                       />
-                      <div className="p-2 text-blue-400 hover:bg-blue-400/10 rounded-lg transition-colors" title="Upload PDF">
-                        <Upload className="w-4 h-4" />
+                      <div
+                        className="rounded-lg p-2 text-blue-400 transition-colors hover:bg-blue-400/10"
+                        title="Upload PDF"
+                      >
+                        <Upload className="h-4 w-4" />
                       </div>
                     </label>
                     {template.pdf_url && (
                       <>
                         <button
                           onClick={() => handleEditTextFields(template)}
-                          className="p-2 text-green-400 hover:bg-green-400/10 rounded-lg transition-colors"
+                          className="rounded-lg p-2 text-green-400 transition-colors hover:bg-green-400/10"
                           title="Konfiguruj pola tekstowe"
                         >
-                          <Settings className="w-4 h-4" />
+                          <Settings className="h-4 w-4" />
                         </button>
                         <button
                           onClick={() => handleDeletePdf(template)}
-                          className="p-2 text-orange-400 hover:bg-orange-400/10 rounded-lg transition-colors"
+                          className="rounded-lg p-2 text-orange-400 transition-colors hover:bg-orange-400/10"
                           title="Usuń PDF"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="h-4 w-4" />
                         </button>
                       </>
                     )}
                     <button
                       onClick={() => handleEditTemplate(template)}
-                      className="p-2 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+                      className="rounded-lg p-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
                       title="Edytuj zawartość"
                     >
-                      <Edit className="w-4 h-4" />
+                      <Edit className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => handleDeleteTemplate(template)}
-                      className="p-2 text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
+                      className="rounded-lg p-2 text-red-400 transition-colors hover:bg-red-400/10"
                       title="Usuń szablon"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
@@ -721,7 +771,17 @@ export default function OfferPageTemplatesEditor() {
   );
 }
 
-function CreateTemplateModal({ type, employee, onClose, onSuccess }: { type: 'cover' | 'about' | 'pricing' | 'final'; employee: any; onClose: () => void; onSuccess: () => void }) {
+function CreateTemplateModal({
+  type,
+  employee,
+  onClose,
+  onSuccess,
+}: {
+  type: 'cover' | 'about' | 'pricing' | 'final';
+  employee: any;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
   const { showSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -783,75 +843,72 @@ function CreateTemplateModal({ type, employee, onClose, onSuccess }: { type: 'co
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-2xl w-full">
-        <div className="p-6 border-b border-[#d3bb73]/10 flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-2xl rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
+        <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-6">
           <h3 className="text-xl font-light text-[#e5e4e2]">Nowy szablon</h3>
-          <button
-            onClick={onClose}
-            className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
-          >
-            <X className="w-5 h-5" />
+          <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
+            <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="p-6 space-y-4">
+        <div className="space-y-4 p-6">
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa szablonu *</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nazwa szablonu *</label>
             <input
               type="text"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
               placeholder="np. Szablon standardowy"
             />
           </div>
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis</label>
             <textarea
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               rows={3}
-              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
               placeholder="Opcjonalny opis szablonu..."
             />
           </div>
 
           <div className="space-y-2">
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label className="flex cursor-pointer items-center gap-2">
               <input
                 type="checkbox"
                 checked={formData.is_default}
                 onChange={(e) => setFormData({ ...formData, is_default: e.target.checked })}
-                className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73]"
+                className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73]"
               />
               <span className="text-sm text-[#e5e4e2]">Ustaw jako domyślny</span>
             </label>
 
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label className="flex cursor-pointer items-center gap-2">
               <input
                 type="checkbox"
                 checked={formData.is_active}
                 onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73]"
+                className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73]"
               />
               <span className="text-sm text-[#e5e4e2]">Aktywny</span>
             </label>
           </div>
         </div>
 
-        <div className="p-6 border-t border-[#d3bb73]/10 flex gap-3 justify-end">
+        <div className="flex justify-end gap-3 border-t border-[#d3bb73]/10 p-6">
           <button
             onClick={onClose}
-            className="px-6 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20"
+            className="rounded-lg bg-[#e5e4e2]/10 px-6 py-2 text-[#e5e4e2] hover:bg-[#e5e4e2]/20"
           >
             Anuluj
           </button>
           <button
             onClick={handleSubmit}
             disabled={loading}
-            className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 disabled:opacity-50"
+            className="rounded-lg bg-[#d3bb73] px-6 py-2 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
           >
             {loading ? 'Tworzenie...' : 'Utwórz szablon'}
           </button>
@@ -861,16 +918,24 @@ function CreateTemplateModal({ type, employee, onClose, onSuccess }: { type: 'co
   );
 }
 
-function ContentEditorModal({ template, content, onClose, onSuccess }: { template: OfferPageTemplate; content: TemplateContent[]; onClose: () => void; onSuccess: () => void }) {
+function ContentEditorModal({
+  template,
+  content,
+  onClose,
+  onSuccess,
+}: {
+  template: OfferPageTemplate;
+  content: TemplateContent[];
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
   const { showSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(false);
   const [sections, setSections] = useState<TemplateContent[]>(content);
   const [activeSection, setActiveSection] = useState<string>(content[0]?.section_type || '');
 
   const handleSaveSection = async (sectionId: string, html: string) => {
-    setSections(prev => prev.map(s =>
-      s.id === sectionId ? { ...s, content_html: html } : s
-    ));
+    setSections((prev) => prev.map((s) => (s.id === sectionId ? { ...s, content_html: html } : s)));
   };
 
   const handleSaveAll = async () => {
@@ -924,35 +989,32 @@ function ContentEditorModal({ template, content, onClose, onSuccess }: { templat
     return labels[sectionType] || sectionType;
   };
 
-  const activeContent = sections.find(s => s.section_type === activeSection);
+  const activeContent = sections.find((s) => s.section_type === activeSection);
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-        <div className="p-6 border-b border-[#d3bb73]/10 flex items-center justify-between flex-shrink-0">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
+        <div className="flex flex-shrink-0 items-center justify-between border-b border-[#d3bb73]/10 p-6">
           <div>
             <h3 className="text-xl font-light text-[#e5e4e2]">Edycja szablonu: {template.name}</h3>
-            <p className="text-sm text-[#e5e4e2]/60 mt-1">
-              {templateTypes.find(t => t.value === template.type)?.label}
+            <p className="mt-1 text-sm text-[#e5e4e2]/60">
+              {templateTypes.find((t) => t.value === template.type)?.label}
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
-          >
-            <X className="w-5 h-5" />
+          <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
+            <X className="h-5 w-5" />
           </button>
         </div>
 
         <div className="flex flex-1 overflow-hidden">
           {/* Sidebar z sekcjami */}
-          <div className="w-64 border-r border-[#d3bb73]/10 overflow-y-auto flex-shrink-0">
-            <div className="p-4 space-y-1">
+          <div className="w-64 flex-shrink-0 overflow-y-auto border-r border-[#d3bb73]/10">
+            <div className="space-y-1 p-4">
               {sections.map((section) => (
                 <button
                   key={section.id}
                   onClick={() => setActiveSection(section.section_type)}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                  className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                     activeSection === section.section_type
                       ? 'bg-[#d3bb73]/20 text-[#d3bb73]'
                       : 'text-[#e5e4e2]/80 hover:bg-[#0a0d1a]'
@@ -971,7 +1033,7 @@ function ContentEditorModal({ template, content, onClose, onSuccess }: { templat
                 <h4 className="text-lg font-medium text-[#e5e4e2]">
                   {getSectionLabel(activeContent.section_type)}
                 </h4>
-                <div className="bg-white rounded-lg overflow-hidden">
+                <div className="overflow-hidden rounded-lg bg-white">
                   <ReactQuill
                     theme="snow"
                     value={activeContent.content_html || ''}
@@ -995,19 +1057,19 @@ function ContentEditorModal({ template, content, onClose, onSuccess }: { templat
           </div>
         </div>
 
-        <div className="p-6 border-t border-[#d3bb73]/10 flex gap-3 justify-end flex-shrink-0">
+        <div className="flex flex-shrink-0 justify-end gap-3 border-t border-[#d3bb73]/10 p-6">
           <button
             onClick={onClose}
-            className="px-6 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20"
+            className="rounded-lg bg-[#e5e4e2]/10 px-6 py-2 text-[#e5e4e2] hover:bg-[#e5e4e2]/20"
           >
             Anuluj
           </button>
           <button
             onClick={handleSaveAll}
             disabled={loading}
-            className="flex items-center gap-2 px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 disabled:opacity-50"
+            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-2 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
           >
-            <Save className="w-4 h-4" />
+            <Save className="h-4 w-4" />
             {loading ? 'Zapisywanie...' : 'Zapisz wszystko'}
           </button>
         </div>
@@ -1041,10 +1103,20 @@ const AVAILABLE_FIELDS = [
   { value: 'seller_nip', label: 'NIP sprzedawcy', type: 'text' },
 ];
 
-function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: OfferPageTemplate; onClose: () => void; onSuccess: () => void }) {
+function TextFieldsEditorModal({
+  template,
+  onClose,
+  onSuccess,
+}: {
+  template: OfferPageTemplate;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
   const { showSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(false);
-  const [textFields, setTextFields] = useState<TextFieldConfig[]>(template.text_fields_config || []);
+  const [textFields, setTextFields] = useState<TextFieldConfig[]>(
+    template.text_fields_config || [],
+  );
   const [pdfUrl, setPdfUrl] = useState<string>('');
   const [selectedFieldIndex, setSelectedFieldIndex] = useState<number | null>(null);
   const [pdfDimensions, setPdfDimensions] = useState({ width: 595, height: 842 });
@@ -1114,17 +1186,20 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
 
       const newDimensions = {
         width: Math.round(viewport.width),
-        height: Math.round(viewport.height)
+        height: Math.round(viewport.height),
       };
 
       setPdfDimensions(newDimensions);
 
-      if (newDimensions.width !== template.pdf_width || newDimensions.height !== template.pdf_height) {
+      if (
+        newDimensions.width !== template.pdf_width ||
+        newDimensions.height !== template.pdf_height
+      ) {
         await supabase
           .from('offer_page_templates')
           .update({
             pdf_width: newDimensions.width,
-            pdf_height: newDimensions.height
+            pdf_height: newDimensions.height,
           })
           .eq('id', template.id);
       }
@@ -1160,7 +1235,7 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
         font_color: '#000000',
         align: 'left',
       };
-      setTextFields(prev => [...prev, newField]);
+      setTextFields((prev) => [...prev, newField]);
       setSelectedFieldIndex(textFields.length);
     }
   };
@@ -1173,25 +1248,25 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
     const y = snapToGridIfEnabled(e.clientY - rect.top);
 
     const newField: TextFieldConfig = {
-      ...pendingField as TextFieldConfig,
+      ...(pendingField as TextFieldConfig),
       x,
       y,
     };
 
-    setTextFields(prev => [...prev, newField]);
+    setTextFields((prev) => [...prev, newField]);
     setSelectedFieldIndex(textFields.length);
     setPendingField(null);
     setClickToPlaceMode(false);
   };
 
   const handleUpdateField = (index: number, updates: Partial<TextFieldConfig>) => {
-    setTextFields(prev => prev.map((field, i) =>
-      i === index ? { ...field, ...updates } : field
-    ));
+    setTextFields((prev) =>
+      prev.map((field, i) => (i === index ? { ...field, ...updates } : field)),
+    );
   };
 
   const handleDeleteField = (index: number) => {
-    setTextFields(prev => prev.filter((_, i) => i !== index));
+    setTextFields((prev) => prev.filter((_, i) => i !== index));
     if (selectedFieldIndex === index) {
       setSelectedFieldIndex(null);
     }
@@ -1227,12 +1302,14 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
   const selectedField = selectedFieldIndex !== null ? textFields[selectedFieldIndex] : null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl w-full max-w-[95vw] h-[90vh] overflow-hidden flex flex-col">
-        <div className="p-4 border-b border-[#d3bb73]/10 flex items-center justify-between flex-shrink-0">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="flex h-[90vh] w-full max-w-[95vw] flex-col overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
+        <div className="flex flex-shrink-0 items-center justify-between border-b border-[#d3bb73]/10 p-4">
           <div>
-            <h3 className="text-xl font-light text-[#e5e4e2]">Konfiguracja pól tekstowych: {template.name}</h3>
-            <p className="text-sm text-[#e5e4e2]/60 mt-1">
+            <h3 className="text-xl font-light text-[#e5e4e2]">
+              Konfiguracja pól tekstowych: {template.name}
+            </h3>
+            <p className="mt-1 text-sm text-[#e5e4e2]/60">
               PDF: {pdfDimensions.width}x{pdfDimensions.height}px | Pól: {textFields.length}
             </p>
           </div>
@@ -1266,22 +1343,22 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
             </label>
             <button
               onClick={handleAddField}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+              className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-colors ${
                 clickToPlaceMode
                   ? 'bg-green-600 text-white hover:bg-green-700'
                   : 'bg-[#d3bb73] text-[#1c1f33] hover:bg-[#d3bb73]/90'
               }`}
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="h-4 w-4" />
               {clickToPlaceMode ? 'Kliknij na PDF' : 'Dodaj pole'}
             </button>
             <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
-              <X className="w-5 h-5" />
+              <X className="h-5 w-5" />
             </button>
           </div>
         </div>
 
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex flex-1 overflow-hidden">
           {/* Podgląd PDF z polami */}
           <div className="flex-1 overflow-auto bg-[#0a0d1a] p-6">
             <div className="mx-auto flex justify-center">
@@ -1290,23 +1367,23 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
                   className="relative"
                   style={{
                     width: `${pdfDimensions.width}px`,
-                    height: `${pdfDimensions.height}px`
+                    height: `${pdfDimensions.height}px`,
                   }}
                 >
                   {/* PDF jako tło */}
-                  <div className="absolute inset-0 bg-white rounded-lg shadow-2xl overflow-hidden">
+                  <div className="absolute inset-0 overflow-hidden rounded-lg bg-white shadow-2xl">
                     <embed
                       ref={embedRef}
                       src={`${pdfUrl}#toolbar=0&navpanes=0&scrollbar=0`}
                       type="application/pdf"
-                      className="w-full h-full"
+                      className="h-full w-full"
                     />
                   </div>
 
                   {/* Siatka pomocnicza */}
                   {showGrid && (
                     <svg
-                      className="absolute inset-0 pointer-events-none"
+                      className="pointer-events-none absolute inset-0"
                       style={{ zIndex: 1 }}
                       width={pdfDimensions.width}
                       height={pdfDimensions.height}
@@ -1336,7 +1413,7 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
                     className="absolute inset-0"
                     style={{
                       zIndex: 2,
-                      cursor: pendingField ? 'crosshair' : 'default'
+                      cursor: pendingField ? 'crosshair' : 'default',
                     }}
                     onClick={pendingField ? handlePdfClick : undefined}
                   >
@@ -1354,17 +1431,28 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
                             setSelectedFieldIndex(index);
                           }}
                           className={`absolute cursor-move border-2 transition-all ${
-                            field.is_circular || field.field_name.includes('avatar') ? 'rounded-full' : 'rounded'
+                            field.is_circular || field.field_name.includes('avatar')
+                              ? 'rounded-full'
+                              : 'rounded'
                           } ${
                             selectedFieldIndex === index
                               ? 'border-[#d3bb73] bg-[#d3bb73]/20 shadow-lg ring-2 ring-[#d3bb73]/50'
                               : 'border-blue-400/70 bg-blue-400/10 hover:border-blue-400 hover:bg-blue-400/20'
                           }`}
                           style={{
-                            fontSize: field.type === 'image' ? '12px' : `${field.font_size || 12}px`,
+                            fontSize:
+                              field.type === 'image' ? '12px' : `${field.font_size || 12}px`,
                             color: field.font_color,
-                            width: field.type === 'image' ? `${field.width || 100}px` : (field.max_width ? `${field.max_width}px` : 'auto'),
-                            height: field.type === 'image' ? `${field.height || 100}px` : `${(field.font_size || 12) * 1.5}px`,
+                            width:
+                              field.type === 'image'
+                                ? `${field.width || 100}px`
+                                : field.max_width
+                                  ? `${field.max_width}px`
+                                  : 'auto',
+                            height:
+                              field.type === 'image'
+                                ? `${field.height || 100}px`
+                                : `${(field.font_size || 12) * 1.5}px`,
                             backdropFilter: 'blur(2px)',
                             display: 'flex',
                             alignItems: 'center',
@@ -1378,20 +1466,18 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
 
                     {/* Podpowiedź w trybie click-to-place */}
                     {pendingField && (
-                      <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50 animate-pulse">
+                      <div className="absolute left-1/2 top-4 z-50 -translate-x-1/2 transform animate-pulse rounded-lg bg-green-600 px-4 py-2 text-white shadow-lg">
                         Kliknij na PDF aby umieścić pole
                       </div>
                     )}
                   </div>
                 </div>
               ) : (
-                <div className="text-center py-24">
-                  <FileText className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+                <div className="py-24 text-center">
+                  <FileText className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
                   <p className="text-[#e5e4e2]/60">Ładowanie PDF...</p>
                   {template.pdf_url && (
-                    <p className="text-xs text-[#e5e4e2]/40 mt-2">
-                      {template.pdf_url}
-                    </p>
+                    <p className="mt-2 text-xs text-[#e5e4e2]/40">{template.pdf_url}</p>
                   )}
                 </div>
               )}
@@ -1399,35 +1485,37 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
           </div>
 
           {/* Panel edycji wybranego pola */}
-          <div className="w-80 border-l border-[#d3bb73]/10 overflow-y-auto bg-[#1c1f33]">
+          <div className="w-80 overflow-y-auto border-l border-[#d3bb73]/10 bg-[#1c1f33]">
             {selectedField ? (
-              <div className="p-4 space-y-4">
-                <div className="flex items-center justify-between mb-4">
+              <div className="space-y-4 p-4">
+                <div className="mb-4 flex items-center justify-between">
                   <h4 className="font-medium text-[#e5e4e2]">Edycja pola</h4>
                   <button
                     onClick={() => handleDeleteField(selectedFieldIndex!)}
-                    className="p-2 text-red-400 hover:bg-red-400/10 rounded transition-colors"
+                    className="rounded p-2 text-red-400 transition-colors hover:bg-red-400/10"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
 
                 <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Pole danych</label>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Pole danych</label>
                   <select
                     value={selectedField.field_name}
                     onChange={(e) => {
-                      const selected = AVAILABLE_FIELDS.find(f => f.value === e.target.value);
+                      const selected = AVAILABLE_FIELDS.find((f) => f.value === e.target.value);
                       handleUpdateField(selectedFieldIndex!, {
                         field_name: e.target.value,
                         label: selected?.label || e.target.value,
-                        type: selected?.type as 'text' | 'image' || 'text',
-                        ...(selected?.type === 'image' ? { width: 100, height: 100 } : { font_size: 12 })
+                        type: (selected?.type as 'text' | 'image') || 'text',
+                        ...(selected?.type === 'image'
+                          ? { width: 100, height: 100 }
+                          : { font_size: 12 }),
                       });
                     }}
-                    className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                   >
-                    {AVAILABLE_FIELDS.map(field => (
+                    {AVAILABLE_FIELDS.map((field) => (
                       <option key={field.value} value={field.value}>
                         {field.label}
                       </option>
@@ -1437,59 +1525,75 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">X</label>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">X</label>
                     <input
                       type="number"
                       value={Math.round(selectedField.x)}
-                      onChange={(e) => handleUpdateField(selectedFieldIndex!, { x: parseInt(e.target.value) || 0 })}
-                      className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                      onChange={(e) =>
+                        handleUpdateField(selectedFieldIndex!, { x: parseInt(e.target.value) || 0 })
+                      }
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">Y</label>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Y</label>
                     <input
                       type="number"
                       value={Math.round(selectedField.y)}
-                      onChange={(e) => handleUpdateField(selectedFieldIndex!, { y: parseInt(e.target.value) || 0 })}
-                      className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                      onChange={(e) =>
+                        handleUpdateField(selectedFieldIndex!, { y: parseInt(e.target.value) || 0 })
+                      }
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                     />
                   </div>
                 </div>
 
-{selectedField.type === 'image' ? (
+                {selectedField.type === 'image' ? (
                   <>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-sm text-[#e5e4e2]/60 mb-2">Szerokość</label>
+                        <label className="mb-2 block text-sm text-[#e5e4e2]/60">Szerokość</label>
                         <input
                           type="number"
                           value={selectedField.width || 100}
-                          onChange={(e) => handleUpdateField(selectedFieldIndex!, { width: parseInt(e.target.value) || 100 })}
-                          className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                          onChange={(e) =>
+                            handleUpdateField(selectedFieldIndex!, {
+                              width: parseInt(e.target.value) || 100,
+                            })
+                          }
+                          className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wysokość</label>
+                        <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wysokość</label>
                         <input
                           type="number"
                           value={selectedField.height || 100}
-                          onChange={(e) => handleUpdateField(selectedFieldIndex!, { height: parseInt(e.target.value) || 100 })}
-                          className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                          onChange={(e) =>
+                            handleUpdateField(selectedFieldIndex!, {
+                              height: parseInt(e.target.value) || 100,
+                            })
+                          }
+                          className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                         />
                       </div>
                     </div>
 
                     <div className="mt-3">
-                      <label className="flex items-center gap-2 cursor-pointer">
+                      <label className="flex cursor-pointer items-center gap-2">
                         <input
                           type="checkbox"
                           checked={selectedField.is_circular || false}
-                          onChange={(e) => handleUpdateField(selectedFieldIndex!, { is_circular: e.target.checked })}
-                          className="w-4 h-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73]"
+                          onChange={(e) =>
+                            handleUpdateField(selectedFieldIndex!, {
+                              is_circular: e.target.checked,
+                            })
+                          }
+                          className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73]"
                         />
                         <span className="text-sm text-[#e5e4e2]">Okrągły kształt (avatar)</span>
                       </label>
-                      <p className="text-xs text-[#e5e4e2]/40 mt-1 ml-6">
+                      <p className="ml-6 mt-1 text-xs text-[#e5e4e2]/40">
                         Zaznacz dla avatarów pracowników
                       </p>
                     </div>
@@ -1497,39 +1601,51 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
                 ) : (
                   <>
                     <div>
-                      <label className="block text-sm text-[#e5e4e2]/60 mb-2">Rozmiar czcionki</label>
+                      <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                        Rozmiar czcionki
+                      </label>
                       <input
                         type="number"
                         value={selectedField.font_size || 12}
-                        onChange={(e) => handleUpdateField(selectedFieldIndex!, { font_size: parseInt(e.target.value) || 12 })}
-                        className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                        onChange={(e) =>
+                          handleUpdateField(selectedFieldIndex!, {
+                            font_size: parseInt(e.target.value) || 12,
+                          })
+                        }
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-sm text-[#e5e4e2]/60 mb-2">Kolor czcionki</label>
+                      <label className="mb-2 block text-sm text-[#e5e4e2]/60">Kolor czcionki</label>
                       <div className="flex gap-2">
                         <input
                           type="color"
                           value={selectedField.font_color || '#000000'}
-                          onChange={(e) => handleUpdateField(selectedFieldIndex!, { font_color: e.target.value })}
-                          className="w-16 h-10 bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-1"
+                          onChange={(e) =>
+                            handleUpdateField(selectedFieldIndex!, { font_color: e.target.value })
+                          }
+                          className="h-10 w-16 rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-1"
                         />
                         <input
                           type="text"
                           value={selectedField.font_color || '#000000'}
-                          onChange={(e) => handleUpdateField(selectedFieldIndex!, { font_color: e.target.value })}
-                          className="flex-1 bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                          onChange={(e) =>
+                            handleUpdateField(selectedFieldIndex!, { font_color: e.target.value })
+                          }
+                          className="flex-1 rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                         />
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-sm text-[#e5e4e2]/60 mb-2">Wyrównanie</label>
+                      <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wyrównanie</label>
                       <select
                         value={selectedField.align || 'left'}
-                        onChange={(e) => handleUpdateField(selectedFieldIndex!, { align: e.target.value as any })}
-                        className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                        onChange={(e) =>
+                          handleUpdateField(selectedFieldIndex!, { align: e.target.value as any })
+                        }
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                       >
                         <option value="left">Lewo</option>
                         <option value="center">Środek</option>
@@ -1538,19 +1654,25 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
                     </div>
 
                     <div>
-                      <label className="block text-sm text-[#e5e4e2]/60 mb-2">Max. szerokość (opcjonalne)</label>
+                      <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                        Max. szerokość (opcjonalne)
+                      </label>
                       <input
                         type="number"
                         value={selectedField.max_width || ''}
-                        onChange={(e) => handleUpdateField(selectedFieldIndex!, { max_width: parseInt(e.target.value) || undefined })}
+                        onChange={(e) =>
+                          handleUpdateField(selectedFieldIndex!, {
+                            max_width: parseInt(e.target.value) || undefined,
+                          })
+                        }
                         placeholder="Auto"
-                        className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                       />
                     </div>
                   </>
                 )}
 
-                <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3">
+                <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-3">
                   <p className="text-xs text-blue-400">
                     Przeciągnij pole na PDF lub edytuj wartości X/Y ręcznie
                   </p>
@@ -1558,10 +1680,8 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
               </div>
             ) : (
               <div className="p-6 text-center">
-                <Type className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-3" />
-                <p className="text-sm text-[#e5e4e2]/60 mb-2">
-                  Wybierz pole z PDF
-                </p>
+                <Type className="mx-auto mb-3 h-12 w-12 text-[#e5e4e2]/20" />
+                <p className="mb-2 text-sm text-[#e5e4e2]/60">Wybierz pole z PDF</p>
                 <p className="text-xs text-[#e5e4e2]/40">
                   lub kliknij "Dodaj pole" aby utworzyć nowe
                 </p>
@@ -1570,7 +1690,7 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
 
             {/* Lista wszystkich pól */}
             <div className="border-t border-[#d3bb73]/10 p-4">
-              <h5 className="text-sm font-medium text-[#e5e4e2] mb-3">
+              <h5 className="mb-3 text-sm font-medium text-[#e5e4e2]">
                 Wszystkie pola ({textFields.length})
               </h5>
               <div className="space-y-2">
@@ -1578,10 +1698,10 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
                   <button
                     key={index}
                     onClick={() => setSelectedFieldIndex(index)}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                    className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                       selectedFieldIndex === index
-                        ? 'bg-[#d3bb73]/20 text-[#d3bb73] border border-[#d3bb73]/30'
-                        : 'bg-[#0a0d1a] text-[#e5e4e2]/80 border border-[#d3bb73]/10 hover:border-[#d3bb73]/20'
+                        ? 'border border-[#d3bb73]/30 bg-[#d3bb73]/20 text-[#d3bb73]'
+                        : 'border border-[#d3bb73]/10 bg-[#0a0d1a] text-[#e5e4e2]/80 hover:border-[#d3bb73]/20'
                     }`}
                   >
                     <div className="font-medium">{field.label}</div>
@@ -1595,19 +1715,19 @@ function TextFieldsEditorModal({ template, onClose, onSuccess }: { template: Off
           </div>
         </div>
 
-        <div className="p-4 border-t border-[#d3bb73]/10 flex gap-3 justify-end flex-shrink-0">
+        <div className="flex flex-shrink-0 justify-end gap-3 border-t border-[#d3bb73]/10 p-4">
           <button
             onClick={onClose}
-            className="px-6 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20"
+            className="rounded-lg bg-[#e5e4e2]/10 px-6 py-2 text-[#e5e4e2] hover:bg-[#e5e4e2]/20"
           >
             Anuluj
           </button>
           <button
             onClick={handleSaveAll}
             disabled={loading}
-            className="flex items-center gap-2 px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 disabled:opacity-50"
+            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-2 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
           >
-            <Save className="w-4 h-4" />
+            <Save className="h-4 w-4" />
             {loading ? 'Zapisywanie...' : 'Zapisz konfigurację'}
           </button>
         </div>

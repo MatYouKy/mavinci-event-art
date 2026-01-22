@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Calendar, Plus, X, Search } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 
 interface Event {
   id: string;
@@ -44,7 +44,7 @@ export default function RelatedEventsSelector({
 
   useEffect(() => {
     if (value.length > 0 && events.length > 0) {
-      const selected = events.filter(e => value.includes(e.id));
+      const selected = events.filter((e) => value.includes(e.id));
       setSelectedEvents(selected);
     } else {
       setSelectedEvents([]);
@@ -70,7 +70,8 @@ export default function RelatedEventsSelector({
   const fetchEvents = async () => {
     let query = supabase
       .from('events')
-      .select(`
+      .select(
+        `
         id,
         name,
         event_date,
@@ -80,7 +81,8 @@ export default function RelatedEventsSelector({
           name,
           color
         )
-      `)
+      `,
+      )
       .order('event_date', { ascending: false })
       .limit(100);
 
@@ -112,7 +114,7 @@ export default function RelatedEventsSelector({
   };
 
   const handleRemoveEvent = (eventId: string) => {
-    onChange(value.filter(id => id !== eventId));
+    onChange(value.filter((id) => id !== eventId));
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -138,15 +140,15 @@ export default function RelatedEventsSelector({
 
   const getStatusLabel = (status: string) => {
     const statusMap: Record<string, string> = {
-      'inquiry': 'Zapytanie',
-      'offer_sent': 'Oferta wysłana',
-      'offer_accepted': 'Oferta zaakceptowana',
-      'contract_sent': 'Umowa wysłana',
-      'contract_signed': 'Umowa podpisana',
-      'in_preparation': 'W przygotowaniu',
-      'in_progress': 'W trakcie',
-      'completed': 'Zakończony',
-      'cancelled': 'Anulowany',
+      inquiry: 'Zapytanie',
+      offer_sent: 'Oferta wysłana',
+      offer_accepted: 'Oferta zaakceptowana',
+      contract_sent: 'Umowa wysłana',
+      contract_signed: 'Umowa podpisana',
+      in_preparation: 'W przygotowaniu',
+      in_progress: 'W trakcie',
+      completed: 'Zakończony',
+      cancelled: 'Anulowany',
     };
     return statusMap[status] || status;
   };
@@ -155,7 +157,7 @@ export default function RelatedEventsSelector({
     <div className={`space-y-3 ${className}`}>
       <div className="relative">
         <div className="relative">
-          <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#e5e4e2]/50" />
+          <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#e5e4e2]/50" />
           <input
             ref={inputRef}
             type="text"
@@ -164,7 +166,7 @@ export default function RelatedEventsSelector({
             onKeyDown={handleKeyDown}
             onFocus={() => setShowDropdown(true)}
             placeholder={placeholder}
-            className="w-full pl-10 pr-10 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+            className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] py-2 pl-10 pr-10 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
           />
           {inputValue && (
             <button
@@ -173,9 +175,9 @@ export default function RelatedEventsSelector({
                 setInputValue('');
                 setShowDropdown(false);
               }}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/50 hover:text-[#e5e4e2] transition-colors"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/50 transition-colors hover:text-[#e5e4e2]"
             >
-              <X className="w-4 h-4" />
+              <X className="h-4 w-4" />
             </button>
           )}
         </div>
@@ -183,7 +185,7 @@ export default function RelatedEventsSelector({
         {showDropdown && (
           <div
             ref={dropdownRef}
-            className="absolute z-50 w-full mt-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg shadow-xl max-h-96 overflow-y-auto"
+            className="absolute z-50 mt-2 max-h-96 w-full overflow-y-auto rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl"
           >
             {filteredEvents.length > 0 ? (
               filteredEvents.map((event) => (
@@ -191,15 +193,13 @@ export default function RelatedEventsSelector({
                   key={event.id}
                   type="button"
                   onClick={() => handleSelectEvent(event)}
-                  className="w-full text-left px-4 py-3 hover:bg-[#d3bb73]/10 transition-colors border-b border-[#d3bb73]/10 last:border-b-0"
+                  className="w-full border-b border-[#d3bb73]/10 px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-[#d3bb73]/10"
                 >
                   <div className="flex items-start gap-3">
-                    <Calendar className="w-4 h-4 text-[#d3bb73] flex-shrink-0 mt-0.5" />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-[#e5e4e2] truncate">
-                        {event.name}
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/60 mt-1">
+                    <Calendar className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#d3bb73]" />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-medium text-[#e5e4e2]">{event.name}</div>
+                      <div className="mt-1 flex items-center gap-2 text-xs text-[#e5e4e2]/60">
                         <span>{formatDate(event.event_date)}</span>
                         {event.location && (
                           <>
@@ -208,10 +208,10 @@ export default function RelatedEventsSelector({
                           </>
                         )}
                       </div>
-                      <div className="flex items-center gap-2 mt-1">
+                      <div className="mt-1 flex items-center gap-2">
                         {event.event_categories && (
                           <span
-                            className="text-xs px-2 py-0.5 rounded"
+                            className="rounded px-2 py-0.5 text-xs"
                             style={{
                               backgroundColor: `${event.event_categories.color}20`,
                               color: event.event_categories.color,
@@ -229,7 +229,7 @@ export default function RelatedEventsSelector({
                 </button>
               ))
             ) : (
-              <div className="px-4 py-8 text-center text-[#e5e4e2]/50 text-sm">
+              <div className="px-4 py-8 text-center text-sm text-[#e5e4e2]/50">
                 {inputValue
                   ? `Brak wydarzeń pasujących do "${inputValue}"`
                   : 'Brak dostępnych wydarzeń do powiązania'}
@@ -244,13 +244,13 @@ export default function RelatedEventsSelector({
           {selectedEvents.map((event) => (
             <div
               key={event.id}
-              className="flex items-center justify-between px-4 py-3 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg"
+              className="flex items-center justify-between rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-3"
             >
-              <div className="flex items-start gap-3 flex-1 min-w-0">
-                <Calendar className="w-4 h-4 text-[#d3bb73] flex-shrink-0 mt-0.5" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm text-[#e5e4e2] font-medium truncate">{event.name}</div>
-                  <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/60 mt-1">
+              <div className="flex min-w-0 flex-1 items-start gap-3">
+                <Calendar className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#d3bb73]" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-[#e5e4e2]">{event.name}</div>
+                  <div className="mt-1 flex items-center gap-2 text-xs text-[#e5e4e2]/60">
                     <span>{formatDate(event.event_date)}</span>
                     {event.location && (
                       <>
@@ -261,7 +261,7 @@ export default function RelatedEventsSelector({
                   </div>
                   {event.event_categories && (
                     <span
-                      className="inline-block text-xs px-2 py-0.5 rounded mt-1"
+                      className="mt-1 inline-block rounded px-2 py-0.5 text-xs"
                       style={{
                         backgroundColor: `${event.event_categories.color}20`,
                         color: event.event_categories.color,
@@ -275,9 +275,9 @@ export default function RelatedEventsSelector({
               <button
                 type="button"
                 onClick={() => handleRemoveEvent(event.id)}
-                className="p-1 hover:bg-red-500/20 rounded transition-colors flex-shrink-0 ml-2"
+                className="ml-2 flex-shrink-0 rounded p-1 transition-colors hover:bg-red-500/20"
               >
-                <X className="w-4 h-4 text-red-400" />
+                <X className="h-4 w-4 text-red-400" />
               </button>
             </div>
           ))}
@@ -285,7 +285,7 @@ export default function RelatedEventsSelector({
       )}
 
       {selectedEvents.length === 0 && (
-        <div className="text-center py-4 text-[#e5e4e2]/50 text-sm">
+        <div className="py-4 text-center text-sm text-[#e5e4e2]/50">
           Brak powiązanych wydarzeń. Rozpocznij wpisywanie aby dodać.
         </div>
       )}

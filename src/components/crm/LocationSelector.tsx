@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { MapPin, Plus, Search, Building2, X } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 import AddLocationModal from './AddLocationModal';
-import { ILocation } from '@/app/crm/locations/type';
-import { useLocations } from '@/app/crm/locations/useLocations';
+import { ILocation } from '@/app/(crm)/crm/locations/type';
+import { useLocations } from '@/app/(crm)/crm/locations/useLocations';
 
 interface LocationSelectorProps {
   value: string;
@@ -31,7 +31,6 @@ export default function LocationSelector({
     }
   }, [locations]);
 
-
   const filteredLocations = savedLocations.filter((loc) => {
     const query = searchQuery.toLowerCase();
     return (
@@ -42,8 +41,7 @@ export default function LocationSelector({
   });
 
   const handleSelectLocation = (location: ILocation) => {
-    const locationString = 
-      `${location.name}${location.city ? ', ' + location.city : ''}${location.postal_code ? ', ' + location.postal_code : ''}`;
+    const locationString = `${location.name}${location.city ? ', ' + location.city : ''}${location.postal_code ? ', ' + location.postal_code : ''}`;
     onChange(locationString, location);
     setShowDropdown(false);
     setSearchQuery('');
@@ -62,7 +60,7 @@ export default function LocationSelector({
       {/* Search input */}
       <div className="relative">
         <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/50">
-          <MapPin className="w-5 h-5" />
+          <MapPin className="h-5 w-5" />
         </div>
         <input
           type="text"
@@ -73,7 +71,7 @@ export default function LocationSelector({
           }}
           onFocus={() => setShowDropdown(true)}
           placeholder={placeholder}
-          className="w-full pl-10 pr-10 py-3 bg-[#1c1f33] border border-[#d3bb73]/30 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] transition-colors"
+          className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33] py-3 pl-10 pr-10 text-[#e5e4e2] transition-colors focus:border-[#d3bb73] focus:outline-none"
         />
         {(showDropdown || value) && (
           <button
@@ -83,18 +81,18 @@ export default function LocationSelector({
               setSearchQuery('');
               onChange('');
             }}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/50 hover:text-[#e5e4e2] transition-colors"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/50 transition-colors hover:text-[#e5e4e2]"
           >
-            <X className="w-5 h-5" />
+            <X className="h-5 w-5" />
           </button>
         )}
       </div>
 
       {/* Dropdown with saved locations */}
       {showDropdown && (
-        <div className="absolute z-50 w-full mt-2 bg-[#1c1f33] border border-[#d3bb73]/30 rounded-lg shadow-xl max-h-80 overflow-hidden">
+        <div className="absolute z-50 mt-2 max-h-80 w-full overflow-hidden rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33] shadow-xl">
           {/* Header */}
-          <div className="px-4 py-3 border-b border-[#d3bb73]/20 bg-[#0f1117]">
+          <div className="border-b border-[#d3bb73]/20 bg-[#0f1117] px-4 py-3">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-[#e5e4e2]">
                 Twoje lokalizacje ({filteredLocations.length})
@@ -105,25 +103,25 @@ export default function LocationSelector({
                   setShowAddModal(true);
                   setShowDropdown(false);
                 }}
-                className="flex items-center gap-2 px-3 py-1.5 text-xs bg-[#d3bb73]/20 text-[#d3bb73] rounded hover:bg-[#d3bb73]/30 transition-colors"
+                className="flex items-center gap-2 rounded bg-[#d3bb73]/20 px-3 py-1.5 text-xs text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30"
               >
-                <Plus className="w-3.5 h-3.5" />
+                <Plus className="h-3.5 w-3.5" />
                 Dodaj nową
               </button>
             </div>
           </div>
 
           {/* Locations list */}
-          <div className="overflow-y-auto max-h-64">
+          <div className="max-h-64 overflow-y-auto">
             {isLoading ? (
               <div className="px-4 py-8 text-center text-[#e5e4e2]/50">
-                <div className="animate-spin w-6 h-6 border-2 border-[#d3bb73] border-t-transparent rounded-full mx-auto mb-2" />
+                <div className="mx-auto mb-2 h-6 w-6 animate-spin rounded-full border-2 border-[#d3bb73] border-t-transparent" />
                 Ładowanie lokalizacji...
               </div>
             ) : filteredLocations.length === 0 ? (
               <div className="px-4 py-8 text-center">
-                <Building2 className="w-12 h-12 text-[#e5e4e2]/30 mx-auto mb-3" />
-                <p className="text-sm text-[#e5e4e2]/50 mb-3">
+                <Building2 className="mx-auto mb-3 h-12 w-12 text-[#e5e4e2]/30" />
+                <p className="mb-3 text-sm text-[#e5e4e2]/50">
                   {searchQuery
                     ? `Nie znaleziono lokalizacji "${searchQuery}" w Twojej liście`
                     : 'Brak zapisanych lokalizacji'}
@@ -135,9 +133,9 @@ export default function LocationSelector({
                       setShowAddModal(true);
                       setShowDropdown(false);
                     }}
-                    className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors text-sm font-medium"
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
                   >
-                    <Plus className="w-4 h-4" />
+                    <Plus className="h-4 w-4" />
                     Dodaj nową lokalizację
                   </button>
                   {searchQuery && (
@@ -148,9 +146,9 @@ export default function LocationSelector({
                         setShowDropdown(false);
                         setSearchQuery('');
                       }}
-                      className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/30 text-[#e5e4e2] rounded-lg hover:bg-[#d3bb73]/10 transition-colors text-sm"
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33] px-4 py-2 text-sm text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10"
                     >
-                      <Plus className="w-4 h-4" />
+                      <Plus className="h-4 w-4" />
                       Użyj "{searchQuery}" jako tekst
                     </button>
                   )}
@@ -163,14 +161,12 @@ export default function LocationSelector({
                     key={location.id}
                     type="button"
                     onClick={() => handleSelectLocation(location)}
-                    className="w-full text-left px-4 py-3 hover:bg-[#d3bb73]/10 transition-colors border-b border-[#d3bb73]/10"
+                    className="w-full border-b border-[#d3bb73]/10 px-4 py-3 text-left transition-colors hover:bg-[#d3bb73]/10"
                   >
                     <div className="flex items-start gap-3">
-                      <MapPin className="w-4 h-4 text-[#d3bb73] flex-shrink-0 mt-1" />
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-[#e5e4e2] mb-1">
-                          {location.name}
-                        </div>
+                      <MapPin className="mt-1 h-4 w-4 flex-shrink-0 text-[#d3bb73]" />
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 font-medium text-[#e5e4e2]">{location.name}</div>
                         {(location.address || location.city) && (
                           <div className="text-sm text-[#e5e4e2]/60">
                             {location.address}
@@ -180,7 +176,7 @@ export default function LocationSelector({
                           </div>
                         )}
                         {location.formatted_address && (
-                          <div className="text-xs text-[#e5e4e2]/40 mt-1">
+                          <div className="mt-1 text-xs text-[#e5e4e2]/40">
                             {location.formatted_address}
                           </div>
                         )}
@@ -191,19 +187,17 @@ export default function LocationSelector({
 
                 {/* Button to add new location when results exist but user wants more */}
                 {searchQuery && (
-                  <div className="px-4 py-3 bg-[#0f1117] border-t border-[#d3bb73]/10">
-                    <p className="text-xs text-[#e5e4e2]/40 mb-2">
-                      Nie znalazłeś czego szukasz?
-                    </p>
+                  <div className="border-t border-[#d3bb73]/10 bg-[#0f1117] px-4 py-3">
+                    <p className="mb-2 text-xs text-[#e5e4e2]/40">Nie znalazłeś czego szukasz?</p>
                     <button
                       type="button"
                       onClick={() => {
                         setShowAddModal(true);
                         setShowDropdown(false);
                       }}
-                      className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#d3bb73]/20 text-[#d3bb73] rounded hover:bg-[#d3bb73]/30 transition-colors text-sm"
+                      className="flex w-full items-center justify-center gap-2 rounded bg-[#d3bb73]/20 px-3 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30"
                     >
-                      <Plus className="w-4 h-4" />
+                      <Plus className="h-4 w-4" />
                       Dodaj nową lokalizację
                     </button>
                   </div>
@@ -213,13 +207,13 @@ export default function LocationSelector({
           </div>
 
           {/* Footer */}
-          <div className="px-4 py-3 border-t border-[#d3bb73]/20 bg-[#0f1117]">
+          <div className="border-t border-[#d3bb73]/20 bg-[#0f1117] px-4 py-3">
             <button
               type="button"
               onClick={() => {
                 setShowDropdown(false);
               }}
-              className="w-full text-center text-xs text-[#e5e4e2]/50 hover:text-[#e5e4e2] transition-colors"
+              className="w-full text-center text-xs text-[#e5e4e2]/50 transition-colors hover:text-[#e5e4e2]"
             >
               Zamknij
             </button>

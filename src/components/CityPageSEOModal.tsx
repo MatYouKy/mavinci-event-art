@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { X, Save, Plus, Trash2 } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
 interface CityPageSEOModalProps {
@@ -56,7 +56,10 @@ export default function CityPageSEOModal({
         setSeoTitle(data.seo_title || '');
         setSeoDescription(data.seo_description || '');
         const keywordsArray = data.seo_keywords
-          ? data.seo_keywords.split(',').map((k: string) => k.trim()).filter(Boolean)
+          ? data.seo_keywords
+              .split(',')
+              .map((k: string) => k.trim())
+              .filter(Boolean)
           : [];
         setKeywords(keywordsArray);
       } else {
@@ -84,7 +87,6 @@ export default function CityPageSEOModal({
   };
 
   const handleSave = async () => {
-    console.log('CLIENT SUPABASE URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
     try {
       setSaving(true);
 
@@ -110,15 +112,10 @@ export default function CityPageSEOModal({
 
       let error;
       if (existing) {
-        const result = await supabase
-          .from('city_pages_seo')
-          .update(payload)
-          .eq('id', existing.id);
+        const result = await supabase.from('city_pages_seo').update(payload).eq('id', existing.id);
         error = result.error;
       } else {
-        const result = await supabase
-          .from('city_pages_seo')
-          .insert(payload);
+        const result = await supabase.from('city_pages_seo').insert(payload);
         error = result.error;
       }
 
@@ -143,13 +140,11 @@ export default function CityPageSEOModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-3xl rounded-lg bg-[#1c1f33] p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+      <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-lg bg-[#1c1f33] p-6 shadow-xl">
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold text-[#e5e4e2]">
-              Edytuj SEO dla {cityName}
-            </h2>
-            <p className="text-sm text-[#e5e4e2]/60 mt-1">
+            <h2 className="text-2xl font-bold text-[#e5e4e2]">Edytuj SEO dla {cityName}</h2>
+            <p className="mt-1 text-sm text-[#e5e4e2]/60">
               /{pageType}/{citySlug}
             </p>
           </div>
@@ -162,9 +157,7 @@ export default function CityPageSEOModal({
         </div>
 
         {loading ? (
-          <div className="py-12 text-center text-[#e5e4e2]/60">
-            Ładowanie...
-          </div>
+          <div className="py-12 text-center text-[#e5e4e2]/60">Ładowanie...</div>
         ) : (
           <div className="space-y-6">
             {/* SEO Title */}
@@ -180,7 +173,7 @@ export default function CityPageSEOModal({
                 placeholder={defaultTitle}
               />
               <p className="mt-1 text-xs text-[#e5e4e2]/50">
-                Zostaw puste aby użyć domyślnego: "{defaultTitle}"
+                Zostaw puste aby użyć domyślnego: &quot;{defaultTitle}&quot;
               </p>
             </div>
 
@@ -254,14 +247,14 @@ export default function CityPageSEOModal({
               )}
 
               <p className="mt-2 text-xs text-[#e5e4e2]/50">
-                Dodaj słowa kluczowe klikając przycisk "Dodaj" lub wciskając Enter
+                Dodaj słowa kluczowe klikając przycisk &rdquo;Dodaj&rdquo; lub wciskając Enter
               </p>
             </div>
 
             {/* Info Box */}
             <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] p-4">
-              <h3 className="text-sm font-medium text-[#d3bb73] mb-2">Informacja</h3>
-              <ul className="text-xs text-[#e5e4e2]/60 space-y-1">
+              <h3 className="mb-2 text-sm font-medium text-[#d3bb73]">Informacja</h3>
+              <ul className="space-y-1 text-xs text-[#e5e4e2]/60">
                 <li>• Wszystkie pola są opcjonalne</li>
                 <li>• Puste pola użyją wartości domyślnych</li>
                 <li>• SEO dotyczy tylko tej konkretnej strony miasta</li>

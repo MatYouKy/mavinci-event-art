@@ -1,11 +1,33 @@
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 
 interface NotificationData {
   title: string;
   message: string;
-  category: 'client' | 'event' | 'offer' | 'employee' | 'system' | 'global' | 'contact_form' | 'tasks' | 'event_assignment' | 'event_update' | 'message_assignment';
+  category:
+    | 'client'
+    | 'event'
+    | 'offer'
+    | 'employee'
+    | 'system'
+    | 'global'
+    | 'contact_form'
+    | 'tasks'
+    | 'event_assignment'
+    | 'event_update'
+    | 'message_assignment';
   type?: 'info' | 'success' | 'warning' | 'error';
-  relatedEntityType?: 'client' | 'event' | 'offer' | 'employee' | 'equipment' | 'contact_messages' | 'task' | 'vehicle' | 'maintenance_record' | 'insurance_policy' | 'fuel_entry';
+  relatedEntityType?:
+    | 'client'
+    | 'event'
+    | 'offer'
+    | 'employee'
+    | 'equipment'
+    | 'contact_messages'
+    | 'task'
+    | 'vehicle'
+    | 'maintenance_record'
+    | 'insurance_policy'
+    | 'fuel_entry';
   relatedEntityId?: string;
   actionUrl?: string;
 }
@@ -55,7 +77,7 @@ export function useNotifications() {
       return {
         success: true,
         notificationId: notification.id,
-        recipientsCount: recipients.length
+        recipientsCount: recipients.length,
       };
     } catch (error) {
       console.error('Error sending notification to all:', error);
@@ -63,10 +85,7 @@ export function useNotifications() {
     }
   };
 
-  const sendToPermission = async (
-    permission: string,
-    data: NotificationData
-  ) => {
+  const sendToPermission = async (permission: string, data: NotificationData) => {
     try {
       const { data: notification, error: notificationError } = await supabase
         .from('notifications')
@@ -97,7 +116,7 @@ export function useNotifications() {
           success: true,
           notificationId: notification.id,
           recipientsCount: 0,
-          warning: `No active employees found with permission: ${permission}`
+          warning: `No active employees found with permission: ${permission}`,
         };
       }
 
@@ -116,7 +135,7 @@ export function useNotifications() {
       return {
         success: true,
         notificationId: notification.id,
-        recipientsCount: recipients.length
+        recipientsCount: recipients.length,
       };
     } catch (error) {
       console.error('Error sending notification to permission:', error);
@@ -124,17 +143,14 @@ export function useNotifications() {
     }
   };
 
-  const sendToUsers = async (
-    userIds: string | string[],
-    data: NotificationData
-  ) => {
+  const sendToUsers = async (userIds: string | string[], data: NotificationData) => {
     try {
       const ids = Array.isArray(userIds) ? userIds : [userIds];
 
       if (ids.length === 0) {
         return {
           success: false,
-          error: 'No user IDs provided'
+          error: 'No user IDs provided',
         };
       }
 
@@ -169,7 +185,7 @@ export function useNotifications() {
       return {
         success: true,
         notificationId: notification.id,
-        recipientsCount: recipients.length
+        recipientsCount: recipients.length,
       };
     } catch (error) {
       console.error('Error sending notification to users:', error);

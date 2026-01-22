@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, Check, X, Tag } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 
@@ -61,16 +61,14 @@ export default function OfferTemplateCategoriesManager() {
         return;
       }
 
-      const { error } = await supabase
-        .from('offer_template_categories')
-        .insert([
-          {
-            name: formData.name,
-            description: formData.description,
-            is_default: formData.is_default,
-            color: formData.color,
-          },
-        ]);
+      const { error } = await supabase.from('offer_template_categories').insert([
+        {
+          name: formData.name,
+          description: formData.description,
+          is_default: formData.is_default,
+          color: formData.color,
+        },
+      ]);
 
       if (error) throw error;
 
@@ -115,16 +113,13 @@ export default function OfferTemplateCategoriesManager() {
   const handleDelete = async (id: string, name: string) => {
     const confirmed = await showConfirm(
       'Czy na pewno chcesz usunąć tę kategorię?',
-      `Kategoria "${name}" zostanie usunięta. Wszystkie szablony przypisane do tej kategorii zostaną zaktualizowane.`
+      `Kategoria "${name}" zostanie usunięta. Wszystkie szablony przypisane do tej kategorii zostaną zaktualizowane.`,
     );
 
     if (!confirmed) return;
 
     try {
-      const { error } = await supabase
-        .from('offer_template_categories')
-        .delete()
-        .eq('id', id);
+      const { error } = await supabase.from('offer_template_categories').delete().eq('id', id);
 
       if (error) throw error;
 
@@ -175,16 +170,16 @@ export default function OfferTemplateCategoriesManager() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-light text-[#e5e4e2]">Kategorie Szablonów Ofert</h2>
-          <p className="text-sm text-[#e5e4e2]/60 mt-1">
+          <p className="mt-1 text-sm text-[#e5e4e2]/60">
             Zarządzaj kategoriami szablonów (np. Wesela, Eventy, Konferencje)
           </p>
         </div>
         {!isCreating && (
           <button
             onClick={() => setIsCreating(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
           >
-            <Plus className="w-5 h-5" />
+            <Plus className="h-5 w-5" />
             Dodaj kategorię
           </button>
         )}
@@ -192,39 +187,39 @@ export default function OfferTemplateCategoriesManager() {
 
       <div className="space-y-3">
         {isCreating && (
-          <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6">
-            <h3 className="text-lg font-medium text-[#e5e4e2] mb-4">Nowa kategoria</h3>
+          <div className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+            <h3 className="mb-4 text-lg font-medium text-[#e5e4e2]">Nowa kategoria</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa kategorii</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nazwa kategorii</label>
                 <input
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full bg-[#0f1118] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1118] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                   placeholder="np. Wesela"
                 />
               </div>
 
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis</label>
                 <textarea
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   rows={2}
-                  className="w-full bg-[#0f1118] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50 resize-none"
+                  className="w-full resize-none rounded-lg border border-[#d3bb73]/20 bg-[#0f1118] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                   placeholder="Opis kategorii"
                 />
               </div>
 
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">Kolor</label>
-                <div className="flex gap-2 flex-wrap">
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Kolor</label>
+                <div className="flex flex-wrap gap-2">
                   {colorOptions.map((color) => (
                     <button
                       key={color.value}
                       onClick={() => setFormData({ ...formData, color: color.value })}
-                      className={`w-10 h-10 rounded-lg transition-all ${
+                      className={`h-10 w-10 rounded-lg transition-all ${
                         formData.color === color.value
                           ? 'ring-2 ring-[#d3bb73] ring-offset-2 ring-offset-[#0d0f1a]'
                           : 'hover:scale-110'
@@ -242,7 +237,7 @@ export default function OfferTemplateCategoriesManager() {
                   id="new-is-default"
                   checked={formData.is_default}
                   onChange={(e) => setFormData({ ...formData, is_default: e.target.checked })}
-                  className="w-4 h-4 text-[#d3bb73] bg-[#0f1118] border-[#d3bb73]/20 rounded focus:ring-[#d3bb73]"
+                  className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0f1118] text-[#d3bb73] focus:ring-[#d3bb73]"
                 />
                 <label htmlFor="new-is-default" className="text-sm text-[#e5e4e2]/80">
                   Ustaw jako domyślną kategorię
@@ -252,16 +247,16 @@ export default function OfferTemplateCategoriesManager() {
               <div className="flex gap-2 pt-2">
                 <button
                   onClick={handleCreate}
-                  className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                  className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
                 >
-                  <Check className="w-4 h-4" />
+                  <Check className="h-4 w-4" />
                   Zapisz
                 </button>
                 <button
                   onClick={cancelEdit}
-                  className="flex items-center gap-2 px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] rounded-lg hover:bg-[#d3bb73]/10 transition-colors"
+                  className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="h-4 w-4" />
                   Anuluj
                 </button>
               </div>
@@ -272,39 +267,39 @@ export default function OfferTemplateCategoriesManager() {
         {categories.map((category) => (
           <div
             key={category.id}
-            className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 hover:border-[#d3bb73]/20 transition-colors"
+            className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6 transition-colors hover:border-[#d3bb73]/20"
           >
             {editingId === category.id ? (
               <div className="space-y-4">
-                <h3 className="text-lg font-medium text-[#e5e4e2] mb-4">Edytuj kategorię</h3>
+                <h3 className="mb-4 text-lg font-medium text-[#e5e4e2]">Edytuj kategorię</h3>
                 <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Nazwa kategorii</label>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nazwa kategorii</label>
                   <input
                     type="text"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full bg-[#0f1118] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1118] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Opis</label>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis</label>
                   <textarea
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                     rows={2}
-                    className="w-full bg-[#0f1118] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50 resize-none"
+                    className="w-full resize-none rounded-lg border border-[#d3bb73]/20 bg-[#0f1118] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm text-[#e5e4e2]/60 mb-2">Kolor</label>
-                  <div className="flex gap-2 flex-wrap">
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Kolor</label>
+                  <div className="flex flex-wrap gap-2">
                     {colorOptions.map((color) => (
                       <button
                         key={color.value}
                         onClick={() => setFormData({ ...formData, color: color.value })}
-                        className={`w-10 h-10 rounded-lg transition-all ${
+                        className={`h-10 w-10 rounded-lg transition-all ${
                           formData.color === color.value
                             ? 'ring-2 ring-[#d3bb73] ring-offset-2 ring-offset-[#0d0f1a]'
                             : 'hover:scale-110'
@@ -322,9 +317,12 @@ export default function OfferTemplateCategoriesManager() {
                     id={`edit-is-default-${category.id}`}
                     checked={formData.is_default}
                     onChange={(e) => setFormData({ ...formData, is_default: e.target.checked })}
-                    className="w-4 h-4 text-[#d3bb73] bg-[#0f1118] border-[#d3bb73]/20 rounded focus:ring-[#d3bb73]"
+                    className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0f1118] text-[#d3bb73] focus:ring-[#d3bb73]"
                   />
-                  <label htmlFor={`edit-is-default-${category.id}`} className="text-sm text-[#e5e4e2]/80">
+                  <label
+                    htmlFor={`edit-is-default-${category.id}`}
+                    className="text-sm text-[#e5e4e2]/80"
+                  >
                     Ustaw jako domyślną kategorię
                   </label>
                 </div>
@@ -332,16 +330,16 @@ export default function OfferTemplateCategoriesManager() {
                 <div className="flex gap-2 pt-2">
                   <button
                     onClick={() => handleUpdate(category.id)}
-                    className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                    className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
                   >
-                    <Check className="w-4 h-4" />
+                    <Check className="h-4 w-4" />
                     Zapisz
                   </button>
                   <button
                     onClick={cancelEdit}
-                    className="flex items-center gap-2 px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 text-[#e5e4e2] rounded-lg hover:bg-[#d3bb73]/10 transition-colors"
+                    className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10"
                   >
-                    <X className="w-4 h-4" />
+                    <X className="h-4 w-4" />
                     Anuluj
                   </button>
                 </div>
@@ -350,22 +348,22 @@ export default function OfferTemplateCategoriesManager() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <div
-                    className="w-12 h-12 rounded-lg flex items-center justify-center"
+                    className="flex h-12 w-12 items-center justify-center rounded-lg"
                     style={{ backgroundColor: category.color }}
                   >
-                    <Tag className="w-6 h-6 text-white" />
+                    <Tag className="h-6 w-6 text-white" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="text-lg font-medium text-[#e5e4e2]">{category.name}</h3>
                       {category.is_default && (
-                        <span className="px-2 py-0.5 text-xs bg-[#d3bb73] text-[#1c1f33] rounded">
+                        <span className="rounded bg-[#d3bb73] px-2 py-0.5 text-xs text-[#1c1f33]">
                           Domyślna
                         </span>
                       )}
                     </div>
                     {category.description && (
-                      <p className="text-sm text-[#e5e4e2]/60 mt-1">{category.description}</p>
+                      <p className="mt-1 text-sm text-[#e5e4e2]/60">{category.description}</p>
                     )}
                   </div>
                 </div>
@@ -373,18 +371,18 @@ export default function OfferTemplateCategoriesManager() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => startEdit(category)}
-                    className="p-2 text-[#e5e4e2]/60 hover:text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+                    className="rounded-lg p-2 text-[#e5e4e2]/60 transition-colors hover:bg-[#d3bb73]/10 hover:text-[#d3bb73]"
                     title="Edytuj"
                   >
-                    <Edit className="w-5 h-5" />
+                    <Edit className="h-5 w-5" />
                   </button>
                   {!category.is_default && (
                     <button
                       onClick={() => handleDelete(category.id, category.name)}
-                      className="p-2 text-[#e5e4e2]/60 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                      className="rounded-lg p-2 text-[#e5e4e2]/60 transition-colors hover:bg-red-500/10 hover:text-red-400"
                       title="Usuń"
                     >
-                      <Trash2 className="w-5 h-5" />
+                      <Trash2 className="h-5 w-5" />
                     </button>
                   )}
                 </div>
@@ -394,7 +392,7 @@ export default function OfferTemplateCategoriesManager() {
         ))}
 
         {categories.length === 0 && !isCreating && (
-          <div className="text-center py-12 text-[#e5e4e2]/60">
+          <div className="py-12 text-center text-[#e5e4e2]/60">
             Brak kategorii szablonów. Dodaj pierwszą kategorię.
           </div>
         )}

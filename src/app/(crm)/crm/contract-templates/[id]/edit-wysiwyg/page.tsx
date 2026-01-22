@@ -1,0 +1,1023 @@
+'use client';
+import '@/styles/contractA4.css';
+
+import { useState, useEffect, useRef } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase/browser';
+import {
+  Save,
+  ArrowLeft,
+  Bold,
+  Italic,
+  Underline,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  List,
+  ListOrdered,
+  Type,
+  Trash2,
+} from 'lucide-react';
+import { useSnackbar } from '@/contexts/SnackbarContext';
+
+export default function EditTemplateWYSIWYGPage() {
+  const params = useParams();
+  const router = useRouter();
+  const { showSnackbar } = useSnackbar();
+  const templateId = params.id as string;
+  const editorRef = useRef<HTMLDivElement>(null);
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [template, setTemplate] = useState<any>(null);
+  const [contentHtml, setContentHtml] = useState('');
+  const [logoScale, setLogoScale] = useState(80);
+  const [logoPositionX, setLogoPositionX] = useState(50);
+  const [logoPositionY, setLogoPositionY] = useState(0);
+  const [lineHeight, setLineHeight] = useState(1.6);
+  const [history, setHistory] = useState<string[]>(['']);
+  const [historyIndex, setHistoryIndex] = useState(0);
+  const [pages, setPages] = useState<string[]>(['']);
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const [editingName, setEditingName] = useState(false);
+  const [tempName, setTempName] = useState('');
+
+  useEffect(() => {
+    fetchTemplate();
+  }, [templateId]);
+
+  useEffect(() => {
+    if (editorRef.current && contentHtml && !editorRef.current.innerHTML) {
+      editorRef.current.innerHTML = contentHtml;
+      editorRef.current.setAttribute('dir', 'ltr');
+      editorRef.current.style.direction = 'ltr';
+      editorRef.current.style.unicodeBidi = 'embed';
+      editorRef.current.style.lineHeight = String(lineHeight);
+    }
+  }, [contentHtml]);
+
+  useEffect(() => {
+    if (editorRef.current) {
+      editorRef.current.style.lineHeight = String(lineHeight);
+    }
+  }, [lineHeight]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const ctrlKey = isMac ? e.metaKey : e.ctrlKey;
+
+      if (ctrlKey && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if (ctrlKey && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        redo();
+      } else if (ctrlKey && e.key === 'b') {
+        e.preventDefault();
+        execCommand('bold');
+      } else if (ctrlKey && e.key === 'i') {
+        e.preventDefault();
+        execCommand('italic');
+      } else if (ctrlKey && e.key === 'u') {
+        e.preventDefault();
+        execCommand('underline');
+      } else if (ctrlKey && e.key === 's') {
+        e.preventDefault();
+        handleSave();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [historyIndex, history]);
+
+  const fetchTemplate = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('contract_templates')
+        .select('*')
+        .eq('id', templateId)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (data) {
+        setTemplate(data);
+
+        let initialHtml = data.content_html || '';
+
+        if (!initialHtml && data.content) {
+          initialHtml = data.content
+            .split('\n')
+            .map((line) => `<pre>${line || '\n'}</pre>`)
+            .join('');
+        }
+
+        setContentHtml(initialHtml);
+
+        if (data.page_settings) {
+          if (data.page_settings.logoScale) setLogoScale(data.page_settings.logoScale);
+          if (data.page_settings.logoPositionX !== undefined)
+            setLogoPositionX(data.page_settings.logoPositionX);
+          if (data.page_settings.logoPositionY !== undefined)
+            setLogoPositionY(data.page_settings.logoPositionY);
+          if (data.page_settings.lineHeight) setLineHeight(data.page_settings.lineHeight);
+          if (data.page_settings.pages && Array.isArray(data.page_settings.pages)) {
+            setPages(data.page_settings.pages);
+          } else if (initialHtml) {
+            setPages([initialHtml]);
+          }
+        } else if (initialHtml) {
+          setPages([initialHtml]);
+        }
+      }
+    } catch (err: any) {
+      console.error('Error:', err);
+      showSnackbar(err.message || 'Błąd ładowania szablonu', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveTemplateName = async () => {
+    if (!tempName.trim()) {
+      showSnackbar('Nazwa szablonu nie może być pusta', 'error');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('contract_templates')
+        .update({ name: tempName.trim(), updated_at: new Date().toISOString() })
+        .eq('id', templateId);
+
+      if (error) throw error;
+
+      setTemplate({ ...template, name: tempName.trim() });
+      setEditingName(false);
+      showSnackbar('Nazwa szablonu została zmieniona', 'success');
+    } catch (err: any) {
+      console.error('Error:', err);
+      showSnackbar(err.message || 'Błąd zapisu nazwy', 'error');
+    }
+  };
+
+  const handleSave = async () => {
+    if (!template?.name.trim()) {
+      showSnackbar('Nazwa szablonu jest wymagana', 'error');
+      return;
+    }
+
+    if (!contentHtml || contentHtml.trim() === '') {
+      showSnackbar('Treść szablonu nie może być pusta', 'error');
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      const allContent = pages.join('\n\n--- PAGE BREAK ---\n\n');
+      const plainText = allContent.replace(/<[^>]*>/g, '').trim();
+
+      const updateData = {
+        content: plainText || 'Szablon umowy',
+        content_html: allContent,
+        page_settings: {
+          logoScale,
+          logoPositionX,
+          logoPositionY,
+          lineHeight,
+          pages,
+          marginTop: 50,
+          marginBottom: 50,
+          marginLeft: 50,
+          marginRight: 50,
+          pageSize: 'A4',
+        },
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase
+        .from('contract_templates')
+        .update(updateData)
+        .eq('id', templateId);
+
+      if (error) throw error;
+
+      showSnackbar('Szablon zapisany pomyślnie', 'success');
+      await fetchTemplate();
+    } catch (err: any) {
+      console.error('Error saving template:', err);
+      showSnackbar(err.message || 'Błąd podczas zapisywania szablonu', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addToHistory = (content: string) => {
+    const newHistory = history.slice(0, historyIndex + 1);
+    newHistory.push(content);
+    if (newHistory.length > 50) newHistory.shift();
+    setHistory(newHistory);
+    setHistoryIndex(newHistory.length - 1);
+  };
+
+  const undo = () => {
+    if (historyIndex > 0) {
+      const newIndex = historyIndex - 1;
+      setHistoryIndex(newIndex);
+      setContentHtml(history[newIndex]);
+      if (editorRef.current) {
+        editorRef.current.innerHTML = history[newIndex];
+      }
+    }
+  };
+
+  const redo = () => {
+    if (historyIndex < history.length - 1) {
+      const newIndex = historyIndex + 1;
+      setHistoryIndex(newIndex);
+      setContentHtml(history[newIndex]);
+      if (editorRef.current) {
+        editorRef.current.innerHTML = history[newIndex];
+      }
+    }
+  };
+
+  const execCommand = (command: string, value?: string) => {
+    document.execCommand(command, false, value);
+    if (editorRef.current) {
+      const newContent = editorRef.current.innerHTML;
+      setContentHtml(newContent);
+      addToHistory(newContent);
+    }
+  };
+
+  const insertPlaceholder = (placeholder: string) => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+
+    const range = selection.getRangeAt(0);
+    const container = range.commonAncestorContainer;
+
+    let editorElement =
+      container.nodeType === 3 ? container.parentElement : (container as HTMLElement);
+    while (editorElement && !editorElement.classList.contains('contract-content')) {
+      editorElement = editorElement.parentElement;
+    }
+
+    if (!editorElement) return;
+
+    const pageIndex = pageRefs.current.findIndex((ref) => ref === editorElement);
+    if (pageIndex === -1) return;
+
+    const textNode = document.createTextNode(placeholder);
+    range.insertNode(textNode);
+    range.setStartAfter(textNode);
+    range.setEndAfter(textNode);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    updatePageContent(pageIndex, editorElement.innerHTML);
+  };
+
+  const insertLogo = () => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+
+    const range = selection.getRangeAt(0);
+    const container = range.commonAncestorContainer;
+
+    let editorElement =
+      container.nodeType === 3 ? container.parentElement : (container as HTMLElement);
+    while (editorElement && !editorElement.classList.contains('contract-content')) {
+      editorElement = editorElement.parentElement;
+    }
+
+    if (!editorElement) return;
+
+    const pageIndex = pageRefs.current.findIndex((ref) => ref === editorElement);
+    if (pageIndex === -1) return;
+
+    const img = document.createElement('img');
+    img.src = '/erulers_logo_vect.png';
+    img.style.maxWidth = '300px';
+    img.style.height = 'auto';
+    img.style.display = 'block';
+    img.style.margin = '20px auto';
+
+    range.insertNode(img);
+    range.setStartAfter(img);
+    range.setEndAfter(img);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    updatePageContent(pageIndex, editorElement.innerHTML);
+  };
+
+  const insertParagraphMarker = () => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+
+    const range = selection.getRangeAt(0);
+    const container = range.commonAncestorContainer;
+
+    let editorElement =
+      container.nodeType === 3 ? container.parentElement : (container as HTMLElement);
+    while (editorElement && !editorElement.classList.contains('contract-content')) {
+      editorElement = editorElement.parentElement;
+    }
+
+    if (!editorElement) return;
+
+    const pageIndex = pageRefs.current.findIndex((ref) => ref === editorElement);
+    if (pageIndex === -1) return;
+
+    const existingParagraphs = editorElement.querySelectorAll('p[data-paragraph-number]');
+    const nextNumber = existingParagraphs.length + 1;
+
+    const p = document.createElement('p');
+    p.style.fontWeight = 'bold';
+    p.style.textAlign = 'center';
+    p.style.margin = '1.5em 0';
+    p.setAttribute('data-paragraph-number', String(nextNumber));
+    p.innerHTML = `§${nextNumber}. `;
+
+    range.insertNode(p);
+    range.setStart(p.firstChild!, p.innerHTML.length);
+    range.setEnd(p.firstChild!, p.innerHTML.length);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    updatePageContent(pageIndex, editorElement.innerHTML);
+  };
+
+  const addNewPage = () => {
+    const newPages = [...pages, ''];
+    setPages(newPages);
+    setCurrentPageIndex(newPages.length - 1);
+    showSnackbar('Dodano nową stronę', 'success');
+  };
+
+  const updatePageContent = (pageIndex: number, content: string) => {
+    const newPages = [...pages];
+    newPages[pageIndex] = content;
+    setPages(newPages);
+  };
+
+  const deletePage = (pageIndex: number) => {
+    if (pages.length <= 1) {
+      showSnackbar('Nie można usunąć ostatniej strony', 'error');
+      return;
+    }
+    const newPages = pages.filter((_, i) => i !== pageIndex);
+    setPages(newPages);
+    if (currentPageIndex >= newPages.length) {
+      setCurrentPageIndex(newPages.length - 1);
+    }
+    showSnackbar('Usunięto stronę', 'success');
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-[#d3bb73]"></div>
+      </div>
+    );
+  }
+
+  if (!template) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#0a0b14]">
+        <div className="text-[#e5e4e2]">Szablon nie został znaleziony</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#0a0b14]">
+      {/* Header */}
+      <div className="sticky top-0 z-40 border-b border-[#d3bb73]/20 bg-[#1c1f33]">
+        <div className="mx-auto max-w-[1400px] px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => router.push('/crm/contract-templates')}
+                className="rounded-lg p-2 text-[#e5e4e2]/60 transition-colors hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]"
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </button>
+              <div>
+                {editingName ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={tempName}
+                      onChange={(e) => setTempName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveTemplateName();
+                        if (e.key === 'Escape') {
+                          setEditingName(false);
+                          setTempName('');
+                        }
+                      }}
+                      className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1 text-lg text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                      autoFocus
+                    />
+                    <button
+                      onClick={handleSaveTemplateName}
+                      className="rounded-lg bg-[#d3bb73] px-3 py-1 text-sm text-[#1c1f33] hover:bg-[#d3bb73]/90"
+                    >
+                      Zapisz
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditingName(false);
+                        setTempName('');
+                      }}
+                      className="rounded-lg border border-[#d3bb73]/20 px-3 py-1 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10"
+                    >
+                      Anuluj
+                    </button>
+                  </div>
+                ) : (
+                  <h1
+                    onClick={() => {
+                      setEditingName(true);
+                      setTempName(template.name);
+                    }}
+                    className="cursor-pointer text-xl font-light text-[#e5e4e2] hover:text-[#d3bb73]"
+                    title="Kliknij aby edytować nazwę"
+                  >
+                    {template.name}
+                  </h1>
+                )}
+                <p className="text-sm text-[#e5e4e2]/40">Edytor WYSIWYG</p>
+              </div>
+            </div>
+
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-2 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
+            >
+              <Save className="h-4 w-4" />
+              {saving ? 'Zapisywanie...' : 'Zapisz'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Toolbar */}
+      <div className="sticky top-[73px] z-30 border-b border-[#d3bb73]/20 bg-[#1c1f33]">
+        <div className="mx-auto max-w-[1400px] px-6 py-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => execCommand('bold')}
+              className="rounded p-2 hover:bg-[#d3bb73]/10"
+              title="Pogrubienie"
+            >
+              <Bold className="h-4 w-4 text-[#e5e4e2]" />
+            </button>
+            <button
+              onClick={() => execCommand('italic')}
+              className="rounded p-2 hover:bg-[#d3bb73]/10"
+              title="Kursywa"
+            >
+              <Italic className="h-4 w-4 text-[#e5e4e2]" />
+            </button>
+            <button
+              onClick={() => execCommand('underline')}
+              className="rounded p-2 hover:bg-[#d3bb73]/10"
+              title="Podkreślenie"
+            >
+              <Underline className="h-4 w-4 text-[#e5e4e2]" />
+            </button>
+
+            <div className="mx-2 h-6 w-px bg-[#d3bb73]/30" />
+
+            <button
+              onClick={() => execCommand('justifyLeft')}
+              className="rounded p-2 hover:bg-[#d3bb73]/10"
+              title="Do lewej"
+            >
+              <AlignLeft className="h-4 w-4 text-[#e5e4e2]" />
+            </button>
+            <button
+              onClick={() => execCommand('justifyCenter')}
+              className="rounded p-2 hover:bg-[#d3bb73]/10"
+              title="Wyśrodkuj"
+            >
+              <AlignCenter className="h-4 w-4 text-[#e5e4e2]" />
+            </button>
+            <button
+              onClick={() => execCommand('justifyRight')}
+              className="rounded p-2 hover:bg-[#d3bb73]/10"
+              title="Do prawej"
+            >
+              <AlignRight className="h-4 w-4 text-[#e5e4e2]" />
+            </button>
+
+            <div className="mx-2 h-6 w-px bg-[#d3bb73]/30" />
+
+            <button
+              onClick={() => execCommand('insertUnorderedList')}
+              className="rounded p-2 hover:bg-[#d3bb73]/10"
+              title="Lista"
+            >
+              <List className="h-4 w-4 text-[#e5e4e2]" />
+            </button>
+            <button
+              onClick={() => execCommand('insertOrderedList')}
+              className="rounded p-2 hover:bg-[#d3bb73]/10"
+              title="Lista numerowana"
+            >
+              <ListOrdered className="h-4 w-4 text-[#e5e4e2]" />
+            </button>
+
+            <div className="mx-2 h-6 w-px bg-[#d3bb73]/30" />
+
+            <select
+              onChange={(e) => {
+                const size = e.target.value;
+                document.execCommand('fontSize', false, '7');
+                const fontElements = document.getElementsByTagName('font');
+                for (let i = 0; i < fontElements.length; i++) {
+                  if (fontElements[i].size === '7') {
+                    fontElements[i].removeAttribute('size');
+                    fontElements[i].style.fontSize = size + 'pt';
+                  }
+                }
+              }}
+              className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1 text-sm text-[#e5e4e2]"
+            >
+              <option value="">Czcionka</option>
+              <option value="6">6pt</option>
+              <option value="8">8pt</option>
+              <option value="9">9pt</option>
+              <option value="10">10pt</option>
+              <option value="11">11pt</option>
+              <option value="12">12pt</option>
+              <option value="14">14pt</option>
+              <option value="16">16pt</option>
+              <option value="18">18pt</option>
+              <option value="20">20pt</option>
+              <option value="22">22pt</option>
+              <option value="24">24pt</option>
+              <option value="28">28pt</option>
+              <option value="32">32pt</option>
+              <option value="36">36pt</option>
+              <option value="40">40pt</option>
+              <option value="48">48pt</option>
+              <option value="56">56pt</option>
+              <option value="64">64pt</option>
+              <option value="72">72pt</option>
+            </select>
+
+            <div className="ml-2 flex items-center gap-2">
+              <span className="text-xs text-[#e5e4e2]/60">Odstęp linii:</span>
+              <input
+                type="range"
+                min="1"
+                max="3"
+                step="0.1"
+                value={lineHeight}
+                onChange={(e) => {
+                  const newValue = Number(e.target.value);
+                  setLineHeight(newValue);
+                  if (editorRef.current) {
+                    editorRef.current.style.lineHeight = String(newValue);
+                  }
+                }}
+                className="h-1 w-24 cursor-pointer appearance-none rounded-lg bg-[#0f1119] accent-[#d3bb73]"
+              />
+              <span className="w-8 text-xs text-[#e5e4e2]">{lineHeight.toFixed(1)}</span>
+            </div>
+
+            <div className="mx-2 h-6 w-px bg-[#d3bb73]/30" />
+
+            <button
+              onClick={insertParagraphMarker}
+              className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-sm font-medium text-[#d3bb73] hover:bg-[#d3bb73]/10"
+              title="Nowy paragraf (§)"
+            >
+              § Paragraf
+            </button>
+
+            <button
+              onClick={addNewPage}
+              className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-sm font-medium text-[#d3bb73] hover:bg-[#d3bb73]/10"
+              title="Dodaj nową stronę"
+            >
+              📄 Dodaj stronę
+            </button>
+
+            <div className="mx-2 h-6 w-px bg-[#d3bb73]/30" />
+
+            <button
+              onClick={insertLogo}
+              className="rounded bg-[#d3bb73] px-3 py-1.5 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
+            >
+              Wstaw Logo
+            </button>
+
+            <div className="ml-2 flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-[#e5e4e2]/60">Skala:</span>
+                <input
+                  type="range"
+                  min="20"
+                  max="120"
+                  value={logoScale}
+                  onChange={(e) => setLogoScale(Number(e.target.value))}
+                  className="h-1 w-20 cursor-pointer appearance-none rounded-lg bg-[#0f1119] accent-[#d3bb73]"
+                />
+                <span className="w-8 text-xs text-[#e5e4e2]">{logoScale}%</span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-[#e5e4e2]/60">Poz X:</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={logoPositionX}
+                  onChange={(e) => setLogoPositionX(Number(e.target.value))}
+                  className="h-1 w-20 cursor-pointer appearance-none rounded-lg bg-[#0f1119] accent-[#d3bb73]"
+                />
+                <span className="w-8 text-xs text-[#e5e4e2]">{logoPositionX}%</span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-[#e5e4e2]/60">Poz Y:</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="50"
+                  value={logoPositionY}
+                  onChange={(e) => setLogoPositionY(Number(e.target.value))}
+                  className="h-1 w-20 cursor-pointer appearance-none rounded-lg bg-[#0f1119] accent-[#d3bb73]"
+                />
+                <span className="w-8 text-xs text-[#e5e4e2]">{logoPositionY}mm</span>
+              </div>
+            </div>
+
+            <div className="mx-2 h-6 w-px bg-[#d3bb73]/30" />
+
+            <span className="text-xs text-[#e5e4e2]/60">Placeholdery:</span>
+
+            {[
+              { key: '{{contact_first_name}}', label: 'Imię' },
+              { key: '{{contact_last_name}}', label: 'Nazwisko' },
+              { key: '{{contact_full_name}}', label: 'Imię i nazwisko' },
+              { key: '{{contact_email}}', label: 'Email' },
+              { key: '{{contact_phone}}', label: 'Telefon' },
+              { key: '{{contact_pesel}}', label: 'PESEL' },
+              { key: '{{contact_address}}', label: 'Adres (ulica)' },
+              { key: '{{contact_city}}', label: 'Miasto' },
+              { key: '{{contact_postal_code}}', label: 'Kod pocztowy' },
+              { key: '{{organization_name}}', label: 'Nazwa firmy' },
+              { key: '{{organization_nip}}', label: 'NIP firmy' },
+              { key: '{{event_name}}', label: 'Wydarzenie' },
+              { key: '{{event_date}}', label: 'Data i czas start' },
+              { key: '{{event_end_date}}', label: 'Data i czas koniec' },
+              { key: '{{event_date_only}}', label: 'Data start (DD.MM.RRRR)' },
+              { key: '{{event_end_date_only}}', label: 'Data koniec (DD.MM.RRRR)' },
+              { key: '{{event_time_start}}', label: 'Godzina start (HH:MM)' },
+              { key: '{{event_time_end}}', label: 'Godzina koniec (HH:MM)' },
+              { key: '{{location_name}}', label: 'Nazwa lokalizacji' },
+              { key: '{{location_address}}', label: 'Adres lokalizacji' },
+              { key: '{{location_city}}', label: 'Miasto lokalizacji' },
+              { key: '{{location_postal_code}}', label: 'Kod pocztowy lok.' },
+              { key: '{{location_full}}', label: 'Pełny adres lok.' },
+              { key: '{{budget}}', label: 'Budżet' },
+              { key: '{{budget_words}}', label: 'Budżet słownie' },
+              { key: '{{deposit_amount}}', label: 'Zadatek' },
+              { key: '{{deposit_words}}', label: 'Zadatek słownie' },
+              { key: '{{offer_items}}', label: 'Pozycje z oferty' },
+              { key: '{{OFFER_ITEMS_TABLE}}', label: 'Tabela pozycji oferty' },
+            ].map((p) => (
+              <button
+                key={p.key}
+                onClick={() => insertPlaceholder(p.key)}
+                className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
+                title={p.key}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* A4 Editor */}
+      <div className="min-h-screen bg-[#f5f5f5] py-8">
+        <div className="mx-auto max-w-[230mm] px-4">
+          {pages.map((pageContent, pageIndex) => (
+            <div key={pageIndex} className="contract-a4-page">
+              {pageIndex === 0 && (
+                <>
+                  <div
+                    className="contract-header-logo"
+                    style={{
+                      justifyContent:
+                        logoPositionX <= 33
+                          ? 'flex-start'
+                          : logoPositionX >= 67
+                            ? 'flex-end'
+                            : 'center',
+                      marginTop: `${logoPositionY}mm`,
+                    }}
+                  >
+                    <img
+                      src="/erulers_logo_vect.png"
+                      alt="EVENT RULERS"
+                      style={{
+                        maxWidth: `${logoScale}%`,
+                        height: 'auto',
+                      }}
+                    />
+                  </div>
+
+                  <div className="contract-current-date">
+                    Olsztyn,{' '}
+                    {new Date().toLocaleDateString('pl-PL', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                    })}
+                  </div>
+                </>
+              )}
+
+              <div
+                ref={(el) => {
+                  pageRefs.current[pageIndex] = el;
+                  if (el && el.innerHTML === '' && pageContent) {
+                    el.innerHTML = pageContent;
+                  }
+                }}
+                contentEditable={true}
+                suppressContentEditableWarning
+                dir="ltr"
+                onInput={(e) => updatePageContent(pageIndex, e.currentTarget.innerHTML)}
+                onBlur={(e) => updatePageContent(pageIndex, e.currentTarget.innerHTML)}
+                className="contract-content"
+                style={{
+                  outline: 'none',
+                  direction: 'ltr',
+                  unicodeBidi: 'embed',
+                  lineHeight: String(lineHeight),
+                  minHeight: pageIndex === 0 ? '160mm' : '250mm',
+                }}
+              />
+
+              <div className="contract-footer">
+                <div className="footer-logo">
+                  <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
+                </div>
+                <div className="footer-info">
+                  <p>
+                    <span className="font-bold">EVENT RULERS</span> –{' '}
+                    <span className="italic">Więcej niż Wodzireje!</span>
+                  </p>
+                  <p>www.eventrulers.pl | biuro@eventrulers.pl</p>
+                  <p>tel: 698-212-279</p>
+                </div>
+              </div>
+
+              {pages.length > 1 && (
+                <button
+                  onClick={() => deletePage(pageIndex)}
+                  className="absolute right-2 top-2 rounded-lg bg-red-500/10 p-2 text-red-500 transition-colors hover:bg-red-500/20"
+                  title="Usuń stronę"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
+
+              {pages.length > 1 && (
+                <div className="absolute bottom-4 mx-auto w-[calc(100%-50mm)] text-center text-xs text-[#000]/50">
+                  {pageIndex + 1} z {pages.length}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Custom Styles
+      <style jsx global>{`
+        .contract-a4-page-wysiwyg {
+          position: relative;
+          width: 210mm;
+          margin: 0 auto 20px auto;
+          padding: 20mm 25mm 5mm;
+          background: white;
+          box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+          font-family: Arial, sans-serif;
+          font-size: 12pt;
+          line-height: 1.6;
+          color: #000;
+          page-break-after: always;
+          break-after: page;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .contract-header-logo-wysiwyg {
+          width: 100%;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          margin-bottom: 4mm;
+          transition: all 0.2s ease;
+        }
+
+        .contract-header-logo-wysiwyg img {
+          height: auto;
+          object-fit: contain;
+        }
+
+        .contract-current-date-wysiwyg {
+          position: absolute;
+          top: 20mm;
+          right: 20mm;
+          text-align: right;
+          font-size: 10pt;
+          color: #333;
+          font-weight: 500;
+        }
+
+        .contract-content-wysiwyg {
+          flex: 1;
+          text-align: justify;
+          color: #000;
+          font-family: Arial, sans-serif;
+          font-size: 12pt;
+          line-height: 1.6;
+          direction: ltr !important;
+          unicode-bidi: embed !important;
+          overflow-wrap: break-word;
+          word-wrap: break-word;
+          overflow: hidden;
+        }
+
+        .contract-content-wysiwyg * {
+          direction: ltr !important;
+          unicode-bidi: embed !important;
+        }
+
+        .contract-content-wysiwyg:focus {
+          outline: 2px solid #d3bb73;
+          outline-offset: 4px;
+        }
+
+        .contract-content-wysiwyg p {
+          margin: 0 0 1em 0;
+          page-break-inside: avoid;
+          break-inside: avoid;
+        }
+
+        .contract-content-wysiwyg h1,
+        .contract-content-wysiwyg h2,
+        .contract-content-wysiwyg h3 {
+          margin-top: 1.5em;
+          margin-bottom: 0.75em;
+          font-weight: bold;
+          page-break-after: avoid;
+          break-after: avoid;
+          page-break-inside: avoid;
+          break-inside: avoid;
+        }
+
+        .contract-content-wysiwyg h1 {
+          font-size: 18pt;
+          text-align: center;
+        }
+
+        .contract-content-wysiwyg h2 {
+          font-size: 16pt;
+        }
+
+        .contract-content-wysiwyg h3 {
+          font-size: 14pt;
+        }
+
+        .contract-content-wysiwyg strong,
+        .contract-content-wysiwyg b {
+          font-weight: bold;
+        }
+
+        .contract-content-wysiwyg em,
+        .contract-content-wysiwyg i {
+          font-style: italic;
+        }
+
+        .contract-content-wysiwyg u {
+          text-decoration: underline;
+        }
+
+        .contract-content-wysiwyg ul,
+        .contract-content-wysiwyg ol {
+          margin: 1em 0;
+          padding-left: 2em;
+          list-style-position: outside;
+        }
+
+        .contract-content-wysiwyg ul {
+          list-style-type: disc;
+        }
+
+        .contract-content-wysiwyg ol {
+          list-style-type: decimal;
+        }
+
+        .contract-content-wysiwyg li {
+          margin: 0.1em 0;
+          display: list-item;
+        }
+
+        .contract-content-wysiwyg img {
+          max-width: 100%;
+          height: auto;
+          display: block;
+          margin: 10px auto;
+        }
+
+        .contract-content-wysiwyg div[data-page-break='true'] {
+          page-break-after: always;
+          break-after: page;
+          margin: 20px 0;
+        }
+
+        .contract-content-wysiwyg div[data-page-break='true'] hr {
+          border: 1px dashed #d3bb73;
+          margin: 20px 0;
+        }
+
+        @media print {
+          .contract-content-wysiwyg div[data-page-break='true'] hr {
+            display: none;
+          }
+
+          .contract-content-wysiwyg div[data-page-break='true'] {
+            margin: 0;
+            height: 0;
+          }
+        }
+
+        .contract-footer-wysiwyg {
+          margin-top: auto;
+          width: 100%;
+          min-height: 15mm;
+          display: flex;
+          justify-content: flex-end;
+          padding: 10px 0;
+          background: white;
+          pointer-events: none;
+          flex-shrink: 0;
+          position: relative;
+        }
+
+        .page-number-footer {
+          position: absolute;
+          top: -20px;
+          right: 0;
+          font-size: 10pt;
+          color: #666;
+          font-weight: 500;
+        }
+
+        .contract-footer-wysiwyg::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 1px;
+          background: #d3bb73;
+        }
+
+        .footer-logo-wysiwyg {
+          display: none;
+        }
+
+        .footer-info-wysiwyg {
+          text-align: right;
+          font-size: 10pt;
+          color: #333;
+          line-height: 1.2;
+        }
+
+        .footer-info-wysiwyg p {
+          margin: 4px 0;
+          color: #333;
+        }
+      `}</style> */}
+    </div>
+  );
+}

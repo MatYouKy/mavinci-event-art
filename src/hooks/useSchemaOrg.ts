@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 
 interface SchemaOrgGlobal {
   organization_name: string;
@@ -52,7 +52,12 @@ export function useSchemaOrg(options: SchemaOrgOptions = {}) {
   const loadData = async () => {
     const [globalRes, placesRes] = await Promise.all([
       supabase.from('schema_org_global').select('*').single(),
-      supabase.from('schema_org_places').select('*').eq('is_global', true).eq('is_active', true).order('display_order'),
+      supabase
+        .from('schema_org_places')
+        .select('*')
+        .eq('is_global', true)
+        .eq('is_active', true)
+        .order('display_order'),
     ]);
 
     if (globalRes.data) setGlobalConfig(globalRes.data);
@@ -71,7 +76,7 @@ export function useSchemaOrg(options: SchemaOrgOptions = {}) {
       globalConfig.twitter_url,
     ].filter(Boolean);
 
-    const areaServed = places.map(place => ({
+    const areaServed = places.map((place) => ({
       '@type': 'Place',
       name: place.name,
       address: {
@@ -132,12 +137,14 @@ export function useSchemaOrg(options: SchemaOrgOptions = {}) {
     schemaOrg: generateSchemaOrg(),
     breadcrumb: generateBreadcrumb(),
     areaServed: places,
-    sameAs: globalConfig ? [
-      globalConfig.facebook_url,
-      globalConfig.instagram_url,
-      globalConfig.linkedin_url,
-      globalConfig.youtube_url,
-      globalConfig.twitter_url,
-    ].filter(Boolean) : [],
+    sameAs: globalConfig
+      ? [
+          globalConfig.facebook_url,
+          globalConfig.instagram_url,
+          globalConfig.linkedin_url,
+          globalConfig.youtube_url,
+          globalConfig.twitter_url,
+        ].filter(Boolean)
+      : [],
   };
 }

@@ -1,8 +1,18 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Upload, Trash2, Star, StarOff, Loader2, Image as ImageIcon, ChevronLeft, ChevronRight } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import {
+  X,
+  Upload,
+  Trash2,
+  Star,
+  StarOff,
+  Loader2,
+  Image as ImageIcon,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react';
+import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
@@ -93,7 +103,7 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
         const fileName = `${vehicleId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
 
         setUploadingFiles((prev) =>
-          prev.map((item) => (item.id === uploadingItem.id ? { ...item, progress: 30 } : item))
+          prev.map((item) => (item.id === uploadingItem.id ? { ...item, progress: 30 } : item)),
         );
 
         const { error: uploadError } = await supabase.storage
@@ -103,12 +113,12 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
         if (uploadError) throw uploadError;
 
         setUploadingFiles((prev) =>
-          prev.map((item) => (item.id === uploadingItem.id ? { ...item, progress: 60 } : item))
+          prev.map((item) => (item.id === uploadingItem.id ? { ...item, progress: 60 } : item)),
         );
 
-        const { data: { publicUrl } } = supabase.storage
-          .from('vehicle-images')
-          .getPublicUrl(fileName);
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from('vehicle-images').getPublicUrl(fileName);
 
         const { error: dbError } = await supabase.from('vehicle_images').insert({
           vehicle_id: vehicleId,
@@ -122,7 +132,7 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
         if (dbError) throw dbError;
 
         setUploadingFiles((prev) =>
-          prev.map((item) => (item.id === uploadingItem.id ? { ...item, progress: 100 } : item))
+          prev.map((item) => (item.id === uploadingItem.id ? { ...item, progress: 100 } : item)),
         );
 
         setTimeout(() => {
@@ -236,16 +246,11 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
 
   const handleUpdateTitle = async (imageId: string, title: string) => {
     try {
-      const { error } = await supabase
-        .from('vehicle_images')
-        .update({ title })
-        .eq('id', imageId);
+      const { error } = await supabase.from('vehicle_images').update({ title }).eq('id', imageId);
 
       if (error) throw error;
 
-      setImages((prev) =>
-        prev.map((img) => (img.id === imageId ? { ...img, title } : img))
-      );
+      setImages((prev) => prev.map((img) => (img.id === imageId ? { ...img, title } : img)));
       showSnackbar('Tytuł został zaktualizowany', 'success');
     } catch (error: any) {
       console.error('Error updating title:', error);
@@ -266,8 +271,8 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#d3bb73]"></div>
+      <div className="flex h-64 items-center justify-center">
+        <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-[#d3bb73]"></div>
       </div>
     );
   }
@@ -278,7 +283,7 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
       {canManage && (
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-semibold text-[#e5e4e2]">Galeria zdjęć</h2>
-          <label className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90 transition-colors cursor-pointer">
+          <label className="flex cursor-pointer items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90">
             <input
               type="file"
               accept="image/*"
@@ -289,12 +294,12 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
             />
             {uploadingFiles.length > 0 ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" />
                 Przesyłanie...
               </>
             ) : (
               <>
-                <Upload className="w-4 h-4" />
+                <Upload className="h-4 w-4" />
                 Dodaj zdjęcia
               </>
             )}
@@ -308,17 +313,19 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
-        className={`relative transition-all rounded-lg ${
-          isDragging ? 'ring-2 ring-[#d3bb73] ring-offset-2 ring-offset-[#0f1119] shadow-[0_0_20px_rgba(211,187,115,0.3)]' : ''
+        className={`relative rounded-lg transition-all ${
+          isDragging
+            ? 'shadow-[0_0_20px_rgba(211,187,115,0.3)] ring-2 ring-[#d3bb73] ring-offset-2 ring-offset-[#0f1119]'
+            : ''
         }`}
       >
         {/* Drag overlay */}
         {isDragging && canManage && (
           <>
-            <div className="absolute inset-0 border-2 border-dashed border-[#d3bb73] rounded-lg pointer-events-none z-10 bg-[#d3bb73]/5" />
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-[#d3bb73] text-[#1c1f33] px-6 py-3 rounded-lg shadow-xl z-20 pointer-events-none animate-pulse">
+            <div className="pointer-events-none absolute inset-0 z-10 rounded-lg border-2 border-dashed border-[#d3bb73] bg-[#d3bb73]/5" />
+            <div className="pointer-events-none absolute left-1/2 top-4 z-20 -translate-x-1/2 animate-pulse rounded-lg bg-[#d3bb73] px-6 py-3 text-[#1c1f33] shadow-xl">
               <div className="flex items-center gap-2">
-                <Upload className="w-5 h-5" />
+                <Upload className="h-5 w-5" />
                 <span className="font-semibold">Upuść zdjęcia tutaj</span>
               </div>
             </div>
@@ -326,8 +333,8 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
         )}
 
         {images.length === 0 && uploadingFiles.length === 0 ? (
-          <div className="bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 p-12 text-center">
-            <ImageIcon className="w-16 h-16 text-[#e5e4e2]/20 mx-auto mb-4" />
+          <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-12 text-center">
+            <ImageIcon className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
             <p className="text-[#e5e4e2]/60">Brak zdjęć</p>
             {canManage && (
               <div className="mt-4 space-y-2">
@@ -335,45 +342,45 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
                   Kliknij "Dodaj zdjęcia" lub przeciągnij pliki tutaj
                 </p>
                 <div className="flex items-center justify-center gap-2 text-xs text-[#e5e4e2]/30">
-                  <Upload className="w-4 h-4" />
+                  <Upload className="h-4 w-4" />
                   <span>Obsługuje przeciąganie i upuszczanie</span>
                 </div>
               </div>
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
             {/* Existing images */}
             {images.map((image) => (
               <div
                 key={image.id}
-                className="relative group bg-[#1c1f33] rounded-lg border border-[#d3bb73]/10 overflow-hidden cursor-pointer hover:border-[#d3bb73]/30 transition-colors"
+                className="group relative cursor-pointer overflow-hidden rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] transition-colors hover:border-[#d3bb73]/30"
                 onClick={() => setSelectedImage(image)}
               >
-                <div className="aspect-square relative">
+                <div className="relative aspect-square">
                   <img
                     src={image.image_url}
                     alt={image.title || 'Vehicle image'}
-                    className="w-full h-full object-cover"
+                    className="h-full w-full object-cover"
                   />
                   {image.is_primary && (
-                    <div className="absolute top-2 left-2 bg-[#d3bb73] text-[#1c1f33] px-2 py-1 rounded text-xs font-semibold flex items-center gap-1">
-                      <Star className="w-3 h-3 fill-current" />
+                    <div className="absolute left-2 top-2 flex items-center gap-1 rounded bg-[#d3bb73] px-2 py-1 text-xs font-semibold text-[#1c1f33]">
+                      <Star className="h-3 w-3 fill-current" />
                       Główne
                     </div>
                   )}
                   {canManage && (
-                    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                    <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                       {!image.is_primary && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             handleSetPrimary(image.id);
                           }}
-                          className="bg-[#1c1f33]/90 hover:bg-[#d3bb73] text-[#e5e4e2] hover:text-[#1c1f33] p-2 rounded transition-colors"
+                          className="rounded bg-[#1c1f33]/90 p-2 text-[#e5e4e2] transition-colors hover:bg-[#d3bb73] hover:text-[#1c1f33]"
                           title="Ustaw jako główne"
                         >
-                          <StarOff className="w-4 h-4" />
+                          <StarOff className="h-4 w-4" />
                         </button>
                       )}
                       <button
@@ -381,10 +388,10 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
                           e.stopPropagation();
                           handleDelete(image);
                         }}
-                        className="bg-[#1c1f33]/90 hover:bg-red-500 text-[#e5e4e2] p-2 rounded transition-colors"
+                        className="rounded bg-[#1c1f33]/90 p-2 text-[#e5e4e2] transition-colors hover:bg-red-500"
                         title="Usuń"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
                   )}
@@ -396,17 +403,17 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
             {uploadingFiles.map((uploadingFile) => (
               <div
                 key={uploadingFile.id}
-                className="relative bg-[#1c1f33] rounded-lg border border-[#d3bb73]/30 overflow-hidden"
+                className="relative overflow-hidden rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33]"
               >
-                <div className="aspect-square relative">
+                <div className="relative aspect-square">
                   <img
                     src={uploadingFile.preview}
                     alt="Uploading..."
-                    className="w-full h-full object-cover opacity-50"
+                    className="h-full w-full object-cover opacity-50"
                   />
                   <div className="absolute inset-0 flex items-center justify-center bg-black/40">
                     <div className="text-center">
-                      <Loader2 className="w-8 h-8 text-[#d3bb73] animate-spin mx-auto mb-2" />
+                      <Loader2 className="mx-auto mb-2 h-8 w-8 animate-spin text-[#d3bb73]" />
                       <p className="text-xs text-[#e5e4e2]">{uploadingFile.progress}%</p>
                     </div>
                   </div>
@@ -420,20 +427,20 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
       {/* Enhanced Lightbox modal */}
       {selectedImage && (
         <div
-          className="fixed inset-0 bg-black/95 flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 p-4"
           onClick={() => setSelectedImage(null)}
         >
           <div
-            className="relative max-w-6xl max-h-[90vh] w-full flex items-center justify-center"
+            className="relative flex max-h-[90vh] w-full max-w-6xl items-center justify-center"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Close button */}
             <button
               onClick={() => setSelectedImage(null)}
-              className="absolute top-4 right-4 text-white hover:text-[#d3bb73] transition-colors z-10 bg-black/50 rounded-full p-2"
+              className="absolute right-4 top-4 z-10 rounded-full bg-black/50 p-2 text-white transition-colors hover:text-[#d3bb73]"
               title="Zamknij"
             >
-              <X className="w-6 h-6" />
+              <X className="h-6 w-6" />
             </button>
 
             {/* Navigation arrows */}
@@ -441,49 +448,49 @@ export default function VehicleGallery({ vehicleId, canManage }: VehicleGalleryP
               <>
                 <button
                   onClick={() => navigateImage('prev')}
-                  className="absolute left-4 text-white hover:text-[#d3bb73] transition-colors z-10 bg-black/50 rounded-full p-3"
+                  className="absolute left-4 z-10 rounded-full bg-black/50 p-3 text-white transition-colors hover:text-[#d3bb73]"
                   title="Poprzednie"
                 >
-                  <ChevronLeft className="w-8 h-8" />
+                  <ChevronLeft className="h-8 w-8" />
                 </button>
                 <button
                   onClick={() => navigateImage('next')}
-                  className="absolute right-4 text-white hover:text-[#d3bb73] transition-colors z-10 bg-black/50 rounded-full p-3"
+                  className="absolute right-4 z-10 rounded-full bg-black/50 p-3 text-white transition-colors hover:text-[#d3bb73]"
                   title="Następne"
                 >
-                  <ChevronRight className="w-8 h-8" />
+                  <ChevronRight className="h-8 w-8" />
                 </button>
               </>
             )}
 
             {/* Image */}
-            <div className="relative max-w-full max-h-[80vh]">
+            <div className="relative max-h-[80vh] max-w-full">
               <img
                 src={selectedImage.image_url}
                 alt={selectedImage.title || 'Vehicle image'}
-                className="max-w-full max-h-[80vh] object-contain rounded-lg"
+                className="max-h-[80vh] max-w-full rounded-lg object-contain"
               />
             </div>
 
             {/* Action buttons */}
             {canManage && (
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 bg-black/70 backdrop-blur-sm rounded-full p-2">
+              <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-2 rounded-full bg-black/70 p-2 backdrop-blur-sm">
                 {!selectedImage.is_primary && (
                   <button
                     onClick={() => handleSetPrimary(selectedImage.id)}
-                    className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-full hover:bg-[#d3bb73]/90 transition-colors"
+                    className="flex items-center gap-2 rounded-full bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
                     title="Ustaw jako główne"
                   >
-                    <Star className="w-4 h-4" />
+                    <Star className="h-4 w-4" />
                     <span className="hidden sm:inline">Ustaw jako główne</span>
                   </button>
                 )}
                 <button
                   onClick={() => handleDelete(selectedImage)}
-                  className="flex items-center gap-2 bg-red-500/90 text-white p-2 rounded-full hover:bg-red-600 transition-colors"
+                  className="flex items-center gap-2 rounded-full bg-red-500/90 p-2 text-white transition-colors hover:bg-red-600"
                   title="Usuń"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Trash2 className="h-4 w-4" />
                 </button>
               </div>
             )}

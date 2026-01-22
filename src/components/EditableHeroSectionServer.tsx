@@ -1,5 +1,4 @@
-import { getSupabaseClient } from '@/lib/supabase';
-
+import { cookies } from 'next/headers';
 async function getHeroImageServer(section: string, pageSlug: string, citySlug?: string) {
   noStore();
 
@@ -18,7 +17,7 @@ async function getHeroImageServer(section: string, pageSlug: string, citySlug?: 
   const pageTableName = dedicatedTables[cleanSection] || 'service_hero_images';
   const isUniversalTable = pageTableName === 'service_hero_images';
 
-  const supabase = getSupabaseClient();
+  const supabase = createSupabaseServerClient(cookies());
 
   let query = supabase.from(pageTableName).select('*').eq('is_active', true);
 
@@ -40,10 +39,10 @@ async function getHeroImageServer(section: string, pageSlug: string, citySlug?: 
 
   if (cleanSection === 'konferencje' && citySlug) {
     const { data: city } = await supabase
-    .from('conferences_cities')
-    .select('name')
-    .eq('slug', citySlug)
-    .maybeSingle();
+      .from('conferences_cities')
+      .select('name')
+      .eq('slug', citySlug)
+      .maybeSingle();
     // jeżeli w title nie ma miasta, to doklej
     if (!baseData?.title?.toLowerCase().includes(city?.name?.toLowerCase())) {
       baseData.title = `${baseData?.title} ${city?.name}`;
@@ -112,8 +111,16 @@ function getHeroDefaults(section: string) {
 
 import { unstable_noStore as noStore } from 'next/cache';
 import EditableHeroWithMetadata from './EditableHeroWithMetadata'; // server-only plik
+import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 
-export default async function EditableHeroSectionServer({ section, pageSlug, initialImageUrl, initialTitle, initialDescription, whiteWordsCount }) {
+export default async function EditableHeroSectionServer({
+  section,
+  pageSlug,
+  initialImageUrl,
+  initialTitle,
+  initialDescription,
+  whiteWordsCount,
+}) {
   noStore();
   const heroData = await getHeroImageServer(section, pageSlug);
 

@@ -1,5 +1,5 @@
 import { createApi, fakeBaseQuery } from '@reduxjs/toolkit/query/react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 
 export interface CalendarEvent {
   id: string;
@@ -46,9 +46,7 @@ export const calendarApi = createApi({
 
           // Fetch events and meetings directly - RLS will handle security
           const [eventsResult, meetingsResult] = await Promise.all([
-            supabase
-              .from('events')
-              .select(`
+            supabase.from('events').select(`
                 id,
                 name,
                 description,
@@ -75,7 +73,8 @@ export const calendarApi = createApi({
               `),
             supabase
               .from('meetings')
-              .select(`
+              .select(
+                `
                 id,
                 title,
                 notes,
@@ -89,8 +88,9 @@ export const calendarApi = createApi({
                   employee_id,
                   employees:employee_id(id, name, surname)
                 )
-              `)
-              .is('deleted_at', null)
+              `,
+              )
+              .is('deleted_at', null),
           ]);
 
           if (eventsResult.error) {
@@ -112,10 +112,12 @@ export const calendarApi = createApi({
             color: event.event_categories?.color,
             location: event.location || '',
             organization: event.organizations ? { name: event.organizations.name } : null,
-            category: event.event_categories ? {
-              name: event.event_categories.name,
-              color: event.event_categories.color
-            } : null,
+            category: event.event_categories
+              ? {
+                  name: event.event_categories.name,
+                  color: event.event_categories.color,
+                }
+              : null,
             is_meeting: false,
             assigned_employees: [],
           }));
@@ -135,11 +137,14 @@ export const calendarApi = createApi({
                 category: { name: 'Spotkanie', color: '#d3bb73' },
                 is_meeting: true,
                 meeting_data: meeting,
-                assigned_employees: meeting.meeting_participants?.map((p: any) => ({
-                  id: p.employees?.id,
-                  name: p.employees?.name,
-                  surname: p.employees?.surname
-                })).filter((e: any) => e.id) || [],
+                assigned_employees:
+                  meeting.meeting_participants
+                    ?.map((p: any) => ({
+                      id: p.employees?.id,
+                      name: p.employees?.name,
+                      surname: p.employees?.surname,
+                    }))
+                    .filter((e: any) => e.id) || [],
               }));
 
           const allEvents = [...events, ...meetings];
@@ -148,13 +153,13 @@ export const calendarApi = createApi({
 
           if (params.categories && params.categories.length > 0) {
             filteredEvents = filteredEvents.filter(
-              (event) => event.category && params.categories!.includes(event.category.name)
+              (event) => event.category && params.categories!.includes(event.category.name),
             );
           }
 
           if (params.clients && params.clients.length > 0) {
             filteredEvents = filteredEvents.filter(
-              (event) => event.organization && params.clients!.includes(event.organization.name)
+              (event) => event.organization && params.clients!.includes(event.organization.name),
             );
           }
 
@@ -162,7 +167,7 @@ export const calendarApi = createApi({
             filteredEvents = filteredEvents.filter((event) => {
               if (event.is_meeting && event.meeting_data?.meeting_participants) {
                 return event.meeting_data.meeting_participants.some(
-                  (p: any) => p.employee_id && params.employees!.includes(p.employee_id)
+                  (p: any) => p.employee_id && params.employees!.includes(p.employee_id),
                 );
               }
               return event.assigned_employees?.some((emp) => params.employees!.includes(emp.id));
@@ -187,16 +192,13 @@ export const calendarApi = createApi({
               .eq('is_active', true)
               .order('name'),
 
-            supabase
-              .from('contacts')
-              .select('id, name, type')
-              .order('name'),
+            supabase.from('contacts').select('id, name, type').order('name'),
 
             supabase
               .from('employees')
               .select('id, name, surname')
               .eq('is_active', true)
-              .order('name')
+              .order('name'),
           ]);
 
           return {
@@ -213,27 +215,26 @@ export const calendarApi = createApi({
       providesTags: ['CalendarFilters'],
     }),
 
-    createMeeting: builder.mutation<any, {
-      title: string;
-      datetime_start: string;
-      datetime_end?: string | null;
-      is_all_day?: boolean;
-      color?: string;
-      notes?: string | null;
-      location_id?: string | null;
-      location_text?: string | null;
-      related_event_ids?: string[] | null;
-      participants?: Array<{ employee_id?: string; contact_id?: string }>;
-    }>({
+    createMeeting: builder.mutation<
+      any,
+      {
+        title: string;
+        datetime_start: string;
+        datetime_end?: string | null;
+        is_all_day?: boolean;
+        color?: string;
+        notes?: string | null;
+        location_id?: string | null;
+        location_text?: string | null;
+        related_event_ids?: string[] | null;
+        participants?: Array<{ employee_id?: string; contact_id?: string }>;
+      }
+    >({
       async queryFn(meetingData) {
         try {
           const { participants, ...meeting } = meetingData;
 
-          const { data, error } = await supabase
-            .from('meetings')
-            .insert(meeting)
-            .select()
-            .single();
+          const { data, error } = await supabase.from('meetings').insert(meeting).select().single();
 
           if (error) return { error: { status: 'CUSTOM_ERROR', error: error.message } };
 
@@ -261,23 +262,23 @@ export const calendarApi = createApi({
       invalidatesTags: ['CalendarEvents', 'Meetings'],
     }),
 
-    updateMeeting: builder.mutation<any, {
-      id: string;
-      title?: string;
-      datetime_start?: string;
-      datetime_end?: string;
-      is_all_day?: boolean;
-      color?: string;
-      notes?: string;
-      location_id?: string;
-      location_text?: string;
-    }>({
+    updateMeeting: builder.mutation<
+      any,
+      {
+        id: string;
+        title?: string;
+        datetime_start?: string;
+        datetime_end?: string;
+        is_all_day?: boolean;
+        color?: string;
+        notes?: string;
+        location_id?: string;
+        location_text?: string;
+      }
+    >({
       async queryFn({ id, ...updates }) {
         try {
-          const { error } = await supabase
-            .from('meetings')
-            .update(updates)
-            .eq('id', id);
+          const { error } = await supabase.from('meetings').update(updates).eq('id', id);
 
           if (error) return { error: { status: 'CUSTOM_ERROR', error: error.message } };
 

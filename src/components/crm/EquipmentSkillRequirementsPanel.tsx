@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Plus, Trash2, Brain, AlertCircle, User as UserIcon } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 import TaskAssigneeAvatars from '@/components/crm/TaskAssigneeAvatars';
 
 interface SkillRequirement {
@@ -37,7 +37,10 @@ interface EquipmentSkillRequirementsPanelProps {
   canEdit: boolean;
 }
 
-export default function EquipmentSkillRequirementsPanel({ equipmentId, canEdit }: EquipmentSkillRequirementsPanelProps) {
+export default function EquipmentSkillRequirementsPanel({
+  equipmentId,
+  canEdit,
+}: EquipmentSkillRequirementsPanelProps) {
   const [requirements, setRequirements] = useState<SkillRequirement[]>([]);
   const [availableSkills, setAvailableSkills] = useState<AvailableSkill[]>([]);
   const [qualifiedEmployees, setQualifiedEmployees] = useState<Record<string, any[]>>({});
@@ -50,23 +53,22 @@ export default function EquipmentSkillRequirementsPanel({ equipmentId, canEdit }
 
   const fetchData = async () => {
     setLoading(true);
-    await Promise.all([
-      fetchRequirements(),
-      fetchAvailableSkills(),
-    ]);
+    await Promise.all([fetchRequirements(), fetchAvailableSkills()]);
     setLoading(false);
   };
 
   const fetchRequirements = async () => {
     const { data, error } = await supabase
       .from('equipment_skill_requirements')
-      .select(`
+      .select(
+        `
         *,
         skill:skills(
           *,
           category:skill_categories(name, color)
         )
-      `)
+      `,
+      )
       .eq('equipment_item_id', equipmentId);
 
     if (error) {
@@ -83,14 +85,16 @@ export default function EquipmentSkillRequirementsPanel({ equipmentId, canEdit }
       const proficiencyOrder = ['basic', 'intermediate', 'advanced', 'expert'];
 
       for (const req of data) {
-        const { data: employees, error: empError} = await supabase
+        const { data: employees, error: empError } = await supabase
           .from('employee_skills')
-          .select(`
+          .select(
+            `
             employee_id,
             proficiency_level,
             years_of_experience,
             employee:employees!employee_skills_employee_id_fkey(id, name, surname, nickname, email, avatar_url, avatar_metadata)
-          `)
+          `,
+          )
           .eq('skill_id', req.skill.id);
 
         if (empError) {
@@ -100,19 +104,18 @@ export default function EquipmentSkillRequirementsPanel({ equipmentId, canEdit }
           const minLevel = req.minimum_proficiency || 'basic';
           const minIndex = proficiencyOrder.indexOf(minLevel);
 
-          const qualified = employees.filter(e => {
+          const qualified = employees.filter((e) => {
             const empIndex = proficiencyOrder.indexOf(e.proficiency_level);
             const isQualified = empIndex >= minIndex;
 
             return isQualified;
           });
 
-          employeesBySkill[req.skill.id] = qualified.map(e => ({
+          employeesBySkill[req.skill.id] = qualified.map((e) => ({
             ...e.employee,
             proficiency_level: e.proficiency_level,
             years_of_experience: e.years_of_experience,
           }));
-
         }
       }
 
@@ -123,10 +126,12 @@ export default function EquipmentSkillRequirementsPanel({ equipmentId, canEdit }
   const fetchAvailableSkills = async () => {
     const { data, error } = await supabase
       .from('skills')
-      .select(`
+      .select(
+        `
         *,
         category:skill_categories(id, name, color)
-      `)
+      `,
+      )
       .eq('is_active', true)
       .order('name');
 
@@ -136,12 +141,12 @@ export default function EquipmentSkillRequirementsPanel({ equipmentId, canEdit }
   };
 
   const handleAddRequirement = async (formData: any) => {
-    const { error } = await supabase
-      .from('equipment_skill_requirements')
-      .insert([{
+    const { error } = await supabase.from('equipment_skill_requirements').insert([
+      {
         equipment_item_id: equipmentId,
         ...formData,
-      }]);
+      },
+    ]);
 
     if (error) {
       console.error('Error adding skill requirement:', error);
@@ -156,10 +161,7 @@ export default function EquipmentSkillRequirementsPanel({ equipmentId, canEdit }
   const handleDeleteRequirement = async (id: string) => {
     if (!confirm('Czy na pewno chcesz usunąć to wymaganie?')) return;
 
-    const { error } = await supabase
-      .from('equipment_skill_requirements')
-      .delete()
-      .eq('id', id);
+    const { error } = await supabase.from('equipment_skill_requirements').delete().eq('id', id);
 
     if (error) {
       console.error('Error deleting requirement:', error);
@@ -191,44 +193,40 @@ export default function EquipmentSkillRequirementsPanel({ equipmentId, canEdit }
   };
 
   if (loading) {
-    return (
-      <div className="p-6 text-center text-[#e5e4e2]/60">
-        Ładowanie...
-      </div>
-    );
+    return <div className="p-6 text-center text-[#e5e4e2]/60">Ładowanie...</div>;
   }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Brain className="w-5 h-5 text-[#d3bb73]" />
+          <Brain className="h-5 w-5 text-[#d3bb73]" />
           <h3 className="text-lg font-light text-[#e5e4e2]">Wymagane umiejętności</h3>
         </div>
         {canEdit && (
           <button
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 px-3 py-1.5 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors text-sm"
+            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-3 py-1.5 text-sm text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="h-4 w-4" />
             Dodaj wymaganie
           </button>
         )}
       </div>
 
       {requirements.length > 0 && (
-        <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-3 flex items-start gap-2">
-          <AlertCircle className="w-5 h-5 text-orange-400 flex-shrink-0 mt-0.5" />
+        <div className="flex items-start gap-2 rounded-lg border border-orange-500/30 bg-orange-500/10 p-3">
+          <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-orange-400" />
           <div className="text-sm text-orange-200">
-            <strong>Uwaga!</strong> Ten sprzęt wymaga specjalnych umiejętności. Upewnij się, że w zespole eventu
-            znajduje się osoba z odpowiednimi kwalifikacjami.
+            <strong>Uwaga!</strong> Ten sprzęt wymaga specjalnych umiejętności. Upewnij się, że w
+            zespole eventu znajduje się osoba z odpowiednimi kwalifikacjami.
           </div>
         </div>
       )}
 
       <div className="grid gap-3">
         {requirements.length === 0 ? (
-          <div className="text-center py-8 text-[#e5e4e2]/40 bg-[#252842] border border-[#d3bb73]/10 rounded-lg">
+          <div className="rounded-lg border border-[#d3bb73]/10 bg-[#252842] py-8 text-center text-[#e5e4e2]/40">
             Brak wymaganych umiejętności. Ten sprzęt może obsłużyć każdy.
           </div>
         ) : (
@@ -236,20 +234,15 @@ export default function EquipmentSkillRequirementsPanel({ equipmentId, canEdit }
             const employees = qualifiedEmployees[req.skill.id] || [];
 
             return (
-              <div
-                key={req.id}
-                className="bg-[#252842] border border-[#d3bb73]/10 rounded-lg p-4"
-              >
-                <div className="flex items-start justify-between mb-3">
+              <div key={req.id} className="rounded-lg border border-[#d3bb73]/10 bg-[#252842] p-4">
+                <div className="mb-3 flex items-start justify-between">
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Brain className="w-4 h-4 text-[#d3bb73]" />
-                      <h4 className="font-medium text-[#e5e4e2]">
-                        {req.skill.name}
-                      </h4>
+                    <div className="mb-2 flex items-center gap-2">
+                      <Brain className="h-4 w-4 text-[#d3bb73]" />
+                      <h4 className="font-medium text-[#e5e4e2]">{req.skill.name}</h4>
                       {req.skill.category && (
                         <span
-                          className="text-xs px-2 py-0.5 rounded-full"
+                          className="rounded-full px-2 py-0.5 text-xs"
                           style={{
                             backgroundColor: `${req.skill.category.color}20`,
                             color: req.skill.category.color || '#d3bb73',
@@ -260,30 +253,30 @@ export default function EquipmentSkillRequirementsPanel({ equipmentId, canEdit }
                         </span>
                       )}
                       {req.is_required && (
-                        <span className="text-xs px-2 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30">
+                        <span className="rounded border border-red-500/30 bg-red-500/20 px-2 py-0.5 text-xs text-red-400">
                           Wymagane
                         </span>
                       )}
                     </div>
 
-                    <div className="flex items-center gap-2 text-sm mb-2">
+                    <div className="mb-2 flex items-center gap-2 text-sm">
                       <span className="text-[#e5e4e2]/60">Minimalny poziom:</span>
-                      <span className={`px-2 py-0.5 rounded border text-xs ${getProficiencyColor(req.minimum_proficiency)}`}>
+                      <span
+                        className={`rounded border px-2 py-0.5 text-xs ${getProficiencyColor(req.minimum_proficiency)}`}
+                      >
                         {getProficiencyLabel(req.minimum_proficiency)}
                       </span>
                     </div>
 
                     {req.notes && (
-                      <p className="text-sm text-[#e5e4e2]/40 italic mb-2">
-                        {req.notes}
-                      </p>
+                      <p className="mb-2 text-sm italic text-[#e5e4e2]/40">{req.notes}</p>
                     )}
 
                     {/* Lista pracowników z tą umiejętnością */}
                     {employees.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-[#d3bb73]/10">
-                        <div className="flex items-center gap-2 mb-2">
-                          <UserIcon className="w-4 h-4 text-[#d3bb73]" />
+                      <div className="mt-3 border-t border-[#d3bb73]/10 pt-3">
+                        <div className="mb-2 flex items-center gap-2">
+                          <UserIcon className="h-4 w-4 text-[#d3bb73]" />
                           <span className="text-sm text-[#e5e4e2]/60">
                             Pracownicy z tą umiejętnością ({employees.length})
                           </span>
@@ -304,9 +297,9 @@ export default function EquipmentSkillRequirementsPanel({ equipmentId, canEdit }
                     )}
 
                     {employees.length === 0 && (
-                      <div className="mt-3 pt-3 border-t border-[#d3bb73]/10">
+                      <div className="mt-3 border-t border-[#d3bb73]/10 pt-3">
                         <div className="flex items-center gap-2 text-sm text-orange-400">
-                          <AlertCircle className="w-4 h-4" />
+                          <AlertCircle className="h-4 w-4" />
                           <span>Brak pracowników z tą umiejętnością!</span>
                         </div>
                       </div>
@@ -316,9 +309,9 @@ export default function EquipmentSkillRequirementsPanel({ equipmentId, canEdit }
                   {canEdit && (
                     <button
                       onClick={() => handleDeleteRequirement(req.id)}
-                      className="p-2 hover:bg-[#1c1f33] rounded-lg transition-colors text-red-400"
+                      className="rounded-lg p-2 text-red-400 transition-colors hover:bg-[#1c1f33]"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="h-4 w-4" />
                     </button>
                   )}
                 </div>
@@ -363,7 +356,7 @@ function AddSkillRequirementModal({
 
   // Filtruj już dodane umiejętności
   const availableSkillsFiltered = availableSkills.filter(
-    skill => !existingRequirements.some(req => req.skill.id === skill.id)
+    (skill) => !existingRequirements.some((req) => req.skill.id === skill.id),
   );
 
   const handleCreateNewSkill = async () => {
@@ -376,11 +369,13 @@ function AddSkillRequirementModal({
     try {
       const { data, error } = await supabase
         .from('skills')
-        .insert([{
-          name: newSkillName.trim(),
-          description: 'Dodane przez użytkownika',
-          is_active: true,
-        }])
+        .insert([
+          {
+            name: newSkillName.trim(),
+            description: 'Dodane przez użytkownika',
+            is_active: true,
+          },
+        ])
         .select()
         .single();
 
@@ -417,12 +412,12 @@ function AddSkillRequirementModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6 max-w-lg w-full">
-        <h3 className="text-xl font-light text-[#e5e4e2] mb-4">Dodaj wymaganie umiejętności</h3>
+      <div className="relative w-full max-w-lg rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+        <h3 className="mb-4 text-xl font-light text-[#e5e4e2]">Dodaj wymaganie umiejętności</h3>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-1">Umiejętność *</label>
+            <label className="mb-1 block text-sm text-[#e5e4e2]/60">Umiejętność *</label>
             {!showNewSkillForm ? (
               <>
                 <select
@@ -435,7 +430,7 @@ function AddSkillRequirementModal({
                       setFormData({ ...formData, skill_id: e.target.value });
                     }
                   }}
-                  className="w-full px-3 py-2 bg-[#252842] border border-[#d3bb73]/10 rounded-lg text-[#e5e4e2]"
+                  className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#252842] px-3 py-2 text-[#e5e4e2]"
                 >
                   <option value="">Wybierz...</option>
                   {availableSkillsFiltered.map((skill) => (
@@ -443,7 +438,9 @@ function AddSkillRequirementModal({
                       {skill.name} {skill.category && `(${skill.category.name})`}
                     </option>
                   ))}
-                  <option value="__new__" className="text-[#d3bb73] font-medium">+ Dodaj nową umiejętność</option>
+                  <option value="__new__" className="font-medium text-[#d3bb73]">
+                    + Dodaj nową umiejętność
+                  </option>
                 </select>
               </>
             ) : (
@@ -454,14 +451,14 @@ function AddSkillRequirementModal({
                     value={newSkillName}
                     onChange={(e) => setNewSkillName(e.target.value)}
                     placeholder="Nazwa nowej umiejętności..."
-                    className="flex-1 px-3 py-2 bg-[#252842] border border-[#d3bb73]/10 rounded-lg text-[#e5e4e2]"
+                    className="flex-1 rounded-lg border border-[#d3bb73]/10 bg-[#252842] px-3 py-2 text-[#e5e4e2]"
                     autoFocus
                   />
                   <button
                     type="button"
                     onClick={handleCreateNewSkill}
                     disabled={isCreatingSkill || !newSkillName.trim()}
-                    className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+                    className="rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
                   >
                     {isCreatingSkill ? 'Dodawanie...' : 'Dodaj'}
                   </button>
@@ -471,23 +468,27 @@ function AddSkillRequirementModal({
                       setShowNewSkillForm(false);
                       setNewSkillName('');
                     }}
-                    className="px-4 py-2 bg-[#252842] text-[#e5e4e2] rounded-lg hover:bg-[#2a2f4a] transition-colors"
+                    className="rounded-lg bg-[#252842] px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#2a2f4a]"
                   >
                     Anuluj
                   </button>
                 </div>
-                <p className="text-xs text-[#e5e4e2]/40">Nowa umiejętność będzie dostępna dla wszystkich pracowników i sprzętu</p>
+                <p className="text-xs text-[#e5e4e2]/40">
+                  Nowa umiejętność będzie dostępna dla wszystkich pracowników i sprzętu
+                </p>
               </div>
             )}
           </div>
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-1">Minimalny poziom *</label>
+            <label className="mb-1 block text-sm text-[#e5e4e2]/60">Minimalny poziom *</label>
             <select
               required
               value={formData.minimum_proficiency}
-              onChange={(e) => setFormData({ ...formData, minimum_proficiency: e.target.value as any })}
-              className="w-full px-3 py-2 bg-[#252842] border border-[#d3bb73]/10 rounded-lg text-[#e5e4e2]"
+              onChange={(e) =>
+                setFormData({ ...formData, minimum_proficiency: e.target.value as any })
+              }
+              className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#252842] px-3 py-2 text-[#e5e4e2]"
             >
               <option value="basic">Podstawowy</option>
               <option value="intermediate">Średniozaawansowany</option>
@@ -502,36 +503,36 @@ function AddSkillRequirementModal({
               id="is_required"
               checked={formData.is_required}
               onChange={(e) => setFormData({ ...formData, is_required: e.target.checked })}
-              className="w-4 h-4 rounded border-[#d3bb73]/30 bg-[#252842] text-[#d3bb73]"
+              className="h-4 w-4 rounded border-[#d3bb73]/30 bg-[#252842] text-[#d3bb73]"
             />
-            <label htmlFor="is_required" className="text-sm text-[#e5e4e2]/60 cursor-pointer">
+            <label htmlFor="is_required" className="cursor-pointer text-sm text-[#e5e4e2]/60">
               Umiejętność wymagana (bez niej sprzęt nie może być użyty)
             </label>
           </div>
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-1">Notatki</label>
+            <label className="mb-1 block text-sm text-[#e5e4e2]/60">Notatki</label>
             <textarea
               value={formData.notes}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               rows={2}
-              className="w-full px-3 py-2 bg-[#252842] border border-[#d3bb73]/10 rounded-lg text-[#e5e4e2]"
+              className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#252842] px-3 py-2 text-[#e5e4e2]"
               placeholder="Dodatkowe wymagania lub informacje..."
             />
           </div>
 
-          <div className="flex gap-2 justify-end pt-4">
+          <div className="flex justify-end gap-2 pt-4">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 bg-[#252842] text-[#e5e4e2] rounded-lg hover:bg-[#2a2f4a] transition-colors"
+              className="rounded-lg bg-[#252842] px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#2a2f4a]"
             >
               Anuluj
             </button>
             <button
               type="submit"
               disabled={!formData.skill_id}
-              className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Dodaj
             </button>

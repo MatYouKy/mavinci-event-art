@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { X, Send, Mail, Loader } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import { useUpdateEventOfferMutation } from '@/app/crm/events/store/api/eventsApi';
+import { useUpdateEventOfferMutation } from '@/app/(crm)/crm/events/store/api/eventsApi';
 
 interface SendOfferEmailModalProps {
   offerId: string;
@@ -58,7 +58,9 @@ W razie pytań proszę o kontakt.`,
     setLoading(true);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       if (!session) {
         showSnackbar('Brak sesji użytkownika', 'error');
         setLoading(false);
@@ -71,7 +73,7 @@ W razie pytań proszę o kontakt.`,
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`,
+            Authorization: `Bearer ${session.access_token}`,
           },
           body: JSON.stringify({
             offerId,
@@ -79,7 +81,7 @@ W razie pytań proszę o kontakt.`,
             subject: formData.subject,
             message: formData.message,
           }),
-        }
+        },
       );
 
       if (!response.ok) {
@@ -94,10 +96,7 @@ W razie pytań proszę o kontakt.`,
           data: { status: 'sent' },
         }).unwrap();
       } else {
-        await supabase
-          .from('offers')
-          .update({ status: 'sent' })
-          .eq('id', offerId);
+        await supabase.from('offers').update({ status: 'sent' }).eq('id', offerId);
       }
 
       showSnackbar('Oferta wysłana przez email', 'success');
@@ -112,25 +111,25 @@ W razie pytań proszę o kontakt.`,
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-6 border-b border-[#d3bb73]/20">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
+        <div className="flex items-center justify-between border-b border-[#d3bb73]/20 p-6">
           <div className="flex items-center gap-3">
-            <Mail className="w-6 h-6 text-[#d3bb73]" />
+            <Mail className="h-6 w-6 text-[#d3bb73]" />
             <h2 className="text-xl font-light text-[#e5e4e2]">Wyślij ofertę przez email</h2>
           </div>
           <button
             onClick={onClose}
             disabled={loading}
-            className="p-2 text-[#e5e4e2]/60 hover:text-[#e5e4e2] hover:bg-[#d3bb73]/10 rounded-lg transition-colors"
+            className="rounded-lg p-2 text-[#e5e4e2]/60 transition-colors hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]"
           >
-            <X className="w-5 h-5" />
+            <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="p-6 space-y-4">
+        <div className="space-y-4 p-6">
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">
               Do (email odbiorcy) <span className="text-red-400">*</span>
             </label>
             <input
@@ -139,15 +138,13 @@ W razie pytań proszę o kontakt.`,
               onChange={(e) => setFormData({ ...formData, to: e.target.value })}
               disabled={loading}
               placeholder="klient@example.com"
-              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-3 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] disabled:opacity-50"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
             />
-            {clientName && (
-              <p className="text-xs text-[#e5e4e2]/40 mt-1">Klient: {clientName}</p>
-            )}
+            {clientName && <p className="mt-1 text-xs text-[#e5e4e2]/40">Klient: {clientName}</p>}
           </div>
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">
               Temat <span className="text-red-400">*</span>
             </label>
             <input
@@ -156,52 +153,51 @@ W razie pytań proszę o kontakt.`,
               onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
               disabled={loading}
               placeholder="Oferta..."
-              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-3 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] disabled:opacity-50"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
             />
           </div>
 
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-              Treść wiadomości
-            </label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Treść wiadomości</label>
             <textarea
               value={formData.message}
               onChange={(e) => setFormData({ ...formData, message: e.target.value })}
               disabled={loading}
               rows={8}
               placeholder="Wpisz treść wiadomości..."
-              className="w-full bg-[#0a0d1a] border border-[#d3bb73]/20 rounded-lg px-4 py-3 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] resize-none disabled:opacity-50"
+              className="w-full resize-none rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
             />
           </div>
 
-          <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
+          <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-4">
             <p className="text-sm text-blue-400">
-              <strong>Załącznik:</strong> Oferta {offerNumber} zostanie automatycznie wygenerowana w formacie PDF i dołączona do wiadomości.
+              <strong>Załącznik:</strong> Oferta {offerNumber} zostanie automatycznie wygenerowana w
+              formacie PDF i dołączona do wiadomości.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-3 p-6 border-t border-[#d3bb73]/20">
+        <div className="flex items-center justify-end gap-3 border-t border-[#d3bb73]/20 p-6">
           <button
             onClick={onClose}
             disabled={loading}
-            className="px-6 py-2.5 rounded-lg text-[#e5e4e2]/80 hover:bg-[#d3bb73]/10 transition-colors disabled:opacity-50"
+            className="rounded-lg px-6 py-2.5 text-[#e5e4e2]/80 transition-colors hover:bg-[#d3bb73]/10 disabled:opacity-50"
           >
             Anuluj
           </button>
           <button
             onClick={handleSend}
             disabled={loading}
-            className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-6 py-2.5 rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-2.5 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
           >
             {loading ? (
               <>
-                <Loader className="w-4 h-4 animate-spin" />
+                <Loader className="h-4 w-4 animate-spin" />
                 Wysyłanie...
               </>
             ) : (
               <>
-                <Send className="w-4 h-4" />
+                <Send className="h-4 w-4" />
                 Wyślij ofertę
               </>
             )}

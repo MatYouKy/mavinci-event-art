@@ -1,3 +1,4 @@
+import { FetchBaseQueryError } from '@reduxjs/toolkit/query';
 import { api } from './api';
 
 export interface MessageListItem {
@@ -51,7 +52,7 @@ export const messagesApi = api.injectEndpoints({
         { getState }: any,
       ) => {
         try {
-          const { supabase } = await import('@/lib/supabase');
+          const { supabase } = await import('@/lib/supabase/browser');
           const allMessages: MessageListItem[] = [];
 
           const {
@@ -290,7 +291,7 @@ export const messagesApi = api.injectEndpoints({
     >({
       queryFn: async ({ id, type }) => {
         try {
-          const { supabase } = await import('@/lib/supabase');
+          const { supabase } = await import('@/lib/supabase/browser');
           let messageData: MessageDetails | null = null;
 
           if (type === 'contact_form') {
@@ -404,7 +405,11 @@ export const messagesApi = api.injectEndpoints({
           }
 
           if (!messageData) {
-            return { error: { status: 404, error: 'Message not found' } };
+            const err: FetchBaseQueryError = {
+              status: 404,
+              data: { message: 'Message not found' },
+            };
+            return { error: err };
           }
 
           return { data: messageData };
@@ -420,7 +425,7 @@ export const messagesApi = api.injectEndpoints({
     markMessageAsRead: builder.mutation<void, { id: string; type: 'contact_form' | 'received' }>({
       queryFn: async ({ id, type }) => {
         try {
-          const { supabase } = await import('@/lib/supabase');
+          const { supabase } = await import('@/lib/supabase/browser');
 
           if (type === 'contact_form') {
             await supabase
@@ -444,7 +449,7 @@ export const messagesApi = api.injectEndpoints({
     toggleStarMessage: builder.mutation<void, { id: string; isStarred: boolean }>({
       queryFn: async ({ id, isStarred }) => {
         try {
-          const { supabase } = await import('@/lib/supabase');
+          const { supabase } = await import('@/lib/supabase/browser');
 
           await supabase.from('received_emails').update({ is_starred: !isStarred }).eq('id', id);
 
@@ -464,7 +469,7 @@ export const messagesApi = api.injectEndpoints({
     >({
       queryFn: async ({ id, type }) => {
         try {
-          const { supabase } = await import('@/lib/supabase');
+          const { supabase } = await import('@/lib/supabase/browser');
 
           const tableName =
             type === 'contact_form'
@@ -495,7 +500,7 @@ export const messagesApi = api.injectEndpoints({
     >({
       queryFn: async ({ emailAccountId, query, dateFrom, dateTo, filterType = 'all' }) => {
         try {
-          const { supabase } = await import('@/lib/supabase');
+          const { supabase } = await import('@/lib/supabase/browser');
           const allMessages: MessageListItem[] = [];
           const searchQuery = query.toLowerCase();
 
@@ -554,10 +559,10 @@ export const messagesApi = api.injectEndpoints({
           }
 
           if (emailAccountId !== 'contact_form') {
-            const { supabase: supabaseClient } = await import('@/lib/supabase');
+            const { supabase } = await import('@/lib/supabase/browser');
             const {
               data: { user },
-            } = await supabaseClient.auth.getUser();
+            } = await supabase.auth.getUser();
 
             let sentQuery = supabase
               .from('sent_emails')

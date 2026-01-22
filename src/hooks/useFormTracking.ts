@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 
 interface FormTrackingOptions {
   formName: string;
@@ -59,10 +59,13 @@ export function useFormTracking({ formName, enabled = true }: FormTrackingOption
         form_name: formName,
         page_url: window.location.pathname,
         status: 'completed',
-        fields_filled: fieldsFilledRef.current.reduce((acc, field) => {
-          acc[field] = true;
-          return acc;
-        }, {} as Record<string, boolean>),
+        fields_filled: fieldsFilledRef.current.reduce(
+          (acc, field) => {
+            acc[field] = true;
+            return acc;
+          },
+          {} as Record<string, boolean>,
+        ),
         time_to_complete: timeToComplete,
       });
     } catch (error) {
@@ -81,10 +84,13 @@ export function useFormTracking({ formName, enabled = true }: FormTrackingOption
         form_name: formName,
         page_url: window.location.pathname,
         status: 'abandoned',
-        fields_filled: fieldsFilledRef.current.reduce((acc, field) => {
-          acc[field] = true;
-          return acc;
-        }, {} as Record<string, boolean>),
+        fields_filled: fieldsFilledRef.current.reduce(
+          (acc, field) => {
+            acc[field] = true;
+            return acc;
+          },
+          {} as Record<string, boolean>,
+        ),
         time_to_complete: timeSpent,
       });
     } catch (error) {

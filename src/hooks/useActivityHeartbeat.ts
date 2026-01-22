@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 
 const HEARTBEAT_INTERVAL = 30000;
 const ACTIVITY_EVENTS = ['mousedown', 'keydown', 'scroll', 'touchstart'];
@@ -15,13 +15,15 @@ export function useActivityHeartbeat() {
       isActiveRef.current = true;
     };
 
-    ACTIVITY_EVENTS.forEach(event => {
+    ACTIVITY_EVENTS.forEach((event) => {
       window.addEventListener(event, updateActivity, { passive: true });
     });
 
     const sendHeartbeat = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
         if (!user) return;
 
         const timeSinceLastActivity = Date.now() - lastActivityRef.current;
@@ -42,7 +44,7 @@ export function useActivityHeartbeat() {
     heartbeatIntervalRef.current = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL);
 
     return () => {
-      ACTIVITY_EVENTS.forEach(event => {
+      ACTIVITY_EVENTS.forEach((event) => {
         window.removeEventListener(event, updateActivity);
       });
 

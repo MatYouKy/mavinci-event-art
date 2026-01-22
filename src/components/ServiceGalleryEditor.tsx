@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Plus, Trash2, Image as ImageIcon, Edit, GripVertical } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 import { uploadOptimizedImage } from '@/lib/storage';
 import { SimpleImageUploader } from './SimpleImageUploader';
 import { IUploadImage } from '@/types/image';
@@ -42,17 +42,15 @@ export function ServiceGalleryEditor({ serviceId, gallery = [] }: ServiceGallery
     try {
       const result = await uploadOptimizedImage(newImageData.file, 'services/gallery');
 
-      const maxOrder = gallery.length > 0 ? Math.max(...gallery.map(g => g.display_order)) : 0;
+      const maxOrder = gallery.length > 0 ? Math.max(...gallery.map((g) => g.display_order)) : 0;
 
-      const { error } = await supabase
-        .from('conferences_service_gallery')
-        .insert({
-          service_id: serviceId,
-          image_url: result.desktop,
-          alt_text: newImageData.alt || '',
-          display_order: maxOrder + 1,
-          is_active: true,
-        });
+      const { error } = await supabase.from('conferences_service_gallery').insert({
+        service_id: serviceId,
+        image_url: result.desktop,
+        alt_text: newImageData.alt || '',
+        display_order: maxOrder + 1,
+        is_active: true,
+      });
 
       if (error) throw error;
 
@@ -292,9 +290,7 @@ export function ServiceGalleryEditor({ serviceId, gallery = [] }: ServiceGallery
         <div className="rounded-xl border border-dashed border-[#d3bb73]/20 py-12 text-center">
           <ImageIcon className="mx-auto mb-4 h-12 w-12 text-[#d3bb73]/50" />
           <p className="text-[#e5e4e2]/50">Brak zdjęć w galerii</p>
-          <p className="mt-2 text-sm text-[#e5e4e2]/30">
-            Kliknij "Dodaj zdjęcie" aby rozpocząć
-          </p>
+          <p className="mt-2 text-sm text-[#e5e4e2]/30">Kliknij "Dodaj zdjęcie" aby rozpocząć</p>
         </div>
       )}
     </div>

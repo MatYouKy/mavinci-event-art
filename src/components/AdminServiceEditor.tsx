@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 import { X, Plus, Save, Trash2, Image as ImageIcon, Edit2, Upload } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { SimpleImageUploader } from './SimpleImageUploader';
@@ -49,7 +49,7 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
   const [tempThumbnailPosition, setTempThumbnailPosition] = useState({
     posX: 0,
     posY: 0,
-    scale: 1
+    scale: 1,
   });
 
   useEffect(() => {
@@ -220,8 +220,8 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
         setImageMetadata({
           desktop: {
             src: result.thumbnail,
-            position: { posX: 50, posY: 50, scale: 1 }
-          }
+            position: { posX: 50, posY: 50, scale: 1 },
+          },
         });
         setTempThumbnailPosition({ posX: 50, posY: 50, scale: 1 });
 
@@ -233,8 +233,8 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
         setImageMetadata({
           desktop: {
             src: result.thumbnail,
-            position: { posX: 50, posY: 50, scale: 1 }
-          }
+            position: { posX: 50, posY: 50, scale: 1 },
+          },
         });
         setTempThumbnailPosition({ posX: 50, posY: 50, scale: 1 });
 
@@ -339,11 +339,7 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
             {/* Icon Selector */}
             <div className="space-y-4">
               <h3 className="text-xl font-medium text-[#e5e4e2]">Ikona usługi</h3>
-              <IconGridSelector
-                value={iconId}
-                onChange={setIconId}
-                label="Wybierz ikonę"
-              />
+              <IconGridSelector value={iconId} onChange={setIconId} label="Wybierz ikonę" />
             </div>
 
             {/* Images */}
@@ -518,10 +514,7 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
 
             {/* Gallery */}
             <div className="space-y-4">
-              <ServiceGalleryEditor
-                serviceId={serviceId}
-                gallery={gallery}
-              />
+              <ServiceGalleryEditor serviceId={serviceId} gallery={gallery} />
             </div>
 
             {/* SEO */}
@@ -600,7 +593,7 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
               onImageSelect={handleImageUpload}
               initialImage={{
                 src: showImageUploader === 'hero' ? heroImageUrl : thumbnailUrl,
-                alt: name
+                alt: name,
               }}
               showPreview={true}
             />
@@ -734,7 +727,10 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
                     },
                   });
                   setShowPositionEditor(false);
-                  showSnackbar('Pozycja zapisana. Kliknij "Zapisz" aby zachować zmiany.', 'success');
+                  showSnackbar(
+                    'Pozycja zapisana. Kliknij "Zapisz" aby zachować zmiany.',
+                    'success',
+                  );
                 }}
                 className="rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
               >

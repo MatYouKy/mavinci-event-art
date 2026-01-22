@@ -1,6 +1,5 @@
-// lib/seo.ts – SERVER ONLY (bez "use client")
-
-import { supabase } from '@/lib/supabase';
+// src/lib/seo.ts
+import { createSupabaseServerClient } from './supabase/server.app';
 
 export interface SeoData {
   title: string;
@@ -14,22 +13,31 @@ export interface SeoData {
   offers: any[];
 }
 
+type CookieStoreLike = {
+  getAll: () => Array<{ name: string; value: string }>;
+  set: (name: string, value: string, options?: any) => void;
+};
+
 function normalizeSlug(slug: string) {
   return slug.replace(/^\/+/, '').replace(/\/+$/, '');
 }
 
-export async function getSeoForPage(pageSlug: string): Promise<SeoData | null> {
+export async function getSeoForPage(
+  pageSlug: string,
+  cookieStore: CookieStoreLike
+): Promise<SeoData | null> {
   const normalizedPageSlug = normalizeSlug(pageSlug);
+  const supabase = createSupabaseServerClient(cookieStore);
 
   const [globalRes, metadataRes, placesRes, offersRes] = await Promise.all([
     supabase.from('schema_org_global').select('*').single(),
     supabase
-    .from('schema_org_page_metadata')
-    .select('*')
-    .eq('page_slug', normalizedPageSlug)
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .maybeSingle(),
+      .from('schema_org_page_metadata')
+      .select('*')
+      .eq('page_slug', normalizedPageSlug)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
     supabase
       .from('schema_org_places')
       .select('*')

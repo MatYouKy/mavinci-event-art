@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 
 interface ActivityStatusIndicatorProps {
   lastActiveAt?: string | null;
@@ -12,7 +12,7 @@ type ActivityStatus = 'online' | 'away' | 'offline';
 export function ActivityStatusIndicator({
   lastActiveAt,
   size = 'md',
-  showTooltip = true
+  showTooltip = true,
 }: ActivityStatusIndicatorProps) {
   const [status, setStatus] = useState<ActivityStatus>('offline');
 
@@ -54,19 +54,19 @@ export function ActivityStatusIndicator({
       color: 'bg-green-500',
       ring: 'ring-green-500/20',
       label: 'Online',
-      description: 'Aktywny teraz'
+      description: 'Aktywny teraz',
     },
     away: {
       color: 'bg-yellow-500',
       ring: 'ring-yellow-500/20',
       label: 'Nieaktywny',
-      description: 'Nieaktywny od 10 min'
+      description: 'Nieaktywny od 10 min',
     },
     offline: {
       color: 'bg-gray-500',
       ring: 'ring-gray-500/20',
       label: 'Offline',
-      description: 'Nieaktywny > 30 min'
+      description: 'Nieaktywny > 30 min',
     },
   };
 

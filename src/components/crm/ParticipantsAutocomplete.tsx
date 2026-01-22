@@ -2,13 +2,13 @@
 
 import { useMemo, useRef, useState, useEffect } from 'react';
 import { Users, X, User, Plus, Trash2 } from 'lucide-react';
-import { useEmployees } from '@/app/crm/employees/hooks/useEmployees';
-import { useEventTeam } from '@/app/crm/events/hooks/useEventTeam';
+import { useEmployees } from '@/app/(crm)/crm/employees/hooks/useEmployees';
+import { useEventTeam } from '@/app/(crm)/crm/events/hooks/useEventTeam';
 
 interface EmployeesPickerProps {
   eventId: string;
   eventCreatorId?: string | null;
-  value: string[];                 // pending employeeIds
+  value: string[]; // pending employeeIds
   onChange: (ids: string[]) => void;
   placeholder?: string;
   className?: string;
@@ -63,8 +63,8 @@ export default function ParticipantsAutocomplete({
     return (employeesList || []).filter((emp: any) => {
       if (!emp?.id) return false;
       if (eventCreatorId && emp.id === eventCreatorId) return false; // autor
-      if (assignedEmployeeIds.has(emp.id)) return false;             // już w bazie
-      if (pendingIds.has(emp.id)) return false;                      // już dodany do pending
+      if (assignedEmployeeIds.has(emp.id)) return false; // już w bazie
+      if (pendingIds.has(emp.id)) return false; // już dodany do pending
       return true;
     });
   }, [employeesList, eventCreatorId, assignedEmployeeIds, pendingIds]);
@@ -102,7 +102,7 @@ export default function ParticipantsAutocomplete({
   return (
     <div className={`space-y-3 ${className}`}>
       <div className="relative">
-        <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#e5e4e2]/50" />
+        <Users className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#e5e4e2]/50" />
         <input
           ref={inputRef}
           type="text"
@@ -116,7 +116,7 @@ export default function ParticipantsAutocomplete({
             if (e.key === 'Escape') setShowDropdown(false);
           }}
           placeholder={placeholder}
-          className="w-full pl-10 pr-10 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+          className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] py-2 pl-10 pr-10 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
         />
         {inputValue && (
           <button
@@ -128,18 +128,18 @@ export default function ParticipantsAutocomplete({
             }}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/50 hover:text-[#e5e4e2]"
           >
-            <X className="w-4 h-4" />
+            <X className="h-4 w-4" />
           </button>
         )}
 
         {showDropdown && (
           <div
             ref={dropdownRef}
-            className="absolute z-50 w-full mt-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg shadow-xl max-h-80 overflow-hidden"
+            className="absolute z-50 mt-2 max-h-80 w-full overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl"
           >
             <div className="max-h-80 overflow-y-auto">
               {employeesLoading ? (
-                <div className="px-4 py-8 text-center text-[#e5e4e2]/50 text-sm">
+                <div className="px-4 py-8 text-center text-sm text-[#e5e4e2]/50">
                   Ładowanie pracowników...
                 </div>
               ) : filteredEmployees.length > 0 ? (
@@ -148,26 +148,26 @@ export default function ParticipantsAutocomplete({
                     key={emp.id}
                     type="button"
                     onClick={() => handlePick(emp.id)}
-                    className="w-full text-left px-4 py-3 hover:bg-[#d3bb73]/10 transition-colors border-b border-[#d3bb73]/10 last:border-b-0"
+                    className="w-full border-b border-[#d3bb73]/10 px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-[#d3bb73]/10"
                   >
                     <div className="flex items-start gap-3">
-                      <User className="w-4 h-4 text-[#d3bb73] flex-shrink-0 mt-0.5" />
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-[#e5e4e2] truncate">
+                      <User className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#d3bb73]" />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate font-medium text-[#e5e4e2]">
                           {emp.name} {emp.surname}
                         </div>
                         {(emp.occupation || emp.email) && (
-                          <div className="text-xs text-[#e5e4e2]/60 truncate mt-0.5">
+                          <div className="mt-0.5 truncate text-xs text-[#e5e4e2]/60">
                             {[emp.occupation, emp.email].filter(Boolean).join(' • ')}
                           </div>
                         )}
                       </div>
-                      <Plus className="w-4 h-4 text-[#d3bb73] flex-shrink-0 mt-0.5" />
+                      <Plus className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#d3bb73]" />
                     </div>
                   </button>
                 ))
               ) : (
-                <div className="px-4 py-8 text-center text-[#e5e4e2]/50 text-sm">
+                <div className="px-4 py-8 text-center text-sm text-[#e5e4e2]/50">
                   {inputValue
                     ? `Brak pracowników pasujących do "${inputValue}"`
                     : 'Brak pracowników do dodania'}
@@ -185,12 +185,12 @@ export default function ParticipantsAutocomplete({
           {pendingEmployees.map((emp: any) => (
             <div
               key={emp.id}
-              className="flex items-center justify-between px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg"
+              className="flex items-center justify-between rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2"
             >
               <div className="flex items-center gap-3">
-                <User className="w-4 h-4 text-[#d3bb73]" />
+                <User className="h-4 w-4 text-[#d3bb73]" />
                 <div>
-                  <div className="text-sm text-[#e5e4e2] font-medium">
+                  <div className="text-sm font-medium text-[#e5e4e2]">
                     {emp.name} {emp.surname}
                   </div>
                   {(emp.occupation || emp.email) && (
@@ -204,10 +204,10 @@ export default function ParticipantsAutocomplete({
               <button
                 type="button"
                 onClick={() => removePending(emp.id)}
-                className="p-2 hover:bg-red-500/20 rounded transition-colors"
+                className="rounded p-2 transition-colors hover:bg-red-500/20"
                 title="Usuń z listy"
               >
-                <Trash2 className="w-4 h-4 text-red-400" />
+                <Trash2 className="h-4 w-4 text-red-400" />
               </button>
             </div>
           ))}

@@ -1,4 +1,4 @@
-import { ImageMetadata } from '@/lib/supabase';
+import { ImageMetadata } from '@/lib/supabase/types';
 import { createClient } from '@supabase/supabase-js';
 
 export interface TeamMember {

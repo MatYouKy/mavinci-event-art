@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { PortfolioProjectFeature } from '@/lib/supabase';
+import type { PortfolioProjectFeature } from '@/lib/supabase/types';
 import * as Icons from 'lucide-react';
 
 interface AvailableIcon {

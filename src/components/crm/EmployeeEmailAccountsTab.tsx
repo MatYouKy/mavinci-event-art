@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Mail, Plus, Trash2, Eye, EyeOff, Edit, CheckSquare, Square, X, Save } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 import { useRouter } from 'next/navigation';
 
 interface EmailAccount {
@@ -46,7 +46,9 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [isEditingPersonalEmail, setIsEditingPersonalEmail] = useState(false);
   const [personalEmailInput, setPersonalEmailInput] = useState('');
-  const [notificationPreference, setNotificationPreference] = useState<'work' | 'personal' | 'both' | 'none'>('work');
+  const [notificationPreference, setNotificationPreference] = useState<
+    'work' | 'personal' | 'both' | 'none'
+  >('work');
   const [showPersonalAccountModal, setShowPersonalAccountModal] = useState(false);
   const [personalAccountData, setPersonalAccountData] = useState({
     account_name: '',
@@ -209,7 +211,9 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
 
       if (notificationPreference === 'personal' || notificationPreference === 'both') {
         if (!emailToSave) {
-          alert('Email osobisty jest wymagany gdy preferencja powiadomień to "personal" lub "both"');
+          alert(
+            'Email osobisty jest wymagany gdy preferencja powiadomień to "personal" lub "both"',
+          );
           return;
         }
       }
@@ -309,9 +313,7 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
         if (error) throw error;
         alert('✓ Konto osobiste zostało zaktualizowane.');
       } else {
-        const { error } = await supabase
-          .from('employee_email_accounts')
-          .insert([accountPayload]);
+        const { error } = await supabase.from('employee_email_accounts').insert([accountPayload]);
 
         if (error) throw error;
         alert('✓ Konto osobiste zostało utworzone.');
@@ -400,7 +402,8 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
                 Email osobisty pracownika
               </h4>
               <p className="mb-3 text-xs text-[#e5e4e2]/60">
-                Email prywatny pracownika używany do powiadomień poza systemem. Tylko admin może edytować.
+                Email prywatny pracownika używany do powiadomień poza systemem. Tylko admin może
+                edytować.
               </p>
               <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
                 {isEditingPersonalEmail ? (
@@ -638,7 +641,8 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
           <li className="flex gap-2">
             <span className="font-bold text-[#d3bb73]">•</span>
             <span>
-              <strong>Email osobisty:</strong> Admin ustawia prywatny email pracownika i wybiera gdzie wysyłać powiadomienia (służbowy/osobisty/oba/brak)
+              <strong>Email osobisty:</strong> Admin ustawia prywatny email pracownika i wybiera
+              gdzie wysyłać powiadomienia (służbowy/osobisty/oba/brak)
             </span>
           </li>
           <li className="flex gap-2">
@@ -708,7 +712,10 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
                       type="text"
                       value={personalAccountData.account_name}
                       onChange={(e) =>
-                        setPersonalAccountData({ ...personalAccountData, account_name: e.target.value })
+                        setPersonalAccountData({
+                          ...personalAccountData,
+                          account_name: e.target.value,
+                        })
                       }
                       placeholder="np. Boston, Jan Kowalski"
                       className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
@@ -723,7 +730,10 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
                       type="text"
                       value={personalAccountData.from_name}
                       onChange={(e) =>
-                        setPersonalAccountData({ ...personalAccountData, from_name: e.target.value })
+                        setPersonalAccountData({
+                          ...personalAccountData,
+                          from_name: e.target.value,
+                        })
                       }
                       placeholder="np. Jan Kowalski"
                       className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
@@ -738,7 +748,10 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
                       type="email"
                       value={personalAccountData.email_address}
                       onChange={(e) =>
-                        setPersonalAccountData({ ...personalAccountData, email_address: e.target.value })
+                        setPersonalAccountData({
+                          ...personalAccountData,
+                          email_address: e.target.value,
+                        })
                       }
                       placeholder="np. boston@mavinci.pl"
                       className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
@@ -750,7 +763,10 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
                     <textarea
                       value={personalAccountData.description}
                       onChange={(e) =>
-                        setPersonalAccountData({ ...personalAccountData, description: e.target.value })
+                        setPersonalAccountData({
+                          ...personalAccountData,
+                          description: e.target.value,
+                        })
                       }
                       placeholder="Opcjonalny opis konta"
                       rows={2}
@@ -773,7 +789,10 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
                         type="text"
                         value={personalAccountData.imap_host}
                         onChange={(e) =>
-                          setPersonalAccountData({ ...personalAccountData, imap_host: e.target.value })
+                          setPersonalAccountData({
+                            ...personalAccountData,
+                            imap_host: e.target.value,
+                          })
                         }
                         placeholder="imap.gmail.com"
                         className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
@@ -805,7 +824,10 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
                       type="text"
                       value={personalAccountData.imap_username}
                       onChange={(e) =>
-                        setPersonalAccountData({ ...personalAccountData, imap_username: e.target.value })
+                        setPersonalAccountData({
+                          ...personalAccountData,
+                          imap_username: e.target.value,
+                        })
                       }
                       placeholder="Zazwyczaj adres email"
                       className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
@@ -833,7 +855,11 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
                         onClick={() => setShowPasswords(!showPasswords)}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
                       >
-                        {showPasswords ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        {showPasswords ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
                       </button>
                     </div>
                   </div>
@@ -844,7 +870,10 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
                       id="imap_ssl"
                       checked={personalAccountData.imap_use_ssl}
                       onChange={(e) =>
-                        setPersonalAccountData({ ...personalAccountData, imap_use_ssl: e.target.checked })
+                        setPersonalAccountData({
+                          ...personalAccountData,
+                          imap_use_ssl: e.target.checked,
+                        })
                       }
                       className="h-4 w-4 rounded border-[#d3bb73]/20"
                     />
@@ -868,7 +897,10 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
                         type="text"
                         value={personalAccountData.smtp_host}
                         onChange={(e) =>
-                          setPersonalAccountData({ ...personalAccountData, smtp_host: e.target.value })
+                          setPersonalAccountData({
+                            ...personalAccountData,
+                            smtp_host: e.target.value,
+                          })
                         }
                         placeholder="smtp.gmail.com"
                         className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
@@ -900,7 +932,10 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
                       type="text"
                       value={personalAccountData.smtp_username}
                       onChange={(e) =>
-                        setPersonalAccountData({ ...personalAccountData, smtp_username: e.target.value })
+                        setPersonalAccountData({
+                          ...personalAccountData,
+                          smtp_username: e.target.value,
+                        })
                       }
                       placeholder="Zazwyczaj adres email"
                       className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
@@ -932,7 +967,10 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
                       id="smtp_tls"
                       checked={personalAccountData.smtp_use_tls}
                       onChange={(e) =>
-                        setPersonalAccountData({ ...personalAccountData, smtp_use_tls: e.target.checked })
+                        setPersonalAccountData({
+                          ...personalAccountData,
+                          smtp_use_tls: e.target.checked,
+                        })
                       }
                       className="h-4 w-4 rounded border-[#d3bb73]/20"
                     />

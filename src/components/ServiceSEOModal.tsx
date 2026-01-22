@@ -67,7 +67,7 @@ export default function ServiceSEOModal({
   const handleSave = async () => {
     try {
       setSaving(true);
-      const { updateServiceSEO } = await import('@/app/uslugi/[slug]/actions');
+      const { updateServiceSEO } = await import('@/app/(public)/uslugi/[slug]/actions');
 
       const keywordsString = keywords.length > 0 ? keywords.join(', ') : null;
 

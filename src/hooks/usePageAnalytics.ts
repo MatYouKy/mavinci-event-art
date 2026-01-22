@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
 export function usePageAnalytics(pageTitle?: string, enabled: boolean = true) {
@@ -15,10 +15,11 @@ export function usePageAnalytics(pageTitle?: string, enabled: boolean = true) {
     if (typeof window === 'undefined' || !enabled) return;
 
     // Nie zbieraj statystyk w developmencie (localhost)
-    const isLocalhost = window.location.hostname === 'localhost' ||
-                       window.location.hostname === '127.0.0.1' ||
-                       window.location.hostname.startsWith('192.168.') ||
-                       window.location.hostname === '::1';
+    const isLocalhost =
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname.startsWith('192.168.') ||
+      window.location.hostname === '::1';
 
     if (isLocalhost) {
       showSnackbar('[Analytics] Skipped - running on localhost', 'info');
@@ -37,30 +38,31 @@ export function usePageAnalytics(pageTitle?: string, enabled: boolean = true) {
         const deviceType = /Mobile|Android|iPhone/i.test(ua)
           ? 'mobile'
           : /iPad|Tablet/i.test(ua)
-          ? 'tablet'
-          : 'desktop';
+            ? 'tablet'
+            : 'desktop';
 
-        const browser = /Chrome/i.test(ua) && !/Edge/i.test(ua)
-          ? 'Chrome'
-          : /Firefox/i.test(ua)
-          ? 'Firefox'
-          : /Safari/i.test(ua) && !/Chrome/i.test(ua)
-          ? 'Safari'
-          : /Edge/i.test(ua)
-          ? 'Edge'
-          : 'Other';
+        const browser =
+          /Chrome/i.test(ua) && !/Edge/i.test(ua)
+            ? 'Chrome'
+            : /Firefox/i.test(ua)
+              ? 'Firefox'
+              : /Safari/i.test(ua) && !/Chrome/i.test(ua)
+                ? 'Safari'
+                : /Edge/i.test(ua)
+                  ? 'Edge'
+                  : 'Other';
 
         const os = /Windows/i.test(ua)
           ? 'Windows'
           : /Mac/i.test(ua)
-          ? 'macOS'
-          : /Linux/i.test(ua)
-          ? 'Linux'
-          : /Android/i.test(ua)
-          ? 'Android'
-          : /iOS|iPhone|iPad/i.test(ua)
-          ? 'iOS'
-          : 'Other';
+            ? 'macOS'
+            : /Linux/i.test(ua)
+              ? 'Linux'
+              : /Android/i.test(ua)
+                ? 'Android'
+                : /iOS|iPhone|iPad/i.test(ua)
+                  ? 'iOS'
+                  : 'Other';
 
         const urlParams = new URLSearchParams(window.location.search);
         const utmSource = urlParams.get('utm_source');

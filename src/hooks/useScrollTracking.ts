@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 
 export function useScrollTracking(enabled: boolean = true) {
   const sessionIdRef = useRef<string>('');
@@ -26,9 +26,7 @@ export function useScrollTracking(enabled: boolean = true) {
       const windowHeight = window.innerHeight;
       const documentHeight = document.documentElement.scrollHeight;
 
-      const scrollPercent = Math.round(
-        ((scrollTop + windowHeight) / documentHeight) * 100
-      );
+      const scrollPercent = Math.round(((scrollTop + windowHeight) / documentHeight) * 100);
 
       if (scrollPercent > maxDepthRef.current) {
         maxDepthRef.current = scrollPercent;
@@ -50,7 +48,7 @@ export function useScrollTracking(enabled: boolean = true) {
             },
             {
               onConflict: 'session_id,page_url',
-            }
+            },
           );
         } catch (error) {
           console.error('Scroll tracking error:', error);

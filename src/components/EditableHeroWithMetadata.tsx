@@ -9,7 +9,7 @@ import { PageHeroImage } from './PageHeroImage';
 import { usePathname, useRouter } from 'next/navigation';
 import { useMobile } from '@/hooks/useMobile';
 import { useHeroImage } from './PageImage/hooks/useHeroImage';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 import { IconGridSelector } from './IconGridSelector';
 
 interface EditableHeroWithMetadataProps {

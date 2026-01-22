@@ -3,7 +3,7 @@
 import { useState, useEffect, DragEvent } from 'react';
 import Link from 'next/link';
 import { GripVertical, RotateCcw, Settings } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
 interface NavigationItem {
@@ -56,9 +56,12 @@ export default function NavigationManager({
         },
         (payload) => {
           const newMessage = payload.new as any;
-          showSnackbar(`Nowa wiadomość z formularza: ${newMessage.subject || 'Wiadomość z formularza'}`, 'info');
+          showSnackbar(
+            `Nowa wiadomość z formularza: ${newMessage.subject || 'Wiadomość z formularza'}`,
+            'info',
+          );
           fetchUnreadCount();
-        }
+        },
       )
       .on(
         'postgres_changes',
@@ -69,7 +72,7 @@ export default function NavigationManager({
         },
         () => {
           fetchUnreadCount();
-        }
+        },
       )
       .subscribe();
 
@@ -86,7 +89,7 @@ export default function NavigationManager({
           const newEmail = payload.new as any;
           showSnackbar(`Nowy email: ${newEmail.subject || '(No subject)'}`, 'info');
           fetchUnreadCount();
-        }
+        },
       )
       .on(
         'postgres_changes',
@@ -97,7 +100,7 @@ export default function NavigationManager({
         },
         () => {
           fetchUnreadCount();
-        }
+        },
       )
       .subscribe();
 
@@ -109,7 +112,9 @@ export default function NavigationManager({
 
   const fetchUnreadCount = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user?.email) return;
 
       const { count: contactCount } = await supabase
@@ -157,7 +162,7 @@ export default function NavigationManager({
 
     try {
       setSaving(true);
-      const order = items.map(item => item.key);
+      const order = items.map((item) => item.key);
 
       const { error } = await supabase
         .from('employees')
@@ -210,42 +215,38 @@ export default function NavigationManager({
   return (
     <>
       <nav className="flex-1 overflow-y-auto px-4 py-6">
-        <div className="flex items-center justify-between mb-4">
+        <div className="mb-4 flex items-center justify-between">
           {!sidebarCollapsed && (
-            <span className="text-xs text-[#e5e4e2]/40 uppercase tracking-wider">
-              Menu
-            </span>
+            <span className="text-xs uppercase tracking-wider text-[#e5e4e2]/40">Menu</span>
           )}
           <button
             onClick={() => setIsEditMode(!isEditMode)}
-            className={`p-1 rounded transition-colors ${
-              isEditMode
-                ? 'text-[#d3bb73]'
-                : 'text-[#e5e4e2]/40 hover:text-[#e5e4e2]'
+            className={`rounded p-1 transition-colors ${
+              isEditMode ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/40 hover:text-[#e5e4e2]'
             }`}
             title="Dostosuj kolejność menu"
           >
-            <Settings className="w-4 h-4" />
+            <Settings className="h-4 w-4" />
           </button>
         </div>
 
         {isEditMode && !sidebarCollapsed && (
-          <div className="mb-4 p-3 bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-lg">
-            <p className="text-xs text-[#e5e4e2]/80 mb-3">
+          <div className="mb-4 rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/10 p-3">
+            <p className="mb-3 text-xs text-[#e5e4e2]/80">
               Przeciągnij elementy aby zmienić kolejność
             </p>
             <div className="flex gap-2">
               <button
                 onClick={handleSaveOrder}
                 disabled={saving}
-                className="flex-1 px-3 py-1.5 bg-[#d3bb73] text-[#1c1f33] text-xs rounded hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50"
+                className="flex-1 rounded bg-[#d3bb73] px-3 py-1.5 text-xs text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
               >
                 {saving ? 'Zapisywanie...' : 'Zapisz'}
               </button>
               <button
                 onClick={handleCancel}
                 disabled={saving}
-                className="px-3 py-1.5 bg-[#1c1f33] text-[#e5e4e2] text-xs border border-[#d3bb73]/30 rounded hover:bg-[#0f1119] transition-colors disabled:opacity-50"
+                className="rounded border border-[#d3bb73]/30 bg-[#1c1f33] px-3 py-1.5 text-xs text-[#e5e4e2] transition-colors hover:bg-[#0f1119] disabled:opacity-50"
               >
                 Anuluj
               </button>
@@ -253,9 +254,9 @@ export default function NavigationManager({
             <button
               onClick={handleResetOrder}
               disabled={saving}
-              className="w-full mt-2 flex items-center justify-center gap-2 px-3 py-1.5 text-[#e5e4e2]/60 text-xs hover:text-[#e5e4e2] transition-colors disabled:opacity-50"
+              className="mt-2 flex w-full items-center justify-center gap-2 px-3 py-1.5 text-xs text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2] disabled:opacity-50"
             >
-              <RotateCcw className="w-3 h-3" />
+              <RotateCcw className="h-3 w-3" />
               Reset do domyślnej
             </button>
           </div>
@@ -271,9 +272,7 @@ export default function NavigationManager({
                 onDragStart={(e) => handleDragStart(e, index)}
                 onDragOver={(e) => handleDragOver(e, index)}
                 onDragEnd={handleDragEnd}
-                className={`${
-                  isEditMode ? 'cursor-move' : ''
-                } ${
+                className={`${isEditMode ? 'cursor-move' : ''} ${
                   draggedIndex === index ? 'opacity-50' : ''
                 }`}
               >
@@ -282,7 +281,7 @@ export default function NavigationManager({
                   onClick={onClose}
                   className={`flex items-center ${
                     sidebarCollapsed ? 'justify-center' : 'gap-3'
-                  } px-4 py-3 rounded-lg text-sm font-light transition-all duration-200 relative ${
+                  } relative rounded-lg px-4 py-3 text-sm font-light transition-all duration-200 ${
                     isActive
                       ? 'bg-[#d3bb73]/20 text-[#d3bb73]'
                       : 'text-[#e5e4e2]/70 hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]'
@@ -290,12 +289,12 @@ export default function NavigationManager({
                   title={sidebarCollapsed ? item.name : ''}
                 >
                   {isEditMode && !sidebarCollapsed && (
-                    <GripVertical className="w-4 h-4 text-[#e5e4e2]/40" />
+                    <GripVertical className="h-4 w-4 text-[#e5e4e2]/40" />
                   )}
                   <div className="relative">
-                    <item.icon className="w-5 h-5" />
+                    <item.icon className="h-5 w-5" />
                     {item.key === 'messages' && unreadMessagesCount > 0 && (
-                      <div className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-semibold rounded-full">
+                      <div className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
                         {unreadMessagesCount > 99 ? '99+' : unreadMessagesCount}
                       </div>
                     )}

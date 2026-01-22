@@ -1,14 +1,20 @@
-// lib/seo-helpers.ts
+// src/lib/seo-helpers.ts
 import type { Metadata } from 'next';
 import { getSeoForPage } from './seo';
+
+type CookieStoreLike = {
+  getAll: () => Array<{ name: string; value: string }>;
+  set: (name: string, value: string, options?: any) => void;
+};
 
 const FALLBACK_DESCRIPTION =
   'Kompleksowa obsługa techniczna konferencji: nagłośnienie, multimedia, streaming live, realizacja wideo.';
 
 export async function buildMetadataForSlug(
-  pageSlug: string
+  pageSlug: string,
+  cookieStore: CookieStoreLike
 ): Promise<Metadata> {
-  const seo = await getSeoForPage(pageSlug);
+  const seo = await getSeoForPage(pageSlug, cookieStore);
 
   if (!seo) {
     return {
@@ -20,19 +26,14 @@ export async function buildMetadataForSlug(
   const global = seo.globalConfig;
   const cleanedTitle = seo.title?.trim();
   const title =
-    cleanedTitle && cleanedTitle.length > 0
-      ? cleanedTitle
-      : global.organization_name;
+    cleanedTitle && cleanedTitle.length > 0 ? cleanedTitle : global.organization_name;
 
   const description = seo.description || FALLBACK_DESCRIPTION;
 
   const rawOg = seo.ogImage || global.organization_logo || '/og-default.jpg';
-  const ogImage =
-    rawOg.startsWith('http')
-      ? rawOg
-      : `${global.organization_url}${
-          rawOg.startsWith('/') ? rawOg : `/${rawOg}`
-        }`;
+  const ogImage = rawOg.startsWith('http')
+    ? rawOg
+    : `${global.organization_url}${rawOg.startsWith('/') ? rawOg : `/${rawOg}`}`;
 
   const pageUrl = `${global.organization_url}/${pageSlug}`;
 
@@ -44,14 +45,7 @@ export async function buildMetadataForSlug(
       title,
       description,
       url: pageUrl,
-      images: [
-        {
-          url: ogImage,
-          width: 1200,
-          height: 630,
-          alt: title,
-        },
-      ],
+      images: [{ url: ogImage, width: 1200, height: 630, alt: title }],
       type: 'website',
     },
     twitter: {
@@ -60,14 +54,15 @@ export async function buildMetadataForSlug(
       description,
       images: [ogImage],
     },
-    alternates: {
-      canonical: pageUrl,
-    },
+    alternates: { canonical: pageUrl },
   };
 }
 
-export async function buildSchemaJsonLdForSlug(pageSlug: string) {
-  const seo = await getSeoForPage(pageSlug);
+export async function buildSchemaJsonLdForSlug(
+  pageSlug: string,
+  cookieStore: CookieStoreLike
+) {
+  const seo = await getSeoForPage(pageSlug, cookieStore);
   if (!seo) return null;
 
   const global = seo.globalConfig;
@@ -79,12 +74,9 @@ export async function buildSchemaJsonLdForSlug(pageSlug: string) {
   const description = seo.description || FALLBACK_DESCRIPTION;
 
   const rawOg = seo.ogImage || global.organization_logo || '/og-default.jpg';
-  const ogImage =
-    rawOg.startsWith('http')
-      ? rawOg
-      : `${global.organization_url}${
-          rawOg.startsWith('/') ? rawOg : `/${rawOg}`
-        }`;
+  const ogImage = rawOg.startsWith('http')
+    ? rawOg
+    : `${global.organization_url}${rawOg.startsWith('/') ? rawOg : `/${rawOg}`}`;
 
   const pageUrl = `${global.organization_url}/${pageSlug}`;
 
@@ -96,10 +88,7 @@ export async function buildSchemaJsonLdForSlug(pageSlug: string) {
       addressLocality: place.locality,
       postalCode: place.postal_code,
       addressRegion: place.region,
-      addressCountry: {
-        '@type': 'Country',
-        name: place.country,
-      },
+      addressCountry: { '@type': 'Country', name: place.country },
     },
   }));
 

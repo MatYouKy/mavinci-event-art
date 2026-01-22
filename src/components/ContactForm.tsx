@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Formik, Form, Field, ErrorMessage } from 'formik';
 import * as Yup from 'yup';
 import { Send, Upload, FileText, X as XIcon } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 import confetti from 'canvas-confetti';
 import { useDialog } from '@/contexts/DialogContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -27,14 +27,9 @@ export interface ContactFormData {
 }
 
 const validationSchema = Yup.object({
-  name: Yup.string()
-    .min(2, 'Imię musi mieć co najmniej 2 znaki')
-    .required('Pole wymagane'),
-  email: Yup.string()
-    .email('Nieprawidłowy adres email')
-    .required('Pole wymagane'),
-  phone: Yup.string()
-    .matches(/^[+]?[\d\s-()]+$/, 'Nieprawidłowy numer telefonu'),
+  name: Yup.string().min(2, 'Imię musi mieć co najmniej 2 znaki').required('Pole wymagane'),
+  email: Yup.string().email('Nieprawidłowy adres email').required('Pole wymagane'),
+  phone: Yup.string().matches(/^[+]?[\d\s-()]+$/, 'Nieprawidłowy numer telefonu'),
   company: Yup.string(),
   eventType: Yup.string(),
   message: Yup.string()
@@ -46,7 +41,7 @@ export default function ContactForm({
   category = 'general',
   subject,
   customTitle,
-  customDescription
+  customDescription,
 }: ContactFormProps) {
   const [focusedField, setFocusedField] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -87,7 +82,6 @@ export default function ContactForm({
         const file = fileInput?.files?.[0];
 
         if (file) {
-
           // Upload directly to Supabase Storage
           const fileName = `cv-uploads/${Date.now()}-${Math.random().toString(36).substring(7)}-${file.name}`;
 
@@ -112,25 +106,23 @@ export default function ContactForm({
         }
       }
 
-      const { error } = await supabase
-        .from('contact_messages')
-        .insert([
-          {
-            name: values.name,
-            email: values.email,
-            phone: values.phone || null,
-            company: values.company || null,
-            category: category,
-            source_page: sourcePage,
-            subject: subject || `${category} - ${values.eventType || 'Nowa wiadomość'}`,
-            message: values.message,
-            status: 'new',
-            priority: category === 'event_inquiry' || category === 'team_join' ? 'high' : 'normal',
-            user_agent: userAgent,
-            cv_url: cvUrl,
-            cv_filename: cvFilename,
-          }
-        ]);
+      const { error } = await supabase.from('contact_messages').insert([
+        {
+          name: values.name,
+          email: values.email,
+          phone: values.phone || null,
+          company: values.company || null,
+          category: category,
+          source_page: sourcePage,
+          subject: subject || `${category} - ${values.eventType || 'Nowa wiadomość'}`,
+          message: values.message,
+          status: 'new',
+          priority: category === 'event_inquiry' || category === 'team_join' ? 'high' : 'normal',
+          user_agent: userAgent,
+          cv_url: cvUrl,
+          cv_filename: cvFilename,
+        },
+      ]);
 
       if (error) throw error;
 
@@ -158,13 +150,13 @@ export default function ContactForm({
           ...defaults,
           particleCount,
           origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 },
-          colors: ['#d3bb73', '#e5e4e2', '#1c1f33']
+          colors: ['#d3bb73', '#e5e4e2', '#1c1f33'],
         });
         confetti({
           ...defaults,
           particleCount,
           origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 },
-          colors: ['#d3bb73', '#e5e4e2', '#1c1f33']
+          colors: ['#d3bb73', '#e5e4e2', '#1c1f33'],
         });
       }, 250);
 
@@ -213,8 +205,8 @@ export default function ContactForm({
   return (
     <div className="animate-[fadeInRight_0.8s_ease-out]">
       <div className="mb-6">
-        <h3 className="text-2xl font-light text-[#e5e4e2] mb-2">{getFormTitle()}</h3>
-        <p className="text-[#e5e4e2]/70 text-sm">{getFormDescription()}</p>
+        <h3 className="mb-2 text-2xl font-light text-[#e5e4e2]">{getFormTitle()}</h3>
+        <p className="text-sm text-[#e5e4e2]/70">{getFormDescription()}</p>
       </div>
 
       <Formik
@@ -225,7 +217,7 @@ export default function ContactForm({
         {({ errors, touched }) => (
           <Form className="space-y-6">
             <div>
-              <label htmlFor="name" className="block text-[#e5e4e2] text-sm font-light mb-2">
+              <label htmlFor="name" className="mb-2 block text-sm font-light text-[#e5e4e2]">
                 Imię i nazwisko *
               </label>
               <Field
@@ -234,21 +226,21 @@ export default function ContactForm({
                 name="name"
                 onFocus={() => setFocusedField('name')}
                 onBlur={() => setFocusedField(null)}
-                className={`w-full px-4 py-3 bg-[#1c1f33]/50 border rounded-xl text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none transition-all duration-300 ${
+                className={`w-full rounded-xl border bg-[#1c1f33]/50 px-4 py-3 text-[#e5e4e2] placeholder-[#e5e4e2]/40 transition-all duration-300 focus:outline-none ${
                   focusedField === 'name'
-                    ? 'border-[#d3bb73] shadow-lg shadow-[#d3bb73]/20 scale-[1.02]'
+                    ? 'scale-[1.02] border-[#d3bb73] shadow-lg shadow-[#d3bb73]/20'
                     : errors.name && touched.name
-                    ? 'border-red-500/50'
-                    : 'border-[#d3bb73]/20 hover:border-[#d3bb73]/40'
+                      ? 'border-red-500/50'
+                      : 'border-[#d3bb73]/20 hover:border-[#d3bb73]/40'
                 }`}
                 placeholder="Jan Kowalski"
               />
-              <ErrorMessage name="name" component="div" className="text-red-400 text-sm mt-1" />
+              <ErrorMessage name="name" component="div" className="mt-1 text-sm text-red-400" />
             </div>
 
-            <div className="grid sm:grid-cols-2 gap-6">
+            <div className="grid gap-6 sm:grid-cols-2">
               <div>
-                <label htmlFor="email" className="block text-[#e5e4e2] text-sm font-light mb-2">
+                <label htmlFor="email" className="mb-2 block text-sm font-light text-[#e5e4e2]">
                   Email *
                 </label>
                 <Field
@@ -257,20 +249,20 @@ export default function ContactForm({
                   name="email"
                   onFocus={() => setFocusedField('email')}
                   onBlur={() => setFocusedField(null)}
-                  className={`w-full px-4 py-3 bg-[#1c1f33]/50 border rounded-xl text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none transition-all duration-300 ${
+                  className={`w-full rounded-xl border bg-[#1c1f33]/50 px-4 py-3 text-[#e5e4e2] placeholder-[#e5e4e2]/40 transition-all duration-300 focus:outline-none ${
                     focusedField === 'email'
-                      ? 'border-[#d3bb73] shadow-lg shadow-[#d3bb73]/20 scale-[1.02]'
+                      ? 'scale-[1.02] border-[#d3bb73] shadow-lg shadow-[#d3bb73]/20'
                       : errors.email && touched.email
-                      ? 'border-red-500/50'
-                      : 'border-[#d3bb73]/20 hover:border-[#d3bb73]/40'
+                        ? 'border-red-500/50'
+                        : 'border-[#d3bb73]/20 hover:border-[#d3bb73]/40'
                   }`}
                   placeholder="jan@przykład.pl"
                 />
-                <ErrorMessage name="email" component="div" className="text-red-400 text-sm mt-1" />
+                <ErrorMessage name="email" component="div" className="mt-1 text-sm text-red-400" />
               </div>
 
               <div>
-                <label htmlFor="phone" className="block text-[#e5e4e2] text-sm font-light mb-2">
+                <label htmlFor="phone" className="mb-2 block text-sm font-light text-[#e5e4e2]">
                   Telefon
                 </label>
                 <Field
@@ -279,23 +271,23 @@ export default function ContactForm({
                   name="phone"
                   onFocus={() => setFocusedField('phone')}
                   onBlur={() => setFocusedField(null)}
-                  className={`w-full px-4 py-3 bg-[#1c1f33]/50 border rounded-xl text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none transition-all duration-300 ${
+                  className={`w-full rounded-xl border bg-[#1c1f33]/50 px-4 py-3 text-[#e5e4e2] placeholder-[#e5e4e2]/40 transition-all duration-300 focus:outline-none ${
                     focusedField === 'phone'
-                      ? 'border-[#d3bb73] shadow-lg shadow-[#d3bb73]/20 scale-[1.02]'
+                      ? 'scale-[1.02] border-[#d3bb73] shadow-lg shadow-[#d3bb73]/20'
                       : errors.phone && touched.phone
-                      ? 'border-red-500/50'
-                      : 'border-[#d3bb73]/20 hover:border-[#d3bb73]/40'
+                        ? 'border-red-500/50'
+                        : 'border-[#d3bb73]/20 hover:border-[#d3bb73]/40'
                   }`}
                   placeholder="+48 123 456 789"
                 />
-                <ErrorMessage name="phone" component="div" className="text-red-400 text-sm mt-1" />
+                <ErrorMessage name="phone" component="div" className="mt-1 text-sm text-red-400" />
               </div>
             </div>
 
             {category === 'team_join' && (
               <>
                 <div>
-                  <label htmlFor="company" className="block text-[#e5e4e2] text-sm font-light mb-2">
+                  <label htmlFor="company" className="mb-2 block text-sm font-light text-[#e5e4e2]">
                     Obecna firma (opcjonalnie)
                   </label>
                   <Field
@@ -304,9 +296,9 @@ export default function ContactForm({
                     name="company"
                     onFocus={() => setFocusedField('company')}
                     onBlur={() => setFocusedField(null)}
-                    className={`w-full px-4 py-3 bg-[#1c1f33]/50 border rounded-xl text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none transition-all duration-300 ${
+                    className={`w-full rounded-xl border bg-[#1c1f33]/50 px-4 py-3 text-[#e5e4e2] placeholder-[#e5e4e2]/40 transition-all duration-300 focus:outline-none ${
                       focusedField === 'company'
-                        ? 'border-[#d3bb73] shadow-lg shadow-[#d3bb73]/20 scale-[1.02]'
+                        ? 'scale-[1.02] border-[#d3bb73] shadow-lg shadow-[#d3bb73]/20'
                         : 'border-[#d3bb73]/20 hover:border-[#d3bb73]/40'
                     }`}
                     placeholder="Nazwa firmy"
@@ -315,7 +307,7 @@ export default function ContactForm({
 
                 {/* CV Upload Field - handled outside Formik */}
                 <div>
-                  <label className="block text-[#e5e4e2] text-sm font-light mb-2">
+                  <label className="mb-2 block text-sm font-light text-[#e5e4e2]">
                     CV / Portfolio (opcjonalnie)
                   </label>
                   <div className="relative">
@@ -327,19 +319,22 @@ export default function ContactForm({
                         const file = e.target.files?.[0];
                         if (file) {
                           if (file.size > 10 * 1024 * 1024) {
-                            showAlert('Plik jest zbyt duży. Maksymalny rozmiar to 10MB.', 'Plik zbyt duży', 'warning');
+                            showAlert(
+                              'Plik jest zbyt duży. Maksymalny rozmiar to 10MB.',
+                              'Plik zbyt duży',
+                              'warning',
+                            );
                             e.target.value = '';
                             return;
                           }
                         }
                       }}
-                      className="w-full px-4 py-3 bg-[#1c1f33]/50 border border-[#d3bb73]/20 rounded-xl text-[#e5e4e2] text-sm focus:outline-none focus:border-[#d3bb73] transition-all duration-300
-                        file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-medium
-                        file:bg-[#d3bb73] file:text-[#1c1f33] hover:file:bg-[#d3bb73]/90 file:cursor-pointer"
+                      className="w-full rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]/50 px-4 py-3 text-sm text-[#e5e4e2] transition-all duration-300 file:mr-4 file:cursor-pointer file:rounded-full file:border-0 file:bg-[#d3bb73] file:px-4 file:py-2 file:text-sm file:font-medium file:text-[#1c1f33] hover:file:bg-[#d3bb73]/90 focus:border-[#d3bb73] focus:outline-none"
                     />
                   </div>
-                  <p className="text-[#e5e4e2]/50 text-xs mt-1">
-                    Prześlij swoje CV lub portfolio. Akceptujemy pliki PDF, DOC, DOCX, JPG, PNG (max 10MB)
+                  <p className="mt-1 text-xs text-[#e5e4e2]/50">
+                    Prześlij swoje CV lub portfolio. Akceptujemy pliki PDF, DOC, DOCX, JPG, PNG (max
+                    10MB)
                   </p>
                 </div>
               </>
@@ -347,7 +342,7 @@ export default function ContactForm({
 
             {(category === 'general' || category === 'event_inquiry') && (
               <div>
-                <label htmlFor="eventType" className="block text-[#e5e4e2] text-sm font-light mb-2">
+                <label htmlFor="eventType" className="mb-2 block text-sm font-light text-[#e5e4e2]">
                   {category === 'event_inquiry' ? 'Typ eventu *' : 'Typ eventu'}
                 </label>
                 <Field
@@ -356,9 +351,9 @@ export default function ContactForm({
                   name="eventType"
                   onFocus={() => setFocusedField('eventType')}
                   onBlur={() => setFocusedField(null)}
-                  className={`w-full px-4 py-3 bg-[#1c1f33]/50 border rounded-xl text-[#e5e4e2] focus:outline-none transition-all duration-300 ${
+                  className={`w-full rounded-xl border bg-[#1c1f33]/50 px-4 py-3 text-[#e5e4e2] transition-all duration-300 focus:outline-none ${
                     focusedField === 'eventType'
-                      ? 'border-[#d3bb73] shadow-lg shadow-[#d3bb73]/20 scale-[1.02]'
+                      ? 'scale-[1.02] border-[#d3bb73] shadow-lg shadow-[#d3bb73]/20'
                       : 'border-[#d3bb73]/20 hover:border-[#d3bb73]/40'
                   }`}
                 >
@@ -374,9 +369,11 @@ export default function ContactForm({
               </div>
             )}
 
-            {(category === 'general' || category === 'event_inquiry' || category === 'services') && (
+            {(category === 'general' ||
+              category === 'event_inquiry' ||
+              category === 'services') && (
               <div>
-                <label htmlFor="company" className="block text-[#e5e4e2] text-sm font-light mb-2">
+                <label htmlFor="company" className="mb-2 block text-sm font-light text-[#e5e4e2]">
                   Nazwa firmy (opcjonalnie)
                 </label>
                 <Field
@@ -385,9 +382,9 @@ export default function ContactForm({
                   name="company"
                   onFocus={() => setFocusedField('company')}
                   onBlur={() => setFocusedField(null)}
-                  className={`w-full px-4 py-3 bg-[#1c1f33]/50 border rounded-xl text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none transition-all duration-300 ${
+                  className={`w-full rounded-xl border bg-[#1c1f33]/50 px-4 py-3 text-[#e5e4e2] placeholder-[#e5e4e2]/40 transition-all duration-300 focus:outline-none ${
                     focusedField === 'company'
-                      ? 'border-[#d3bb73] shadow-lg shadow-[#d3bb73]/20 scale-[1.02]'
+                      ? 'scale-[1.02] border-[#d3bb73] shadow-lg shadow-[#d3bb73]/20'
                       : 'border-[#d3bb73]/20 hover:border-[#d3bb73]/40'
                   }`}
                   placeholder="Nazwa firmy"
@@ -396,7 +393,7 @@ export default function ContactForm({
             )}
 
             <div>
-              <label htmlFor="message" className="block text-[#e5e4e2] text-sm font-light mb-2">
+              <label htmlFor="message" className="mb-2 block text-sm font-light text-[#e5e4e2]">
                 Wiadomość *
               </label>
               <Field
@@ -406,32 +403,32 @@ export default function ContactForm({
                 rows={5}
                 onFocus={() => setFocusedField('message')}
                 onBlur={() => setFocusedField(null)}
-                className={`w-full px-4 py-3 bg-[#1c1f33]/50 border rounded-xl text-[#e5e4e2] placeholder-[#e5e4e2]/40 focus:outline-none resize-none transition-all duration-300 ${
+                className={`w-full resize-none rounded-xl border bg-[#1c1f33]/50 px-4 py-3 text-[#e5e4e2] placeholder-[#e5e4e2]/40 transition-all duration-300 focus:outline-none ${
                   focusedField === 'message'
-                    ? 'border-[#d3bb73] shadow-lg shadow-[#d3bb73]/20 scale-[1.02]'
+                    ? 'scale-[1.02] border-[#d3bb73] shadow-lg shadow-[#d3bb73]/20'
                     : errors.message && touched.message
-                    ? 'border-red-500/50'
-                    : 'border-[#d3bb73]/20 hover:border-[#d3bb73]/40'
+                      ? 'border-red-500/50'
+                      : 'border-[#d3bb73]/20 hover:border-[#d3bb73]/40'
                 }`}
                 placeholder={
                   category === 'team_join'
                     ? 'Opowiedz nam o swoim doświadczeniu i dlaczego chcesz dołączyć do naszego zespołu...'
                     : category === 'event_inquiry'
-                    ? 'Opisz swój event: data, liczba gości, lokalizacja, wymagania...'
-                    : 'Napisz swoją wiadomość...'
+                      ? 'Opisz swój event: data, liczba gości, lokalizacja, wymagania...'
+                      : 'Napisz swoją wiadomość...'
                 }
               />
-              <ErrorMessage name="message" component="div" className="text-red-400 text-sm mt-1" />
+              <ErrorMessage name="message" component="div" className="mt-1 text-sm text-red-400" />
             </div>
 
             {isSuccess && (
-              <div className="p-4 bg-green-500/10 border border-green-500/30 rounded-xl text-green-400 text-sm">
+              <div className="rounded-xl border border-green-500/30 bg-green-500/10 p-4 text-sm text-green-400">
                 Dziękujemy! Twoja wiadomość została wysłana. Skontaktujemy się wkrótce.
               </div>
             )}
 
             {isError && (
-              <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm">
+              <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-400">
                 Wystąpił błąd podczas wysyłania wiadomości. Spróbuj ponownie.
               </div>
             )}
@@ -439,10 +436,10 @@ export default function ContactForm({
             <button
               type="submit"
               disabled={isLoading}
-              className="group w-full sm:w-auto px-8 py-4 bg-[#d3bb73] text-[#1c1f33] rounded-full font-medium hover:bg-[#d3bb73]/90 transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-[#d3bb73]/40 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="group flex w-full items-center justify-center gap-2 rounded-full bg-[#d3bb73] px-8 py-4 font-medium text-[#1c1f33] transition-all duration-300 hover:scale-105 hover:bg-[#d3bb73]/90 hover:shadow-lg hover:shadow-[#d3bb73]/40 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
             >
               {isLoading ? 'Wysyłanie...' : 'Wyślij Wiadomość'}
-              <Send className="w-5 h-5 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform duration-300" />
+              <Send className="h-5 w-5 transition-transform duration-300 group-hover:-translate-y-1 group-hover:translate-x-1" />
             </button>
           </Form>
         )}

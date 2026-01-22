@@ -23,7 +23,7 @@
  * - website_edit - edycja strony WWW (portfolio, usługi, zespół, itp.)
  */
 
-import { IEmployee } from '@/app/crm/employees/type';
+import { IEmployee } from '@/app/(crm)/crm/employees/type';
 export type Employee = IEmployee;
 
 /**
@@ -31,19 +31,13 @@ export type Employee = IEmployee;
  */
 export const isAdmin = (employee: IEmployee | null | undefined): boolean => {
   if (!employee) return false;
-  return (
-    employee.access_level === 'admin' ||
-    employee.role === 'admin'
-  );
+  return employee.access_level === 'admin' || employee.role === 'admin';
 };
 
 /**
  * Sprawdza czy użytkownik ma konkretny scope permission
  */
-export const hasPermission = (
-  employee: IEmployee | null | undefined,
-  scope: string
-): boolean => {
+export const hasPermission = (employee: IEmployee | null | undefined, scope: string): boolean => {
   if (!employee) return false;
   if (isAdmin(employee)) return true;
   return employee.permissions?.includes(scope) || false;
@@ -53,26 +47,17 @@ export const hasPermission = (
  * Sprawdza czy użytkownik może przeglądać dany moduł
  * Zwraca true jeśli ma [module]_view lub [module]_manage
  */
-export const canView = (
-  employee: IEmployee | null | undefined,
-  module: string
-): boolean => {
+export const canView = (employee: IEmployee | null | undefined, module: string): boolean => {
   if (!employee) return false;
   if (isAdmin(employee)) return true;
-  return (
-    hasPermission(employee, `${module}_view`) ||
-    hasPermission(employee, `${module}_manage`)
-  );
+  return hasPermission(employee, `${module}_view`) || hasPermission(employee, `${module}_manage`);
 };
 
 /**
  * Sprawdza czy użytkownik może zarządzać danym modułem
  * Zwraca true jeśli ma [module]_manage (edycja i usuwanie)
  */
-export const canManage = (
-  employee: IEmployee | null | undefined,
-  module: string
-): boolean => {
+export const canManage = (employee: IEmployee | null | undefined, module: string): boolean => {
   if (!employee) return false;
   if (isAdmin(employee)) return true;
   return hasPermission(employee, `${module}_manage`);
@@ -82,24 +67,16 @@ export const canManage = (
  * Sprawdza czy użytkownik może tworzyć nowe rekordy w danym module
  * Zwraca true jeśli ma [module]_create LUB [module]_manage
  */
-export const canCreate = (
-  employee: IEmployee | null | undefined,
-  module: string
-): boolean => {
+export const canCreate = (employee: IEmployee | null | undefined, module: string): boolean => {
   if (!employee) return false;
   if (isAdmin(employee)) return true;
-  return (
-    hasPermission(employee, `${module}_create`) ||
-    hasPermission(employee, `${module}_manage`)
-  );
+  return hasPermission(employee, `${module}_create`) || hasPermission(employee, `${module}_manage`);
 };
 
 /**
  * Sprawdza czy użytkownik może zarządzać uprawnieniami pracowników
  */
-export const canManagePermissions = (
-  employee: IEmployee | null | undefined
-): boolean => {
+export const canManagePermissions = (employee: IEmployee | null | undefined): boolean => {
   if (!employee) return false;
   if (isAdmin(employee)) return true;
   return hasPermission(employee, 'employees_permissions');
@@ -133,7 +110,7 @@ export const MODULES = [
   'time_tracking',
 ] as const;
 
-export type ModuleName = typeof MODULES[number];
+export type ModuleName = (typeof MODULES)[number];
 
 /**
  * Moduły które mają dostępny scope _create
@@ -156,7 +133,7 @@ const MODULES_WITH_CREATE = [
  */
 export const getAllScopes = (): string[] => {
   const scopes: string[] = [];
-  MODULES.forEach(module => {
+  MODULES.forEach((module) => {
     scopes.push(`${module}_view`, `${module}_manage`);
     if (MODULES_WITH_CREATE.includes(module as any)) {
       scopes.push(`${module}_create`);
@@ -172,9 +149,7 @@ export const getAllScopes = (): string[] => {
 /**
  * Sprawdza czy użytkownik może edytować stronę WWW
  */
-export const canEditWebsite = (
-  employee: IEmployee | null | undefined
-): boolean => {
+export const canEditWebsite = (employee: IEmployee | null | undefined): boolean => {
   if (!employee) return false;
   if (isAdmin(employee)) return true;
   // if(employee.permissions?.includes('website_manage')) return true;

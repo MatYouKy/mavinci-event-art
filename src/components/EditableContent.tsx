@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useEditMode } from '@/contexts/EditModeContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { Save, X, Edit } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 
 interface ContentData {
   id: string;
@@ -101,13 +101,11 @@ export function EditableContent({
         .maybeSingle();
 
       if (!existing) {
-        const { error } = await supabase
-          .from(tableName)
-          .insert({
-            section: section,
-            title: editState.title,
-            content: editState.content,
-          });
+        const { error } = await supabase.from(tableName).insert({
+          section: section,
+          title: editState.title,
+          content: editState.content,
+        });
         if (error) throw error;
       } else {
         const { error } = await supabase
@@ -156,63 +154,51 @@ export function EditableContent({
     return (
       <div className={className} aria-busy="true" aria-label="Ładowanie treści">
         <div className="animate-pulse">
-          <div className="h-8 bg-[#1c1f33]/50 rounded w-1/3 mb-4"></div>
-          <div className="h-4 bg-[#1c1f33]/50 rounded w-full mb-2"></div>
-          <div className="h-4 bg-[#1c1f33]/50 rounded w-5/6"></div>
+          <div className="mb-4 h-8 w-1/3 rounded bg-[#1c1f33]/50"></div>
+          <div className="mb-2 h-4 w-full rounded bg-[#1c1f33]/50"></div>
+          <div className="h-4 w-5/6 rounded bg-[#1c1f33]/50"></div>
         </div>
       </div>
     );
   }
 
   return (
-    <div
-      className={`relative ${className}`}
-      aria-label={ariaLabel || section}
-      role="region"
-    >
+    <div className={`relative ${className}`} aria-label={ariaLabel || section} role="region">
       {!isEditing ? (
         <>
-          {displayTitle && (
-            <TitleTag className={titleClassName}>
-              {displayTitle}
-            </TitleTag>
-          )}
-          {displayContent && (
-            <ContentTag className={contentClassName}>
-              {displayContent}
-            </ContentTag>
-          )}
+          {displayTitle && <TitleTag className={titleClassName}>{displayTitle}</TitleTag>}
+          {displayContent && <ContentTag className={contentClassName}>{displayContent}</ContentTag>}
 
           {isEditMode && (
             <button
               onClick={() => setIsEditing(true)}
-              className="absolute top-0 right-0 p-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+              className="absolute right-0 top-0 rounded-lg bg-[#d3bb73] p-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
               aria-label={`Edytuj ${section}`}
             >
-              <Edit className="w-4 h-4" />
+              <Edit className="h-4 w-4" />
             </button>
           )}
         </>
       ) : (
         <div className="space-y-4">
           <div>
-            <label className="block text-[#e5e4e2] text-sm font-medium mb-2">Tytuł</label>
+            <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Tytuł</label>
             <input
               type="text"
               value={editState.title}
               onChange={(e) => setEditState((s) => ({ ...s, title: e.target.value }))}
-              className="w-full px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/30 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
               placeholder="Tytuł sekcji"
             />
           </div>
 
           <div>
-            <label className="block text-[#e5e4e2] text-sm font-medium mb-2">Treść</label>
+            <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Treść</label>
             <textarea
               value={editState.content}
               onChange={(e) => setEditState((s) => ({ ...s, content: e.target.value }))}
               rows={4}
-              className="w-full px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/30 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] resize-none"
+              className="w-full resize-none rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
               placeholder="Treść sekcji"
             />
           </div>
@@ -221,21 +207,21 @@ export function EditableContent({
             <button
               onClick={handleSave}
               disabled={saving}
-              className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {saving ? (
-                <div className="w-4 h-4 border-2 border-[#1c1f33] border-t-transparent rounded-full animate-spin" />
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#1c1f33] border-t-transparent" />
               ) : (
-                <Save className="w-4 h-4" />
+                <Save className="h-4 w-4" />
               )}
               Zapisz
             </button>
             <button
               onClick={handleCancel}
               disabled={saving}
-              className="flex items-center gap-2 px-4 py-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 rounded-lg bg-[#800020]/20 px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#800020]/30 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <X className="w-4 h-4" />
+              <X className="h-4 w-4" />
               Anuluj
             </button>
           </div>

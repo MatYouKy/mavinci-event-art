@@ -1,0 +1,1209 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import {
+  Building2,
+  UserCheck,
+  User,
+  ArrowLeft,
+  Save,
+  Hotel,
+  UtensilsCrossed,
+  Briefcase,
+  Search,
+  Loader2,
+  Plus,
+  X,
+  MapPin,
+  Trash2,
+  Check,
+} from 'lucide-react';
+import { supabase } from '@/lib/supabase/browser';
+import { useSnackbar } from '@/contexts/SnackbarContext';
+import { fetchCompanyDataFromGUS, parseGoogleMapsUrl } from '@/lib/gus';
+
+type ContactType = 'organization' | 'contact' | 'subcontractor' | 'individual';
+type BusinessType = 'company' | 'hotel' | 'restaurant' | 'venue' | 'freelancer' | 'other';
+
+interface ExistingContact {
+  id: string;
+  first_name: string;
+  last_name: string;
+  full_name: string;
+  email: string | null;
+  phone: string | null;
+  mobile: string | null;
+}
+
+interface NewContactForm {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  mobile: string;
+  businessPhone: string;
+  nip: string;
+  position: string;
+  pesel: string;
+  idNumber: string;
+  eventType: string;
+  eventDetails: string;
+}
+
+export default function NewContactPage() {
+  const router = useRouter();
+  const { showSnackbar } = useSnackbar();
+
+  const [contactType, setContactType] = useState<ContactType | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [loadingGUS, setLoadingGUS] = useState(false);
+  const [loadingContacts, setLoadingContacts] = useState(false);
+
+  const [formData, setFormData] = useState({
+    name: '',
+    alias: '',
+    businessType: 'company' as BusinessType,
+    nip: '',
+    regon: '',
+    address: '',
+    city: '',
+    postalCode: '',
+    email: '',
+    phone: '',
+    website: '',
+    googleMapsUrl: '',
+    latitude: '',
+    longitude: '',
+    locationNotes: '',
+    notes: '',
+    hourlyRate: '',
+    specialization: [] as string[],
+  });
+
+  const [availableContacts, setAvailableContacts] = useState<ExistingContact[]>([]);
+  const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showNewContactForm, setShowNewContactForm] = useState(false);
+  const [newContact, setNewContact] = useState<NewContactForm>({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    mobile: '',
+    businessPhone: '',
+    nip: '',
+    position: '',
+    pesel: '',
+    idNumber: '',
+    eventType: '',
+    eventDetails: '',
+  });
+
+  const [specializationInput, setSpecializationInput] = useState('');
+
+  useEffect(() => {
+    if (contactType === 'organization' || contactType === 'subcontractor') {
+      fetchAvailableContacts();
+    }
+  }, [contactType]);
+
+  const fetchAvailableContacts = async () => {
+    try {
+      setLoadingContacts(true);
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('contact_type', 'contact')
+        .eq('status', 'active')
+        .order('full_name');
+
+      if (error) throw error;
+      setAvailableContacts(data || []);
+    } catch (error: any) {
+      console.error('Error fetching contacts:', error);
+      showSnackbar('Błąd podczas ładowania kontaktów', 'error');
+    } finally {
+      setLoadingContacts(false);
+    }
+  };
+
+  const toggleContactSelection = (contactId: string) => {
+    if (selectedContactIds.includes(contactId)) {
+      setSelectedContactIds(selectedContactIds.filter((id) => id !== contactId));
+    } else {
+      setSelectedContactIds([...selectedContactIds, contactId]);
+    }
+  };
+
+  const handleAddNewContact = async () => {
+    if (!newContact.firstName.trim() || !newContact.lastName.trim()) {
+      showSnackbar('Wprowadź imię i nazwisko kontaktu', 'error');
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .insert([
+          {
+            contact_type: 'contact',
+            first_name: newContact.firstName,
+            last_name: newContact.lastName,
+            email: newContact.email || null,
+            phone: newContact.phone || null,
+            mobile: newContact.mobile || null,
+            status: 'active',
+          },
+        ])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setAvailableContacts([...availableContacts, data]);
+      setSelectedContactIds([...selectedContactIds, data.id]);
+      setShowNewContactForm(false);
+      setNewContact({
+        firstName: '',
+        lastName: '',
+        email: '',
+        phone: '',
+        mobile: '',
+      });
+      showSnackbar('Kontakt dodany', 'success');
+    } catch (error: any) {
+      console.error('Error adding contact:', error);
+      showSnackbar('Błąd podczas dodawania kontaktu', 'error');
+    }
+  };
+
+  const handleFetchFromGUS = async () => {
+    if (!formData.nip) {
+      showSnackbar('Wprowadź NIP', 'error');
+      return;
+    }
+
+    try {
+      setLoadingGUS(true);
+      const data = await fetchCompanyDataFromGUS(formData.nip);
+
+      if (data) {
+        setFormData({
+          ...formData,
+          name: data.name || formData.name,
+          regon: data.regon || formData.regon,
+          address: data.address || formData.address,
+        });
+        showSnackbar('Dane pobrane z GUS', 'success');
+      }
+    } catch (error: any) {
+      showSnackbar(error.message || 'Błąd podczas pobierania danych z GUS', 'error');
+    } finally {
+      setLoadingGUS(false);
+    }
+  };
+
+  const handleParseGoogleMaps = () => {
+    if (!formData.googleMapsUrl) {
+      showSnackbar('Wprowadź URL Google Maps', 'error');
+      return;
+    }
+
+    try {
+      const coords = parseGoogleMapsUrl(formData.googleMapsUrl);
+      if (coords) {
+        setFormData({
+          ...formData,
+          latitude: coords.latitude.toString(),
+          longitude: coords.longitude.toString(),
+        });
+        showSnackbar('Współrzędne pobrane z URL', 'success');
+      } else {
+        showSnackbar('Nie udało się odczytać współrzędnych z URL. Sprawdź format linku.', 'error');
+      }
+    } catch (error: any) {
+      showSnackbar(error.message || 'Błąd podczas parsowania URL', 'error');
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!contactType) {
+      showSnackbar('Wybierz typ kontaktu', 'error');
+      return;
+    }
+
+    if (contactType === 'organization' || contactType === 'subcontractor') {
+      if (!formData.name) {
+        showSnackbar('Wprowadź nazwę organizacji', 'error');
+        return;
+      }
+    }
+
+    if (contactType === 'contact' || contactType === 'individual') {
+      if (!newContact.firstName.trim() || !newContact.lastName.trim()) {
+        showSnackbar('Wprowadź dane osoby kontaktowej', 'error');
+        return;
+      }
+    }
+
+    try {
+      setLoading(true);
+
+      if (contactType === 'contact' || contactType === 'individual') {
+        const contactData: any = {
+          contact_type: contactType,
+          first_name: newContact.firstName,
+          last_name: newContact.lastName,
+          email: newContact.email || formData.email || null,
+          phone: newContact.phone || formData.phone || null,
+          mobile: newContact.mobile || null,
+          city: formData.city || null,
+          address: formData.address || null,
+          postal_code: formData.postalCode || null,
+          notes: formData.notes || null,
+          status: 'active' as const,
+        };
+
+        // Dodatkowe pola dla kontaktu
+        if (contactType === 'contact') {
+          contactData.nip = newContact.nip || null;
+          contactData.position = newContact.position || null;
+          contactData.business_phone = newContact.businessPhone || null;
+        }
+
+        // Dodatkowe pola dla osoby prywatnej
+        if (contactType === 'individual') {
+          contactData.pesel = newContact.pesel || null;
+          contactData.id_number = newContact.idNumber || null;
+          contactData.event_type = newContact.eventType || null;
+          contactData.event_details = newContact.eventDetails || null;
+        }
+
+        const { data: contact, error: contactError } = await supabase
+          .from('contacts')
+          .insert([contactData])
+          .select()
+          .single();
+
+        if (contactError) throw contactError;
+
+        showSnackbar(
+          contactType === 'contact'
+            ? 'Kontakt dodany pomyślnie'
+            : 'Osoba prywatna dodana pomyślnie',
+          'success',
+        );
+        router.push(`/crm/contacts/${contact.id}`);
+      } else {
+        const orgData = {
+          organization_type: contactType === 'subcontractor' ? 'subcontractor' : 'client',
+          business_type: formData.businessType,
+          name: formData.name,
+          alias: formData.alias || null,
+          nip: formData.nip || null,
+          address: formData.address || null,
+          city: formData.city || null,
+          postal_code: formData.postalCode || null,
+          email: formData.email || null,
+          phone: formData.phone || null,
+          website: formData.website || null,
+          google_maps_url: formData.googleMapsUrl || null,
+          latitude: formData.latitude ? parseFloat(formData.latitude) : null,
+          longitude: formData.longitude ? parseFloat(formData.longitude) : null,
+          location_notes: formData.locationNotes || null,
+          notes: formData.notes || null,
+          status: 'active' as const,
+          specialization: contactType === 'subcontractor' ? formData.specialization : null,
+          hourly_rate:
+            contactType === 'subcontractor' && formData.hourlyRate
+              ? parseFloat(formData.hourlyRate)
+              : null,
+        };
+
+        const { data: org, error: orgError } = await supabase
+          .from('organizations')
+          .insert([orgData])
+          .select()
+          .single();
+
+        if (orgError) throw orgError;
+
+        if (selectedContactIds.length > 0) {
+          const contactOrgLinks = selectedContactIds.map((contactId) => ({
+            contact_id: contactId,
+            organization_id: org.id,
+            is_current: true,
+          }));
+
+          const { error: linkError } = await supabase
+            .from('contact_organizations')
+            .insert(contactOrgLinks);
+
+          if (linkError) throw linkError;
+        }
+
+        showSnackbar(
+          contactType === 'organization'
+            ? 'Organizacja dodana pomyślnie'
+            : 'Podwykonawca dodany pomyślnie',
+          'success',
+        );
+        router.push(`/crm/contacts/${org.id}`);
+      }
+    } catch (error: any) {
+      console.error('Error creating contact:', error);
+      showSnackbar(error.message || 'Błąd podczas dodawania kontaktu', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const addSpecialization = () => {
+    if (specializationInput.trim()) {
+      setFormData({
+        ...formData,
+        specialization: [...formData.specialization, specializationInput.trim()],
+      });
+      setSpecializationInput('');
+    }
+  };
+
+  const removeSpecialization = (index: number) => {
+    setFormData({
+      ...formData,
+      specialization: formData.specialization.filter((_, i) => i !== index),
+    });
+  };
+
+  const getBusinessTypeIcon = (type: BusinessType) => {
+    switch (type) {
+      case 'hotel':
+        return <Hotel className="h-5 w-5" />;
+      case 'restaurant':
+        return <UtensilsCrossed className="h-5 w-5" />;
+      case 'venue':
+        return <Building2 className="h-5 w-5" />;
+      case 'freelancer':
+        return <User className="h-5 w-5" />;
+      default:
+        return <Briefcase className="h-5 w-5" />;
+    }
+  };
+
+  const filteredContacts = availableContacts.filter(
+    (contact) =>
+      contact.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      contact.email?.toLowerCase().includes(searchTerm.toLowerCase()),
+  );
+
+  return (
+    <div className="min-h-screen bg-[#0f1119] p-6">
+      <div className="mx-auto max-w-5xl">
+        <div className="mb-6 flex items-center space-x-4">
+          <button
+            onClick={() => router.back()}
+            className="rounded-lg p-2 transition-colors hover:bg-[#1a1d2e]"
+          >
+            <ArrowLeft className="h-6 w-6 text-gray-400" />
+          </button>
+          <div>
+            <h1 className="text-3xl font-bold text-[#d3bb73]">Dodaj kontakt</h1>
+            <p className="text-gray-400">Wybierz typ kontaktu</p>
+          </div>
+        </div>
+
+        {!contactType ? (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <button
+              onClick={() => setContactType('organization')}
+              className="group rounded-lg border-2 border-gray-700 bg-[#1a1d2e] p-8 transition-all hover:border-[#d3bb73]"
+            >
+              <Building2 className="mx-auto mb-4 h-16 w-16 text-[#d3bb73] transition-transform group-hover:scale-110" />
+              <h3 className="mb-2 text-xl font-semibold text-white">Organizacja</h3>
+              <p className="text-sm text-gray-400">Firma, hotel, restauracja, sala eventowa</p>
+            </button>
+
+            <button
+              onClick={() => setContactType('contact')}
+              className="group rounded-lg border-2 border-gray-700 bg-[#1a1d2e] p-8 transition-all hover:border-[#d3bb73]"
+            >
+              <User className="mx-auto mb-4 h-16 w-16 text-[#d3bb73] transition-transform group-hover:scale-110" />
+              <h3 className="mb-2 text-xl font-semibold text-white">Kontakt</h3>
+              <p className="text-sm text-gray-400">Osoba w organizacji lub niezależna</p>
+            </button>
+
+            <button
+              onClick={() => setContactType('subcontractor')}
+              className="group rounded-lg border-2 border-gray-700 bg-[#1a1d2e] p-8 transition-all hover:border-[#d3bb73]"
+            >
+              <UserCheck className="mx-auto mb-4 h-16 w-16 text-[#d3bb73] transition-transform group-hover:scale-110" />
+              <h3 className="mb-2 text-xl font-semibold text-white">Podwykonawca</h3>
+              <p className="text-sm text-gray-400">Firma lub freelancer współpracujący</p>
+            </button>
+
+            <button
+              onClick={() => setContactType('individual')}
+              className="group rounded-lg border-2 border-gray-700 bg-[#1a1d2e] p-8 transition-all hover:border-[#d3bb73]"
+            >
+              <User className="mx-auto mb-4 h-16 w-16 text-[#d3bb73] transition-transform group-hover:scale-110" />
+              <h3 className="mb-2 text-xl font-semibold text-white">Osoba prywatna</h3>
+              <p className="text-sm text-gray-400">Klient indywidualny</p>
+            </button>
+          </div>
+        ) : (
+          <form
+            onSubmit={handleSubmit}
+            className="rounded-lg border border-gray-700 bg-[#1a1d2e] p-6"
+          >
+            <div className="mb-6 flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                {contactType === 'organization' && <Building2 className="h-8 w-8 text-[#d3bb73]" />}
+                {contactType === 'contact' && <User className="h-8 w-8 text-[#d3bb73]" />}
+                {contactType === 'subcontractor' && (
+                  <UserCheck className="h-8 w-8 text-[#d3bb73]" />
+                )}
+                {contactType === 'individual' && <User className="h-8 w-8 text-[#d3bb73]" />}
+                <h2 className="text-2xl font-bold text-white">
+                  {contactType === 'organization' && 'Nowa organizacja'}
+                  {contactType === 'contact' && 'Nowy kontakt'}
+                  {contactType === 'subcontractor' && 'Nowy podwykonawca'}
+                  {contactType === 'individual' && 'Nowa osoba prywatna'}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setContactType(null)}
+                className="text-sm text-gray-400 transition-colors hover:text-white"
+              >
+                Zmień typ
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              {(contactType === 'organization' || contactType === 'subcontractor') && (
+                <>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-300">
+                      Nazwa pełna <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                      placeholder="np. OMEGA HOTEL SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-300">
+                      Alias (krótka nazwa)
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.alias}
+                      onChange={(e) => setFormData({ ...formData, alias: e.target.value })}
+                      className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                      placeholder="np. OMEGA HOTEL"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Krótka nazwa wyświetlana zamiast pełnej nazwy
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-gray-300">NIP</label>
+                      <div className="flex space-x-2">
+                        <input
+                          type="text"
+                          value={formData.nip}
+                          onChange={(e) => setFormData({ ...formData, nip: e.target.value })}
+                          className="flex-1 rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                          placeholder="0000000000"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleFetchFromGUS}
+                          disabled={loadingGUS}
+                          className="flex items-center space-x-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#0f1119] transition-colors hover:bg-[#c4a859] disabled:opacity-50"
+                        >
+                          {loadingGUS ? (
+                            <Loader2 className="h-5 w-5 animate-spin" />
+                          ) : (
+                            <Search className="h-5 w-5" />
+                          )}
+                          <span>GUS</span>
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-gray-300">REGON</label>
+                      <input
+                        type="text"
+                        value={formData.regon}
+                        onChange={(e) => setFormData({ ...formData, regon: e.target.value })}
+                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                        readOnly
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-300">
+                      Typ działalności
+                    </label>
+                    <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+                      {contactType === 'organization'
+                        ? ['company', 'hotel', 'restaurant', 'venue', 'other'].map((type) => (
+                            <button
+                              key={type}
+                              type="button"
+                              onClick={() =>
+                                setFormData({ ...formData, businessType: type as BusinessType })
+                              }
+                              className={`flex items-center space-x-2 rounded-lg border-2 px-4 py-2 transition-all ${
+                                formData.businessType === type
+                                  ? 'border-[#d3bb73] bg-[#d3bb73]/10 text-[#d3bb73]'
+                                  : 'border-gray-700 text-gray-400 hover:border-gray-600'
+                              }`}
+                            >
+                              {getBusinessTypeIcon(type as BusinessType)}
+                              <span className="capitalize">
+                                {type === 'company' && 'Firma'}
+                                {type === 'hotel' && 'Hotel'}
+                                {type === 'restaurant' && 'Restauracja'}
+                                {type === 'venue' && 'Sala eventowa'}
+                                {type === 'other' && 'Inna'}
+                              </span>
+                            </button>
+                          ))
+                        : ['company', 'freelancer'].map((type) => (
+                            <button
+                              key={type}
+                              type="button"
+                              onClick={() =>
+                                setFormData({ ...formData, businessType: type as BusinessType })
+                              }
+                              className={`flex items-center space-x-2 rounded-lg border-2 px-4 py-2 transition-all ${
+                                formData.businessType === type
+                                  ? 'border-[#d3bb73] bg-[#d3bb73]/10 text-[#d3bb73]'
+                                  : 'border-gray-700 text-gray-400 hover:border-gray-600'
+                              }`}
+                            >
+                              {getBusinessTypeIcon(type as BusinessType)}
+                              <span>{type === 'company' ? 'Firma' : 'Freelancer'}</span>
+                            </button>
+                          ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-300">
+                      Strona WWW
+                    </label>
+                    <input
+                      type="url"
+                      value={formData.website}
+                      onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                      className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                      placeholder="https://"
+                    />
+                  </div>
+                </>
+              )}
+
+              {(contactType === 'organization' || contactType === 'subcontractor') && (
+                <div className="border-t border-gray-700 pt-6">
+                  <h3 className="mb-4 flex items-center space-x-2 text-lg font-semibold text-white">
+                    <User className="h-5 w-5 text-[#d3bb73]" />
+                    <span>Osoby kontaktowe</span>
+                    <span className="text-sm font-normal text-gray-400">(opcjonalne)</span>
+                  </h3>
+
+                  {loadingContacts ? (
+                    <div className="py-8 text-center">
+                      <Loader2 className="mx-auto h-8 w-8 animate-spin text-[#d3bb73]" />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mb-4">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 transform text-gray-400" />
+                          <input
+                            type="text"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            placeholder="Szukaj kontaktu..."
+                            className="w-full rounded-lg border border-gray-700 bg-[#0f1119] py-2 pl-10 pr-4 text-white focus:border-[#d3bb73] focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mb-4 max-h-64 space-y-2 overflow-y-auto">
+                        {filteredContacts.map((contact) => (
+                          <button
+                            key={contact.id}
+                            type="button"
+                            onClick={() => toggleContactSelection(contact.id)}
+                            className={`flex w-full items-center justify-between rounded-lg border-2 p-3 transition-all ${
+                              selectedContactIds.includes(contact.id)
+                                ? 'border-[#d3bb73] bg-[#d3bb73]/10'
+                                : 'border-gray-700 hover:border-gray-600'
+                            }`}
+                          >
+                            <div className="flex items-center space-x-3">
+                              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#d3bb73]/10">
+                                <User className="h-5 w-5 text-[#d3bb73]" />
+                              </div>
+                              <div className="text-left">
+                                <p className="font-medium text-white">{contact.full_name}</p>
+                                {contact.email && (
+                                  <p className="text-sm text-gray-400">{contact.email}</p>
+                                )}
+                              </div>
+                            </div>
+                            {selectedContactIds.includes(contact.id) && (
+                              <Check className="h-5 w-5 text-[#d3bb73]" />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+
+                      {selectedContactIds.length > 0 && (
+                        <div className="mb-4 rounded-lg bg-[#0f1119] p-3">
+                          <p className="mb-2 text-sm text-gray-400">Wybrane kontakty:</p>
+                          <div className="flex flex-wrap gap-2">
+                            {selectedContactIds.map((id) => {
+                              const contact = availableContacts.find((c) => c.id === id);
+                              return (
+                                <span
+                                  key={id}
+                                  className="flex items-center space-x-2 rounded-lg bg-[#d3bb73]/20 px-3 py-1 text-sm text-[#d3bb73]"
+                                >
+                                  <span>{contact?.full_name}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleContactSelection(id)}
+                                    className="transition-colors hover:text-red-400"
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {!showNewContactForm ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowNewContactForm(true)}
+                          className="flex w-full items-center justify-center space-x-2 rounded-lg border-2 border-dashed border-gray-700 px-4 py-2 text-gray-400 transition-colors hover:border-[#d3bb73] hover:text-[#d3bb73]"
+                        >
+                          <Plus className="h-5 w-5" />
+                          <span>Dodaj nowy kontakt</span>
+                        </button>
+                      ) : (
+                        <div className="rounded-lg border border-gray-700 bg-[#0f1119] p-4">
+                          <div className="mb-4 flex items-center justify-between">
+                            <h4 className="font-medium text-white">Nowy kontakt</h4>
+                            <button
+                              type="button"
+                              onClick={() => setShowNewContactForm(false)}
+                              className="text-gray-400 transition-colors hover:text-white"
+                            >
+                              <X className="h-5 w-5" />
+                            </button>
+                          </div>
+
+                          <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div>
+                              <label className="mb-1 block text-sm text-gray-400">
+                                Imię <span className="text-red-400">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={newContact.firstName}
+                                onChange={(e) =>
+                                  setNewContact({ ...newContact, firstName: e.target.value })
+                                }
+                                className="w-full rounded border border-gray-700 bg-[#1a1d2e] px-3 py-2 text-sm text-white focus:border-[#d3bb73] focus:outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="mb-1 block text-sm text-gray-400">
+                                Nazwisko <span className="text-red-400">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={newContact.lastName}
+                                onChange={(e) =>
+                                  setNewContact({ ...newContact, lastName: e.target.value })
+                                }
+                                className="w-full rounded border border-gray-700 bg-[#1a1d2e] px-3 py-2 text-sm text-white focus:border-[#d3bb73] focus:outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="mb-1 block text-sm text-gray-400">Email</label>
+                              <input
+                                type="email"
+                                value={newContact.email}
+                                onChange={(e) =>
+                                  setNewContact({ ...newContact, email: e.target.value })
+                                }
+                                className="w-full rounded border border-gray-700 bg-[#1a1d2e] px-3 py-2 text-sm text-white focus:border-[#d3bb73] focus:outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="mb-1 block text-sm text-gray-400">Telefon</label>
+                              <input
+                                type="tel"
+                                value={newContact.phone}
+                                onChange={(e) =>
+                                  setNewContact({ ...newContact, phone: e.target.value })
+                                }
+                                className="w-full rounded border border-gray-700 bg-[#1a1d2e] px-3 py-2 text-sm text-white focus:border-[#d3bb73] focus:outline-none"
+                              />
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={handleAddNewContact}
+                            className="flex w-full items-center justify-center space-x-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#0f1119] transition-colors hover:bg-[#c4a859]"
+                          >
+                            <Save className="h-5 w-5" />
+                            <span>Zapisz kontakt</span>
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {(contactType === 'contact' || contactType === 'individual') && (
+                <div className="border-t border-gray-700 pt-6">
+                  <h3 className="mb-4 text-lg font-semibold text-white">Dane osobowe</h3>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div>
+                        <label className="mb-1 block text-sm text-gray-400">
+                          Imię <span className="text-red-400">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={newContact.firstName}
+                          onChange={(e) =>
+                            setNewContact({ ...newContact, firstName: e.target.value })
+                          }
+                          className="w-full rounded border border-gray-700 bg-[#0f1119] px-3 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-sm text-gray-400">
+                          Nazwisko <span className="text-red-400">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={newContact.lastName}
+                          onChange={(e) =>
+                            setNewContact({ ...newContact, lastName: e.target.value })
+                          }
+                          className="w-full rounded border border-gray-700 bg-[#0f1119] px-3 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    {contactType === 'contact' && (
+                      <>
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                          <div>
+                            <label className="mb-1 block text-sm text-gray-400">
+                              Stanowisko <span className="text-xs text-gray-500">(opcjonalne)</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={newContact.position}
+                              onChange={(e) =>
+                                setNewContact({ ...newContact, position: e.target.value })
+                              }
+                              className="w-full rounded border border-gray-700 bg-[#0f1119] px-3 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                              placeholder="np. Kierownik sprzedaży"
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-1 block text-sm text-gray-400">
+                              NIP <span className="text-xs text-gray-500">(dla JDG)</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={newContact.nip}
+                              onChange={(e) =>
+                                setNewContact({ ...newContact, nip: e.target.value })
+                              }
+                              className="w-full rounded border border-gray-700 bg-[#0f1119] px-3 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                              placeholder="0000000000"
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {contactType === 'individual' && (
+                      <>
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                          <div>
+                            <label className="mb-1 block text-sm text-gray-400">
+                              PESEL <span className="text-xs text-gray-500">(opcjonalne)</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={newContact.pesel}
+                              onChange={(e) =>
+                                setNewContact({ ...newContact, pesel: e.target.value })
+                              }
+                              className="w-full rounded border border-gray-700 bg-[#0f1119] px-3 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                              placeholder="00000000000"
+                              maxLength={11}
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-1 block text-sm text-gray-400">
+                              Numer dowodu{' '}
+                              <span className="text-xs text-gray-500">(opcjonalne)</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={newContact.idNumber}
+                              onChange={(e) =>
+                                setNewContact({ ...newContact, idNumber: e.target.value })
+                              }
+                              className="w-full rounded border border-gray-700 bg-[#0f1119] px-3 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                              placeholder="ABC123456"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="mb-2 block text-sm text-gray-400">
+                            Rodzaj uroczystości{' '}
+                            <span className="text-xs text-gray-500">(opcjonalne)</span>
+                          </label>
+                          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                            {['wesele', 'urodziny', 'dodatki', 'inne'].map((type) => (
+                              <button
+                                key={type}
+                                type="button"
+                                onClick={() => setNewContact({ ...newContact, eventType: type })}
+                                className={`rounded-lg border-2 px-4 py-2 capitalize transition-all ${
+                                  newContact.eventType === type
+                                    ? 'border-[#d3bb73] bg-[#d3bb73]/10 text-[#d3bb73]'
+                                    : 'border-gray-700 text-gray-400 hover:border-gray-600'
+                                }`}
+                              >
+                                {type}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {newContact.eventType && (
+                          <div>
+                            <label className="mb-1 block text-sm text-gray-400">
+                              Szczegóły uroczystości{' '}
+                              <span className="text-xs text-gray-500">(opcjonalne)</span>
+                            </label>
+                            <textarea
+                              value={newContact.eventDetails}
+                              onChange={(e) =>
+                                setNewContact({ ...newContact, eventDetails: e.target.value })
+                              }
+                              rows={3}
+                              className="w-full rounded border border-gray-700 bg-[#0f1119] px-3 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                              placeholder="Dodatkowe informacje o uroczystości..."
+                            />
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="border-t border-gray-700 pt-6">
+                <h3 className="mb-4 text-lg font-semibold text-white">Dane kontaktowe</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-300">Email</label>
+                    <input
+                      type="email"
+                      value={
+                        contactType === 'contact' || contactType === 'individual'
+                          ? newContact.email
+                          : formData.email
+                      }
+                      onChange={(e) =>
+                        contactType === 'contact' || contactType === 'individual'
+                          ? setNewContact({ ...newContact, email: e.target.value })
+                          : setFormData({ ...formData, email: e.target.value })
+                      }
+                      className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                    />
+                  </div>
+
+                  {contactType === 'contact' || contactType === 'individual' ? (
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-gray-300">
+                          Telefon prywatny{' '}
+                          {contactType === 'individual' && (
+                            <span className="text-xs text-gray-500">(opcjonalne)</span>
+                          )}
+                        </label>
+                        <input
+                          type="tel"
+                          value={newContact.phone}
+                          onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })}
+                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                          placeholder="600 123 456"
+                        />
+                      </div>
+                      {contactType === 'contact' && (
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-gray-300">
+                            Telefon firmowy{' '}
+                            <span className="text-xs text-gray-500">(opcjonalne)</span>
+                          </label>
+                          <input
+                            type="tel"
+                            value={newContact.businessPhone}
+                            onChange={(e) =>
+                              setNewContact({ ...newContact, businessPhone: e.target.value })
+                            }
+                            className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                            placeholder="22 123 4567"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-gray-300">
+                        Telefon
+                      </label>
+                      <input
+                        type="tel"
+                        value={formData.phone}
+                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                      />
+                    </div>
+                  )}
+
+                  {(contactType === 'contact' || contactType === 'individual') &&
+                    formData.address && (
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-gray-300">
+                          Adres <span className="text-xs text-gray-500">(opcjonalne)</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.address}
+                          onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                          placeholder="ul. Przykładowa 123"
+                        />
+                      </div>
+                    )}
+                </div>
+              </div>
+
+              {(contactType === 'organization' || contactType === 'subcontractor') && (
+                <>
+                  <div className="border-t border-gray-700 pt-6">
+                    <h3 className="mb-4 flex items-center space-x-2 text-lg font-semibold text-white">
+                      <MapPin className="h-5 w-5 text-[#d3bb73]" />
+                      <span>Lokalizacja</span>
+                    </h3>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-gray-300">
+                          URL Google Maps
+                        </label>
+                        <div className="flex space-x-2">
+                          <input
+                            type="url"
+                            value={formData.googleMapsUrl}
+                            onChange={(e) =>
+                              setFormData({ ...formData, googleMapsUrl: e.target.value })
+                            }
+                            className="flex-1 rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                            placeholder="https://maps.google.com/..."
+                          />
+                          <button
+                            type="button"
+                            onClick={handleParseGoogleMaps}
+                            className="flex items-center space-x-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#0f1119] transition-colors hover:bg-[#c4a859]"
+                          >
+                            <MapPin className="h-5 w-5" />
+                            <span>Pobierz</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-gray-300">
+                          Ulica i numer
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.address}
+                          onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-gray-300">
+                            Miasto
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.city}
+                            onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                            className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-gray-300">
+                            Kod pocztowy
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.postalCode}
+                            onChange={(e) =>
+                              setFormData({ ...formData, postalCode: e.target.value })
+                            }
+                            className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                            placeholder="00-000"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {contactType === 'subcontractor' && (
+                <div className="border-t border-gray-700 pt-6">
+                  <h3 className="mb-4 text-lg font-semibold text-white">
+                    Informacje dla podwykonawcy
+                  </h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-gray-300">
+                        Stawka godzinowa (zł)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={formData.hourlyRate}
+                        onChange={(e) => setFormData({ ...formData, hourlyRate: e.target.value })}
+                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-gray-300">
+                        Specjalizacje
+                      </label>
+                      <div className="mb-2 flex space-x-2">
+                        <input
+                          type="text"
+                          value={specializationInput}
+                          onChange={(e) => setSpecializationInput(e.target.value)}
+                          onKeyPress={(e) =>
+                            e.key === 'Enter' && (e.preventDefault(), addSpecialization())
+                          }
+                          className="flex-1 rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                          placeholder="Dodaj specjalizację i naciśnij Enter"
+                        />
+                        <button
+                          type="button"
+                          onClick={addSpecialization}
+                          className="rounded-lg bg-[#d3bb73] px-4 py-2 text-[#0f1119] transition-colors hover:bg-[#c4a859]"
+                        >
+                          Dodaj
+                        </button>
+                      </div>
+                      {formData.specialization.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {formData.specialization.map((spec, index) => (
+                            <span
+                              key={index}
+                              className="flex items-center space-x-2 rounded-lg bg-[#d3bb73]/20 px-3 py-1 text-sm text-[#d3bb73]"
+                            >
+                              <span>{spec}</span>
+                              <button
+                                type="button"
+                                onClick={() => removeSpecialization(index)}
+                                className="transition-colors hover:text-red-400"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="border-t border-gray-700 pt-6">
+                <label className="mb-2 block text-sm font-medium text-gray-300">Notatki</label>
+                <textarea
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  rows={4}
+                  className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                  placeholder="Dodatkowe informacje..."
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end space-x-4 border-t border-gray-700 pt-6">
+              <button
+                type="button"
+                onClick={() => router.back()}
+                className="rounded-lg border border-gray-700 px-6 py-2 text-gray-300 transition-colors hover:bg-[#0f1119]"
+              >
+                Anuluj
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="flex items-center space-x-2 rounded-lg bg-[#d3bb73] px-6 py-2 font-medium text-[#0f1119] transition-colors hover:bg-[#c4a859] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {loading ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <Save className="h-5 w-5" />
+                )}
+                <span>{loading ? 'Zapisywanie...' : 'Zapisz'}</span>
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}

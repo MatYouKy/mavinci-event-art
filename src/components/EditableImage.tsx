@@ -8,7 +8,7 @@ import type { SiteImage } from '@/lib/siteImages';
 import { SliderX, SliderY, SliderScale } from './UI/Slider/Slider';
 import { Save, X, Upload, RotateCcw } from 'lucide-react';
 import { uploadImage } from '@/lib/storage';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 import { ThreeDotMenu } from './UI/ThreeDotMenu/ThreeDotMenu';
 
 interface EditableImageProps {
@@ -115,33 +115,31 @@ export function EditableImage({
 
         if (existing || section.includes('about') || section.includes('team')) {
           if (!existing) {
-            const { error } = await supabase
-              .from(pageTableName)
-              .insert({
-                section: section,
-                name: `Image ${section}`,
-                description: `Image for ${section}`,
-                image_url: defaultImage,
-                alt_text: alt,
-                image_metadata: {
-                  desktop: {
-                    position: {
-                      posX: editState.posX,
-                      posY: editState.posY,
-                      scale: editState.scale,
-                    },
-                    objectFit: 'cover',
+            const { error } = await supabase.from(pageTableName).insert({
+              section: section,
+              name: `Image ${section}`,
+              description: `Image for ${section}`,
+              image_url: defaultImage,
+              alt_text: alt,
+              image_metadata: {
+                desktop: {
+                  position: {
+                    posX: editState.posX,
+                    posY: editState.posY,
+                    scale: editState.scale,
                   },
-                  mobile: {
-                    position: {
-                      posX: editState.posX,
-                      posY: editState.posY,
-                      scale: editState.scale,
-                    },
-                    objectFit: 'cover',
-                  },
+                  objectFit: 'cover',
                 },
-              });
+                mobile: {
+                  position: {
+                    posX: editState.posX,
+                    posY: editState.posY,
+                    scale: editState.scale,
+                  },
+                  objectFit: 'cover',
+                },
+              },
+            });
             if (error) throw error;
           } else {
             const { error } = await supabase
@@ -285,25 +283,23 @@ export function EditableImage({
               .eq('section', section);
             if (error) throw error;
           } else {
-            const { error } = await supabase
-              .from(pageTableName)
-              .insert({
-                section: section,
-                name: `Image ${section}`,
-                description: `Image for ${section}`,
-                image_url: url,
-                alt_text: alt,
-                image_metadata: {
-                  desktop: {
-                    position: { posX: 0, posY: 0, scale: 1 },
-                    objectFit: 'cover',
-                  },
-                  mobile: {
-                    position: { posX: 0, posY: 0, scale: 1 },
-                    objectFit: 'cover',
-                  },
+            const { error } = await supabase.from(pageTableName).insert({
+              section: section,
+              name: `Image ${section}`,
+              description: `Image for ${section}`,
+              image_url: url,
+              alt_text: alt,
+              image_metadata: {
+                desktop: {
+                  position: { posX: 0, posY: 0, scale: 1 },
+                  objectFit: 'cover',
                 },
-              });
+                mobile: {
+                  position: { posX: 0, posY: 0, scale: 1 },
+                  objectFit: 'cover',
+                },
+              },
+            });
             if (error) throw error;
           }
 
@@ -475,11 +471,13 @@ export function EditableImage({
   ];
 
   const imageUrl = siteImage?.desktop_url || defaultImage;
-  const displayPosition = isEditingPosition ? editState : (siteImage?.image_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 });
+  const displayPosition = isEditingPosition
+    ? editState
+    : siteImage?.image_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 };
 
   return (
     <div className={`relative ${className}`}>
-      <div className="overflow-hidden w-full h-full">
+      <div className="h-full w-full overflow-hidden">
         <img
           src={imageUrl}
           alt={siteImage?.alt_text || alt}
@@ -519,20 +517,20 @@ export function EditableImage({
                 <button
                   onClick={handleSavePosition}
                   disabled={saving}
-                  className="p-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="rounded-lg bg-[#d3bb73] p-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {saving ? (
-                    <div className="w-5 h-5 border-2 border-[#1c1f33] border-t-transparent rounded-full animate-spin" />
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#1c1f33] border-t-transparent" />
                   ) : (
-                    <Save className="w-5 h-5" />
+                    <Save className="h-5 w-5" />
                   )}
                 </button>
                 <button
                   onClick={handleCancelPosition}
                   disabled={saving}
-                  className="p-2 bg-[#800020]/20 text-[#e5e4e2] rounded-lg hover:bg-[#800020]/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="rounded-lg bg-[#800020]/20 p-2 text-[#e5e4e2] transition-colors hover:bg-[#800020]/30 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="h-5 w-5" />
                 </button>
               </div>
             }
@@ -548,29 +546,29 @@ export function EditableImage({
               min={-100}
               max={100}
               step={0.1}
-              onChange={(_, v) => setEditState(s => ({ ...s, posX: v as number }))}
+              onChange={(_, v) => setEditState((s) => ({ ...s, posX: v as number }))}
             />
             <SliderY
               value={editState.posY}
               min={-100}
               max={100}
               step={0.1}
-              onChange={(_, v) => setEditState(s => ({ ...s, posY: v as number }))}
+              onChange={(_, v) => setEditState((s) => ({ ...s, posY: v as number }))}
             />
             <SliderScale
               value={editState.scale}
               min={0.1}
               max={3}
               step={0.01}
-              onChange={(_, v) => setEditState(s => ({ ...s, scale: v as number }))}
+              onChange={(_, v) => setEditState((s) => ({ ...s, scale: v as number }))}
             />
           </div>
         </div>
       )}
 
       {uploading && (
-        <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="w-16 h-16 border-4 border-[#d3bb73] border-t-transparent rounded-full animate-spin" />
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="h-16 w-16 animate-spin rounded-full border-4 border-[#d3bb73] border-t-transparent" />
         </div>
       )}
     </div>

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Plus, X, Shield, Check } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
 interface LicenseCategory {
@@ -47,13 +47,15 @@ export default function VehicleLicenseRequirementsPanel({
     try {
       const { data, error } = await supabase
         .from('vehicle_license_requirements')
-        .select(`
+        .select(
+          `
           id,
           license_category_id,
           is_required,
           notes,
           license_category:driving_license_categories(id, code, name, description, order_index)
-        `)
+        `,
+        )
         .eq('vehicle_id', vehicleId);
 
       if (error) throw error;
@@ -91,14 +93,12 @@ export default function VehicleLicenseRequirementsPanel({
     }
 
     try {
-      const { error } = await supabase
-        .from('vehicle_license_requirements')
-        .insert({
-          vehicle_id: vehicleId,
-          license_category_id: selectedCategory,
-          is_required: isRequired,
-          notes: notes || null,
-        });
+      const { error } = await supabase.from('vehicle_license_requirements').insert({
+        vehicle_id: vehicleId,
+        license_category_id: selectedCategory,
+        is_required: isRequired,
+        notes: notes || null,
+      });
 
       if (error) throw error;
 
@@ -138,65 +138,55 @@ export default function VehicleLicenseRequirementsPanel({
   };
 
   const availableCategories = allCategories.filter(
-    (cat) => !requirements.some((req) => req.license_category_id === cat.id)
+    (cat) => !requirements.some((req) => req.license_category_id === cat.id),
   );
 
   return (
-    <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-      <div className="flex items-center justify-between mb-4">
+    <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+      <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Shield className="w-5 h-5 text-[#d3bb73]" />
-          <h3 className="text-lg font-light text-[#e5e4e2]">
-            Wymagane kategorie prawa jazdy
-          </h3>
+          <Shield className="h-5 w-5 text-[#d3bb73]" />
+          <h3 className="text-lg font-light text-[#e5e4e2]">Wymagane kategorie prawa jazdy</h3>
         </div>
         {canEdit && (
           <button
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 px-3 py-1.5 bg-[#d3bb73]/10 hover:bg-[#d3bb73]/20 text-[#d3bb73] rounded-lg text-sm transition-colors"
+            className="flex items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-3 py-1.5 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="h-4 w-4" />
             Dodaj
           </button>
         )}
       </div>
 
       {requirements.length === 0 ? (
-        <div className="text-center py-8">
-          <Shield className="w-12 h-12 text-[#e5e4e2]/20 mx-auto mb-3" />
-          <p className="text-[#e5e4e2]/60 text-sm">
-            Brak wymagań dotyczących prawa jazdy
-          </p>
+        <div className="py-8 text-center">
+          <Shield className="mx-auto mb-3 h-12 w-12 text-[#e5e4e2]/20" />
+          <p className="text-sm text-[#e5e4e2]/60">Brak wymagań dotyczących prawa jazdy</p>
         </div>
       ) : (
         <div className="space-y-2">
           {requirements.map((req) => (
             <div
               key={req.id}
-              className="flex items-center justify-between p-3 bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg"
+              className="flex items-center justify-between rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-3"
             >
               <div className="flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="px-2 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded text-sm font-medium">
+                  <span className="rounded bg-[#d3bb73]/20 px-2 py-1 text-sm font-medium text-[#d3bb73]">
                     {req.license_category.code}
                   </span>
-                  <span className="text-[#e5e4e2]">
-                    {req.license_category.name}
-                  </span>
-                  {req.is_required && (
-                    <Check className="w-4 h-4 text-green-400" />
-                  )}
+                  <span className="text-[#e5e4e2]">{req.license_category.name}</span>
+                  {req.is_required && <Check className="h-4 w-4 text-green-400" />}
                 </div>
-                {req.notes && (
-                  <p className="text-xs text-[#e5e4e2]/60 mt-1">{req.notes}</p>
-                )}
+                {req.notes && <p className="mt-1 text-xs text-[#e5e4e2]/60">{req.notes}</p>}
               </div>
               {canEdit && (
                 <button
                   onClick={() => handleRemove(req.id)}
-                  className="p-1 text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                  className="rounded p-1 text-red-400 transition-colors hover:bg-red-500/10"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="h-4 w-4" />
                 </button>
               )}
             </div>
@@ -205,21 +195,19 @@ export default function VehicleLicenseRequirementsPanel({
       )}
 
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6 max-w-md w-full">
-            <h3 className="text-lg font-light text-[#e5e4e2] mb-4">
-              Dodaj wymaganie prawa jazdy
-            </h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+            <h3 className="mb-4 text-lg font-light text-[#e5e4e2]">Dodaj wymaganie prawa jazdy</h3>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">
                   Kategoria prawa jazdy
                 </label>
                 <select
                   value={selectedCategory}
                   onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="w-full px-3 py-2 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/40"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none"
                 >
                   <option value="">Wybierz kategorię</option>
                   {availableCategories.map((cat) => (
@@ -244,23 +232,23 @@ export default function VehicleLicenseRequirementsPanel({
               </div>
 
               <div>
-                <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">
                   Notatki (opcjonalnie)
                 </label>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="Dodatkowe informacje..."
-                  className="w-full px-3 py-2 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/40 resize-none"
+                  className="w-full resize-none rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none"
                   rows={3}
                 />
               </div>
             </div>
 
-            <div className="flex gap-3 mt-6">
+            <div className="mt-6 flex gap-3">
               <button
                 onClick={handleAdd}
-                className="flex-1 px-4 py-2 bg-[#d3bb73] hover:bg-[#d3bb73]/90 text-[#1c1f33] rounded-lg font-medium transition-colors"
+                className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
               >
                 Dodaj
               </button>
@@ -271,7 +259,7 @@ export default function VehicleLicenseRequirementsPanel({
                   setIsRequired(true);
                   setNotes('');
                 }}
-                className="flex-1 px-4 py-2 bg-[#0f1119] hover:bg-[#0f1119]/80 text-[#e5e4e2] rounded-lg transition-colors"
+                className="flex-1 rounded-lg bg-[#0f1119] px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#0f1119]/80"
               >
                 Anuluj
               </button>

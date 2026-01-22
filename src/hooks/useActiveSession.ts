@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 
 export function useActiveSession(pageUrl: string) {
   const sessionIdRef = useRef<string>('');
@@ -9,10 +9,11 @@ export function useActiveSession(pageUrl: string) {
     if (typeof window === 'undefined' || !pageUrl) return;
 
     // Nie rejestruj sesji w developmencie (localhost)
-    const isLocalhost = window.location.hostname === 'localhost' ||
-                       window.location.hostname === '127.0.0.1' ||
-                       window.location.hostname.startsWith('192.168.') ||
-                       window.location.hostname === '::1';
+    const isLocalhost =
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname.startsWith('192.168.') ||
+      window.location.hostname === '::1';
 
     if (isLocalhost) {
       return;
@@ -29,14 +30,17 @@ export function useActiveSession(pageUrl: string) {
 
     const registerSession = async () => {
       try {
-        await supabase.from('active_sessions').upsert({
-          session_id: sessionId,
-          page_url: pageUrl,
-          user_agent: userAgent,
-          last_heartbeat: new Date().toISOString(),
-        }, {
-          onConflict: 'session_id'
-        });
+        await supabase.from('active_sessions').upsert(
+          {
+            session_id: sessionId,
+            page_url: pageUrl,
+            user_agent: userAgent,
+            last_heartbeat: new Date().toISOString(),
+          },
+          {
+            onConflict: 'session_id',
+          },
+        );
       } catch (error) {
         console.error('Failed to register session:', error);
       }
@@ -48,7 +52,7 @@ export function useActiveSession(pageUrl: string) {
           .from('active_sessions')
           .update({
             last_heartbeat: new Date().toISOString(),
-            page_url: pageUrl
+            page_url: pageUrl,
           })
           .eq('session_id', sessionIdRef.current);
       } catch (error) {
@@ -58,10 +62,7 @@ export function useActiveSession(pageUrl: string) {
 
     const removeSession = async () => {
       try {
-        await supabase
-          .from('active_sessions')
-          .delete()
-          .eq('session_id', sessionIdRef.current);
+        await supabase.from('active_sessions').delete().eq('session_id', sessionIdRef.current);
       } catch (error) {
         console.error('Failed to remove session:', error);
       }

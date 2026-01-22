@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 
 export function useClickTracking(enabled: boolean = true) {
   const sessionIdRef = useRef<string>('');

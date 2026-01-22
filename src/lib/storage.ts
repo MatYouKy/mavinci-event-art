@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase } from './supabase/browser';
 
 /**
  * Image size presets for responsive images

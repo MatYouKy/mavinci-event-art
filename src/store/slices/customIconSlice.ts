@@ -1,5 +1,5 @@
 import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 import type { RootState } from '../store';
 
 export interface CustomIcon {
@@ -24,18 +24,15 @@ const initialState: CustomIconsState = {
 };
 
 // async thunk – możesz zostawić jako fallback
-export const fetchCustomIcons = createAsyncThunk(
-  'customIcons/fetchAll',
-  async () => {
-    const { data, error } = await supabase
-      .from('custom_icons')
-      .select('id, name, svg_code, preview_color')
-      .order('name');
+export const fetchCustomIcons = createAsyncThunk('customIcons/fetchAll', async () => {
+  const { data, error } = await supabase
+    .from('custom_icons')
+    .select('id, name, svg_code, preview_color')
+    .order('name');
 
-    if (error) throw error;
-    return (data ?? []) as CustomIcon[];
-  }
-);
+  if (error) throw error;
+  return (data ?? []) as CustomIcon[];
+});
 
 const customIconsSlice = createSlice({
   name: 'customIcons',

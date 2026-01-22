@@ -2,7 +2,7 @@
 
 import { ReactNode, useEffect, useState } from 'react';
 import Head from 'next/head';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 
 interface BreadcrumbItem {
   name: string;
@@ -70,9 +70,24 @@ export default function SchemaLayout({
   const loadData = async () => {
     const promises: any[] = [
       supabase.from('schema_org_global').select('*').single(),
-      supabase.from('schema_org_page_metadata').select('*').eq('page_slug', pageSlug).eq('is_active', true).maybeSingle(),
-      supabase.from('schema_org_places').select('*').eq('is_global', true).eq('is_active', true).order('display_order'),
-      supabase.from('schema_org_page_offers').select('*').eq('page_slug', pageSlug).eq('is_active', true).order('display_order'),
+      supabase
+        .from('schema_org_page_metadata')
+        .select('*')
+        .eq('page_slug', pageSlug)
+        .eq('is_active', true)
+        .maybeSingle(),
+      supabase
+        .from('schema_org_places')
+        .select('*')
+        .eq('is_global', true)
+        .eq('is_active', true)
+        .order('display_order'),
+      supabase
+        .from('schema_org_page_offers')
+        .select('*')
+        .eq('page_slug', pageSlug)
+        .eq('is_active', true)
+        .order('display_order'),
     ];
 
     // Load city page SEO if applicable
@@ -84,7 +99,7 @@ export default function SchemaLayout({
           .eq('page_type', cityPageType)
           .eq('city_slug', citySlug)
           .eq('is_active', true)
-          .maybeSingle()
+          .maybeSingle(),
       );
     }
 
@@ -110,17 +125,21 @@ export default function SchemaLayout({
   const title = cleanedCityTitle
     ? cleanedCityTitle
     : cleanedPageTitle
-    ? cleanedPageTitle
-    : cleanedDefault
-    ? cleanedDefault
-    : globalConfig.organization_name;
+      ? cleanedPageTitle
+      : cleanedDefault
+        ? cleanedDefault
+        : globalConfig.organization_name;
 
-  const description = cityPageSEO?.seo_description || pageMetadata?.description || defaultDescription || '';
+  const description =
+    cityPageSEO?.seo_description || pageMetadata?.description || defaultDescription || '';
   const ogImage = pageMetadata?.og_image || globalConfig.organization_logo || '/og-default.jpg';
 
   // Keywords: city page SEO keywords or regular page keywords
   const keywordsArray = cityPageSEO?.seo_keywords
-    ? cityPageSEO.seo_keywords.split(',').map((k: string) => k.trim()).filter(Boolean)
+    ? cityPageSEO.seo_keywords
+        .split(',')
+        .map((k: string) => k.trim())
+        .filter(Boolean)
     : pageMetadata?.keywords || [];
   const keywords = keywordsArray;
 
@@ -132,7 +151,7 @@ export default function SchemaLayout({
     globalConfig.twitter_url,
   ].filter(Boolean);
 
-  const areaServed = places.map(place => ({
+  const areaServed = places.map((place) => ({
     '@type': 'Place',
     name: place.name,
     address: {
@@ -147,7 +166,7 @@ export default function SchemaLayout({
     },
   }));
 
-  const schemaOffers = offers.map(offer => ({
+  const schemaOffers = offers.map((offer) => ({
     '@type': 'Offer',
     name: offer.offer_name,
     description: offer.description,
@@ -180,16 +199,19 @@ export default function SchemaLayout({
     ...(pageMetadata?.custom_schema || {}),
   };
 
-  const breadcrumbLd = breadcrumb.length > 0 ? {
-    '@context': 'http://schema.org',
-    '@type': 'BreadcrumbList',
-    itemListElement: breadcrumb.map((item, index) => ({
-      '@type': 'ListItem',
-      position: index + 1,
-      name: item.name,
-      item: item.url,
-    })),
-  } : null;
+  const breadcrumbLd =
+    breadcrumb.length > 0
+      ? {
+          '@context': 'http://schema.org',
+          '@type': 'BreadcrumbList',
+          itemListElement: breadcrumb.map((item, index) => ({
+            '@type': 'ListItem',
+            position: index + 1,
+            name: item.name,
+            item: item.url,
+          })),
+        }
+      : null;
 
   return (
     <>

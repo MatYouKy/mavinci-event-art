@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { MapPin, Plus, X } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 
 interface Location {
   id: string;
@@ -43,10 +43,11 @@ export default function LocationAutocomplete({
 
   useEffect(() => {
     if (inputValue && inputValue.length >= 2) {
-      const filtered = locations.filter((loc) =>
-        loc.name.toLowerCase().includes(inputValue.toLowerCase()) ||
-        loc.city?.toLowerCase().includes(inputValue.toLowerCase()) ||
-        loc.address?.toLowerCase().includes(inputValue.toLowerCase())
+      const filtered = locations.filter(
+        (loc) =>
+          loc.name.toLowerCase().includes(inputValue.toLowerCase()) ||
+          loc.city?.toLowerCase().includes(inputValue.toLowerCase()) ||
+          loc.address?.toLowerCase().includes(inputValue.toLowerCase()),
       );
       setFilteredLocations(filtered);
       setShowDropdown(true);
@@ -108,15 +109,11 @@ export default function LocationAutocomplete({
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
-        setHighlightedIndex((prev) =>
-          prev < filteredLocations.length - 1 ? prev + 1 : 0
-        );
+        setHighlightedIndex((prev) => (prev < filteredLocations.length - 1 ? prev + 1 : 0));
         break;
       case 'ArrowUp':
         e.preventDefault();
-        setHighlightedIndex((prev) =>
-          prev > 0 ? prev - 1 : filteredLocations.length - 1
-        );
+        setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : filteredLocations.length - 1));
         break;
       case 'Enter':
         e.preventDefault();
@@ -141,7 +138,7 @@ export default function LocationAutocomplete({
   return (
     <div className="relative">
       <div className="relative">
-        <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#e5e4e2]/50" />
+        <MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#e5e4e2]/50" />
         <input
           ref={inputRef}
           type="text"
@@ -150,15 +147,15 @@ export default function LocationAutocomplete({
           onKeyDown={handleKeyDown}
           onFocus={() => inputValue && inputValue.length >= 2 && setShowDropdown(true)}
           placeholder={placeholder}
-          className={`w-full pl-10 pr-10 py-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50 ${className}`}
+          className={`w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] py-2 pl-10 pr-10 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none ${className}`}
         />
         {inputValue && (
           <button
             type="button"
             onClick={handleClear}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/50 hover:text-[#e5e4e2] transition-colors"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/50 transition-colors hover:text-[#e5e4e2]"
           >
-            <X className="w-4 h-4" />
+            <X className="h-4 w-4" />
           </button>
         )}
       </div>
@@ -166,25 +163,23 @@ export default function LocationAutocomplete({
       {showDropdown && filteredLocations.length > 0 && (
         <div
           ref={dropdownRef}
-          className="absolute z-50 w-full mt-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg shadow-xl max-h-64 overflow-y-auto"
+          className="absolute z-50 mt-2 max-h-64 w-full overflow-y-auto rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl"
         >
           {filteredLocations.map((location, index) => (
             <button
               key={location.id}
               type="button"
               onClick={() => handleSelectLocation(location)}
-              className={`w-full text-left px-4 py-3 hover:bg-[#d3bb73]/10 transition-colors border-b border-[#d3bb73]/10 last:border-b-0 ${
+              className={`w-full border-b border-[#d3bb73]/10 px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-[#d3bb73]/10 ${
                 index === highlightedIndex ? 'bg-[#d3bb73]/10' : ''
               }`}
             >
               <div className="flex items-start gap-3">
-                <MapPin className="w-4 h-4 text-[#d3bb73] flex-shrink-0 mt-0.5" />
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-[#e5e4e2] truncate">
-                    {location.name}
-                  </div>
+                <MapPin className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#d3bb73]" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-medium text-[#e5e4e2]">{location.name}</div>
                   {(location.address || location.city) && (
-                    <div className="text-xs text-[#e5e4e2]/60 truncate mt-0.5">
+                    <div className="mt-0.5 truncate text-xs text-[#e5e4e2]/60">
                       {[location.address, location.city].filter(Boolean).join(', ')}
                     </div>
                   )}
@@ -194,9 +189,10 @@ export default function LocationAutocomplete({
           ))}
 
           {inputValue && (
-            <div className="px-4 py-2 border-t border-[#d3bb73]/20 bg-[#0f1117]">
+            <div className="border-t border-[#d3bb73]/20 bg-[#0f1117] px-4 py-2">
               <div className="text-xs text-[#e5e4e2]/50">
-                💡 Jeśli lokalizacji nie ma na liście, zostanie zapisana jako: <span className="text-[#d3bb73]">"{inputValue}"</span>
+                💡 Jeśli lokalizacji nie ma na liście, zostanie zapisana jako:{' '}
+                <span className="text-[#d3bb73]">"{inputValue}"</span>
               </div>
             </div>
           )}
@@ -206,11 +202,11 @@ export default function LocationAutocomplete({
       {showDropdown && filteredLocations.length === 0 && inputValue && inputValue.length >= 2 && (
         <div
           ref={dropdownRef}
-          className="absolute z-50 w-full mt-2 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg shadow-xl p-4"
+          className="absolute z-50 mt-2 w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-4 shadow-xl"
         >
           <div className="text-center">
-            <MapPin className="w-8 h-8 text-[#e5e4e2]/30 mx-auto mb-2" />
-            <p className="text-sm text-[#e5e4e2]/60 mb-2">
+            <MapPin className="mx-auto mb-2 h-8 w-8 text-[#e5e4e2]/30" />
+            <p className="mb-2 text-sm text-[#e5e4e2]/60">
               Brak lokalizacji pasujących do "{inputValue}"
             </p>
             <p className="text-xs text-[#d3bb73]">

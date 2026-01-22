@@ -14,8 +14,7 @@ import {
   HelpCircle,
   Globe,
 } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
-import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { supabase } from '@/lib/supabase/browser';
 
 interface EmployeeData {
   id: string;
@@ -74,7 +73,9 @@ export default function UserMenu() {
 
       const { data: employeeData, error } = await supabase
         .from('employees')
-        .select('id, name, surname, nickname, email, role, access_level, avatar_url, avatar_metadata')
+        .select(
+          'id, name, surname, nickname, email, role, access_level, avatar_url, avatar_metadata',
+        )
         .eq('email', session.user.email)
         .maybeSingle();
 
@@ -104,7 +105,7 @@ export default function UserMenu() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    router.push('/crm/login');
+    router.push('/login');
   };
 
   const getInitials = () => {
@@ -162,49 +163,41 @@ export default function UserMenu() {
   };
 
   if (loading) {
-    return (
-      <div className="w-10 h-10 bg-[#1c1f33] rounded-full animate-pulse" />
-    );
+    return <div className="h-10 w-10 animate-pulse rounded-full bg-[#1c1f33]" />;
   }
 
   return (
     <div className="relative" ref={menuRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[#1c1f33] transition-colors group"
+        className="group flex items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-[#1c1f33]"
       >
         <div className="flex items-center gap-3">
           {employee?.avatar_url ? (
-            <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-[#d3bb73]/30">
+            <div className="h-10 w-10 overflow-hidden rounded-full border-2 border-[#d3bb73]/30">
               <img
                 src={employee.avatar_url}
                 alt={getDisplayName()}
-                className="w-full h-full"
+                className="h-full w-full"
                 style={getAvatarStyle()}
               />
             </div>
           ) : (
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#d3bb73] to-[#d3bb73]/60 flex items-center justify-center border-2 border-[#d3bb73]/30">
-              <span className="text-[#1c1f33] font-bold text-sm">
-                {getInitials()}
-              </span>
+            <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-[#d3bb73]/30 bg-gradient-to-br from-[#d3bb73] to-[#d3bb73]/60">
+              <span className="text-sm font-bold text-[#1c1f33]">{getInitials()}</span>
             </div>
           )}
 
-          <div className="hidden md:block text-left">
-            <p className="text-sm font-medium text-[#e5e4e2] leading-tight">
-              {getDisplayName()}
-            </p>
+          <div className="hidden text-left md:block">
+            <p className="text-sm font-medium leading-tight text-[#e5e4e2]">{getDisplayName()}</p>
             {employee?.role && (
-              <p className="text-xs text-[#e5e4e2]/60">
-                {getRoleName(employee.role)}
-              </p>
+              <p className="text-xs text-[#e5e4e2]/60">{getRoleName(employee.role)}</p>
             )}
           </div>
         </div>
 
         <ChevronDown
-          className={`w-4 h-4 text-[#e5e4e2]/60 transition-transform duration-200 ${
+          className={`h-4 w-4 text-[#e5e4e2]/60 transition-transform duration-200 ${
             isOpen ? 'rotate-180' : ''
           }`}
         />
@@ -212,56 +205,54 @@ export default function UserMenu() {
 
       {isOpen && (
         <>
-          <div className="absolute right-0 top-14 w-80 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg shadow-2xl z-50 overflow-hidden">
-            <div className="p-4 border-b border-[#d3bb73]/20 bg-gradient-to-br from-[#d3bb73]/10 to-transparent">
-              <div className="flex items-center gap-3 mb-3">
+          <div className="absolute right-0 top-14 z-50 w-80 overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] shadow-2xl">
+            <div className="border-b border-[#d3bb73]/20 bg-gradient-to-br from-[#d3bb73]/10 to-transparent p-4">
+              <div className="mb-3 flex items-center gap-3">
                 {employee?.avatar_url ? (
-                  <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-[#d3bb73]/30">
+                  <div className="h-12 w-12 overflow-hidden rounded-full border-2 border-[#d3bb73]/30">
                     <img
                       src={employee.avatar_url}
                       alt={getDisplayName()}
-                      className="w-full h-full"
+                      className="h-full w-full"
                       style={getAvatarStyle()}
                     />
                   </div>
                 ) : (
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#d3bb73] to-[#d3bb73]/60 flex items-center justify-center border-2 border-[#d3bb73]/30">
-                    <span className="text-[#1c1f33] font-bold">
-                      {getInitials()}
-                    </span>
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-[#d3bb73]/30 bg-gradient-to-br from-[#d3bb73] to-[#d3bb73]/60">
+                    <span className="font-bold text-[#1c1f33]">{getInitials()}</span>
                   </div>
                 )}
 
-                <div className="flex-1 min-w-0">
-                  <p className="text-base font-semibold text-[#e5e4e2] truncate">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-base font-semibold text-[#e5e4e2]">
                     {getDisplayName()}
                   </p>
-                  <p className="text-sm text-[#e5e4e2]/60 truncate">
-                    {user?.email}
-                  </p>
+                  <p className="truncate text-sm text-[#e5e4e2]/60">{user?.email}</p>
                 </div>
               </div>
 
               {employee && (
                 <div className="flex items-center gap-2 text-xs">
-                  <span className="px-2 py-1 bg-[#d3bb73]/20 text-[#d3bb73] rounded-full">
+                  <span className="rounded-full bg-[#d3bb73]/20 px-2 py-1 text-[#d3bb73]">
                     {getRoleName(employee.role)}
                   </span>
-                  {employee.access_level && employee.role !== 'admin' && employee.access_level !== 'admin' && (
-                    <span
-                      className={`px-2 py-1 bg-[#0f1119] rounded-full ${getAccessLevelColor(
-                        employee.access_level
-                      )}`}
-                    >
-                      {employee.access_level === 'full' || employee.access_level === 'admin'
-                        ? 'Pełny dostęp'
-                        : employee.access_level === 'limited'
-                        ? 'Ograniczony'
-                        : employee.access_level === 'manager'
-                        ? 'Manager'
-                        : 'Tylko odczyt'}
-                    </span>
-                  )}
+                  {employee.access_level &&
+                    employee.role !== 'admin' &&
+                    employee.access_level !== 'admin' && (
+                      <span
+                        className={`rounded-full bg-[#0f1119] px-2 py-1 ${getAccessLevelColor(
+                          employee.access_level,
+                        )}`}
+                      >
+                        {employee.access_level === 'full' || employee.access_level === 'admin'
+                          ? 'Pełny dostęp'
+                          : employee.access_level === 'limited'
+                            ? 'Ograniczony'
+                            : employee.access_level === 'manager'
+                              ? 'Manager'
+                              : 'Tylko odczyt'}
+                      </span>
+                    )}
                 </div>
               )}
             </div>
@@ -274,18 +265,14 @@ export default function UserMenu() {
                   }
                   setIsOpen(false);
                 }}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-[#d3bb73]/10 transition-colors text-left group"
+                className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-[#d3bb73]/10"
               >
-                <div className="w-8 h-8 rounded-lg bg-[#d3bb73]/10 flex items-center justify-center group-hover:bg-[#d3bb73]/20 transition-colors">
-                  <User className="w-4 h-4 text-[#d3bb73]" />
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#d3bb73]/10 transition-colors group-hover:bg-[#d3bb73]/20">
+                  <User className="h-4 w-4 text-[#d3bb73]" />
                 </div>
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-[#e5e4e2]">
-                    Mój profil
-                  </p>
-                  <p className="text-xs text-[#e5e4e2]/60">
-                    Edytuj dane osobowe
-                  </p>
+                  <p className="text-sm font-medium text-[#e5e4e2]">Mój profil</p>
+                  <p className="text-xs text-[#e5e4e2]/60">Edytuj dane osobowe</p>
                 </div>
               </button>
 
@@ -294,42 +281,34 @@ export default function UserMenu() {
                   router.push('/crm/settings');
                   setIsOpen(false);
                 }}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-[#d3bb73]/10 transition-colors text-left group"
+                className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-[#d3bb73]/10"
               >
-                <div className="w-8 h-8 rounded-lg bg-[#d3bb73]/10 flex items-center justify-center group-hover:bg-[#d3bb73]/20 transition-colors">
-                  <Settings className="w-4 h-4 text-[#d3bb73]" />
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#d3bb73]/10 transition-colors group-hover:bg-[#d3bb73]/20">
+                  <Settings className="h-4 w-4 text-[#d3bb73]" />
                 </div>
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-[#e5e4e2]">
-                    Ustawienia
-                  </p>
-                  <p className="text-xs text-[#e5e4e2]/60">
-                    Hasło, preferencje i powiadomienia
-                  </p>
+                  <p className="text-sm font-medium text-[#e5e4e2]">Ustawienia</p>
+                  <p className="text-xs text-[#e5e4e2]/60">Hasło, preferencje i powiadomienia</p>
                 </div>
               </button>
 
               {employee?.role === 'admin' && (
                 <>
-                  <div className="h-px bg-[#d3bb73]/20 my-2" />
+                  <div className="my-2 h-px bg-[#d3bb73]/20" />
 
                   <button
                     onClick={() => {
                       router.push('/crm/admin/security');
                       setIsOpen(false);
                     }}
-                    className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-[#d3bb73]/10 transition-colors text-left group"
+                    className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-[#d3bb73]/10"
                   >
-                    <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center group-hover:bg-red-500/20 transition-colors">
-                      <Shield className="w-4 h-4 text-red-400" />
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/10 transition-colors group-hover:bg-red-500/20">
+                      <Shield className="h-4 w-4 text-red-400" />
                     </div>
                     <div className="flex-1">
-                      <p className="text-sm font-medium text-[#e5e4e2]">
-                        Bezpieczeństwo
-                      </p>
-                      <p className="text-xs text-[#e5e4e2]/60">
-                        Uprawnienia i dostęp
-                      </p>
+                      <p className="text-sm font-medium text-[#e5e4e2]">Bezpieczeństwo</p>
+                      <p className="text-xs text-[#e5e4e2]/60">Uprawnienia i dostęp</p>
                     </div>
                   </button>
 
@@ -338,83 +317,67 @@ export default function UserMenu() {
                       router.push('/crm/admin/logs');
                       setIsOpen(false);
                     }}
-                    className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-[#d3bb73]/10 transition-colors text-left group"
+                    className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-[#d3bb73]/10"
                   >
-                    <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center group-hover:bg-blue-500/20 transition-colors">
-                      <FileText className="w-4 h-4 text-blue-400" />
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/10 transition-colors group-hover:bg-blue-500/20">
+                      <FileText className="h-4 w-4 text-blue-400" />
                     </div>
                     <div className="flex-1">
-                      <p className="text-sm font-medium text-[#e5e4e2]">
-                        Logi aktywności
-                      </p>
-                      <p className="text-xs text-[#e5e4e2]/60">
-                        Historia zmian
-                      </p>
+                      <p className="text-sm font-medium text-[#e5e4e2]">Logi aktywności</p>
+                      <p className="text-xs text-[#e5e4e2]/60">Historia zmian</p>
                     </div>
                   </button>
                 </>
               )}
 
-              <div className="h-px bg-[#d3bb73]/20 my-2" />
+              <div className="my-2 h-px bg-[#d3bb73]/20" />
 
               <button
                 onClick={() => {
                   router.push('/crm/help');
                   setIsOpen(false);
                 }}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-[#d3bb73]/10 transition-colors text-left group"
+                className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-[#d3bb73]/10"
               >
-                <div className="w-8 h-8 rounded-lg bg-[#d3bb73]/10 flex items-center justify-center group-hover:bg-[#d3bb73]/20 transition-colors">
-                  <HelpCircle className="w-4 h-4 text-[#d3bb73]" />
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#d3bb73]/10 transition-colors group-hover:bg-[#d3bb73]/20">
+                  <HelpCircle className="h-4 w-4 text-[#d3bb73]" />
                 </div>
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-[#e5e4e2]">
-                    Pomoc i wsparcie
-                  </p>
-                  <p className="text-xs text-[#e5e4e2]/60">
-                    Dokumentacja i FAQ
-                  </p>
+                  <p className="text-sm font-medium text-[#e5e4e2]">Pomoc i wsparcie</p>
+                  <p className="text-xs text-[#e5e4e2]/60">Dokumentacja i FAQ</p>
                 </div>
               </button>
 
-              <div className="h-px bg-[#d3bb73]/20 my-2" />
+              <div className="my-2 h-px bg-[#d3bb73]/20" />
 
               <button
                 onClick={() => {
                   router.push('/');
                   setIsOpen(false);
                 }}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-[#d3bb73]/10 transition-colors text-left group"
+                className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-[#d3bb73]/10"
               >
-                <div className="w-8 h-8 rounded-lg bg-[#d3bb73]/10 flex items-center justify-center group-hover:bg-[#d3bb73]/20 transition-colors">
-                  <Globe className="w-4 h-4 text-[#d3bb73]" />
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#d3bb73]/10 transition-colors group-hover:bg-[#d3bb73]/20">
+                  <Globe className="h-4 w-4 text-[#d3bb73]" />
                 </div>
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-[#e5e4e2]">
-                    Powrót do strony
-                  </p>
-                  <p className="text-xs text-[#e5e4e2]/60">
-                    Strona główna Mavinci
-                  </p>
+                  <p className="text-sm font-medium text-[#e5e4e2]">Powrót do strony</p>
+                  <p className="text-xs text-[#e5e4e2]/60">Strona główna Mavinci</p>
                 </div>
               </button>
 
-              <div className="h-px bg-[#d3bb73]/20 my-2" />
+              <div className="my-2 h-px bg-[#d3bb73]/20" />
 
               <button
                 onClick={handleLogout}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-red-500/10 transition-colors text-left group"
+                className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-red-500/10"
               >
-                <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center group-hover:bg-red-500/20 transition-colors">
-                  <LogOut className="w-4 h-4 text-red-400" />
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/10 transition-colors group-hover:bg-red-500/20">
+                  <LogOut className="h-4 w-4 text-red-400" />
                 </div>
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-red-400">
-                    Wyloguj się
-                  </p>
-                  <p className="text-xs text-[#e5e4e2]/60">
-                    Zakończ sesję
-                  </p>
+                  <p className="text-sm font-medium text-red-400">Wyloguj się</p>
+                  <p className="text-xs text-[#e5e4e2]/60">Zakończ sesję</p>
                 </div>
               </button>
             </div>

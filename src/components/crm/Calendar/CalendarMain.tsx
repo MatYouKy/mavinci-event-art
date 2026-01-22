@@ -15,7 +15,7 @@ import {
   Filter,
   Users,
 } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 import { CalendarEvent, CalendarView } from './types';
 import { STATUS_COLORS, STATUS_LABELS } from './constants';
 import MonthView from './MonthView';
@@ -26,7 +26,10 @@ import MobileCalendarView from './MobileCalendarView';
 import EventWizard from '../EventWizard';
 import NewMeetingModal from '../NewMeetingModal';
 import EventTypeSelector from './EventTypeSelector';
-import { useGetCalendarEventsQuery, useGetCalendarFilterOptionsQuery } from '@/store/api/calendarApi';
+import {
+  useGetCalendarEventsQuery,
+  useGetCalendarFilterOptionsQuery,
+} from '@/store/api/calendarApi';
 
 export default function CalendarMain() {
   const router = useRouter();
@@ -69,10 +72,8 @@ export default function CalendarMain() {
     refetch: refetchEvents,
   } = useGetCalendarEventsQuery();
 
-  const {
-    data: filterOptions,
-    isLoading: filterOptionsLoading,
-  } = useGetCalendarFilterOptionsQuery();
+  const { data: filterOptions, isLoading: filterOptionsLoading } =
+    useGetCalendarFilterOptionsQuery();
 
   useEffect(() => {
     fetchCurrentEmployee();
@@ -140,7 +141,7 @@ export default function CalendarMain() {
       filtered = filtered.filter((e: any) => {
         if (e.is_meeting) {
           return e.meeting_data?.meeting_participants?.some(
-            (p: any) => p.employee_id === currentEmployee.id
+            (p: any) => p.employee_id === currentEmployee.id,
           );
         }
         return e.assigned_employees?.some((emp: any) => emp.id === currentEmployee.id);
@@ -151,7 +152,7 @@ export default function CalendarMain() {
       filtered = filtered.filter((e: any) => {
         if (e.is_meeting) {
           return e.meeting_data?.meeting_participants?.some(
-            (p: any) => p.employee_id && filters.employees.includes(p.employee_id)
+            (p: any) => p.employee_id && filters.employees.includes(p.employee_id),
           );
         }
         return e.assigned_employees?.some((emp: any) => filters.employees.includes(emp.id));
@@ -159,7 +160,16 @@ export default function CalendarMain() {
     }
 
     setEvents(filtered);
-  }, [allEvents, filters.statuses, filters.categories, filters.clients, filters.myEvents, filters.assignedToMe, filters.employees, currentEmployee?.id]);
+  }, [
+    allEvents,
+    filters.statuses,
+    filters.categories,
+    filters.clients,
+    filters.myEvents,
+    filters.assignedToMe,
+    filters.employees,
+    currentEmployee?.id,
+  ]);
 
   useEffect(() => {
     if (calendarEvents) {
@@ -230,17 +240,13 @@ export default function CalendarMain() {
   const canCreateEvents = () => {
     if (!currentEmployee) return false;
     return (
-      currentEmployee.role === 'admin' ||
-      currentEmployee.permissions?.includes('calendar_manage')
+      currentEmployee.role === 'admin' || currentEmployee.permissions?.includes('calendar_manage')
     );
   };
 
   const isAdmin = () => {
     if (!currentEmployee) return false;
-    return (
-      currentEmployee.role === 'admin' ||
-      currentEmployee.permissions?.includes('admin')
-    );
+    return currentEmployee.role === 'admin' || currentEmployee.permissions?.includes('admin');
   };
 
   const handleNewEvent = (date?: Date) => {
@@ -504,25 +510,27 @@ export default function CalendarMain() {
           </button>
 
           <div className="flex overflow-hidden rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]">
-            {(['month', 'week', 'day', ...(isAdmin() ? ['employee'] : [])] as CalendarView[]).map((v) => (
-              <button
-                key={v}
-                onClick={() => setView(v)}
-                className={`px-3 py-2 text-xs font-light transition-colors md:px-4 md:text-sm ${
-                  view === v
-                    ? 'bg-[#d3bb73] text-[#1c1f33]'
-                    : 'text-[#e5e4e2] hover:bg-[#d3bb73]/10'
-                }`}
-              >
-                {v === 'month'
-                  ? 'Miesiąc'
-                  : v === 'week'
-                    ? 'Tydzień'
-                    : v === 'day'
-                      ? 'Dzień'
-                      : 'Pracownicy'}
-              </button>
-            ))}
+            {(['month', 'week', 'day', ...(isAdmin() ? ['employee'] : [])] as CalendarView[]).map(
+              (v) => (
+                <button
+                  key={v}
+                  onClick={() => setView(v)}
+                  className={`px-3 py-2 text-xs font-light transition-colors md:px-4 md:text-sm ${
+                    view === v
+                      ? 'bg-[#d3bb73] text-[#1c1f33]'
+                      : 'text-[#e5e4e2] hover:bg-[#d3bb73]/10'
+                  }`}
+                >
+                  {v === 'month'
+                    ? 'Miesiąc'
+                    : v === 'week'
+                      ? 'Tydzień'
+                      : v === 'day'
+                        ? 'Dzień'
+                        : 'Pracownicy'}
+                </button>
+              ),
+            )}
           </div>
 
           {canCreateEvents() && (
@@ -754,9 +762,7 @@ export default function CalendarMain() {
 
             <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/70">
               <Building2 className="h-3 w-3" />
-              <span>
-                {hoveredEvent.organization?.name || 'Brak klienta'}
-              </span>
+              <span>{hoveredEvent.organization?.name || 'Brak klienta'}</span>
             </div>
 
             <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/70">
@@ -835,9 +841,7 @@ export default function CalendarMain() {
                         <div className="space-y-1">
                           <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/70">
                             <Building2 className="h-3 w-3" />
-                            <span>
-                              {event.organization?.name || 'Brak klienta'}
-                            </span>
+                            <span>{event.organization?.name || 'Brak klienta'}</span>
                           </div>
                           <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/70">
                             <Clock className="h-3 w-3" />

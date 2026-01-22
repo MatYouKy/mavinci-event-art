@@ -5,11 +5,11 @@ import { X } from 'lucide-react';
 import LocationSelector from './LocationSelector';
 import ClientSelectorTabs from './ClientSelectorTabs';
 import ParticipantsAutocomplete from './ParticipantsAutocomplete';
-import { useEventCategories } from '@/app/crm/event-categories/hook/useEventCategories';
+import { useEventCategories } from '@/app/(crm)/crm/event-categories/hook/useEventCategories';
 import { useDialog } from '@/contexts/DialogContext';
-import { ILocation } from '@/app/crm/locations/type';
-import { useEmployees } from '@/app/crm/employees/hooks/useEmployees';
-import { useEventTeam } from '@/app/crm/events/hooks';
+import { ILocation } from '@/app/(crm)/crm/locations/type';
+import { useEmployees } from '@/app/(crm)/crm/employees/hooks/useEmployees';
+import { useEventTeam } from '@/app/(crm)/crm/events/hooks';
 
 interface EditEventModalProps {
   isOpen: boolean;

@@ -1,6 +1,6 @@
 'use client';
 
-import { Service } from '@/app/oferta/OfertaPageClient';
+import { Service } from '@/app/(public)/oferta/OfertaPageClient';
 
 import { ArrowRight } from 'lucide-react';
 import Link from 'next/link';

@@ -2,7 +2,7 @@
 
 import { X, Plus, Building2, User } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 import LocationSelector from './LocationSelector';
 
 // Helper function to convert UTC date to local datetime-local format
@@ -79,7 +79,7 @@ export default function NewEventModal({
 
   useEffect(() => {
     if (initialDate) {
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
         event_date: initialDate.toISOString().slice(0, 16),
       }));
@@ -90,7 +90,7 @@ export default function NewEventModal({
   useEffect(() => {
     if (formData.organization_id) {
       const filtered = contacts.filter(
-        c => c.organization_id === formData.organization_id || c.contact_type === 'individual'
+        (c) => c.organization_id === formData.organization_id || c.contact_type === 'individual',
       );
       setFilteredContacts(filtered);
     } else {
@@ -132,11 +132,12 @@ export default function NewEventModal({
       }
 
       if (data) {
-        const formattedContacts = data.map(c => ({
+        const formattedContacts = data.map((c) => ({
           id: c.id,
-          full_name: c.full_name || `${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Brak nazwy',
+          full_name:
+            c.full_name || `${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Brak nazwy',
           organization_id: null,
-          contact_type: c.contact_type as 'contact' | 'individual'
+          contact_type: c.contact_type as 'contact' | 'individual',
         }));
         setContacts(formattedContacts);
         setFilteredContacts(formattedContacts);
@@ -243,11 +244,19 @@ export default function NewEventModal({
 
     const eventData = {
       name: formData.name,
-      organization_id: clientType === 'organization' ? (formData.organization_id && formData.organization_id.trim() !== '' ? formData.organization_id : null) : null,
+      organization_id:
+        clientType === 'organization'
+          ? formData.organization_id && formData.organization_id.trim() !== ''
+            ? formData.organization_id
+            : null
+          : null,
       contact_person_id: contactPersonId && contactPersonId.trim() !== '' ? contactPersonId : null,
-      category_id: formData.category_id && formData.category_id.trim() !== '' ? formData.category_id : null,
+      category_id:
+        formData.category_id && formData.category_id.trim() !== '' ? formData.category_id : null,
       event_date: formData.event_date ? new Date(formData.event_date).toISOString() : null,
-      event_end_date: formData.event_end_date ? new Date(formData.event_end_date).toISOString() : null,
+      event_end_date: formData.event_end_date
+        ? new Date(formData.event_end_date).toISOString()
+        : null,
       location: formData.location || null,
       budget: formData.budget ? parseFloat(formData.budget) : null,
       description: formData.description || null,
@@ -279,57 +288,48 @@ export default function NewEventModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      <div className="relative z-10 w-full max-w-2xl bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl shadow-2xl max-h-[90vh] overflow-y-auto m-4">
-        <div className="sticky top-0 bg-[#1c1f33] border-b border-[#d3bb73]/10 px-6 py-4 flex items-center justify-between z-10">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 m-4 max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] shadow-2xl">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#d3bb73]/10 bg-[#1c1f33] px-6 py-4">
           <h2 className="text-xl font-light text-[#e5e4e2]">Nowe wydarzenie</h2>
           <button
             onClick={onClose}
-            className="text-[#e5e4e2]/70 hover:text-[#e5e4e2] transition-colors"
+            className="text-[#e5e4e2]/70 transition-colors hover:text-[#e5e4e2]"
           >
-            <X className="w-6 h-6" />
+            <X className="h-6 w-6" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6">
           <div className="space-y-4">
             <div>
-              <label className="block text-sm text-[#e5e4e2]/70 mb-2">
-                Nazwa wydarzenia *
-              </label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/70">Nazwa wydarzenia *</label>
               <input
                 type="text"
                 required
                 value={formData.name}
-                onChange={(e) =>
-                  setFormData({ ...formData, name: e.target.value })
-                }
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/30"
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:border-[#d3bb73]/30 focus:outline-none"
                 placeholder="np. Konferencja Tech Summit 2025"
               />
             </div>
 
             <div>
-              <label className="block text-sm text-[#e5e4e2]/70 mb-2">
-                Typ klienta
-              </label>
-              <div className="flex gap-2 mb-4">
+              <label className="mb-2 block text-sm text-[#e5e4e2]/70">Typ klienta</label>
+              <div className="mb-4 flex gap-2">
                 <button
                   type="button"
                   onClick={() => {
                     setClientType('organization');
                     setFormData({ ...formData, organization_id: '', contact_person_id: '' });
                   }}
-                  className={`flex-1 px-4 py-2 rounded-lg border transition-colors ${
+                  className={`flex-1 rounded-lg border px-4 py-2 transition-colors ${
                     clientType === 'organization'
-                      ? 'bg-[#d3bb73]/20 border-[#d3bb73] text-[#d3bb73]'
-                      : 'bg-[#0f1119] border-[#d3bb73]/10 text-[#e5e4e2]/70 hover:border-[#d3bb73]/30'
+                      ? 'border-[#d3bb73] bg-[#d3bb73]/20 text-[#d3bb73]'
+                      : 'border-[#d3bb73]/10 bg-[#0f1119] text-[#e5e4e2]/70 hover:border-[#d3bb73]/30'
                   }`}
                 >
-                  <Building2 className="w-4 h-4 inline mr-2" />
+                  <Building2 className="mr-2 inline h-4 w-4" />
                   Organizacja / Firma
                 </button>
                 <button
@@ -338,21 +338,21 @@ export default function NewEventModal({
                     setClientType('individual');
                     setFormData({ ...formData, organization_id: '', contact_person_id: '' });
                   }}
-                  className={`flex-1 px-4 py-2 rounded-lg border transition-colors ${
+                  className={`flex-1 rounded-lg border px-4 py-2 transition-colors ${
                     clientType === 'individual'
-                      ? 'bg-[#d3bb73]/20 border-[#d3bb73] text-[#d3bb73]'
-                      : 'bg-[#0f1119] border-[#d3bb73]/10 text-[#e5e4e2]/70 hover:border-[#d3bb73]/30'
+                      ? 'border-[#d3bb73] bg-[#d3bb73]/20 text-[#d3bb73]'
+                      : 'border-[#d3bb73]/10 bg-[#0f1119] text-[#e5e4e2]/70 hover:border-[#d3bb73]/30'
                   }`}
                 >
-                  <User className="w-4 h-4 inline mr-2" />
+                  <User className="mr-2 inline h-4 w-4" />
                   Klient indywidualny
                 </button>
               </div>
 
               {clientType === 'organization' && (
                 <>
-                  <label className="block text-sm text-[#e5e4e2]/70 mb-2">
-                    <Building2 className="w-4 h-4 inline mr-1" />
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/70">
+                    <Building2 className="mr-1 inline h-4 w-4" />
                     Organizacja / Firma
                   </label>
 
@@ -361,9 +361,13 @@ export default function NewEventModal({
                       <select
                         value={formData.organization_id}
                         onChange={(e) =>
-                          setFormData({ ...formData, organization_id: e.target.value, contact_person_id: '' })
+                          setFormData({
+                            ...formData,
+                            organization_id: e.target.value,
+                            contact_person_id: '',
+                          })
                         }
-                        className="flex-1 bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                        className="flex-1 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                       >
                         <option value="">Wybierz organizację</option>
                         {organizations.map((org) => (
@@ -375,9 +379,9 @@ export default function NewEventModal({
                       <button
                         type="button"
                         onClick={() => setShowNewOrgForm(true)}
-                        className="px-4 py-2 bg-[#d3bb73]/10 hover:bg-[#d3bb73]/20 border border-[#d3bb73]/20 text-[#d3bb73] rounded-lg transition-colors flex items-center gap-2"
+                        className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-4 py-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"
                       >
-                        <Plus className="w-4 h-4" />
+                        <Plus className="h-4 w-4" />
                         Nowa
                       </button>
                     </div>
@@ -389,12 +393,12 @@ export default function NewEventModal({
                           value={newOrgName}
                           onChange={(e) => setNewOrgName(e.target.value)}
                           placeholder="Nazwa organizacji"
-                          className="flex-1 bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/30"
+                          className="flex-1 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:border-[#d3bb73]/30 focus:outline-none"
                         />
                         <button
                           type="button"
                           onClick={handleAddNewOrganization}
-                          className="px-4 py-2 bg-[#d3bb73] hover:bg-[#d3bb73]/80 text-[#0f1119] rounded-lg transition-colors"
+                          className="rounded-lg bg-[#d3bb73] px-4 py-2 text-[#0f1119] transition-colors hover:bg-[#d3bb73]/80"
                         >
                           Dodaj
                         </button>
@@ -404,7 +408,7 @@ export default function NewEventModal({
                             setShowNewOrgForm(false);
                             setNewOrgName('');
                           }}
-                          className="px-4 py-2 bg-[#e5e4e2]/10 hover:bg-[#e5e4e2]/20 text-[#e5e4e2] rounded-lg transition-colors"
+                          className="rounded-lg bg-[#e5e4e2]/10 px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#e5e4e2]/20"
                         >
                           Anuluj
                         </button>
@@ -416,22 +420,22 @@ export default function NewEventModal({
             </div>
 
             <div>
-              <label className="block text-sm text-[#e5e4e2]/70 mb-2">
-                <User className="w-4 h-4 inline mr-1" />
+              <label className="mb-2 block text-sm text-[#e5e4e2]/70">
+                <User className="mr-1 inline h-4 w-4" />
                 Osoba kontaktowa
               </label>
 
-              <div className="flex gap-2 mb-2">
+              <div className="mb-2 flex gap-2">
                 <button
                   type="button"
                   onClick={() => {
                     setContactInputType('select');
                     setManualContactName('');
                   }}
-                  className={`flex-1 px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+                  className={`flex-1 rounded-lg border px-3 py-1.5 text-sm transition-colors ${
                     contactInputType === 'select'
-                      ? 'bg-[#d3bb73]/20 border-[#d3bb73] text-[#d3bb73]'
-                      : 'bg-[#0f1119] border-[#d3bb73]/10 text-[#e5e4e2]/70 hover:border-[#d3bb73]/30'
+                      ? 'border-[#d3bb73] bg-[#d3bb73]/20 text-[#d3bb73]'
+                      : 'border-[#d3bb73]/10 bg-[#0f1119] text-[#e5e4e2]/70 hover:border-[#d3bb73]/30'
                   }`}
                 >
                   Wybierz z bazy
@@ -442,10 +446,10 @@ export default function NewEventModal({
                     setContactInputType('manual');
                     setFormData({ ...formData, contact_person_id: '' });
                   }}
-                  className={`flex-1 px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+                  className={`flex-1 rounded-lg border px-3 py-1.5 text-sm transition-colors ${
                     contactInputType === 'manual'
-                      ? 'bg-[#d3bb73]/20 border-[#d3bb73] text-[#d3bb73]'
-                      : 'bg-[#0f1119] border-[#d3bb73]/10 text-[#e5e4e2]/70 hover:border-[#d3bb73]/30'
+                      ? 'border-[#d3bb73] bg-[#d3bb73]/20 text-[#d3bb73]'
+                      : 'border-[#d3bb73]/10 bg-[#0f1119] text-[#e5e4e2]/70 hover:border-[#d3bb73]/30'
                   }`}
                 >
                   Wpisz ręcznie
@@ -459,7 +463,7 @@ export default function NewEventModal({
                     onChange={(e) =>
                       setFormData({ ...formData, contact_person_id: e.target.value })
                     }
-                    className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                    className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                   >
                     <option value="">Wybierz osobę kontaktową</option>
                     {filteredContacts.map((contact) => (
@@ -469,7 +473,7 @@ export default function NewEventModal({
                       </option>
                     ))}
                   </select>
-                  <p className="text-xs text-[#e5e4e2]/40 mt-1">
+                  <p className="mt-1 text-xs text-[#e5e4e2]/40">
                     {clientType === 'organization' && formData.organization_id
                       ? 'Wyświetlane są osoby z wybranej organizacji'
                       : 'Wybierz organizację aby zawęzić listę kontaktów'}
@@ -482,9 +486,9 @@ export default function NewEventModal({
                     value={manualContactName}
                     onChange={(e) => setManualContactName(e.target.value)}
                     placeholder="np. Jan Kowalski"
-                    className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/30"
+                    className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:border-[#d3bb73]/30 focus:outline-none"
                   />
-                  <p className="text-xs text-[#e5e4e2]/40 mt-1">
+                  <p className="mt-1 text-xs text-[#e5e4e2]/40">
                     Kontakt zostanie automatycznie dodany do bazy
                   </p>
                 </>
@@ -492,15 +496,11 @@ export default function NewEventModal({
             </div>
 
             <div>
-              <label className="block text-sm text-[#e5e4e2]/70 mb-2">
-                Kategoria
-              </label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/70">Kategoria</label>
               <select
                 value={formData.category_id}
-                onChange={(e) =>
-                  setFormData({ ...formData, category_id: e.target.value })
-                }
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
+                className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
               >
                 <option value="">Wybierz kategorię</option>
                 {categories.map((category) => (
@@ -513,73 +513,53 @@ export default function NewEventModal({
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm text-[#e5e4e2]/70 mb-2">
-                  Data rozpoczęcia *
-                </label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/70">Data rozpoczęcia *</label>
                 <input
                   type="datetime-local"
                   required
                   value={formData.event_date}
-                  onChange={(e) =>
-                    setFormData({ ...formData, event_date: e.target.value })
-                  }
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  onChange={(e) => setFormData({ ...formData, event_date: e.target.value })}
+                  className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                 />
               </div>
               <div>
-                <label className="block text-sm text-[#e5e4e2]/70 mb-2">
-                  Data zakończenia
-                </label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/70">Data zakończenia</label>
                 <input
                   type="datetime-local"
                   value={formData.event_end_date}
-                  onChange={(e) =>
-                    setFormData({ ...formData, event_end_date: e.target.value })
-                  }
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  onChange={(e) => setFormData({ ...formData, event_end_date: e.target.value })}
+                  className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm text-[#e5e4e2]/70 mb-2">
-                Lokalizacja
-              </label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/70">Lokalizacja</label>
               <LocationSelector
                 value={formData.location}
-                onChange={(value) =>
-                  setFormData({ ...formData, location: value })
-                }
+                onChange={(value) => setFormData({ ...formData, location: value })}
                 placeholder="Wybierz z listy lub wyszukaj nową lokalizację..."
               />
             </div>
 
             <div>
-              <label className="block text-sm text-[#e5e4e2]/70 mb-2">
-                Budżet (PLN)
-              </label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/70">Budżet (PLN)</label>
               <input
                 type="number"
                 step="0.01"
                 value={formData.budget}
-                onChange={(e) =>
-                  setFormData({ ...formData, budget: e.target.value })
-                }
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/30"
+                onChange={(e) => setFormData({ ...formData, budget: e.target.value })}
+                className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:border-[#d3bb73]/30 focus:outline-none"
                 placeholder="0.00"
               />
             </div>
 
             <div>
-              <label className="block text-sm text-[#e5e4e2]/70 mb-2">
-                Status
-              </label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/70">Status</label>
               <select
                 value={formData.status}
-                onChange={(e) =>
-                  setFormData({ ...formData, status: e.target.value })
-                }
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
               >
                 <option value="inquiry">Zapytanie</option>
                 <option value="offer_to_send">Oferta do wysłania</option>
@@ -594,32 +574,28 @@ export default function NewEventModal({
             </div>
 
             <div>
-              <label className="block text-sm text-[#e5e4e2]/70 mb-2">
-                Opis
-              </label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/70">Opis</label>
               <textarea
                 value={formData.description}
-                onChange={(e) =>
-                  setFormData({ ...formData, description: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 rows={4}
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:outline-none focus:border-[#d3bb73]/30 resize-none"
+                className="w-full resize-none rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:border-[#d3bb73]/30 focus:outline-none"
                 placeholder="Dodatkowe informacje o wydarzeniu..."
               />
             </div>
           </div>
 
-          <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-[#d3bb73]/10">
+          <div className="mt-6 flex justify-end gap-3 border-t border-[#d3bb73]/10 pt-4">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-[#e5e4e2]/70 hover:text-[#e5e4e2] transition-colors"
+              className="px-4 py-2 text-[#e5e4e2]/70 transition-colors hover:text-[#e5e4e2]"
             >
               Anuluj
             </button>
             <button
               type="submit"
-              className="px-6 py-2 bg-[#d3bb73] hover:bg-[#d3bb73]/80 text-[#0f1119] rounded-lg transition-colors font-medium"
+              className="rounded-lg bg-[#d3bb73] px-6 py-2 font-medium text-[#0f1119] transition-colors hover:bg-[#d3bb73]/80"
             >
               Utwórz wydarzenie
             </button>

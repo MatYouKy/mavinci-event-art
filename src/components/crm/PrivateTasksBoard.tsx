@@ -2,8 +2,17 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, X, Trash2, CreditCard as Edit, GripVertical, Calendar, Play, Clock } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import {
+  Plus,
+  X,
+  Trash2,
+  CreditCard as Edit,
+  GripVertical,
+  Calendar,
+  Play,
+  Clock,
+} from 'lucide-react';
+import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useMobile } from '@/hooks/useMobile';
@@ -28,7 +37,10 @@ interface Task {
     avatar_url: string | null;
     avatar_metadata?: any;
   } | null;
-  task_assignees?: { employee_id: string; employees: { name: string; surname: string; avatar_url: string | null; avatar_metadata?: any } }[];
+  task_assignees?: {
+    employee_id: string;
+    employees: { name: string; surname: string; avatar_url: string | null; avatar_metadata?: any };
+  }[];
 }
 
 interface PrivateTasksBoardProps {
@@ -117,9 +129,14 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
 
               return {
                 employee_id: assignee.employee_id,
-                employees: employee || { name: '', surname: '', avatar_url: null, avatar_metadata: null },
+                employees: employee || {
+                  name: '',
+                  surname: '',
+                  avatar_url: null,
+                  avatar_metadata: null,
+                },
               };
-            })
+            }),
           );
 
           let currently_working_employee = null;
@@ -133,11 +150,11 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
             currently_working_employee = workingEmployee;
           }
 
-          setTasks(prevTasks => {
-            const taskExists = prevTasks.some(t => t.id === updatedTask.id);
+          setTasks((prevTasks) => {
+            const taskExists = prevTasks.some((t) => t.id === updatedTask.id);
 
             if (taskExists) {
-              return prevTasks.map(task =>
+              return prevTasks.map((task) =>
                 task.id === updatedTask.id
                   ? {
                       ...task,
@@ -145,13 +162,13 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
                       task_assignees: assigneesWithEmployees,
                       currently_working_employee,
                     }
-                  : task
+                  : task,
               );
             }
 
             return prevTasks;
           });
-        }
+        },
       )
       .on(
         'postgres_changes',
@@ -178,9 +195,14 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
 
               return {
                 employee_id: assignee.employee_id,
-                employees: employee || { name: '', surname: '', avatar_url: null, avatar_metadata: null },
+                employees: employee || {
+                  name: '',
+                  surname: '',
+                  avatar_url: null,
+                  avatar_metadata: null,
+                },
               };
-            })
+            }),
           );
 
           let currently_working_employee = null;
@@ -195,11 +217,11 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
           }
 
           const isRelevant =
-            newTask.is_private && newTask.owner_id === employeeId ||
-            !newTask.is_private && assignees?.some(a => a.employee_id === employeeId);
+            (newTask.is_private && newTask.owner_id === employeeId) ||
+            (!newTask.is_private && assignees?.some((a) => a.employee_id === employeeId));
 
           if (isRelevant) {
-            setTasks(prevTasks => [
+            setTasks((prevTasks) => [
               ...prevTasks,
               {
                 ...newTask,
@@ -208,7 +230,7 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
               },
             ]);
           }
-        }
+        },
       )
       .on(
         'postgres_changes',
@@ -219,8 +241,8 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
         },
         (payload) => {
           const deletedTaskId = payload.old.id;
-          setTasks(prevTasks => prevTasks.filter(t => t.id !== deletedTaskId));
-        }
+          setTasks((prevTasks) => prevTasks.filter((t) => t.id !== deletedTaskId));
+        },
       )
       .on(
         'postgres_changes',
@@ -239,21 +261,21 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
             .maybeSingle();
 
           if (employee) {
-            setTasks(prevTasks =>
-              prevTasks.map(task =>
+            setTasks((prevTasks) =>
+              prevTasks.map((task) =>
                 task.id === newAssignee.task_id
                   ? {
                       ...task,
                       task_assignees: [
                         ...(task.task_assignees || []),
-                        { employee_id: newAssignee.employee_id, employees: employee }
-                      ]
+                        { employee_id: newAssignee.employee_id, employees: employee },
+                      ],
                     }
-                  : task
-              )
+                  : task,
+              ),
             );
           }
-        }
+        },
       )
       .on(
         'postgres_changes',
@@ -265,19 +287,19 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
         (payload) => {
           const deletedAssignee = payload.old as any;
 
-          setTasks(prevTasks =>
-            prevTasks.map(task =>
+          setTasks((prevTasks) =>
+            prevTasks.map((task) =>
               task.id === deletedAssignee.task_id
                 ? {
                     ...task,
                     task_assignees: (task.task_assignees || []).filter(
-                      a => a.employee_id !== deletedAssignee.employee_id
-                    )
+                      (a) => a.employee_id !== deletedAssignee.employee_id,
+                    ),
                   }
-                : task
-            )
+                : task,
+            ),
           );
-        }
+        },
       )
       .subscribe();
 
@@ -300,10 +322,12 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
 
       const { data: assignedTasks, error: assignedError } = await supabase
         .from('tasks')
-        .select(`
+        .select(
+          `
           *,
           task_assignees!inner(employee_id)
-        `)
+        `,
+        )
         .eq('task_assignees.employee_id', employeeId)
         .eq('is_private', false);
 
@@ -328,9 +352,14 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
 
               return {
                 employee_id: assignee.employee_id,
-                employees: employee || { name: '', surname: '', avatar_url: null, avatar_metadata: null },
+                employees: employee || {
+                  name: '',
+                  surname: '',
+                  avatar_url: null,
+                  avatar_metadata: null,
+                },
               };
-            })
+            }),
           );
 
           let currently_working_employee = null;
@@ -349,7 +378,7 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
             task_assignees: assigneesWithEmployees,
             currently_working_employee,
           };
-        })
+        }),
       );
 
       const priorityOrder = { urgent: 4, high: 3, medium: 2, low: 1 };
@@ -506,15 +535,18 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
         setDraggedTask(null);
         setDragOverColumn(null);
         stopAutoScroll();
-        showSnackbar('Zakończ poprzednie zadanie aby rozpocząć kolejne lub przenieś je do zrobienia', 'warning');
+        showSnackbar(
+          'Zakończ poprzednie zadanie aby rozpocząć kolejne lub przenieś je do zrobienia',
+          'warning',
+        );
         return;
       }
 
       if (!activeTimer) {
-        setTasks(prevTasks =>
-          prevTasks.map(task =>
-            task.id === taskId ? { ...task, board_column: columnId } : task
-          )
+        setTasks((prevTasks) =>
+          prevTasks.map((task) =>
+            task.id === taskId ? { ...task, board_column: columnId } : task,
+          ),
         );
         setDraggedTask(null);
         setDragOverColumn(null);
@@ -525,7 +557,7 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
             .from('tasks')
             .update({
               board_column: columnId,
-              currently_working_by: employeeId
+              currently_working_by: employeeId,
             })
             .eq('id', taskId);
 
@@ -536,10 +568,10 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
           console.error('Error moving task:', error);
           showSnackbar('Błąd podczas przenoszenia zadania', 'error');
 
-          setTasks(prevTasks =>
-            prevTasks.map(task =>
-              task.id === taskId ? { ...task, board_column: oldColumn } : task
-            )
+          setTasks((prevTasks) =>
+            prevTasks.map((task) =>
+              task.id === taskId ? { ...task, board_column: oldColumn } : task,
+            ),
           );
         }
         return;
@@ -550,7 +582,7 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
       if (activeTimer && activeTimer.task_id === taskId) {
         const shouldStopTimer = await showConfirm(
           'Zatrzymać czas pracy?',
-          'Zadanie jest przenoszone do kolejnego etapu. Czy chcesz zatrzymać licznik czasu?'
+          'Zadanie jest przenoszone do kolejnego etapu. Czy chcesz zatrzymać licznik czasu?',
         );
 
         if (shouldStopTimer) {
@@ -568,10 +600,8 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
       }
     }
 
-    setTasks(prevTasks =>
-      prevTasks.map(task =>
-        task.id === taskId ? { ...task, board_column: columnId } : task
-      )
+    setTasks((prevTasks) =>
+      prevTasks.map((task) => (task.id === taskId ? { ...task, board_column: columnId } : task)),
     );
     setDraggedTask(null);
     setDragOverColumn(null);
@@ -584,20 +614,15 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
         updateData.currently_working_by = null;
       }
 
-      const { error } = await supabase
-        .from('tasks')
-        .update(updateData)
-        .eq('id', taskId);
+      const { error } = await supabase.from('tasks').update(updateData).eq('id', taskId);
 
       if (error) throw error;
     } catch (error) {
       console.error('Error moving task:', error);
       showSnackbar('Błąd podczas przenoszenia zadania', 'error');
 
-      setTasks(prevTasks =>
-        prevTasks.map(task =>
-          task.id === taskId ? { ...task, board_column: oldColumn } : task
-        )
+      setTasks((prevTasks) =>
+        prevTasks.map((task) => (task.id === taskId ? { ...task, board_column: oldColumn } : task)),
       );
     }
   };
@@ -672,12 +697,10 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
 
         if (insertError) throw insertError;
 
-        const { error: assignError } = await supabase
-          .from('task_assignees')
-          .insert({
-            task_id: newTask.id,
-            employee_id: employeeId,
-          });
+        const { error: assignError } = await supabase.from('task_assignees').insert({
+          task_id: newTask.id,
+          employee_id: employeeId,
+        });
 
         if (assignError) throw assignError;
         showSnackbar('Zadanie zostało utworzone', 'success');
@@ -693,16 +716,13 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
   const handleDeleteTask = async (taskId: string) => {
     const confirmed = await showConfirm(
       'Czy na pewno chcesz usunąć to zadanie? Usunięte zostaną również wszystkie powiązane wpisy czasu pracy. Ta operacja jest nieodwracalna.',
-      'Usuń zadanie'
+      'Usuń zadanie',
     );
 
     if (!confirmed) return;
 
     try {
-      const { error } = await supabase
-        .from('tasks')
-        .delete()
-        .eq('id', taskId);
+      const { error } = await supabase.from('tasks').delete().eq('id', taskId);
 
       if (error) throw error;
 
@@ -714,7 +734,7 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
   };
 
   const getTasksByColumn = (columnId: string) => {
-    return tasks.filter(task => task.board_column === columnId);
+    return tasks.filter((task) => task.board_column === columnId);
   };
 
   const minSwipeDistance = 50;
@@ -736,17 +756,17 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
     const isRightSwipe = distance < -minSwipeDistance;
 
     if (isLeftSwipe && activeColumnIndex < columns.length - 1) {
-      setActiveColumnIndex(prev => prev + 1);
+      setActiveColumnIndex((prev) => prev + 1);
     }
 
     if (isRightSwipe && activeColumnIndex > 0) {
-      setActiveColumnIndex(prev => prev - 1);
+      setActiveColumnIndex((prev) => prev - 1);
     }
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex h-64 items-center justify-center">
         <div className="text-[#e5e4e2]/60">Ładowanie zadań...</div>
       </div>
     );
@@ -754,8 +774,8 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
 
   if (!isOwnProfile) {
     return (
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/10 rounded-xl p-6">
-        <p className="text-[#e5e4e2]/60 text-center">
+      <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+        <p className="text-center text-[#e5e4e2]/60">
           Tablica prywatnych zadań jest widoczna tylko dla właściciela.
         </p>
       </div>
@@ -763,19 +783,19 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between mb-4 px-2 flex-wrap gap-3">
+    <div className="flex h-full flex-col">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 px-2">
         <h3 className="text-lg font-light text-[#e5e4e2]">Moja tablica zadań</h3>
 
         {isMobile && (
-          <div className="flex items-center gap-2 w-full lg:w-auto order-3 lg:order-none">
+          <div className="order-3 flex w-full items-center gap-2 lg:order-none lg:w-auto">
             <select
               value={columns[activeColumnIndex].id}
               onChange={(e) => {
-                const index = columns.findIndex(col => col.id === e.target.value);
+                const index = columns.findIndex((col) => col.id === e.target.value);
                 if (index !== -1) setActiveColumnIndex(index);
               }}
-              className="flex-1 px-4 py-2 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              className="flex-1 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
             >
               {columns.map((col) => (
                 <option key={col.id} value={col.id}>
@@ -788,9 +808,9 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
 
         <button
           onClick={() => handleOpenModal()}
-          className="flex items-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors"
+          className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="h-4 w-4" />
           Nowe zadanie
         </button>
       </div>
@@ -809,16 +829,14 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
             transform: isMobile ? `translateX(-${activeColumnIndex * 100}%)` : undefined,
           }}
         >
-          {(isMobile ? [columns[activeColumnIndex]] : columns).map(column => (
+          {(isMobile ? [columns[activeColumnIndex]] : columns).map((column) => (
             <div
               key={column.id}
               onDragOver={(e) => handleDragOver(e, column.id)}
               onDragLeave={handleDragLeave}
               onDrop={() => handleDrop(column.id)}
-              className={`flex-shrink-0 bg-[#1c1f33] border-2 rounded-xl p-4 flex flex-col transition-all ${
-                dragOverColumn === column.id
-                  ? 'border-[#d3bb73] bg-[#d3bb73]/5'
-                  : column.color
+              className={`flex flex-shrink-0 flex-col rounded-xl border-2 bg-[#1c1f33] p-4 transition-all ${
+                dragOverColumn === column.id ? 'border-[#d3bb73] bg-[#d3bb73]/5' : column.color
               }`}
               style={{
                 width: isMobile ? '100%' : '320px',
@@ -826,7 +844,7 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
                 maxHeight: 'calc(100vh - 350px)',
               }}
             >
-              <div className="flex items-center justify-between mb-4 flex-shrink-0">
+              <div className="mb-4 flex flex-shrink-0 items-center justify-between">
                 <h3 className="font-medium text-[#e5e4e2]">{column.label}</h3>
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-[#e5e4e2]/60">
@@ -834,16 +852,16 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
                   </span>
                   <button
                     onClick={() => handleOpenModal(undefined, column.id)}
-                    className="p-1 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded transition-colors"
+                    className="rounded p-1 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
                     title="Dodaj zadanie"
                   >
-                    <Plus className="w-4 h-4" />
+                    <Plus className="h-4 w-4" />
                   </button>
                 </div>
               </div>
 
-              <div className="space-y-3 overflow-y-auto flex-1 pr-2 -mr-2">
-                {getTasksByColumn(column.id).map(task => (
+              <div className="-mr-2 flex-1 space-y-3 overflow-y-auto pr-2">
+                {getTasksByColumn(column.id).map((task) => (
                   <div
                     key={task.id}
                     draggable
@@ -858,50 +876,48 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
                         router.push(`/crm/tasks/${task.id}`);
                       }
                     }}
-                    className={`bg-[#0f1119] border rounded-lg p-4 cursor-pointer transition-all group ${
+                    className={`group cursor-pointer rounded-lg border bg-[#0f1119] p-4 transition-all ${
                       draggedTask?.id === task.id
-                        ? 'opacity-50 border-[#d3bb73]/50'
+                        ? 'border-[#d3bb73]/50 opacity-50'
                         : 'border-[#d3bb73]/10 hover:border-[#d3bb73]/30'
                     }`}
                   >
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-start gap-2 flex-1">
-                        <GripVertical className="w-4 h-4 text-[#e5e4e2]/40 mt-1 flex-shrink-0 cursor-move" />
-                        <h4 className="text-sm font-medium text-[#e5e4e2] flex-1">
-                          {task.title}
-                        </h4>
+                    <div className="mb-2 flex items-start justify-between">
+                      <div className="flex flex-1 items-start gap-2">
+                        <GripVertical className="mt-1 h-4 w-4 flex-shrink-0 cursor-move text-[#e5e4e2]/40" />
+                        <h4 className="flex-1 text-sm font-medium text-[#e5e4e2]">{task.title}</h4>
                       </div>
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             handleOpenModal(task);
                           }}
-                          className="p-1 text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded"
+                          className="rounded p-1 text-[#d3bb73] hover:bg-[#d3bb73]/10"
                         >
-                          <Edit className="w-3 h-3" />
+                          <Edit className="h-3 w-3" />
                         </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             handleDeleteTask(task.id);
                           }}
-                          className="p-1 text-red-400 hover:bg-red-500/10 rounded"
+                          className="rounded p-1 text-red-400 hover:bg-red-500/10"
                         >
-                          <Trash2 className="w-3 h-3" />
+                          <Trash2 className="h-3 w-3" />
                         </button>
                       </div>
                     </div>
 
                     {task.description && (
-                      <p className="text-xs text-[#e5e4e2]/60 mb-2 line-clamp-2">
+                      <p className="mb-2 line-clamp-2 text-xs text-[#e5e4e2]/60">
                         {task.description}
                       </p>
                     )}
 
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="mb-2 flex items-center gap-2">
                       <span
-                        className={`px-2 py-0.5 rounded text-[10px] border ${
+                        className={`rounded border px-2 py-0.5 text-[10px] ${
                           priorityColors[task.priority]
                         }`}
                       >
@@ -909,7 +925,7 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
                       </span>
                       {task.due_date && (
                         <div className="flex items-center gap-1 text-[10px] text-[#e5e4e2]/40">
-                          <Calendar className="w-3 h-3" />
+                          <Calendar className="h-3 w-3" />
                           {new Date(task.due_date).toLocaleDateString('pl-PL')}
                         </div>
                       )}
@@ -921,32 +937,30 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
                       </div>
                     )}
 
-                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#d3bb73]/5">
+                    <div className="mt-2 flex items-center justify-between border-t border-[#d3bb73]/5 pt-2">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           handleStartTimer(task);
                         }}
                         disabled={activeTimer?.task_id === task.id}
-                        className={`flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors ${
+                        className={`flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors ${
                           activeTimer?.task_id === task.id
-                            ? 'bg-green-500/20 text-green-400 cursor-default'
+                            ? 'cursor-default bg-green-500/20 text-green-400'
                             : 'bg-[#d3bb73]/10 text-[#d3bb73] hover:bg-[#d3bb73]/20'
                         }`}
                         title={
-                          activeTimer?.task_id === task.id
-                            ? 'Timer aktywny'
-                            : 'Rozpocznij zadanie'
+                          activeTimer?.task_id === task.id ? 'Timer aktywny' : 'Rozpocznij zadanie'
                         }
                       >
                         {activeTimer?.task_id === task.id ? (
                           <>
-                            <Clock className="w-3 h-3 animate-pulse" />
+                            <Clock className="h-3 w-3 animate-pulse" />
                             <span>Aktywny</span>
                           </>
                         ) : (
                           <>
-                            <Play className="w-3 h-3" />
+                            <Play className="h-3 w-3" />
                             <span>Rozpocznij</span>
                           </>
                         )}
@@ -966,10 +980,8 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
             <button
               key={index}
               onClick={() => setActiveColumnIndex(index)}
-              className={`w-2 h-2 rounded-full transition-all ${
-                index === activeColumnIndex
-                  ? 'bg-[#d3bb73] w-8'
-                  : 'bg-[#e5e4e2]/20'
+              className={`h-2 w-2 rounded-full transition-all ${
+                index === activeColumnIndex ? 'w-8 bg-[#d3bb73]' : 'bg-[#e5e4e2]/20'
               }`}
               aria-label={`Przejdź do sekcji ${index + 1}`}
             />
@@ -978,50 +990,50 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
       )}
 
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-[#d3bb73]/10">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
+            <div className="border-b border-[#d3bb73]/10 p-6">
               <div className="flex items-center justify-between">
                 <h3 className="text-xl font-light text-[#e5e4e2]">
                   {editingTask ? 'Edytuj zadanie' : 'Nowe zadanie'}
                 </h3>
                 <button
                   onClick={handleCloseModal}
-                  className="text-[#e5e4e2]/60 hover:text-[#e5e4e2] transition-colors"
+                  className="text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="h-5 w-5" />
                 </button>
               </div>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4 p-6">
               <div>
-                <label className="block text-sm text-[#e5e4e2]/80 mb-2">Tytuł</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/80">Tytuł</label>
                 <input
                   type="text"
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  className="w-full px-4 py-2 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-sm text-[#e5e4e2]/80 mb-2">Opis</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/80">Opis</label>
                 <textarea
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full px-4 py-2 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] min-h-[100px]"
+                  className="min-h-[100px] w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-[#e5e4e2]/80 mb-2">Priorytet</label>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/80">Priorytet</label>
                   <select
                     value={formData.priority}
                     onChange={(e) => setFormData({ ...formData, priority: e.target.value as any })}
-                    className="w-full px-4 py-2 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                   >
                     <option value="low">Niski</option>
                     <option value="medium">Średni</option>
@@ -1031,26 +1043,28 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
                 </div>
 
                 <div>
-                  <label className="block text-sm text-[#e5e4e2]/80 mb-2">Kolumna</label>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/80">Kolumna</label>
                   <select
                     value={formData.board_column}
                     onChange={(e) => setFormData({ ...formData, board_column: e.target.value })}
-                    className="w-full px-4 py-2 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                   >
-                    {columns.map(col => (
-                      <option key={col.id} value={col.id}>{col.label}</option>
+                    {columns.map((col) => (
+                      <option key={col.id} value={col.id}>
+                        {col.label}
+                      </option>
                     ))}
                   </select>
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm text-[#e5e4e2]/80 mb-2">Termin</label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/80">Termin</label>
                 <input
                   type="date"
                   value={formData.due_date}
                   onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
-                  className="w-full px-4 py-2 bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 />
               </div>
 
@@ -1058,13 +1072,13 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
                 <button
                   type="button"
                   onClick={handleCloseModal}
-                  className="flex-1 px-4 py-2 bg-[#e5e4e2]/10 text-[#e5e4e2] rounded-lg hover:bg-[#e5e4e2]/20 transition-colors"
+                  className="flex-1 rounded-lg bg-[#e5e4e2]/10 px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#e5e4e2]/20"
                 >
                   Anuluj
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors"
+                  className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
                 >
                   {editingTask ? 'Zapisz' : 'Utwórz'}
                 </button>
@@ -1075,11 +1089,11 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
       )}
 
       {showTimerModal && activeTimer && taskToStart && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-xl p-6 max-w-md w-full">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="bg-yellow-500/20 p-3 rounded-lg">
-                <Clock className="w-6 h-6 text-yellow-400" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] p-6">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="rounded-lg bg-yellow-500/20 p-3">
+                <Clock className="h-6 w-6 text-yellow-400" />
               </div>
               <div>
                 <h2 className="text-xl font-light text-[#e5e4e2]">Timer już aktywny</h2>
@@ -1087,28 +1101,29 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
               </div>
             </div>
 
-            <div className="bg-[#1c1f33] rounded-lg p-4 mb-4 border border-[#d3bb73]/10">
-              <div className="text-sm text-[#e5e4e2]/60 mb-2">Aktualnie pracujesz nad:</div>
-              <div className="text-[#e5e4e2] font-medium mb-1">
+            <div className="mb-4 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+              <div className="mb-2 text-sm text-[#e5e4e2]/60">Aktualnie pracujesz nad:</div>
+              <div className="mb-1 font-medium text-[#e5e4e2]">
                 {activeTimer.tasks?.title || activeTimer.title || 'Bez nazwy'}
               </div>
               <div className="text-xs text-[#e5e4e2]/40">
-                Rozpoczęty: {new Date(activeTimer.start_time).toLocaleTimeString('pl-PL', {
+                Rozpoczęty:{' '}
+                {new Date(activeTimer.start_time).toLocaleTimeString('pl-PL', {
                   hour: '2-digit',
                   minute: '2-digit',
                 })}
               </div>
             </div>
 
-            <div className="bg-[#1c1f33] rounded-lg p-4 mb-6 border border-[#d3bb73]/10">
-              <div className="text-sm text-[#e5e4e2]/60 mb-2">Chcesz rozpocząć:</div>
-              <div className="text-[#e5e4e2] font-medium">{taskToStart.title}</div>
+            <div className="mb-6 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+              <div className="mb-2 text-sm text-[#e5e4e2]/60">Chcesz rozpocząć:</div>
+              <div className="font-medium text-[#e5e4e2]">{taskToStart.title}</div>
             </div>
 
             <div className="space-y-3">
               <button
                 onClick={stopCurrentTimerAndStartNew}
-                className="w-full bg-[#d3bb73] text-[#1c1f33] px-4 py-3 rounded-lg hover:bg-[#d3bb73]/90 font-medium transition-colors"
+                className="w-full rounded-lg bg-[#d3bb73] px-4 py-3 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
               >
                 Zatrzymaj poprzedni i rozpocznij nowy
               </button>
@@ -1117,7 +1132,7 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
                   setShowTimerModal(false);
                   setTaskToStart(null);
                 }}
-                className="w-full bg-[#1c1f33] text-[#e5e4e2] px-4 py-3 rounded-lg hover:bg-[#1c1f33]/80 border border-[#d3bb73]/20 transition-colors"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-3 text-[#e5e4e2] transition-colors hover:bg-[#1c1f33]/80"
               >
                 Anuluj
               </button>

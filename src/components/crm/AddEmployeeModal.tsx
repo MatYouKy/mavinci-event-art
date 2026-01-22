@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { X, Loader2, Eye, EyeOff } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 
 interface AddEmployeeModalProps {
   onClose: () => void;
@@ -59,7 +59,7 @@ export default function AddEmployeeModal({ onClose, onSuccess, isOpen }: AddEmpl
     for (let i = 0; i < 12; i++) {
       password += chars.charAt(Math.floor(Math.random() * chars.length));
     }
-    setFormData(prev => ({ ...prev, password }));
+    setFormData((prev) => ({ ...prev, password }));
     setShowPassword(true);
   };
 
@@ -77,7 +77,9 @@ export default function AddEmployeeModal({ onClose, onSuccess, isOpen }: AddEmpl
       }
 
       // Get current session
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
       if (!session) {
         throw new Error('Brak sesji użytkownika');
@@ -95,7 +97,7 @@ export default function AddEmployeeModal({ onClose, onSuccess, isOpen }: AddEmpl
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
+          Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify(formData),
       });
@@ -109,10 +111,10 @@ export default function AddEmployeeModal({ onClose, onSuccess, isOpen }: AddEmpl
       // Show success message with credentials info
       alert(
         `✅ Pracownik został utworzony pomyślnie!\n\n` +
-        `Email: ${formData.email}\n` +
-        `Hasło: ${formData.password}\n\n` +
-        `⚠️ Zapisz te dane i przekaż je pracownikowi!\n` +
-        `Pracownik może zmienić hasło po pierwszym logowaniu.`
+          `Email: ${formData.email}\n` +
+          `Hasło: ${formData.password}\n\n` +
+          `⚠️ Zapisz te dane i przekaż je pracownikowi!\n` +
+          `Pracownik może zmienić hasło po pierwszym logowaniu.`,
       );
 
       // Success
@@ -141,96 +143,92 @@ export default function AddEmployeeModal({ onClose, onSuccess, isOpen }: AddEmpl
   ];
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-xl font-medium text-[#e5e4e2]">
-            Dodaj nowego pracownika
-          </h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+        <div className="mb-6 flex items-center justify-between">
+          <h3 className="text-xl font-medium text-[#e5e4e2]">Dodaj nowego pracownika</h3>
           <button
             onClick={onClose}
-            className="text-[#e5e4e2]/60 hover:text-[#e5e4e2] transition-colors"
+            className="text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
           >
-            <X className="w-5 h-5" />
+            <X className="h-5 w-5" />
           </button>
         </div>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-sm">
+          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/20 p-3 text-sm text-red-400">
             {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                 Imię <span className="text-red-400">*</span>
               </label>
               <input
                 type="text"
                 value={formData.name}
-                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                className="w-full bg-[#0f1019] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+                onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1019] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                 Nazwisko <span className="text-red-400">*</span>
               </label>
               <input
                 type="text"
                 value={formData.surname}
-                onChange={(e) => setFormData(prev => ({ ...prev, surname: e.target.value }))}
-                className="w-full bg-[#0f1019] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+                onChange={(e) => setFormData((prev) => ({ ...prev, surname: e.target.value }))}
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1019] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                 required
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+            <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
               Pseudonim / Nick
             </label>
             <input
               type="text"
               value={formData.nickname}
-              onChange={(e) => setFormData(prev => ({ ...prev, nickname: e.target.value }))}
-              className="w-full bg-[#0f1019] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+              onChange={(e) => setFormData((prev) => ({ ...prev, nickname: e.target.value }))}
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1019] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                 Email <span className="text-red-400">*</span>
               </label>
               <input
                 type="email"
                 value={formData.email}
-                onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                className="w-full bg-[#0f1019] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+                onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1019] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                Telefon
-              </label>
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Telefon</label>
               <input
                 type="tel"
                 value={formData.phone_number}
-                onChange={(e) => setFormData(prev => ({ ...prev, phone_number: e.target.value }))}
-                className="w-full bg-[#0f1019] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+                onChange={(e) => setFormData((prev) => ({ ...prev, phone_number: e.target.value }))}
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1019] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+            <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
               Hasło <span className="text-red-400">*</span>
             </label>
             <div className="flex gap-2">
@@ -238,8 +236,8 @@ export default function AddEmployeeModal({ onClose, onSuccess, isOpen }: AddEmpl
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={formData.password}
-                  onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                  className="w-full bg-[#0f1019] border border-[#d3bb73]/20 rounded-lg px-3 py-2 pr-10 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+                  onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value }))}
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1019] px-3 py-2 pr-10 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                   required
                 />
                 <button
@@ -247,61 +245,63 @@ export default function AddEmployeeModal({ onClose, onSuccess, isOpen }: AddEmpl
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
                 >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
               <button
                 type="button"
                 onClick={generateRandomPassword}
-                className="px-3 py-2 bg-[#d3bb73]/20 hover:bg-[#d3bb73]/30 border border-[#d3bb73]/30 text-[#e5e4e2] rounded-lg text-sm transition-colors whitespace-nowrap"
+                className="whitespace-nowrap rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/20 px-3 py-2 text-sm text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/30"
               >
                 Generuj
               </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-                Rola
-              </label>
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Rola</label>
               <select
                 value={formData.role}
-                onChange={(e) => setFormData(prev => ({ ...prev, role: e.target.value }))}
-                className="w-full bg-[#0f1019] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+                onChange={(e) => setFormData((prev) => ({ ...prev, role: e.target.value }))}
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1019] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
               >
-                {roles.map(role => (
-                  <option key={role.value} value={role.value}>{role.label}</option>
+                {roles.map((role) => (
+                  <option key={role.value} value={role.value}>
+                    {role.label}
+                  </option>
                 ))}
               </select>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                 Poziom dostępu
               </label>
               <select
                 value={formData.access_level_id}
-                onChange={(e) => setFormData(prev => ({ ...prev, access_level_id: e.target.value }))}
-                className="w-full bg-[#0f1019] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, access_level_id: e.target.value }))
+                }
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1019] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
               >
                 <option value="">Wybierz poziom dostępu</option>
-                {accessLevels.map(level => (
-                  <option key={level.id} value={level.id}>{level.name}</option>
+                {accessLevels.map((level) => (
+                  <option key={level.id} value={level.id}>
+                    {level.name}
+                  </option>
                 ))}
               </select>
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-              Stanowisko
-            </label>
+            <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Stanowisko</label>
             <input
               type="text"
               value={formData.occupation}
-              onChange={(e) => setFormData(prev => ({ ...prev, occupation: e.target.value }))}
-              className="w-full bg-[#0f1019] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/50"
+              onChange={(e) => setFormData((prev) => ({ ...prev, occupation: e.target.value }))}
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1019] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
               placeholder="np. Kierownik projektu, Technik audio"
             />
           </div>
@@ -310,7 +310,7 @@ export default function AddEmployeeModal({ onClose, onSuccess, isOpen }: AddEmpl
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 border border-[#d3bb73]/30 text-[#e5e4e2] rounded-lg hover:bg-[#d3bb73]/10 transition-colors"
+              className="rounded-lg border border-[#d3bb73]/30 px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10"
               disabled={loading}
             >
               Anuluj
@@ -318,9 +318,9 @@ export default function AddEmployeeModal({ onClose, onSuccess, isOpen }: AddEmpl
             <button
               type="submit"
               disabled={loading}
-              className="px-4 py-2 bg-[#d3bb73] hover:bg-[#d3bb73]/90 text-[#0f1019] font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#0f1019] transition-colors hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
               {loading ? 'Tworzenie...' : 'Utwórz pracownika'}
             </button>
           </div>

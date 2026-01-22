@@ -1,5 +1,5 @@
 // lib/customIconsServer.ts
-import { supabase } from '@/lib/supabase'; // jeśli masz wariant serverowy
+import { supabase } from '@/lib/supabase/browser'; // jeśli masz wariant serverowy
 import type { CustomIcon } from '@/store/slices/customIconSlice';
 
 export async function loadCustomIconsServer(): Promise<CustomIcon[]> {

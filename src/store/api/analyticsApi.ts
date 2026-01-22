@@ -1,5 +1,5 @@
 import { createApi, fakeBaseQuery } from '@reduxjs/toolkit/query/react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 
 export interface PageAnalytics {
   id: string;
@@ -100,7 +100,10 @@ export const analyticsApi = createApi({
       providesTags: ['OnlineUsers'],
     }),
 
-    getAnalyticsStats: builder.query<AnalyticsStats, { dateRange: number; startDate?: string; endDate?: string }>({
+    getAnalyticsStats: builder.query<
+      AnalyticsStats,
+      { dateRange: number; startDate?: string; endDate?: string }
+    >({
       async queryFn({ dateRange, startDate: customStart, endDate: customEnd }) {
         try {
           let startDate: Date;
@@ -131,11 +134,12 @@ export const analyticsApi = createApi({
 
           if (formsError) throw formsError;
 
-          const uniqueVisitors = new Set(analytics?.map(a => a.session_id)).size;
-          const avgTime = analytics
-            ?.filter(a => a.time_on_page > 0)
-            .reduce((acc, a) => acc + a.time_on_page, 0) /
-            (analytics?.filter(a => a.time_on_page > 0).length || 1);
+          const uniqueVisitors = new Set(analytics?.map((a) => a.session_id)).size;
+          const avgTime =
+            analytics
+              ?.filter((a) => a.time_on_page > 0)
+              .reduce((acc, a) => acc + a.time_on_page, 0) /
+            (analytics?.filter((a) => a.time_on_page > 0).length || 1);
 
           const pageStats = (analytics || []).reduce((acc: any, curr) => {
             if (!acc[curr.page_url]) {
@@ -208,7 +212,10 @@ export const analyticsApi = createApi({
           }, {});
 
           const topCities = Object.entries(cityStats)
-            .map(([city_interest, submissions]) => ({ city_interest, submissions: submissions as number }))
+            .map(([city_interest, submissions]) => ({
+              city_interest,
+              submissions: submissions as number,
+            }))
             .sort((a, b) => b.submissions - a.submissions)
             .slice(0, 5);
 
@@ -255,14 +262,15 @@ export const analyticsApi = createApi({
           if (formsError) throw formsError;
 
           const visits = analytics?.length || 0;
-          const uniqueVisitors = new Set(analytics?.map(a => a.session_id)).size;
-          const avgTime = analytics
-            ?.filter(a => a.time_on_page > 0)
-            .reduce((acc, a) => acc + a.time_on_page, 0) /
-            (analytics?.filter(a => a.time_on_page > 0).length || 1);
+          const uniqueVisitors = new Set(analytics?.map((a) => a.session_id)).size;
+          const avgTime =
+            analytics
+              ?.filter((a) => a.time_on_page > 0)
+              .reduce((acc, a) => acc + a.time_on_page, 0) /
+            (analytics?.filter((a) => a.time_on_page > 0).length || 1);
 
           const bounceRate = analytics
-            ? (analytics.filter(a => a.time_on_page < 10).length / visits) * 100
+            ? (analytics.filter((a) => a.time_on_page < 10).length / visits) * 100
             : 0;
 
           const conversionRate = visits > 0 ? ((forms?.length || 0) / uniqueVisitors) * 100 : 0;
@@ -323,7 +331,10 @@ export const analyticsApi = createApi({
       providesTags: ['PageStats'],
     }),
 
-    getAllPages: builder.query<Array<{ url: string; title: string; visits: number }>, { dateRange: number }>({
+    getAllPages: builder.query<
+      Array<{ url: string; title: string; visits: number }>,
+      { dateRange: number }
+    >({
       async queryFn({ dateRange }) {
         try {
           const startDate = new Date();

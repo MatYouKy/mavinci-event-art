@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { X, Send, Mail, Phone, User, MessageSquare } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 import { useFormTracking } from '@/hooks/useFormTracking';
 
 interface ContactFormProps {
@@ -35,14 +35,15 @@ export default function ContactFormWithTracking({
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
-  const { trackFormStart, trackFieldFilled, trackFormComplete, trackFormAbandoned } = useFormTracking({
-    formName: 'contact-form',
-    enabled: isOpen,
-  });
+  const { trackFormStart, trackFieldFilled, trackFormComplete, trackFormAbandoned } =
+    useFormTracking({
+      formName: 'contact-form',
+      enabled: isOpen,
+    });
 
   useEffect(() => {
     if (isOpen) {
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
         city: defaultCity,
         eventType: defaultEventType,
@@ -80,9 +81,7 @@ export default function ContactFormWithTracking({
         status: 'new',
       };
 
-      const { error } = await supabase
-        .from('contact_form_submissions')
-        .insert([submissionData]);
+      const { error } = await supabase.from('contact_form_submissions').insert([submissionData]);
 
       if (error) throw error;
 
@@ -111,15 +110,15 @@ export default function ContactFormWithTracking({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-      <div className="relative w-full max-w-2xl bg-gradient-to-br from-[#1c1f33] to-[#0f1119] border border-[#d3bb73]/30 rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
-        <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent" />
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 p-4 backdrop-blur-md">
+      <div className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-[#d3bb73]/30 bg-gradient-to-br from-[#1c1f33] to-[#0f1119] shadow-2xl">
+        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent" />
 
         <div className="p-6 md:p-8">
-          <div className="flex items-center justify-between mb-6">
+          <div className="mb-6 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-[#d3bb73]/10 rounded-full flex items-center justify-center">
-                <Mail className="w-6 h-6 text-[#d3bb73]" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#d3bb73]/10">
+                <Mail className="h-6 w-6 text-[#d3bb73]" />
               </div>
               <div>
                 <h2 className="text-2xl font-light text-[#e5e4e2]">Skontaktuj się z nami</h2>
@@ -128,27 +127,37 @@ export default function ContactFormWithTracking({
             </div>
             <button
               onClick={onClose}
-              className="text-[#e5e4e2]/60 hover:text-[#e5e4e2] transition-colors"
+              className="text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
             >
-              <X className="w-6 h-6" />
+              <X className="h-6 w-6" />
             </button>
           </div>
 
           {submitSuccess ? (
             <div className="py-12 text-center">
-              <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-500/20">
+                <svg
+                  className="h-8 w-8 text-green-500"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 13l4 4L19 7"
+                  />
                 </svg>
               </div>
-              <h3 className="text-xl font-light text-[#e5e4e2] mb-2">Dziękujemy za kontakt!</h3>
+              <h3 className="mb-2 text-xl font-light text-[#e5e4e2]">Dziękujemy za kontakt!</h3>
               <p className="text-[#e5e4e2]/60">Odpowiemy najszybciej jak to możliwe.</p>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/70 mb-2">
-                  <User className="w-4 h-4" />
+                <label className="mb-2 flex items-center gap-2 text-sm text-[#e5e4e2]/70">
+                  <User className="h-4 w-4" />
                   Imię i nazwisko *
                 </label>
                 <input
@@ -159,15 +168,15 @@ export default function ContactFormWithTracking({
                     setFormData({ ...formData, name: e.target.value });
                     if (e.target.value) trackFieldFilled('name');
                   }}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none transition-colors"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-[#e5e4e2] transition-colors focus:border-[#d3bb73] focus:outline-none"
                   placeholder="Jan Kowalski"
                 />
               </div>
 
-              <div className="grid md:grid-cols-2 gap-4">
+              <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/70 mb-2">
-                    <Mail className="w-4 h-4" />
+                  <label className="mb-2 flex items-center gap-2 text-sm text-[#e5e4e2]/70">
+                    <Mail className="h-4 w-4" />
                     Email *
                   </label>
                   <input
@@ -178,14 +187,14 @@ export default function ContactFormWithTracking({
                       setFormData({ ...formData, email: e.target.value });
                       if (e.target.value) trackFieldFilled('email');
                     }}
-                    className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none transition-colors"
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-[#e5e4e2] transition-colors focus:border-[#d3bb73] focus:outline-none"
                     placeholder="jan@example.com"
                   />
                 </div>
 
                 <div>
-                  <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/70 mb-2">
-                    <Phone className="w-4 h-4" />
+                  <label className="mb-2 flex items-center gap-2 text-sm text-[#e5e4e2]/70">
+                    <Phone className="h-4 w-4" />
                     Telefon
                   </label>
                   <input
@@ -195,25 +204,23 @@ export default function ContactFormWithTracking({
                       setFormData({ ...formData, phone: e.target.value });
                       if (e.target.value) trackFieldFilled('phone');
                     }}
-                    className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none transition-colors"
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-[#e5e4e2] transition-colors focus:border-[#d3bb73] focus:outline-none"
                     placeholder="+48 123 456 789"
                   />
                 </div>
               </div>
 
               {sourcePage.includes('kasyno') && (
-                <div className="grid md:grid-cols-2 gap-4">
+                <div className="grid gap-4 md:grid-cols-2">
                   <div>
-                    <label className="text-sm text-[#e5e4e2]/70 mb-2 block">
-                      Miasto eventu
-                    </label>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/70">Miasto eventu</label>
                     <select
                       value={formData.city}
                       onChange={(e) => {
                         setFormData({ ...formData, city: e.target.value });
                         if (e.target.value) trackFieldFilled('city');
                       }}
-                      className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none transition-colors"
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-[#e5e4e2] transition-colors focus:border-[#d3bb73] focus:outline-none"
                     >
                       <option value="">Wybierz miasto</option>
                       <option value="Warszawa">Warszawa</option>
@@ -230,13 +237,11 @@ export default function ContactFormWithTracking({
                   </div>
 
                   <div>
-                    <label className="text-sm text-[#e5e4e2]/70 mb-2 block">
-                      Typ eventu
-                    </label>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/70">Typ eventu</label>
                     <select
                       value={formData.eventType}
                       onChange={(e) => setFormData({ ...formData, eventType: e.target.value })}
-                      className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none transition-colors"
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-[#e5e4e2] transition-colors focus:border-[#d3bb73] focus:outline-none"
                     >
                       <option value="">Wybierz typ</option>
                       <option value="Kasyno eventowe">Kasyno eventowe</option>
@@ -251,8 +256,8 @@ export default function ContactFormWithTracking({
               )}
 
               <div>
-                <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/70 mb-2">
-                  <MessageSquare className="w-4 h-4" />
+                <label className="mb-2 flex items-center gap-2 text-sm text-[#e5e4e2]/70">
+                  <MessageSquare className="h-4 w-4" />
                   Wiadomość *
                 </label>
                 <textarea
@@ -260,13 +265,13 @@ export default function ContactFormWithTracking({
                   value={formData.message}
                   onChange={(e) => setFormData({ ...formData, message: e.target.value })}
                   rows={5}
-                  className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none transition-colors resize-none"
+                  className="w-full resize-none rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-[#e5e4e2] transition-colors focus:border-[#d3bb73] focus:outline-none"
                   placeholder="Opisz swoje potrzeby..."
                 />
               </div>
 
               {submitError && (
-                <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-red-400 text-sm">
+                <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
                   {submitError}
                 </div>
               )}
@@ -274,22 +279,22 @@ export default function ContactFormWithTracking({
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full flex items-center justify-center gap-2 bg-[#d3bb73] text-[#1c1f33] px-8 py-3 rounded-full text-sm font-medium hover:bg-[#d3bb73]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex w-full items-center justify-center gap-2 rounded-full bg-[#d3bb73] px-8 py-3 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isSubmitting ? (
                   <>
-                    <div className="w-4 h-4 border-2 border-[#1c1f33]/30 border-t-[#1c1f33] rounded-full animate-spin" />
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#1c1f33]/30 border-t-[#1c1f33]" />
                     Wysyłanie...
                   </>
                 ) : (
                   <>
-                    <Send className="w-4 h-4" />
+                    <Send className="h-4 w-4" />
                     Wyślij wiadomość
                   </>
                 )}
               </button>
 
-              <p className="text-xs text-center text-[#e5e4e2]/40">
+              <p className="text-center text-xs text-[#e5e4e2]/40">
                 * Pola wymagane. Twoje dane są bezpieczne i nie będą udostępniane osobom trzecim.
               </p>
             </form>

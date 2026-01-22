@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { User, Building2, Plus, X, Trash2, Briefcase } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
 interface ClientSelectorTabsProps {
@@ -57,7 +57,7 @@ export default function ClientSelectorTabs({
 
   // Individual
   const [individualContactId, setIndividualContactId] = useState(
-    initialClientType === 'individual' ? initialContactPersonId : ''
+    initialClientType === 'individual' ? initialContactPersonId : '',
   );
   const [individualContacts, setIndividualContacts] = useState<Contact[]>([]);
   const [showNewIndividualForm, setShowNewIndividualForm] = useState(false);
@@ -70,7 +70,7 @@ export default function ClientSelectorTabs({
 
   // Business
   const [organizationId, setOrganizationId] = useState(
-    initialClientType === 'business' ? initialOrganizationId : ''
+    initialClientType === 'business' ? initialOrganizationId : '',
   );
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [businessContacts, setBusinessContacts] = useState<Contact[]>([]);
@@ -111,11 +111,14 @@ export default function ClientSelectorTabs({
         contact_person_id: individualContactId || null,
       });
     } else {
-      const primaryContact = eventContactPersons.find(p => p.is_primary);
+      const primaryContact = eventContactPersons.find((p) => p.is_primary);
       onChange({
         client_type: 'business',
         organization_id: organizationId && organizationId.trim() !== '' ? organizationId : null,
-        contact_person_id: primaryContact?.contact_id && primaryContact.contact_id.trim() !== '' ? primaryContact.contact_id : null,
+        contact_person_id:
+          primaryContact?.contact_id && primaryContact.contact_id.trim() !== ''
+            ? primaryContact.contact_id
+            : null,
       });
     }
   }, [activeTab, individualContactId, organizationId, eventContactPersons]);
@@ -143,10 +146,12 @@ export default function ClientSelectorTabs({
 
     const { data } = await supabase
       .from('contacts')
-      .select(`
+      .select(
+        `
         *,
         contact_organizations!inner(organization_id)
-      `)
+      `,
+      )
       .eq('contact_organizations.organization_id', organizationId)
       .eq('contact_type', 'contact')
       .order('full_name');
@@ -159,10 +164,12 @@ export default function ClientSelectorTabs({
 
     const { data } = await supabase
       .from('event_contact_persons')
-      .select(`
+      .select(
+        `
         *,
         contact:contacts(*)
-      `)
+      `,
+      )
       .eq('event_id', eventId);
 
     if (data) setEventContactPersons(data as any);
@@ -177,19 +184,21 @@ export default function ClientSelectorTabs({
     try {
       const { data, error } = await supabase
         .from('contacts')
-        .insert([{
-          first_name: newIndividualData.first_name,
-          last_name: newIndividualData.last_name,
-          email: newIndividualData.email,
-          phone: newIndividualData.phone,
-          contact_type: 'individual',
-        }])
+        .insert([
+          {
+            first_name: newIndividualData.first_name,
+            last_name: newIndividualData.last_name,
+            email: newIndividualData.email,
+            phone: newIndividualData.phone,
+            contact_type: 'individual',
+          },
+        ])
         .select()
         .single();
 
       if (error) throw error;
 
-      setIndividualContacts(prev => [...prev, data]);
+      setIndividualContacts((prev) => [...prev, data]);
       setIndividualContactId(data.id);
       setShowNewIndividualForm(false);
       setNewIndividualData({ first_name: '', last_name: '', email: '', phone: '' });
@@ -212,37 +221,39 @@ export default function ClientSelectorTabs({
     try {
       const { data: contact, error: contactError } = await supabase
         .from('contacts')
-        .insert([{
-          first_name: newBusinessContactData.first_name,
-          last_name: newBusinessContactData.last_name,
-          email: newBusinessContactData.email,
-          phone: newBusinessContactData.phone,
-          position: newBusinessContactData.position,
-          contact_type: 'contact',
-        }])
+        .insert([
+          {
+            first_name: newBusinessContactData.first_name,
+            last_name: newBusinessContactData.last_name,
+            email: newBusinessContactData.email,
+            phone: newBusinessContactData.phone,
+            position: newBusinessContactData.position,
+            contact_type: 'contact',
+          },
+        ])
         .select()
         .single();
 
       if (contactError) throw contactError;
 
-      const { error: orgError } = await supabase
-        .from('contact_organizations')
-        .insert([{
+      const { error: orgError } = await supabase.from('contact_organizations').insert([
+        {
           contact_id: contact.id,
           organization_id: organizationId,
-        }]);
+        },
+      ]);
 
       if (orgError) throw orgError;
 
       if (showEventContactPersons && eventId) {
-        const { error: eventError } = await supabase
-          .from('event_contact_persons')
-          .insert([{
+        const { error: eventError } = await supabase.from('event_contact_persons').insert([
+          {
             event_id: eventId,
             contact_id: contact.id,
             role: newBusinessContactData.role,
             is_primary: eventContactPersons.length === 0,
-          }]);
+          },
+        ]);
 
         if (eventError) throw eventError;
         await fetchEventContactPersons();
@@ -250,7 +261,14 @@ export default function ClientSelectorTabs({
 
       await fetchBusinessContacts();
       setShowNewBusinessContactForm(false);
-      setNewBusinessContactData({ first_name: '', last_name: '', email: '', phone: '', position: '', role: '' });
+      setNewBusinessContactData({
+        first_name: '',
+        last_name: '',
+        email: '',
+        phone: '',
+        position: '',
+        role: '',
+      });
       showSnackbar('Osoba kontaktowa dodana', 'success');
     } catch (error: any) {
       showSnackbar(error.message || 'Błąd podczas dodawania osoby', 'error');
@@ -261,13 +279,13 @@ export default function ClientSelectorTabs({
     if (!eventId || !showEventContactPersons) return;
 
     try {
-      const { error } = await supabase
-        .from('event_contact_persons')
-        .insert([{
+      const { error } = await supabase.from('event_contact_persons').insert([
+        {
           event_id: eventId,
           contact_id: contactId,
           is_primary: eventContactPersons.length === 0,
-        }]);
+        },
+      ]);
 
       if (error) throw error;
 
@@ -282,10 +300,7 @@ export default function ClientSelectorTabs({
     if (!eventId || !showEventContactPersons) return;
 
     try {
-      const { error } = await supabase
-        .from('event_contact_persons')
-        .delete()
-        .eq('id', id);
+      const { error } = await supabase.from('event_contact_persons').delete().eq('id', id);
 
       if (error) throw error;
 
@@ -325,24 +340,24 @@ export default function ClientSelectorTabs({
       <div className="flex gap-2">
         <button
           onClick={() => setActiveTab('individual')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+          className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-colors ${
             activeTab === 'individual'
               ? 'bg-[#d3bb73] text-[#1c1f33]'
               : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#d3bb73]/10'
           }`}
         >
-          <User className="w-4 h-4" />
+          <User className="h-4 w-4" />
           Impreza indywidualna
         </button>
         <button
           onClick={() => setActiveTab('business')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+          className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-colors ${
             activeTab === 'business'
               ? 'bg-[#d3bb73] text-[#1c1f33]'
               : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#d3bb73]/10'
           }`}
         >
-          <Building2 className="w-4 h-4" />
+          <Building2 className="h-4 w-4" />
           Business
         </button>
       </div>
@@ -350,7 +365,7 @@ export default function ClientSelectorTabs({
       {activeTab === 'individual' ? (
         <div className="space-y-4">
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">
               Osoba kontaktowa / Klient indywidualny *
             </label>
             <select
@@ -359,7 +374,7 @@ export default function ClientSelectorTabs({
                 setIndividualContactId(e.target.value);
                 setShowNewIndividualForm(false);
               }}
-              className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
             >
               <option value="">Wybierz klienta</option>
               {individualContacts.map((contact) => (
@@ -372,47 +387,55 @@ export default function ClientSelectorTabs({
 
           <button
             onClick={() => setShowNewIndividualForm(!showNewIndividualForm)}
-            className="flex items-center gap-2 text-[#d3bb73] hover:text-[#d3bb73]/80 text-sm"
+            className="flex items-center gap-2 text-sm text-[#d3bb73] hover:text-[#d3bb73]/80"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="h-4 w-4" />
             {showNewIndividualForm ? 'Anuluj' : 'Dodaj nowego klienta'}
           </button>
 
           {showNewIndividualForm && (
-            <div className="bg-[#0f1119] rounded-lg p-4 space-y-3">
+            <div className="space-y-3 rounded-lg bg-[#0f1119] p-4">
               <div className="grid grid-cols-2 gap-3">
                 <input
                   type="text"
                   placeholder="Imię *"
                   value={newIndividualData.first_name}
-                  onChange={(e) => setNewIndividualData({ ...newIndividualData, first_name: e.target.value })}
-                  className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] text-sm"
+                  onChange={(e) =>
+                    setNewIndividualData({ ...newIndividualData, first_name: e.target.value })
+                  }
+                  className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
                 />
                 <input
                   type="text"
                   placeholder="Nazwisko *"
                   value={newIndividualData.last_name}
-                  onChange={(e) => setNewIndividualData({ ...newIndividualData, last_name: e.target.value })}
-                  className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] text-sm"
+                  onChange={(e) =>
+                    setNewIndividualData({ ...newIndividualData, last_name: e.target.value })
+                  }
+                  className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
                 />
               </div>
               <input
                 type="email"
                 placeholder="Email"
                 value={newIndividualData.email}
-                onChange={(e) => setNewIndividualData({ ...newIndividualData, email: e.target.value })}
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] text-sm"
+                onChange={(e) =>
+                  setNewIndividualData({ ...newIndividualData, email: e.target.value })
+                }
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
               />
               <input
                 type="tel"
                 placeholder="Telefon"
                 value={newIndividualData.phone}
-                onChange={(e) => setNewIndividualData({ ...newIndividualData, phone: e.target.value })}
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] text-sm"
+                onChange={(e) =>
+                  setNewIndividualData({ ...newIndividualData, phone: e.target.value })
+                }
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
               />
               <button
                 onClick={handleCreateIndividual}
-                className="w-full bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90"
+                className="w-full rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] hover:bg-[#d3bb73]/90"
               >
                 Dodaj klienta
               </button>
@@ -422,13 +445,11 @@ export default function ClientSelectorTabs({
       ) : (
         <div className="space-y-4">
           <div>
-            <label className="block text-sm text-[#e5e4e2]/60 mb-2">
-              Organizacja (Firma) *
-            </label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Organizacja (Firma) *</label>
             <select
               value={organizationId || ''}
               onChange={(e) => setOrganizationId(e.target.value)}
-              className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
             >
               <option value="">Wybierz organizację</option>
               {organizations.map((org) => (
@@ -442,32 +463,32 @@ export default function ClientSelectorTabs({
           {organizationId && showEventContactPersons && eventId && (
             <>
               <div className="border-t border-[#d3bb73]/10 pt-4">
-                <h3 className="text-lg font-light text-[#e5e4e2] mb-3">Osoby kontaktowe</h3>
+                <h3 className="mb-3 text-lg font-light text-[#e5e4e2]">Osoby kontaktowe</h3>
 
                 {eventContactPersons.length > 0 ? (
-                  <div className="space-y-2 mb-4">
+                  <div className="mb-4 space-y-2">
                     {eventContactPersons.map((person) => (
                       <div
                         key={person.id}
-                        className="bg-[#0f1119] rounded-lg p-3 flex items-center justify-between"
+                        className="flex items-center justify-between rounded-lg bg-[#0f1119] p-3"
                       >
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <span className="text-[#e5e4e2]">{person.contact?.full_name}</span>
                             {person.is_primary && (
-                              <span className="text-xs bg-[#d3bb73]/20 text-[#d3bb73] px-2 py-0.5 rounded">
+                              <span className="rounded bg-[#d3bb73]/20 px-2 py-0.5 text-xs text-[#d3bb73]">
                                 Główna
                               </span>
                             )}
                           </div>
                           {person.contact?.position && (
-                            <div className="flex items-center gap-1 text-sm text-[#e5e4e2]/60 mt-1">
-                              <Briefcase className="w-3 h-3" />
+                            <div className="mt-1 flex items-center gap-1 text-sm text-[#e5e4e2]/60">
+                              <Briefcase className="h-3 w-3" />
                               {person.contact.position}
                             </div>
                           )}
                           {person.role && (
-                            <div className="text-xs text-[#e5e4e2]/40 mt-1">
+                            <div className="mt-1 text-xs text-[#e5e4e2]/40">
                               Rola: {person.role}
                             </div>
                           )}
@@ -483,77 +504,107 @@ export default function ClientSelectorTabs({
                           )}
                           <button
                             onClick={() => handleRemoveContactPerson(person.id)}
-                            className="p-1 text-red-400 hover:bg-red-400/10 rounded"
+                            className="rounded p-1 text-red-400 hover:bg-red-400/10"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-[#e5e4e2]/40 mb-4">
+                  <p className="mb-4 text-sm text-[#e5e4e2]/40">
                     Brak przypisanych osób kontaktowych
                   </p>
                 )}
 
                 <button
                   onClick={() => setShowNewBusinessContactForm(!showNewBusinessContactForm)}
-                  className="flex items-center gap-2 text-[#d3bb73] hover:text-[#d3bb73]/80 text-sm mb-4"
+                  className="mb-4 flex items-center gap-2 text-sm text-[#d3bb73] hover:text-[#d3bb73]/80"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="h-4 w-4" />
                   {showNewBusinessContactForm ? 'Anuluj' : 'Dodaj nową osobę'}
                 </button>
 
                 {showNewBusinessContactForm && (
-                  <div className="bg-[#0f1119] rounded-lg p-4 space-y-3 mb-4">
+                  <div className="mb-4 space-y-3 rounded-lg bg-[#0f1119] p-4">
                     <div className="grid grid-cols-2 gap-3">
                       <input
                         type="text"
                         placeholder="Imię *"
                         value={newBusinessContactData.first_name}
-                        onChange={(e) => setNewBusinessContactData({ ...newBusinessContactData, first_name: e.target.value })}
-                        className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] text-sm"
+                        onChange={(e) =>
+                          setNewBusinessContactData({
+                            ...newBusinessContactData,
+                            first_name: e.target.value,
+                          })
+                        }
+                        className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
                       />
                       <input
                         type="text"
                         placeholder="Nazwisko *"
                         value={newBusinessContactData.last_name}
-                        onChange={(e) => setNewBusinessContactData({ ...newBusinessContactData, last_name: e.target.value })}
-                        className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] text-sm"
+                        onChange={(e) =>
+                          setNewBusinessContactData({
+                            ...newBusinessContactData,
+                            last_name: e.target.value,
+                          })
+                        }
+                        className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
                       />
                     </div>
                     <input
                       type="text"
                       placeholder="Stanowisko (np. Dyrektor)"
                       value={newBusinessContactData.position}
-                      onChange={(e) => setNewBusinessContactData({ ...newBusinessContactData, position: e.target.value })}
-                      className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] text-sm"
+                      onChange={(e) =>
+                        setNewBusinessContactData({
+                          ...newBusinessContactData,
+                          position: e.target.value,
+                        })
+                      }
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
                     />
                     <input
                       type="email"
                       placeholder="Email"
                       value={newBusinessContactData.email}
-                      onChange={(e) => setNewBusinessContactData({ ...newBusinessContactData, email: e.target.value })}
-                      className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] text-sm"
+                      onChange={(e) =>
+                        setNewBusinessContactData({
+                          ...newBusinessContactData,
+                          email: e.target.value,
+                        })
+                      }
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
                     />
                     <input
                       type="tel"
                       placeholder="Telefon"
                       value={newBusinessContactData.phone}
-                      onChange={(e) => setNewBusinessContactData({ ...newBusinessContactData, phone: e.target.value })}
-                      className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] text-sm"
+                      onChange={(e) =>
+                        setNewBusinessContactData({
+                          ...newBusinessContactData,
+                          phone: e.target.value,
+                        })
+                      }
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
                     />
                     <input
                       type="text"
                       placeholder="Rola w evencie (np. Decydent)"
                       value={newBusinessContactData.role}
-                      onChange={(e) => setNewBusinessContactData({ ...newBusinessContactData, role: e.target.value })}
-                      className="w-full bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg px-3 py-2 text-[#e5e4e2] text-sm"
+                      onChange={(e) =>
+                        setNewBusinessContactData({
+                          ...newBusinessContactData,
+                          role: e.target.value,
+                        })
+                      }
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
                     />
                     <button
                       onClick={handleCreateBusinessContact}
-                      className="w-full bg-[#d3bb73] text-[#1c1f33] px-4 py-2 rounded-lg hover:bg-[#d3bb73]/90"
+                      className="w-full rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] hover:bg-[#d3bb73]/90"
                     >
                       Dodaj osobę
                     </button>
@@ -562,7 +613,7 @@ export default function ClientSelectorTabs({
 
                 {businessContacts.length > 0 && (
                   <div>
-                    <label className="block text-sm text-[#e5e4e2]/60 mb-2">
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">
                       Lub dodaj istniejącą osobę z firmy
                     </label>
                     <select
@@ -572,11 +623,11 @@ export default function ClientSelectorTabs({
                           e.target.value = '';
                         }
                       }}
-                      className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]"
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                     >
                       <option value="">Wybierz osobę</option>
                       {businessContacts
-                        .filter(c => !eventContactPersons.find(p => p.contact_id === c.id))
+                        .filter((c) => !eventContactPersons.find((p) => p.contact_id === c.id))
                         .map((contact) => (
                           <option key={contact.id} value={contact.id}>
                             {contact.full_name} {contact.position ? `(${contact.position})` : ''}

@@ -21,19 +21,19 @@ import {
   Trash2,
   User,
 } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import LocationSelector from './LocationSelector';
-import OfferWizard from '../../app/crm/offers/[id]/components/OfferWizzard/OfferWizard';
+import OfferWizard from '../../app/(crm)/crm/offers/[id]/components/OfferWizzard/OfferWizard';
 import { EquipmentStep, TeamStep } from './EventWizardSteps';
 import ParticipantsAutocomplete from './ParticipantsAutocomplete';
-import { ClientType } from '@/app/crm/clients/type';
-import { useEventEquipment } from '@/app/crm/events/hooks/useEventEquipment';
-import { useEmployees } from '@/app/crm/employees/hooks/useEmployees';
-import { useEventTeam } from '@/app/crm/events/hooks/useEventTeam';
-import { useCreateEventMutation, eventsApi } from '@/app/crm/events/store/api/eventsApi';
+import { ClientType } from '@/app/(crm)/crm/clients/type';
+import { useEventEquipment } from '@/app/(crm)/crm/events/hooks/useEventEquipment';
+import { useEmployees } from '@/app/(crm)/crm/employees/hooks/useEmployees';
+import { useEventTeam } from '@/app/(crm)/crm/events/hooks/useEventTeam';
+import { useCreateEventMutation, eventsApi } from '@/app/(crm)/crm/events/store/api/eventsApi';
 import { useDispatch } from 'react-redux';
-import { eventStatusLabels } from '@/app/crm/events/[id]/components/tabs/EventsDetailsTab/EventDetailsAction';
+import { eventStatusLabels } from '@/app/(crm)/crm/events/[id]/components/tabs/EventsDetailsTab/EventDetailsAction';
 
 const buildEventEquipmentRows = (selectedEquipment: any[], eventId: string) => {
   const mapped = (selectedEquipment ?? [])
@@ -692,9 +692,7 @@ export default function EventWizard({
       // Dodajemy tylko sprzęt dodany RĘCZNIE (bez auto_added / offer_id)
       if (assignEquipment && selectedEquipment.length > 0 && addEquipment) {
         // Filtruj - dodaj tylko sprzęt który NIE pochodzi z oferty
-        const manualEquipment = selectedEquipment.filter(
-          (eq) => !eq.auto_added && !eq.offer_id,
-        );
+        const manualEquipment = selectedEquipment.filter((eq) => !eq.auto_added && !eq.offer_id);
 
         if (manualEquipment.length > 0) {
           // Konwertuj selectedEquipment na format oczekiwany przez addEquipment hook

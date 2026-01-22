@@ -1,18 +1,9 @@
 'use client';
 
 import { useState, useEffect, FC } from 'react';
-import {
-  ChevronDown,
-  CheckCircle,
-  Edit2,
-  Trash2,
-  Plus,
-  Save,
-  X,
-  GripVertical,
-} from 'lucide-react';
+import { ChevronDown, CheckCircle, Edit2, Trash2, Plus, Save, X, GripVertical } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 import { useEditMode } from '@/contexts/EditModeContext';
 import { useMobile } from '@/hooks/useMobile';
 
@@ -74,7 +65,7 @@ export default function ConferencesServicesAccordion() {
             .order('display_order');
 
           return { ...cat, items: (items || []) as ServiceItem[] };
-        })
+        }),
       );
       setCategories(categoriesWithItems);
     }
@@ -116,10 +107,7 @@ export default function ConferencesServicesAccordion() {
 
   const handleAddItem = async (categoryId: string) => {
     const category = categories.find((c) => c.id === categoryId);
-    const maxOrder = Math.max(
-      ...(category?.items?.map((i: any) => i.display_order) || [0]),
-      0
-    );
+    const maxOrder = Math.max(...(category?.items?.map((i: any) => i.display_order) || [0]), 0);
 
     const { error } = await supabase.from('conferences_service_items').insert({
       category_id: categoryId,
@@ -177,10 +165,7 @@ export default function ConferencesServicesAccordion() {
     const { destination, source, draggableId } = result;
 
     if (!destination) return;
-    if (
-      destination.droppableId === source.droppableId &&
-      destination.index === source.index
-    ) {
+    if (destination.droppableId === source.droppableId && destination.index === source.index) {
       return;
     }
 
@@ -217,23 +202,23 @@ export default function ConferencesServicesAccordion() {
           return (
             <div
               key={category.id}
-              className="bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl overflow-hidden hover:border-[#d3bb73]/40 transition-colors"
+              className="overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] transition-colors hover:border-[#d3bb73]/40"
             >
               {/* Header */}
               <button
                 onClick={() => !isEditing && toggleCategory(category.id)}
-                className={`w-full flex items-center justify-between hover:bg-[#1c1f33]/50 transition-colors ${
+                className={`flex w-full items-center justify-between transition-colors hover:bg-[#1c1f33]/50 ${
                   isMobile ? 'px-4 py-3' : 'px-6 py-4'
                 }`}
               >
                 <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-[#d3bb73]/10 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <Icon className="w-5 h-5 text-[#d3bb73]" />
+                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-[#d3bb73]/10">
+                    <Icon className="h-5 w-5 text-[#d3bb73]" />
                   </div>
 
                   {isEditing ? (
                     <div
-                      className="flex-1 flex flex-col gap-2 text-left"
+                      className="flex flex-1 flex-col gap-2 text-left"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <input
@@ -245,7 +230,7 @@ export default function ConferencesServicesAccordion() {
                             name: e.target.value,
                           } as Category)
                         }
-                        className="bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-1.5 text-[#e5e4e2] text-lg outline-none focus:border-[#d3bb73]"
+                        className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-lg text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
                       />
                       <textarea
                         value={editingCategory.description || ''}
@@ -257,7 +242,7 @@ export default function ConferencesServicesAccordion() {
                         }
                         placeholder="Opis kategorii"
                         rows={2}
-                        className="bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-1.5 text-[#e5e4e2]/60 text-sm outline-none focus:border-[#d3bb73]"
+                        className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-sm text-[#e5e4e2]/60 outline-none focus:border-[#d3bb73]"
                       />
                     </div>
                   ) : (
@@ -270,11 +255,7 @@ export default function ConferencesServicesAccordion() {
                         {category.name}
                       </h3>
                       {category.description && (
-                        <p
-                          className={`text-[#e5e4e2]/60 mt-1 ${
-                            isMobile ? 'text-xs' : 'text-sm'
-                          }`}
-                        >
+                        <p className={`mt-1 text-[#e5e4e2]/60 ${isMobile ? 'text-xs' : 'text-sm'}`}>
                           {category.description}
                         </p>
                       )}
@@ -289,9 +270,9 @@ export default function ConferencesServicesAccordion() {
                         e.stopPropagation();
                         setEditingCategory(category);
                       }}
-                      className="p-2 hover:bg-[#d3bb73]/20 rounded transition-colors"
+                      className="rounded p-2 transition-colors hover:bg-[#d3bb73]/20"
                     >
-                      <Edit2 className="w-4 h-4 text-[#d3bb73]" />
+                      <Edit2 className="h-4 w-4 text-[#d3bb73]" />
                     </button>
                   )}
                   {isEditing && (
@@ -301,23 +282,23 @@ export default function ConferencesServicesAccordion() {
                           e.stopPropagation();
                           handleUpdateCategory(editingCategory);
                         }}
-                        className="p-2 hover:bg-[#d3bb73]/20 rounded transition-colors"
+                        className="rounded p-2 transition-colors hover:bg-[#d3bb73]/20"
                       >
-                        <Save className="w-4 h-4 text-[#d3bb73]" />
+                        <Save className="h-4 w-4 text-[#d3bb73]" />
                       </button>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           setEditingCategory(null);
                         }}
-                        className="p-2 hover:bg-[#800020]/20 rounded transition-colors"
+                        className="rounded p-2 transition-colors hover:bg-[#800020]/20"
                       >
-                        <X className="w-4 h-4 text-[#800020]" />
+                        <X className="h-4 w-4 text-[#800020]" />
                       </button>
                     </>
                   )}
                   <ChevronDown
-                    className={`w-5 h-5 text-[#d3bb73] transition-transform ${
+                    className={`h-5 w-5 text-[#d3bb73] transition-transform ${
                       isExpanded ? 'rotate-180' : ''
                     }`}
                   />
@@ -327,14 +308,12 @@ export default function ConferencesServicesAccordion() {
               {/* Content */}
               {isExpanded && (
                 <div
-                  className={`border-t border-[#d3bb73]/10 ${
-                    isMobile ? 'px-4 pb-4' : 'px-6 pb-6'
-                  }`}
+                  className={`border-t border-[#d3bb73]/10 ${isMobile ? 'px-4 pb-4' : 'px-6 pb-6'}`}
                 >
                   <Droppable droppableId={category.id}>
                     {(provided) => (
                       <ul
-                        className="space-y-3 mt-4"
+                        className="mt-4 space-y-3"
                         ref={provided.innerRef}
                         {...provided.droppableProps}
                       >
@@ -354,16 +333,16 @@ export default function ConferencesServicesAccordion() {
                                   {...dragProvided.draggableProps}
                                   className={`flex items-start gap-3 rounded ${
                                     snapshot.isDragging
-                                      ? 'bg-[#0f1119] border border-[#d3bb73]/40 px-2 py-2'
+                                      ? 'border border-[#d3bb73]/40 bg-[#0f1119] px-2 py-2'
                                       : ''
                                   }`}
                                 >
                                   {isEditMode && (
                                     <div
                                       {...dragProvided.dragHandleProps}
-                                      className="mt-1 flex-shrink-0 cursor-grab active:cursor-grabbing p-1 rounded hover:bg-[#d3bb73]/10"
+                                      className="mt-1 flex-shrink-0 cursor-grab rounded p-1 hover:bg-[#d3bb73]/10 active:cursor-grabbing"
                                     >
-                                      <GripVertical className="w-3 h-3 text-[#d3bb73]" />
+                                      <GripVertical className="h-3 w-3 text-[#d3bb73]" />
                                     </div>
                                   )}
 
@@ -403,9 +382,9 @@ export default function ConferencesServicesAccordion() {
                   {isEditMode && isAddingItem === null && (
                     <button
                       onClick={() => setIsAddingItem(category.id)}
-                      className="mt-4 flex items-center gap-2 text-[#d3bb73] hover:text-[#d3bb73]/80 text-sm"
+                      className="mt-4 flex items-center gap-2 text-sm text-[#d3bb73] hover:text-[#d3bb73]/80"
                     >
-                      <Plus className="w-4 h-4" />
+                      <Plus className="h-4 w-4" />
                       Dodaj usługę
                     </button>
                   )}
@@ -454,39 +433,33 @@ const ServiceItemRow: FC<ServiceItemRowProps> = ({
     <>
       {/* Ikona checka */}
       <CheckCircle
-        className={`text-[#d3bb73] mt-1 flex-shrink-0 ${
-          isMobile ? 'w-3 h-3' : 'w-4 h-4'
-        }`}
+        className={`mt-1 flex-shrink-0 text-[#d3bb73] ${isMobile ? 'h-3 w-3' : 'h-4 w-4'}`}
       />
       {isEditing ? (
         <div className="flex-1 space-y-2">
           <input
             type="text"
             value={current.name}
-            onChange={(e) =>
-              setEditingItem({ ...current, name: e.target.value })
-            }
-            className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-1.5 text-[#e5e4e2] text-sm outline-none focus:border-[#d3bb73]"
+            onChange={(e) => setEditingItem({ ...current, name: e.target.value })}
+            className="w-full rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-sm text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
           />
           <textarea
             value={current.description || ''}
-            onChange={(e) =>
-              setEditingItem({ ...current, description: e.target.value })
-            }
+            onChange={(e) => setEditingItem({ ...current, description: e.target.value })}
             placeholder="Opis (opcjonalny)"
             rows={2}
-            className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-1.5 text-[#e5e4e2]/60 text-xs outline-none focus:border-[#d3bb73]"
+            className="w-full rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-xs text-[#e5e4e2]/60 outline-none focus:border-[#d3bb73]"
           />
           <div className="flex gap-2">
             <button
               onClick={() => onSave(current)}
-              className="px-3 py-1 bg-[#d3bb73] text-[#1c1f33] rounded text-xs hover:bg-[#d3bb73]/90"
+              className="rounded bg-[#d3bb73] px-3 py-1 text-xs text-[#1c1f33] hover:bg-[#d3bb73]/90"
             >
               Zapisz
             </button>
             <button
               onClick={() => setEditingItem(null)}
-              className="px-3 py-1 bg-[#800020] text-[#e5e4e2] rounded text-xs hover:bg-[#800020]/90"
+              className="rounded bg-[#800020] px-3 py-1 text-xs text-[#e5e4e2] hover:bg-[#800020]/90"
             >
               Anuluj
             </button>
@@ -494,14 +467,10 @@ const ServiceItemRow: FC<ServiceItemRowProps> = ({
         </div>
       ) : (
         <div className="flex-1">
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex flex-wrap items-center gap-2">
             <span
-              className={`${
-                isMobile ? 'text-xs' : 'text-sm'
-              } ${
-                isPremium
-                  ? 'text-[#d3bb73] font-medium'
-                  : 'text-[#e5e4e2]/70'
+              className={`${isMobile ? 'text-xs' : 'text-sm'} ${
+                isPremium ? 'font-medium text-[#d3bb73]' : 'text-[#e5e4e2]/70'
               }`}
             >
               {current.name}
@@ -513,11 +482,7 @@ const ServiceItemRow: FC<ServiceItemRowProps> = ({
             )}
           </div>
           {current.description && (
-            <p
-              className={`text-[#e5e4e2]/40 mt-0.5 ${
-                isMobile ? 'text-[11px]' : 'text-xs'
-              }`}
-            >
+            <p className={`mt-0.5 text-[#e5e4e2]/40 ${isMobile ? 'text-[11px]' : 'text-xs'}`}>
               {current.description}
             </p>
           )}
@@ -525,18 +490,18 @@ const ServiceItemRow: FC<ServiceItemRowProps> = ({
       )}
 
       {isEditMode && !isEditing && (
-        <div className="flex gap-1 ml-1">
+        <div className="ml-1 flex gap-1">
           <button
             onClick={() => setEditingItem(item)}
-            className="p-1 hover:bg-[#d3bb73]/20 rounded transition-colors"
+            className="rounded p-1 transition-colors hover:bg-[#d3bb73]/20"
           >
-            <Edit2 className="w-3 h-3 text-[#d3bb73]" />
+            <Edit2 className="h-3 w-3 text-[#d3bb73]" />
           </button>
           <button
             onClick={() => onDelete(item.id)}
-            className="p-1 hover:bg-[#800020]/20 rounded transition-colors"
+            className="rounded p-1 transition-colors hover:bg-[#800020]/20"
           >
-            <Trash2 className="w-3 h-3 text-[#800020]" />
+            <Trash2 className="h-3 w-3 text-[#800020]" />
           </button>
         </div>
       )}
@@ -560,41 +525,33 @@ const AddServiceItemRow: FC<AddServiceItemRowProps> = ({
   const isMobile = useMobile();
 
   return (
-    <li className="flex items-start gap-3 pt-3 border-t border-[#d3bb73]/10">
-      <Plus
-        className={`text-[#d3bb73] mt-1 flex-shrink-0 ${
-          isMobile ? 'w-3 h-3' : 'w-4 h-4'
-        }`}
-      />
+    <li className="flex items-start gap-3 border-t border-[#d3bb73]/10 pt-3">
+      <Plus className={`mt-1 flex-shrink-0 text-[#d3bb73] ${isMobile ? 'h-3 w-3' : 'h-4 w-4'}`} />
       <div className="flex-1 space-y-2">
         <input
           type="text"
           value={newItemData.name}
-          onChange={(e) =>
-            setNewItemData({ ...newItemData, name: e.target.value })
-          }
+          onChange={(e) => setNewItemData({ ...newItemData, name: e.target.value })}
           placeholder="Nazwa usługi"
-          className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-1.5 text-[#e5e4e2] text-sm outline-none focus:border-[#d3bb73]"
+          className="w-full rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-sm text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
         />
         <textarea
           value={newItemData.description}
-          onChange={(e) =>
-            setNewItemData({ ...newItemData, description: e.target.value })
-          }
+          onChange={(e) => setNewItemData({ ...newItemData, description: e.target.value })}
           placeholder="Opis (opcjonalny)"
           rows={2}
-          className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-3 py-1.5 text-[#e5e4e2]/60 text-xs outline-none focus:border-[#d3bb73]"
+          className="w-full rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-xs text-[#e5e4e2]/60 outline-none focus:border-[#d3bb73]"
         />
         <div className="flex gap-2">
           <button
             onClick={onAdd}
-            className="px-3 py-1 bg-[#d3bb73] text-[#1c1f33] rounded text-xs hover:bg-[#d3bb73]/90"
+            className="rounded bg-[#d3bb73] px-3 py-1 text-xs text-[#1c1f33] hover:bg-[#d3bb73]/90"
           >
             Dodaj
           </button>
           <button
             onClick={onCancel}
-            className="px-3 py-1 bg-[#800020] text-[#e5e4e2] rounded text-xs hover:bg-[#800020]/90"
+            className="rounded bg-[#800020] px-3 py-1 text-xs text-[#e5e4e2] hover:bg-[#800020]/90"
           >
             Anuluj
           </button>

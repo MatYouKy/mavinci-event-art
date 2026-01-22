@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 import { X, Plus, Trash2, Save } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
@@ -12,12 +12,7 @@ interface PageMetadataModalProps {
   pageName: string;
 }
 
-export function PageMetadataModal({
-  isOpen,
-  onClose,
-  pageSlug,
-  pageName,
-}: PageMetadataModalProps) {
+export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageMetadataModalProps) {
   const [metadata, setMetadata] = useState<any>(null);
   const [keywords, setKeywords] = useState<string[]>([]);
   const [newKeyword, setNewKeyword] = useState('');
@@ -128,7 +123,7 @@ export function PageMetadataModal({
       isEdit
         ? 'Zaktualizowano metadane strony. Odświeżanie...'
         : 'Dodano metadane strony. Odświeżanie...',
-      'success'
+      'success',
     );
 
     onClose();
@@ -149,37 +144,34 @@ export function PageMetadataModal({
     }, 300);
   };
 
-  
-
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-[#1c1f33] rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto border border-[#d3bb73]/20">
+      <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33]">
         {/* HEADER */}
-        <div className="sticky top-0 bg-[#1c1f33] border-b border-[#d3bb73]/20 p-6 flex items-center justify-between">
+        <div className="sticky top-0 flex items-center justify-between border-b border-[#d3bb73]/20 bg-[#1c1f33] p-6">
           <div>
             <h2 className="text-2xl font-light text-[#e5e4e2]">
               {isEdit ? 'Edytujesz metadane strony' : 'Dodajesz metadane strony'}
             </h2>
-            <p className="text-[#e5e4e2]/60 text-sm">
-              {pageName}{' '}
-              <span className="text-[#e5e4e2]/40">({pageSlug})</span>
+            <p className="text-sm text-[#e5e4e2]/60">
+              {pageName} <span className="text-[#e5e4e2]/40">({pageSlug})</span>
             </p>
           </div>
           <button
             onClick={onClose}
-            className="text-[#e5e4e2]/60 hover:text-[#e5e4e2] transition-colors"
+            className="text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
           >
-            <X className="w-6 h-6" />
+            <X className="h-6 w-6" />
           </button>
         </div>
 
         {/* BODY */}
-        <div className="p-6 space-y-6">
+        <div className="space-y-6 p-6">
           {/* Title */}
           <div>
-            <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+            <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
               Tytuł strony (opcjonalny)
             </label>
             <input
@@ -187,13 +179,13 @@ export function PageMetadataModal({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Pozostaw puste aby użyć domyślnego"
-              className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-4 py-2 text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
+              className="w-full rounded border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
             />
           </div>
 
           {/* Description */}
           <div>
-            <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+            <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
               Meta Description (opcjonalny)
             </label>
             <textarea
@@ -201,13 +193,13 @@ export function PageMetadataModal({
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Pozostaw puste aby użyć domyślnego"
               rows={3}
-              className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-4 py-2 text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
+              className="w-full rounded border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
             />
           </div>
 
           {/* OG Image */}
           <div>
-            <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+            <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
               Open Graph Image (opcjonalny)
             </label>
 
@@ -215,13 +207,13 @@ export function PageMetadataModal({
               <button
                 type="button"
                 onClick={() => setShowImagePicker(!showImagePicker)}
-                className="w-full px-4 py-2 bg-[#d3bb73]/20 text-[#d3bb73] rounded hover:bg-[#d3bb73]/30 transition-colors border border-[#d3bb73]/20"
+                className="w-full rounded border border-[#d3bb73]/20 bg-[#d3bb73]/20 px-4 py-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30"
               >
                 {ogImage ? 'Zmień obrazek' : 'Wybierz obrazek z galerii'}
               </button>
 
               {showImagePicker && (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-60 overflow-y-auto p-3 bg-[#0f1119] border border-[#d3bb73]/20 rounded">
+                <div className="grid max-h-60 grid-cols-2 gap-3 overflow-y-auto rounded border border-[#d3bb73]/20 bg-[#0f1119] p-3 md:grid-cols-3">
                   {availableImages.length > 0 ? (
                     availableImages.map((img) => (
                       <button
@@ -230,7 +222,7 @@ export function PageMetadataModal({
                           setOgImage(img.desktop_url);
                           setShowImagePicker(false);
                         }}
-                        className={`relative aspect-video rounded overflow-hidden border-2 transition-all hover:scale-105 ${
+                        className={`relative aspect-video overflow-hidden rounded border-2 transition-all hover:scale-105 ${
                           ogImage === img.desktop_url
                             ? 'border-[#d3bb73]'
                             : 'border-[#d3bb73]/20 hover:border-[#d3bb73]/50'
@@ -239,19 +231,17 @@ export function PageMetadataModal({
                         <img
                           src={img.desktop_url}
                           alt={img.alt_text || img.section}
-                          className="w-full h-full object-cover"
+                          className="h-full w-full object-cover"
                         />
                         {ogImage === img.desktop_url && (
-                          <div className="absolute inset-0 bg-[#d3bb73]/20 flex items-center justify-center">
-                            <div className="bg-[#d3bb73] text-[#1c1f33] rounded-full p-2">
-                              ✓
-                            </div>
+                          <div className="absolute inset-0 flex items-center justify-center bg-[#d3bb73]/20">
+                            <div className="rounded-full bg-[#d3bb73] p-2 text-[#1c1f33]">✓</div>
                           </div>
                         )}
                       </button>
                     ))
                   ) : (
-                    <p className="col-span-full text-[#e5e4e2]/40 text-sm text-center py-4">
+                    <p className="col-span-full py-4 text-center text-sm text-[#e5e4e2]/40">
                       Brak dostępnych obrazków
                     </p>
                   )}
@@ -263,13 +253,13 @@ export function PageMetadataModal({
                   <img
                     src={ogImage}
                     alt="Selected OG Image"
-                    className="w-full max-h-40 object-cover rounded border border-[#d3bb73]/20"
+                    className="max-h-40 w-full rounded border border-[#d3bb73]/20 object-cover"
                   />
                   <button
                     onClick={() => setOgImage('')}
-                    className="absolute top-2 right-2 bg-[#800020] text-white rounded-full p-2 hover:bg-[#800020]/80"
+                    className="absolute right-2 top-2 rounded-full bg-[#800020] p-2 text-white hover:bg-[#800020]/80"
                   >
-                    <X className="w-4 h-4" />
+                    <X className="h-4 w-4" />
                   </button>
                 </div>
               )}
@@ -279,31 +269,31 @@ export function PageMetadataModal({
                 value={ogImage}
                 onChange={(e) => setOgImage(e.target.value)}
                 placeholder="Lub wklej URL ręcznie"
-                className="w-full bg-[#0f1119] border border-[#d3bb73]/20 rounded px-4 py-2 text-[#e5e4e2] text-sm outline-none focus:border-[#d3bb73]"
+                className="w-full rounded border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-sm text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
               />
             </div>
           </div>
 
           {/* Keywords */}
           <div>
-            <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+            <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
               Słowa kluczowe (keywords)
             </label>
 
-            <div className="flex gap-2 mb-3">
+            <div className="mb-3 flex gap-2">
               <input
                 type="text"
                 value={newKeyword}
                 onChange={(e) => setNewKeyword(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddKeyword())}
                 placeholder="Wpisz słowo kluczowe..."
-                className="flex-1 bg-[#0f1119] border border-[#d3bb73]/20 rounded px-4 py-2 text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
+                className="flex-1 rounded border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
               />
               <button
                 onClick={handleAddKeyword}
-                className="px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded hover:bg-[#d3bb73]/90 transition-colors flex items-center gap-2"
+                className="flex items-center gap-2 rounded bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="h-4 w-4" />
                 Dodaj
               </button>
             </div>
@@ -313,27 +303,27 @@ export function PageMetadataModal({
                 {keywords.map((keyword, index) => (
                   <div
                     key={index}
-                    className="bg-[#0f1119] border border-[#d3bb73]/20 rounded-full px-3 py-1.5 flex items-center gap-2"
+                    className="flex items-center gap-2 rounded-full border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5"
                   >
-                    <span className="text-[#e5e4e2] text-sm">{keyword}</span>
+                    <span className="text-sm text-[#e5e4e2]">{keyword}</span>
                     <button
                       onClick={() => handleRemoveKeyword(keyword)}
                       className="text-[#800020] hover:text-[#800020]/80"
                     >
-                      <Trash2 className="w-3 h-3" />
+                      <Trash2 className="h-3 w-3" />
                     </button>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-[#e5e4e2]/40 text-sm">Brak słów kluczowych</p>
+              <p className="text-sm text-[#e5e4e2]/40">Brak słów kluczowych</p>
             )}
           </div>
 
           {/* Info */}
-          <div className="bg-[#0f1119] border border-[#d3bb73]/20 rounded p-4">
-            <h3 className="text-[#d3bb73] font-medium mb-2">Informacja</h3>
-            <ul className="text-[#e5e4e2]/60 text-sm space-y-1">
+          <div className="rounded border border-[#d3bb73]/20 bg-[#0f1119] p-4">
+            <h3 className="mb-2 font-medium text-[#d3bb73]">Informacja</h3>
+            <ul className="space-y-1 text-sm text-[#e5e4e2]/60">
               <li>• Keywords są używane w meta tags dla SEO</li>
               <li>• Title i Description nadpisują wartości domyślne jeśli są wypełnione</li>
               <li>• OG Image jest używany dla podglądów na social media</li>
@@ -343,24 +333,20 @@ export function PageMetadataModal({
         </div>
 
         {/* FOOTER */}
-        <div className="sticky bottom-0 bg-[#1c1f33] border-t border-[#d3bb73]/20 p-6 flex justify-end gap-3">
+        <div className="sticky bottom-0 flex justify-end gap-3 border-t border-[#d3bb73]/20 bg-[#1c1f33] p-6">
           <button
             onClick={onClose}
-            className="px-6 py-2 bg-[#800020]/20 text-[#e5e4e2] rounded hover:bg-[#800020]/30 transition-colors"
+            className="rounded bg-[#800020]/20 px-6 py-2 text-[#e5e4e2] transition-colors hover:bg-[#800020]/30"
           >
             Anuluj
           </button>
           <button
             onClick={handleSave}
             disabled={isSaving}
-            className="px-6 py-2 bg-[#d3bb73] text-[#1c1f33] rounded hover:bg-[#d3bb73]/90 transition-colors flex items-center gap-2 disabled:opacity-50"
+            className="flex items-center gap-2 rounded bg-[#d3bb73] px-6 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
           >
-            <Save className="w-4 h-4" />
-            {isSaving
-              ? 'Zapisywanie...'
-              : isEdit
-              ? 'Zapisz zmiany'
-              : 'Dodaj metadane'}
+            <Save className="h-4 w-4" />
+            {isSaving ? 'Zapisywanie...' : isEdit ? 'Zapisz zmiany' : 'Dodaj metadane'}
           </button>
         </div>
       </div>

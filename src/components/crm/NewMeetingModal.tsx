@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { X, Calendar, MapPin, Users, FileText, Link, Clock } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 import LocationAutocomplete from './LocationAutocomplete';
 import RelatedEventsSelector from './RelatedEventsSelector';
 import { useCreateMeetingMutation } from '@/store/api/calendarApi';
@@ -21,7 +21,12 @@ interface MeetingParticipant {
   name: string;
 }
 
-export default function NewMeetingModal({ isOpen, onClose, onSuccess, initialDate }: NewMeetingModalProps) {
+export default function NewMeetingModal({
+  isOpen,
+  onClose,
+  onSuccess,
+  initialDate,
+}: NewMeetingModalProps) {
   const [title, setTitle] = useState('');
   const [locationId, setLocationId] = useState<string | null>(null);
   const [locationText, setLocationText] = useState('');
@@ -67,23 +72,17 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess, initialDat
   }, [isOpen, initialDate]);
 
   const fetchEmployees = async () => {
-    const { data } = await supabase
-      .from('employees')
-      .select('id, name, surname')
-      .order('name');
+    const { data } = await supabase.from('employees').select('id, name, surname').order('name');
     if (data) setEmployees(data);
   };
 
   const fetchContacts = async () => {
-    const { data } = await supabase
-      .from('contacts')
-      .select('id, name')
-      .order('name');
+    const { data } = await supabase.from('contacts').select('id, name').order('name');
     if (data) setContacts(data);
   };
 
   const handleAddEmployee = (emp: any) => {
-    if (!participants.find(p => p.type === 'employee' && p.id === emp.id)) {
+    if (!participants.find((p) => p.type === 'employee' && p.id === emp.id)) {
       setParticipants([
         ...participants,
         {
@@ -98,7 +97,7 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess, initialDat
   };
 
   const handleAddContact = (contact: any) => {
-    if (!participants.find(p => p.type === 'contact' && p.id === contact.id)) {
+    if (!participants.find((p) => p.type === 'contact' && p.id === contact.id)) {
       setParticipants([
         ...participants,
         {
@@ -123,18 +122,16 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess, initialDat
     setIsSaving(true);
 
     try {
-      const datetimeStart = isAllDay
-        ? `${dateStart}T00:00:00Z`
-        : `${dateStart}T${timeStart}:00Z`;
+      const datetimeStart = isAllDay ? `${dateStart}T00:00:00Z` : `${dateStart}T${timeStart}:00Z`;
 
       const datetimeEnd =
         dateEnd && !isAllDay
           ? `${dateEnd}T${timeEnd}:00Z`
           : isAllDay
-          ? `${dateEnd || dateStart}T23:59:59Z`
-          : null;
+            ? `${dateEnd || dateStart}T23:59:59Z`
+            : null;
 
-      const participantsData = participants.map(p => ({
+      const participantsData = participants.map((p) => ({
         employee_id: p.type === 'employee' ? p.id : undefined,
         contact_id: p.type === 'contact' ? p.id : undefined,
       }));
@@ -185,42 +182,42 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess, initialDat
   if (!isOpen) return null;
 
   const filteredEmployees = employees.filter(
-    e =>
+    (e) =>
       participantSearch &&
-      `${e.name} ${e.surname}`.toLowerCase().includes(participantSearch.toLowerCase())
+      `${e.name} ${e.surname}`.toLowerCase().includes(participantSearch.toLowerCase()),
   );
 
   const filteredContacts = contacts.filter(
-    c => participantSearch && c.name.toLowerCase().includes(participantSearch.toLowerCase())
+    (c) => participantSearch && c.name.toLowerCase().includes(participantSearch.toLowerCase()),
   );
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#0f1119] rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-[#0f1119] border-b border-[#d3bb73]/10 p-6 flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-[#0f1119]">
+        <div className="sticky top-0 flex items-center justify-between border-b border-[#d3bb73]/10 bg-[#0f1119] p-6">
           <h2 className="text-2xl font-semibold text-[#e5e4e2]">Nowe spotkanie / Przypomnienie</h2>
-          <button onClick={handleClose} className="p-2 hover:bg-[#e5e4e2]/10 rounded-lg">
-            <X className="w-5 h-5 text-[#e5e4e2]" />
+          <button onClick={handleClose} className="rounded-lg p-2 hover:bg-[#e5e4e2]/10">
+            <X className="h-5 w-5 text-[#e5e4e2]" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6 p-6">
           <div>
-            <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+            <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
               Tytuł <span className="text-red-400">*</span>
             </label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-3 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+              className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
               placeholder="np. Spotkanie z klientem, Przegląd sprzętu..."
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Lokalizacja</label>
+            <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Lokalizacja</label>
             <LocationAutocomplete
               value={locationText}
               onChange={(textValue, locId) => {
@@ -229,7 +226,7 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess, initialDat
               }}
               placeholder="Wybierz lub wpisz lokalizację"
             />
-            <p className="text-xs text-[#e5e4e2]/50 mt-1">
+            <p className="mt-1 text-xs text-[#e5e4e2]/50">
               Wybierz z listy lub wpisz dowolny adres
             </p>
           </div>
@@ -240,89 +237,98 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess, initialDat
               id="isAllDay"
               checked={isAllDay}
               onChange={(e) => setIsAllDay(e.target.checked)}
-              className="w-4 h-4"
+              className="h-4 w-4"
             />
             <label htmlFor="isAllDay" className="text-[#e5e4e2]">
               Wydarzenie całodniowe
             </label>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                 Data rozpoczęcia <span className="text-red-400">*</span>
               </label>
               <input
                 type="date"
                 value={dateStart}
                 onChange={(e) => setDateStart(e.target.value)}
-                className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-3 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                 required
               />
             </div>
             {!isAllDay && (
               <div>
-                <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Godzina rozpoczęcia</label>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                  Godzina rozpoczęcia
+                </label>
                 <input
                   type="time"
                   value={timeStart}
                   onChange={(e) => setTimeStart(e.target.value)}
-                  className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-3 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                 />
               </div>
             )}
           </div>
 
           {!isAllDay && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Data zakończenia</label>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                  Data zakończenia
+                </label>
                 <input
                   type="date"
                   value={dateEnd}
                   onChange={(e) => setDateEnd(e.target.value)}
-                  className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-3 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Godzina zakończenia</label>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                  Godzina zakończenia
+                </label>
                 <input
                   type="time"
                   value={timeEnd}
                   onChange={(e) => setTimeEnd(e.target.value)}
-                  className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-3 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                 />
               </div>
             </div>
           )}
 
           <div>
-            <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Kolor</label>
+            <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Kolor</label>
             <input
               type="color"
               value={color}
               onChange={(e) => setColor(e.target.value)}
-              className="w-32 h-10 bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg cursor-pointer"
+              className="h-10 w-32 cursor-pointer rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Uczestnicy</label>
+            <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Uczestnicy</label>
             <div className="space-y-2">
               {participants.map((p, idx) => (
                 <div
                   key={idx}
-                  className="flex items-center justify-between bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-2"
+                  className="flex items-center justify-between rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-2"
                 >
                   <span className="text-[#e5e4e2]">
-                    {p.name} <span className="text-xs text-[#e5e4e2]/50">({p.type === 'employee' ? 'Pracownik' : 'Kontakt'})</span>
+                    {p.name}{' '}
+                    <span className="text-xs text-[#e5e4e2]/50">
+                      ({p.type === 'employee' ? 'Pracownik' : 'Kontakt'})
+                    </span>
                   </span>
                   <button
                     type="button"
                     onClick={() => handleRemoveParticipant(idx)}
                     className="text-red-400 hover:text-red-300"
                   >
-                    <X className="w-4 h-4" />
+                    <X className="h-4 w-4" />
                   </button>
                 </div>
               ))}
@@ -333,7 +339,7 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess, initialDat
                     setShowEmployeeList(!showEmployeeList);
                     setShowContactList(false);
                   }}
-                  className="px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg text-[#e5e4e2] hover:border-[#d3bb73]/30"
+                  className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] hover:border-[#d3bb73]/30"
                 >
                   + Dodaj pracownika
                 </button>
@@ -343,7 +349,7 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess, initialDat
                     setShowContactList(!showContactList);
                     setShowEmployeeList(false);
                   }}
-                  className="px-4 py-2 bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg text-[#e5e4e2] hover:border-[#d3bb73]/30"
+                  className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] hover:border-[#d3bb73]/30"
                 >
                   + Dodaj kontakt
                 </button>
@@ -355,29 +361,29 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess, initialDat
                     value={participantSearch}
                     onChange={(e) => setParticipantSearch(e.target.value)}
                     placeholder="Wpisz imię..."
-                    className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                    className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                     autoFocus
                   />
                   {participantSearch && (
-                    <div className="absolute z-10 w-full mt-1 bg-[#0f1119] border border-[#d3bb73]/10 rounded-lg max-h-48 overflow-y-auto">
+                    <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-[#d3bb73]/10 bg-[#0f1119]">
                       {showEmployeeList &&
-                        filteredEmployees.map(emp => (
+                        filteredEmployees.map((emp) => (
                           <button
                             key={emp.id}
                             type="button"
                             onClick={() => handleAddEmployee(emp)}
-                            className="w-full text-left px-4 py-2 text-[#e5e4e2] hover:bg-[#1c1f33]"
+                            className="w-full px-4 py-2 text-left text-[#e5e4e2] hover:bg-[#1c1f33]"
                           >
                             {emp.name} {emp.surname}
                           </button>
                         ))}
                       {showContactList &&
-                        filteredContacts.map(contact => (
+                        filteredContacts.map((contact) => (
                           <button
                             key={contact.id}
                             type="button"
                             onClick={() => handleAddContact(contact)}
-                            className="w-full text-left px-4 py-2 text-[#e5e4e2] hover:bg-[#1c1f33]"
+                            className="w-full px-4 py-2 text-left text-[#e5e4e2] hover:bg-[#1c1f33]"
                           >
                             {contact.name}
                           </button>
@@ -390,7 +396,9 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess, initialDat
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Powiązane wydarzenia (opcjonalnie)</label>
+            <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+              Powiązane wydarzenia (opcjonalnie)
+            </label>
             <RelatedEventsSelector
               value={relatedEventIds}
               onChange={setRelatedEventIds}
@@ -399,28 +407,28 @@ export default function NewMeetingModal({ isOpen, onClose, onSuccess, initialDat
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-[#e5e4e2] mb-2">Notatki</label>
+            <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Notatki</label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={4}
-              className="w-full bg-[#1c1f33] border border-[#d3bb73]/10 rounded-lg px-4 py-3 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+              className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
               placeholder="Dodatkowe informacje o spotkaniu..."
             />
           </div>
 
-          <div className="flex gap-3 justify-end">
+          <div className="flex justify-end gap-3">
             <button
               type="button"
               onClick={handleClose}
-              className="px-6 py-3 border border-[#d3bb73]/20 rounded-lg text-[#e5e4e2] hover:bg-[#e5e4e2]/5"
+              className="rounded-lg border border-[#d3bb73]/20 px-6 py-3 text-[#e5e4e2] hover:bg-[#e5e4e2]/5"
             >
               Anuluj
             </button>
             <button
               type="submit"
               disabled={isSaving || !title || !dateStart}
-              className="px-6 py-3 bg-[#d3bb73] text-[#0f1119] rounded-lg font-medium hover:bg-[#d3bb73]/90 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="rounded-lg bg-[#d3bb73] px-6 py-3 font-medium text-[#0f1119] hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isSaving ? 'Zapisywanie...' : 'Utwórz spotkanie'}
             </button>

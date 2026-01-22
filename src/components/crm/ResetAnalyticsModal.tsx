@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { X, AlertTriangle, Loader2, Trash2 } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/browser';
 
 interface ResetAnalyticsModalProps {
   isOpen: boolean;
@@ -28,7 +28,9 @@ export function ResetAnalyticsModal({ isOpen, onClose, onSuccess }: ResetAnalyti
     setError('');
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
       if (!user) {
         setError('Nie jesteś zalogowany');
@@ -47,8 +49,7 @@ export function ResetAnalyticsModal({ isOpen, onClose, onSuccess }: ResetAnalyti
         return;
       }
 
-      const { data: result, error: resetError } = await supabase
-        .rpc('reset_analytics_data');
+      const { data: result, error: resetError } = await supabase.rpc('reset_analytics_data');
 
       if (resetError) {
         console.error('Error resetting analytics:', resetError);
@@ -77,12 +78,12 @@ export function ResetAnalyticsModal({ isOpen, onClose, onSuccess }: ResetAnalyti
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
-      <div className="bg-[#1c1f33] border-2 border-[#d3bb73]/30 rounded-2xl max-w-md w-full p-8 shadow-2xl">
-        <div className="flex items-center justify-between mb-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl border-2 border-[#d3bb73]/30 bg-[#1c1f33] p-8 shadow-2xl">
+        <div className="mb-6 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center">
-              <AlertTriangle className="w-6 h-6 text-red-400" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-500/10">
+              <AlertTriangle className="h-6 w-6 text-red-400" />
             </div>
             <h2 className="text-2xl font-light text-[#e5e4e2]">
               {step === 'confirm' ? 'Resetuj statystyki' : 'Potwierdź hasłem'}
@@ -91,9 +92,9 @@ export function ResetAnalyticsModal({ isOpen, onClose, onSuccess }: ResetAnalyti
           {!isResetting && (
             <button
               onClick={handleClose}
-              className="text-[#e5e4e2]/60 hover:text-[#e5e4e2] transition-colors"
+              className="text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
             >
-              <X className="w-6 h-6" />
+              <X className="h-6 w-6" />
             </button>
           )}
         </div>
@@ -102,24 +103,26 @@ export function ResetAnalyticsModal({ isOpen, onClose, onSuccess }: ResetAnalyti
           <>
             <div className="mb-6 space-y-3">
               <p className="text-[#e5e4e2]/80">
-                Ta operacja usunie <strong className="text-red-400">wszystkie dane analityczne</strong>:
+                Ta operacja usunie{' '}
+                <strong className="text-red-400">wszystkie dane analityczne</strong>:
               </p>
-              <ul className="space-y-2 text-sm text-[#e5e4e2]/70 pl-5">
+              <ul className="space-y-2 pl-5 text-sm text-[#e5e4e2]/70">
                 <li className="flex items-center gap-2">
-                  <Trash2 className="w-4 h-4 text-red-400" />
+                  <Trash2 className="h-4 w-4 text-red-400" />
                   Historię wizyt (<span className="text-[#d3bb73]">page_analytics</span>)
                 </li>
                 <li className="flex items-center gap-2">
-                  <Trash2 className="w-4 h-4 text-red-400" />
-                  Interakcje użytkowników (<span className="text-[#d3bb73]">user_interactions</span>)
+                  <Trash2 className="h-4 w-4 text-red-400" />
+                  Interakcje użytkowników (<span className="text-[#d3bb73]">user_interactions</span>
+                  )
                 </li>
                 <li className="flex items-center gap-2">
-                  <Trash2 className="w-4 h-4 text-red-400" />
+                  <Trash2 className="h-4 w-4 text-red-400" />
                   Aktywne sesje (<span className="text-[#d3bb73]">active_sessions</span>)
                 </li>
               </ul>
-              <div className="mt-4 p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
-                <p className="text-sm text-red-300 font-medium">
+              <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-4">
+                <p className="text-sm font-medium text-red-300">
                   ⚠️ Tej operacji NIE MOŻNA cofnąć!
                 </p>
               </div>
@@ -129,14 +132,14 @@ export function ResetAnalyticsModal({ isOpen, onClose, onSuccess }: ResetAnalyti
               <button
                 onClick={handleClose}
                 disabled={isResetting}
-                className="flex-1 px-6 py-3 bg-[#0f1119] border border-[#d3bb73]/30 rounded-lg text-[#e5e4e2] hover:bg-[#0f1119]/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 rounded-lg border border-[#d3bb73]/30 bg-[#0f1119] px-6 py-3 text-[#e5e4e2] transition-colors hover:bg-[#0f1119]/80 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Anuluj
               </button>
               <button
                 onClick={() => setStep('password')}
                 disabled={isResetting}
-                className="flex-1 px-6 py-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-300 hover:bg-red-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                className="flex-1 rounded-lg border border-red-500/50 bg-red-500/20 px-6 py-3 font-medium text-red-300 transition-colors hover:bg-red-500/30 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Kontynuuj
               </button>
@@ -158,19 +161,20 @@ export function ResetAnalyticsModal({ isOpen, onClose, onSuccess }: ResetAnalyti
                 }}
                 placeholder="Wpisz hasło"
                 disabled={isResetting}
-                className="w-full px-4 py-3 bg-[#0f1119] border border-[#d3bb73]/30 rounded-lg text-[#e5e4e2] placeholder:text-[#e5e4e2]/30 focus:outline-none focus:border-[#d3bb73] disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#0f1119] px-4 py-3 text-[#e5e4e2] placeholder:text-[#e5e4e2]/30 focus:border-[#d3bb73] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                 onKeyPress={(e) => e.key === 'Enter' && handleReset()}
               />
 
               {error && (
-                <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3">
                   <p className="text-sm text-red-300">{error}</p>
                 </div>
               )}
 
-              <div className="p-3 bg-[#d3bb73]/10 border border-[#d3bb73]/30 rounded-lg">
+              <div className="rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/10 p-3">
                 <p className="text-xs text-[#e5e4e2]/60">
-                  💡 <strong>Wskazówka:</strong> Używamy Twojego hasła aby upewnić się, że to naprawdę Ty podejmujesz tę decyzję.
+                  💡 <strong>Wskazówka:</strong> Używamy Twojego hasła aby upewnić się, że to
+                  naprawdę Ty podejmujesz tę decyzję.
                 </p>
               </div>
             </div>
@@ -179,23 +183,23 @@ export function ResetAnalyticsModal({ isOpen, onClose, onSuccess }: ResetAnalyti
               <button
                 onClick={() => setStep('confirm')}
                 disabled={isResetting}
-                className="flex-1 px-6 py-3 bg-[#0f1119] border border-[#d3bb73]/30 rounded-lg text-[#e5e4e2] hover:bg-[#0f1119]/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 rounded-lg border border-[#d3bb73]/30 bg-[#0f1119] px-6 py-3 text-[#e5e4e2] transition-colors hover:bg-[#0f1119]/80 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Wróć
               </button>
               <button
                 onClick={handleReset}
                 disabled={isResetting || !password}
-                className="flex-1 px-6 py-3 bg-red-500 rounded-lg text-white hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-2"
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-red-500 px-6 py-3 font-medium text-white transition-colors hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isResetting ? (
                   <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <Loader2 className="h-5 w-5 animate-spin" />
                     Resetowanie...
                   </>
                 ) : (
                   <>
-                    <Trash2 className="w-5 h-5" />
+                    <Trash2 className="h-5 w-5" />
                     Resetuj statystyki
                   </>
                 )}
