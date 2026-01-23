@@ -2,13 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { Menu, ChevronsLeft, ChevronsRight } from 'lucide-react';
 
 import NotificationCenter from '@/components/crm/NotificationCenter';
 import UserMenu from '@/components/crm/UserMenu';
 import NavigationManager from '@/components/crm/NavigationManager';
-import { SnackbarProvider } from '@/contexts/SnackbarContext';
 import { canView, isAdmin, type Employee } from '@/lib/permissions';
 import { Metadata } from 'next';
 import { useActivityHeartbeat } from '@/hooks/useActivityHeartbeat';
@@ -162,7 +162,13 @@ export default function CRMClientLayout({
                 <Menu className="h-6 w-6" />
               </button>
               <Link href="/crm" className="flex items-center gap-3">
-                <img src="/logo mavinci-simple.svg" alt="Mavinci CRM" className="h-8 w-auto" />
+                <Image
+  src="/logo mavinci-simple.svg"
+  alt="Mavinci"
+  width={160}
+  height={60}
+  className="w-40 h-auto"
+/>
               </Link>
               <div className="hidden h-6 w-px bg-[#d3bb73]/20 lg:block"></div>
               <h1 className="hidden text-xl font-light text-[#e5e4e2] lg:block">

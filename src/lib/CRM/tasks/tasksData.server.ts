@@ -1,65 +1,87 @@
 import 'server-only';
 import { cookies } from 'next/headers';
-import { createSupabaseServerClient } from '@/lib/supabase/server.app';
-import type { CookieStoreLike } from '@/lib/supabase/server.app';
+import { CookieStoreLike, createSupabaseServerClient } from '@/lib/supabase/server.app';
 
 function getCookieStore(): CookieStoreLike {
-  const store = cookies();
+  const cookieStore = cookies();
   return {
-    getAll: () => store.getAll().map((c) => ({ name: c.name, value: c.value })),
-    set: (name, value, options) => store.set({ name, value, ...options }),
+    getAll: () => cookieStore.getAll().map((c) => ({ name: c.name, value: c.value })),
+    set: (name, value, options) => cookieStore.set(name, value, options),
   };
 }
 
-export type EmployeeLite = { id: string; name: string; surname: string; email: string };
-
-export type ActiveTimerDTO = any; // możesz później uściślić
-
-export type TaskDTO = any; // jw. – na start nie walcz z typami
-
-export async function fetchTasksInitialServer() {
+export async function fetchTasksServer() {
   const supabase = createSupabaseServerClient(getCookieStore());
+  const { data: { user } } = await supabase.auth.getUser();
 
-  const { data: auth } = await supabase.auth.getUser();
-  const userId = auth?.user?.id;
-  if (!userId) return { tasks: [] as TaskDTO[], employees: [] as EmployeeLite[], activeTimer: null as ActiveTimerDTO };
+  // jeśli nie ma usera - zwróć [] (np. public)
+  if (!user) return [];
 
-  // 1) tasks (RLS zrobi filtr – Ty masz polityki)
-  const { data: tasks, error: tErr } = await supabase
+  const { data: tasks, error: tasksError } = await supabase
     .from('tasks')
     .select(`
-      *,
-      tasks:tasks(
-        id
-      )
-    `);
+      id, title, description, priority, status, board_column, order_index,
+      due_date, created_by, created_at, updated_at, thumbnail_url, currently_working_by
+    `)
+    .eq('is_private', false)
+    .is('event_id', null);
 
-  // ↑ ten select zostaw w spokoju jeśli masz już w tasksApi “właściwy”
-  // Jak chcesz, to wklej dokładny select z tasksApi i ja Ci to przepiszę 1:1.
+  if (tasksError) throw tasksError;
+  if (!tasks?.length) return [];
 
-  if (tErr) throw tErr;
+  const taskIds = tasks.map(t => t.id);
 
-  // 2) employees do assign (tylko podstawowe pola)
-  const { data: employees, error: eErr } = await supabase
-    .from('employees')
-    .select('id, name, surname, email')
-    .order('name');
+  const [assigneesRes, commentsRes, workingRes] = await Promise.all([
+    supabase
+      .from('task_assignees')
+      .select(`task_id, employee_id, employees:employees!task_assignees_employee_id_fkey(name, surname, avatar_url, avatar_metadata)`)
+      .in('task_id', taskIds),
 
-  if (eErr) throw eErr;
+    supabase
+      .from('task_comments')
+      .select('task_id')
+      .in('task_id', taskIds),
 
-  // 3) active timer (jeśli masz tabelę time_entries)
-  const { data: activeTimer, error: aErr } = await supabase
-    .from('time_entries')
-    .select('*, tasks(title)')
-    .eq('employee_id', userId)
-    .is('end_time', null)
-    .maybeSingle();
+    supabase
+      .from('employees')
+      .select('id, name, surname, avatar_url, avatar_metadata')
+      .in('id', Array.from(new Set(tasks.map(t => t.currently_working_by).filter(Boolean))) as string[]),
+  ]);
 
-  if (aErr) throw aErr;
+  if (assigneesRes.error) throw assigneesRes.error;
+  if (commentsRes.error) throw commentsRes.error;
+  if (workingRes.error) throw workingRes.error;
 
-  return {
-    tasks: (tasks ?? []) as TaskDTO[],
-    employees: (employees ?? []) as EmployeeLite[],
-    activeTimer: activeTimer ?? null,
-  };
+  const workingMap = new Map((workingRes.data ?? []).map(e => [e.id, e]));
+
+  const assigneesByTask = new Map<string, any[]>();
+  (assigneesRes.data ?? []).forEach((a: any) => {
+    const arr = assigneesByTask.get(a.task_id) ?? [];
+    arr.push({ employee_id: a.employee_id, employees: a.employees });
+    assigneesByTask.set(a.task_id, arr);
+  });
+
+  const commentsCountByTask = new Map<string, number>();
+  (commentsRes.data ?? []).forEach((c: any) => {
+    commentsCountByTask.set(c.task_id, (commentsCountByTask.get(c.task_id) ?? 0) + 1);
+  });
+
+  const tasksWithDetails = tasks.map((t: any) => ({
+    ...t,
+    task_assignees: assigneesByTask.get(t.id) ?? [],
+    currently_working_employee: t.currently_working_by ? (workingMap.get(t.currently_working_by) ?? null) : null,
+    comments_count: commentsCountByTask.get(t.id) ?? 0,
+  }));
+
+  const priorityOrder: Record<string, number> = { urgent: 4, high: 3, medium: 2, low: 1 };
+  tasksWithDetails.sort((a: any, b: any) => {
+    const p = (priorityOrder[b.priority] ?? 0) - (priorityOrder[a.priority] ?? 0);
+    if (p !== 0) return p;
+    if (a.due_date && b.due_date) return +new Date(a.due_date) - +new Date(b.due_date);
+    if (a.due_date) return -1;
+    if (b.due_date) return 1;
+    return (a.order_index ?? 0) - (b.order_index ?? 0);
+  });
+
+  return tasksWithDetails;
 }

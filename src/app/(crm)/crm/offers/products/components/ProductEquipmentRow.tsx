@@ -243,6 +243,7 @@ export const ProductEquipmentRow = ({
               mode: 'item' as ProductEquipmentMode,
             };
             return (
+              // eslint-disable-next-line react/jsx-key
               <ProductEquipmentRow
                 item={equipmentItem}
                 canEdit={false}

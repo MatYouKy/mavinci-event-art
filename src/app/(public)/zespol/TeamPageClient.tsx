@@ -11,6 +11,7 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import ImagePositionEditor from '@/components/crm/ImagePositionEditor';
 import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
 import { TeamMember } from '@/lib/supabase/types';
+import { supabase } from '@/lib/supabase';
 
 interface ImageMetadata {
   desktop?: {
@@ -33,7 +34,7 @@ export default function TeamPageClient({ initialTeam }: { initialTeam: TeamMembe
   } = useCurrentEmployee();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [team, setTeam] = useState<TeamMember[]>(initialTeam);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [editingMemberId, setEditingMemberId] = useState<string | null>(null);
   const [editingImageUrl, setEditingImageUrl] = useState<string | null>(null);
   const [editingMetadata, setEditingMetadata] = useState<ImageMetadata | null>(null);
@@ -49,22 +50,22 @@ export default function TeamPageClient({ initialTeam }: { initialTeam: TeamMembe
   const handleSavePosition = async (metadata: ImageMetadata) => {
     if (!editingMemberId) return;
 
-    // try {
-    //   const { error } = await createSupabaseBrowserClient().from('employees')
-    //     .update({ team_page_metadata: metadata })
-    //     .eq('id', editingMemberId);
+    try {
+      const { error } = await supabase.from('employees')
+        .update({ team_page_metadata: metadata })
+        .eq('id', editingMemberId);
 
-    //   if (error) throw error;
+      if (error) throw error;
 
-    //   showSnackbar('Pozycja zdjęcia została zapisana!', 'success');
+      showSnackbar('Pozycja zdjęcia została zapisana!', 'success');
 
-    //   setEditingMemberId(null);
-    //   setEditingImageUrl(null);
-    //   setEditingMetadata(null);
-    // } catch (error) {
-    //   console.error('Error saving position:', error);
-    //   showSnackbar('Błąd podczas zapisywania pozycji', 'error');
-    // }
+      setEditingMemberId(null);
+      setEditingImageUrl(null);
+      setEditingMetadata(null);
+    } catch (error) {
+      console.error('Error saving position:', error);
+      showSnackbar('Błąd podczas zapisywania pozycji', 'error');
+    }
   };
 
   return (
@@ -112,7 +113,7 @@ export default function TeamPageClient({ initialTeam }: { initialTeam: TeamMembe
                       Zarządzaj zespołem w CRM
                     </h3>
                     <p className="mb-4 text-[#e5e4e2]/70">
-                      Ta strona wyświetla tylko pracowników oznaczonych jako "widoczni na stronie".
+                      Ta strona wyświetla tylko pracowników oznaczonych jako &quot;widoczni na stronie&quot;.
                       Aby dodawać, edytować lub usuwać członków zespołu, przejdź do panelu CRM.
                     </p>
                     <a
@@ -232,8 +233,8 @@ export default function TeamPageClient({ initialTeam }: { initialTeam: TeamMembe
               </h2>
               <div className="mx-auto mb-8 h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent"></div>
               <blockquote className="mx-auto max-w-4xl text-xl font-light italic leading-relaxed text-[#e5e4e2]/70">
-                "Wierzymy, że każdy event to szansa na stworzenie wyjątkowego doświadczenia. Łączymy
-                pasję, kreatywność i profesjonalizm, aby przekraczać oczekiwania naszych klientów."
+                &quot;Wierzymy, że każdy event to szansa na stworzenie wyjątkowego doświadczenia. Łączymy
+                pasję, kreatywność i profesjonalizm, aby przekraczać oczekiwania naszych klientów.&quot;
               </blockquote>
             </div>
 

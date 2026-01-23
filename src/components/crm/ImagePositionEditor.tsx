@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { X, RotateCcw } from 'lucide-react';
+import Image from 'next/image';
 
 interface ImagePosition {
   posX: number;
@@ -104,7 +105,7 @@ export default function ImagePositionEditor({
                 aspectRatio: previewAspectRatio,
               }}
             >
-              <img
+              <Image
                 src={imageUrl}
                 alt="Preview"
                 className="w-full h-full"

@@ -5,6 +5,7 @@ import PageLayout from '@/components/Layout/PageLayout';
 import { getSeoForPage } from '@/lib/seo';
 import { TeamMember } from '@/lib/supabase/types';
 import { cookies } from 'next/headers';
+import { getTeamMembersCached } from '../page';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -125,24 +126,11 @@ export default async function TeamPage() {
     .order('order_index', { ascending: true })
     .order('created_at', { ascending: true });
 
-  const initialTeam = (data ?? []).map((emp: any) => ({
-    id: emp.id,
-    name: `${emp.name || ''} ${emp.surname || ''}`.trim() || emp.nickname || 'Pracownik',
-    position: emp.occupation || emp.role || '',
-    role: emp.role || emp.occupation || '',
-    email: emp.email,
-    image: emp.avatar_url,
-    image_metadata: emp.team_page_metadata,
-    alt: `${emp.name || ''} ${emp.surname || ''}`.trim(),
-    bio: emp.website_bio,
-    linkedin: emp.linkedin_url,
-    instagram: emp.instagram_url,
-    facebook: emp.facebook_url,
-  }));
+  const teamMembers = await getTeamMembersCached();
 
   return (
     <PageLayout pageSlug="zespol" customSchema={customSchema} cookieStore={cookies()}>
-      <TeamPageClient initialTeam={initialTeam as TeamMember[]} />
+      <TeamPageClient initialTeam={teamMembers as TeamMember[]} />
     </PageLayout>
   );
 }

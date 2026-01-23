@@ -13,6 +13,11 @@ export const metadata: Metadata = {
   title: 'Mavinci CRM',
   description: 'Mavinci CRM',
   robots: { index: false, follow: false },
+  icons: {
+    icon: [{ url: '/shape-mavinci.svg', type: 'image/svg+xml' }],
+    shortcut: '/shape-mavinci.svg',
+    apple: '/shape-mavinci.svg',
+  },
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {

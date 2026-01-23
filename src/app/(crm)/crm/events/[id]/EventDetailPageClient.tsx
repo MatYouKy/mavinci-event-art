@@ -148,6 +148,7 @@ export default function EventDetailPageClient({ initialEvent }: { initialEvent: 
   const [teamEmployees, setTeamEmployees] = useState<any[]>([]);
   const { event: eventData, updateEvent } = useEvent();
   const dispatch = useDispatch();
+  
   useEffect(() => {
     if (initialEvent) {
       dispatch(eventsApi.util.upsertQueryData('getEventById', eventId, initialEvent) as unknown as UnknownAction);
@@ -269,6 +270,7 @@ export default function EventDetailPageClient({ initialEvent }: { initialEvent: 
       fetchCategories();
       checkTeamManagementPermission();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
   const checkTeamManagementPermission = async () => {
@@ -420,6 +422,7 @@ export default function EventDetailPageClient({ initialEvent }: { initialEvent: 
     }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleDeleteEvent = async () => {
     if (!event) return;
 

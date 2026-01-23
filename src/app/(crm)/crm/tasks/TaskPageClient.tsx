@@ -27,6 +27,9 @@ import {
   useDeleteTaskMutation,
 } from '@/store/api/tasksApi';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
 type TaskStatus = 'todo' | 'in_progress' | 'review' | 'completed' | 'cancelled';
 type TaskBoardColumn = 'todo' | 'in_progress' | 'review' | 'completed';
@@ -184,7 +187,7 @@ interface Employee {
   email: string;
 }
 
-export function TasksPageClient() {
+export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
   const { canCreateInModule, canManageModule, currentEmployee } = useCurrentEmployee();
@@ -192,7 +195,7 @@ export function TasksPageClient() {
   const canCreateTasks = canCreateInModule('tasks');
   const canManageTasks = canManageModule('tasks');
 
-  const { data: tasks = [] as Task[], isLoading: loading, refetch } = useGetTasksListQuery();
+  const { data: tasks = initialTasks, isLoading: loading, refetch } = useGetTasksListQuery();
   const [createTask] = useCreateTaskMutation();
   const [updateTask] = useUpdateTaskMutation();
   const [deleteTask] = useDeleteTaskMutation();
@@ -255,6 +258,7 @@ export function TasksPageClient() {
     if (currentEmployee) {
       checkActiveTimer();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentEmployee]);
 
   useEffect(() => {
