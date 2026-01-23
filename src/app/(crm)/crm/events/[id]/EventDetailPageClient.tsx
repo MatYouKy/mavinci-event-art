@@ -212,7 +212,9 @@ export default function EventDetailPageClient({ initialEvent }: { initialEvent: 
     })();
   }, [eventId]);
 
-  const { data: contact } = useGetContactByIdQuery(event?.contact_person_id);
+  const { data: contact } = useGetContactByIdQuery(event?.contact_person_id, {
+    skip: !event?.contact_person_id,
+  });
   const { getById } = useLocations();
 
   const [location, setLocation] = useState<ILocation | null>(null);
@@ -223,12 +225,16 @@ export default function EventDetailPageClient({ initialEvent }: { initialEvent: 
       if (event?.location_id && event?.location_id !== null) {
         const location = await getById(event.location_id);
         setLocation(location);
+      } else {
+        setLocation(null);
       }
     };
     fetchLocations();
   }, [getById, event?.location_id]);
 
-  const { data: organization } = useGetOrganizationByIdQuery(event?.organization_id);
+  const { data: organization } = useGetOrganizationByIdQuery(event?.organization_id, {
+    skip: !event?.organization_id,
+  });
 
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [activeTab, setActiveTab] = useState<
@@ -644,17 +650,19 @@ export default function EventDetailPageClient({ initialEvent }: { initialEvent: 
             </div>
 
             <div className="flex flex-col items-start gap-1 text-sm text-[#e5e4e2]/60 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
-              {event.client_type === 'business' && organization && (
+              {event.client_type === 'business' && (
                 <div className="flex items-center gap-2">
                   <Building2 className="h-4 w-4" />
-                  {organization.alias || organization.name}
+                  {organization ? (organization.alias || organization.name) : 'Brak klienta'}
                 </div>
               )}
-              {event.client_type === 'individual' && contact && (
+              {event.client_type === 'individual' && (
                 <div className="flex items-center gap-2">
                   <User className="h-4 w-4" />
                   <span>
-                    Klient: {contact.full_name || `${contact.first_name} ${contact.last_name}`}
+                    {contact
+                      ? `Klient: ${contact.full_name || `${contact.first_name} ${contact.last_name}`}`
+                      : 'Brak klienta'}
                   </span>
                 </div>
               )}

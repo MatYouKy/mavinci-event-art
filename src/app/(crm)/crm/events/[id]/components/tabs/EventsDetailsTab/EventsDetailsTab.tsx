@@ -99,7 +99,7 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
             <MapPin className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
             <div className="flex-1">
               <p className="text-sm text-[#e5e4e2]/60">Lokalizacja</p>
-              {location && location.name ? (
+              {location?.name ? (
                 <div className="group relative inline-block">
                   <button
                     onClick={() => location.id && router.push(`/crm/locations/${location.id}`)}
