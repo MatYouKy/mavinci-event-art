@@ -77,3 +77,24 @@ export const NavigationIcons: Record<string, any> = {
   page: Globe,
   locations: MapPin,
 };
+
+
+
+export const hasPermission = (perms: string[], required: string) => {
+  if (perms.includes('admin')) return true;
+
+  if (perms.includes(required)) return true;
+
+  // manage => view (i ewentualnie create)
+  if (required.endsWith('_view')) {
+    const manage = required.replace(/_view$/, '_manage');
+    if (perms.includes(manage)) return true;
+  }
+
+  return false;
+};
+
+export const hasAll = (perms: string[], required?: string[]) => {
+  if (!required?.length) return true;
+  return required.every((r) => hasPermission(perms, r));
+};  
