@@ -724,6 +724,7 @@ export default function OfferPageTemplatesEditor() {
       {showModal && (
         <CreateTemplateModal
           type={selectedType as any}
+          categoryId={selectedCategoryId}
           employee={employee}
           onClose={() => setShowModal(false)}
           onSuccess={() => {
@@ -767,17 +768,35 @@ export default function OfferPageTemplatesEditor() {
           }}
         />
       )}
+
+      {/* Modal kategorii */}
+      {showCategoryModal && (
+        <CategoryModal
+          category={editingCategory}
+          onClose={() => {
+            setShowCategoryModal(false);
+            setEditingCategory(null);
+          }}
+          onSuccess={() => {
+            setShowCategoryModal(false);
+            setEditingCategory(null);
+            fetchCategories();
+          }}
+        />
+      )}
     </div>
   );
 }
 
 function CreateTemplateModal({
   type,
+  categoryId,
   employee,
   onClose,
   onSuccess,
 }: {
   type: 'cover' | 'about' | 'pricing' | 'final';
+  categoryId: string | null;
   employee: any;
   onClose: () => void;
   onSuccess: () => void;
@@ -802,6 +821,11 @@ function CreateTemplateModal({
       return;
     }
 
+    if (!categoryId) {
+      showSnackbar('Nie wybrano kategorii', 'error');
+      return;
+    }
+
     try {
       setLoading(true);
 
@@ -810,6 +834,7 @@ function CreateTemplateModal({
         .insert({
           type,
           ...formData,
+          template_category_id: categoryId,
           created_by: employee.id,
         })
         .select()
@@ -1102,6 +1127,148 @@ const AVAILABLE_FIELDS = [
   { value: 'seller_address', label: 'Adres sprzedawcy', type: 'text' },
   { value: 'seller_nip', label: 'NIP sprzedawcy', type: 'text' },
 ];
+
+function CategoryModal({
+  category,
+  onClose,
+  onSuccess,
+}: {
+  category: OfferTemplateCategory | null;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const { showSnackbar } = useSnackbar();
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    name: category?.name || '',
+    description: category?.description || '',
+    color: category?.color || '#d3bb73',
+    is_default: category?.is_default || false,
+  });
+
+  const handleSubmit = async () => {
+    if (!formData.name.trim()) {
+      showSnackbar('Podaj nazwę kategorii', 'error');
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      if (category) {
+        // Update existing category
+        const { error } = await supabase
+          .from('offer_template_categories')
+          .update(formData)
+          .eq('id', category.id);
+
+        if (error) throw error;
+        showSnackbar('Kategoria zaktualizowana', 'success');
+      } else {
+        // Create new category
+        const { error } = await supabase.from('offer_template_categories').insert(formData);
+
+        if (error) throw error;
+        showSnackbar('Kategoria utworzona', 'success');
+      }
+
+      onSuccess();
+    } catch (err: any) {
+      showSnackbar(err.message || 'Błąd zapisu kategorii', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-2xl rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
+        <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-6">
+          <h3 className="text-xl font-light text-[#e5e4e2]">
+            {category ? 'Edytuj kategorię' : 'Nowa kategoria'}
+          </h3>
+          <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="space-y-4 p-6">
+          <div>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nazwa kategorii *</label>
+            <input
+              type="text"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+              placeholder="np. Wesela"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Opis</label>
+            <textarea
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              rows={3}
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+              placeholder="Opis kategorii..."
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Kolor</label>
+            <div className="flex gap-2">
+              <input
+                type="color"
+                value={formData.color}
+                onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                className="h-10 w-20 rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a]"
+              />
+              <input
+                type="text"
+                value={formData.color}
+                onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                className="flex-1 rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                placeholder="#d3bb73"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                checked={formData.is_default}
+                onChange={(e) => setFormData({ ...formData, is_default: e.target.checked })}
+                className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73]"
+              />
+              <span className="text-sm text-[#e5e4e2]">Ustaw jako domyślną kategorię</span>
+            </label>
+            <p className="ml-6 mt-1 text-xs text-[#e5e4e2]/40">
+              Domyślna kategoria jest używana przy tworzeniu nowych ofert
+            </p>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3 border-t border-[#d3bb73]/10 p-6">
+          <button
+            onClick={onClose}
+            className="rounded-lg bg-[#e5e4e2]/10 px-6 py-2 text-[#e5e4e2] hover:bg-[#e5e4e2]/20"
+          >
+            Anuluj
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={loading}
+            className="rounded-lg bg-[#d3bb73] px-6 py-2 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
+          >
+            {loading ? 'Zapisywanie...' : category ? 'Zapisz zmiany' : 'Utwórz kategorię'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function TextFieldsEditorModal({
   template,
