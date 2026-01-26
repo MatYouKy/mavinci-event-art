@@ -414,13 +414,28 @@ export const EventEquipmentTab: React.FC<{ eventId: string }> = ({ eventId }) =>
         ? new Date(event.event_date).toLocaleDateString('pl-PL')
         : '-';
 
+      // ✅ Pobierz dane kontaktu w zależności od typu klienta
+      let contactName = '-';
+      let contactPhone = '-';
+
+      if (event?.client_type === 'individual' && event?.contact_person) {
+        contactName = event.contact_person.full_name ||
+          `${event.contact_person.first_name || ''} ${event.contact_person.last_name || ''}`.trim() || '-';
+        contactPhone = event.contact_person.phone || '-';
+      } else if (event?.client_type === 'business') {
+        contactName = event?.organization?.name || event?.organization?.alias || '-';
+        contactPhone = (event?.organization as any)?.business_phone || '-';
+      }
+
       const html = buildEquipmentChecklistHtml({
         eventName: event?.name || 'Wydarzenie',
         eventDate: eventDateFormatted,
-        location: (event as any)?.location || '-',
+        location: event?.location || '-',
         equipmentItems: equipmentData,
         authorName: employee?.name + ' ' + employee?.surname || '-',
         authorNumber: (employee as any)?.phone_number || '-',
+        contactName,
+        contactPhone,
       });
 
       const { default: html2pdf } = await import('html2pdf.js');

@@ -34,6 +34,8 @@ export const buildEquipmentChecklistHtml = ({
   equipmentItems,
   authorName,
   authorNumber,
+  contactName,
+  contactPhone,
 }: {
   eventName: string;
   eventDate: string;
@@ -41,6 +43,8 @@ export const buildEquipmentChecklistHtml = ({
   equipmentItems: EquipmentItem[];
   authorName: string;
   authorNumber: string;
+  contactName?: string;
+  contactPhone?: string;
 }) => {
   let rowNumber = 1;
 
@@ -249,6 +253,8 @@ export const buildEquipmentChecklistHtml = ({
         <div class="meta-row"><strong>Wydarzenie:</strong> ${esc(eventName)}</div>
         <div class="meta-row"><strong>Data:</strong> ${esc(eventDate || '-')}</div>
         <div class="meta-row"><strong>Lokalizacja:</strong> ${esc(locText)}</div>
+        ${contactName && contactName !== '-' ? `<div class="meta-row"><strong>Kontakt:</strong> ${esc(contactName)}</div>` : ''}
+        ${contactPhone && contactPhone !== '-' ? `<div class="meta-row"><strong>Tel. kontakt:</strong> ${esc(contactPhone)}</div>` : ''}
       </div>
     </div>
 
@@ -256,7 +262,7 @@ export const buildEquipmentChecklistHtml = ({
       <img src="/shape-mavinci-black.png" alt="Logo" class="logo" />
       <div class="meta">
         <div class="meta-row"><strong>Opiekun:</strong> ${esc(authorName || '-')}</div>
-        <div class="meta-row"><strong>Tel:</strong> ${esc(authorNumber || '-')}</div>
+        <div class="meta-row"><strong>Tel. opiekun:</strong> ${esc(authorNumber || '-')}</div>
       </div>
     </div>
   </div>
