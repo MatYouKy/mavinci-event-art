@@ -17,8 +17,7 @@ export async function fetchNotificationsServer(limit = 100): Promise<{
 
   const { data, error } = await supabase
     .from('notification_recipients')
-    .select(
-      `
+    .select(`
       id,
       is_read,
       read_at,
@@ -34,10 +33,9 @@ export async function fetchNotificationsServer(limit = 100): Promise<{
         related_entity_id,
         metadata
       )
-    `,
-    )
+    `)
     .eq('user_id', user.id)
-    .order('created_at', { ascending: false })
+    .order('created_at', { ascending: false, foreignTable: 'notifications' })
     .limit(limit);
 
   if (error) {

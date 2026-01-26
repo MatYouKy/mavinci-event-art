@@ -10,6 +10,7 @@ import { getCurrentEmployeeServerCached } from '@/lib/CRM/auth/getCurrentEmploye
 import CrmProviders from './CrmProviders';
 import { fetchUnreadCountServer } from '@/lib/CRM/messages/unreadCounter';
 import { fetchNotificationsServer } from '@/lib/CRM/notifications/fetchNotificationsServer';
+import { getNavigationForUserServer } from '@/lib/CRM/navigation/getNavigationForUser.server';
 
 export const metadata: Metadata = {
   title: 'Mavinci CRM',
@@ -33,12 +34,23 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const preferences = await getEmployeePreferencesCached(employee.id);
   const notifications = await fetchNotificationsServer();
 
+  const { navigation, employeeId } = await getNavigationForUserServer();
+
+  console.log('preferences', preferences);
+
   return (
     <html lang="pl">
       <body>
         <CrmProviders>
           <PreferencesClientProvider employeeId={employee.id} initialPreferences={preferences}>
-            <CRMClientLayout employee={employee} initialUnreadMessagesCount={initialUnreadMessagesCount} initialNotifications={notifications.notifications}>{children}</CRMClientLayout>
+            <CRMClientLayout
+              employee={employee}
+              initialUnreadMessagesCount={initialUnreadMessagesCount}
+              initialNotifications={notifications.notifications}
+              initialNavigation={navigation}
+            >
+              {children}
+            </CRMClientLayout>
           </PreferencesClientProvider>
         </CrmProviders>
       </body>

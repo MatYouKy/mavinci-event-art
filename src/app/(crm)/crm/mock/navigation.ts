@@ -1,3 +1,30 @@
+export interface NavigationItem {
+  key: string;
+  name: string;
+  href: string;
+  iconKey: string; // 👈 string, NIE komponent
+  module?: string;
+}
+
+export const allNavigation: NavigationItem[] = [
+  { key: 'dashboard', name: 'Dashboard', href: '/crm', iconKey: 'dashboard' },
+
+  { key: 'calendar', name: 'Kalendarz', href: '/crm/calendar', iconKey: 'calendar', module: 'calendar' },
+  { key: 'messages', name: 'Wiadomości', href: '/crm/messages', iconKey: 'messages', module: 'messages' },
+  { key: 'contacts', name: 'Kontakty', href: '/crm/contacts', iconKey: 'contacts', module: 'clients' },
+  { key: 'events', name: 'Eventy', href: '/crm/events', iconKey: 'events', module: 'events' },
+  { key: 'offers', name: 'Oferty', href: '/crm/offers', iconKey: 'offers', module: 'offers' },
+  { key: 'contracts', name: 'Umowy', href: '/crm/contracts', iconKey: 'contracts', module: 'contracts' },
+  { key: 'invoices', name: 'Faktury', href: '/crm/invoices', iconKey: 'invoices', module: 'finances' },
+  { key: 'employees', name: 'Pracownicy', href: '/crm/employees', iconKey: 'employees', module: 'employees' },
+  { key: 'equipment', name: 'Magazyn', href: '/crm/equipment', iconKey: 'equipment', module: 'equipment' },
+  { key: 'fleet', name: 'Flota', href: '/crm/fleet', iconKey: 'fleet', module: 'fleet' },
+  { key: 'tasks', name: 'Zadania', href: '/crm/tasks', iconKey: 'tasks', module: 'tasks' },
+  { key: 'time-tracking', name: 'Czas pracy', href: '/crm/time-tracking', iconKey: 'time', module: 'time_tracking' },
+  { key: 'page', name: 'Strona', href: '/crm/page', iconKey: 'page', module: 'page' },
+  { key: 'locations', name: 'Lokalizacje', href: '/crm/locations', iconKey: 'locations', module: 'locations' },
+];
+
 import {
   Calendar,
   Users,
@@ -12,31 +39,23 @@ import {
   Car,
   Clock,
   BookUser,
-  Ligature as FileSignature,
+  FileSignature,
 } from 'lucide-react';
 
-export interface NavigationItem {
-  name: string;
-  href: string;
-  icon: any;
-  module?: string;
-  key: string;
-}
-
-export const allNavigation: NavigationItem[] = [
-  { key: 'dashboard', name: 'Dashboard', href: '/crm', icon: LayoutDashboard },
-  { key: 'calendar', name: 'Kalendarz', href: '/crm/calendar', icon: Calendar, module: 'calendar' },
-  { key: 'messages', name: 'Wiadomości', href: '/crm/messages', icon: Mail, module: 'messages' },
-  { key: 'contacts', name: 'Kontakty', href: '/crm/contacts', icon: BookUser, module: 'clients' },
-  { key: 'events', name: 'Eventy', href: '/crm/events', icon: Calendar, module: 'events' },
-  { key: 'offers', name: 'Oferty', href: '/crm/offers', icon: FileText, module: 'offers' },
-  { key: 'contracts', name: 'Umowy', href: '/crm/contracts', icon: FileSignature, module: 'contracts' },
-  { key: 'invoices', name: 'Faktury', href: '/crm/invoices', icon: Receipt, module: 'finances' },
-  { key: 'employees', name: 'Pracownicy', href: '/crm/employees', icon: Users, module: 'employees' },
-  { key: 'equipment', name: 'Magazyn', href: '/crm/equipment', icon: Package, module: 'equipment' },
-  { key: 'fleet', name: 'Flota', href: '/crm/fleet', icon: Car, module: 'fleet' },
-  { key: 'tasks', name: 'Zadania', href: '/crm/tasks', icon: CheckSquare, module: 'tasks' },
-  { key: 'time-tracking', name: 'Czas pracy', href: '/crm/time-tracking', icon: Clock, module: 'time_tracking' },
-  { key: 'page', name: 'Strona', href: '/crm/page', icon: Globe, module: 'page' },
-  { key: 'locations', name: 'Lokalizacje', href: '/crm/locations', icon: MapPin, module: 'locations' },
-];
+export const NavigationIcons: Record<string, any> = {
+  dashboard: LayoutDashboard,
+  calendar: Calendar,
+  messages: Mail,
+  contacts: BookUser,
+  events: Calendar,
+  offers: FileText,
+  contracts: FileSignature,
+  invoices: Receipt,
+  employees: Users,
+  equipment: Package,
+  fleet: Car,
+  tasks: CheckSquare,
+  time: Clock,
+  page: Globe,
+  locations: MapPin,
+};

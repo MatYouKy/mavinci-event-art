@@ -9,36 +9,36 @@ import { Menu, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import NotificationCenter from '@/components/crm/NotificationCenter';
 import UserMenu from '@/components/crm/UserMenu';
 import NavigationManager from '@/components/crm/NavigationManager';
-import { canView, isAdmin, type Employee } from '@/lib/permissions';
-import { Metadata } from 'next';
 import { useActivityHeartbeat } from '@/hooks/useActivityHeartbeat';
 import { IEmployee } from './employees/type';
 import { TaskAccessWrapper } from './(providers)/TaskAccessWrapper';
-import { allNavigation, NavigationItem } from './mock/navigation';
 import { supabase } from '@/lib/supabase/browser';
 import { Notification } from '@/components/crm/NotificationCenter';
-
-export const metadata: Metadata = {
-  title: 'Mavinci CRM',
-  description: 'Mavinci CRM',
-  robots: { index: false, follow: false },
-};
+import { NavigationItem } from './mock/navigation';
 
 export default function CRMClientLayout({
   employee,
   children,
   initialUnreadMessagesCount,
   initialNotifications,
+  initialNavigation,
 }: {
   employee: IEmployee | null;
   children: React.ReactNode;
   initialUnreadMessagesCount: number;
   initialNotifications: Notification[];
+  initialNavigation: NavigationItem[];
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(() => !employee?.id);  const [navigation, setNavigation] = useState(allNavigation);
+
+  // ✅ jeśli serwer dał employee, to nie pokazuj loadera
+  const [loading, setLoading] = useState(() => !employee?.id);
+
+  // ✅ NAWIGACJA: startujemy z serwera i NIE przeliczamy jej na kliencie
+  const [navigation, setNavigation] = useState<NavigationItem[]>(() => initialNavigation ?? []);
+
   const pathname = usePathname();
   const router = useRouter();
 
@@ -58,57 +58,27 @@ export default function CRMClientLayout({
       } = await supabase.auth.getSession();
 
       const isPublicInvitationPage = pathname?.startsWith('/crm/events/invitation/');
+      const isPublicPage = pathname === '/login' || isPublicInvitationPage;
 
-      if (!session && pathname !== '/login' && !isPublicInvitationPage) {
+      // brak sesji i nie publiczna strona => login
+      if (!session && !isPublicPage) {
         router.push('/login');
         return;
       }
 
+      // public invitation => nie blokujemy
       if (isPublicInvitationPage) {
         setLoading(false);
         return;
       }
 
-      if (session?.user) {
-        const { data: employeeData } = await supabase
-          .from('employees')
-          .select('id, role, access_level, permissions, navigation_order, last_active_at')
-          .eq('email', session.user.email)
-          .maybeSingle();
-
-        if (employeeData) {
-          let userNav: NavigationItem[];
-          if (isAdmin(employeeData as unknown as Employee)) {
-            userNav = allNavigation;
-          } else {
-            userNav = allNavigation.filter((item) => {
-              if (item.key === 'dashboard') return true;
-              if (!item.module) return false;
-              return canView(employeeData as unknown as Employee, item.module);
-            });
-          }
-
-          if (employeeData.navigation_order && Array.isArray(employeeData.navigation_order)) {
-            const orderedNav: NavigationItem[] = [];
-            const navMap = new Map(userNav.map((item) => [item.key, item]));
-
-            employeeData.navigation_order.forEach((key: string) => {
-              const item = navMap.get(key);
-              if (item) {
-                orderedNav.push(item);
-                navMap.delete(key);
-              }
-            });
-
-            navMap.forEach((item) => orderedNav.push(item));
-            setNavigation(orderedNav);
-          } else {
-            setNavigation(userNav);
-          }
-        }
-      }
-
+      // ✅ ustaw user tylko dla UI (UserMenu), ale nie ruszamy navigation
       setUser(session?.user || null);
+
+      // ✅ jeżeli initialNavigation jest puste (np. edge case), możesz ewentualnie zrobić fallback:
+      // ALE bez filtrowania po stronie klienta — tylko pobrać "gotowe" z serwera przez endpoint/action.
+      // Tu na razie NIE robimy nic, żeby nie migało.
+
       setLoading(false);
     };
 
@@ -140,7 +110,6 @@ export default function CRMClientLayout({
   };
 
   const isPublicPage = pathname === '/login' || pathname?.startsWith('/crm/events/invitation/');
-
   if (isPublicPage) {
     return <>{children}</>;
   }
@@ -157,10 +126,13 @@ export default function CRMClientLayout({
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#0f1119]">
         <div className="text-lg text-[#d3bb73]">Nie znaleziono pracownika</div>
-        <button onClick={() => router.push('/login')} className="text-[#d3bb73]">Przejdź do strony logowania</button>
+        <button onClick={() => router.push('/login')} className="text-[#d3bb73]">
+          Przejdź do strony logowania
+        </button>
       </div>
     );
-  }  
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-[#0f1119]">
       <header className="fixed left-0 right-0 top-0 z-50 border-b border-[#d3bb73]/10 bg-[#1c1f33] px-6 py-4">
@@ -183,8 +155,9 @@ export default function CRMClientLayout({
               {navigation.find((item) => item.href === pathname)?.name || 'CRM'}
             </h1>
           </div>
+
           <div className="flex items-center gap-4">
-            <NotificationCenter initialNotifications={initialNotifications}   />
+            <NotificationCenter initialNotifications={initialNotifications} />
             <UserMenu initialEmployee={employee} />
           </div>
         </div>
@@ -204,7 +177,7 @@ export default function CRMClientLayout({
               sidebarCollapsed={sidebarCollapsed}
               employeeId={employee?.id || null}
               onClose={() => setSidebarOpen(false)}
-              onOrderChange={(newOrder) => setNavigation(newOrder)}
+              onOrderChange={(newOrder: NavigationItem[]) => setNavigation(newOrder)}
             />
 
             <button
@@ -231,7 +204,9 @@ export default function CRMClientLayout({
         </aside>
 
         <main
-          className={`flex-1 overflow-y-auto p-2 sm:p-4 md:p-6 ${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'} transition-all duration-300`}
+          className={`flex-1 overflow-y-auto p-2 sm:p-4 md:p-6 ${
+            sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'
+          } transition-all duration-300`}
         >
           <TaskAccessWrapper pathname={pathname} employee={employee} router={router}>
             {children}
