@@ -34,9 +34,6 @@ export default function CRMDashboard({
   stats: DashboardStats;
   recentActivity: RecentActivityDTO[];
 }) {
-  // const { employee } = useCurrentEmployee();
-  // console.log(employee);
-
   const employee: IEmployee = {
     id: '1',
     name: 'John',

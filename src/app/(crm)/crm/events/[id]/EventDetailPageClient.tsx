@@ -996,6 +996,7 @@ export default function EventDetailPageClient({
           eventDate={event?.event_date as string}
           location={`${location?.name}, ${location?.address}, ${location?.postal_code} ${location?.city}  ` as string}
           eventEndDate={event?.event_end_date as string}
+          initialEvent={event}
         />
       )}
 

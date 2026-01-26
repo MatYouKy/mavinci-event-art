@@ -167,8 +167,6 @@ const [savingCategory, setSavingCategory] = useState(false);
       // ✅ weź aktualny rekord: albo z state, albo pobierz świeży
       const checklist =
         equipmentChecklist?.file_path ? equipmentChecklist : await fetchEquipmentChecklist();
-
-        console.log('checklist file_path:', checklist?.file_path);
   
       if (!checklist?.file_path) {
         showSnackbar('Brak checklisty sprzętu do wydruku', 'info');

@@ -12,7 +12,7 @@ import type { AvailabilityUI } from '@/app/(crm)/crm/events/hooks/useEventEquipm
 import { getKeyForEventRow, keyOf } from '../../helpers/getKeyForEventRow';
 import { buildExistingMap } from '../../helpers/buildExistingMap';
 import { mergeSameSelections } from '../../helpers/mergeSameSelections';
-import type { SelectedItem } from '../../../type';
+import type { IEvent, SelectedItem } from '../../../type';
 import { EventEquipmentRow } from '../../../UI/RenderRowItem';
 import { buildEquipmentChecklistHtml } from '../../helpers/buildEquipmentChecklistPdf';
 import { supabase } from '@/lib/supabase/browser';
@@ -238,17 +238,16 @@ export const EventEquipmentTab: React.FC<{
   eventDate: string;
   location: string;
   eventEndDate: string;
-}> = ({ eventId, contact, eventDate, location, eventEndDate }) => {
+  initialEvent?: IEvent;
+}> = ({ eventId, contact, eventDate, location, eventEndDate, initialEvent }) => {
   const [expandedKits, setExpandedKits] = useState<Set<string>>(new Set());
   const [showAddEquipmentModal, setShowAddEquipmentModal] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [editingQuantityId, setEditingQuantityId] = useState<string | null>(null);
   const [draftQuantity, setDraftQuantity] = useState<number>(1);
 
-  console.log('location', location);
-
   const { showSnackbar } = useSnackbar();
-  const { event } = useEvent();
+  const { event } = useEvent(initialEvent);
   const { employee } = useCurrentEmployee();
   const { showConfirm } = useDialog();
 
@@ -462,7 +461,7 @@ export const EventEquipmentTab: React.FC<{
         .replace(/[^a-z0-9]/gi, '-')
         .toLowerCase();
 
-      const fileName = `checklista-sprzetu-${event?.name?.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${timestamp}.pdf`;
+      const fileName = `checklista-sprzetu-${safeEventName.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${timestamp}.pdf`;
       const storagePath = `${eventId}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage

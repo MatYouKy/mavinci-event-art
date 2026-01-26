@@ -809,7 +809,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
           if (teamError) {
             console.error('Error adding to team:', teamError);
           } else {
-            console.log('Added employee to team');
+
           }
         }
 
