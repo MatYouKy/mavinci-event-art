@@ -474,6 +474,8 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         boxShadow: string;
         minHeight: string;
         height: string;
+        pageBreakAfter: string;
+        breakAfter: string;
       }> = [];
 
       pages.forEach((page, index) => {
@@ -483,6 +485,8 @@ export function EventContractTab({ eventId }: { eventId: string }) {
           boxShadow: htmlPage.style.boxShadow,
           minHeight: htmlPage.style.minHeight,
           height: htmlPage.style.height,
+          pageBreakAfter: htmlPage.style.pageBreakAfter,
+          breakAfter: htmlPage.style.breakAfter,
         };
 
         // Optymalizuj style dla renderowania PDF
@@ -490,6 +494,9 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         htmlPage.style.boxShadow = 'none';
         htmlPage.style.minHeight = '';
         htmlPage.style.height = '297mm';
+        // KLUCZOWE: Usuń page-break-after aby nie tworzyć pustych stron między stronami
+        htmlPage.style.pageBreakAfter = 'auto';
+        htmlPage.style.breakAfter = 'auto';
       });
 
       // Funkcja pomocnicza do przywracania stylów
@@ -507,6 +514,8 @@ export function EventContractTab({ eventId }: { eventId: string }) {
             htmlPage.style.boxShadow = original.boxShadow;
             htmlPage.style.minHeight = original.minHeight;
             htmlPage.style.height = original.height;
+            htmlPage.style.pageBreakAfter = original.pageBreakAfter;
+            htmlPage.style.breakAfter = original.breakAfter;
           }
         });
       };
@@ -528,7 +537,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
             logging: false,
           },
           jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-          pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+          // Bez pagebreak - pozwól html2pdf automatycznie dzielić długie strony
         };
 
         const worker = html2pdfFn().from(contractContainer).set(opt).toPdf();
