@@ -14,12 +14,14 @@ interface ComposeEmailModalProps {
     body: string;
     bodyHtml: string;
     attachments?: File[];
+    fromAccountId?: string;
   }) => Promise<void>;
   initialTo?: string;
   initialSubject?: string;
   initialBody?: string;
   forwardedBody?: string;
   selectedAccountId?: string;
+  emailAccounts?: any[];
 }
 
 export default function ComposeEmailModal({
@@ -31,6 +33,7 @@ export default function ComposeEmailModal({
   initialBody = '',
   forwardedBody = '',
   selectedAccountId,
+  emailAccounts = [],
 }: ComposeEmailModalProps) {
   const [to, setTo] = useState(initialTo);
   const [subject, setSubject] = useState(initialSubject);
@@ -42,6 +45,7 @@ export default function ComposeEmailModal({
   const [template, setTemplate] = useState<any>(null);
   const [previewHtml, setPreviewHtml] = useState('');
   const [employee, setEmployee] = useState<any>(null);
+  const [fromAccountId, setFromAccountId] = useState<string>('');
 
   useEffect(() => {
     if (isOpen) {
@@ -50,8 +54,15 @@ export default function ComposeEmailModal({
       setBody(initialBody || forwardedBody || '');
       setAttachments([]);
       fetchSignatureAndTemplate();
+
+      // Set default account
+      if (emailAccounts.length > 0) {
+        // If selectedAccountId is a real account (not 'all' or 'contact_form'), use it
+        const validAccount = emailAccounts.find((acc) => acc.id === selectedAccountId);
+        setFromAccountId(validAccount ? selectedAccountId : emailAccounts[0].id);
+      }
     }
-  }, [isOpen, initialTo, initialSubject, initialBody, forwardedBody]);
+  }, [isOpen, initialTo, initialSubject, initialBody, forwardedBody, selectedAccountId, emailAccounts]);
 
   useEffect(() => {
     generatePreview();
@@ -144,6 +155,11 @@ export default function ComposeEmailModal({
       return;
     }
 
+    if (!fromAccountId && emailAccounts.length > 0) {
+      alert('Wybierz konto, z którego chcesz wysłać wiadomość');
+      return;
+    }
+
     setSending(true);
     try {
       await onSend({
@@ -152,6 +168,7 @@ export default function ComposeEmailModal({
         body,
         bodyHtml: previewHtml,
         attachments,
+        fromAccountId,
       });
       setTo('');
       setSubject('');
@@ -188,6 +205,28 @@ export default function ComposeEmailModal({
         <div className="flex-1 overflow-y-auto p-6">
           {!showPreview ? (
             <div className="space-y-4">
+              {emailAccounts.length > 0 && (
+                <div>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/70">
+                    Z konta: <span className="text-red-400">*</span>
+                  </label>
+                  <select
+                    value={fromAccountId}
+                    onChange={(e) => setFromAccountId(e.target.value)}
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-white focus:border-[#d3bb73] focus:outline-none"
+                  >
+                    <option value="">-- Wybierz konto email --</option>
+                    {emailAccounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.display_name || account.email_address}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-[#e5e4e2]/50">
+                    Wybierz z jakiego konta email chcesz wysłać wiadomość
+                  </p>
+                </div>
+              )}
               <div>
                 <label className="mb-2 block text-sm text-[#e5e4e2]/70">Do:</label>
                 <input

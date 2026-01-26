@@ -512,8 +512,11 @@ export default function MessagesPage() {
     body: string;
     bodyHtml: string;
     attachments?: File[];
+    fromAccountId?: string;
   }) => {
-    if (selectedAccount === 'all' || selectedAccount === 'contact_form') {
+    const accountToUse = data.fromAccountId || selectedAccount;
+
+    if (!accountToUse || accountToUse === 'all' || accountToUse === 'contact_form') {
       showSnackbar('Wybierz konto email do wysłania', 'warning');
       return;
     }
@@ -559,7 +562,7 @@ export default function MessagesPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          emailAccountId: selectedAccount,
+          emailAccountId: accountToUse,
           to: data.to,
           subject: data.subject,
           body: data.bodyHtml,
@@ -710,6 +713,21 @@ export default function MessagesPage() {
 
             {/* DESKTOP search row */}
             <div className="hidden items-center gap-4 sm:flex">
+              {/* Email account selector */}
+              <div className="w-64 shrink-0">
+                <select
+                  value={selectedAccount}
+                  onChange={(e) => setSelectedAccount(e.target.value)}
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] py-3 px-4 text-sm text-white focus:border-[#d3bb73] focus:outline-none"
+                >
+                  {emailAccounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.display_name || account.email_address}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#e5e4e2]/40" />
                 <input
@@ -1012,6 +1030,9 @@ export default function MessagesPage() {
             : ''
         }
         selectedAccountId={selectedAccount}
+        emailAccounts={emailAccounts.filter(
+          (acc) => acc.id !== 'all' && acc.id !== 'contact_form'
+        )}
       />
 
       {showAssignModal && messageToAssign && (
