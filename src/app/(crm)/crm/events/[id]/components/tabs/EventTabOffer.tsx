@@ -70,13 +70,12 @@ export default function EventTabOffer({
                     {
                       label: 'Wyślij ofertę',
                       onClick: handleSendOfferLocal,
-                      variant: 'success' as const,
+                      variant: 'primary' as const,
                       icon: sendingOffer ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
                         <Send className="h-4 w-4" />
                       ),
-                      disabled: sendingOffer,
                     },
                   ]
                 : []),

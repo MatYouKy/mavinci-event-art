@@ -11,9 +11,7 @@ import {
   Building2,
   Clock,
   X,
-  Tag,
   Filter,
-  Users,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { CalendarEvent, CalendarView } from './types';
@@ -31,11 +29,15 @@ import {
   useGetCalendarFilterOptionsQuery,
 } from '@/store/api/calendarApi';
 
-export default function CalendarMain() {
+export default function CalendarMain({
+  initialCalendarEvents,
+}: {
+  initialCalendarEvents: CalendarEvent[];
+}) {
   const router = useRouter();
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [allEvents, setAllEvents] = useState<CalendarEvent[]>([]);
+  const [events, setEvents] = useState<CalendarEvent[]>(initialCalendarEvents);
+  const [allEvents, setAllEvents] = useState<CalendarEvent[]>(initialCalendarEvents);
   const [view, setView] = useState<CalendarView>('month');
   const [isMobile, setIsMobile] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -66,8 +68,10 @@ export default function CalendarMain() {
   });
 
   const {
-    data: calendarEvents = [],
+    data: calendarEvents,
     isLoading: eventsLoading,
+    isFetching: eventsFetching,
+    isSuccess: eventsSuccess,
     error: eventsError,
     refetch: refetchEvents,
   } = useGetCalendarEventsQuery();
@@ -171,11 +175,13 @@ export default function CalendarMain() {
     currentEmployee?.id,
   ]);
 
+  // ✅ kluczowy fix: NIE nadpisuj initial pustym [] zanim query będzie SUCCESS
   useEffect(() => {
-    if (calendarEvents) {
-      setAllEvents([...calendarEvents]);
-    }
-  }, [calendarEvents]);
+    if (!eventsSuccess) return;
+
+    const next = calendarEvents ?? [];
+    setAllEvents([...next]);
+  }, [eventsSuccess, calendarEvents]);
 
   useEffect(() => {
     applyFilters();

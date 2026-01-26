@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { supabase } from '@/lib/supabase/browser';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import {
@@ -24,6 +24,7 @@ import { useEvent } from '../../../hooks/useEvent';
 import { useGetContactByIdQuery } from '@/app/(crm)/crm/contacts/store/clientsApi';
 import { ContactRow, OrganizationRow } from '@/app/(crm)/crm/contacts/types';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
+import { ISimpleContact } from '../../EventDetailPageClient';
 
 // YYYY-MM-DD + HH:MM -> YYYY-MM-DDTHH:MM:00 (local time, no timezone conversion)
 const buildIsoDateTime = (dateOnly: string, timeStr: string): string | null => {
@@ -81,7 +82,7 @@ interface EventAgendaTabProps {
   eventDate: string; // ISO albo YYYY-MM-DD
   startTime: string; // ISO albo HH:MM
   endTime: string;
-  contact: ContactRow;
+  contact: ContactRow | ISimpleContact;
   organization: OrganizationRow | null;
   createdById: string;
 }
@@ -139,6 +140,33 @@ export default function EventAgendaTab({
   const canManage =
     employee?.permissions?.includes('events_manage') || employee?.permissions?.includes('admin');
 
+  // ✅ refs to avoid stale closures (np. setTimeout -> stary agendaId/generetedPdfPath)
+  const agendaIdRef = useRef<string | null>(null);
+  const generatedPdfPathRef = useRef<string | null>(null);
+  const employeeRef = useRef(employee);
+  const eventRef = useRef(event);
+  const createdByEmployeeRef = useRef(createdByEmployee);
+
+  useEffect(() => {
+    agendaIdRef.current = agendaId;
+  }, [agendaId]);
+
+  useEffect(() => {
+    generatedPdfPathRef.current = generatedPdfPath;
+  }, [generatedPdfPath]);
+
+  useEffect(() => {
+    employeeRef.current = employee;
+  }, [employee]);
+
+  useEffect(() => {
+    eventRef.current = event;
+  }, [event]);
+
+  useEffect(() => {
+    createdByEmployeeRef.current = createdByEmployee;
+  }, [createdByEmployee]);
+
   useEffect(() => {
     fetchAgenda();
     fetchCreatedByEmployee();
@@ -153,15 +181,20 @@ export default function EventAgendaTab({
   }, [startTime, endTime, contact, agendaId]);
 
   const fetchCreatedByEmployee = async () => {
-    const { data: Author } = await supabaseServer
+    const { data: Author, error } = await supabase
       .from('employees')
       .select('name, surname, phone_number')
       .eq('id', createdById)
       .maybeSingle();
 
+    if (error) {
+      console.error('[Agenda] fetchCreatedByEmployee error', error);
+      return;
+    }
+
     setCreatedByEmployee({
-      name: `${Author?.name} ${Author?.surname}` || '',
-      phone_number: Author?.phone_number || '',
+      name: `${Author?.name ?? ''} ${Author?.surname ?? ''}`.trim(),
+      phone_number: Author?.phone_number ?? '',
     });
   };
 
@@ -261,6 +294,8 @@ export default function EventAgendaTab({
     });
     return flat;
   };
+
+  console.log('event', event);
 
   const getSortedAgendaItems = () => {
     return [...agendaItems].sort((a, b) => {
@@ -392,9 +427,9 @@ export default function EventAgendaTab({
       await fetchAgenda();
       setEditMode(false);
 
-      // Automatyczne generowanie PDF po zapisie
+      // Automatyczne generowanie PDF po zapisie (✅ przekazujemy aktualne ID, bez ryzyka "starego" agendaId)
       setTimeout(() => {
-        handleGeneratePDF();
+        handleGeneratePDF(currentAgendaId);
       }, 500);
     } catch (err) {
       console.error('Error saving agenda:', err);
@@ -417,130 +452,194 @@ export default function EventAgendaTab({
     setEditMode(false);
   };
 
-  const handleGeneratePDF = async () => {
-    if (!agendaId) {
-      alert('Najpierw zapisz agendę');
-      return;
-    }
-
-    try {
-      setGenerating(true);
-
-      // 0. Usuń poprzedni PDF jeśli istnieje
-      if (generatedPdfPath) {
-        try {
-          // Usuń z storage
-          await supabase.storage.from('event-files').remove([generatedPdfPath]);
-
-          // Usuń z event_files
-          await supabase.from('event_files').delete().eq('file_path', generatedPdfPath);
-        } catch (deleteError) {
-          console.warn('Błąd podczas usuwania poprzedniego PDF:', deleteError);
-        }
-      }
-
-      // 1. Zbuduj HTML agendy
-      const html = buildAgendaHtml({
-        eventName,
-        eventDate: normalizedEventDate, // YYYY-MM-DD
-        startTime: startTimeInput,
-        endTime: endTimeInput,
-        clientContact: organization?.alias || organization?.name || '',
-        contactName: contact?.full_name || '',
-        contactNumber: contact?.business_phone || '',
-        agendaItems: getSortedAgendaItems(),
-        agendaNotes,
-        lastUpdated: new Date().toISOString(),
-        authorName: createdByEmployee?.name || '',
-        authorNumber: createdByEmployee?.phone_number || '',
+  // ✅ stabilna funkcja + możliwość podania agendaId (naprawia generowanie po zapisie / przy stale state)
+  const handleGeneratePDF = useCallback(
+    async (forcedAgendaId?: string | null) => {
+      console.log('[handleGenerateChecklist] deps', {
+        event: eventRef.current,
+        employee: employeeRef.current,
+        organization,
+        contact,
       });
 
-      // 2. Dynamiczny import html2pdf.js (działa tylko w przeglądarce)
-      const { default: html2pdf } = await import('html2pdf.js');
-      const html2pdfFn: any = (html2pdf as any) || html2pdf;
+      const currentEvent = eventRef.current;
+      const currentEmployee = employeeRef.current;
+      const currentAgendaId = forcedAgendaId ?? agendaIdRef.current;
 
-      // 3. Tworzymy tymczasowy element z HTML-em
-      const element = document.createElement('div');
-      element.innerHTML = html;
-
-      const opt: any = {
-        margin: [10, 10, 20, 10], // większy bottom (20 mm)
-        filename: `agenda-${eventName.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.pdf`,
-        image: { type: 'jpeg' as const, quality: 0.98 },
-        html2canvas: { scale: 2 },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      };
-
-      // 4. Generujemy PDF jako Blob
-      const worker = html2pdfFn().from(element).set(opt).toPdf();
-      const pdfBlob: Blob = await worker.output('blob');
-
-      // 5. Zapisz PDF do storage i event_files
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-      const fileName = `agenda-${eventName.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${timestamp}.pdf`;
-      const storagePath = `${eventId}/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('event-files')
-        .upload(storagePath, pdfBlob, {
-          contentType: 'application/pdf',
-          upsert: false,
-        });
-
-      if (uploadError) {
-        console.error('Upload error:', uploadError);
-        alert('Błąd podczas zapisywania pliku');
-      } else {
-        const {
-          data: { publicUrl },
-        } = supabase.storage.from('event-files').getPublicUrl(storagePath);
-
-        const { data: folderId } = await supabase.rpc('get_or_create_documents_subfolder', {
-          p_event_id: eventId,
-          p_required_permission: null,
-          p_created_by: employee?.id,
-        });
-
-        await supabase.from('event_files').insert([
-          {
-            event_id: eventId,
-            folder_id: folderId,
-            name: fileName,
-            original_name: fileName,
-            file_path: storagePath,
-            file_size: pdfBlob.size,
-            mime_type: 'application/pdf',
-            document_type: 'agenda',
-            thumbnail_url: null,
-            uploaded_by: employee?.id,
-          },
-        ]);
-
-        await supabase
-          .from('event_agendas')
-          .update({
-            generated_pdf_path: storagePath,
-            generated_pdf_at: new Date().toISOString(),
-            modified_after_generation: false,
-          })
-          .eq('id', agendaId);
-
-        setGeneratedPdfPath(storagePath);
-        setModifiedAfterGeneration(false);
-
-        alert('Agenda PDF została zapisana w zakładce Pliki');
+      if (!currentEvent) {
+        console.error('[handleGenerateChecklist] event is null');
+        alert('Brak danych wydarzenia (event = null). Odśwież stronę i spróbuj ponownie.');
+        return;
       }
 
-      // 6. Podgląd PDF w nowej karcie
-      const previewUrl = URL.createObjectURL(pdfBlob);
-      window.open(previewUrl, '_blank');
-    } catch (err) {
-      console.error('Error generating PDF:', err);
-      alert('Wystąpił błąd podczas generowania PDF (szczegóły w konsoli)');
-    } finally {
-      setGenerating(false);
-    }
-  };
+      if (!currentEmployee) {
+        console.error('[handleGenerateChecklist] employee is null');
+        alert('Brak danych zalogowanego użytkownika (employee = null). Zaloguj się ponownie.');
+        return;
+      }
+
+      if (!currentAgendaId) {
+        alert('Najpierw zapisz agendę');
+        return;
+      }
+
+      try {
+        setGenerating(true);
+
+        // ✅ zawsze bierzemy najnowszy generated_pdf_path z bazy (żeby nie działać na "starym" state)
+        const { data: agenda, error: agendaError } = await supabase
+          .from('event_agendas')
+          .select('generated_pdf_path')
+          .eq('id', currentAgendaId)
+          .maybeSingle();
+
+        if (agendaError && agendaError.code !== 'PGRST116') {
+          throw agendaError;
+        }
+
+        const latestPdfPath = agenda?.generated_pdf_path ?? generatedPdfPathRef.current ?? null;
+
+        // 0. Usuń poprzedni PDF jeśli istnieje
+        if (latestPdfPath) {
+          try {
+            await supabase.storage.from('event-files').remove([latestPdfPath]);
+            await supabase.from('event_files').delete().eq('file_path', latestPdfPath);
+          } catch (deleteError) {
+            console.warn('Błąd podczas usuwania poprzedniego PDF:', deleteError);
+          }
+        }
+
+        const safeText = (v: any) => (v == null ? '' : String(v));
+
+        const clientContact = safeText(organization?.alias ?? organization?.name);
+        const contactName = safeText(contact?.full_name ?? (contact as any)?.name);
+        const authorName = safeText(createdByEmployeeRef.current?.name ?? createdByEmployee?.name);
+
+        // ✅ SANITY LAYER: wszystko co trafia do HTML ma być stringiem, żeby buildAgendaHtml nie walił nullami
+        const safeEventName = String(eventName ?? '');
+        const safeContactNumber = String((contact as any)?.business_phone ?? '');
+        const authorNumber = String(createdByEmployeeRef.current?.phone_number ?? '');
+
+        // 1. Zbuduj HTML agendy (z ochroną na wypadek błędu wewnątrz buildAgendaHtml)
+        let html = '';
+        try {
+          const payload = {
+            eventName: safeEventName,
+            eventDate: normalizedEventDate, // YYYY-MM-DD
+            startTime: startTimeInput,
+            endTime: endTimeInput,
+            clientContact: clientContact,
+            contactName: contactName,
+            contactNumber: safeContactNumber,
+            agendaItems: getSortedAgendaItems(),
+            agendaNotes,
+            lastUpdated: new Date().toISOString(),
+            authorName: authorName,
+            authorNumber: authorNumber,
+          };
+
+          console.log('[Agenda PDF] buildAgendaHtml payload', payload);
+          html = buildAgendaHtml(payload);
+        } catch (e) {
+          console.error('[Agenda PDF] buildAgendaHtml crashed', e);
+          alert('Wystąpił błąd podczas budowania HTML agendy (szczegóły w konsoli).');
+          return;
+        }
+
+        // 2. Dynamiczny import html2pdf.js (działa tylko w przeglądarce)
+        const { default: html2pdf } = await import('html2pdf.js');
+        const html2pdfFn: any = (html2pdf as any) || html2pdf;
+
+        // 3. Tworzymy tymczasowy element z HTML-em
+        const element = document.createElement('div');
+        element.innerHTML = html;
+
+        const opt: any = {
+          margin: [10, 10, 20, 10], // większy bottom (20 mm)
+          filename: `agenda-${safeEventName.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.pdf`,
+          image: { type: 'jpeg' as const, quality: 0.98 },
+          html2canvas: { scale: 2 },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        };
+
+        // 4. Generujemy PDF jako Blob
+        const worker = html2pdfFn().from(element).set(opt).toPdf();
+        const pdfBlob: Blob = await worker.output('blob');
+
+        // 5. Zapisz PDF do storage i event_files
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+        const fileName = `agenda-${safeEventName.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${timestamp}.pdf`;
+        const storagePath = `${eventId}/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('event-files')
+          .upload(storagePath, pdfBlob, {
+            contentType: 'application/pdf',
+            upsert: false,
+          });
+
+        if (uploadError) {
+          console.error('Upload error:', uploadError);
+          alert('Błąd podczas zapisywania pliku');
+        } else {
+          const { data: folderId } = await supabase.rpc('get_or_create_documents_subfolder', {
+            p_event_id: eventId,
+            p_required_permission: null,
+            p_created_by: currentEmployee?.id,
+          });
+
+          await supabase.from('event_files').insert([
+            {
+              event_id: eventId,
+              folder_id: folderId,
+              name: fileName,
+              original_name: fileName,
+              file_path: storagePath,
+              file_size: pdfBlob.size,
+              mime_type: 'application/pdf',
+              document_type: 'agenda',
+              thumbnail_url: null,
+              uploaded_by: currentEmployee?.id,
+            },
+          ]);
+
+          await supabase
+            .from('event_agendas')
+            .update({
+              generated_pdf_path: storagePath,
+              generated_pdf_at: new Date().toISOString(),
+              modified_after_generation: false,
+            })
+            .eq('id', currentAgendaId);
+
+          setGeneratedPdfPath(storagePath);
+          setModifiedAfterGeneration(false);
+
+          alert('Agenda PDF została zapisana w zakładce Pliki');
+        }
+
+        // 6. Podgląd PDF w nowej karcie
+        const previewUrl = URL.createObjectURL(pdfBlob);
+        window.open(previewUrl, '_blank');
+      } catch (err) {
+        console.error('Error generating PDF:', err);
+        alert('Wystąpił błąd podczas generowania PDF (szczegóły w konsoli)');
+      } finally {
+        setGenerating(false);
+      }
+    },
+    [
+      agendaNotes,
+      contact,
+      endTimeInput,
+      eventId,
+      eventName,
+      normalizedEventDate,
+      organization,
+      startTimeInput,
+      getSortedAgendaItems,
+    ],
+  );
 
   const handleShowPdf = async () => {
     if (!generatedPdfPath) return;
@@ -809,7 +908,7 @@ export default function EventAgendaTab({
             : modifiedAfterGeneration
               ? 'Regeneruj PDF'
               : 'Generuj PDF',
-          onClick: handleGeneratePDF,
+          onClick: () => handleGeneratePDF(),
           icon: <FileDown className="h-4 w-4" />,
           variant: 'default',
         });
@@ -847,11 +946,7 @@ export default function EventAgendaTab({
     generatedPdfPath,
     modifiedAfterGeneration,
     generating,
-    handleSave,
-    handleCancelEdit,
     handleGeneratePDF,
-    handleShowPdf,
-    handleDownloadPdf,
   ]);
 
   const renderNoteEdit = (note: AgendaNote, depth: number = 0) => {

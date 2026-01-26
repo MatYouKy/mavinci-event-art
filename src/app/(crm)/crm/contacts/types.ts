@@ -7,6 +7,7 @@ export type ContactType = 'contact' | 'individual'; // masz to jako text w DB
 export type OrganizationType = 'client' | 'subcontractor'; // u Ciebie USER-DEFINED
 
 export interface ContactRow {
+  organization_name: string;
   business_phone: ReactNode;
   id: UUID;
   first_name: string | null;

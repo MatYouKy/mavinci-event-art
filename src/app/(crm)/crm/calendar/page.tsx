@@ -1,7 +1,8 @@
-'use client';
+import CalendarMain from '@/components/crm/Calendar/CalendarMain';
+import { fetchCalendarEventsServer } from '@/lib/CRM/calendar/fetchCalendarEvents';
 
-import { CalendarMain } from '@/components/crm/Calendar';
+export default async function CalendarPage() {
+  const initialCalendarEvents = await fetchCalendarEventsServer();
 
-export default function CalendarPage() {
-  return <CalendarMain />;
+  return <CalendarMain initialCalendarEvents={initialCalendarEvents} />;
 }

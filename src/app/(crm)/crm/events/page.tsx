@@ -8,5 +8,7 @@ export default async function EventsPage() {
     fetchEventCategoriesServer(),
   ]);
 
+  console.log('initialEvents', initialEvents);
+
   return <EventsPageClient initialEvents={initialEvents} initialCategories={initialCategories} />;
 }

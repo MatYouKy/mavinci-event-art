@@ -11,7 +11,7 @@ interface OfferItem {
   description?: string;
 }
 
-interface CustomItem {
+export interface CustomItem {
   name: string;
   description: string;
   quantity: number;

@@ -117,7 +117,10 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
     );
 
     const getClientName = () => {
-      if (offer.organization?.name) return offer.organization.name;
+      if (offer.event?.contact?.first_name) {
+        return offer.event?.contact?.first_name + ' ' + offer.event?.contact?.last_name;
+      }
+
       return 'Brak klienta';
     };
 

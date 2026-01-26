@@ -19,7 +19,7 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { supabase } from '@/lib/supabase/browser';
 
-interface Notification {
+export interface Notification {
   id: string;
   title: string;
   message: string;
@@ -35,13 +35,13 @@ interface Notification {
   read_at: string | null;
 }
 
-export default function NotificationCenter() {
+export default function NotificationCenter({ initialNotifications }: { initialNotifications: Notification[] }) {
   const router = useRouter();
   const { isAdmin } = useCurrentEmployee();
   const { showSnackbar } = useSnackbar();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [showPanel, setShowPanel] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>(initialNotifications);
+  const [unreadCount, setUnreadCount] = useState(initialNotifications.filter((n) => !n.is_read).length);
+  const [showPanel, setShowPanel] = useState(false);  
   const [loading, setLoading] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);

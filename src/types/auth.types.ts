@@ -39,6 +39,9 @@ export type AccessTier =
   | 'instructor';
 
 export interface IUser {
+  employeeId: any;
+  employee: any;
+  employee_id: any;
   id: any;
   permissions: any;
   _id: string;

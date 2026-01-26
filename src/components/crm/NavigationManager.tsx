@@ -15,7 +15,8 @@ interface NavigationItem {
 }
 
 interface Props {
-  navigation: NavigationItem[];
+    navigation: NavigationItem[];
+  initialUnreadMessagesCount: number;
   pathname: string;
   sidebarCollapsed: boolean;
   employeeId: string | null;
@@ -25,6 +26,7 @@ interface Props {
 
 export default function NavigationManager({
   navigation,
+  initialUnreadMessagesCount,
   pathname,
   sidebarCollapsed,
   employeeId,
@@ -36,11 +38,12 @@ export default function NavigationManager({
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [items, setItems] = useState<NavigationItem[]>(navigation);
   const [saving, setSaving] = useState(false);
-  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(initialUnreadMessagesCount);
 
   useEffect(() => {
     setItems(navigation);
-  }, [navigation]);
+    setUnreadMessagesCount(initialUnreadMessagesCount);
+  }, [navigation, initialUnreadMessagesCount]);
 
   useEffect(() => {
     fetchUnreadCount();

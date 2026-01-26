@@ -231,7 +231,7 @@ function getEventEquipmentDisplay(row: any): {
   return { name, brand, model, categoryName, isKit, cableLength, kitItems };
 }
 
-export const EventEquipmentTab: React.FC = () => {
+export const EventEquipmentTab: React.FC<{ eventId: string }> = ({ eventId }) => {
   const [expandedKits, setExpandedKits] = useState<Set<string>>(new Set());
   const [showAddEquipmentModal, setShowAddEquipmentModal] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
@@ -242,7 +242,8 @@ export const EventEquipmentTab: React.FC = () => {
   const { event } = useEvent();
   const { employee } = useCurrentEmployee();
   const { showConfirm } = useDialog();
-  const eventId = (event?.id || '') as UUID;
+
+  console.log('eventId', eventId);
 
   // ✅ guard na start: hook może być wywołany, ale wewnątrz i tak nie robimy fetchy bez ID
   const {

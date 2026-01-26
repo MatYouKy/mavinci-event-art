@@ -149,7 +149,7 @@ export default function LocationSelector({
                       className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33] px-4 py-2 text-sm text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10"
                     >
                       <Plus className="h-4 w-4" />
-                      Użyj "{searchQuery}" jako tekst
+                      Użyj &rdquo;{searchQuery}&rdquo; jako tekst
                     </button>
                   )}
                 </div>

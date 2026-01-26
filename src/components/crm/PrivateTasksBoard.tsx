@@ -19,6 +19,7 @@ import { useMobile } from '@/hooks/useMobile';
 import TaskAssigneeAvatars from '@/components/crm/TaskAssigneeAvatars';
 
 interface Task {
+  owner_id: string;
   id: string;
   title: string;
   description: string | null;
@@ -46,12 +47,17 @@ interface Task {
 interface PrivateTasksBoardProps {
   employeeId: string;
   isOwnProfile: boolean;
+  tasksState: Task[];
 }
 
-export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateTasksBoardProps) {
+export default function PrivateTasksBoard({
+  employeeId,
+  isOwnProfile,
+  tasksState,
+}: PrivateTasksBoardProps) {
   const router = useRouter();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [tasks, setTasks] = useState<Task[]>(tasksState);
+  const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
@@ -99,18 +105,19 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
   };
 
   useEffect(() => {
-    fetchTasks();
+    // ✅ pokaż SSR tasks od razu, a fetch zrób w tle
+    if (tasksState?.length) {
+      setTasks(tasksState);
+    }
+
+    fetchTasks(); // odświeżenie w tle
     checkActiveTimer();
 
     const tasksChannel = supabase
       .channel(`private_tasks_${employeeId}`)
       .on(
         'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'tasks',
-        },
+        { event: 'UPDATE', schema: 'public', table: 'tasks' },
         async (payload) => {
           const updatedTask = payload.new as Task;
 
@@ -172,11 +179,7 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
       )
       .on(
         'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'tasks',
-        },
+        { event: 'INSERT', schema: 'public', table: 'tasks' },
         async (payload) => {
           const newTask = payload.new as Task;
 
@@ -234,11 +237,7 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
       )
       .on(
         'postgres_changes',
-        {
-          event: 'DELETE',
-          schema: 'public',
-          table: 'tasks',
-        },
+        { event: 'DELETE', schema: 'public', table: 'tasks' },
         (payload) => {
           const deletedTaskId = payload.old.id;
           setTasks((prevTasks) => prevTasks.filter((t) => t.id !== deletedTaskId));
@@ -246,11 +245,7 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
       )
       .on(
         'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'task_assignees',
-        },
+        { event: 'INSERT', schema: 'public', table: 'task_assignees' },
         async (payload) => {
           const newAssignee = payload.new as any;
 
@@ -279,11 +274,7 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
       )
       .on(
         'postgres_changes',
-        {
-          event: 'DELETE',
-          schema: 'public',
-          table: 'task_assignees',
-        },
+        { event: 'DELETE', schema: 'public', table: 'task_assignees' },
         (payload) => {
           const deletedAssignee = payload.old as any;
 
@@ -306,11 +297,13 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
     return () => {
       supabase.removeChannel(tasksChannel);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [employeeId]);
 
   const fetchTasks = async () => {
     try {
-      setLoading(true);
+      // ✅ NIE blokuj UI jeśli masz już SSR tasks
+      setLoading(tasks.length === 0);
 
       const { data: privateTasks, error: privateError } = await supabase
         .from('tasks')
@@ -363,11 +356,11 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
           );
 
           let currently_working_employee = null;
-          if (task.currently_working_by) {
+          if ((task as any).currently_working_by) {
             const { data: workingEmployee } = await supabase
               .from('employees')
               .select('name, surname, avatar_url, avatar_metadata')
-              .eq('id', task.currently_working_by)
+              .eq('id', (task as any).currently_working_by)
               .maybeSingle();
 
             currently_working_employee = workingEmployee;
@@ -764,7 +757,8 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
     }
   };
 
-  if (loading) {
+  // ✅ loader tylko jeśli nie mamy nic do pokazania
+  if (loading && tasks.length === 0) {
     return (
       <div className="flex h-64 items-center justify-center">
         <div className="text-[#e5e4e2]/60">Ładowanie zadań...</div>
@@ -806,15 +800,23 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
           </div>
         )}
 
-        <button
-          onClick={() => handleOpenModal()}
-          className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
-        >
-          <Plus className="h-4 w-4" />
-          Nowe zadanie
-        </button>
+        <div className="flex items-center gap-3">
+          {/* opcjonalnie mały wskaźnik odświeżania, ale nie blokuje UI */}
+          {loading && tasks.length > 0 && (
+            <span className="text-xs text-[#e5e4e2]/40">Odświeżanie…</span>
+          )}
+
+          <button
+            onClick={() => handleOpenModal()}
+            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+          >
+            <Plus className="h-4 w-4" />
+            Nowe zadanie
+          </button>
+        </div>
       </div>
 
+      {/* ⬇️ dalej Twój render 1:1 */}
       <div
         ref={scrollContainerRef}
         className="flex-1 overflow-x-auto pb-4"
@@ -989,6 +991,7 @@ export default function PrivateTasksBoard({ employeeId, isOwnProfile }: PrivateT
         </div>
       )}
 
+      {/* reszta Twoich modali 1:1 (showModal, showTimerModal) zostaje bez zmian */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">

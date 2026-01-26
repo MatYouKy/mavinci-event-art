@@ -4,6 +4,7 @@ import { Mail, Phone, Briefcase, Shield, Key } from 'lucide-react';
 import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 import { useRouter } from 'next/navigation';
 import { IEmployee } from '@/app/(crm)/crm/employees/type';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface EmployeeViewProps {
   employees: IEmployee[];
@@ -24,7 +25,7 @@ export function EmployeeCardsView({
   onResetPassword,
 }: EmployeeViewProps) {
   const router = useRouter();
-
+  const { isOnline } = useAuth();
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       {employees.map((employee) => (
@@ -33,15 +34,18 @@ export function EmployeeCardsView({
           className="group rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6 transition-all hover:border-[#d3bb73]/30"
         >
           <div className="mb-4 flex flex-col items-center text-center">
-            <div className="mb-4">
+            <div
+              className="mb-4 cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                router.push(`/crm/employees/${employee.id}`);
+              }}
+            >
               <EmployeeAvatar
-                avatarUrl={employee.avatar_url}
-                avatarMetadata={employee.avatar_metadata}
-                employeeName={`${employee.name} ${employee.surname}`}
+                employee={employee}
                 size={80}
                 className="border-2 border-[#d3bb73]/20 transition-colors group-hover:border-[#d3bb73]/40"
-                showActivityStatus={true}
-                lastActiveAt={employee.last_active_at}
+                showActivityStatus
               />
             </div>
             <h3 className="text-lg font-medium text-[#e5e4e2]">
@@ -134,15 +138,20 @@ export function EmployeeListView({
           key={employee.id}
           className="flex items-center gap-4 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4 transition-all hover:border-[#d3bb73]/30"
         >
-          <EmployeeAvatar
-            avatarUrl={employee.avatar_url}
-            avatarMetadata={employee.avatar_metadata}
-            employeeName={`${employee.name} ${employee.surname}`}
-            size={48}
-            className="flex-shrink-0"
-            showActivityStatus={true}
-            lastActiveAt={employee.last_active_at}
-          />
+          <div
+            className="flex-shrink-0 cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation();
+              router.push(`/crm/employees/${employee.id}`);
+            }}
+          >
+            <EmployeeAvatar
+              employee={employee}
+              size={80}
+              className="border-2 border-[#d3bb73]/20 transition-colors group-hover:border-[#d3bb73]/40"
+              showActivityStatus
+            />
+          </div>
           <div className="min-w-0 flex-1">
             <h3 className="truncate text-base font-medium text-[#e5e4e2]">
               {employee.nickname || employee.name}
@@ -206,15 +215,18 @@ export function EmployeeDetailedView({
           className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6 transition-all hover:border-[#d3bb73]/30"
         >
           <div className="flex items-start gap-6">
-            <div className="flex-shrink-0">
+            <div
+              className="flex-shrink-0 cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                router.push(`/crm/employees/${employee.id}`);
+              }}
+            >
               <EmployeeAvatar
-                avatarUrl={employee.avatar_url}
-                avatarMetadata={employee.avatar_metadata}
-                employeeName={`${employee.name} ${employee.surname}`}
-                size={96}
-                className="border-2 border-[#d3bb73]/20"
-                showActivityStatus={true}
-                lastActiveAt={employee.last_active_at}
+                employee={employee}
+                size={80}
+                className="border-2 border-[#d3bb73]/20 transition-colors group-hover:border-[#d3bb73]/40"
+                showActivityStatus
               />
             </div>
 

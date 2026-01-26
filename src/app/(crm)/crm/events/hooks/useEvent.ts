@@ -1,9 +1,6 @@
 // useEvent.ts
 
-import { useCallback } from 'react';
-import { useSelector } from 'react-redux';
-import { eventsApi } from '@/app/(crm)/crm/events/store/api/eventsApi';
-import type { RootState } from '@/store/store';
+import { useCallback, useEffect, useState } from 'react';
 import {
   useUpdateEventMutation,
   useDeleteEventMutation,
@@ -11,21 +8,23 @@ import {
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
+import { IEvent } from '../type';
 
-export function useEvent() {
+export function useEvent(initialEvent?: IEvent) {
   const eventId = useParams().id as string;
+
+  const [event, setEvent] = useState<IEvent | null>(initialEvent || null);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<any>(null);
+
+  useEffect(() => {
+    if (initialEvent) {
+      setEvent(initialEvent);
+    }
+  }, [initialEvent]);
 
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
-
-  // 🔥 TYLKO ODCZYT z cache RTK Query – ZERO zapytań
-  const queryState = useSelector((state: RootState) =>
-    eventsApi.endpoints.getEventById.select(eventId)(state),
-  );
-
-  const event = queryState?.data;
-  const loading = queryState?.isLoading ?? false;
-  const error = queryState?.error;
 
   const [updateEvent, { isLoading: isUpdating }] = useUpdateEventMutation();
   const [deleteEvent, { isLoading: isDeleting }] = useDeleteEventMutation();

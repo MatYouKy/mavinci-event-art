@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
@@ -32,7 +33,7 @@ import { AvatarEditorModal } from '@/components/AvatarEditorModal';
 import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 import ImagePositionEditor from '@/components/crm/ImagePositionEditor';
 import { uploadImage } from '@/lib/storage';
-import { IUploadImage, IImage } from '@/types/image';
+import { IUploadImage, IImage, IImageMetadataUpload } from '@/types/image';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import PrivateTasksBoard from '@/components/crm/PrivateTasksBoard';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
@@ -268,7 +269,6 @@ export default function EmployeeDetailPage() {
       if (isOwnProfile && !canEdit) {
         delete dataToUpdate.role;
         delete dataToUpdate.access_level;
-        delete dataToUpdate.permissions;
       }
 
       const { error } = await supabase.from('employees').update(dataToUpdate).eq('id', employeeId);
@@ -329,7 +329,7 @@ export default function EmployeeDetailPage() {
 
   const handleSaveImage = async (
     imageType: 'avatar' | 'background',
-    payload: { file?: File; image: IUploadImage },
+    payload: { file?: File; image: IUploadImage | IImage },
   ) => {
     try {
       let imageUrl = imageType === 'avatar' ? employee?.avatar_url : employee?.background_image_url;
@@ -504,19 +504,16 @@ export default function EmployeeDetailPage() {
     },
   };
 
-  const backgroundImageData: IUploadImage = {
-    alt: `${employee.name} tło`,
-    image_metadata: employee.background_metadata || {
-      desktop: {
+  const backgroundImageData: IImageMetadataUpload = {
+    desktop: {
         src: employee.background_image_url,
-        position: { posX: 0, posY: 0, scale: 1 },
-        objectFit: 'cover',
-      },
-      mobile: {
-        src: employee.background_image_url,
-        position: { posX: 0, posY: 0, scale: 1 },
-        objectFit: 'cover',
-      },
+      position: employee.background_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 },
+      objectFit: employee.background_metadata?.desktop?.objectFit || 'cover',
+    },
+    mobile: {
+      src: employee.background_image_url,
+      position: employee.background_metadata?.mobile?.position || { posX: 0, posY: 0, scale: 1 },
+      objectFit: employee.background_metadata?.mobile?.objectFit || 'cover',
     },
   };
 
@@ -557,7 +554,7 @@ export default function EmployeeDetailPage() {
               >
                 <ImageEditorField
                   fieldName="background"
-                  image={backgroundImageData}
+                  image={backgroundImageData as IUploadImage | IImage}
                   isAdmin={isEditing && canEdit}
                   withMenu={isEditing && canEdit}
                   mode="horizontal"
@@ -1248,6 +1245,7 @@ export default function EmployeeDetailPage() {
         <PrivateTasksBoard
           employeeId={employeeId as string}
           isOwnProfile={currentEmployee?.id === employeeId}
+          tasksState={tasks as unknown as any[]}
         />
       )}
 
@@ -1332,7 +1330,9 @@ export default function EmployeeDetailPage() {
   );
 }
 
-function InfoRow({ label, value }: { label: string; value: string }) {
+function InfoRow({ label, value }: { label: string; value?: string | null }) {
+  if (value == null || value === '') return null;
+
   return (
     <div>
       <span className="text-xs text-[#e5e4e2]/60">{label}</span>

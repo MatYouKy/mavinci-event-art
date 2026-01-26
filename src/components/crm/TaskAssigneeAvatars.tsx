@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Mail } from 'lucide-react';
 import Popover from '@/components/UI/Tooltip';
+import { EmployeeAvatar } from '../EmployeeAvatar';
 
 interface ImagePosition {
   posX: number;
@@ -54,81 +55,61 @@ export default function TaskAssigneeAvatars({ assignees, maxVisible = 5 }: Props
     const initials = `${employees.name[0]}${employees.surname[0]}`.toUpperCase();
 
     const avatar = (
-      <div
-        className="relative rounded-full border-2 border-[#0f1119] bg-[#1c1f33] overflow-hidden cursor-pointer"
-        style={{
-          width: '28px',
-          height: '28px',
-        }}
-      >
-        {employees.avatar_url ? (
-          <img
-            src={employees.avatar_url}
-            alt={fullName}
-            className="w-full h-full"
-            style={{
-              objectFit: objectFit as any,
-              transform: `translate(${position.posX}%, ${position.posY}%) scale(${position.scale})`,
-            }}
-          />
-        ) : (
-          <div
-            className="w-full h-full flex items-center justify-center text-[#e5e4e2]/60 bg-[#1c1f33]"
-            style={{ fontSize: '10px' }}
-          >
-            {initials}
-          </div>
-        )}
+      <div className="cursor-pointer" onClick={() => handleProfileClick(assignee.employee_id)}>
+        <EmployeeAvatar
+          employeeId={assignee.employee_id}
+          avatarUrl={employees.avatar_url}
+          avatarMetadata={employees.avatar_metadata ?? null}
+          employeeName={fullName}
+          size={28}
+          showActivityStatus={true} // ✅ dot gdy online
+          showHoverEffect={false}
+          className="border-2 border-[#0f1119]" // tylko ten border, bez dodatkowych ringów
+        />
       </div>
     );
 
     const popoverContent = (
-      <div className="p-3 min-w-[200px]">
+      <div className="min-w-[200px] p-3">
         <div className="flex items-start gap-3">
-          <button
-            onClick={() => handleProfileClick(assignee.employee_id)}
-            className="relative rounded-full border-2 border-[#d3bb73]/20 bg-[#0f1119] overflow-hidden flex-shrink-0 hover:border-[#d3bb73]/40 transition-colors"
-            style={{ width: '48px', height: '48px' }}
+          <div
+            className="flex-shrink-0"
             title="Zobacz profil"
+            onClick={() => handleProfileClick(assignee.employee_id)}
           >
-            {employees.avatar_url ? (
-              <img
-                src={employees.avatar_url}
-                alt={fullName}
-                className="w-full h-full"
-                style={{
-                  objectFit: objectFit as any,
-                  transform: `translate(${position.posX}%, ${position.posY}%) scale(${position.scale})`,
-                }}
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-[#e5e4e2]/60 bg-[#1c1f33] text-lg">
-                {initials}
-              </div>
-            )}
-          </button>
+            <EmployeeAvatar
+              employeeId={assignee.employee_id}
+              avatarUrl={employees.avatar_url}
+              avatarMetadata={employees.avatar_metadata ?? null}
+              employeeName={fullName}
+              size={48}
+              showActivityStatus={true}
+              showHoverEffect={false}
+              className="border-2 border-[#d3bb73]/20 transition-colors hover:border-[#d3bb73]/40"
+            />
+          </div>
 
-          <div className="flex-1 min-w-0">
+          <div className="min-w-0 flex-1">
             <button
               onClick={() => handleProfileClick(assignee.employee_id)}
-              className="text-sm font-medium text-[#d3bb73] hover:text-[#d3bb73]/80 transition-colors text-left block truncate w-full"
+              className="block w-full truncate text-left text-sm font-medium text-[#d3bb73] transition-colors hover:text-[#d3bb73]/80"
             >
               {fullName}
             </button>
 
-            <div className="flex gap-1 mt-2">
+            <div className="mt-2 flex gap-1">
               <button
                 onClick={() => handleProfileClick(assignee.employee_id)}
-                className="flex-1 px-2 py-1 bg-[#d3bb73]/10 hover:bg-[#d3bb73]/20 text-[#d3bb73] rounded text-xs transition-colors"
+                className="flex-1 rounded bg-[#d3bb73]/10 px-2 py-1 text-xs text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"
               >
                 Profil
               </button>
               <button
                 onClick={() => router.push(`/crm/messages?to=${assignee.employee_id}`)}
-                className="flex items-center justify-center px-2 py-1 bg-[#d3bb73]/10 hover:bg-[#d3bb73]/20 text-[#d3bb73] rounded transition-colors"
+                className="flex items-center justify-center rounded bg-[#d3bb73]/10 px-2 py-1 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"
                 title="Czat prywatny"
               >
-                <Mail className="w-3 h-3" />
+                <Mail className="h-3 w-3" />
               </button>
             </div>
           </div>
@@ -144,11 +125,7 @@ export default function TaskAssigneeAvatars({ assignees, maxVisible = 5 }: Props
           zIndex: visibleAssignees.length - index,
         }}
       >
-        <Popover
-          trigger={avatar}
-          placement="top"
-          offset={8}
-        >
+        <Popover trigger={avatar} placement="top" offset={8}>
           {popoverContent}
         </Popover>
       </div>
@@ -161,7 +138,7 @@ export default function TaskAssigneeAvatars({ assignees, maxVisible = 5 }: Props
 
       {remainingCount > 0 && (
         <div
-          className="relative rounded-full border-2 border-[#0f1119] bg-[#1c1f33] flex items-center justify-center text-[10px] text-[#e5e4e2]/60"
+          className="relative flex items-center justify-center rounded-full border-2 border-[#0f1119] bg-[#1c1f33] text-[10px] text-[#e5e4e2]/60"
           style={{
             width: '28px',
             height: '28px',

@@ -7,12 +7,13 @@ import { IEventCategory } from '@/app/(crm)/crm/event-categories/types';
 import EquipmentConflictsSummary from './EquipmentConflictsSummary';
 import EquipmentConflictsModal from './EquipmentConflictsModal';
 import OfferStep2 from './Steps/OfferStep2';
-import OfferStep4 from './Steps/OfferStep4';
+import OfferStep4, { CustomItem } from './Steps/OfferStep4';
 import AddClientModal from './components/AddClientModal';
 import { OfferStep1 } from './Steps/OfferStep1';
 import { useOfferWizardLogic } from './hooks/useOfferWizzard';
 import OfferStep3 from './Steps/OfferStep3';
 import { ClientType } from '@/app/(crm)/crm/clients/type';
+import { IOfferWizardCustomItem } from '../../../types';
 
 interface OfferWizardProps {
   isOpen: boolean;
@@ -254,7 +255,7 @@ export default function OfferWizard({
               calculateTotal={calculateTotal}
               customItem={customItem}
               offerItems={offerItems}
-              setCustomItem={setCustomItem}
+              setCustomItem={(item: CustomItem) => setCustomItem(item as IOfferWizardCustomItem)}
             />
           )}
           {conflicts && conflicts.length > 0 && (

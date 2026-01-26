@@ -11,6 +11,9 @@ import { useMobile } from '@/hooks/useMobile';
 import NotificationCenter from './crm/NotificationCenter';
 import { canEditWebsite } from '@/lib/permissions';
 import { supabase } from '@/lib/supabase/browser';
+import { Notification } from './crm/NotificationCenter';
+import { IEmployee } from '@/app/(crm)/crm/employees/type';
+import { User } from '@supabase/supabase-js';
 
 const navLinks = [
   { label: 'O Nas', href: '/o-nas' },
@@ -62,9 +65,11 @@ export const categoryNavLinks: CategoryNode[] = [
 
 interface NavbarProps {
   onAdminClick?: () => void;
+  initialNotifications: Notification[];
+  initialEmployee: IEmployee;
 }
 
-export default function Navbar({ onAdminClick }: NavbarProps) {
+export default function Navbar({ onAdminClick, initialNotifications, initialEmployee }: NavbarProps & { initialNotifications: Notification[], initialEmployee: IEmployee }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isServicesOpen, setIsServicesOpen] = useState(false);
@@ -89,8 +94,8 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
 
   const isOfferActive = pathname.startsWith('/oferta');
   const authUser = useAppSelector((state) => state.auth.user);
-  const [crmUser, setCrmUser] = useState<any>(null);
-  const [employee, setEmployee] = useState<any>(null);
+  const [crmUser, setCrmUser] = useState<User | null>(null);
+  const [employee, setEmployee] = useState<IEmployee>(initialEmployee);
 
   useEffect(() => {
     const checkCrmAuth = async () => {
@@ -107,7 +112,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
           .eq('email', session.user.email)
           .maybeSingle();
         if (employeeData) {
-          setEmployee(employeeData);
+          setEmployee(employeeData as IEmployee);
         }
       }
     };
@@ -118,7 +123,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT') {
         setCrmUser(null);
-        setEmployee(null);
+        setEmployee(initialEmployee);
       } else if (session) {
         setCrmUser(session.user);
       }
@@ -173,7 +178,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
     await signOut();
     setIsDropdownOpen(false);
     setCrmUser(null);
-    setEmployee(null);
+    setEmployee(initialEmployee as IEmployee);
     router.push('/');
   };
 
@@ -328,7 +333,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
             </div>
 
             <div className="hidden items-center gap-3 md:flex">
-              {isAuthenticated && <NotificationCenter />}
+              {isAuthenticated && <NotificationCenter initialNotifications={initialNotifications} />}
               {isAuthenticated && (
                 <div className="relative" ref={dropdownRef}>
                   <button
@@ -594,7 +599,7 @@ export default function Navbar({ onAdminClick }: NavbarProps) {
                       <p className="truncate text-xs font-medium text-[#e5e4e2]">{displayName}</p>
                       <p className="truncate text-[10px] text-[#e5e4e2]/60">{userEmail}</p>
                     </div>
-                    <NotificationCenter />
+                    <NotificationCenter initialNotifications={initialNotifications} />
                   </div>
                   {crmUser && (
                     <button

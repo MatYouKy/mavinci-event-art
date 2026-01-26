@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { User, Building2, Plus, X, Trash2, Briefcase } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { User, Building2, Plus, Trash2, Briefcase, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
@@ -9,16 +9,17 @@ interface ClientSelectorTabsProps {
   initialClientType: 'individual' | 'business';
   initialOrganizationId: string | null;
   initialContactPersonId: string | null;
-  eventId?: string; // Optional - dla event_contact_persons
+  eventId?: string;
   onChange: (data: {
     client_type: 'individual' | 'business';
     organization_id: string | null;
     contact_person_id: string | null;
   }) => void;
-  showEventContactPersons?: boolean; // Czy pokazywać listę osób dla eventu
+  showEventContactPersons?: boolean;
+  initialContact?: Contact;
 }
 
-interface Contact {
+export interface Contact {
   id: string;
   full_name: string;
   first_name: string;
@@ -26,7 +27,8 @@ interface Contact {
   email: string;
   phone: string;
   position?: string;
-  contact_type: string;
+  contact_type: string; // 'individual' | 'contact'
+  role?: string;
 }
 
 interface Organization {
@@ -44,6 +46,20 @@ interface EventContactPerson {
   contact?: Contact;
 }
 
+const normalize = (s: string) =>
+  (s || '')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, ' ')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+const mergeUniqueById = <T extends { id: string }>(a: T[], b: T[]) => {
+  const map = new Map<string, T>();
+  [...a, ...b].forEach((x) => map.set(x.id, x));
+  return Array.from(map.values());
+};
+
 export default function ClientSelectorTabs({
   initialClientType,
   initialOrganizationId,
@@ -51,59 +67,161 @@ export default function ClientSelectorTabs({
   eventId,
   onChange,
   showEventContactPersons = false,
+  initialContact,
 }: ClientSelectorTabsProps) {
   const { showSnackbar } = useSnackbar();
+
   const [activeTab, setActiveTab] = useState<'individual' | 'business'>(initialClientType);
+
+  // SEARCH
+  const [individualSearch, setIndividualSearch] = useState('');
+  const [organizationSearch, setOrganizationSearch] = useState('');
+  const [businessSearch, setBusinessSearch] = useState(''); // zostaje tylko do "dodaj istniejącą osobę do eventu" jeśli zechcesz
+
+  // Dropdowny
+  const [showIndividualSuggestions, setShowIndividualSuggestions] = useState(false);
+  const [showOrganizationSuggestions, setShowOrganizationSuggestions] = useState(false);
+
+  const individualWrapRef = useRef<HTMLDivElement | null>(null);
+  const organizationWrapRef = useRef<HTMLDivElement | null>(null);
 
   // Individual
   const [individualContactId, setIndividualContactId] = useState(
-    initialClientType === 'individual' ? initialContactPersonId : '',
+    initialClientType === 'individual'
+      ? initialContact?.id || initialContactPersonId || ''
+      : '',
   );
-  const [individualContacts, setIndividualContacts] = useState<Contact[]>([]);
+  const [individualContacts, setIndividualContacts] = useState<Contact[]>(() => {
+    if (initialContact?.id && initialContact.contact_type === 'individual') return [initialContact];
+    return [];
+  });
+
   const [showNewIndividualForm, setShowNewIndividualForm] = useState(false);
   const [newIndividualData, setNewIndividualData] = useState({
-    first_name: '',
-    last_name: '',
-    email: '',
-    phone: '',
+    first_name: initialContact?.first_name || '',
+    last_name: initialContact?.last_name || '',
+    email: initialContact?.email || '',
+    phone: initialContact?.phone || '',
   });
 
   // Business
   const [organizationId, setOrganizationId] = useState(
-    initialClientType === 'business' ? initialOrganizationId : '',
+    initialClientType === 'business' ? initialOrganizationId || '' : '',
   );
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [businessContacts, setBusinessContacts] = useState<Contact[]>([]);
+
+  /**
+   * ✅ DRAFT: kontaktowa osoba (wybrana) – NIE zapisujemy do bazy
+   * To jest jedyne źródło do `contact_person_id` dla business.
+   */
+  const [selectedBusinessContactId, setSelectedBusinessContactId] = useState<string>(
+    initialClientType === 'business' ? initialContactPersonId || '' : '',
+  );
+
+  /**
+   * ✅ DRAFT: osoby eventowe (jeśli chcesz listę w UI) – nadal pobieramy, ale nie zapisujemy w trakcie edycji.
+   * Używamy tego tylko do pokazania i ustawiania "Główna" lokalnie.
+   */
   const [eventContactPersons, setEventContactPersons] = useState<EventContactPerson[]>([]);
+
+
   const [showNewBusinessContactForm, setShowNewBusinessContactForm] = useState(false);
   const [newBusinessContactData, setNewBusinessContactData] = useState({
-    first_name: '',
-    last_name: '',
-    email: '',
-    phone: '',
-    position: '',
-    role: '',
+    first_name: initialContact?.first_name || '',
+    last_name: initialContact?.last_name || '',
+    email: initialContact?.email || '',
+    phone: initialContact?.phone || '',
+    position: initialContact?.position || '',
+    role: initialContact?.role || '',
   });
 
+  // ✅ seed z initialContact
   useEffect(() => {
-    fetchOrganizations();
-    fetchIndividualContacts();
+    if (!initialContact?.id) return;
+
+    if (initialContact.contact_type === 'individual') {
+      setActiveTab('individual');
+      setIndividualContacts((prev) => mergeUniqueById(prev, [initialContact]));
+      setIndividualContactId(initialContact.id);
+      setIndividualSearch(
+        `${initialContact.full_name}${initialContact.email ? ` (${initialContact.email})` : ''}`,
+      );
+
+      setNewIndividualData({
+        first_name: initialContact.first_name || '',
+        last_name: initialContact.last_name || '',
+        email: initialContact.email || '',
+        phone: initialContact.phone || '',
+      });
+    }
+
+    if (initialContact.contact_type === 'contact') {
+      setNewBusinessContactData({
+        first_name: initialContact.first_name || '',
+        last_name: initialContact.last_name || '',
+        email: initialContact.email || '',
+        phone: initialContact.phone || '',
+        position: initialContact.position || '',
+        role: initialContact.role || '',
+      });
+    }
+  }, [initialContact?.id]);
+
+  // click-outside dla dropdownów
+  useEffect(() => {
+    const onDocMouseDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+
+      if (individualWrapRef.current && !individualWrapRef.current.contains(t)) {
+        setShowIndividualSuggestions(false);
+      }
+      if (organizationWrapRef.current && !organizationWrapRef.current.contains(t)) {
+        setShowOrganizationSuggestions(false);
+      }
+    };
+
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
   }, []);
 
+  // Fetch organizations
   useEffect(() => {
-    if (organizationId) {
-      fetchBusinessContacts();
+    fetchOrganizations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Fetch individual contacts
+  useEffect(() => {
+    fetchIndividualContacts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Fetch business contacts po org + auto-select primary contact dla org
+  useEffect(() => {
+    if (!organizationId) {
+      setBusinessContacts([]);
+      setSelectedBusinessContactId('');
+      return;
     }
+
+    fetchBusinessContacts(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [organizationId]);
 
+  // Pobieramy event_contact_persons tylko do podglądu (opcjonalnie)
   useEffect(() => {
     if (showEventContactPersons && eventId && activeTab === 'business') {
       fetchEventContactPersons();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, eventId, showEventContactPersons]);
 
+  /**
+   * ✅ Notify parent
+   * Business: używamy selectedBusinessContactId, a NIE DB insertów.
+   */
   useEffect(() => {
-    // Notify parent of changes
     if (activeTab === 'individual') {
       onChange({
         client_type: 'individual',
@@ -111,17 +229,17 @@ export default function ClientSelectorTabs({
         contact_person_id: individualContactId || null,
       });
     } else {
-      const primaryContact = eventContactPersons.find((p) => p.is_primary);
       onChange({
         client_type: 'business',
         organization_id: organizationId && organizationId.trim() !== '' ? organizationId : null,
         contact_person_id:
-          primaryContact?.contact_id && primaryContact.contact_id.trim() !== ''
-            ? primaryContact.contact_id
+          selectedBusinessContactId && selectedBusinessContactId.trim() !== ''
+            ? selectedBusinessContactId
             : null,
       });
     }
-  }, [activeTab, individualContactId, organizationId, eventContactPersons]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, individualContactId, organizationId, selectedBusinessContactId]);
 
   const fetchOrganizations = async () => {
     const { data } = await supabase
@@ -138,10 +256,20 @@ export default function ClientSelectorTabs({
       .select('*')
       .eq('contact_type', 'individual')
       .order('full_name');
-    if (data) setIndividualContacts(data);
+
+    if (data) {
+      setIndividualContacts((prev) => mergeUniqueById(prev, data as any));
+    }
   };
 
-  const fetchBusinessContacts = async () => {
+  /**
+   * ✅ fetchBusinessContacts(autoPickPrimary)
+   * - pobiera osoby kontaktowe firmy
+   * - JEŚLI autoPickPrimary: wybiera automatycznie główną (is_primary w contact_organizations)
+   *
+   * Jeśli nie masz contact_organizations.is_primary -> podmień logikę "pickPrimaryId" na swoją.
+   */
+  const fetchBusinessContacts = async (autoPickPrimary: boolean) => {
     if (!organizationId) return;
 
     const { data } = await supabase
@@ -149,14 +277,54 @@ export default function ClientSelectorTabs({
       .select(
         `
         *,
-        contact_organizations!inner(organization_id)
+        contact_organizations!inner(
+          organization_id,
+          is_primary
+        )
       `,
       )
       .eq('contact_organizations.organization_id', organizationId)
       .eq('contact_type', 'contact')
       .order('full_name');
 
-    if (data) setBusinessContacts(data);
+    const contacts = (data as any as Contact[]) || [];
+    setBusinessContacts(contacts);
+
+    if (!autoPickPrimary) return;
+
+    // ✅ auto pick primary contact for this organization
+    // Zakładam pole: contact_organizations.is_primary = true
+    const pickPrimaryId =
+      (contacts as any[]).find((c) => c.contact_organizations?.[0]?.is_primary)?.id ||
+      contacts[0]?.id ||
+      '';
+
+    // ustaw jako wybraną osobę kontaktową (draft)
+    setSelectedBusinessContactId(pickPrimaryId);
+
+    // jeśli pokazujesz listę event_contact_persons, to:
+    // - NIE zapisujemy do bazy
+    // - tylko lokalnie ustawimy, że primary = pickPrimaryId (jeżeli w ogóle chcesz to widzieć w UI)
+    if (showEventContactPersons) {
+      setEventContactPersons((prev) => {
+        // jeśli event już miał osoby — nie nadpisuj bez sensu,
+        // ale jeśli lista jest pusta, to wypełnij draftem z primary z organizacji
+        if (prev.length > 0) return prev;
+
+        if (!pickPrimaryId) return prev;
+
+        return [
+          {
+            id: `draft-${pickPrimaryId}`,
+            contact_id: pickPrimaryId,
+            is_primary: true,
+            role: '',
+            notes: '',
+            contact: contacts.find((c) => c.id === pickPrimaryId),
+          } as any,
+        ];
+      });
+    }
   };
 
   const fetchEventContactPersons = async () => {
@@ -172,7 +340,84 @@ export default function ClientSelectorTabs({
       )
       .eq('event_id', eventId);
 
-    if (data) setEventContactPersons(data as any);
+    if (data) {
+      setEventContactPersons(data as any);
+
+      // ✅ jeśli event ma już primary kontakt, ustaw go w draft selection
+      const primary = (data as any[]).find((p) => p.is_primary);
+      if (primary?.contact_id) setSelectedBusinessContactId(primary.contact_id);
+    }
+  };
+
+  /**
+   * ❌ UWAGA: poniższe 3 funkcje PRZESTAJĄ pisać do bazy
+   * Zmieniamy je na "draft only"
+   */
+
+  const handleAddExistingContact = async (contactId: string) => {
+    // DRAFT ONLY: dodaj lokalnie (bez insert)
+    const contact = businessContacts.find((c) => c.id === contactId);
+
+    setEventContactPersons((prev) => {
+      const exists = prev.find((p) => p.contact_id === contactId);
+      if (exists) return prev;
+
+      const next = [
+        ...prev,
+        {
+          id: `draft-${contactId}`,
+          contact_id: contactId,
+          is_primary: prev.length === 0, // jeśli pusto -> nowa jest primary
+          role: '',
+          notes: '',
+          contact,
+        } as any,
+      ];
+
+      // jeśli to pierwsza osoba - ustaw draft selection
+      if (prev.length === 0) setSelectedBusinessContactId(contactId);
+
+      return next;
+    });
+
+    showSnackbar('Dodano (wersja robocza) – zapisze się po "Zapisz zmiany"', 'success');
+  };
+
+  const handleRemoveContactPerson = async (id: string) => {
+    // DRAFT ONLY: usuń lokalnie
+    setEventContactPersons((prev) => {
+      const toRemove = prev.find((p) => p.id === id);
+      const next = prev.filter((p) => p.id !== id);
+
+      // jeśli usunięto aktualnie wybraną kontaktową -> wyczyść selection
+      if (toRemove?.contact_id && toRemove.contact_id === selectedBusinessContactId) {
+        setSelectedBusinessContactId('');
+      }
+
+      // jeśli usunięto primary -> ustaw pierwszą jako primary (jeśli jest)
+      if (toRemove?.is_primary && next.length > 0) {
+        const first = next[0];
+        const fixed = next.map((p) => ({ ...p, is_primary: p.id === first.id }));
+        setSelectedBusinessContactId(first.contact_id);
+        return fixed as any;
+      }
+
+      return next;
+    });
+
+    showSnackbar('Usunięto (wersja robocza) – zapisze się po "Zapisz zmiany"', 'success');
+  };
+
+  const handleSetPrimary = async (id: string) => {
+    // DRAFT ONLY: ustaw primary lokalnie
+    setEventContactPersons((prev) => {
+      const next = prev.map((p) => ({ ...p, is_primary: p.id === id })) as any;
+      const primary = next.find((p: any) => p.id === id);
+      if (primary?.contact_id) setSelectedBusinessContactId(primary.contact_id);
+      return next;
+    });
+
+    showSnackbar('Ustawiono główną (wersja robocza) – zapisze się po "Zapisz zmiany"', 'success');
   };
 
   const handleCreateIndividual = async () => {
@@ -198,8 +443,12 @@ export default function ClientSelectorTabs({
 
       if (error) throw error;
 
-      setIndividualContacts((prev) => [...prev, data]);
-      setIndividualContactId(data.id);
+      setIndividualContacts((prev) => mergeUniqueById(prev, [data as any]));
+      setIndividualContactId((data as any).id);
+
+      const created = data as any as Contact;
+      setIndividualSearch(`${created.full_name}${created.email ? ` (${created.email})` : ''}`);
+
       setShowNewIndividualForm(false);
       setNewIndividualData({ first_name: '', last_name: '', email: '', phone: '' });
       showSnackbar('Klient dodany', 'success');
@@ -238,28 +487,17 @@ export default function ClientSelectorTabs({
 
       const { error: orgError } = await supabase.from('contact_organizations').insert([
         {
-          contact_id: contact.id,
+          contact_id: (contact as any).id,
           organization_id: organizationId,
+          // jeśli masz is_primary -> możesz tu ustawić is_primary: false
         },
       ]);
 
       if (orgError) throw orgError;
 
-      if (showEventContactPersons && eventId) {
-        const { error: eventError } = await supabase.from('event_contact_persons').insert([
-          {
-            event_id: eventId,
-            contact_id: contact.id,
-            role: newBusinessContactData.role,
-            is_primary: eventContactPersons.length === 0,
-          },
-        ]);
+      // odśwież kontakty firmy i auto-pick primary (niech zostanie primary z bazy)
+      await fetchBusinessContacts(false);
 
-        if (eventError) throw eventError;
-        await fetchEventContactPersons();
-      }
-
-      await fetchBusinessContacts();
       setShowNewBusinessContactForm(false);
       setNewBusinessContactData({
         first_name: '',
@@ -275,64 +513,36 @@ export default function ClientSelectorTabs({
     }
   };
 
-  const handleAddExistingContact = async (contactId: string) => {
-    if (!eventId || !showEventContactPersons) return;
+  // INDIVIDUAL suggestions
+  const filteredIndividuals = useMemo(() => {
+    const q = normalize(individualSearch);
+    if (!q) return individualContacts;
+    return individualContacts.filter((c) => {
+      const hay = normalize(
+        `${c.full_name} ${c.first_name} ${c.last_name} ${c.email || ''} ${c.phone || ''}`,
+      );
+      return hay.includes(q);
+    });
+  }, [individualContacts, individualSearch]);
 
-    try {
-      const { error } = await supabase.from('event_contact_persons').insert([
-        {
-          event_id: eventId,
-          contact_id: contactId,
-          is_primary: eventContactPersons.length === 0,
-        },
-      ]);
+  // ORGANIZATION suggestions
+  const filteredOrganizations = useMemo(() => {
+    const q = normalize(organizationSearch);
+    if (!q) return organizations;
+    return organizations.filter((o) => {
+      const hay = normalize(`${o.alias || ''} ${o.name || ''}`);
+      return hay.includes(q);
+    });
+  }, [organizations, organizationSearch]);
 
-      if (error) throw error;
+  const availableBusinessContacts = useMemo(() => {
+    // W business chcemy wybierać osobę kontaktową z listy kontaktów firmy
+    return businessContacts;
+  }, [businessContacts]);
 
-      await fetchEventContactPersons();
-      showSnackbar('Osoba dodana do eventu', 'success');
-    } catch (error: any) {
-      showSnackbar(error.message || 'Błąd podczas dodawania osoby', 'error');
-    }
-  };
-
-  const handleRemoveContactPerson = async (id: string) => {
-    if (!eventId || !showEventContactPersons) return;
-
-    try {
-      const { error } = await supabase.from('event_contact_persons').delete().eq('id', id);
-
-      if (error) throw error;
-
-      await fetchEventContactPersons();
-      showSnackbar('Osoba usunięta', 'success');
-    } catch (error: any) {
-      showSnackbar(error.message || 'Błąd podczas usuwania osoby', 'error');
-    }
-  };
-
-  const handleSetPrimary = async (id: string) => {
-    if (!eventId || !showEventContactPersons) return;
-
-    try {
-      await supabase
-        .from('event_contact_persons')
-        .update({ is_primary: false })
-        .eq('event_id', eventId);
-
-      const { error } = await supabase
-        .from('event_contact_persons')
-        .update({ is_primary: true })
-        .eq('id', id);
-
-      if (error) throw error;
-
-      await fetchEventContactPersons();
-      showSnackbar('Główna osoba kontaktowa ustawiona', 'success');
-    } catch (error: any) {
-      showSnackbar(error.message || 'Błąd', 'error');
-    }
-  };
+  const selectedBusinessContact = useMemo(() => {
+    return businessContacts.find((c) => c.id === selectedBusinessContactId) || null;
+  }, [businessContacts, selectedBusinessContactId]);
 
   return (
     <div className="space-y-4">
@@ -345,6 +555,7 @@ export default function ClientSelectorTabs({
               ? 'bg-[#d3bb73] text-[#1c1f33]'
               : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#d3bb73]/10'
           }`}
+          type="button"
         >
           <User className="h-4 w-4" />
           Impreza indywidualna
@@ -356,6 +567,7 @@ export default function ClientSelectorTabs({
               ? 'bg-[#d3bb73] text-[#1c1f33]'
               : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#d3bb73]/10'
           }`}
+          type="button"
         >
           <Building2 className="h-4 w-4" />
           Business
@@ -363,31 +575,79 @@ export default function ClientSelectorTabs({
       </div>
 
       {activeTab === 'individual' ? (
+        // === INDIVIDUAL (zostaje jak było) ===
         <div className="space-y-4">
-          <div>
+          <div ref={individualWrapRef}>
             <label className="mb-2 block text-sm text-[#e5e4e2]/60">
               Osoba kontaktowa / Klient indywidualny *
             </label>
-            <select
-              value={individualContactId || ''}
-              onChange={(e) => {
-                setIndividualContactId(e.target.value);
-                setShowNewIndividualForm(false);
-              }}
-              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-            >
-              <option value="">Wybierz klienta</option>
-              {individualContacts.map((contact) => (
-                <option key={contact.id} value={contact.id}>
-                  {contact.full_name} {contact.email ? `(${contact.email})` : ''}
-                </option>
-              ))}
-            </select>
+
+            <div className="relative">
+              <div className="mb-2 flex items-center gap-2">
+                <input
+                  value={individualSearch}
+                  onChange={(e) => {
+                    setIndividualSearch(e.target.value);
+                    setShowIndividualSuggestions(true);
+                  }}
+                  onFocus={() => setShowIndividualSuggestions(true)}
+                  placeholder="Szukaj (imię, nazwisko, email, tel...)"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                />
+                {individualSearch && (
+                  <button
+                    onClick={() => {
+                      setIndividualSearch('');
+                      setShowIndividualSuggestions(false);
+                    }}
+                    className="rounded-lg border border-[#d3bb73]/20 p-2 text-[#e5e4e2]/70 hover:bg-[#d3bb73]/5"
+                    title="Wyczyść"
+                    type="button"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+
+              {showIndividualSuggestions && (
+                <div className="absolute z-30 w-full overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] shadow-xl">
+                  {filteredIndividuals.slice(0, 8).map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => {
+                        setIndividualContactId(c.id);
+                        setIndividualSearch(`${c.full_name}${c.email ? ` (${c.email})` : ''}`);
+                        setShowIndividualSuggestions(false);
+                        setShowNewIndividualForm(false);
+                      }}
+                      className="flex w-full flex-col px-4 py-3 text-left hover:bg-[#d3bb73]/10"
+                    >
+                      <span className="text-sm text-[#e5e4e2]">{c.full_name}</span>
+                      <span className="text-xs text-[#e5e4e2]/50">
+                        {c.email || '—'} {c.phone ? ` • ${c.phone}` : ''}
+                      </span>
+                    </button>
+                  ))}
+
+                  {filteredIndividuals.length === 0 && (
+                    <div className="px-4 py-3 text-sm text-[#e5e4e2]/50">Brak wyników</div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {individualContactId && (
+              <div className="mt-2 text-xs text-[#e5e4e2]/60">
+                Wybrano ID: <span className="text-[#d3bb73]">{individualContactId}</span>
+              </div>
+            )}
           </div>
 
           <button
             onClick={() => setShowNewIndividualForm(!showNewIndividualForm)}
             className="flex items-center gap-2 text-sm text-[#d3bb73] hover:text-[#d3bb73]/80"
+            type="button"
           >
             <Plus className="h-4 w-4" />
             {showNewIndividualForm ? 'Anuluj' : 'Dodaj nowego klienta'}
@@ -436,6 +696,7 @@ export default function ClientSelectorTabs({
               <button
                 onClick={handleCreateIndividual}
                 className="w-full rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] hover:bg-[#d3bb73]/90"
+                type="button"
               >
                 Dodaj klienta
               </button>
@@ -443,201 +704,333 @@ export default function ClientSelectorTabs({
           )}
         </div>
       ) : (
+        // === BUSINESS (POPRAWIONE) ===
         <div className="space-y-4">
-          <div>
+          {/* ORGANIZACJA: search + podpowiedzi */}
+          <div ref={organizationWrapRef}>
             <label className="mb-2 block text-sm text-[#e5e4e2]/60">Organizacja (Firma) *</label>
-            <select
-              value={organizationId || ''}
-              onChange={(e) => setOrganizationId(e.target.value)}
-              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-            >
-              <option value="">Wybierz organizację</option>
-              {organizations.map((org) => (
-                <option key={org.id} value={org.id}>
-                  {org.alias || org.name}
-                </option>
-              ))}
-            </select>
-          </div>
 
-          {organizationId && showEventContactPersons && eventId && (
-            <>
-              <div className="border-t border-[#d3bb73]/10 pt-4">
-                <h3 className="mb-3 text-lg font-light text-[#e5e4e2]">Osoby kontaktowe</h3>
-
-                {eventContactPersons.length > 0 ? (
-                  <div className="mb-4 space-y-2">
-                    {eventContactPersons.map((person) => (
-                      <div
-                        key={person.id}
-                        className="flex items-center justify-between rounded-lg bg-[#0f1119] p-3"
-                      >
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[#e5e4e2]">{person.contact?.full_name}</span>
-                            {person.is_primary && (
-                              <span className="rounded bg-[#d3bb73]/20 px-2 py-0.5 text-xs text-[#d3bb73]">
-                                Główna
-                              </span>
-                            )}
-                          </div>
-                          {person.contact?.position && (
-                            <div className="mt-1 flex items-center gap-1 text-sm text-[#e5e4e2]/60">
-                              <Briefcase className="h-3 w-3" />
-                              {person.contact.position}
-                            </div>
-                          )}
-                          {person.role && (
-                            <div className="mt-1 text-xs text-[#e5e4e2]/40">
-                              Rola: {person.role}
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {!person.is_primary && (
-                            <button
-                              onClick={() => handleSetPrimary(person.id)}
-                              className="text-xs text-[#d3bb73] hover:underline"
-                            >
-                              Ustaw główną
-                            </button>
-                          )}
-                          <button
-                            onClick={() => handleRemoveContactPerson(person.id)}
-                            className="rounded p-1 text-red-400 hover:bg-red-400/10"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="mb-4 text-sm text-[#e5e4e2]/40">
-                    Brak przypisanych osób kontaktowych
-                  </p>
-                )}
-
-                <button
-                  onClick={() => setShowNewBusinessContactForm(!showNewBusinessContactForm)}
-                  className="mb-4 flex items-center gap-2 text-sm text-[#d3bb73] hover:text-[#d3bb73]/80"
-                >
-                  <Plus className="h-4 w-4" />
-                  {showNewBusinessContactForm ? 'Anuluj' : 'Dodaj nową osobę'}
-                </button>
-
-                {showNewBusinessContactForm && (
-                  <div className="mb-4 space-y-3 rounded-lg bg-[#0f1119] p-4">
-                    <div className="grid grid-cols-2 gap-3">
-                      <input
-                        type="text"
-                        placeholder="Imię *"
-                        value={newBusinessContactData.first_name}
-                        onChange={(e) =>
-                          setNewBusinessContactData({
-                            ...newBusinessContactData,
-                            first_name: e.target.value,
-                          })
-                        }
-                        className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Nazwisko *"
-                        value={newBusinessContactData.last_name}
-                        onChange={(e) =>
-                          setNewBusinessContactData({
-                            ...newBusinessContactData,
-                            last_name: e.target.value,
-                          })
-                        }
-                        className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
-                      />
-                    </div>
-                    <input
-                      type="text"
-                      placeholder="Stanowisko (np. Dyrektor)"
-                      value={newBusinessContactData.position}
-                      onChange={(e) =>
-                        setNewBusinessContactData({
-                          ...newBusinessContactData,
-                          position: e.target.value,
-                        })
-                      }
-                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
-                    />
-                    <input
-                      type="email"
-                      placeholder="Email"
-                      value={newBusinessContactData.email}
-                      onChange={(e) =>
-                        setNewBusinessContactData({
-                          ...newBusinessContactData,
-                          email: e.target.value,
-                        })
-                      }
-                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
-                    />
-                    <input
-                      type="tel"
-                      placeholder="Telefon"
-                      value={newBusinessContactData.phone}
-                      onChange={(e) =>
-                        setNewBusinessContactData({
-                          ...newBusinessContactData,
-                          phone: e.target.value,
-                        })
-                      }
-                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
-                    />
-                    <input
-                      type="text"
-                      placeholder="Rola w evencie (np. Decydent)"
-                      value={newBusinessContactData.role}
-                      onChange={(e) =>
-                        setNewBusinessContactData({
-                          ...newBusinessContactData,
-                          role: e.target.value,
-                        })
-                      }
-                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
-                    />
-                    <button
-                      onClick={handleCreateBusinessContact}
-                      className="w-full rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] hover:bg-[#d3bb73]/90"
-                    >
-                      Dodaj osobę
-                    </button>
-                  </div>
-                )}
-
-                {businessContacts.length > 0 && (
-                  <div>
-                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">
-                      Lub dodaj istniejącą osobę z firmy
-                    </label>
-                    <select
-                      onChange={(e) => {
-                        if (e.target.value) {
-                          handleAddExistingContact(e.target.value);
-                          e.target.value = '';
-                        }
-                      }}
-                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-                    >
-                      <option value="">Wybierz osobę</option>
-                      {businessContacts
-                        .filter((c) => !eventContactPersons.find((p) => p.contact_id === c.id))
-                        .map((contact) => (
-                          <option key={contact.id} value={contact.id}>
-                            {contact.full_name} {contact.position ? `(${contact.position})` : ''}
-                          </option>
-                        ))}
-                    </select>
-                  </div>
+            <div className="relative">
+              <div className="mb-2 flex items-center gap-2">
+                <input
+                  value={organizationSearch}
+                  onChange={(e) => {
+                    setOrganizationSearch(e.target.value);
+                    setShowOrganizationSuggestions(true);
+                  }}
+                  onFocus={() => setShowOrganizationSuggestions(true)}
+                  placeholder="Szukaj organizacji (nazwa / alias...)"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                />
+                {organizationSearch && (
+                  <button
+                    onClick={() => {
+                      setOrganizationSearch('');
+                      setShowOrganizationSuggestions(false);
+                    }}
+                    className="rounded-lg border border-[#d3bb73]/20 p-2 text-[#e5e4e2]/70 hover:bg-[#d3bb73]/5"
+                    title="Wyczyść"
+                    type="button"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
                 )}
               </div>
-            </>
+
+              {showOrganizationSuggestions && (
+                <div className="absolute z-30 w-full overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] shadow-xl">
+                  {filteredOrganizations.slice(0, 8).map((org) => (
+                    <button
+                      key={org.id}
+                      type="button"
+                      onClick={() => {
+                        setOrganizationId(org.id);
+                        setOrganizationSearch(org.alias || org.name);
+                        setShowOrganizationSuggestions(false);
+
+                        // reset selection, ale fetchBusinessContacts(autopick) zaraz ustawi primary
+                        setSelectedBusinessContactId('');
+                      }}
+                      className="flex w-full flex-col px-4 py-3 text-left hover:bg-[#d3bb73]/10"
+                    >
+                      <span className="text-sm text-[#e5e4e2]">{org.alias || org.name}</span>
+                      {org.alias && <span className="text-xs text-[#e5e4e2]/50">{org.name}</span>}
+                    </button>
+                  ))}
+
+                  {filteredOrganizations.length === 0 && (
+                    <div className="px-4 py-3 text-sm text-[#e5e4e2]/50">Brak wyników</div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {organizationId && (
+              <div className="mt-2 text-xs text-[#e5e4e2]/60">
+                Wybrano ID: <span className="text-[#d3bb73]">{organizationId}</span>
+              </div>
+            )}
+          </div>
+
+          {/* ✅ Po wybraniu organizacji: pokaż prosty selector osoby kontaktowej (bez wyszukiwarki) */}
+          {organizationId && (
+            <div className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4">
+              <div className="mb-2 text-sm text-[#e5e4e2]/60">Osoba kontaktowa (z firmy)</div>
+
+              {/* Jeśli jest ustawiona (auto primary lub manual) */}
+              {selectedBusinessContact ? (
+                <div className="flex items-center justify-between gap-3 rounded-lg bg-[#1c1f33] px-4 py-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm text-[#e5e4e2]">{selectedBusinessContact.full_name}</div>
+                    <div className="truncate text-xs text-[#e5e4e2]/50">
+                      {selectedBusinessContact.position ? `${selectedBusinessContact.position} • ` : ''}
+                      {selectedBusinessContact.email || '—'}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // usuń draft selection -> pokaże się selector poniżej (bez search)
+                      setSelectedBusinessContactId('');
+                    }}
+                    className="rounded-lg border border-red-400/30 px-3 py-2 text-xs text-red-300 hover:bg-red-400/10"
+                    title="Usuń wybór"
+                  >
+                    Usuń
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      if (!id) return;
+                      setSelectedBusinessContactId(id);
+                    }}
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                  >
+                    <option value="">Wybierz osobę kontaktową</option>
+                    {availableBusinessContacts.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.full_name} {c.position ? `(${c.position})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="text-xs text-[#e5e4e2]/40">
+                    Wybór jest roboczy — zapisze się dopiero po „Zapisz zmiany”.
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* (opcjonalnie) Lista event_contact_persons – ale DRAFT ONLY */}
+          {organizationId && showEventContactPersons && eventId && (
+            <div className="border-t border-[#d3bb73]/10 pt-4">
+              <h3 className="mb-3 text-lg font-light text-[#e5e4e2]">Osoby kontaktowe (podgląd)</h3>
+
+              {eventContactPersons.length > 0 ? (
+                <div className="mb-4 space-y-2">
+                  {eventContactPersons.map((person) => (
+                    <div
+                      key={person.id}
+                      className="flex items-center justify-between rounded-lg bg-[#0f1119] p-3"
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[#e5e4e2]">{person.contact?.full_name}</span>
+                          {person.is_primary && (
+                            <span className="rounded bg-[#d3bb73]/20 px-2 py-0.5 text-xs text-[#d3bb73]">
+                              Główna
+                            </span>
+                          )}
+                        </div>
+                        {person.contact?.position && (
+                          <div className="mt-1 flex items-center gap-1 text-sm text-[#e5e4e2]/60">
+                            <Briefcase className="h-3 w-3" />
+                            {person.contact.position}
+                          </div>
+                        )}
+                        {person.role && (
+                          <div className="mt-1 text-xs text-[#e5e4e2]/40">Rola: {person.role}</div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {!person.is_primary && (
+                          <button
+                            onClick={() => handleSetPrimary(person.id)}
+                            className="text-xs text-[#d3bb73] hover:underline"
+                            type="button"
+                          >
+                            Ustaw główną
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleRemoveContactPerson(person.id)}
+                          className="rounded p-1 text-red-400 hover:bg-red-400/10"
+                          type="button"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mb-4 text-sm text-[#e5e4e2]/40">Brak przypisanych osób kontaktowych</p>
+              )}
+
+              <button
+                onClick={() => setShowNewBusinessContactForm(!showNewBusinessContactForm)}
+                className="mb-4 flex items-center gap-2 text-sm text-[#d3bb73] hover:text-[#d3bb73]/80"
+                type="button"
+              >
+                <Plus className="h-4 w-4" />
+                {showNewBusinessContactForm ? 'Anuluj' : 'Dodaj nową osobę'}
+              </button>
+
+              {showNewBusinessContactForm && (
+                <div className="mb-4 space-y-3 rounded-lg bg-[#0f1119] p-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <input
+                      type="text"
+                      placeholder="Imię *"
+                      value={newBusinessContactData.first_name}
+                      onChange={(e) =>
+                        setNewBusinessContactData({
+                          ...newBusinessContactData,
+                          first_name: e.target.value,
+                        })
+                      }
+                      className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Nazwisko *"
+                      value={newBusinessContactData.last_name}
+                      onChange={(e) =>
+                        setNewBusinessContactData({
+                          ...newBusinessContactData,
+                          last_name: e.target.value,
+                        })
+                      }
+                      className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
+                    />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Stanowisko (np. Dyrektor)"
+                    value={newBusinessContactData.position}
+                    onChange={(e) =>
+                      setNewBusinessContactData({
+                        ...newBusinessContactData,
+                        position: e.target.value,
+                      })
+                    }
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
+                  />
+                  <input
+                    type="email"
+                    placeholder="Email"
+                    value={newBusinessContactData.email}
+                    onChange={(e) =>
+                      setNewBusinessContactData({
+                        ...newBusinessContactData,
+                        email: e.target.value,
+                      })
+                    }
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
+                  />
+                  <input
+                    type="tel"
+                    placeholder="Telefon"
+                    value={newBusinessContactData.phone}
+                    onChange={(e) =>
+                      setNewBusinessContactData({
+                        ...newBusinessContactData,
+                        phone: e.target.value,
+                      })
+                    }
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Rola w evencie (np. Decydent)"
+                    value={newBusinessContactData.role}
+                    onChange={(e) =>
+                      setNewBusinessContactData({
+                        ...newBusinessContactData,
+                        role: e.target.value,
+                      })
+                    }
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
+                  />
+                  <button
+                    onClick={handleCreateBusinessContact}
+                    className="w-full rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] hover:bg-[#d3bb73]/90"
+                    type="button"
+                  >
+                    Dodaj osobę
+                  </button>
+                </div>
+              )}
+
+              {/* Jeśli chcesz dalej "dodaj istniejącą osobę do eventu" – zostawiam draft-only */}
+              {eventContactPersons.length === 0 && availableBusinessContacts.length > 0 && (
+                <div className="mt-3">
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                    Dodaj osobę do listy (roboczo)
+                  </label>
+
+                  <div className="mb-2 flex items-center gap-2">
+                    <input
+                      value={businessSearch}
+                      onChange={(e) => setBusinessSearch(e.target.value)}
+                      placeholder="Szukaj osoby (imię, stanowisko, email...)"
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                    />
+                    {businessSearch && (
+                      <button
+                        onClick={() => setBusinessSearch('')}
+                        className="rounded-lg border border-[#d3bb73]/20 p-2 text-[#e5e4e2]/70 hover:bg-[#d3bb73]/5"
+                        title="Wyczyść"
+                        type="button"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  <select
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        handleAddExistingContact(e.target.value);
+                        e.target.value = '';
+                        setBusinessSearch('');
+                      }
+                    }}
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                  >
+                    <option value="">Wybierz osobę</option>
+                    {availableBusinessContacts
+                      .filter((c) => {
+                        const q = normalize(businessSearch);
+                        if (!q) return true;
+                        const hay = normalize(
+                          `${c.full_name} ${c.first_name} ${c.last_name} ${c.position || ''} ${c.email || ''} ${c.phone || ''}`,
+                        );
+                        return hay.includes(q);
+                      })
+                      .map((contact) => (
+                        <option key={contact.id} value={contact.id}>
+                          {contact.full_name} {contact.position ? `(${contact.position})` : ''}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}

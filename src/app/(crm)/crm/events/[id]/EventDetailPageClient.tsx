@@ -36,7 +36,6 @@ import EventLogisticsPanel from '@/app/(crm)/crm/events/[id]/components/tabs/Eve
 import OfferWizard from '@/app/(crm)/crm/offers/[id]/components/OfferWizzard/OfferWizard';
 import EventFinancesTab from '@/app/(crm)/crm/events/[id]/components/tabs/EventFinancesTab';
 import EventAgendaTab from '@/app/(crm)/crm/events/[id]/components/tabs/EventAgendaTab';
-import EventStatusEditor from '@/components/crm/EventStatusEditor';
 
 import { useDialog } from '@/contexts/DialogContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -50,32 +49,25 @@ import { AddChecklistModal } from './components/Modals/AddChecklistModal';
 import { TeamMembersList } from './components/AddMembersList';
 import { EventEquipmentTab } from './components/tabs/EventEquipmentTab';
 import {
+  eventsApi,
   useGetEventByIdQuery,
-  useGetEventEmployeesQuery,
+  useGetEventOffersQuery,
   useUpdateEventMutation,
 } from '../store/api/eventsApi';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useEventEquipment, useEventOffers, useEventTeam, useEventAuditLog } from '../hooks';
-import { IEventCategory } from '../../event-categories/types';
-import { IEmployee } from '../../employees/type';
-import {
-  useGetContactByIdQuery,
-  useGetOrganizationByIdQuery,
-} from '../../contacts/store/clientsApi';
 import { useLocations } from '../../locations/useLocations';
-import { ILocation } from '../../locations/type';
-import { AddEventEmployeeModal } from './components/Modals/AddEventEmployeeModal';
 import { useEmployees } from '../../employees/hooks/useEmployees';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
-import { useEventCategories } from '../../event-categories/hook/useEventCategories';
 import { useEvent } from '../hooks/useEvent';
 import EventStatusSelectModal from '@/components/crm/EventStatusEditor';
 import { EventStatus } from '@/components/crm/Calendar/types';
 import EventDetailsAction from './components/tabs/EventsDetailsTab/EventDetailsAction';
 import { useDispatch } from 'react-redux';
-import { eventsApi } from '../store/api/eventsApi';
-import { IEvent } from '../type';
+import { IEvent, IOffer } from '../type';
 import { UnknownAction } from '@reduxjs/toolkit';
+import { useGetOrganizationByIdQuery } from '../../contacts/store/clientsApi';
+import { AddEventEmployeeModal } from './components/Modals/AddEventEmployeeModal';
 
 interface Equipment {
   kit_id: unknown;
@@ -133,48 +125,89 @@ export const statusLabels: Record<EventStatus, string> = {
   offer_to_send: 'Oferta do wysłania',
 };
 
-export default function EventDetailPageClient({ initialEvent }: { initialEvent: IEvent }) {
+export interface ISimpleLocation {
+  id: string;
+  name: string;
+  formatted_address?: string;
+  address?: string;
+  city?: string;
+  postal_code?: string;
+  google_maps_url?: string;
+}
+
+export interface ISimpleContact {
+  organization_name: any;
+  contact_type: string;
+  business_phone?: string;
+  id: string;
+  first_name?: string;
+  last_name?: string;
+  full_name?: string;
+  email?: string;
+  phone?: string;
+}
+
+export default function EventDetailPageClient({
+  initialEvent,
+  initialLocation,
+  initialContact,
+  initialOffers,
+}: {
+  initialEvent: IEvent;
+  initialLocation: ISimpleLocation;
+  initialContact: ISimpleContact;
+  initialOffers: IOffer[];
+}) {
   const router = useRouter();
   const params = useParams();
+  const dispatch = useDispatch();
   const searchParams = useSearchParams();
   const eventId = params.id as string;
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
   const { hasScope, isAdmin: isUserAdmin } = useCurrentEmployee();
-  const { offers, removeOffer } = useEventOffers(eventId);
   const { equipment } = useEventEquipment(eventId);
   const { employees } = useEventTeam(eventId);
   const { useById } = useEmployees();
-  const [teamEmployees, setTeamEmployees] = useState<any[]>([]);
   const { event: eventData, updateEvent } = useEvent();
-  const dispatch = useDispatch();
-  
+  const [teamEmployees, setTeamEmployees] = useState<any[]>([]);
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [offers, setOffers] = useState<IOffer[]>(initialOffers || []);
   useEffect(() => {
-    if (initialEvent) {
-      dispatch(eventsApi.util.upsertQueryData('getEventById', eventId, initialEvent) as unknown as UnknownAction);
-      dispatch(eventsApi.util.invalidateTags(['EventDetails']));
-    }
-  }, [initialEvent, dispatch, eventId]);
+    setOffers(initialOffers || []);
+  }, [initialOffers]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ✅ uprawnienia do OFERT / FAKTUR / FINANSÓW (dopasuj nazwy scope do swoich)
+  const canViewCommercials =
+    isUserAdmin ||
+    hasScope('finances_manage') ||
+    hasScope('finances_view') ||
+    hasScope('offers_manage') ||
+    hasScope('offers_view') ||
+    hasScope('invoices_manage') ||
+    hasScope('invoices_view');
 
   const {
     data: event,
     status: eventStatus,
-      isLoading,
-      error,
+    isLoading,
+    error,
     refetch: refetchEvent,
   } = useGetEventByIdQuery(eventId, {
     refetchOnMountOrArgChange: false, // ⬅️ tylko 1 fetch, bez refetch przy każdym wejściu
   });
 
   const [updateEventMutation] = useUpdateEventMutation();
-
-  const [showStatusModal, setShowStatusModal] = useState(false);
-
   const { data: creator } = useById(event?.created_by);
 
   useEffect(() => {
     setTeamEmployees(employees || []);
   }, [employees]);
+
+  useEffect(() => {
+    if (!canViewCommercials) return;
+    if (initialOffers) setOffers(initialOffers as IOffer[]);
+  }, [initialOffers, canViewCommercials]);
 
   useEffect(() => {
     const success = searchParams.get('success');
@@ -203,34 +236,22 @@ export default function EventDetailPageClient({ initialEvent }: { initialEvent: 
     }
   }, [searchParams, eventId, router, showSnackbar]);
 
-  useEffect(() => {
-    (async () => {
-      const { data, error } = await supabase
-        .from('employee_assignments')
-        .select('*')
-        .eq('event_id', eventId);
-    })();
-  }, [eventId]);
-
-  const { data: contact } = useGetContactByIdQuery(event?.contact_person_id, {
-    skip: !event?.contact_person_id,
-  });
   const { getById } = useLocations();
 
-  const [location, setLocation] = useState<ILocation | null>(null);
+  const [location, setLocation] = useState<ISimpleLocation | null>(initialLocation || null);
   const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
 
   useEffect(() => {
     const fetchLocations = async () => {
       if (event?.location_id && event?.location_id !== null) {
         const location = await getById(event.location_id);
-        setLocation(location);
+        setLocation(location as ISimpleLocation);
       } else {
-        setLocation(null);
+        setLocation(initialLocation || null);
       }
     };
     fetchLocations();
-  }, [getById, event?.location_id]);
+  }, [getById, event?.location_id, initialLocation]);
 
   const { data: organization } = useGetOrganizationByIdQuery(event?.organization_id, {
     skip: !event?.organization_id,
@@ -252,7 +273,6 @@ export default function EventDetailPageClient({ initialEvent }: { initialEvent: 
     | 'history'
   >('overview');
 
-  const [categories, setCategories] = useState<IEventCategory[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [canManageTeam, setCanManageTeam] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -270,13 +290,13 @@ export default function EventDetailPageClient({ initialEvent }: { initialEvent: 
   const [hoveredEmployee, setHoveredEmployee] = useState<string | null>(null);
 
   const { auditLog } = useEventAuditLog(eventId as string);
+  const [contact, setContact] = useState<ISimpleContact | null>(initialContact || null);
 
   useEffect(() => {
     if (eventId) {
-      fetchCategories();
       checkTeamManagementPermission();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
   const checkTeamManagementPermission = async () => {
@@ -405,28 +425,11 @@ export default function EventDetailPageClient({ initialEvent }: { initialEvent: 
     }
   };
 
-  const fetchCategories = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('event_categories')
-        .select(
-          `
-          id,
-          name,
-          color,
-          icon:custom_icons(id, name, svg_code, preview_color)
-        `,
-        )
-        .eq('is_active', true)
-        .order('name');
-
-      if (!error && data) {
-        setCategories(data as unknown as IEventCategory[]);
-      }
-    } catch (err) {
-      console.error('Error fetching categories:', err);
-    }
-  };
+  // ✅ jeśli masz RTK Query do ofert (polecam) – pobieraj tylko dla osób uprawnionych
+  const { data: offersData, isFetching: offersFetching } = useGetEventOffersQuery(eventId, {
+    skip: !canViewCommercials,
+    refetchOnMountOrArgChange: false,
+  });
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleDeleteEvent = async () => {
@@ -542,15 +545,10 @@ export default function EventDetailPageClient({ initialEvent }: { initialEvent: 
 
       if (!confirmed) return;
       setIsConfirmed(false);
-      try {
-        await removeOffer(offerId);
-        showSnackbar('Oferta została usunięta', 'success');
-      } catch (err) {
-        console.error('Error deleting offer:', err);
-        showSnackbar('Błąd podczas usuwania oferty', 'error');
-      }
+      setOffers(offers.filter((o) => o.id !== offerId));
+      showSnackbar('Oferta została usunięta', 'success');
     },
-    [removeOffer, showConfirm, showSnackbar],
+    [offers, showConfirm, showSnackbar],
   );
 
   const [showSendOfferModal, setShowSendOfferModal] = useState(false);
@@ -580,6 +578,20 @@ export default function EventDetailPageClient({ initialEvent }: { initialEvent: 
     }
   }, [eventId, updateEventMutation, showSnackbar]);
 
+  useEffect(() => {
+    if (!canViewCommercials) return;
+    if (initialOffers?.length) {
+      dispatch(
+        eventsApi.util.upsertQueryData(
+          'getEventOffers',
+          eventId,
+          initialOffers,
+        ) as unknown as UnknownAction,
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventId, canViewCommercials, initialOffers]);
+
   const actions = useMemo<Action[]>(() => {
     return [
       {
@@ -598,6 +610,31 @@ export default function EventDetailPageClient({ initialEvent }: { initialEvent: 
       },
     ];
   }, [setShowEditEventModal, handleDeleteEvent, isAdmin, canManageTeam]);
+
+  const latestOffer = useMemo(() => {
+    if (!offers?.length) return null;
+
+    // Najprościej: po updated_at (lub created_at)
+    return [...offers].sort((a, b) => {
+      const ta = new Date(a.updated_at || a.created_at || 0).getTime();
+      const tb = new Date(b.updated_at || b.created_at || 0).getTime();
+      return tb - ta;
+    })[0];
+  }, [offers]);
+
+  const plannedRevenue = useMemo(() => {
+    // ✅ preferuj total_amount z oferty
+    if (latestOffer?.total_amount != null) return Number(latestOffer.total_amount);
+    // fallback: event.expected_revenue
+    if (event?.expected_revenue != null) return Number(event.expected_revenue);
+    return 0;
+  }, [latestOffer, event?.expected_revenue]);
+
+  const actualRevenue = useMemo(() => {
+    // tu zostawiasz swoje event.actual_revenue
+    if (event?.actual_revenue != null) return Number(event.actual_revenue);
+    return 0;
+  }, [event?.actual_revenue]);
 
   if (isLoading) {
     return (
@@ -653,7 +690,7 @@ export default function EventDetailPageClient({ initialEvent }: { initialEvent: 
               {event.client_type === 'business' && (
                 <div className="flex items-center gap-2">
                   <Building2 className="h-4 w-4" />
-                  {organization ? (organization.alias || organization.name) : 'Brak klienta'}
+                  {organization ? organization.alias || organization.name : 'Brak klienta'}
                 </div>
               )}
               {event.client_type === 'individual' && (
@@ -844,6 +881,7 @@ export default function EventDetailPageClient({ initialEvent }: { initialEvent: 
               </div>
             )}
             <EventsDetailsTab
+              initialEvent={event}
               location={location}
               organization={organization}
               contact={contact}
@@ -854,39 +892,71 @@ export default function EventDetailPageClient({ initialEvent }: { initialEvent: 
           </div>
 
           <div className="space-y-6">
-            {(isUserAdmin || hasScope('finances_manage') || hasScope('finances_view')) && (
+            {canViewCommercials && (
               <>
-                {' '}
                 <EventDetailsAction event={event} />
+
                 <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-                  <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Budżet</h2>
+                  <div className="mb-4 flex items-center justify-between">
+                    <h2 className="text-lg font-light text-[#e5e4e2]">Budżet</h2>
+
+                    {/* opcjonalnie: status źródła */}
+                    <div className="text-xs text-[#e5e4e2]/40">
+                      {offersFetching
+                        ? 'Aktualizuję…'
+                        : latestOffer
+                          ? 'Źródło: oferta'
+                          : 'Źródło: event'}
+                    </div>
+                  </div>
+
                   <div className="space-y-3">
                     <div>
                       <p className="text-sm text-[#e5e4e2]/60">Przychód planowany</p>
                       <p className="text-2xl font-light text-[#d3bb73]">
-                        {event.expected_revenue
-                          ? event.expected_revenue.toLocaleString('pl-PL')
-                          : '0'}{' '}
-                        zł
+                        {plannedRevenue.toLocaleString('pl-PL')} zł
                       </p>
+
+                      {/* jeśli masz ofertę – pokaż rozbicie */}
+                      {latestOffer && (
+                        <div className="mt-2 space-y-1 text-xs text-[#e5e4e2]/50">
+                          <div>
+                            Netto:{' '}
+                            <span className="text-[#e5e4e2]/70">
+                              {Number(latestOffer.subtotal || 0).toLocaleString('pl-PL')} zł
+                            </span>
+                          </div>
+                          <div>
+                            VAT ({latestOffer.tax_percent ?? 0}%):{' '}
+                            <span className="text-[#e5e4e2]/70">
+                              {Number(latestOffer.total_amount || 0).toLocaleString('pl-PL')} zł
+                            </span>
+                          </div>
+                          <div>
+                            Brutto:{' '}
+                            <span className="text-[#e5e4e2]/70">
+                              {Number(latestOffer.total_amount || 0).toLocaleString('pl-PL')} zł
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </div>
+
                     <div>
                       <p className="text-sm text-[#e5e4e2]/60">Przychód faktyczny</p>
                       <p className="text-2xl font-light text-[#e5e4e2]">
-                        {event.actual_revenue ? event.actual_revenue.toLocaleString('pl-PL') : '0'}{' '}
-                        zł
+                        {actualRevenue.toLocaleString('pl-PL')} zł
                       </p>
                     </div>
-                    {event.expected_revenue &&
-                      event.expected_revenue > 0 &&
-                      event.actual_revenue && (
-                        <div>
-                          <p className="text-sm text-[#e5e4e2]/60">Marża realizacji</p>
-                          <p className="text-xl font-light text-[#e5e4e2]">
-                            {((event.actual_revenue / event.expected_revenue) * 100).toFixed(1)}%
-                          </p>
-                        </div>
-                      )}
+
+                    {plannedRevenue > 0 && actualRevenue > 0 && (
+                      <div>
+                        <p className="text-sm text-[#e5e4e2]/60">Realizacja</p>
+                        <p className="text-xl font-light text-[#e5e4e2]">
+                          {((actualRevenue / plannedRevenue) * 100).toFixed(1)}%
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </>
@@ -919,7 +989,7 @@ export default function EventDetailPageClient({ initialEvent }: { initialEvent: 
         </div>
       )}
 
-      {activeTab === 'equipment' && <EventEquipmentTab />}
+      {activeTab === 'equipment' && <EventEquipmentTab eventId={event?.id as string} />}
 
       {activeTab === 'team' && (
         <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
@@ -1269,6 +1339,7 @@ export default function EventDetailPageClient({ initialEvent }: { initialEvent: 
 
       {showEditEventModal && event && (
         <EditEventModalNew
+          contact={contact}
           location={location}
           isOpen={showEditEventModal}
           onClose={() => setShowEditEventModal(false)}

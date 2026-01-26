@@ -155,11 +155,13 @@ export function TeamMembersList({
                 className="flex cursor-pointer items-center gap-4 p-4 transition-colors hover:bg-[#d3bb73]/5"
               >
                 <EmployeeAvatar
+                  employee={item.employee}
                   avatarUrl={item.employee.avatar_url}
                   avatarMetadata={item.employee.avatar_metadata}
                   employeeName={`${item.employee.name} ${item.employee.surname}`}
                   size={48}
                   className="flex-shrink-0"
+                  showActivityStatus={true}
                 />
 
                 <div className="min-w-0 flex-1">

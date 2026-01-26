@@ -10,14 +10,16 @@ export interface IUploadSettings {
 }
 
 export interface IScreenMetadata {
-  src: string;
+  src?: string; // src bywa undefined zanim uploadniesz
   position?: IImagePosition;
+  objectFit?: string;
   upload_settings?: IUploadSettings;
 }
 
+/** Metadata używane przy edycji (zawsze ma objectFit) */
 export interface IScreenMetadataUpload {
-  objectFit: string;
-  objectFit: string;
+  src?: string;
+  objectFit: string; // ✅ tylko raz
   position?: IImagePosition;
   upload_settings?: IUploadSettings;
 }
@@ -38,10 +40,11 @@ export interface IImage {
   image_metadata?: IImageMetadata;
 }
 
+/**
+ * To jest obiekt, którym karmisz ImageEditorField / AvatarEditorModal:
+ * { alt, image_metadata: { desktop:{...}, mobile:{...} } }
+ */
 export interface IUploadImage {
-  mobile: { src: string; position: { posX: number; posY: number; scale: number; }; };
-  desktop: { src: string; position: { posX: number; posY: number; scale: number; }; };
-  file?: File;
   alt?: string;
   image_metadata?: IImageMetadataUpload;
 }

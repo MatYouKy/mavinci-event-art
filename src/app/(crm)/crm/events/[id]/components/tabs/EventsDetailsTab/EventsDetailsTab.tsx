@@ -21,18 +21,17 @@ import { EventDestailsDescription } from './EventDetailsDescription';
 import { EventDetailsNotes } from './EventDetailsNotes';
 import { useEvent } from '@/app/(crm)/crm/events/hooks/useEvent';
 import { ContactRow, OrganizationRow } from '@/app/(crm)/crm/contacts/types';
-import { useLocations } from '@/app/(crm)/crm/locations/useLocations';
-import { ILocation } from '@/app/(crm)/crm/locations/type';
-import { useEventCategories } from '@/app/(crm)/crm/event-categories/hook/useEventCategories';
-import { IEventCategory } from '@/app/(crm)/crm/event-categories/types';
+import { ISimpleContact, ISimpleLocation } from '../../../EventDetailPageClient';
+import { IEvent } from '../../../../type';
 
 interface EventsDetailsTabProps {
   hasLimitedAccess: boolean;
   canManageTeam: boolean;
   isUserAdmin: boolean;
-  contact: ContactRow;
-  organization: OrganizationRow;
-  location: ILocation;
+  contact: ISimpleContact | null;
+  organization: OrganizationRow | null;  
+  location: ISimpleLocation | null;
+  initialEvent: IEvent;
 }
 
 export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
@@ -40,8 +39,9 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
   contact,
   organization,
   location,
+  initialEvent,
 }) => {
-  const { event, updateEvent } = useEvent();
+  const { event, updateEvent } = useEvent(initialEvent);
 
   const [showEditClientModal, setShowEditClientModal] = useState(false);
   const router = useRouter();
@@ -112,7 +112,7 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
                     {location.formatted_address && (
                       <p className="mb-3 text-xs text-[#e5e4e2]/60">{location.formatted_address}</p>
                     )}
-                    {location.google_maps_url && (
+                    {location.google_maps_url && location.google_maps_url !== '' && (
                       <a
                         href={location.google_maps_url}
                         target="_blank"

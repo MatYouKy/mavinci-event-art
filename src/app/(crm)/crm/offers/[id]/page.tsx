@@ -46,6 +46,8 @@ export default function OfferDetailPage() {
   usePrefetchOffer(offerId);
   const { offer, isLoading, refetch } = useOfferById(offerId);
 
+  console.log('offer', offer);
+
   const [showSendEmailModal, setShowSendEmailModal] = useState(false);
   const [showAddItemModal, setShowAddItemModal] = useState(false);
   const [editingItem, setEditingItem] = useState<IOfferItem | null>(null);

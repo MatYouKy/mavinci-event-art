@@ -16,6 +16,7 @@ import { IEmployee } from './employees/type';
 import { TaskAccessWrapper } from './(providers)/TaskAccessWrapper';
 import { allNavigation, NavigationItem } from './mock/navigation';
 import { supabase } from '@/lib/supabase/browser';
+import { Notification } from '@/components/crm/NotificationCenter';
 
 export const metadata: Metadata = {
   title: 'Mavinci CRM',
@@ -26,15 +27,18 @@ export const metadata: Metadata = {
 export default function CRMClientLayout({
   employee,
   children,
+  initialUnreadMessagesCount,
+  initialNotifications,
 }: {
   employee: IEmployee | null;
   children: React.ReactNode;
+  initialUnreadMessagesCount: number;
+  initialNotifications: Notification[];
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [navigation, setNavigation] = useState(allNavigation);
+  const [loading, setLoading] = useState(() => !employee?.id);  const [navigation, setNavigation] = useState(allNavigation);
   const pathname = usePathname();
   const router = useRouter();
 
@@ -149,94 +153,98 @@ export default function CRMClientLayout({
     );
   }
 
-  if (!user) {
-    return null;
-  }
-
+  if (!employee?.id) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#0f1119]">
+        <div className="text-lg text-[#d3bb73]">Nie znaleziono pracownika</div>
+        <button onClick={() => router.push('/login')} className="text-[#d3bb73]">Przejdź do strony logowania</button>
+      </div>
+    );
+  }  
   return (
-      <div className="flex min-h-screen flex-col bg-[#0f1119]">
-        <header className="fixed left-0 right-0 top-0 z-50 border-b border-[#d3bb73]/10 bg-[#1c1f33] px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <button onClick={() => setSidebarOpen(true)} className="text-[#e5e4e2] lg:hidden">
-                <Menu className="h-6 w-6" />
-              </button>
-              <Link href="/crm" className="flex items-center gap-3">
-                <Image
-  src="/logo mavinci-simple.svg"
-  alt="Mavinci"
-  width={160}
-  height={60}
-  className="w-40 h-auto"
-/>
-              </Link>
-              <div className="hidden h-6 w-px bg-[#d3bb73]/20 lg:block"></div>
-              <h1 className="hidden text-xl font-light text-[#e5e4e2] lg:block">
-                {navigation.find((item) => item.href === pathname)?.name || 'CRM'}
-              </h1>
-            </div>
-            <div className="flex items-center gap-4">
-              <NotificationCenter />
-              <UserMenu />
+    <div className="flex min-h-screen flex-col bg-[#0f1119]">
+      <header className="fixed left-0 right-0 top-0 z-50 border-b border-[#d3bb73]/10 bg-[#1c1f33] px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setSidebarOpen(true)} className="text-[#e5e4e2] lg:hidden">
+              <Menu className="h-6 w-6" />
+            </button>
+            <Link href="/crm" className="flex items-center gap-3">
+              <Image
+                src="/logo mavinci-simple.svg"
+                alt="Mavinci"
+                width={160}
+                height={60}
+                className="h-auto w-40"
+              />
+            </Link>
+            <div className="hidden h-6 w-px bg-[#d3bb73]/20 lg:block"></div>
+            <h1 className="hidden text-xl font-light text-[#e5e4e2] lg:block">
+              {navigation.find((item) => item.href === pathname)?.name || 'CRM'}
+            </h1>
+          </div>
+          <div className="flex items-center gap-4">
+            <NotificationCenter initialNotifications={initialNotifications}   />
+            <UserMenu initialEmployee={employee} />
+          </div>
+        </div>
+      </header>
+
+      <div className="flex flex-1 overflow-hidden pt-[73px]">
+        <aside
+          className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} ${
+            sidebarCollapsed ? 'w-20' : 'w-64'
+          } fixed bottom-0 left-0 top-[73px] z-40 border-r border-[#d3bb73]/10 bg-[#1c1f33] transition-all duration-300 lg:translate-x-0`}
+        >
+          <div className="relative flex h-full flex-col">
+            <NavigationManager
+              initialUnreadMessagesCount={initialUnreadMessagesCount}
+              navigation={navigation}
+              pathname={pathname}
+              sidebarCollapsed={sidebarCollapsed}
+              employeeId={employee?.id || null}
+              onClose={() => setSidebarOpen(false)}
+              onOrderChange={(newOrder) => setNavigation(newOrder)}
+            />
+
+            <button
+              onClick={toggleSidebar}
+              className="absolute -right-3 top-1/2 z-10 hidden -translate-y-1/2 items-center justify-center text-[#e5e4e2]/40 transition-colors hover:text-[#d3bb73] lg:flex"
+              title={sidebarCollapsed ? 'Rozwiń menu' : 'Zwiń menu'}
+            >
+              {sidebarCollapsed ? (
+                <ChevronsRight className="h-5 w-5" />
+              ) : (
+                <ChevronsLeft className="h-5 w-5" />
+              )}
+            </button>
+
+            <div className="border-t border-[#d3bb73]/10 p-4">
+              {!sidebarCollapsed && (
+                <div className="text-center text-xs text-[#e5e4e2]/40">
+                  <p>Mavinci CRM v1.0</p>
+                  <p className="mt-1">© 2025 Mavinci</p>
+                </div>
+              )}
             </div>
           </div>
-        </header>
+        </aside>
 
-        <div className="flex flex-1 overflow-hidden pt-[73px]">
-          <aside
-            className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} ${
-              sidebarCollapsed ? 'w-20' : 'w-64'
-            } fixed bottom-0 left-0 top-[73px] z-40 border-r border-[#d3bb73]/10 bg-[#1c1f33] transition-all duration-300 lg:translate-x-0`}
-          >
-            <div className="relative flex h-full flex-col">
-              <NavigationManager
-                navigation={navigation}
-                pathname={pathname}
-                sidebarCollapsed={sidebarCollapsed}
-                employeeId={employee?.id || null}
-                onClose={() => setSidebarOpen(false)}
-                onOrderChange={(newOrder) => setNavigation(newOrder)}
-              />
-
-              <button
-                onClick={toggleSidebar}
-                className="absolute -right-3 top-1/2 z-10 hidden -translate-y-1/2 items-center justify-center text-[#e5e4e2]/40 transition-colors hover:text-[#d3bb73] lg:flex"
-                title={sidebarCollapsed ? 'Rozwiń menu' : 'Zwiń menu'}
-              >
-                {sidebarCollapsed ? (
-                  <ChevronsRight className="h-5 w-5" />
-                ) : (
-                  <ChevronsLeft className="h-5 w-5" />
-                )}
-              </button>
-
-              <div className="border-t border-[#d3bb73]/10 p-4">
-                {!sidebarCollapsed && (
-                  <div className="text-center text-xs text-[#e5e4e2]/40">
-                    <p>Mavinci CRM v1.0</p>
-                    <p className="mt-1">© 2025 Mavinci</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </aside>
-
-          <main
-            className={`flex-1 overflow-y-auto p-2 sm:p-4 md:p-6 ${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'} transition-all duration-300`}
-          >
-            <TaskAccessWrapper pathname={pathname} employee={employee} router={router}>
-                {children}
-
-            </TaskAccessWrapper>
-          </main>
-        </div>
-
-        {sidebarOpen && (
-          <div
-            className="fixed inset-0 z-30 bg-black/50 lg:hidden"
-            onClick={() => setSidebarOpen(false)}
-          />
-        )}
+        <main
+          className={`flex-1 overflow-y-auto p-2 sm:p-4 md:p-6 ${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'} transition-all duration-300`}
+        >
+          <TaskAccessWrapper pathname={pathname} employee={employee} router={router}>
+            {children}
+          </TaskAccessWrapper>
+        </main>
       </div>
+
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/50 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+    </div>
   );
 }

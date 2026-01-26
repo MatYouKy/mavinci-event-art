@@ -4,6 +4,8 @@ import { X } from 'lucide-react';
 
 import LocationSelector from '@/components/crm/LocationSelector';
 import { IEvent } from '../../../type';
+import { useSnackbar } from '@/contexts/SnackbarContext';
+import { ISimpleContact } from '../../EventDetailPageClient';
 
 export function EditEventModal({
   isOpen,
@@ -18,8 +20,9 @@ export function EditEventModal({
   event: IEvent;
   onSave: (data: any) => void;
   organizations: any[];
-  contacts: any[];
+  contacts: ISimpleContact[];
 }) {
+  const { showSnackbar } = useSnackbar();
   const [categories, setCategories] = useState<any[]>([]);
   const [clientData, setClientData] = useState({
     client_type: event.client_type || ('business' as 'business' | 'individual'),
@@ -102,11 +105,11 @@ export function EditEventModal({
 
   const handleSubmit = () => {
     if (!formData.name.trim()) {
-      alert('Nazwa eventu jest wymagana');
+      showSnackbar('Nazwa eventu jest wymagana', 'error');
       return;
     }
     if (!formData.event_date) {
-      alert('Data rozpoczęcia jest wymagana');
+      showSnackbar('Data rozpoczęcia jest wymagana', 'error');
       return;
     }
 
@@ -329,14 +332,15 @@ export function EditEventModal({
             <label className="mb-2 block text-sm text-[#e5e4e2]/60">Lokalizacja *</label>
             <LocationSelector
               value={formData.location as unknown as string}
-              onChange={(value, locationData) =>
-                setFormData({
-                  ...formData,
+              onChange={(value, locationData) => {
+                const locId = (locationData as any)?.id ?? (locationData as any)?._id ?? null;
+
+                setFormData((prev) => ({
+                  ...prev,
                   location: value,
-                  location_id: locationData?.id || null,
-                })
-              }
-              placeholder="Wybierz z listy lub wyszukaj nową lokalizację..."
+                  location_id: locId,
+                }));
+              }}
             />
           </div>
 

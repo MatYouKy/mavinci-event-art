@@ -11,7 +11,6 @@ import {
   Receipt,
   XCircle,
   Tag,
-  Truck,
   Play,
   Printer,
 } from 'lucide-react';
@@ -30,14 +29,13 @@ export const eventStatusLabels: Record<EventStatus, string> = {
   offer_sent: 'Oferta wysłana',
   offer_accepted: 'Oferta zaakceptowana',
   in_preparation: 'W przygotowaniu',
-  ready_for_live: 'Gotowy do realizacji', // ✅ NOWE
+  ready_for_live: 'Gotowy do realizacji',
   in_progress: 'W trakcie',
   completed: 'Zrealizowany',
   cancelled: 'Anulowany',
   invoiced: 'Zafakturowany',
 };
 
-// Badge style per status (pasuje do Twojego theme)
 export const statusBadgeClasses: Record<EventStatus, string> = {
   inquiry: 'bg-blue-500/10 text-blue-300 border-blue-500/20',
   offer_to_send: 'bg-indigo-500/10 text-indigo-300 border-indigo-500/20',
@@ -79,7 +77,6 @@ const statusIcon = (s: EventStatus) => {
 
 interface EventDetailsActionProps {
   event: IEvent;
-  // opcjonalnie: możesz z zewnątrz podać czy user ma prawo zmieniać status
   canEditStatus?: boolean;
 }
 
@@ -89,7 +86,7 @@ export default function EventDetailsAction({
 }: EventDetailsActionProps) {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
-  const { getCategoryById } = useEventCategories();
+  const { getCategoryById, categories } = useEventCategories(); 
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [currentStatus, setCurrentStatus] = useState<EventStatus>(event?.status as EventStatus);
   const [category, setCategory] = useState<IEventCategory | null>(null);
@@ -98,9 +95,20 @@ export default function EventDetailsAction({
   const { employee } = useCurrentEmployee();
   const [agenda, setAgenda] = useState<any | null>(null);
   const [equipmentChecklist, setEquipmentChecklist] = useState<any | null>(null);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>(event?.category_id ?? '');
+const [savingCategory, setSavingCategory] = useState(false);
   const searchParams = useSearchParams();
 
+  useEffect(() => {
+    setSelectedCategoryId(event?.category_id ?? '');
+  }, [event?.category_id]);
+
+  
+
   const [generatedPdfPath, setGeneratedPdfPath] = useState<string | null>(null);
+  
+
+  
 
   useEffect(() => {
     if (event.status === 'ready_for_live' && event.id) {
@@ -129,16 +137,21 @@ export default function EventDetailsAction({
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
-
+  
     if (error && error.code !== 'PGRST116') throw error;
+  
     setEquipmentChecklist(data ?? null);
+    return data ?? null; // ✅ KLUCZOWE
   };
 
   useEffect(() => {
     if (event?.category_id) {
       fetchCategory();
+    } else {
+      setCategory(null);
     }
-  }, [event?.category_id, getCategoryById]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event?.category_id]);
 
   useEffect(() => {
     if (event?.status) setCurrentStatus(event.status as EventStatus);
@@ -150,17 +163,70 @@ export default function EventDetailsAction({
   };
 
   const handleShowChecklistPdf = async () => {
-    // jeśli nie mamy w stanie – dociągnij jeszcze raz
-    if (!equipmentChecklist?.file_path) {
-      await fetchEquipmentChecklist();
+    try {
+      // ✅ weź aktualny rekord: albo z state, albo pobierz świeży
+      const checklist =
+        equipmentChecklist?.file_path ? equipmentChecklist : await fetchEquipmentChecklist();
+
+        console.log('checklist file_path:', checklist?.file_path);
+  
+      if (!checklist?.file_path) {
+        showSnackbar('Brak checklisty sprzętu do wydruku', 'info');
+        return;
+      }
+  
+      const { data, error } = await supabase.storage
+        .from('event-files')
+        .createSignedUrl(checklist.file_path, 3600);
+  
+      if (error) throw error;
+  
+      if (data?.signedUrl) {
+        window.open(data.signedUrl, '_blank');
+        return;
+      }
+  
+      showSnackbar('Nie udało się wygenerować linku do checklisty', 'error');
+    } catch (err: any) {
+      console.error('Checklist PDF error:', err);
+      showSnackbar(err?.message || 'Błąd podczas otwierania checklisty', 'error');
     }
+  };
 
-    const path = equipmentChecklist?.file_path;
-    if (!path) return;
-
-    const { data } = await supabase.storage.from('event-files').createSignedUrl(path, 3600);
-
-    if (data?.signedUrl) window.open(data.signedUrl, '_blank');
+  const handleCategoryChange = async (newCategoryId: string) => {
+    if (!event?.id) return;
+  
+    try {
+      setSavingCategory(true);
+  
+      const payload = {
+        category_id: newCategoryId && newCategoryId !== '' ? newCategoryId : null,
+        updated_at: new Date().toISOString(),
+      };
+  
+      const { error } = await supabase.from('events').update(payload).eq('id', event.id);
+  
+      if (error) throw error;
+  
+      setSelectedCategoryId(newCategoryId);
+  
+      // odśwież lokalny "category" (żeby od razu pokazało label/kolor)
+      if (newCategoryId) {
+        const next = await getCategoryById(newCategoryId);
+        setCategory(next);
+      } else {
+        setCategory(null);
+      }
+  
+      showSnackbar('Zaktualizowano kategorię wydarzenia', 'success');
+      setIsEditingCategory(false);
+      router.refresh();
+    } catch (err: any) {
+      console.error('Error updating category:', err);
+      showSnackbar(err?.message || 'Błąd podczas zmiany kategorii', 'error');
+    } finally {
+      setSavingCategory(false);
+    }
   };
 
   const handleStatusChange = async (newStatus: EventStatus) => {
@@ -214,21 +280,17 @@ export default function EventDetailsAction({
 
   const isReadyForLive = currentStatus === 'ready_for_live';
 
-  // Agenda: kto może widzieć/generować
   const canAgenda =
     employee?.permissions?.includes('events_manage') || employee?.permissions?.includes('admin');
 
-  // Sprzęt/checklista: kto może widzieć/generować
   const canEquipment =
-    employee?.permissions?.includes('equipment_manage') || employee?.permissions?.includes('admin'); // <- dopasuj nazwę permki
+    employee?.permissions?.includes('equipment_manage') || employee?.permissions?.includes('admin');
 
   const badgeCls = useMemo(() => {
     const base =
       'inline-flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm transition-colors';
     const color = statusBadgeClasses[currentStatus] ?? 'bg-white/5 text-[#e5e4e2] border-white/10';
-    const clickable = canEditStatus
-      ? 'cursor-pointer hover:bg-white/5'
-      : 'cursor-default opacity-80';
+    const clickable = canEditStatus ? 'cursor-pointer hover:bg-white/5' : 'cursor-default opacity-80';
     return `${base} ${color} ${clickable}`;
   }, [currentStatus, canEditStatus]);
 
@@ -237,31 +299,86 @@ export default function EventDetailsAction({
       <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Akcje</h2>
 
       <div className="space-y-2">
-        {!isEditingCategory && category && (
-          <>
-            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Kategoria</label>
-            <button
-              onClick={() => setIsEditingCategory(true)}
-              className="flex w-full items-center gap-2 rounded-lg border px-3 py-1 transition-opacity hover:opacity-80"
-              style={{
-                backgroundColor: `${category.color}20`,
-                borderColor: `${category.color}50`,
-                color: category.color,
-              }}
-            >
-              {category?.icon ? (
-                <div
-                  className="h-4 w-4"
-                  style={{ color: category.color }}
-                  dangerouslySetInnerHTML={{ __html: category.icon.svg_code }}
-                />
-              ) : (
-                <Tag className="h-4 w-4" />
-              )}
-              <span className="hidden text-sm font-medium sm:block">{category.name}</span>
-            </button>
-          </>
-        )}
+        {/* ✅ POPRAWKA: sekcja kategorii nie znika po kliknięciu.
+            Zamiast renderować tylko gdy !isEditingCategory, renderujemy zawsze i przełączamy zawartość. */}
+<div>
+  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Kategoria</label>
+
+  {!isEditingCategory ? (
+    <button
+      type="button"
+      onClick={() => setIsEditingCategory(true)}
+      className="flex w-full items-center gap-2 rounded-lg border px-3 py-2 transition-opacity hover:opacity-80"
+      style={{
+        backgroundColor: category?.color ? `${category.color}20` : 'rgba(255,255,255,0.04)',
+        borderColor: category?.color ? `${category.color}50` : 'rgba(255,255,255,0.10)',
+        color: category?.color ?? '#e5e4e2',
+      }}
+      title="Kliknij aby edytować kategorię"
+    >
+      {category?.icon ? (
+        <div
+          className="h-4 w-4"
+          style={{ color: category.color }}
+          dangerouslySetInnerHTML={{ __html: category.icon.svg_code }}
+        />
+      ) : (
+        <Tag className="h-4 w-4" />
+      )}
+
+      <span className="text-sm font-medium">{category?.name ?? 'Brak kategorii'}</span>
+
+      <span className="ml-auto text-xs opacity-70">Zmień</span>
+    </button>
+  ) : (
+    <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <div className="text-xs text-[#e5e4e2]/60">
+          Aktualnie:{' '}
+          <span className="text-[#e5e4e2]">{category?.name ?? 'brak'}</span>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            setIsEditingCategory(false);
+            setSelectedCategoryId(event?.category_id ?? '');
+          }}
+          className="rounded-md px-2 py-1 text-xs text-[#e5e4e2]/60 hover:bg-white/5 hover:text-[#e5e4e2]"
+        >
+          Anuluj
+        </button>
+      </div>
+
+      <div className="space-y-2">
+        <select
+          value={selectedCategoryId}
+          onChange={(e) => handleCategoryChange(e.target.value)}
+          disabled={savingCategory}
+          autoFocus
+          className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-2 text-sm text-[#e5e4e2] transition-colors focus:border-[#d3bb73] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <option value="">Brak kategorii</option>
+
+          {(categories || []).map((c: IEventCategory) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+
+        <div className="flex items-center justify-between">
+          <div className="text-xs text-[#e5e4e2]/40">
+            {savingCategory ? 'Zapisuję…' : 'Wybierz kategorię z listy'}
+          </div>
+
+          {savingCategory && <Loader2 className="h-4 w-4 animate-spin text-[#d3bb73]" />}
+        </div>
+      </div>
+    </div>
+  )}
+</div>
+
         <div>
           <label className="mb-2 block text-sm text-[#e5e4e2]/60">Status eventu</label>
 
@@ -335,8 +452,6 @@ export default function EventDetailsAction({
             Drukuj checklistę sprzętu
           </button>
         )}
-
-        {/* tu potem dorzucisz kolejne szybkie akcje: drukuj agendę, checklistę itd. */}
       </div>
     </div>
   );

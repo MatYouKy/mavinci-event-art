@@ -34,6 +34,8 @@ export type EventRow = {
     city: string | null;
     postal_code: string | null;
   } | null;
+  location_id: string | null;
+  contact_person_id: string | null;
 };
 
 export type EventCategoryRow = { id: string; name: string; color: string | null };

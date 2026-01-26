@@ -8,6 +8,10 @@ import '@/index.css';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { buildBreadcrumbList } from '@/lib/SEO/breadcrumbs';
+import { Notification } from '@/components/crm/NotificationCenter';
+import { fetchNotificationsServer } from '@/lib/CRM/notifications/fetchNotificationsServer';
+import { getCurrentEmployeeServerCached } from '@/lib/CRM/auth/getCurrentEmployeeServer';
+import { IEmployee } from '@/app/(crm)/crm/employees/type';
 
 const SITE_URL = 'https://mavinci.pl';
 const OG_IMAGE = '/logo-mavinci-crm.png';
@@ -148,7 +152,7 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
   params,
 }: {
@@ -156,6 +160,8 @@ export default function RootLayout({
   params: { pathname: string };
 }) {
   const breadcrumbSchema = buildBreadcrumbList(params.pathname);
+  const initialNotifications = await fetchNotificationsServer();
+  const employee = await getCurrentEmployeeServerCached();
 
   const localBusiness = {
     '@context': 'https://schema.org',
@@ -335,8 +341,8 @@ export default function RootLayout({
           <AuthProvider>
             <EditModeProvider>
               <SessionTracker />
-              <Navbar />
-              {children}
+              <Navbar initialNotifications={initialNotifications.notifications} initialEmployee={employee as IEmployee} />
+              {children as React.ReactNode}
               <Footer />
             </EditModeProvider>
           </AuthProvider>

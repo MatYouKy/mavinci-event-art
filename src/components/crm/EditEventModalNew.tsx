@@ -1,22 +1,20 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import LocationSelector from './LocationSelector';
-import ClientSelectorTabs from './ClientSelectorTabs';
-import ParticipantsAutocomplete from './ParticipantsAutocomplete';
+import ClientSelectorTabs, { Contact } from './ClientSelectorTabs';
 import { useEventCategories } from '@/app/(crm)/crm/event-categories/hook/useEventCategories';
 import { useDialog } from '@/contexts/DialogContext';
-import { ILocation } from '@/app/(crm)/crm/locations/type';
-import { useEmployees } from '@/app/(crm)/crm/employees/hooks/useEmployees';
-import { useEventTeam } from '@/app/(crm)/crm/events/hooks';
+import { ISimpleContact, ISimpleLocation } from '@/app/(crm)/crm/events/[id]/EventDetailPageClient';
 
 interface EditEventModalProps {
   isOpen: boolean;
   onClose: () => void;
   event: any;
-  location?: ILocation | null;
+  location?: ISimpleLocation | null;
   onSave: (data: any) => void;
+  contact?: ISimpleContact | null;
 }
 
 const toLocalDatetimeString = (utcDate: string | null): string => {
@@ -31,55 +29,64 @@ export default function EditEventModalNew({
   isOpen,
   onClose,
   event,
+  contact,
   location,
   onSave,
 }: EditEventModalProps) {
   const { categories } = useEventCategories();
   const { showAlert } = useDialog();
 
-  const { list: employeesList, loading: employeesLoading } = useEmployees({ activeOnly: true });
-  const { employees: eventTeam, addEmployee, isAdding } = useEventTeam(event.id);
-
-  const [quickEmployeeId, setQuickEmployeeId] = useState('');
-
-  const [clientData, setClientData] = useState({
-    client_type: event.client_type || 'business',
-    organization_id: event.organization_id,
-    contact_person_id: event.contact_person_id,
+  const [clientData, setClientData] = useState<{
+    client_type: 'individual' | 'business';
+    organization_id: string | null;
+    contact_person_id: string | null;
+  }>({
+    client_type: 'business',
+    organization_id: null,
+    contact_person_id: null,
   });
 
   const [formData, setFormData] = useState({
-    name: event.name,
-    category_id: event.category_id || '',
-    event_date: event.event_date,
-    event_end_date: event.event_end_date || '',
-    location: event.location || '',
-    location_id: event.location_id || null,
-    budget: event.budget?.toString() || '',
-    status: event.status,
+    name: '',
+    category_id: '',
+    event_date: null as string | null,
+    event_end_date: '' as string | null,
+    location: '',
+    location_id: null as string | null,
+    budget: '',
+    status: '',
   });
 
-  const availableEmployeesToAssign = useMemo(() => {
-    const assignedIds = new Set(
-      (eventTeam || []).map((a: any) => a.employee_id ?? a.employee?.id).filter(Boolean),
-    );
+  // ✅ reset stanu przy otwarciu / zmianie propsów
+  useEffect(() => {
+    if (!isOpen) return;
 
-    return (employeesList || []).filter((emp: any) => {
-      if (!emp?.id) return false;
-      if (emp.id === event.created_by) return false; // autor
-      if (assignedIds.has(emp.id)) return false; // już przypisany
-      return true;
+    setClientData({
+      client_type: (contact?.contact_type === 'individual' ? 'individual' : 'business') as
+        | 'individual'
+        | 'business',
+      organization_id: event?.organization_id || null,
+      contact_person_id: contact?.id || null,
     });
-  }, [employeesList, eventTeam, event.created_by]);
 
-  const [participants, setParticipants] = useState<any[]>(event.participants || []);
+    setFormData({
+      name: event?.name || '',
+      category_id: event?.category_id || '',
+      event_date: event?.event_date || null,
+      event_end_date: event?.event_end_date || '',
+      location: location?.name || '',
+      location_id: event?.location_id || null,
+      budget: event?.budget != null ? String(event.budget) : '',
+      status: event?.status || 'inquiry',
+    });
+  }, [isOpen, event, contact, location]);
 
   if (!isOpen) return null;
 
   const handleSubmit = () => {
     if (!formData.name.trim()) return showAlert('Nazwa eventu jest wymagana');
     if (!formData.event_date) return showAlert('Data rozpoczęcia jest wymagana');
-    if (!formData.location) return showAlert('Lokalizacja jest wymagana');
+    if (!formData.location || formData.location === '') return showAlert('Lokalizacja jest wymagana');
 
     const dataToSave = {
       name: formData.name,
@@ -95,14 +102,11 @@ export default function EditEventModalNew({
       category_id:
         formData.category_id && formData.category_id.trim() !== '' ? formData.category_id : null,
       event_date: formData.event_date ? new Date(formData.event_date).toISOString() : null,
-      event_end_date: formData.event_end_date
-        ? new Date(formData.event_end_date).toISOString()
-        : null,
-      location: formData.location || '',
+      event_end_date: formData.event_end_date ? new Date(formData.event_end_date).toISOString() : null,
+      location: formData.location,
       location_id: formData.location_id || null,
       budget: formData.budget ? parseFloat(formData.budget) : null,
       status: formData.status,
-      participants: participants.length > 0 ? participants : [],
     };
 
     onSave(dataToSave);
@@ -114,17 +118,12 @@ export default function EditEventModalNew({
       role="dialog"
       aria-modal="true"
       onMouseDown={(e) => {
-        // klik w tło zamyka (klik w kartę nie)
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      {/* SCROLL CONTAINER */}
       <div className="h-full w-full overflow-y-auto">
-        {/* CENTERING WRAPPER */}
         <div className="flex min-h-full w-full items-start justify-center p-4 sm:p-6">
-          {/* MODAL CARD (ma własny scroll) */}
           <div className="max-h-[calc(100vh-2rem)] w-full max-w-3xl overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] shadow-2xl">
-            {/* Sticky header */}
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#d3bb73]/10 bg-[#0f1119]/95 px-6 py-4 backdrop-blur">
               <h2 className="text-xl font-light text-[#e5e4e2]">Edytuj event</h2>
               <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
@@ -145,9 +144,10 @@ export default function EditEventModalNew({
               </div>
 
               <ClientSelectorTabs
-                initialClientType={clientData.client_type as 'individual' | 'business'}
+                initialClientType={clientData.client_type}
                 initialOrganizationId={clientData.organization_id}
                 initialContactPersonId={clientData.contact_person_id}
+                initialContact={contact as Contact}
                 eventId={event.id}
                 onChange={(data) => setClientData(data)}
                 showEventContactPersons={true}
@@ -235,22 +235,8 @@ export default function EditEventModalNew({
                   </select>
                 </div>
               </div>
-
-              <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Uczestnicy</label>
-                <ParticipantsAutocomplete
-                  value={participants}
-                  onChange={setParticipants}
-                  eventId={event.id}
-                  placeholder="Dodaj uczestników (pracownicy, kontakty lub wpisz nazwę)..."
-                />
-                <p className="mt-1 text-xs text-[#e5e4e2]/50">
-                  Wybierz pracowników, kontakty lub wpisz imię i nazwisko ręcznie
-                </p>
-              </div>
             </div>
 
-            {/* Sticky footer */}
             <div className="sticky bottom-0 z-10 border-t border-[#d3bb73]/10 bg-[#0f1119]/95 px-6 py-4 backdrop-blur">
               <div className="flex gap-3">
                 <button

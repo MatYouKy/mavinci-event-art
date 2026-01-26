@@ -14,6 +14,7 @@ import {
 } from '@/components/crm/EmployeeViews';
 import { IEmployee } from './type';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function EmployeesPageClient({ employees }: { employees: IEmployee[] }) {
   const router = useRouter();
@@ -169,6 +170,7 @@ export default function EmployeesPageClient({ employees }: { employees: IEmploye
         <>
           {viewMode === 'cards' && (
             <EmployeeCardsView
+            
               employees={filteredEmployees}
               getRoleLabel={getRoleLabel}
               getAccessLevelLabel={getAccessLevelLabel}

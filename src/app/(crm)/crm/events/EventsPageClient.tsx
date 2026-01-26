@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
@@ -15,6 +16,7 @@ import {
   AlertTriangle,
   Grid,
   List,
+  User,
 } from 'lucide-react';
 import EventWizard from '@/components/crm/EventWizard';
 import { supabase } from '@/lib/supabase/browser';
@@ -23,8 +25,31 @@ import { Modal } from '@/components/UI/Modal';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
 import { EventStatusBadge } from './UI/EventStatusBadge';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
-const getOrgLabel = (org?: any) => org?.alias || org?.name || 'Brak klienta';
+/**
+ * ✅ POPRAWKA: jeżeli organizations jest null, a mamy contacts,
+ * to pokaż "first_name + last_name" zamiast "Brak klienta".
+ * Dodatkowo trimming + fallbacki.
+ */
+const getContactLabel = (c?: any) => {
+  const first = String(c?.first_name ?? '').trim();
+  const last = String(c?.last_name ?? '').trim();
+  const full = `${first} ${last}`.trim();
+  return full.length > 0 ? full : null;
+};
+
+const getOrgLabel = (org?: any, contacts?: any) => {
+  // firma / organizacja
+  const orgLabel = org?.alias || org?.name;
+  if (orgLabel) return orgLabel;
+
+  // osoba kontaktowa (np. wesele)
+  const contactLabel = getContactLabel(contacts);
+  if (contactLabel) return contactLabel;
+
+  return 'Brak klienta';
+};
 
 const getLocationLabel = (loc?: any, fallback?: string) => {
   if (!loc) return fallback || 'Brak lokalizacji';
@@ -38,12 +63,10 @@ const getLocationLabelMobile = (
   } | null,
   locationFallback?: string | null,
 ) => {
-  // 1️⃣ jeśli mamy relację locations → bierzemy TYLKO name
   if (locations?.name) {
     return locations.name;
   }
 
-  // 2️⃣ fallback string → ucinamy do pierwszego przecinka
   if (typeof locationFallback === 'string' && locationFallback.length > 0) {
     return locationFallback.split(',')[0].trim();
   }
@@ -62,13 +85,17 @@ const getMapsHref = (loc?: any, fallback?: string) => {
   return q ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}` : null;
 };
 
-const statusColors = {
+const statusColors: Record<string, string> = {
   offer_sent: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
   offer_accepted: 'bg-green-500/20 text-green-400 border-green-500/30',
   in_preparation: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
   in_progress: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
   completed: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
   invoiced: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
+  offer_to_send: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
+  inquiry: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+  cancelled: 'bg-red-500/20 text-red-400 border-red-500/30',
+  ready_for_live: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
 };
 
 const stop = (e: React.MouseEvent) => {
@@ -79,34 +106,18 @@ const stop = (e: React.MouseEvent) => {
 type SortField = 'event_date' | 'name' | 'budget' | 'created_at';
 type SortDirection = 'asc' | 'desc';
 
-export default function EventsPageClient({ initialEvents, initialCategories }: { initialEvents: any[], initialCategories: any[] }) {
+export default function EventsPageClient({
+  initialEvents,
+  initialCategories,
+}: {
+  initialEvents: any[];
+  initialCategories: any[];
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { hasScope, isAdmin: isUserAdmin } = useCurrentEmployee();
   const { showSnackbar } = useSnackbar();
   const { getViewMode, setViewMode } = useUserPreferences();
-
-  useEffect(() => {
-    const error = searchParams.get('error');
-    const info = searchParams.get('info');
-    const eventName = searchParams.get('event');
-
-    if (error === 'invalid_token') {
-      showSnackbar('Nieprawidłowy lub nieważny token zaproszenia', 'error');
-      router.replace('/crm/events');
-    } else if (error === 'token_expired') {
-      showSnackbar(
-        'Token zaproszenia wygasł. Zaloguj się do systemu aby potwierdzić udział.',
-        'error',
-      );
-      router.replace('/crm/events');
-    } else if (info === 'invitation_rejected') {
-      showSnackbar(`Zaproszenie do wydarzenia "${eventName}" zostało odrzucone`, 'info');
-      router.replace('/crm/events');
-    } else if (error === 'update_failed') {
-      showSnackbar('Nie udało się zaktualizować statusu zaproszenia', 'error');
-      router.replace('/crm/events');
-    }
-  }, [searchParams, router, showSnackbar]);
   const [events, setEvents] = useState<any[]>(initialEvents);
   const [filteredEvents, setFilteredEvents] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>(initialCategories);
@@ -124,6 +135,15 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
   );
   const [showMobileSearch, setShowMobileSearch] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
+
+  const canViewCommercials =
+    isUserAdmin ||
+    hasScope('finances_manage') ||
+    hasScope('finances_view') ||
+    hasScope('offers_manage') ||
+    hasScope('offers_view') ||
+    hasScope('invoices_manage') ||
+    hasScope('invoices_view');
 
   const handleViewModeChange = async (mode: 'list' | 'grid') => {
     setLocalViewMode(mode);
@@ -167,7 +187,6 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
 
       const currentUserId = session.user.id;
 
-      // Sprawdź czy użytkownik jest adminem
       const { data: employee } = await supabase
         .from('employees')
         .select('permissions, role')
@@ -187,7 +206,6 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
         `,
       );
 
-      // Jeśli użytkownik nie jest adminem, pokaż tylko eventy do których jest przypisany
       if (!isAdmin) {
         const { data: assignedEvents } = await supabase
           .from('employee_assignments')
@@ -196,7 +214,6 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
 
         const eventIds = assignedEvents?.map((a) => a.event_id) || [];
 
-        // Dodaj też eventy utworzone przez użytkownika
         const { data: createdEvents } = await supabase
           .from('events')
           .select('id')
@@ -231,8 +248,8 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
     setEvents([]);
   };
 
-  const handleDeleteClick = (e: React.MouseEvent, event: any) => {
-    e.stopPropagation();
+  const handleDeleteClick = (e: React.MouseEvent | null, event: any) => {
+    if (e) e.stopPropagation();
     setEventToDelete(event);
     setDeleteModalOpen(true);
   };
@@ -260,7 +277,6 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Filtrowanie po wyszukiwaniu
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       result = result.filter(
@@ -275,17 +291,14 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
       );
     }
 
-    // Filtrowanie po statusie
     if (statusFilter !== 'all') {
       result = result.filter((event) => event.status === statusFilter);
     }
 
-    // Filtrowanie po kategorii
     if (categoryFilter !== 'all') {
       result = result.filter((event) => event.category_id === categoryFilter);
     }
 
-    // Filtrowanie przeszłych eventów (tylko jeśli showPastEvents jest false)
     if (!showPastEvents) {
       result = result.filter((event) => {
         const eventDate = new Date(event.event_date);
@@ -294,24 +307,20 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
       });
     }
 
-    // Sortowanie
     result.sort((a, b) => {
       let aVal = a[sortField];
       let bVal = b[sortField];
 
-      // Konwersja dat
       if (sortField === 'event_date' || sortField === 'created_at') {
         aVal = new Date(aVal || 0).getTime();
         bVal = new Date(bVal || 0).getTime();
       }
 
-      // Konwersja liczb
       if (sortField === 'budget') {
         aVal = Number(aVal || 0);
         bVal = Number(bVal || 0);
       }
 
-      // Konwersja stringów
       if (sortField === 'name') {
         aVal = String(aVal || '').toLowerCase();
         bVal = String(bVal || '').toLowerCase();
@@ -369,7 +378,6 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
         return;
       }
 
-      // Automatycznie dodaj autora do zespołu wydarzenia
       if (data && data[0] && session?.user?.id) {
         const { error: assignmentError } = await supabase.from('employee_assignments').insert([
           {
@@ -392,6 +400,29 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
     }
   };
 
+  useEffect(() => {
+    const error = searchParams.get('error');
+    const info = searchParams.get('info');
+    const eventName = searchParams.get('event');
+
+    if (error === 'invalid_token') {
+      showSnackbar('Nieprawidłowy lub nieważny token zaproszenia', 'error');
+      router.replace('/crm/events');
+    } else if (error === 'token_expired') {
+      showSnackbar(
+        'Token zaproszenia wygasł. Zaloguj się do systemu aby potwierdzić udział.',
+        'error',
+      );
+      router.replace('/crm/events');
+    } else if (info === 'invitation_rejected') {
+      showSnackbar(`Zaproszenie do wydarzenia "${eventName}" zostało odrzucone`, 'info');
+      router.replace('/crm/events');
+    } else if (error === 'update_failed') {
+      showSnackbar('Nie udało się zaktualizować statusu zaproszenia', 'error');
+      router.replace('/crm/events');
+    }
+  }, [searchParams, router, showSnackbar]);
+
   const actions = useMemo<Action[]>(() => {
     return [
       {
@@ -408,6 +439,10 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
       },
     ];
   }, [router, setIsModalOpen]);
+
+
+  console.log('canViewCommercials', canViewCommercials);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -418,12 +453,10 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
       </div>
 
       {/* Filtry i sortowanie */}
-      {/* Filtry i sortowanie */}
       <div className="space-y-4 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-2 md:p-4">
         {/* MOBILE toolbar */}
         <div className="flex items-center justify-between gap-2 md:hidden">
           <div className="flex items-center gap-2">
-            {/* 🔍 Search */}
             <button
               onClick={() => setShowMobileSearch(true)}
               className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1117] p-2 text-[#e5e4e2]/70 transition-colors hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]"
@@ -432,7 +465,6 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
               <Search className="h-4 w-4" />
             </button>
 
-            {/* 🎛️ Filters */}
             <button
               onClick={() => setShowMobileFilters(true)}
               className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1117] p-2 text-[#e5e4e2]/70 transition-colors hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]"
@@ -441,7 +473,6 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
               <SlidersHorizontal className="h-4 w-4" />
             </button>
 
-            {/* ↕️ sort dir */}
             <button
               onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
               className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1117] p-2 text-[#e5e4e2]/70 transition-colors hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]"
@@ -452,7 +483,6 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
               />
             </button>
 
-            {/* 📅 past toggle */}
             <button
               onClick={() => setShowPastEvents(!showPastEvents)}
               className={`rounded-lg border border-[#d3bb73]/10 p-2 transition-colors ${
@@ -466,7 +496,6 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
             </button>
           </div>
 
-          {/* view mode */}
           <div className="flex items-center gap-2">
             <button
               onClick={() => handleViewModeChange('list')}
@@ -514,9 +543,8 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
             })()}
         </div>
 
-        {/* DESKTOP content (Twoje 1:1) */}
+        {/* DESKTOP content */}
         <div className="hidden flex-wrap items-center gap-4 md:flex">
-          {/* Wyszukiwanie */}
           <div className="min-w-[250px] flex-1">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#e5e4e2]/50" />
@@ -530,7 +558,6 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
             </div>
           </div>
 
-          {/* Filtr statusu */}
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
@@ -543,9 +570,12 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
             <option value="in_progress">W trakcie</option>
             <option value="completed">Zakończony</option>
             <option value="invoiced">Rozliczony</option>
+            <option value="offer_to_send">Oferta do wysłania</option>
+            <option value="inquiry">Zapytanie</option>
+            <option value="cancelled">Anulowany</option>
+            <option value="ready_for_live">Gotowy do realizacji</option>
           </select>
 
-          {/* Filtr kategorii */}
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
@@ -559,7 +589,6 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
             ))}
           </select>
 
-          {/* Sortowanie */}
           <div className="flex items-center gap-2">
             <SlidersHorizontal className="h-4 w-4 text-[#e5e4e2]/50" />
             <select
@@ -583,7 +612,6 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
             </button>
           </div>
 
-          {/* Przełącznik widoku */}
           <div className="flex items-center gap-2">
             <button
               onClick={() => handleViewModeChange('list')}
@@ -610,7 +638,7 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
           </div>
         </div>
 
-        {/* DESKTOP footer (Twoje 1:1) */}
+        {/* DESKTOP footer */}
         <div className="hidden items-center justify-between border-t border-[#d3bb73]/10 pt-4 md:flex">
           <button
             onClick={() => setShowPastEvents(!showPastEvents)}
@@ -627,27 +655,6 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
           <div className="text-sm text-[#e5e4e2]/50">
             Znaleziono: <span className="font-medium text-[#d3bb73]">{filteredEvents.length}</span>{' '}
             z {events.length} eventów
-            {!showPastEvents &&
-              (() => {
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-                const pastEventsCount = events.filter((event) => {
-                  const eventDate = new Date(event.event_date);
-                  eventDate.setHours(0, 0, 0, 0);
-                  return eventDate < today;
-                }).length;
-                return pastEventsCount > 0 ? (
-                  <span className="ml-2 text-[#e5e4e2]/40">
-                    (ukryto {pastEventsCount}{' '}
-                    {pastEventsCount === 1
-                      ? 'przeszły'
-                      : pastEventsCount < 5
-                        ? 'przeszłe'
-                        : 'przeszłych'}
-                    )
-                  </span>
-                ) : null;
-              })()}
           </div>
         </div>
 
@@ -707,6 +714,10 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
                   <option value="in_progress">W trakcie</option>
                   <option value="completed">Zakończony</option>
                   <option value="invoiced">Rozliczony</option>
+                  <option value="offer_to_send">Oferta do wysłania</option>
+                  <option value="inquiry">Zapytanie</option>
+                  <option value="cancelled">Anulowany</option>
+                  <option value="ready_for_live">Gotowy do realizacji</option>
                 </select>
 
                 <select
@@ -776,7 +787,9 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
           eventDate.setHours(0, 0, 0, 0);
           const isPast = eventDate < today;
 
-          // MOBILE + GRID (jedna karta, przyjazna dotykowo)
+          const clientLabel = getOrgLabel(event.organizations, event.contacts);
+          const isContactClient = !event.organizations && !!getContactLabel(event.contacts);
+
           if (viewMode === 'grid') {
             return (
               <div
@@ -786,13 +799,11 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
                   isPast ? 'border-[#e5e4e2]/5 opacity-70' : 'border-[#d3bb73]/10'
                 }`}
               >
-                {/* Header: title + menu */}
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <h3 className="line-clamp-2 flex-1 text-base font-medium text-[#e5e4e2]">
                     {event.name}
                   </h3>
 
-                  {/* Desktop: delete button, Mobile: 3-dot */}
                   <div className="flex items-center gap-2">
                     <div className="hidden md:block">
                       <button
@@ -823,11 +834,14 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
                   </div>
                 </div>
 
-                {/* Meta: klient + data */}
                 <div className="flex flex-col gap-2 text-sm text-[#e5e4e2]/70">
                   <div className="flex items-center gap-2">
-                    <Building2 className="h-4 w-4 flex-shrink-0" />
-                    <span className="truncate">{getOrgLabel(event.organizations)}</span>
+                    {isContactClient ? (
+                      <User className="h-4 w-4 flex-shrink-0" />
+                    ) : (
+                      <Building2 className="h-4 w-4 flex-shrink-0" />
+                    )}
+                    <span className="truncate">{clientLabel}</span>
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -846,7 +860,6 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
                   </div>
                 </div>
 
-                {/* Pills */}
                 <div className="mt-4 flex flex-wrap items-center gap-2">
                   <div>
                     <EventStatusBadge status={event.status} />
@@ -859,15 +872,14 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
                   )}
                 </div>
 
-                {/* Budget */}
-                <div className="mt-3 text-sm text-[#e5e4e2]/70">
-                  Budżet:{' '}
-                  <span className="font-medium text-[#d3bb73]">
-                    {event.expected_revenue ? event.expected_revenue.toLocaleString() : '0'} zł
-                  </span>
-                </div>
-
-                {/* Editor – na mobile często zjada miejsce, więc chowamy i pokazujemy od md */}
+                {canViewCommercials && (
+                  <div className="mt-3 text-sm text-[#e5e4e2]/70">
+                    Budżet:{' '}
+                    <span className="font-medium text-[#d3bb73]">
+                      {event.expected_revenue ? event.expected_revenue.toLocaleString() : '0'} zł
+                    </span>
+                  </div>
+                )}
                 <div className="mt-3 hidden md:block">
                   <EventStatusBadge status={event.status} />
                 </div>
@@ -875,7 +887,6 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
             );
           }
 
-          // LIST VIEW (mobile-friendly + desktop-friendly)
           return (
             <div
               key={event.id}
@@ -884,7 +895,6 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
               }`}
               onClick={() => router.push(`/crm/events/${event.id}`)}
             >
-              {/* Top row */}
               <div className="flex items-start justify-between gap-1 sm:gap-2">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
@@ -898,38 +908,39 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
                     )}
                   </div>
 
-                  {/* compact meta line for mobile */}
                   <div className="mt-2 flex flex-col gap-1 text-sm text-[#e5e4e2]/70 md:flex-row md:flex-wrap md:gap-4">
                     <div className="flex items-center gap-2">
-                      <Building2 className="h-4 w-4 flex-shrink-0" />
-                      <span className="max-w-[250px] truncate">
-                        {getOrgLabel(event.organizations)}
-                      </span>
+                      {isContactClient ? (
+                        <User className="h-4 w-4 flex-shrink-0" />
+                      ) : (
+                        <Building2 className="h-4 w-4 flex-shrink-0" />
+                      )}
+                      <span className="max-w-[250px] truncate">{clientLabel}</span>
                     </div>
+
                     <div className="flex items-center gap-2">
                       <Calendar className="h-4 w-4 flex-shrink-0" />
                       <span className="truncate">
                         {new Date(event.event_date).toLocaleDateString('pl-PL')}
                       </span>
                     </div>
+
                     <div className="flex min-w-0 items-center gap-2">
                       <MapPin className="h-4 w-4 flex-shrink-0" />
 
                       <div className="min-w-0 flex-1 truncate">
                         <a
-                          href={getMapsHref(event.locations, event.location)}
+                          href={getMapsHref(event.locations, event.location) ?? undefined}
                           target="_blank"
                           rel="noreferrer"
                           onClick={stop}
                           className="block min-w-0 cursor-pointer truncate text-[#e5e4e2]/70 hover:text-[#d3bb73]"
                           title="Otwórz w mapach"
                         >
-                          {/* MOBILE: minimum */}
                           <span className="block max-w-[calc(100vw-140px)] truncate whitespace-nowrap sm:hidden">
                             {getLocationLabelMobile(event.locations, event.location)}
                           </span>
 
-                          {/* >= SM: więcej info */}
                           <span className="hidden sm:inline">
                             {getLocationLabelDesktop(event.locations, event.location)}
                           </span>
@@ -939,9 +950,7 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
                   </div>
                 </div>
 
-                {/* Right: pills + actions */}
                 <div className="flex items-center gap-2">
-                  {/* pills (na mobile mogą być pod spodem, więc tu chowamy) */}
                   <div className="hidden items-center gap-2 md:flex">
                     <div>
                       <EventStatusBadge status={event.status} />
@@ -954,7 +963,6 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
                     )}
                   </div>
 
-                  {/* actions */}
                   <div className="hidden md:block">
                     <button
                       onClick={(e) => {
@@ -984,7 +992,6 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
                 </div>
               </div>
 
-              {/* Mobile pills under content */}
               <div className="mt-3 flex flex-wrap items-center gap-2 md:hidden">
                 <div
                   className={`rounded-full border px-2 py-1 text-xs ${statusColors[event.status]}`}
@@ -1003,7 +1010,6 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
                 )}
               </div>
 
-              {/* Footer */}
               <div className="mt-4 flex items-center justify-between border-t border-[#d3bb73]/10 pt-4">
                 <div className="text-sm text-[#e5e4e2]/70">
                   Budżet:{' '}
@@ -1012,7 +1018,6 @@ export default function EventsPageClient({ initialEvents, initialCategories }: {
                   </span>
                 </div>
 
-                {/* opcjonalnie: jakiś chevron / CTA (mobile) */}
                 <div className="text-xs text-[#e5e4e2]/40 md:hidden">Szczegóły →</div>
               </div>
             </div>

@@ -7,6 +7,8 @@ import { IOfferItem } from '../offers/types';
 export type SelectedItem = { id: string; quantity: number; notes: string; type: 'item' | 'kit' };
 
 export interface IOffer {
+  subtotal: number;
+  tax_percent: number;
   id: string;
   offer_number: string;
   event_id: string;
