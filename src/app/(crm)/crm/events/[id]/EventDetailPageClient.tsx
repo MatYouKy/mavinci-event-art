@@ -989,7 +989,7 @@ export default function EventDetailPageClient({
         </div>
       )}
 
-      {activeTab === 'equipment' && <EventEquipmentTab eventId={event?.id as string} />}
+      {activeTab === 'equipment' && <EventEquipmentTab eventId={event?.id as string} event={event} />}
 
       {activeTab === 'team' && (
         <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
