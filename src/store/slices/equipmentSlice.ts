@@ -34,10 +34,15 @@ export interface ConnectorType {
 export interface EquipmentComponent {
   id: UUID;
   equipment_id: UUID;
+  component_equipment_id?: UUID | null;
   component_name: string;
   quantity: number | null;
   description: string | null;
   is_included: boolean | null;
+  is_integral?: boolean | null;
+  is_optional?: boolean | null;
+  thumbnail_url?: string | null;
+  technical_specs?: Record<string, string> | null;
   created_at: string | null;
 }
 
@@ -290,6 +295,10 @@ export const addEquipmentComponent = createAsyncThunk(
       quantity: component.quantity ?? 1,
       description: component.description ?? null,
       is_included: component.is_included ?? true,
+      is_integral: component.is_integral ?? false,
+      is_optional: component.is_optional ?? false,
+      thumbnail_url: component.thumbnail_url ?? null,
+      technical_specs: component.technical_specs ?? null,
     });
     if (error) throw error;
     return true;

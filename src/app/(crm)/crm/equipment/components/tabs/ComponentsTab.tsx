@@ -217,11 +217,11 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
 
     setUploadingThumb(true);
     try {
-      const url = await uploadImage(file, 'equipment-components');
+      const url = await uploadImage(file, 'equipment-images');
       setNewComponent((prev) => ({ ...prev, thumbnail_url: url }));
     } catch (error) {
       console.error('Error uploading thumbnail:', error);
-      alert('Błąd podczas przesyłania zdjęcia');
+      alert('Błąd podczas przesyłania zdjęcia: ' + (error instanceof Error ? error.message : 'Nieznany błąd'));
     } finally {
       setUploadingThumb(false);
     }
@@ -813,7 +813,7 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
               Brak opcjonalnych komponentów i pasujących produktów
             </p>
             <p className="mt-1 text-sm text-[#e5e4e2]/40">
-              Zaznacz checkbox "Opcjonalny" przy dodawaniu komponentu lub dodaj produkty z magazynu
+              Zaznacz checkbox &ldquo;Opcjonalny&rdquo; przy dodawaniu komponentu lub dodaj produkty z magazynu
             </p>
           </div>
         )}
