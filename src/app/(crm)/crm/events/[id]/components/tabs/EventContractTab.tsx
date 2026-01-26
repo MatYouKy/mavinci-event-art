@@ -480,6 +480,8 @@ export function EventContractTab({ eventId }: { eventId: string }) {
 
       pages.forEach((page, index) => {
         const htmlPage = page as HTMLElement;
+        const isLastPage = index === pages.length - 1;
+
         originalStyles[index] = {
           marginBottom: htmlPage.style.marginBottom,
           boxShadow: htmlPage.style.boxShadow,
@@ -494,9 +496,16 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         htmlPage.style.boxShadow = 'none';
         htmlPage.style.minHeight = '';
         htmlPage.style.height = '297mm';
-        // KLUCZOWE: Usuń page-break-after aby nie tworzyć pustych stron między stronami
-        htmlPage.style.pageBreakAfter = 'auto';
-        htmlPage.style.breakAfter = 'auto';
+
+        // KLUCZOWE: Dla ostatniej strony użyj 'avoid', dla pozostałych 'auto'
+        // aby nie tworzyć pustych stron
+        if (isLastPage) {
+          htmlPage.style.pageBreakAfter = 'avoid';
+          htmlPage.style.breakAfter = 'avoid';
+        } else {
+          htmlPage.style.pageBreakAfter = 'auto';
+          htmlPage.style.breakAfter = 'auto';
+        }
       });
 
       // Funkcja pomocnicza do przywracania stylów
@@ -649,6 +658,34 @@ export function EventContractTab({ eventId }: { eventId: string }) {
     } catch (err) {
       console.error('Error downloading PDF:', err);
       showSnackbar('Błąd podczas pobierania PDF', 'error');
+    }
+  };
+
+  const handleDeleteContract = async () => {
+    if (!contractId) {
+      showSnackbar('Brak umowy do usunięcia', 'warning');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      'Czy na pewno chcesz usunąć tę umowę? Tej operacji nie można cofnąć.',
+    );
+    if (!confirmed) return;
+
+    try {
+      const { error } = await supabase.from('contracts').delete().eq('id', contractId);
+
+      if (error) throw error;
+
+      setContractId(null);
+      setContractStatus('draft');
+      setGeneratedPdfPath(null);
+      setModifiedAfterGeneration(false);
+      showSnackbar('Umowa została usunięta', 'success');
+      await fetchContractData();
+    } catch (err) {
+      console.error('Error deleting contract:', err);
+      showSnackbar('Błąd podczas usuwania umowy', 'error');
     }
   };
 
@@ -824,6 +861,15 @@ export function EventContractTab({ eventId }: { eventId: string }) {
       });
     }
 
+    if (contractId && canEdit) {
+      baseActions.push({
+        label: 'Usuń umowę',
+        onClick: handleDeleteContract,
+        icon: <X className="h-4 w-4" />,
+        variant: 'danger' as const,
+      });
+    }
+
     return baseActions;
   }, [
     editMode,
@@ -831,11 +877,13 @@ export function EventContractTab({ eventId }: { eventId: string }) {
     canSendEmail,
     generatedPdfPath,
     modifiedAfterGeneration,
+    contractId,
     handleCancel,
     handleSave,
     handlePrint,
     handleShowPdf,
     handleDownloadPdf,
+    handleDeleteContract,
   ]);
 
   if (loading) {
