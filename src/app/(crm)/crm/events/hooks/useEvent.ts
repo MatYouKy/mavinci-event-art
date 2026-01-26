@@ -87,6 +87,27 @@ export function useEvent(initialEvent?: IEvent) {
     [eventId],
   );
 
+  const refetch = useCallback(async () => {
+    if (!eventId) return;
+
+    try {
+      setLoading(true);
+      const { data, error: fetchError } = await supabase
+        .from('events')
+        .select('*')
+        .eq('id', eventId)
+        .single();
+
+      if (fetchError) throw fetchError;
+      setEvent(data as IEvent);
+    } catch (err) {
+      console.error('Error refetching event:', err);
+      setError(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [eventId]);
+
   return {
     event,
     loading,
@@ -94,6 +115,7 @@ export function useEvent(initialEvent?: IEvent) {
     updateEvent: handleUpdateEvent,
     deleteEvent: handleDeleteEvent,
     logChange,
+    refetch,
     isUpdating,
     isDeleting,
   };

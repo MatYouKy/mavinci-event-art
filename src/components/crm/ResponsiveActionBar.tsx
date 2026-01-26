@@ -9,6 +9,7 @@ export interface Action {
   icon?: React.ReactNode;
   variant?: 'default' | 'primary' | 'danger';
   show?: boolean;
+  disabled?: boolean;
 }
 
 interface ResponsiveActionBarProps {
@@ -104,10 +105,13 @@ export default function ResponsiveActionBar({
               <button
                 key={index}
                 onClick={() => {
-                  action.onClick();
-                  setShowMenu(false);
+                  if (!action.disabled) {
+                    action.onClick();
+                    setShowMenu(false);
+                  }
                 }}
-                className={getMenuItemClasses(action.variant)}
+                disabled={action.disabled}
+                className={`${getMenuItemClasses(action.variant)} ${action.disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 {action.icon && (
                   <span className="flex-shrink-0 w-5 h-5">
@@ -129,7 +133,8 @@ export default function ResponsiveActionBar({
         <button
           key={index}
           onClick={action.onClick}
-          className={getButtonClasses(action.variant)}
+          disabled={action.disabled}
+          className={`${getButtonClasses(action.variant)} ${action.disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
           {action.icon}
           {action.label}

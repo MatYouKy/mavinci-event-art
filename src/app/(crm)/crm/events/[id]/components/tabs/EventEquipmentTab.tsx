@@ -247,9 +247,13 @@ export const EventEquipmentTab: React.FC<{
   const [draftQuantity, setDraftQuantity] = useState<number>(1);
 
   const { showSnackbar } = useSnackbar();
-  const { event } = useEvent(initialEvent);
+  const { event, refetch: refetchEvent } = useEvent(initialEvent);
   const { employee } = useCurrentEmployee();
   const { showConfirm } = useDialog();
+
+  // Tracking PDF checklisty
+  const checklistPdfPath = event?.equipment_checklist_pdf_path || null;
+  const checklistModified = event?.equipment_checklist_modified || false;
 
   // ✅ guard na start: hook może być wywołany, ale wewnątrz i tak nie robimy fetchy bez ID
   const {
@@ -394,6 +398,19 @@ export const EventEquipmentTab: React.FC<{
     try {
       setGeneratingPdf(true);
 
+      // 0. Usuń poprzedni PDF jeśli istnieje
+      if (checklistPdfPath) {
+        try {
+          // Usuń z storage
+          await supabase.storage.from('event-files').remove([checklistPdfPath]);
+
+          // Usuń z event_files
+          await supabase.from('event_files').delete().eq('file_path', checklistPdfPath);
+        } catch (deleteError) {
+          console.warn('Błąd podczas usuwania poprzedniego PDF checklisty:', deleteError);
+        }
+      }
+
       const equipmentData = (equipment as any[])
         .filter((row) => !row?.removed_from_offer)
         .map((row) => {
@@ -495,7 +512,20 @@ export const EventEquipmentTab: React.FC<{
         },
       ]);
 
-      showSnackbar('Checklista sprzętu została wygenerowana i zapisana', 'success');
+      // Zapisz ścieżkę PDF w tabeli events
+      await supabase
+        .from('events')
+        .update({
+          equipment_checklist_pdf_path: storagePath,
+          equipment_checklist_pdf_at: new Date().toISOString(),
+          equipment_checklist_modified: false,
+        })
+        .eq('id', eventId);
+
+      // Odśwież dane wydarzenia
+      await refetchEvent();
+
+      showSnackbar('Checklista sprzętu została wygenerowana i zapisana w zakładce Pliki', 'success');
 
       worker.save();
     } catch (error) {
@@ -503,6 +533,54 @@ export const EventEquipmentTab: React.FC<{
       showSnackbar('Błąd podczas generowania checklisty', 'error');
     } finally {
       setGeneratingPdf(false);
+    }
+  };
+
+  const handleShowChecklistPdf = async () => {
+    if (!checklistPdfPath) return;
+
+    try {
+      const { data } = await supabase.storage
+        .from('event-files')
+        .createSignedUrl(checklistPdfPath, 3600);
+
+      if (data?.signedUrl) {
+        window.open(data.signedUrl, '_blank');
+      }
+    } catch (err) {
+      console.error('Error showing PDF:', err);
+      showSnackbar('Błąd podczas otwierania PDF', 'error');
+    }
+  };
+
+  const handleDownloadChecklistPdf = async () => {
+    if (!checklistPdfPath) return;
+
+    try {
+      const { data } = await supabase.storage
+        .from('event-files')
+        .createSignedUrl(checklistPdfPath, 3600);
+
+      if (data?.signedUrl) {
+        const response = await fetch(data.signedUrl);
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = checklistPdfPath.split('/').pop() || 'checklista.pdf';
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+
+        setTimeout(() => {
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(blobUrl);
+        }, 100);
+      }
+    } catch (err) {
+      console.error('Error downloading PDF:', err);
+      showSnackbar('Błąd podczas pobierania PDF', 'error');
     }
   };
 
@@ -794,21 +872,57 @@ export const EventEquipmentTab: React.FC<{
   };
 
   const actions = useMemo<Action[]>(() => {
-    return [
+    const result: Action[] = [
       {
         label: 'Dodaj sprzęt',
         onClick: () => setShowAddEquipmentModal(true),
         icon: <Plus className="h-4 w-4" />,
         variant: 'primary',
       },
-      {
-        label: 'Drukuj checklistę',
+    ];
+
+    // Logika dla PDF checklisty
+    if (!checklistPdfPath || checklistModified) {
+      // Brak PDF lub są zmiany - pokaż przycisk generuj/regeneruj
+      result.push({
+        label: generatingPdf
+          ? 'Generowanie...'
+          : checklistModified
+            ? 'Regeneruj checklistę'
+            : 'Generuj checklistę',
         onClick: handleGenerateChecklist,
         icon: <Printer className="h-4 w-4" />,
         variant: 'default',
-      },
-    ];
-  }, [setShowAddEquipmentModal, handleGenerateChecklist]);
+        disabled: generatingPdf,
+      });
+    } else {
+      // PDF istnieje i nie ma zmian - pokaż przyciski pokaż i pobierz
+      result.push(
+        {
+          label: 'Pokaż checklistę',
+          onClick: handleShowChecklistPdf,
+          icon: <Printer className="h-4 w-4" />,
+          variant: 'default',
+        },
+        {
+          label: 'Pobierz checklistę',
+          onClick: handleDownloadChecklistPdf,
+          icon: <Printer className="h-4 w-4" />,
+          variant: 'default',
+        },
+      );
+    }
+
+    return result;
+  }, [
+    setShowAddEquipmentModal,
+    checklistPdfPath,
+    checklistModified,
+    generatingPdf,
+    handleGenerateChecklist,
+    handleShowChecklistPdf,
+    handleDownloadChecklistPdf,
+  ]);
 
   const getRowEquipmentId = (r: any) =>
     (r?.equipment_id ||

@@ -80,6 +80,9 @@ export interface IEvent {
   employees?: IEmployee[];
   vehicles?: any[];
   attachments?: IEventAttachment[];
+  equipment_checklist_pdf_path?: string | null;
+  equipment_checklist_pdf_at?: string | null;
+  equipment_checklist_modified?: boolean;
 }
 
 export interface IEventAttachment {
