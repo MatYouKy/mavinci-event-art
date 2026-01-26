@@ -45,7 +45,7 @@ interface EmployeeAvatarPropsNew {
 type EmployeeAvatarProps = EmployeeAvatarPropsLegacy | EmployeeAvatarPropsNew;
 
 export const EmployeeAvatar: React.FC<EmployeeAvatarProps> = (props) => {
-  const { isOnline } = useAuth();
+  const { isOnline, getLastActivityAt } = useAuth();
 
   const {
     size = 128,
@@ -56,26 +56,49 @@ export const EmployeeAvatar: React.FC<EmployeeAvatarProps> = (props) => {
   } = props;
 
   const hasEmployee = 'employee' in props && !!props.employee;
-  const employeeObj = hasEmployee ? props.employee : (props as EmployeeAvatarPropsLegacy).employee ?? null;
+  const employeeObj = hasEmployee
+    ? props.employee
+    : ((props as EmployeeAvatarPropsLegacy).employee ?? null);
 
   const employeeId =
-    employeeObj?.id ?? (!hasEmployee ? (props as EmployeeAvatarPropsLegacy).employeeId ?? null : null);
+    employeeObj?.id ??
+    (!hasEmployee ? ((props as EmployeeAvatarPropsLegacy).employeeId ?? null) : null);
 
   const avatarUrl =
-    employeeObj?.avatar_url ?? (!hasEmployee ? (props as EmployeeAvatarPropsLegacy).avatarUrl ?? null : null);
+    employeeObj?.avatar_url ??
+    (!hasEmployee ? ((props as EmployeeAvatarPropsLegacy).avatarUrl ?? null) : null);
 
   const avatarMetadata =
     employeeObj?.avatar_metadata ??
-    (!hasEmployee ? (props as EmployeeAvatarPropsLegacy).avatarMetadata ?? null : null);
+    (!hasEmployee ? ((props as EmployeeAvatarPropsLegacy).avatarMetadata ?? null) : null);
 
-  const employeeName =
-    hasEmployee
-      ? employeeObj?.nickname ||
-        `${employeeObj?.name || ''} ${employeeObj?.surname || ''}`.trim() ||
-        'User'
-      : (props as EmployeeAvatarPropsLegacy).employeeName;
+  const employeeName = hasEmployee
+    ? employeeObj?.nickname ||
+      `${employeeObj?.name || ''} ${employeeObj?.surname || ''}`.trim() ||
+      'User'
+    : (props as EmployeeAvatarPropsLegacy).employeeName;
 
-  const online = !!(showActivityStatus && employeeId && isOnline(employeeId));
+    const online = !!(showActivityStatus && employeeId && isOnline(employeeId));
+
+    const presenceAt = employeeId ? getLastActivityAt(employeeId) : null;
+    
+    // Fallback do DB (jeśli presence jeszcze nie ma)
+    const dbAt = employeeObj?.last_active_at ?? null;
+    
+    const effectiveAt = presenceAt ?? dbAt ?? null;
+    
+    const getStatus = () => {
+      if (!online) return 'offline';
+    
+      const last = effectiveAt ? new Date(effectiveAt).getTime() : 0;
+      const mins = last ? (Date.now() - last) / 60000 : 9999;
+    
+      if (mins <= 10) return 'green';
+      if (mins <= 30) return 'yellow';
+      return 'red';
+    };
+    
+    const status = showActivityStatus ? getStatus() : 'offline';
 
   const position = avatarMetadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 };
   const objectFit = avatarMetadata?.desktop?.objectFit || 'cover';
@@ -88,9 +111,7 @@ export const EmployeeAvatar: React.FC<EmployeeAvatarProps> = (props) => {
     <div className="relative overflow-visible" style={{ width: size, height: size }}>
       {/* ✅ wszystko co “wyglądowe” zostaje na kółku */}
       <div
-        className={`relative h-full w-full overflow-hidden rounded-full border-4 border-[#1c1f33] bg-[#1c1f33]
-          ${showHoverEffect ? 'cursor-pointer transition-all hover:ring-2 hover:ring-[#d3bb73]' : ''}
-          ${className}`}
+        className={`relative h-full w-full overflow-hidden rounded-full border-4 border-[#1c1f33] bg-[#1c1f33] ${showHoverEffect ? 'cursor-pointer transition-all hover:ring-2 hover:ring-[#d3bb73]' : ''} ${className}`}
         onClick={onClick}
       >
         {avatarUrl ? (
@@ -113,13 +134,24 @@ export const EmployeeAvatar: React.FC<EmployeeAvatarProps> = (props) => {
         )}
       </div>
 
-      {/* ✅ sama kropka (bez dodatkowych ramek dookoła avatara) */}
-      {showActivityStatus && online && (
+      {showActivityStatus && status !== 'offline' && (
         <div className="absolute bottom-0 right-2">
           <div
-            title="Online"
+            title={
+              status === 'green'
+                ? 'Online (aktywny)'
+                : status === 'yellow'
+                  ? 'Online (nieaktywny > 10 min)'
+                  : 'Online (nieaktywny > 30 min)'
+            }
             style={{ width: dot, height: dot }}
-            className="rounded-full bg-green-500 ring-1 ring-offset-2 ring-offset-[#1c1f33] -z-40"
+            className={`rounded-full ring-1 ring-offset-2 ring-offset-[#1c1f33] ${
+              status === 'green'
+                ? 'bg-green-500'
+                : status === 'yellow'
+                  ? 'bg-yellow-500'
+                  : 'bg-red-500'
+            }`}
           />
         </div>
       )}
