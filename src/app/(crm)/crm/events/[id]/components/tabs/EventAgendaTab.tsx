@@ -335,6 +335,7 @@ export default function EventAgendaTab({
             start_time: isoStart,
             end_time: isoEnd,
             client_contact: contact?.full_name || null,
+            modified_after_generation: generatedPdfPath ? true : false,
           })
           .eq('id', currentAgendaId);
 
@@ -392,11 +393,6 @@ export default function EventAgendaTab({
       alert('Agenda została zapisana');
       await fetchAgenda();
       setEditMode(false);
-
-      // Automatyczne generowanie PDF po zapisie
-      setTimeout(() => {
-        handleGeneratePDF();
-      }, 500);
     } catch (err) {
       console.error('Error saving agenda:', err);
       alert('Wystąpił błąd podczas zapisywania agendy');
@@ -440,15 +436,32 @@ export default function EventAgendaTab({
         }
       }
 
-      // 1. Zbuduj HTML agendy
+      // 1. Pobierz dane klienta w zależności od typu
+      let clientContact = '';
+      let contactName = '';
+      let contactNumber = '';
+
+      if (event?.client_type === 'individual' && contact) {
+        // Klient indywidualny
+        contactName = contact?.full_name || `${(contact as any)?.first_name || ''} ${(contact as any)?.last_name || ''}`.trim();
+        clientContact = contactName;
+        contactNumber = (contact as any)?.phone || (contact as any)?.mobile || '';
+      } else if (event?.client_type === 'business') {
+        // Klient biznesowy
+        clientContact = organization?.alias || organization?.name || '';
+        contactName = clientContact;
+        contactNumber = (organization as any)?.phone || '';
+      }
+
+      // 2. Zbuduj HTML agendy
       const html = buildAgendaHtml({
         eventName,
         eventDate: normalizedEventDate, // YYYY-MM-DD
         startTime: startTimeInput,
         endTime: endTimeInput,
-        clientContact: organization?.alias || organization?.name || '',
-        contactName: contact?.full_name || '',
-        contactNumber: contact?.business_phone || '',
+        clientContact,
+        contactName,
+        contactNumber,
         agendaItems: getSortedAgendaItems(),
         agendaNotes,
         lastUpdated: new Date().toISOString(),
@@ -456,11 +469,11 @@ export default function EventAgendaTab({
         authorNumber: createdByEmployee?.phone_number || '',
       });
 
-      // 2. Dynamiczny import html2pdf.js (działa tylko w przeglądarce)
+      // 3. Dynamiczny import html2pdf.js (działa tylko w przeglądarce)
       const { default: html2pdf } = await import('html2pdf.js');
       const html2pdfFn: any = (html2pdf as any) || html2pdf;
 
-      // 3. Tworzymy tymczasowy element z HTML-em
+      // 4. Tworzymy tymczasowy element z HTML-em
       const element = document.createElement('div');
       element.innerHTML = html;
 
@@ -472,11 +485,11 @@ export default function EventAgendaTab({
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
       };
 
-      // 4. Generujemy PDF jako Blob
+      // 5. Generujemy PDF jako Blob
       const worker = html2pdfFn().from(element).set(opt).toPdf();
       const pdfBlob: Blob = await worker.output('blob');
 
-      // 5. Zapisz PDF do storage i event_files
+      // 6. Zapisz PDF do storage i event_files
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
       const fileName = `agenda-${eventName.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${timestamp}.pdf`;
       const storagePath = `${eventId}/${fileName}`;
@@ -532,7 +545,7 @@ export default function EventAgendaTab({
         alert('Agenda PDF została zapisana w zakładce Pliki');
       }
 
-      // 6. Podgląd PDF w nowej karcie
+      // 7. Podgląd PDF w nowej karcie
       const previewUrl = URL.createObjectURL(pdfBlob);
       window.open(previewUrl, '_blank');
     } catch (err) {
@@ -639,16 +652,31 @@ export default function EventAgendaTab({
     };
 
     setAgendaItems([...agendaItems, newItem]);
+
+    // Oznacz jako zmodyfikowane po wygenerowaniu
+    if (generatedPdfPath) {
+      setModifiedAfterGeneration(true);
+    }
   };
 
   const removeAgendaItem = (index: number) => {
     setAgendaItems(agendaItems.filter((_, i) => i !== index));
+
+    // Oznacz jako zmodyfikowane po wygenerowaniu
+    if (generatedPdfPath) {
+      setModifiedAfterGeneration(true);
+    }
   };
 
   const updateAgendaItem = (index: number, field: keyof AgendaItem, value: any) => {
     const updated = [...agendaItems];
     updated[index] = { ...updated[index], [field]: value };
     setAgendaItems(updated);
+
+    // Oznacz jako zmodyfikowane po wygenerowaniu
+    if (generatedPdfPath) {
+      setModifiedAfterGeneration(true);
+    }
   };
 
   const toggleItemEdit = (index: number, editing: boolean) => {
@@ -731,6 +759,11 @@ export default function EventAgendaTab({
     } else {
       setAgendaNotes([...agendaNotes, newNote]);
     }
+
+    // Oznacz jako zmodyfikowane po wygenerowaniu
+    if (generatedPdfPath) {
+      setModifiedAfterGeneration(true);
+    }
   };
 
   const updateNote = (noteId: string, content: string) => {
@@ -749,6 +782,11 @@ export default function EventAgendaTab({
       });
 
     setAgendaNotes(updateInTree(agendaNotes));
+
+    // Oznacz jako zmodyfikowane po wygenerowaniu
+    if (generatedPdfPath) {
+      setModifiedAfterGeneration(true);
+    }
   };
 
   const removeNote = (noteId: string) => {
@@ -761,6 +799,11 @@ export default function EventAgendaTab({
         }));
 
     setAgendaNotes(removeFromTree(agendaNotes));
+
+    // Oznacz jako zmodyfikowane po wygenerowaniu
+    if (generatedPdfPath) {
+      setModifiedAfterGeneration(true);
+    }
   };
 
   const actions = useMemo<Action[]>(() => {
