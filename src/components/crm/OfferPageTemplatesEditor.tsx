@@ -127,6 +127,8 @@ export default function OfferPageTemplatesEditor() {
   const [selectedType, setSelectedType] = useState<string>('cover');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [modalCategoryId, setModalCategoryId] = useState<string | null>(null);
+  const [modalType, setModalType] = useState<string>('cover');
   const [editingTemplate, setEditingTemplate] = useState<OfferPageTemplate | null>(null);
   const [showContentEditor, setShowContentEditor] = useState(false);
   const [editingContent, setEditingContent] = useState<TemplateContent[]>([]);
@@ -186,8 +188,10 @@ export default function OfferPageTemplatesEditor() {
     setShowTextFieldsEditor(true);
   };
 
-  const handleCreateTemplate = () => {
+  const handleCreateTemplate = (categoryId: string, type: string) => {
     setEditingTemplate(null);
+    setModalCategoryId(categoryId);
+    setModalType(type);
     setShowModal(true);
   };
 
@@ -342,10 +346,13 @@ export default function OfferPageTemplatesEditor() {
           </button>
           <button
             onClick={() => {
-              setSelectedCategoryId(
-                categories.find((c) => c.is_default)?.id || categories[0]?.id || null,
-              );
-              handleCreateTemplate();
+              const defaultCategoryId =
+                categories.find((c) => c.is_default)?.id || categories[0]?.id || '';
+              if (defaultCategoryId) {
+                handleCreateTemplate(defaultCategoryId, 'cover');
+              } else {
+                showSnackbar('Najpierw utwórz kategorię', 'error');
+              }
             }}
             className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
           >
@@ -429,9 +436,7 @@ export default function OfferPageTemplatesEditor() {
                           </div>
                           <button
                             onClick={() => {
-                              setSelectedCategoryId(category.id);
-                              setSelectedType(type.value);
-                              handleCreateTemplate();
+                              handleCreateTemplate(category.id, type.value);
                             }}
                             className="rounded bg-[#d3bb73]/20 px-3 py-1 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30"
                           >
@@ -558,177 +563,20 @@ export default function OfferPageTemplatesEditor() {
         )}
       </div>
 
-      {/* Old template types - remove this */}
-      <div className="hidden">
-        {templateTypes.map((type) => {
-          const Icon = type.icon;
-          const isSelected = selectedType === type.value;
-          const count = templates.filter((t) => t.type === type.value).length;
-
-          return (
-            <button
-              key={type.value}
-              onClick={() => setSelectedType(type.value)}
-              className={`relative rounded-xl border p-4 transition-all ${
-                isSelected
-                  ? 'border-[#d3bb73]/30 bg-[#d3bb73]/10'
-                  : 'border-[#d3bb73]/10 bg-[#1c1f33] hover:border-[#d3bb73]/20'
-              }`}
-            >
-              <div className="flex items-start gap-3">
-                <div
-                  className={`rounded-lg p-2 ${isSelected ? 'bg-[#d3bb73]/20' : 'bg-[#d3bb73]/10'}`}
-                >
-                  <Icon
-                    className={`h-5 w-5 ${isSelected ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60'}`}
-                  />
-                </div>
-                <div className="flex-1 text-left">
-                  <h3
-                    className={`mb-1 font-medium ${
-                      isSelected ? 'text-[#d3bb73]' : 'text-[#e5e4e2]'
-                    }`}
-                  >
-                    {type.label}
-                  </h3>
-                  <p className="text-xs text-[#e5e4e2]/60">{type.description}</p>
-                </div>
-              </div>
-              {count > 0 && (
-                <span className="absolute right-2 top-2 rounded-full bg-[#d3bb73]/20 px-2 py-0.5 text-xs text-[#d3bb73]">
-                  {count}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Lista szablonów */}
-      <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-        <h3 className="mb-4 text-lg font-light text-[#e5e4e2]">
-          {getTypeInfo(selectedType)?.label}
-        </h3>
-
-        {templates.length === 0 ? (
-          <div className="py-12 text-center">
-            <FileText className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
-            <p className="mb-4 text-[#e5e4e2]/60">Brak szablonów dla tego typu strony</p>
-            <button
-              onClick={handleCreateTemplate}
-              className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
-            >
-              <Plus className="h-4 w-4" />
-              Utwórz szablon
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {templates.map((template) => (
-              <div
-                key={template.id}
-                className="rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a] p-4 transition-colors hover:border-[#d3bb73]/20"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="mb-1 flex items-center gap-3">
-                      <h4 className="font-medium text-[#e5e4e2]">{template.name}</h4>
-                      {template.is_default && (
-                        <span className="rounded bg-[#d3bb73]/20 px-2 py-0.5 text-xs text-[#d3bb73]">
-                          Domyślny
-                        </span>
-                      )}
-                      {!template.is_active && (
-                        <span className="rounded bg-gray-500/20 px-2 py-0.5 text-xs text-gray-400">
-                          Nieaktywny
-                        </span>
-                      )}
-                    </div>
-                    {template.description && (
-                      <p className="text-sm text-[#e5e4e2]/60">{template.description}</p>
-                    )}
-                    <div className="mt-2 flex items-center gap-2">
-                      {template.pdf_url ? (
-                        <span className="flex items-center gap-2 rounded bg-green-500/20 px-2 py-1 text-xs text-green-400">
-                          <FileText className="h-3 w-3" />
-                          PDF załączony
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-2 rounded bg-red-500/20 px-2 py-1 text-xs text-red-400">
-                          <FileText className="h-3 w-3" />
-                          Brak PDF
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <label className="cursor-pointer">
-                      <input
-                        type="file"
-                        accept=".pdf"
-                        className="hidden"
-                        disabled={uploadingPdf === template.id}
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) handleUploadPdf(template, file);
-                        }}
-                      />
-                      <div
-                        className="rounded-lg p-2 text-blue-400 transition-colors hover:bg-blue-400/10"
-                        title="Upload PDF"
-                      >
-                        <Upload className="h-4 w-4" />
-                      </div>
-                    </label>
-                    {template.pdf_url && (
-                      <>
-                        <button
-                          onClick={() => handleEditTextFields(template)}
-                          className="rounded-lg p-2 text-green-400 transition-colors hover:bg-green-400/10"
-                          title="Konfiguruj pola tekstowe"
-                        >
-                          <Settings className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeletePdf(template)}
-                          className="rounded-lg p-2 text-orange-400 transition-colors hover:bg-orange-400/10"
-                          title="Usuń PDF"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </>
-                    )}
-                    <button
-                      onClick={() => handleEditTemplate(template)}
-                      className="rounded-lg p-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
-                      title="Edytuj zawartość"
-                    >
-                      <Edit className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteTemplate(template)}
-                      className="rounded-lg p-2 text-red-400 transition-colors hover:bg-red-400/10"
-                      title="Usuń szablon"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
 
       {/* Modal tworzenia szablonu */}
-      {showModal && (
+      {showModal && modalCategoryId && (
         <CreateTemplateModal
-          type={selectedType as any}
-          categoryId={selectedCategoryId}
+          type={modalType as any}
+          categoryId={modalCategoryId}
           employee={employee}
-          onClose={() => setShowModal(false)}
+          onClose={() => {
+            setShowModal(false);
+            setModalCategoryId(null);
+          }}
           onSuccess={() => {
             setShowModal(false);
+            setModalCategoryId(null);
             fetchTemplates();
           }}
         />
@@ -1850,7 +1698,7 @@ function TextFieldsEditorModal({
                 <Type className="mx-auto mb-3 h-12 w-12 text-[#e5e4e2]/20" />
                 <p className="mb-2 text-sm text-[#e5e4e2]/60">Wybierz pole z PDF</p>
                 <p className="text-xs text-[#e5e4e2]/40">
-                  lub kliknij "Dodaj pole" aby utworzyć nowe
+                  lub kliknij &ldquo;Dodaj pole&rdquo; aby utworzyć nowe
                 </p>
               </div>
             )}
