@@ -231,7 +231,7 @@ function getEventEquipmentDisplay(row: any): {
   return { name, brand, model, categoryName, isKit, cableLength, kitItems };
 }
 
-export const EventEquipmentTab: React.FC<{ eventId: string; event?: any }> = ({ eventId, event: eventProp }) => {
+export const EventEquipmentTab: React.FC<{ eventId: string }> = ({ eventId }) => {
   const [expandedKits, setExpandedKits] = useState<Set<string>>(new Set());
   const [showAddEquipmentModal, setShowAddEquipmentModal] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
@@ -239,19 +239,11 @@ export const EventEquipmentTab: React.FC<{ eventId: string; event?: any }> = ({ 
   const [draftQuantity, setDraftQuantity] = useState<number>(1);
 
   const { showSnackbar } = useSnackbar();
-  const { event: eventFromHook } = useEvent();
-  const event = eventProp || eventFromHook;
+  const { event } = useEvent();
   const { employee } = useCurrentEmployee();
   const { showConfirm } = useDialog();
 
   console.log('eventId', eventId);
-  console.log('Event data for checklist:', {
-    event,
-    location: event?.location,
-    contact_person: event?.contact_person,
-    organization: event?.organization,
-    client_type: event?.client_type,
-  });
 
   // ✅ guard na start: hook może być wywołany, ale wewnątrz i tak nie robimy fetchy bez ID
   const {
@@ -429,10 +421,10 @@ export const EventEquipmentTab: React.FC<{ eventId: string; event?: any }> = ({ 
       if (event?.client_type === 'individual' && event?.contact_person) {
         contactName = event.contact_person.full_name ||
           `${event.contact_person.first_name || ''} ${event.contact_person.last_name || ''}`.trim() || '-';
-        contactPhone = event.contact_person.phone || event.contact_person.mobile || '-';
+        contactPhone = (event.contact_person as any).phone || (event.contact_person as any).mobile || '-';
       } else if (event?.client_type === 'business' && event?.organization) {
-        contactName = event.organization.name || event.organization.alias || '-';
-        contactPhone = event.organization.phone || '-';
+        contactName = event.organization.name || (event.organization as any).alias || '-';
+        contactPhone = (event.organization as any).phone || '-';
       }
 
       const html = buildEquipmentChecklistHtml({

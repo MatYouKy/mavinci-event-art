@@ -511,13 +511,27 @@ export default function EventAgendaTab({
 
         const safeText = (v: any) => (v == null ? '' : String(v));
 
-        const clientContact = safeText(organization?.alias ?? organization?.name);
-        const contactName = safeText(contact?.full_name ?? (contact as any)?.name);
+        // ✅ Pobierz dane klienta w zależności od typu
+        let clientContact = '';
+        let contactName = '';
+        let safeContactNumber = '';
+
+        if (event?.client_type === 'individual' && contact) {
+          // Klient indywidualny
+          contactName = safeText(contact?.full_name ?? `${(contact as any)?.first_name ?? ''} ${(contact as any)?.last_name ?? ''}`.trim());
+          clientContact = contactName;
+          safeContactNumber = safeText((contact as any)?.phone ?? (contact as any)?.mobile ?? '');
+        } else if (event?.client_type === 'business') {
+          // Klient biznesowy
+          clientContact = safeText(organization?.alias ?? organization?.name ?? '');
+          contactName = clientContact;
+          safeContactNumber = safeText((organization as any)?.phone ?? '');
+        }
+
         const authorName = safeText(createdByEmployeeRef.current?.name ?? createdByEmployee?.name);
 
         // ✅ SANITY LAYER: wszystko co trafia do HTML ma być stringiem, żeby buildAgendaHtml nie walił nullami
         const safeEventName = String(eventName ?? '');
-        const safeContactNumber = String((contact as any)?.business_phone ?? '');
         const authorNumber = String(createdByEmployeeRef.current?.phone_number ?? '');
 
         // 1. Zbuduj HTML agendy (z ochroną na wypadek błędu wewnątrz buildAgendaHtml)

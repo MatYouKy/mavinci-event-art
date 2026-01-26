@@ -87,14 +87,7 @@ export const eventsApi = createApi({
         try {
           const { data, error } = await supabase
             .from('events')
-            .select(`
-              *,
-              location:locations(*),
-              contact_person:contacts(*),
-              organization:organizations(*),
-              category:event_categories(*),
-              creator:employees(*)
-            `)
+            .select('*')
             .eq('id', eventId)
             .single();
           if (error) throw error;
