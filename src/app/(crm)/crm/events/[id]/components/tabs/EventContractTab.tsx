@@ -454,22 +454,89 @@ export function EventContractTab({ eventId }: { eventId: string }) {
       const { default: html2pdf } = await import('html2pdf.js');
       const html2pdfFn: any = (html2pdf as any) || html2pdf;
 
-      const contractElement = document.querySelector('.contract-a4-container');
-      if (!contractElement) {
+      // Pobierz kontener umowy
+      const contractContainer = document.querySelector('.contract-a4-container');
+      if (!contractContainer) {
         window.print();
         return;
       }
 
-      const opt: any = {
-        margin: 0,
-        filename: `umowa-${currentContractId}.pdf`,
-        image: { type: 'jpeg' as const, quality: 0.98 },
-        html2canvas: { scale: 2 },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      // Tymczasowo usuń padding z kontenera dla czystego renderowania
+      const originalPadding = (contractContainer as HTMLElement).style.padding;
+      const originalBackground = (contractContainer as HTMLElement).style.background;
+      (contractContainer as HTMLElement).style.padding = '0';
+      (contractContainer as HTMLElement).style.background = 'white';
+
+      // Zbierz wszystkie strony umowy i zapisz ich oryginalne style
+      const pages = contractContainer.querySelectorAll('.contract-a4-page');
+      const originalStyles: Array<{
+        marginBottom: string;
+        boxShadow: string;
+        minHeight: string;
+        height: string;
+      }> = [];
+
+      pages.forEach((page, index) => {
+        const htmlPage = page as HTMLElement;
+        originalStyles[index] = {
+          marginBottom: htmlPage.style.marginBottom,
+          boxShadow: htmlPage.style.boxShadow,
+          minHeight: htmlPage.style.minHeight,
+          height: htmlPage.style.height,
+        };
+
+        // Optymalizuj style dla renderowania PDF
+        htmlPage.style.marginBottom = '0';
+        htmlPage.style.boxShadow = 'none';
+        htmlPage.style.minHeight = '';
+        htmlPage.style.height = '297mm';
+      });
+
+      // Funkcja pomocnicza do przywracania stylów
+      const restoreStyles = () => {
+        // Przywróć oryginalny padding i tło kontenera
+        (contractContainer as HTMLElement).style.padding = originalPadding;
+        (contractContainer as HTMLElement).style.background = originalBackground;
+
+        // Przywróć oryginalne style stron
+        pages.forEach((page, index) => {
+          const htmlPage = page as HTMLElement;
+          const original = originalStyles[index];
+          if (original) {
+            htmlPage.style.marginBottom = original.marginBottom;
+            htmlPage.style.boxShadow = original.boxShadow;
+            htmlPage.style.minHeight = original.minHeight;
+            htmlPage.style.height = original.height;
+          }
+        });
       };
 
-      const worker = html2pdfFn().from(contractElement).set(opt).toPdf();
-      const pdfBlob: Blob = await worker.output('blob');
+      let pdfBlob: Blob;
+
+      try {
+        // Opcje html2pdf - dostosowane do formatowania umowy A4
+        const opt: any = {
+          margin: 0, // Brak marginesów zewnętrznych, padding jest w CSS strony
+          filename: `umowa-${currentContractId}.pdf`,
+          image: { type: 'jpeg' as const, quality: 0.98 },
+          html2canvas: {
+            scale: 2,
+            useCORS: true,
+            scrollY: 0,
+            scrollX: 0,
+            windowWidth: 1200,
+            logging: false,
+          },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+          pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+        };
+
+        const worker = html2pdfFn().from(contractContainer).set(opt).toPdf();
+        pdfBlob = await worker.output('blob');
+      } finally {
+        // Zawsze przywróć style, nawet jeśli wystąpił błąd
+        restoreStyles();
+      }
 
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
       const fileName = `umowa-${timestamp}.pdf`;
