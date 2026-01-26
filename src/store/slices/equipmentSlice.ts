@@ -288,7 +288,7 @@ export const addEquipmentComponent = createAsyncThunk(
       component_equipment_id?: string | null;
     };
   }) => {
-    const { error } = await supabase.from('equipment_components').insert({
+    const insertData = {
       equipment_id,
       component_equipment_id: component.component_equipment_id || null,
       component_name: component.component_name,
@@ -299,8 +299,17 @@ export const addEquipmentComponent = createAsyncThunk(
       is_optional: component.is_optional ?? false,
       thumbnail_url: component.thumbnail_url ?? null,
       technical_specs: component.technical_specs ?? null,
-    });
-    if (error) throw error;
+    };
+
+    console.log('equipmentSlice - Inserting component to DB:', insertData);
+
+    const { error } = await supabase.from('equipment_components').insert(insertData);
+    if (error) {
+      console.error('equipmentSlice - Error inserting component:', error);
+      throw error;
+    }
+
+    console.log('equipmentSlice - Component inserted successfully');
     return true;
   },
 );

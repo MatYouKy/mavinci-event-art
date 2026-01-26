@@ -218,9 +218,10 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
     setUploadingThumb(true);
     try {
       const url = await uploadImage(file, 'equipment-images');
+      console.log('ComponentsTab - Thumbnail uploaded successfully:', url);
       setNewComponent((prev) => ({ ...prev, thumbnail_url: url }));
     } catch (error) {
-      console.error('Error uploading thumbnail:', error);
+      console.error('ComponentsTab - Error uploading thumbnail:', error);
       alert('Błąd podczas przesyłania zdjęcia: ' + (error instanceof Error ? error.message : 'Nieznany błąd'));
     } finally {
       setUploadingThumb(false);
@@ -260,7 +261,7 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
       (e) => e.id === newComponent.component_equipment_id,
     );
 
-    await onAdd({
+    const payload = {
       equipment_id: equipment.id,
       component_equipment_id:
         componentType === 'from_warehouse' ? newComponent.component_equipment_id : null,
@@ -280,7 +281,10 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
         componentType === 'custom' && Object.keys(newComponent.technical_specs).length > 0
           ? newComponent.technical_specs
           : null,
-    });
+    };
+
+    console.log('ComponentsTab - Adding component with payload:', payload);
+    await onAdd(payload);
     setNewComponent({
       component_equipment_id: '',
       component_name: '',
@@ -536,6 +540,15 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
             .map((c: any) => {
               const thumbnailUrl = c.thumbnail_url || c.equipment_items?.thumbnail_url;
               const hasDetails = c.technical_specs && Object.keys(c.technical_specs).length > 0;
+
+              console.log('ComponentsTab - Rendering component:', {
+                id: c.id,
+                name: c.component_name,
+                thumbnail_url: c.thumbnail_url,
+                equipment_items_thumbnail: c.equipment_items?.thumbnail_url,
+                finalThumbnailUrl: thumbnailUrl,
+                technical_specs: c.technical_specs,
+              });
 
               return (
                 <div key={c.id} className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
