@@ -432,12 +432,12 @@ export const EventEquipmentTab: React.FC<{ eventId: string }> = ({ eventId }) =>
 
       const opt: any = {
         margin: [10, 10, 1, 10],
-        filename: `checklista-${event.name?.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.pdf`,
+        filename: `checklista-${String(event?.name || 'event').replace(/[^a-z0-9]/gi, '-').toLowerCase()}.pdf`,
         image: { type: 'jpeg' as const, quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
 
-        // ✅ to jest kluczowe przy “nie tnij wierszy”
+        // ✅ to jest kluczowe przy "nie tnij wierszy"
         pagebreak: { mode: ['css', 'legacy'] },
       };
 
