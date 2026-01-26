@@ -26,6 +26,7 @@ import ResponsiveActionBar, { type Action } from '@/components/crm/ResponsiveAct
 import { extractKitItemsFromRow, isKitRow } from '../../helpers/extractKitItemsFromRow';
 import Popover from '@/components/UI/Tooltip';
 import { useDialog } from '@/contexts/DialogContext';
+import { ISimpleContact } from '../../EventDetailPageClient';
 
 const KitItemRow = ({
   thumb,
@@ -231,19 +232,25 @@ function getEventEquipmentDisplay(row: any): {
   return { name, brand, model, categoryName, isKit, cableLength, kitItems };
 }
 
-export const EventEquipmentTab: React.FC<{ eventId: string }> = ({ eventId }) => {
+export const EventEquipmentTab: React.FC<{
+  eventId: string;
+  contact: ISimpleContact;
+  eventDate: string;
+  location: string;
+  eventEndDate: string;
+}> = ({ eventId, contact, eventDate, location, eventEndDate }) => {
   const [expandedKits, setExpandedKits] = useState<Set<string>>(new Set());
   const [showAddEquipmentModal, setShowAddEquipmentModal] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [editingQuantityId, setEditingQuantityId] = useState<string | null>(null);
   const [draftQuantity, setDraftQuantity] = useState<number>(1);
 
+  console.log('location', location);
+
   const { showSnackbar } = useSnackbar();
   const { event } = useEvent();
   const { employee } = useCurrentEmployee();
   const { showConfirm } = useDialog();
-
-  console.log('eventId', eventId);
 
   // ✅ guard na start: hook może być wywołany, ale wewnątrz i tak nie robimy fetchy bez ID
   const {
@@ -258,14 +265,14 @@ export const EventEquipmentTab: React.FC<{ eventId: string }> = ({ eventId }) =>
     refetch,
   } = useEventEquipment(eventId, {
     id: eventId,
-    event_date: event?.event_date,
-    event_end_date: event?.event_end_date,
+    event_date: eventDate,
+    event_end_date: eventEndDate,
   });
 
   useEffect(() => {
     if (!eventId) return;
     fetchAvailableEquipment();
-  }, [eventId, event?.event_date, event?.event_end_date, fetchAvailableEquipment]);
+  }, [eventId, eventDate, event?.event_end_date, fetchAvailableEquipment]);
 
   const handleRemoveEquipment = async (row: any) => {
     const isAuto = !!row?.auto_added;
@@ -410,27 +417,16 @@ export const EventEquipmentTab: React.FC<{ eventId: string }> = ({ eventId }) =>
           };
         });
 
-      const eventDateFormatted = event?.event_date
-        ? new Date(event.event_date).toLocaleDateString('pl-PL')
-        : '-';
+      const eventDateFormatted = new Date(eventDate).toLocaleDateString('pl-PL');
 
       // ✅ Pobierz dane kontaktu w zależności od typu klienta
-      let contactName = '-';
-      let contactPhone = '-';
-
-      if (event?.client_type === 'individual' && event?.contact_person) {
-        contactName = event.contact_person.full_name ||
-          `${event.contact_person.first_name || ''} ${event.contact_person.last_name || ''}`.trim() || '-';
-        contactPhone = (event.contact_person as any).phone || (event.contact_person as any).mobile || '-';
-      } else if (event?.client_type === 'business' && event?.organization) {
-        contactName = event.organization.name || (event.organization as any).alias || '-';
-        contactPhone = (event.organization as any).phone || '-';
-      }
+      let contactName = contact?.full_name || '-';
+      let contactPhone = contact?.phone || '-';
 
       const html = buildEquipmentChecklistHtml({
         eventName: event?.name || 'Wydarzenie',
         eventDate: eventDateFormatted,
-        location: event?.location || '-',
+        location: location,
         equipmentItems: equipmentData,
         authorName: employee?.name + ' ' + employee?.surname || '-',
         authorNumber: (employee as any)?.phone_number || '-',
@@ -447,7 +443,9 @@ export const EventEquipmentTab: React.FC<{ eventId: string }> = ({ eventId }) =>
 
       const opt: any = {
         margin: [10, 10, 1, 10],
-        filename: `checklista-${String(event?.name || 'event').replace(/[^a-z0-9]/gi, '-').toLowerCase()}.pdf`,
+        filename: `checklista-${String(event?.name || 'event')
+          .replace(/[^a-z0-9]/gi, '-')
+          .toLowerCase()}.pdf`,
         image: { type: 'jpeg' as const, quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
@@ -464,7 +462,7 @@ export const EventEquipmentTab: React.FC<{ eventId: string }> = ({ eventId }) =>
         .replace(/[^a-z0-9]/gi, '-')
         .toLowerCase();
 
-      const fileName = `checklista-sprzetu-${safeEventName}-${timestamp}.pdf`;
+      const fileName = `checklista-sprzetu-${event?.name?.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${timestamp}.pdf`;
       const storagePath = `${eventId}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage

@@ -188,7 +188,7 @@ export default function EventDetailPageClient({
     hasScope('invoices_view');
 
   const {
-    data: event,
+    data: event = initialEvent,
     status: eventStatus,
     isLoading,
     error,
@@ -989,7 +989,15 @@ export default function EventDetailPageClient({
         </div>
       )}
 
-      {activeTab === 'equipment' && <EventEquipmentTab eventId={event?.id as string} />}
+      {activeTab === 'equipment' && (
+        <EventEquipmentTab
+          eventId={event?.id as string}
+          contact={contact}
+          eventDate={event?.event_date as string}
+          location={`${location?.name}, ${location?.address}, ${location?.postal_code} ${location?.city}  ` as string}
+          eventEndDate={event?.event_end_date as string}
+        />
+      )}
 
       {activeTab === 'team' && (
         <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
