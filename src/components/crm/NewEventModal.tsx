@@ -4,15 +4,7 @@ import { X, Plus, Building2, User } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/browser';
 import LocationSelector from './LocationSelector';
-
-// Helper function to convert UTC date to local datetime-local format
-const toLocalDatetimeString = (utcDate: string | null): string => {
-  if (!utcDate) return '';
-  const date = new Date(utcDate);
-  const offset = date.getTimezoneOffset();
-  const localDate = new Date(date.getTime() - offset * 60 * 1000);
-  return localDate.toISOString().slice(0, 16);
-};
+import { utcToLocalDatetimeString, localDatetimeStringToUTC } from '@/lib/utils/dateTimeUtils';
 
 interface NewEventModalProps {
   isOpen: boolean;
@@ -61,7 +53,7 @@ export default function NewEventModal({
     organization_id: '',
     contact_person_id: '',
     category_id: '',
-    event_date: initialDate?.toISOString().slice(0, 16) || '',
+    event_date: initialDate ? utcToLocalDatetimeString(initialDate.toISOString()) : '',
     event_end_date: '',
     location: '',
     budget: '',
@@ -81,7 +73,7 @@ export default function NewEventModal({
     if (initialDate) {
       setFormData((prev) => ({
         ...prev,
-        event_date: initialDate.toISOString().slice(0, 16),
+        event_date: utcToLocalDatetimeString(initialDate.toISOString()),
       }));
     }
   }, [initialDate]);
@@ -253,10 +245,8 @@ export default function NewEventModal({
       contact_person_id: contactPersonId && contactPersonId.trim() !== '' ? contactPersonId : null,
       category_id:
         formData.category_id && formData.category_id.trim() !== '' ? formData.category_id : null,
-      event_date: formData.event_date ? new Date(formData.event_date).toISOString() : null,
-      event_end_date: formData.event_end_date
-        ? new Date(formData.event_end_date).toISOString()
-        : null,
+      event_date: localDatetimeStringToUTC(formData.event_date),
+      event_end_date: localDatetimeStringToUTC(formData.event_end_date),
       location: formData.location || null,
       budget: formData.budget ? parseFloat(formData.budget) : null,
       description: formData.description || null,

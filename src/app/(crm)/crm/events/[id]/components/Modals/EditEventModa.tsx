@@ -6,6 +6,7 @@ import LocationSelector from '@/components/crm/LocationSelector';
 import { IEvent } from '../../../type';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { ISimpleContact } from '../../EventDetailPageClient';
+import { utcToLocalDatetimeString, localDatetimeStringToUTC } from '@/lib/utils/dateTimeUtils';
 
 export function EditEventModal({
   isOpen,
@@ -95,12 +96,6 @@ export function EditEventModal({
     }
   };
 
-  const toLocalDatetimeString = (utcDate: string | null): string => {
-    if (!utcDate) return '';
-    const date = new Date(utcDate);
-    return date.toISOString().slice(0, 16);
-  };
-
   if (!isOpen) return null;
 
   const handleSubmit = () => {
@@ -122,10 +117,8 @@ export function EditEventModal({
           : null,
       contact_person_id: clientData.contact_person_id || null,
       category_id: formData.category_id || null,
-      event_date: formData.event_date ? new Date(formData.event_date).toISOString() : null,
-      event_end_date: formData.event_end_date
-        ? new Date(formData.event_end_date).toISOString()
-        : null,
+      event_date: localDatetimeStringToUTC(formData.event_date),
+      event_end_date: localDatetimeStringToUTC(formData.event_end_date),
       location: formData.location,
       location_id: formData.location_id || null,
       budget: formData.budget ? parseFloat(formData.budget) : null,
@@ -311,7 +304,7 @@ export function EditEventModal({
               <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data rozpoczęcia *</label>
               <input
                 type="datetime-local"
-                value={toLocalDatetimeString(formData.event_date)}
+                value={utcToLocalDatetimeString(formData.event_date)}
                 onChange={(e) => setFormData({ ...formData, event_date: e.target.value })}
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
               />
@@ -321,7 +314,7 @@ export function EditEventModal({
               <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data zakończenia</label>
               <input
                 type="datetime-local"
-                value={toLocalDatetimeString(formData.event_end_date)}
+                value={utcToLocalDatetimeString(formData.event_end_date)}
                 onChange={(e) => setFormData({ ...formData, event_end_date: e.target.value })}
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
               />

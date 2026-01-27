@@ -28,6 +28,7 @@ import OfferWizard from '../../app/(crm)/crm/offers/[id]/components/OfferWizzard
 import { EquipmentStep, TeamStep } from './EventWizardSteps';
 import ParticipantsAutocomplete from './ParticipantsAutocomplete';
 import { ClientType } from '@/app/(crm)/crm/clients/type';
+import { utcToLocalDatetimeString, localDatetimeStringToUTC } from '@/lib/utils/dateTimeUtils';
 import { useEventEquipment } from '@/app/(crm)/crm/events/hooks/useEventEquipment';
 import { useEmployees } from '@/app/(crm)/crm/employees/hooks/useEmployees';
 import { useEventTeam } from '@/app/(crm)/crm/events/hooks/useEventTeam';
@@ -149,7 +150,7 @@ export default function EventWizard({
     organization_id: '',
     contact_person_id: '',
     category_id: '',
-    event_date: initialDate?.toISOString().slice(0, 16) || '',
+    event_date: initialDate ? utcToLocalDatetimeString(initialDate.toISOString()) : '',
     event_end_date: '',
     location: '',
     budget: '',
@@ -225,7 +226,7 @@ export default function EventWizard({
     if (initialDate) {
       setEventData((prev) => ({
         ...prev,
-        event_date: initialDate.toISOString().slice(0, 16),
+        event_date: utcToLocalDatetimeString(initialDate.toISOString()),
       }));
     }
   }, [initialDate]);
@@ -570,8 +571,8 @@ export default function EventWizard({
           eventData.category_id && eventData.category_id.trim() !== ''
             ? eventData.category_id
             : null,
-        event_date: eventData.event_date,
-        event_end_date: eventData.event_end_date || null,
+        event_date: localDatetimeStringToUTC(eventData.event_date),
+        event_end_date: localDatetimeStringToUTC(eventData.event_end_date),
         location: eventData.location,
         budget: eventData.budget ? parseFloat(eventData.budget) : null,
         description: eventData.description || null,
@@ -642,8 +643,8 @@ export default function EventWizard({
             eventData.category_id && eventData.category_id.trim() !== ''
               ? eventData.category_id
               : null,
-          event_date: eventData.event_date,
-          event_end_date: eventData.event_end_date || null,
+          event_date: localDatetimeStringToUTC(eventData.event_date),
+          event_end_date: localDatetimeStringToUTC(eventData.event_end_date),
           location: eventData.location,
           budget: eventData.budget ? parseFloat(eventData.budget) : null,
           description: eventData.description || null,
