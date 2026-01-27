@@ -18,7 +18,7 @@ export const api = createApi({
       return headers;
     },
   }),
-  tagTypes: ['TeamMembers', 'PortfolioProjects', 'Message'],
+  tagTypes: ['TeamMembers', 'PortfolioProjects', 'Message', 'MessagesList'],
   endpoints: (builder) => ({
     loginUser: builder.mutation<LoginResponse, LoginPayload>({
       query: (body) => ({

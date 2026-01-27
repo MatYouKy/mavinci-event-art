@@ -13,7 +13,7 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { allNavigation } from '@/lib/CRM/navigation/registry.server';
 import { NavigationIcons } from '@/lib/CRM/navigation/registry.server';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import MessagesPrefetchButton from './MessagesPrefetchButton';
+import { useGetUnreadCountQuery } from '@/store/api/messagesApi';
 
 interface NavigationItem {
   key: string;
@@ -55,30 +55,30 @@ export default function NavigationManager({
   onOrderChange,
 }: Props) {
   const { showSnackbar } = useSnackbar();
+  const { data: unreadMessagesCount = initialUnreadMessagesCount } = useGetUnreadCountQuery(undefined, {
+    pollingInterval: 30000,
+    refetchOnMountOrArgChange: true,
+  });
 
   const [isEditMode, setIsEditMode] = useState(false);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [items, setItems] = useState<NavigationItem[]>(navigation);
   const [saving, setSaving] = useState(false);
-  const [unreadMessagesCount, setUnreadMessagesCount] = useState(initialUnreadMessagesCount);
 
   // ✅ zawsze ufamy temu co przyszło z serwera (navigation)
   useEffect(() => {
     setItems(navigation);
-    setUnreadMessagesCount(initialUnreadMessagesCount);
-  }, [navigation, initialUnreadMessagesCount]);
+  }, [navigation]);
 
   // ✅ zabezpieczenie: jak ktoś nie może customizować, wyłącz edit mode
   useEffect(() => {
     if (!canCustomize && isEditMode) setIsEditMode(false);
   }, [canCustomize, isEditMode]);
 
-  // unread count realtime
+  // Realtime notifications dla nowych wiadomości
   useEffect(() => {
-    fetchUnreadCount();
-
     const contactChannel = supabase
-      .channel('messages-unread-count')
+      .channel('messages-notifications')
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'contact_messages' },
@@ -88,31 +88,19 @@ export default function NavigationManager({
             `Nowa wiadomość z formularza: ${newMessage.subject || 'Wiadomość z formularza'}`,
             'info',
           );
-          fetchUnreadCount();
         },
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'contact_messages' },
-        () => fetchUnreadCount(),
       )
       .subscribe();
 
     const receivedChannel = supabase
-      .channel('received-emails-unread-count')
+      .channel('received-emails-notifications')
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'received_emails' },
         (payload) => {
           const newEmail = payload.new as any;
           showSnackbar(`Nowy email: ${newEmail.subject || '(No subject)'}`, 'info');
-          fetchUnreadCount();
         },
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'received_emails' },
-        () => fetchUnreadCount(),
       )
       .subscribe();
 
@@ -120,31 +108,7 @@ export default function NavigationManager({
       supabase.removeChannel(contactChannel);
       supabase.removeChannel(receivedChannel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showSnackbar]);
-
-  const fetchUnreadCount = async () => {
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user?.email) return;
-
-      const { count: contactCount } = await supabase
-        .from('contact_messages')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'unread');
-
-      const { count: emailCount } = await supabase
-        .from('received_emails')
-        .select('*', { count: 'exact', head: true })
-        .eq('is_read', false);
-
-      setUnreadMessagesCount((contactCount || 0) + (emailCount || 0));
-    } catch (error) {
-      console.error('Error fetching unread messages count:', error);
-    }
-  };
 
   const handleDragStart = (e: DragEvent<HTMLLIElement>, index: number) => {
     if (!isEditMode) return;
@@ -305,7 +269,8 @@ export default function NavigationManager({
               }`}
             >
               {item.key === 'messages' && !isEditMode ? (
-                <MessagesPrefetchButton
+                <Link
+                  href={item.href}
                   onClick={onClose}
                   className={`flex items-center ${
                     sidebarCollapsed ? 'justify-center' : 'gap-3'
@@ -313,7 +278,8 @@ export default function NavigationManager({
                     isActive
                       ? 'bg-[#d3bb73]/20 text-[#d3bb73]'
                       : 'text-[#e5e4e2]/70 hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]'
-                  } w-full text-left`}
+                  }`}
+                  title={sidebarCollapsed ? item.name : ''}
                 >
                   <div className="relative">
                     <Icon className="h-5 w-5" />
@@ -326,7 +292,7 @@ export default function NavigationManager({
                   </div>
 
                   {!sidebarCollapsed && <span>{item.name}</span>}
-                </MessagesPrefetchButton>
+                </Link>
               ) : (
                 <Link
                   href={item.href}

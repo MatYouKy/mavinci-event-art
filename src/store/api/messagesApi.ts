@@ -283,7 +283,6 @@ export const messagesApi = api.injectEndpoints({
         return tags;
       },
       keepUnusedDataFor: 7200,
-      refetchOnMountOrArgChange: 300,
     }),
 
     getMessageDetails: builder.query<
@@ -421,7 +420,6 @@ export const messagesApi = api.injectEndpoints({
       },
       providesTags: (result, error, { id }) => [{ type: 'Message', id }],
       keepUnusedDataFor: 7200,
-      refetchOnMountOrArgChange: 300,
     }),
 
     markMessageAsRead: builder.mutation<void, { id: string; type: 'contact_form' | 'received' }>({
@@ -445,6 +443,7 @@ export const messagesApi = api.injectEndpoints({
       },
       invalidatesTags: (result, error, { id }) => [
         { type: 'Message', id },
+        'MessagesList',
       ],
     }),
 
@@ -724,6 +723,32 @@ export const messagesApi = api.injectEndpoints({
       },
       keepUnusedDataFor: 300,
     }),
+
+    getUnreadCount: builder.query<number, void>({
+      queryFn: async () => {
+        try {
+          const { supabase } = await import('@/lib/supabase/browser');
+
+          const { count: contactCount } = await supabase
+            .from('contact_messages')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'unread');
+
+          const { count: emailCount } = await supabase
+            .from('received_emails')
+            .select('*', { count: 'exact', head: true })
+            .eq('is_read', false);
+
+          const total = (contactCount || 0) + (emailCount || 0);
+          return { data: total };
+        } catch (error) {
+          console.error('Error fetching unread count:', error);
+          return { error: { status: 'CUSTOM_ERROR', error: String(error) } };
+        }
+      },
+      providesTags: ['MessagesList'],
+      keepUnusedDataFor: 60,
+    }),
   }),
   overrideExisting: false,
 });
@@ -736,4 +761,5 @@ export const {
   useMarkMessageAsReadMutation,
   useToggleStarMessageMutation,
   useDeleteMessageMutation,
+  useGetUnreadCountQuery,
 } = messagesApi;
