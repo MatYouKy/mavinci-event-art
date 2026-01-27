@@ -16,6 +16,8 @@ import {
   ChevronDown,
   ChevronUp,
   AlertTriangle,
+  List,
+  TableIcon,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -94,6 +96,12 @@ export default function EmployeeTimeTrackingPage() {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [showDeletedOnly, setShowDeletedOnly] = useState(false);
+  const [viewMode, setViewMode] = useState<'list' | 'table'>(() => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('time-tracking-view-mode') as 'list' | 'table') || 'list';
+    }
+    return 'list';
+  });
 
   const [dateFrom, setDateFrom] = useState(() => {
     const date = new Date();
@@ -219,6 +227,13 @@ export default function EmployeeTimeTrackingPage() {
       style: 'currency',
       currency: 'PLN',
     }).format(amount);
+  };
+
+  const handleViewModeChange = (mode: 'list' | 'table') => {
+    setViewMode(mode);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('time-tracking-view-mode', mode);
+    }
   };
 
   const totalMinutes = entries
@@ -384,11 +399,38 @@ export default function EmployeeTimeTrackingPage() {
         </div>
 
         <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-          <h3 className="mb-4 flex items-center gap-2 text-lg font-medium text-[#e5e4e2]">
-            <Clock className="h-5 w-5 text-[#d3bb73]" />
-            Wszystkie wpisy czasu
-          </h3>
-          <div className="space-y-3">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="flex items-center gap-2 text-lg font-medium text-[#e5e4e2]">
+              <Clock className="h-5 w-5 text-[#d3bb73]" />
+              Wszystkie wpisy czasu
+            </h3>
+            <div className="flex items-center gap-2 rounded-lg bg-[#0f1119] p-1">
+              <button
+                onClick={() => handleViewModeChange('list')}
+                className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
+                  viewMode === 'list'
+                    ? 'bg-[#d3bb73] text-[#0f1119]'
+                    : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+                }`}
+              >
+                <List className="h-4 w-4" />
+                Lista
+              </button>
+              <button
+                onClick={() => handleViewModeChange('table')}
+                className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
+                  viewMode === 'table'
+                    ? 'bg-[#d3bb73] text-[#0f1119]'
+                    : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+                }`}
+              >
+                <TableIcon className="h-4 w-4" />
+                Tabela
+              </button>
+            </div>
+          </div>
+          {viewMode === 'list' ? (
+            <div className="space-y-3">
             {entries.map((entry) => (
               <div key={entry.id} className="rounded-lg border border-[#d3bb73]/5 bg-[#0f1119] p-4">
                 <div className="flex items-start justify-between">
@@ -457,7 +499,129 @@ export default function EmployeeTimeTrackingPage() {
                 Brak wpisów czasu dla wybranego okresu
               </div>
             )}
-          </div>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <div className="mb-3 text-sm text-[#e5e4e2]/60">
+                Wyświetlanie {entries.length} {entries.length === 1 ? 'wpisu' : entries.length < 5 ? 'wpisów' : 'wpisów'}
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[#d3bb73]/10 text-left text-xs uppercase text-[#e5e4e2]/60">
+                    <th className="px-3 py-3 font-medium">Data</th>
+                    <th className="px-3 py-3 font-medium">Godziny</th>
+                    <th className="px-3 py-3 font-medium">Zadanie / Tytuł</th>
+                    <th className="px-3 py-3 font-medium">Wydarzenie</th>
+                    <th className="px-3 py-3 font-medium">Opis</th>
+                    <th className="px-3 py-3 text-center font-medium">Czas</th>
+                    <th className="px-3 py-3 text-center font-medium">Stawka</th>
+                    <th className="px-3 py-3 text-center font-medium">Status</th>
+                    {isAdmin && <th className="px-3 py-3 text-center font-medium">Edycje</th>}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#d3bb73]/5">
+                  {entries.map((entry) => (
+                    <tr
+                      key={entry.id}
+                      className="transition-colors hover:bg-[#d3bb73]/5"
+                    >
+                      <td className="px-3 py-3 text-[#e5e4e2]">
+                        {new Date(entry.start_time).toLocaleDateString('pl-PL', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                        })}
+                      </td>
+                      <td className="px-3 py-3 text-[#e5e4e2]/80">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-xs">
+                            {new Date(entry.start_time).toLocaleTimeString('pl-PL', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </span>
+                          <span className="text-xs text-[#e5e4e2]/40">
+                            {entry.end_time
+                              ? new Date(entry.end_time).toLocaleTimeString('pl-PL', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })
+                              : 'w trakcie'}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="max-w-xs">
+                          <div className="truncate font-medium text-[#e5e4e2]">
+                            {entry.tasks?.title || entry.title || 'Praca'}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="max-w-xs">
+                          {(entry.tasks?.events?.name || entry.events?.name) && (
+                            <span className="truncate text-xs text-[#e5e4e2]/60">
+                              {entry.tasks?.events?.name || entry.events?.name}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="max-w-xs">
+                          {entry.description && (
+                            <span className="truncate text-xs text-[#e5e4e2]/60">
+                              {entry.description}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-center">
+                        <span className="font-bold text-[#d3bb73]">
+                          {formatHours(entry.duration_minutes || 0)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3 text-center text-[#e5e4e2]/60">
+                        {entry.hourly_rate ? (
+                          <span className="text-xs">{entry.hourly_rate} zł/h</span>
+                        ) : (
+                          <span className="text-xs text-[#e5e4e2]/40">-</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 text-center">
+                        {entry.is_billable ? (
+                          <span className="inline-flex rounded-full bg-green-500/20 px-2 py-0.5 text-xs text-green-400">
+                            Płatne
+                          </span>
+                        ) : (
+                          <span className="inline-flex rounded-full bg-gray-500/20 px-2 py-0.5 text-xs text-gray-400">
+                            Niepłatne
+                          </span>
+                        )}
+                      </td>
+                      {isAdmin && (
+                        <td className="px-3 py-3 text-center">
+                          {entry.edit_count && entry.edit_count > 0 ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-yellow-500/20 px-2 py-0.5 text-xs text-yellow-400">
+                              <Edit3 className="h-3 w-3" />
+                              {entry.edit_count}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-[#e5e4e2]/40">-</span>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {entries.length === 0 && (
+                <div className="py-8 text-center text-[#e5e4e2]/60">
+                  Brak wpisów czasu dla wybranego okresu
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {isAdmin && (
