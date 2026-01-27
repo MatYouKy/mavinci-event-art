@@ -282,7 +282,8 @@ export const messagesApi = api.injectEndpoints({
         }
         return tags;
       },
-      keepUnusedDataFor: 3600,
+      keepUnusedDataFor: 7200,
+      refetchOnMountOrArgChange: 300,
     }),
 
     getMessageDetails: builder.query<
@@ -419,7 +420,8 @@ export const messagesApi = api.injectEndpoints({
         }
       },
       providesTags: (result, error, { id }) => [{ type: 'Message', id }],
-      keepUnusedDataFor: 3600,
+      keepUnusedDataFor: 7200,
+      refetchOnMountOrArgChange: 300,
     }),
 
     markMessageAsRead: builder.mutation<void, { id: string; type: 'contact_form' | 'received' }>({

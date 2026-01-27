@@ -105,6 +105,7 @@ export default function MessagesPageClient({
     isLoading,
     isFetching,
     refetch,
+    isSuccess,
   } = useGetMessagesListQuery(
     {
       emailAccountId: selectedAccount,
@@ -114,6 +115,7 @@ export default function MessagesPageClient({
     },
     {
       skip: !selectedAccount || emailAccounts.length === 0 || isSearchMode,
+      refetchOnMountOrArgChange: false,
     },
   );
 
@@ -183,6 +185,13 @@ export default function MessagesPageClient({
       setIsLoadingMore(false);
     }
   }, [messagesData, offset]);
+
+  // Wykorzystaj initial messages jeśli nie ma jeszcze danych z cache
+  useEffect(() => {
+    if (initialMessages.length > 0 && allMessages.length === 0 && !isSuccess) {
+      setAllMessages(initialMessages);
+    }
+  }, [initialMessages, allMessages.length, isSuccess]);
 
   useEffect(() => {
     setOffset(0);

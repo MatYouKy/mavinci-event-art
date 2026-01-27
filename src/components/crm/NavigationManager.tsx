@@ -13,6 +13,7 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { allNavigation } from '@/lib/CRM/navigation/registry.server';
 import { NavigationIcons } from '@/lib/CRM/navigation/registry.server';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import MessagesPrefetchButton from './MessagesPrefetchButton';
 
 interface NavigationItem {
   key: string;
@@ -303,34 +304,59 @@ export default function NavigationManager({
                 draggedIndex === index ? 'opacity-50' : ''
               }`}
             >
-              <Link
-                href={item.href}
-                onClick={onClose}
-                className={`flex items-center ${
-                  sidebarCollapsed ? 'justify-center' : 'gap-3'
-                } relative rounded-lg px-4 py-3 text-sm font-light transition-all duration-200 ${
-                  isActive
-                    ? 'bg-[#d3bb73]/20 text-[#d3bb73]'
-                    : 'text-[#e5e4e2]/70 hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]'
-                } ${canCustomize && isEditMode ? 'pointer-events-none' : ''}`}
-                title={sidebarCollapsed ? item.name : ''}
-              >
-                {canCustomize && isEditMode && !sidebarCollapsed && (
-                  <GripVertical className="h-4 w-4 text-[#e5e4e2]/40" />
-                )}
+              {item.key === 'messages' && !isEditMode ? (
+                <MessagesPrefetchButton
+                  onClick={onClose}
+                  className={`flex items-center ${
+                    sidebarCollapsed ? 'justify-center' : 'gap-3'
+                  } relative rounded-lg px-4 py-3 text-sm font-light transition-all duration-200 ${
+                    isActive
+                      ? 'bg-[#d3bb73]/20 text-[#d3bb73]'
+                      : 'text-[#e5e4e2]/70 hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]'
+                  } w-full text-left`}
+                >
+                  <div className="relative">
+                    <Icon className="h-5 w-5" />
 
-                <div className="relative">
-                  <Icon className="h-5 w-5" />
+                    {unreadMessagesCount > 0 && (
+                      <div className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
+                        {unreadMessagesCount > 99 ? '99+' : unreadMessagesCount}
+                      </div>
+                    )}
+                  </div>
 
-                  {item.key === 'messages' && unreadMessagesCount > 0 && (
-                    <div className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
-                      {unreadMessagesCount > 99 ? '99+' : unreadMessagesCount}
-                    </div>
+                  {!sidebarCollapsed && <span>{item.name}</span>}
+                </MessagesPrefetchButton>
+              ) : (
+                <Link
+                  href={item.href}
+                  onClick={onClose}
+                  className={`flex items-center ${
+                    sidebarCollapsed ? 'justify-center' : 'gap-3'
+                  } relative rounded-lg px-4 py-3 text-sm font-light transition-all duration-200 ${
+                    isActive
+                      ? 'bg-[#d3bb73]/20 text-[#d3bb73]'
+                      : 'text-[#e5e4e2]/70 hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]'
+                  } ${canCustomize && isEditMode ? 'pointer-events-none' : ''}`}
+                  title={sidebarCollapsed ? item.name : ''}
+                >
+                  {canCustomize && isEditMode && !sidebarCollapsed && (
+                    <GripVertical className="h-4 w-4 text-[#e5e4e2]/40" />
                   )}
-                </div>
 
-                {!sidebarCollapsed && <span>{item.name}</span>}
-              </Link>
+                  <div className="relative">
+                    <Icon className="h-5 w-5" />
+
+                    {item.key === 'messages' && unreadMessagesCount > 0 && (
+                      <div className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
+                        {unreadMessagesCount > 99 ? '99+' : unreadMessagesCount}
+                      </div>
+                    )}
+                  </div>
+
+                  {!sidebarCollapsed && <span>{item.name}</span>}
+                </Link>
+              )}
             </li>
           );
         })}
