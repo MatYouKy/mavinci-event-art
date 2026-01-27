@@ -428,16 +428,30 @@ export const messagesApi = api.injectEndpoints({
           const { supabase } = await import('@/lib/supabase/browser');
 
           if (type === 'contact_form') {
-            await supabase
+            const { error } = await supabase
               .from('contact_messages')
               .update({ status: 'read', read_at: new Date().toISOString() })
               .eq('id', id);
+
+            if (error) {
+              console.error('Error marking contact message as read:', error);
+              return { error: { status: 'CUSTOM_ERROR', error: error.message } };
+            }
           } else if (type === 'received') {
-            await supabase.from('received_emails').update({ is_read: true }).eq('id', id);
+            const { error } = await supabase
+              .from('received_emails')
+              .update({ is_read: true })
+              .eq('id', id);
+
+            if (error) {
+              console.error('Error marking email as read:', error);
+              return { error: { status: 'CUSTOM_ERROR', error: error.message } };
+            }
           }
 
           return { data: undefined };
         } catch (error) {
+          console.error('Exception marking message as read:', error);
           return { error: { status: 'CUSTOM_ERROR', error: String(error) } };
         }
       },
@@ -729,18 +743,27 @@ export const messagesApi = api.injectEndpoints({
         try {
           const { supabase } = await import('@/lib/supabase/browser');
 
-          const { count: contactCount } = await supabase
-            .from('contact_messages')
-            .select('*', { count: 'exact', head: true })
-            .eq('status', 'unread');
+          // Get current user email
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user?.email) {
+            return { data: 0 };
+          }
 
-          const { count: emailCount } = await supabase
-            .from('received_emails')
-            .select('*', { count: 'exact', head: true })
-            .eq('is_read', false);
+          // Use optimized RPC function
+          const { data, error } = await supabase.rpc('get_unread_messages_count', {
+            user_email: user.email,
+          });
 
-          const total = (contactCount || 0) + (emailCount || 0);
-          return { data: total };
+          if (error) {
+            console.error('Error fetching unread count via RPC:', error);
+            return { data: 0 };
+          }
+
+          // Function returns array with one row
+          const result = Array.isArray(data) && data.length > 0 ? data[0] : null;
+          const total = result?.total_unread || 0;
+
+          return { data: Number(total) };
         } catch (error) {
           console.error('Error fetching unread count:', error);
           return { error: { status: 'CUSTOM_ERROR', error: String(error) } };

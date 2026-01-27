@@ -56,7 +56,7 @@ export default function NavigationManager({
 }: Props) {
   const { showSnackbar } = useSnackbar();
   const { data: unreadMessagesCount = initialUnreadMessagesCount } = useGetUnreadCountQuery(undefined, {
-    pollingInterval: 30000,
+    pollingInterval: 60000, // co minutę
     refetchOnMountOrArgChange: true,
   });
 
