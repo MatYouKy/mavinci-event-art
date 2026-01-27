@@ -12,6 +12,7 @@ import { Notification } from '@/components/crm/NotificationCenter';
 import { fetchNotificationsServer } from '@/lib/CRM/notifications/fetchNotificationsServer';
 import { getCurrentEmployeeServerCached } from '@/lib/CRM/auth/getCurrentEmployeeServer';
 import { IEmployee } from '@/app/(crm)/crm/employees/type';
+import { cookies } from 'next/headers';
 
 const SITE_URL = 'https://mavinci.pl';
 const OG_IMAGE = '/logo-mavinci-crm.png';
@@ -160,7 +161,8 @@ export default async function RootLayout({
   params: { pathname: string };
 }) {
   const breadcrumbSchema = buildBreadcrumbList(params.pathname);
-  const initialNotifications = await fetchNotificationsServer();
+  const cookieStore = cookies(); // ✅ w request scope
+  const { notifications, unreadCount } = await fetchNotificationsServer(cookieStore, 100);
   const employee = await getCurrentEmployeeServerCached();
 
   const localBusiness = {
@@ -341,7 +343,7 @@ export default async function RootLayout({
           <AuthProvider>
             <EditModeProvider>
               <SessionTracker />
-              <Navbar initialNotifications={initialNotifications.notifications} initialEmployee={employee as IEmployee} />
+              <Navbar initialNotifications={notifications} initialEmployee={employee as IEmployee} />
               {children as React.ReactNode}
               <Footer />
             </EditModeProvider>
