@@ -1,13 +1,15 @@
 import 'server-only';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
-import { cookies } from 'next/headers';
+import type { cookies } from 'next/headers';
 import { Notification } from '@/components/crm/NotificationCenter';
 
-export async function fetchNotificationsServer(limit = 100): Promise<{
-  notifications: Notification[];
-  unreadCount: number;
-}> {
-  const supabase = createSupabaseServerClient(cookies());
+type CookieStore = ReturnType<typeof cookies>;
+
+export async function fetchNotificationsServer(
+  cookieStore: CookieStore,
+  limit = 100,
+): Promise<{ notifications: Notification[]; unreadCount: number }> {
+  const supabase = createSupabaseServerClient(cookieStore);
 
   const {
     data: { user },
@@ -43,13 +45,12 @@ export async function fetchNotificationsServer(limit = 100): Promise<{
     return { notifications: [], unreadCount: 0 };
   }
 
-  const notifications: Notification[] =
-    (data || []).map((recipient: any) => ({
-      ...recipient.notifications,
-      recipient_id: recipient.id,
-      is_read: recipient.is_read,
-      read_at: recipient.read_at,
-    })) ?? [];
+  const notifications: Notification[] = (data ?? []).map((recipient: any) => ({
+    ...recipient.notifications,
+    recipient_id: recipient.id,
+    is_read: recipient.is_read,
+    read_at: recipient.read_at,
+  }));
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 

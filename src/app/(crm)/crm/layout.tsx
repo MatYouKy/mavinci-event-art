@@ -11,6 +11,7 @@ import CrmProviders from './CrmProviders';
 import { fetchUnreadCountServer } from '@/lib/CRM/messages/unreadCounter';
 import { fetchNotificationsServer } from '@/lib/CRM/notifications/fetchNotificationsServer';
 import { getNavigationForUserServer } from '@/lib/CRM/navigation/getNavigationForUser.server';
+import { cookies } from 'next/headers';
 
 export const metadata: Metadata = {
   title: 'Mavinci CRM',
@@ -32,7 +33,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   }
 
   const preferences = await getEmployeePreferencesCached(employee.id);
-  const notifications = await fetchNotificationsServer();
+  const cookieStore = cookies(); // ✅ w request scope
+  const { notifications, unreadCount } = await fetchNotificationsServer(cookieStore, 100);
 
   const { navigation, employeeId } = await getNavigationForUserServer();
 
@@ -43,8 +45,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <PreferencesClientProvider employeeId={employee.id} initialPreferences={preferences}>
             <CRMClientLayout
               employee={employee}
-              initialUnreadMessagesCount={initialUnreadMessagesCount}
-              initialNotifications={notifications.notifications}
+              initialUnreadMessagesCount={unreadCount}
+              initialNotifications={notifications}
               initialNavigation={navigation}
             >
               {children}
