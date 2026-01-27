@@ -159,3 +159,116 @@ html, body {
 .animate-rotate-slow {
   animation: rotate-slow 20s linear infinite;
 }
+
+/* Email content dark mode override */
+.email-content {
+  /* Wymuszenie dark mode na wszystkie elementy */
+  color: #e5e4e2 !important;
+}
+
+.email-content * {
+  /* Nadpisanie wszystkich tła na ciemne */
+  background-color: transparent !important;
+  color: inherit !important;
+}
+
+.email-content div,
+.email-content p,
+.email-content span,
+.email-content table,
+.email-content td,
+.email-content th,
+.email-content tr {
+  background-color: transparent !important;
+  background-image: none !important;
+  color: #e5e4e2 !important;
+}
+
+/* Zachowanie kontrastów dla linków */
+.email-content a {
+  color: #d3bb73 !important;
+  text-decoration: underline;
+}
+
+.email-content a:hover {
+  color: #c5ad65 !important;
+}
+
+/* Obrazy responsive */
+.email-content img {
+  max-width: 100% !important;
+  height: auto !important;
+  border-radius: 4px;
+}
+
+/* Tabele w dark mode */
+.email-content table {
+  border-color: rgba(211, 187, 115, 0.2) !important;
+}
+
+.email-content th {
+  background-color: rgba(211, 187, 115, 0.1) !important;
+  color: #ffffff !important;
+  font-weight: 600;
+}
+
+.email-content td {
+  border-color: rgba(211, 187, 115, 0.1) !important;
+}
+
+/* Bold/strong tekst */
+.email-content strong,
+.email-content b {
+  color: #ffffff !important;
+  font-weight: 600;
+}
+
+/* Cytaty */
+.email-content blockquote {
+  border-left: 3px solid #d3bb73 !important;
+  padding-left: 1rem;
+  margin-left: 0;
+  color: #e5e4e2 !important;
+  background-color: rgba(211, 187, 115, 0.05) !important;
+}
+
+/* Kod */
+.email-content code,
+.email-content pre {
+  background-color: rgba(15, 17, 25, 0.6) !important;
+  color: #d3bb73 !important;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+}
+
+/* Listy */
+.email-content ul,
+.email-content ol {
+  color: #e5e4e2 !important;
+  padding-left: 1.5rem;
+}
+
+.email-content li {
+  color: #e5e4e2 !important;
+  margin-bottom: 0.25rem;
+}
+
+/* Headingi */
+.email-content h1,
+.email-content h2,
+.email-content h3,
+.email-content h4,
+.email-content h5,
+.email-content h6 {
+  color: #ffffff !important;
+  font-weight: 600;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Hr separator */
+.email-content hr {
+  border-color: rgba(211, 187, 115, 0.2) !important;
+  margin: 1rem 0;
+}

@@ -315,7 +315,7 @@ export default function MessageDetailPage({ params }: PageProps) {
               {message.bodyHtml && message.bodyHtml.trim() ? (
                 <div
                   dangerouslySetInnerHTML={{ __html: message.bodyHtml }}
-                  className="text-sm text-[#e5e4e2] sm:text-base [&_a]:text-[#d3bb73] [&_a]:underline [&_img]:max-w-full"
+                  className="email-content text-sm text-[#e5e4e2] sm:text-base"
                   style={{
                     wordWrap: 'break-word',
                     overflowWrap: 'break-word',
