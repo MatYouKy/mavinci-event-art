@@ -738,6 +738,139 @@ export const messagesApi = api.injectEndpoints({
       keepUnusedDataFor: 300,
     }),
 
+    getEmailAccounts: builder.query<{
+      accounts: Array<{
+        id: string;
+        email_address: string;
+        account_name: string;
+        from_name: string;
+        account_type: 'personal' | 'shared' | 'system';
+        department?: string;
+        display_name: string;
+      }>;
+      hasContactFormAccess: boolean;
+      isAdmin: boolean;
+    }, void>({
+      queryFn: async () => {
+        try {
+          const { supabase } = await import('@/lib/supabase/browser');
+
+          const {
+            data: { user },
+          } = await supabase.auth.getUser();
+
+          if (!user) {
+            return { data: { accounts: [], hasContactFormAccess: false, isAdmin: false } };
+          }
+
+          // Get personal accounts
+          const { data: personalAccounts } = await supabase
+            .from('employee_email_accounts')
+            .select('*')
+            .eq('employee_id', user.id)
+            .eq('is_active', true);
+
+          // Get assigned shared accounts
+          const { data: assignments } = await supabase
+            .from('employee_email_account_assignments')
+            .select('email_account_id')
+            .eq('employee_id', user.id);
+
+          const assignedAccountIds = assignments?.map((a) => a.email_account_id) || [];
+
+          // Get employee data for contact form access
+          const { data: employeeData } = await supabase
+            .from('employees')
+            .select('can_receive_contact_forms, permissions')
+            .eq('id', user.id)
+            .maybeSingle();
+
+          const hasContactFormAccess = employeeData?.can_receive_contact_forms || false;
+          const isAdmin = employeeData?.permissions?.includes('admin') || false;
+
+          let assignedAccounts: any[] = [];
+          if (assignedAccountIds.length > 0) {
+            const { data: assignedData } = await supabase
+              .from('employee_email_accounts')
+              .select('*')
+              .in('id', assignedAccountIds)
+              .eq('is_active', true);
+
+            assignedAccounts = assignedData || [];
+          }
+
+          // Combine and deduplicate accounts
+          const allUserAccounts = [...(personalAccounts || []), ...assignedAccounts];
+          const uniqueAccounts = Array.from(
+            new Map(allUserAccounts.map((acc) => [acc.id, acc])).values(),
+          );
+
+          // Sort accounts
+          const sortedAccounts = uniqueAccounts.sort((a, b) => {
+            if (a.account_type !== b.account_type) {
+              const order = { system: 0, shared: 1, personal: 2 } as const;
+              return order[a.account_type] - order[b.account_type];
+            }
+            return a.account_name.localeCompare(b.account_name);
+          });
+
+          const getAccountTypeBadge = (accountType: string) => {
+            if (accountType === 'system') return '🔧';
+            if (accountType === 'shared') return '🏢';
+            return '👤';
+          };
+
+          const formatAccountName = (account: any) => {
+            const badge = getAccountTypeBadge(account.account_type);
+            if (account.account_type === 'shared' && account.department) {
+              return `${badge} ${account.department} - ${account.account_name}`;
+            }
+            return `${badge} ${account.account_name}`;
+          };
+
+          const formattedAccounts = sortedAccounts.map((acc) => ({
+            ...acc,
+            display_name: formatAccountName(acc),
+          }));
+
+          // Add special accounts
+          const accounts = [
+            ...(formattedAccounts.length > 0
+              ? [
+                  {
+                    id: 'all',
+                    email_address: 'Wszystkie dostępne konta',
+                    from_name: 'Wszystkie konta',
+                    account_name: 'Wszystkie konta',
+                    display_name: '📧 Wszystkie konta',
+                    account_type: 'system' as const,
+                  },
+                ]
+              : []),
+            ...(hasContactFormAccess || isAdmin
+              ? [
+                  {
+                    id: 'contact_form',
+                    email_address: 'Formularz kontaktowy',
+                    from_name: 'Formularz',
+                    account_name: 'Formularz kontaktowy',
+                    display_name: '📝 Formularz kontaktowy',
+                    account_type: 'system' as const,
+                  },
+                ]
+              : []),
+            ...formattedAccounts,
+          ];
+
+          return { data: { accounts, hasContactFormAccess, isAdmin } };
+        } catch (error) {
+          console.error('Error fetching email accounts:', error);
+          return { error: { status: 'CUSTOM_ERROR', error: String(error) } };
+        }
+      },
+      providesTags: ['MessagesList'],
+    }),
+
     getUnreadCount: builder.query<number, void>({
       queryFn: async () => {
         try {
@@ -784,5 +917,6 @@ export const {
   useMarkMessageAsReadMutation,
   useToggleStarMessageMutation,
   useDeleteMessageMutation,
+  useGetEmailAccountsQuery,
   useGetUnreadCountQuery,
 } = messagesApi;

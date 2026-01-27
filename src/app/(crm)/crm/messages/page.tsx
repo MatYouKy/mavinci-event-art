@@ -1,9 +1,9 @@
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
-import { getEmailAccounts } from '@/lib/CRM/messages/getEmailAccounts.server';
-import { getMessages } from '@/lib/CRM/messages/getMessages.server';
 import MessagesPageClient from './MessagesPageClient';
 import { cookies } from 'next/headers';
+import { Suspense } from 'react';
+import MessagesLoadingScreen from '@/components/crm/MessagesLoadingScreen';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -31,27 +31,14 @@ export default async function MessagesPage() {
 
   if (!canView && !canManage) redirect('/crm');
 
-  const { accounts, hasContactFormAccess } = await getEmailAccounts(user.id);
-
-  const defaultAccountId = accounts.length > 0 ? accounts[0].id : 'all';
-
-  const { messages, hasMore, total } = await getMessages(
-    user.id,
-    defaultAccountId,
-    'all',
-    50,
-    0,
-  );
-
   return (
-    <MessagesPageClient
-      initialAccounts={accounts}
-      initialMessages={messages}
-      initialHasMore={hasMore}
-      initialTotal={total}
-      hasContactFormAccess={hasContactFormAccess}
-      canManage={canManage}
-      canView={canView}
-    />
+    <Suspense fallback={<MessagesLoadingScreen />}>
+      <MessagesPageClient
+        userId={user.id}
+        hasContactFormAccess={employeeData.can_receive_contact_forms || false}
+        canManage={canManage}
+        canView={canView}
+      />
+    </Suspense>
   );
 }

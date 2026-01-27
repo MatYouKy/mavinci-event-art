@@ -26,6 +26,7 @@ import {
   useDeleteMessageMutation,
   useToggleStarMessageMutation,
   useLazySearchMessagesQuery,
+  useGetEmailAccountsQuery,
 } from '@/store/api/messagesApi';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import { MessageMobileFilteredModal } from './components/MessageMobileFilteredModal';
@@ -44,20 +45,14 @@ const translateSubject = (subject: string): string => {
 };
 
 interface MessagesPageClientProps {
-  initialAccounts: EmailAccount[];
-  initialMessages: MessageListItem[];
-  initialHasMore: boolean;
-  initialTotal: number;
+  userId: string;
   hasContactFormAccess: boolean;
   canManage: boolean;
   canView: boolean;
 }
 
 export default function MessagesPageClient({
-  initialAccounts,
-  initialMessages,
-  initialHasMore,
-  initialTotal,
+  userId,
   hasContactFormAccess: initialHasContactFormAccess,
   canManage: initialCanManage,
   canView: initialCanView,
@@ -71,10 +66,18 @@ export default function MessagesPageClient({
 
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>(initialAccounts);
-  const [selectedAccount, setSelectedAccount] = useState<string>(
-    initialAccounts.length > 0 ? initialAccounts[0].id : 'all',
-  );
+
+  // Load email accounts using RTK Query
+  const {
+    data: accountsData,
+    isLoading: isLoadingAccounts,
+    isError: isAccountsError,
+  } = useGetEmailAccountsQuery();
+
+  const emailAccounts = accountsData?.accounts || [];
+  const hasContactFormAccess = accountsData?.hasContactFormAccess ?? initialHasContactFormAccess;
+
+  const [selectedAccount, setSelectedAccount] = useState<string>('');
   const [showNewMessageModal, setShowNewMessageModal] = useState(false);
   const [filterType, setFilterType] = useState<'all' | 'contact_form' | 'sent' | 'received'>('all');
   const [showAssignModal, setShowAssignModal] = useState(false);
@@ -87,18 +90,16 @@ export default function MessagesPageClient({
 
   const [forwardMessage, setForwardMessage] = useState<any>(null);
   const [offset, setOffset] = useState(0);
-  const [allMessages, setAllMessages] = useState<MessageListItem[]>(initialMessages);
+  const [allMessages, setAllMessages] = useState<MessageListItem[]>([]);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [isSearchMode, setIsSearchMode] = useState(false);
-  const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
   const [showMobileSearch, setShowMobileSearch] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const pageSize = 50;
   const observerTarget = useRef<HTMLDivElement>(null);
-  const hasContactFormAccess = initialHasContactFormAccess;
 
   const {
     data: messagesData,
@@ -171,6 +172,13 @@ export default function MessagesPageClient({
     }, 250);
   }, [refetch]);
 
+  // Set selectedAccount when accounts are loaded
+  useEffect(() => {
+    if (emailAccounts.length > 0 && !selectedAccount) {
+      setSelectedAccount(emailAccounts[0].id);
+    }
+  }, [emailAccounts, selectedAccount]);
+
   useEffect(() => {
     if (messagesData?.messages) {
       if (offset === 0) {
@@ -186,17 +194,8 @@ export default function MessagesPageClient({
     }
   }, [messagesData, offset]);
 
-  // Wykorzystaj initial messages jeśli nie ma jeszcze danych z cache
-  useEffect(() => {
-    if (initialMessages.length > 0 && allMessages.length === 0 && !isSuccess) {
-      setAllMessages(initialMessages);
-    }
-  }, [initialMessages, allMessages.length, isSuccess]);
-
   useEffect(() => {
     setOffset(0);
-    // nie czyść od razu — pozwól RTK nadpisać po fetchu
-    // setAllMessages([]);
   }, [selectedAccount, filterType]);
 
   const loadMore = useCallback(() => {
@@ -588,6 +587,35 @@ export default function MessagesPageClient({
               Przejdź do ustawień
             </button>
           )}
+        </div>
+      </div>
+    );
+  }
+
+  // Show loader while loading accounts
+  if (isLoadingAccounts) {
+    return (
+      <div className="flex min-h-[600px] items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="mx-auto h-12 w-12 animate-spin text-[#d3bb73]" />
+          <p className="mt-4 text-[#e5e4e2]/60">Ładowanie kont email...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error if accounts failed to load
+  if (isAccountsError) {
+    return (
+      <div className="flex min-h-[600px] items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-400">Błąd ładowania kont email</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-4 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#0f1119] hover:bg-[#c5ad65]"
+          >
+            Odśwież stronę
+          </button>
         </div>
       </div>
     );
