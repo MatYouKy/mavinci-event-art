@@ -156,6 +156,7 @@ export default function EventWizard({
     budget: '',
     description: '',
     status: 'inquiry',
+    location_id: '' as string | null,
   });
 
   const [clientType, setClientType] = useState<'business' | 'individual'>(
@@ -579,6 +580,7 @@ export default function EventWizard({
         status: eventData.status,
         created_by: session?.user?.id || null,
         participants: participants.length > 0 ? participants : [],
+        location_id: eventData.location_id || null,
       };
 
       const data = await createEventMutation(eventPayload).unwrap();
@@ -650,6 +652,7 @@ export default function EventWizard({
           description: eventData.description || null,
           status: eventData.status,
           participants: participants.length > 0 ? participants : [],
+          location_id: eventData.location_id || null,
         })
         .eq('id', createdEventId);
 
@@ -784,6 +787,7 @@ export default function EventWizard({
       budget: '',
       description: '',
       status: 'offer_sent',
+      location_id: null,
     });
     setShowNewContactForm(false);
     setNewContact({ first_name: '', last_name: '', email: '', phone: '' });
@@ -1151,7 +1155,15 @@ export default function EventWizard({
                 </label>
                 <LocationSelector
                   value={eventData.location}
-                  onChange={(value) => setEventData({ ...eventData, location: value })}
+                  onChange={(value, locationData) => {
+                    const locId = (locationData as any)?.id ?? (locationData as any)?._id ?? null;
+
+                    setEventData((prev) => ({
+                      ...prev,
+                      location: value,
+                      location_id: locId,
+                    }));
+                  }}
                   placeholder="Wybierz z listy lub wyszukaj nową lokalizację..."
                 />
                 <p className="mt-1 text-xs text-[#e5e4e2]/50">
