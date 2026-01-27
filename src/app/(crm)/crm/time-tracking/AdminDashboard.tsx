@@ -31,6 +31,9 @@ interface TimeEntry {
   tags: string[];
   task_id: string | null;
   event_id: string | null;
+  tasks?: {
+    title: string;
+  } | null;
 }
 
 interface Employee {
@@ -67,6 +70,7 @@ export default function AdminDashboard() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [employeeStats, setEmployeeStats] = useState<EmployeeStats[]>([]);
   const [dailyStats, setDailyStats] = useState<DailyStats[]>([]);
+  const [activeEntries, setActiveEntries] = useState<Map<string, TimeEntry>>(new Map());
 
   const [dateFrom, setDateFrom] = useState(() => {
     const date = new Date();
@@ -135,6 +139,14 @@ export default function AdminDashboard() {
 
       setEntries(entriesData || []);
       setEmployees(employeesData || []);
+
+      const activeMap = new Map<string, TimeEntry>();
+      (entriesData || []).forEach((entry: any) => {
+        if (!entry.end_time) {
+          activeMap.set(entry.employee_id, entry);
+        }
+      });
+      setActiveEntries(activeMap);
 
       calculateStats(entriesData || []);
     } catch (error) {
@@ -440,10 +452,27 @@ export default function AdminDashboard() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2 font-medium text-[#e5e4e2]">
                       {stats.employee_name} {stats.employee_surname}
+                      {activeEntries.has(stats.employee_id) && (
+                        <span className="flex items-center gap-1.5 rounded-full bg-green-500/20 px-2 py-0.5">
+                          <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-400"></div>
+                          <span className="text-xs font-medium text-green-400">Aktywny</span>
+                        </span>
+                      )}
                       <ChevronRight className="h-4 w-4 text-[#d3bb73] opacity-0 transition-opacity group-hover:opacity-100" />
                     </div>
                     <div className="text-sm text-[#e5e4e2]/60">
                       {stats.entries_count} wpisów • {stats.active_days} dni
+                      {activeEntries.has(stats.employee_id) && (
+                        <>
+                          {' '}
+                          •{' '}
+                          <span className="text-green-400">
+                            {activeEntries.get(stats.employee_id)?.tasks?.title ||
+                              activeEntries.get(stats.employee_id)?.title ||
+                              'W trakcie pracy'}
+                          </span>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>

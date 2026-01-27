@@ -102,6 +102,8 @@ export default function EmployeeTimeTrackingPage() {
     }
     return 'list';
   });
+  const [activeEntry, setActiveEntry] = useState<TimeEntry | null>(null);
+  const [liveTime, setLiveTime] = useState<string>('00:00:00');
 
   const [dateFrom, setDateFrom] = useState(() => {
     const date = new Date();
@@ -118,6 +120,38 @@ export default function EmployeeTimeTrackingPage() {
       fetchData();
     }
   }, [employeeId, dateFrom, dateTo]);
+
+  useEffect(() => {
+    const active = entries.find((e) => !e.end_time);
+    setActiveEntry(active || null);
+  }, [entries]);
+
+  useEffect(() => {
+    if (!activeEntry) {
+      setLiveTime('00:00:00');
+      return;
+    }
+
+    const updateTimer = () => {
+      const start = new Date(activeEntry.start_time);
+      const now = new Date();
+      const diffMs = now.getTime() - start.getTime();
+      const diffSeconds = Math.floor(diffMs / 1000);
+
+      const hours = Math.floor(diffSeconds / 3600);
+      const minutes = Math.floor((diffSeconds % 3600) / 60);
+      const seconds = diffSeconds % 60;
+
+      setLiveTime(
+        `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`,
+      );
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
+
+    return () => clearInterval(interval);
+  }, [activeEntry]);
 
   const fetchData = async () => {
     try {
@@ -236,6 +270,29 @@ export default function EmployeeTimeTrackingPage() {
     }
   };
 
+  const handleDelete = async (entryId: string) => {
+    if (!isAdmin) {
+      showSnackbar('Brak uprawnień do usuwania wpisów', 'error');
+      return;
+    }
+
+    if (!confirm('Czy na pewno chcesz usunąć ten wpis czasu pracy? Ta operacja jest nieodwracalna.')) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase.from('time_entries').delete().eq('id', entryId);
+
+      if (error) throw error;
+
+      showSnackbar('Wpis został usunięty', 'success');
+      fetchData();
+    } catch (error) {
+      console.error('Error deleting time entry:', error);
+      showSnackbar('Błąd podczas usuwania wpisu', 'error');
+    }
+  };
+
   const totalMinutes = entries
     .filter((e) => e.duration_minutes)
     .reduce((sum, e) => sum + (e.duration_minutes || 0), 0);
@@ -277,9 +334,17 @@ export default function EmployeeTimeTrackingPage() {
           <div className="flex items-center gap-6">
             <EmployeeAvatar employee={employee} size={80} className="flex-shrink-0" />
             <div className="flex-1">
-              <h1 className="mb-2 text-3xl font-light text-[#e5e4e2]">
-                {employee.name} {employee.surname}
-              </h1>
+              <div className="mb-2 flex items-center gap-3">
+                <h1 className="text-3xl font-light text-[#e5e4e2]">
+                  {employee.name} {employee.surname}
+                </h1>
+                {activeEntry && (
+                  <span className="flex items-center gap-1.5 rounded-full bg-green-500/20 px-3 py-1">
+                    <div className="h-2 w-2 animate-pulse rounded-full bg-green-400"></div>
+                    <span className="text-sm font-medium text-green-400">Aktywny licznik</span>
+                  </span>
+                )}
+              </div>
               <div className="flex gap-4 text-sm text-[#e5e4e2]/60">
                 <span>{employee.email}</span>
                 {employee.phone_number && <span>{employee.phone_number}</span>}
@@ -287,6 +352,49 @@ export default function EmployeeTimeTrackingPage() {
             </div>
           </div>
         </div>
+
+        {activeEntry && (
+          <div className="rounded-lg border border-green-500/20 bg-[#1c1f33] p-6">
+            <div className="mb-4 flex items-center gap-2 text-green-400">
+              <Clock className="h-5 w-5" />
+              <h3 className="text-lg font-medium">Aktualnie naliczany czas pracy</h3>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <div className="mb-2 text-sm text-[#e5e4e2]/60">Zadanie</div>
+                <div className="text-lg font-medium text-[#e5e4e2]">
+                  {activeEntry.tasks?.title || activeEntry.title || 'Praca'}
+                </div>
+                {(activeEntry.tasks?.events?.name || activeEntry.events?.name) && (
+                  <div className="mt-1 text-sm text-[#e5e4e2]/60">
+                    Wydarzenie: {activeEntry.tasks?.events?.name || activeEntry.events?.name}
+                  </div>
+                )}
+                {activeEntry.description && (
+                  <div className="mt-2 text-sm text-[#e5e4e2]/60">{activeEntry.description}</div>
+                )}
+              </div>
+              <div>
+                <div className="mb-2 text-sm text-[#e5e4e2]/60">Rozpoczęto</div>
+                <div className="text-[#e5e4e2]">
+                  {new Date(activeEntry.start_time).toLocaleString('pl-PL')}
+                </div>
+                <div className="mt-4 text-sm text-[#e5e4e2]/60">Czas trwania</div>
+                <div className="text-3xl font-bold text-green-400">{liveTime}</div>
+                {activeEntry.hourly_rate && (
+                  <div className="mt-2 text-sm text-[#e5e4e2]/60">
+                    Stawka: {activeEntry.hourly_rate} zł/h
+                  </div>
+                )}
+                {activeEntry.is_billable && (
+                  <div className="mt-1 inline-block rounded-full bg-green-500/20 px-2 py-1 text-xs text-green-400">
+                    Płatne
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
           <div className="mb-6 flex items-center gap-4">
@@ -433,7 +541,7 @@ export default function EmployeeTimeTrackingPage() {
             <div className="space-y-3">
             {entries.map((entry) => (
               <div key={entry.id} className="rounded-lg border border-[#d3bb73]/5 bg-[#0f1119] p-4">
-                <div className="flex items-start justify-between">
+                <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
                     <div className="mb-2 flex items-center gap-3">
                       <h4 className="font-semibold text-[#e5e4e2]">
@@ -482,12 +590,22 @@ export default function EmployeeTimeTrackingPage() {
                       </span>
                     </div>
                   </div>
-                  <div className="text-right">
+                  <div className="flex flex-col items-end gap-2">
                     <div className="text-2xl font-bold text-[#d3bb73]">
                       {formatHours(entry.duration_minutes || 0)}
                     </div>
                     {entry.hourly_rate && (
-                      <div className="mt-1 text-xs text-[#e5e4e2]/40">{entry.hourly_rate} zł/h</div>
+                      <div className="text-xs text-[#e5e4e2]/40">{entry.hourly_rate} zł/h</div>
+                    )}
+                    {isAdmin && (
+                      <button
+                        onClick={() => handleDelete(entry.id)}
+                        className="mt-2 flex items-center gap-1 rounded-lg bg-red-500/10 px-3 py-1.5 text-sm text-red-400 transition-colors hover:bg-red-500/20"
+                        title="Usuń wpis"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Usuń
+                      </button>
                     )}
                   </div>
                 </div>
@@ -517,6 +635,7 @@ export default function EmployeeTimeTrackingPage() {
                     <th className="px-3 py-3 text-center font-medium">Stawka</th>
                     <th className="px-3 py-3 text-center font-medium">Status</th>
                     {isAdmin && <th className="px-3 py-3 text-center font-medium">Edycje</th>}
+                    {isAdmin && <th className="px-3 py-3 text-center font-medium">Akcje</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#d3bb73]/5">
@@ -608,6 +727,17 @@ export default function EmployeeTimeTrackingPage() {
                           ) : (
                             <span className="text-xs text-[#e5e4e2]/40">-</span>
                           )}
+                        </td>
+                      )}
+                      {isAdmin && (
+                        <td className="px-3 py-3 text-center">
+                          <button
+                            onClick={() => handleDelete(entry.id)}
+                            className="inline-flex items-center gap-1 rounded-lg bg-red-500/10 px-2 py-1 text-xs text-red-400 transition-colors hover:bg-red-500/20"
+                            title="Usuń wpis"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
                         </td>
                       )}
                     </tr>
