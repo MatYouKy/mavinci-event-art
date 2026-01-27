@@ -374,11 +374,11 @@ const TechnicalOfferBrochure = ({
   };
 
   const getEmployeePhone = () => {
-    return employee?.phone || getContentValue('phone', '+48 123 456 789');
+    return employee?.phone_number || getContentValue('phone_number', '+48 698 212 279');
   };
 
   const getEmployeeEmail = () => {
-    return employee?.email || getContentValue('email', 'kontakt@mavinci.pl');
+    return employee?.email || getContentValue('email', 'biuro@mavinci.pl');
   };
 
   const getImageBySection = (section: string, index: number = 0): BrochureImage | null => {

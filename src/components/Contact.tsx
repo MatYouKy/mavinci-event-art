@@ -98,7 +98,7 @@ export default function Contact() {
                 </div>
                 <div>
                   <h3 className="text-[#e5e4e2] font-light text-lg mb-1">Email</h3>
-                  <a href="mailto:kontakt@mavinci.pl" className="text-[#e5e4e2]/70 hover:text-[#d3bb73] transition-colors duration-300">
+                  <a href="mailto:biuro@mavinci.pl" className="text-[#e5e4e2]/70 hover:text-[#d3bb73] transition-colors duration-300">
                     biuro@mavinci.pl
                   </a>
                 </div>

@@ -1,6 +1,6 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Mail, Phone } from 'lucide-react';
 
 export const metadata: Metadata = {
   title: 'Polityka Prywatności - MAVINCI Event & ART',
@@ -161,8 +161,8 @@ export default function PolitykaPrywatnosciPage() {
               W sprawach związanych z ochroną danych osobowych można kontaktować się z Administratorem:
             </p>
             <ul className="ml-6 mt-4 list-disc space-y-2">
-              <li>E-mail: kontakt@mavinci.pl</li>
-              <li>Telefon: +48 123 456 789</li>
+              <li><Mail className="h-4 w-4" /> E-mail: biuro@mavinci.pl</li>
+              <li><Phone className="h-4 w-4" /> Telefon: +48 698 212 279</li>
             </ul>
           </section>
 
