@@ -29,3 +29,5 @@ export function createSupabaseServerClient(cookieStore: CookieStoreLike) {
     }
   );
 }
+
+export { createServerClient };

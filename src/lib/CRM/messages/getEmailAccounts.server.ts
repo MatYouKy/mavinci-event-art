@@ -1,5 +1,5 @@
-import { createServerClient } from '@/lib/supabase/server.app';
-import { unstable_cache } from 'next/cache';
+import { createSupabaseServerClient } from '@/lib/supabase/server.app';
+import { cookies } from 'next/headers';
 
 export interface EmailAccount {
   id: string;
@@ -12,7 +12,7 @@ export interface EmailAccount {
 }
 
 async function fetchEmailAccountsData(userId: string) {
-  const supabase = await createServerClient();
+  const supabase = await createSupabaseServerClient(cookies());
 
   // Get personal accounts
   const { data: personalAccounts, error: personalError } = await supabase
@@ -43,7 +43,7 @@ async function fetchEmailAccountsData(userId: string) {
   const hasContactFormAccess = employeeData?.can_receive_contact_forms || false;
   const isAdmin = employeeData?.permissions?.includes('admin') || false;
 
-  let assignedAccounts = [];
+  let assignedAccounts: any[] = [];
   if (assignedAccountIds.length > 0) {
     const { data: assignedData, error: assignedError } = await supabase
       .from('employee_email_accounts')
@@ -64,16 +64,12 @@ async function fetchEmailAccountsData(userId: string) {
   // Sort accounts
   const sortedAccounts = uniqueAccounts.sort((a, b) => {
     if (a.account_type !== b.account_type) {
-      const order = { system: 0, shared: 1, personal: 2 };
-      return (
-        order[a.account_type as keyof typeof order] -
-        order[b.account_type as keyof typeof order]
-      );
+      const order = { system: 0, shared: 1, personal: 2 } as const;
+      return order[a.account_type] - order[b.account_type];
     }
     return a.account_name.localeCompare(b.account_name);
   });
 
-  // Format account names
   const getAccountTypeBadge = (accountType: string) => {
     if (accountType === 'system') return '🔧';
     if (accountType === 'shared') return '🏢';
@@ -129,13 +125,6 @@ async function fetchEmailAccountsData(userId: string) {
   };
 }
 
-export const getEmailAccounts = unstable_cache(
-  async (userId: string) => {
-    return fetchEmailAccountsData(userId);
-  },
-  ['email-accounts'],
-  {
-    revalidate: 300, // 5 minutes
-    tags: ['email-accounts'],
-  },
-);
+export async function getEmailAccounts(userId: string) {
+  return fetchEmailAccountsData(userId);
+}

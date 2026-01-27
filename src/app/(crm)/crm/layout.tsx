@@ -36,8 +36,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   const { navigation, employeeId } = await getNavigationForUserServer();
 
-  console.log('preferences', preferences);
-
   return (
     <html lang="pl">
       <body>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
 import {
@@ -33,6 +33,7 @@ import { MobileSearchModal } from './components/MobileSearchModal';
 import type { EmailAccount } from '@/lib/CRM/messages/getEmailAccounts.server';
 import type { Message } from '@/lib/CRM/messages/getMessages.server';
 import { revalidateMessages } from './actions';
+import { MessageListItem } from '@/lib/CRM/messages/types';
 
 const translateSubject = (subject: string): string => {
   if (!subject) return 'Wiadomość z formularza';
@@ -44,7 +45,7 @@ const translateSubject = (subject: string): string => {
 
 interface MessagesPageClientProps {
   initialAccounts: EmailAccount[];
-  initialMessages: Message[];
+  initialMessages: MessageListItem[];
   initialHasMore: boolean;
   initialTotal: number;
   hasContactFormAccess: boolean;
@@ -83,10 +84,10 @@ export default function MessagesPageClient({
     assignedTo: string | null;
   } | null>(null);
   const [replyToMessage, setReplyToMessage] = useState<any>(null);
-  const [hasContactFormAccess, setHasContactFormAccess] = useState(initialHasContactFormAccess);
+
   const [forwardMessage, setForwardMessage] = useState<any>(null);
   const [offset, setOffset] = useState(0);
-  const [allMessages, setAllMessages] = useState<Message[]>(initialMessages);
+  const [allMessages, setAllMessages] = useState<MessageListItem[]>(initialMessages);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
   const [dateFrom, setDateFrom] = useState('');
@@ -97,6 +98,7 @@ export default function MessagesPageClient({
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const pageSize = 50;
   const observerTarget = useRef<HTMLDivElement>(null);
+  const hasContactFormAccess = initialHasContactFormAccess;
 
   const {
     data: messagesData,
@@ -140,7 +142,7 @@ export default function MessagesPageClient({
         filterType,
       }).unwrap();
 
-      setAllMessages(result.messages);
+      setAllMessages(result.messages as unknown as MessageListItem[]);
       showSnackbar(`Znaleziono ${result.total} wiadomości`, 'success');
     } catch (error) {
       console.error('Search error:', error);
@@ -158,15 +160,24 @@ export default function MessagesPageClient({
     setAllMessages([]);
   };
 
+  const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const refetchDebounced = useCallback(() => {
+    if (refetchTimer.current) clearTimeout(refetchTimer.current);
+    refetchTimer.current = setTimeout(() => {
+      refetch();
+    }, 250);
+  }, [refetch]);
+
   useEffect(() => {
     if (messagesData?.messages) {
       if (offset === 0) {
-        setAllMessages(messagesData.messages);
+        setAllMessages(messagesData.messages as unknown as MessageListItem[]);
       } else {
-        setAllMessages((prev) => {
+        setAllMessages((prev: MessageListItem[]) => {
           const existingIds = new Set(prev.map((m) => m.id));
-          const newMessages = messagesData.messages.filter((m) => !existingIds.has(m.id));
-          return [...prev, ...newMessages];
+          const newMessages = messagesData.messages.filter((m: any) => !existingIds.has(m.id)) as unknown as MessageListItem[];
+          return [...prev, ...newMessages] as unknown as MessageListItem[];
         });
       }
       setIsLoadingMore(false);
@@ -175,15 +186,16 @@ export default function MessagesPageClient({
 
   useEffect(() => {
     setOffset(0);
-    setAllMessages([]);
+    // nie czyść od razu — pozwól RTK nadpisać po fetchu
+    // setAllMessages([]);
   }, [selectedAccount, filterType]);
 
   const loadMore = useCallback(() => {
-    if (!isLoadingMore && messagesData?.hasMore && !isFetching) {
+    if (!isLoading && !isLoadingMore && messagesData?.hasMore && !isFetching) {
       setIsLoadingMore(true);
       setOffset((prev) => prev + pageSize);
     }
-  }, [isLoadingMore, messagesData?.hasMore, isFetching, pageSize]);
+  }, [isLoading, isLoadingMore, messagesData?.hasMore, isFetching, pageSize]);
 
   // Email accounts are now loaded from server-side props
 
@@ -209,17 +221,6 @@ export default function MessagesPageClient({
     };
   }, [loadMore]);
 
-
-  useEffect(() => {
-    const hasAccess = hasContactFormAccess || canManage;
-    if (!hasAccess && selectedAccount === 'contact_form') {
-      setSelectedAccount('all');
-    }
-    if (!hasAccess && filterType === 'contact_form') {
-      setFilterType('all');
-    }
-  }, [hasContactFormAccess, canManage, selectedAccount, filterType]);
-
   useEffect(() => {
     if (emailAccounts.length > 0) {
       setOffset(0);
@@ -229,61 +230,50 @@ export default function MessagesPageClient({
   useEffect(() => {
     if (!currentEmployee || emailAccounts.length === 0) return;
 
-    const contactChannel = supabase
-      .channel('contact_messages_changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'contact_messages',
-        },
-        () => {
-          refetch();
-        },
-      )
-      .subscribe();
+    const channels: any[] = [];
 
-    const sentChannel = supabase
-      .channel('sent_emails_changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'sent_emails',
-        },
-        () => {
-          if (selectedAccount !== 'contact_form') {
-            refetch();
-          }
-        },
-      )
-      .subscribe();
+    // Contact form tylko jeśli ma dostęp (albo manage)
+    if (hasContactFormAccess || canManage) {
+      channels.push(
+        supabase
+          .channel('contact_messages_changes')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'contact_messages' }, () =>
+            refetchDebounced(),
+          )
+          .subscribe(),
+      );
+    }
 
-    const receivedChannel = supabase
-      .channel('received_emails_changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'received_emails',
-        },
-        () => {
-          if (selectedAccount !== 'contact_form') {
-            refetch();
-          }
-        },
-      )
-      .subscribe();
+    // Sent/Received zawsze (bo to “poczta”)
+    channels.push(
+      supabase
+        .channel('sent_emails_changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'sent_emails' }, () => {
+          if (selectedAccount !== 'contact_form') refetchDebounced();
+        })
+        .subscribe(),
+    );
+
+    channels.push(
+      supabase
+        .channel('received_emails_changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'received_emails' }, () => {
+          if (selectedAccount !== 'contact_form') refetchDebounced();
+        })
+        .subscribe(),
+    );
 
     return () => {
-      supabase.removeChannel(contactChannel);
-      supabase.removeChannel(sentChannel);
-      supabase.removeChannel(receivedChannel);
+      channels.forEach((ch) => supabase.removeChannel(ch));
     };
-  }, [currentEmployee, emailAccounts, selectedAccount, refetch]);
+  }, [
+    currentEmployee,
+    emailAccounts.length,
+    selectedAccount,
+    refetchDebounced,
+    hasContactFormAccess,
+    canManage,
+  ]);
 
   const handleMessageClick = async (
     messageId: string,
@@ -293,7 +283,19 @@ export default function MessagesPageClient({
     window.open(`/crm/messages/${messageId}?type=${messageType}`, '_blank', 'noopener,noreferrer');
 
     if (!isRead && (messageType === 'contact_form' || messageType === 'received')) {
-      await markAsRead({ id: messageId, type: messageType });
+      // ✅ optimistic UI
+      setAllMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, is_read: true } : m)));
+
+      try {
+        await markAsRead({ id: messageId, type: messageType }).unwrap();
+        // opcjonalnie:
+        // refetch();
+      } catch (e) {
+        // rollback
+        setAllMessages((prev) =>
+          prev.map((m) => (m.id === messageId ? { ...m, is_read: false } : m)),
+        );
+      }
     }
   };
 
@@ -395,7 +397,7 @@ export default function MessagesPageClient({
       if (result.success) {
         showSnackbar(`Pobrano ${result.count || 0} nowych wiadomości`, 'success');
         await revalidateMessages();
-        refetch();
+        refetchDebounced();
         router.refresh();
       } else {
         showSnackbar(`Błąd: ${result.error}`, 'error');
@@ -478,7 +480,7 @@ export default function MessagesPageClient({
         setReplyToMessage(null);
         setForwardMessage(null);
         await revalidateMessages();
-        refetch();
+        refetchDebounced();
         router.refresh();
       } else {
         showSnackbar(`Błąd: ${result.error}`, 'error');
@@ -489,17 +491,18 @@ export default function MessagesPageClient({
     }
   };
 
-  const filteredMessages = allMessages.filter((msg) => {
-    if (!searchQuery) return true;
+  const filteredMessages = useMemo(() => {
+    if (!searchQuery) return allMessages;
 
     const query = searchQuery.toLowerCase();
-    return (
-      msg.from.toLowerCase().includes(query) ||
-      msg.to.toLowerCase().includes(query) ||
-      msg.subject.toLowerCase().includes(query) ||
-      msg.preview.toLowerCase().includes(query)
-    );
-  });
+    return allMessages.filter((msg) => {
+      return (
+        (msg.from || '').toLowerCase().includes(query) ||
+        (msg.subject || '').toLowerCase().includes(query) ||
+        (msg.preview || '').toLowerCase().includes(query)
+      );
+    });
+  }, [allMessages, searchQuery]);
 
   const formatDate = (date: string) => {
     const messageDate = new Date(date);
@@ -620,7 +623,7 @@ export default function MessagesPageClient({
                 <select
                   value={selectedAccount}
                   onChange={(e) => setSelectedAccount(e.target.value)}
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] py-3 px-4 text-sm text-white focus:border-[#d3bb73] focus:outline-none"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-sm text-white focus:border-[#d3bb73] focus:outline-none"
                 >
                   {emailAccounts.map((account) => (
                     <option key={account.id} value={account.id}>
@@ -682,7 +685,7 @@ export default function MessagesPageClient({
                 )}
 
                 <button
-                  onClick={() => (isSearchMode ? handleClearSearch() : refetch())}
+                  onClick={() => (isSearchMode ? handleClearSearch() : refetchDebounced())}
                   disabled={isLoading}
                   className="rounded-lg bg-[#d3bb73]/20 px-6 py-3 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30 disabled:opacity-50"
                   title="Odśwież"
@@ -752,7 +755,7 @@ export default function MessagesPageClient({
                 )}
 
                 <button
-                  onClick={() => (isSearchMode ? handleClearSearch() : refetch())}
+                  onClick={() => (isSearchMode ? handleClearSearch() : refetchDebounced())}
                   disabled={isLoading}
                   className="rounded-lg bg-[#d3bb73]/20 p-2 text-[#d3bb73] disabled:opacity-50"
                   title="Odśwież"
@@ -782,21 +785,21 @@ export default function MessagesPageClient({
                     <div
                       key={message.id}
                       className={`p-2 transition-colors hover:bg-[#d3bb73]/5 sm:p-4 ${
-                        !message.isRead ? 'bg-[#d3bb73]/5 font-semibold' : ''
+                        !message.is_read ? 'bg-[#d3bb73]/5 font-semibold' : ''
                       }`}
                     >
                       <div className="mb-1.5 flex items-start justify-between gap-2 sm:mb-2">
                         <div
                           className="min-w-0 flex-1 cursor-pointer"
                           onClick={() =>
-                            handleMessageClick(message.id, message.type, message.isRead)
+                            handleMessageClick(message.id, message.type, message.is_read)
                           }
                         >
                           <div className="mb-0.5 flex items-center gap-1.5 sm:mb-1 sm:gap-2">
                             <span className="truncate text-sm text-white sm:text-base">
                               {message.from}
                             </span>
-                            {!message.isRead && (
+                            {!message.is_read && (
                               <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#d3bb73] sm:h-2 sm:w-2"></span>
                             )}
                           </div>
@@ -812,7 +815,7 @@ export default function MessagesPageClient({
                             <MessageActionsMenu
                               messageId={message.id}
                               messageType={message.type}
-                              isStarred={message.isStarred}
+                              isStarred={message.is_starred}
                               onReply={() => handleReply(message)}
                               onForward={
                                 message.type === 'received'
@@ -830,7 +833,7 @@ export default function MessagesPageClient({
                               onMove={() => handleMove(message.id)}
                               onStar={
                                 message.type === 'received'
-                                  ? () => handleStar(message.id, message.isStarred)
+                                  ? () => handleStar(message.id, message.is_starred)
                                   : undefined
                               }
                               onArchive={
@@ -932,9 +935,7 @@ export default function MessagesPageClient({
             : ''
         }
         selectedAccountId={selectedAccount}
-        emailAccounts={emailAccounts.filter(
-          (acc) => acc.id !== 'all' && acc.id !== 'contact_form'
-        )}
+        emailAccounts={emailAccounts.filter((acc) => acc.id !== 'all' && acc.id !== 'contact_form')}
       />
 
       {showAssignModal && messageToAssign && (
@@ -947,7 +948,7 @@ export default function MessagesPageClient({
             setMessageToAssign(null);
           }}
           onSuccess={() => {
-            refetch();
+            refetchDebounced();
           }}
         />
       )}
