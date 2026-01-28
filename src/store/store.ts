@@ -12,6 +12,7 @@ import { clientsApi } from '@/app/(crm)/crm/contacts/store/clientsApi';
 import { locationsApi } from '@/app/(crm)/crm/locations/locationsApi';
 import { employeesApi } from '@/app/(crm)/crm/employees/store/employeeApi';
 import { fleetApi } from '@/app/(crm)/crm/fleet/api/fleetApi';
+import { databasesApi } from '@/app/(crm)/crm/databases/api/databasesApi';
 
 import authReducer from './slices/authSlice';
 import contactsReducer from './slices/contactsSlice';
@@ -38,6 +39,7 @@ export const rootReducer = combineReducers({
   [tasksApi.reducerPath]: tasksApi.reducer,
   [calendarApi.reducerPath]: calendarApi.reducer,
   [fleetApi.reducerPath]: fleetApi.reducer,
+  [databasesApi.reducerPath]: databasesApi.reducer,
 });
 
 export type RootState = ReturnType<typeof rootReducer>;
@@ -59,7 +61,8 @@ export const makeStore = (preloadedState?: Partial<RootState>) =>
         .concat(employeesApi.middleware)
         .concat(tasksApi.middleware)
         .concat(calendarApi.middleware)
-        .concat(fleetApi.middleware),
+        .concat(fleetApi.middleware)
+        .concat(databasesApi.middleware),
   });
 
 export type AppStore = ReturnType<typeof makeStore>;

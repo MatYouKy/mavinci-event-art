@@ -403,32 +403,32 @@
     prop-types "^15.8.1"
     react-is "^19.2.3"
 
-"@napi-rs/canvas-linux-x64-gnu@0.1.88":
-  version "0.1.88"
-  resolved "https://registry.npmjs.org/@napi-rs/canvas-linux-x64-gnu/-/canvas-linux-x64-gnu-0.1.88.tgz"
-  integrity sha512-hvcvKIcPEQrvvJtJnwD35B3qk6umFJ8dFIr8bSymfrSMem0EQsfn1ztys8ETIFndTwdNWJKWluvxztA41ivsEw==
+"@napi-rs/canvas-linux-x64-gnu@0.1.89":
+  version "0.1.89"
+  resolved "https://registry.npmjs.org/@napi-rs/canvas-linux-x64-gnu/-/canvas-linux-x64-gnu-0.1.89.tgz"
+  integrity sha512-ebLuqkCuaPIkKgKH9q4+pqWi1tkPOfiTk5PM1LKR1tB9iO9sFNVSIgwEp+SJreTSbA2DK5rW8lQXiN78SjtcvA==
 
-"@napi-rs/canvas-linux-x64-musl@0.1.88":
-  version "0.1.88"
-  resolved "https://registry.npmjs.org/@napi-rs/canvas-linux-x64-musl/-/canvas-linux-x64-musl-0.1.88.tgz"
-  integrity sha512-eSMpGYY2xnZSQ6UxYJ6plDboxq4KeJ4zT5HaVkUnbObNN6DlbJe0Mclh3wifAmquXfrlgTZt6zhHsUgz++AK6g==
+"@napi-rs/canvas-linux-x64-musl@0.1.89":
+  version "0.1.89"
+  resolved "https://registry.npmjs.org/@napi-rs/canvas-linux-x64-musl/-/canvas-linux-x64-musl-0.1.89.tgz"
+  integrity sha512-w+5qxHzplvA4BkHhCaizNMLLXiI+CfP84YhpHm/PqMub4u8J0uOAv+aaGv40rYEYra5hHRWr9LUd6cfW32o9/A==
 
 "@napi-rs/canvas@^0.1.84", "@napi-rs/canvas@^0.1.88":
-  version "0.1.88"
-  resolved "https://registry.npmjs.org/@napi-rs/canvas/-/canvas-0.1.88.tgz"
-  integrity sha512-/p08f93LEbsL5mDZFQ3DBxcPv/I4QG9EDYRRq1WNlCOXVfAHBTHMSVMwxlqG/AtnSfUr9+vgfN7MKiyDo0+Weg==
+  version "0.1.89"
+  resolved "https://registry.npmjs.org/@napi-rs/canvas/-/canvas-0.1.89.tgz"
+  integrity sha512-7GjmkMirJHejeALCqUnZY3QwID7bbumOiLrqq2LKgxrdjdmxWQBTc6rcASa2u8wuWrH7qo4/4n/VNrOwCoKlKg==
   optionalDependencies:
-    "@napi-rs/canvas-android-arm64" "0.1.88"
-    "@napi-rs/canvas-darwin-arm64" "0.1.88"
-    "@napi-rs/canvas-darwin-x64" "0.1.88"
-    "@napi-rs/canvas-linux-arm-gnueabihf" "0.1.88"
-    "@napi-rs/canvas-linux-arm64-gnu" "0.1.88"
-    "@napi-rs/canvas-linux-arm64-musl" "0.1.88"
-    "@napi-rs/canvas-linux-riscv64-gnu" "0.1.88"
-    "@napi-rs/canvas-linux-x64-gnu" "0.1.88"
-    "@napi-rs/canvas-linux-x64-musl" "0.1.88"
-    "@napi-rs/canvas-win32-arm64-msvc" "0.1.88"
-    "@napi-rs/canvas-win32-x64-msvc" "0.1.88"
+    "@napi-rs/canvas-android-arm64" "0.1.89"
+    "@napi-rs/canvas-darwin-arm64" "0.1.89"
+    "@napi-rs/canvas-darwin-x64" "0.1.89"
+    "@napi-rs/canvas-linux-arm-gnueabihf" "0.1.89"
+    "@napi-rs/canvas-linux-arm64-gnu" "0.1.89"
+    "@napi-rs/canvas-linux-arm64-musl" "0.1.89"
+    "@napi-rs/canvas-linux-riscv64-gnu" "0.1.89"
+    "@napi-rs/canvas-linux-x64-gnu" "0.1.89"
+    "@napi-rs/canvas-linux-x64-musl" "0.1.89"
+    "@napi-rs/canvas-win32-arm64-msvc" "0.1.89"
+    "@napi-rs/canvas-win32-x64-msvc" "0.1.89"
 
 "@next/env@14.2.35":
   version "14.2.35"
@@ -1703,9 +1703,9 @@ base64-arraybuffer@^1.0.2:
   integrity sha512-I3yl4r9QB5ZRY3XuJVEPfc2XhZO6YweFPI+UovAzn+8/hb3oJ6lnysaFcjVpkCPfVWFUDvoZ8kmVDP7WyRtYtQ==
 
 baseline-browser-mapping@^2.9.0:
-  version "2.9.18"
-  resolved "https://registry.npmjs.org/baseline-browser-mapping/-/baseline-browser-mapping-2.9.18.tgz"
-  integrity sha512-e23vBV1ZLfjb9apvfPk4rHVu2ry6RIr2Wfs+O324okSidrX7pTAnEJPCh/O5BtRlr7QtZI7ktOP3vsqr7Z5XoA==
+  version "2.9.19"
+  resolved "https://registry.npmjs.org/baseline-browser-mapping/-/baseline-browser-mapping-2.9.19.tgz"
+  integrity sha512-ipDqC8FrAl/76p2SSWKSI+H9tFwm7vYqXQrItCuiVPt26Km0jS+NzSsBWAaBusvSbQcfJG+JitdMm+wZAgTYqg==
 
 binary-extensions@^2.0.0:
   version "2.3.0"

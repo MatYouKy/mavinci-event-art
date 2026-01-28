@@ -13,7 +13,8 @@ export type NavKey =
   | 'tasks'
   | 'time-tracking'
   | 'page'
-  | 'locations';
+  | 'locations'
+  | 'databases';
 
 export interface NavigationItem {
   key: string;
@@ -41,6 +42,7 @@ export const allNavigation: NavigationItem[] = [
   { key: 'time-tracking', name: 'Czas pracy', href: '/crm/time-tracking', iconKey: 'time', module: 'time_tracking', permissions: ['time_tracking_view'] },
   { key: 'page', name: 'Strona', href: '/crm/page', iconKey: 'page', module: 'page', permissions: ['page_view'] },
   { key: 'locations', name: 'Lokalizacje', href: '/crm/locations', iconKey: 'locations', module: 'locations', permissions: ['locations_view'] },
+  { key: 'databases', name: 'Bazy Danych', href: '/crm/databases', iconKey: 'database', module: 'databases', permissions: ['databases_view'] },
 ];
 
 import {
@@ -58,6 +60,7 @@ import {
   Clock,
   BookUser,
   FileSignature,
+  Database,
 } from 'lucide-react';
 
 export const NavigationIcons: Record<string, any> = {
@@ -76,6 +79,7 @@ export const NavigationIcons: Record<string, any> = {
   time: Clock,
   page: Globe,
   locations: MapPin,
+  database: Database,
 };
 
 
