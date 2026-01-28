@@ -543,14 +543,24 @@ export default function EquipmentPage() {
                     />
                   </div>
                 )}
-                <div className="relative">
+                <div
+                  className="relative"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (item.is_kit) {
+                      router.push(`/crm/equipment/kits?edit=${item.id}`);
+                    } else {
+                      router.push(`/crm/equipment/${item.id}`);
+                    }
+                  }}
+                >
                   {item.thumbnail_url ? (
                     <Popover
                       trigger={
                         <img
                           src={item.thumbnail_url}
                           alt={item.name}
-                          className="mb-4 h-32 w-full rounded-lg object-cover"
+                          className="mb-4 h-32 w-full cursor-pointer rounded-lg object-cover"
                         />
                       }
                       content={
@@ -563,12 +573,12 @@ export default function EquipmentPage() {
                       openOn="hover"
                     />
                   ) : (
-                    <div className="mb-4 flex h-32 w-full items-center justify-center rounded-lg bg-[#0f1119]">
+                    <div className="mb-4 flex h-32 w-full cursor-pointer items-center justify-center rounded-lg bg-[#0f1119]">
                       <Package className="h-12 w-12 text-[#e5e4e2]/40" />
                     </div>
                   )}
                   {item.is_kit && (
-                    <div className="absolute left-2 top-2 rounded bg-[#d3bb73] px-2 py-1 text-xs font-medium text-[#1c1f33]">
+                    <div className="pointer-events-none absolute left-2 top-2 rounded bg-[#d3bb73] px-2 py-1 text-xs font-medium text-[#1c1f33]">
                       ZESTAW
                     </div>
                   )}
@@ -616,14 +626,24 @@ export default function EquipmentPage() {
                 }}
                 className="flex cursor-pointer items-center gap-4 border-b border-[#d3bb73]/5 p-4 last:border-0 hover:bg-[#0f1119]"
               >
-                <div className="relative">
+                <div
+                  className="relative"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (item.is_kit) {
+                      router.push(`/crm/equipment/kits?edit=${item.id}`);
+                    } else {
+                      router.push(`/crm/equipment/${item.id}`);
+                    }
+                  }}
+                >
                   {item.thumbnail_url ? (
                     <Popover
                       trigger={
                         <img
                           src={item.thumbnail_url}
                           alt={item.name ?? 'Sprzęt'}
-                          className="h-12 w-12 rounded-lg object-cover"
+                          className="h-12 w-12 cursor-pointer rounded-lg object-cover"
                         />
                       }
                       content={
@@ -636,12 +656,12 @@ export default function EquipmentPage() {
                       openOn="hover"
                     />
                   ) : (
-                    <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[#0f1119]">
+                    <div className="flex h-12 w-12 cursor-pointer items-center justify-center rounded-lg bg-[#0f1119]">
                       <Package className="h-6 w-6 text-[#e5e4e2]/40" />
                     </div>
                   )}
                   {item.is_kit && (
-                    <div className="absolute -left-1 -top-1 rounded bg-[#d3bb73] px-1 text-[10px] font-medium text-[#1c1f33]">
+                    <div className="pointer-events-none absolute -left-1 -top-1 rounded bg-[#d3bb73] px-1 text-[10px] font-medium text-[#1c1f33]">
                       KIT
                     </div>
                   )}

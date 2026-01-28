@@ -521,21 +521,21 @@ export default function KitsPage() {
   };
 
   const handleDeleteKit = async (kitId: string) => {
-    const confirmed = await showConfirm('Czy na pewno chcesz usunąć ten zestaw?', 'Usuń');
+    const confirmed = await showConfirm(
+      'Czy na pewno chcesz usunąć ten zestaw? Ta operacja jest nieodwracalna.',
+      'Usuń',
+    );
     if (!confirmed) return;
 
     try {
-      const { error } = await supabase
-        .from('equipment_kits')
-        .update({ is_active: false })
-        .eq('id', kitId);
+      const { error } = await supabase.from('equipment_kits').delete().eq('id', kitId);
 
       if (error) throw error;
       showSnackbar('Zestaw usunięty', 'success');
       fetchKits();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting kit:', error);
-      showSnackbar('Błąd podczas usuwania zestawu', 'error');
+      showSnackbar(error?.message || 'Błąd podczas usuwania zestawu', 'error');
     }
   };
 
