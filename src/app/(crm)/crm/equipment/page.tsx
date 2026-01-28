@@ -185,8 +185,9 @@ export default function EquipmentPage() {
       // po usunięciu odśwież bieżący feed od strony 0
       setPage(0);
       refetch();
-    } catch {
-      showSnackbar('Błąd podczas usuwania', 'error');
+    } catch (error: any) {
+      console.error('Delete error:', error);
+      showSnackbar(error?.message || 'Błąd podczas usuwania', 'error');
     }
   };
 

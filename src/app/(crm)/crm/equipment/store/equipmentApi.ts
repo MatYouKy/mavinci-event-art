@@ -510,14 +510,20 @@ export const equipmentApi = createApi({
     deleteEquipment: builder.mutation<{ success: true }, string>({
       async queryFn(id) {
         // 1) spróbuj w equipment_items
-        const { error: delItemsErr } = await supabase.from('equipment_items').delete().eq('id', id);
+        const { error: delItemsErr } = await supabase
+          .from('equipment_items')
+          .delete()
+          .eq('id', id);
 
         if (!delItemsErr) {
           return { data: { success: true } };
         }
 
         // 2) jeśli błąd, spróbuj w equipment_kits
-        const { error: delKitsErr } = await supabase.from('equipment_kits').delete().eq('id', id);
+        const { error: delKitsErr } = await supabase
+          .from('equipment_kits')
+          .delete()
+          .eq('id', id);
 
         if (!delKitsErr) {
           return { data: { success: true } };
@@ -526,7 +532,7 @@ export const equipmentApi = createApi({
         // 3) zwróć pierwszy błąd (często bardziej informacyjny)
         return { error: delItemsErr as any };
       },
-      invalidatesTags: ['Equipment'],
+      invalidatesTags: ['Equipment', 'EquipmentList'],
     }),
 
     // === JEDNOSTKI SPRZĘTU dla danego equipment_id ===

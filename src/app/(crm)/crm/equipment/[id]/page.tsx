@@ -245,8 +245,9 @@ export default function EquipmentDetailPage() {
       await deleteEquipmentMutation(equipmentId).unwrap();
       showSnackbar('Sprzęt został usunięty', 'success');
       router.push('/crm/equipment');
-    } catch {
-      showSnackbar('Błąd podczas usuwania sprzętu', 'error');
+    } catch (error: any) {
+      console.error('Delete equipment error:', error);
+      showSnackbar(error?.message || 'Błąd podczas usuwania sprzętu', 'error');
     }
   };
 
