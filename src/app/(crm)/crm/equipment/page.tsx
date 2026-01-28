@@ -82,7 +82,7 @@ export default function EquipmentPage() {
 
   // Paginacja do infinite scroll
   const [page, setPage] = useState(0);
-  const limit = 24;
+  const limit = 100; // Zwiększony limit dla lepszej wydajności infinite scroll
 
   // Kategoria do filtra feedu (z activeTab, ale bez 'all' i 'cables')
   const categoryId = activeTab !== 'all' && activeTab !== 'cables' ? activeTab : null;

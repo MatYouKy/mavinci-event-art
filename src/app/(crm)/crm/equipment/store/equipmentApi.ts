@@ -168,7 +168,7 @@ export const equipmentApi = createApi({
           }
         }
 
-        // --- sprzęty (bez kabli) ---
+        // --- sprzęty (bez kabli) - pobierz WSZYSTKIE bez range ---
         let itemsQ = supabase
           .from('equipment_items')
           .select(
@@ -179,14 +179,13 @@ export const equipmentApi = createApi({
             { count: 'exact' },
           )
           .is('deleted_at', null)
-          .order('created_at', { ascending: false })
-          .range(from, to);
+          .order('created_at', { ascending: false });
 
         if (activeOnly) itemsQ = itemsQ.eq('is_active', true);
         if (q) itemsQ = itemsQ.or(`name.ilike.%${q}%,brand.ilike.%${q}%,model.ilike.%${q}%`);
         if (categoryIds.length > 0) itemsQ = itemsQ.in('warehouse_category_id', categoryIds);
 
-        // --- kity ---
+        // --- kity - pobierz WSZYSTKIE bez range ---
         let kitsQ = supabase
           .from('equipment_kits')
           .select(
@@ -195,8 +194,7 @@ export const equipmentApi = createApi({
           `,
             { count: 'exact' },
           )
-          .order('created_at', { ascending: false })
-          .range(from, to);
+          .order('created_at', { ascending: false });
 
         if (activeOnly) kitsQ = kitsQ.eq('is_active', true);
         if (q) kitsQ = kitsQ.ilike('name', `%${q}%`);
@@ -213,14 +211,14 @@ export const equipmentApi = createApi({
             ...i,
             is_kit: false,
             is_cable: false,
-            available_quantity: countAvailable(i.equipment_units), // ✅ DODAJ TO
+            available_quantity: countAvailable(i.equipment_units),
           })),
           ...(kitsRes.data ?? []).map((k: any) => ({
             ...k,
             is_kit: true,
             is_cable: false,
             equipment_units: [],
-            available_quantity: 0, // ✅ DODAJ TO (na razie 0)
+            available_quantity: 0,
           })),
         ].sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
 
@@ -228,13 +226,12 @@ export const equipmentApi = createApi({
         if (itemType === 'equipment') merged = merged.filter((i) => !i.is_kit && !i.is_cable);
         if (itemType === 'kits') merged = merged.filter((i) => i.is_kit);
 
-        const approxCount =
-          (itemType !== 'kits' ? (itemsRes.count ?? 0) : 0) +
-          (itemType !== 'equipment' ? (kitsRes.count ?? 0) : 0);
+        // DOPIERO TERAZ zastosuj paginację na połączonym zbiorze
+        const totalCount = merged.length;
+        const pagedMerged = merged.slice(from, from + limit);
+        const hasMore = from + limit < totalCount;
 
-        const hasMore = from + merged.length < approxCount;
-
-        return { data: { items: merged, total: approxCount, page, hasMore } };
+        return { data: { items: pagedMerged, total: totalCount, page, hasMore } };
       },
       // cache po parametrach
       serializeQueryArgs: ({ endpointName, queryArgs }) => {
