@@ -183,7 +183,7 @@ export const equipmentApi = createApi({
           .range(from, to);
 
         if (activeOnly) itemsQ = itemsQ.eq('is_active', true);
-        if (q) itemsQ = itemsQ.or(`name.ilike.%${q}%,brand.ilike.%${q}%`);
+        if (q) itemsQ = itemsQ.or(`name.ilike.%${q}%,brand.ilike.%${q}%,model.ilike.%${q}%`);
         if (categoryIds.length > 0) itemsQ = itemsQ.in('warehouse_category_id', categoryIds);
 
         // --- kity ---

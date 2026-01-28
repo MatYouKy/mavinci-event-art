@@ -19,10 +19,10 @@ import {
   useGetStorageLocationsQuery,
   useGetEquipmentCategoriesQuery,
   useUpdateEquipmentItemMutation,
+  useDeleteEquipmentMutation,
 } from '../store/equipmentApi';
 
 import {
-  softDeleteEquipmentItem,
   addEquipmentComponent,
   deleteEquipmentComponent,
   deleteEquipmentUnit,
@@ -93,8 +93,9 @@ export default function EquipmentDetailPage() {
     refetchOnMountOrArgChange: true,
   });
 
-  // RTK Query mutation
+  // RTK Query mutations
   const [updateEquipmentMutation] = useUpdateEquipmentItemMutation();
+  const [deleteEquipmentMutation] = useDeleteEquipmentMutation();
 
   const loading = eqLoading || unitsLoading;
 
@@ -241,7 +242,7 @@ export default function EquipmentDetailPage() {
     if (!confirmed) return;
 
     try {
-      await dispatch(softDeleteEquipmentItem(equipmentId));
+      await deleteEquipmentMutation(equipmentId).unwrap();
       showSnackbar('Sprzęt został usunięty', 'success');
       router.push('/crm/equipment');
     } catch {
