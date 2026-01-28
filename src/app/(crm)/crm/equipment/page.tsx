@@ -8,7 +8,6 @@ import {
   Package,
   Grid,
   List,
-  Plug,
   Trash2,
   ChevronRight,
   FolderTree,
@@ -22,11 +21,9 @@ import {
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import { ThreeDotMenu } from '@/components/UI/ThreeDotMenu/ThreeDotMenu';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
 import { supabase } from '@/lib/supabase/browser';
 
-// ⬇️ RTK Query – feed + kategorie + delete
 import {
   useGetEquipmentFeedQuery,
   useGetEquipmentCategoriesQuery,
@@ -58,12 +55,12 @@ interface EquipmentListItem {
   id: string;
   name: string;
   warehouse_category_id: string | null;
-  brand?: string | null; // dla kits może być null
-  model?: string | null; // dla kits może być null
+  brand?: string | null;
+  model?: string | null;
   thumbnail_url: string | null;
   created_at?: string | null;
   is_kit?: boolean;
-  equipment_units?: EquipmentUnit[]; // dla kits może być []
+  equipment_units?: EquipmentUnit[];
 }
 
 export default function EquipmentPage() {
@@ -72,7 +69,7 @@ export default function EquipmentPage() {
   const { showConfirm } = useDialog();
   const { canCreateInModule, canManageModule } = useCurrentEmployee();
 
-  // Zakres UI
+  // UI
   const [activeTab, setActiveTab] = useState<string>('all'); // 'all' | categoryId | 'cables'
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
@@ -80,14 +77,13 @@ export default function EquipmentPage() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
-  // Paginacja do infinite scroll
+  // Infinite scroll
   const [page, setPage] = useState(0);
-  const limit = 100; // Zwiększony limit dla lepszej wydajności infinite scroll
+  const limit = 200;
 
-  // Kategoria do filtra feedu (z activeTab, ale bez 'all' i 'cables')
   const categoryId = activeTab !== 'all' && activeTab !== 'cables' ? activeTab : null;
 
-  // Hooki RTKQ
+  // RTKQ
   const {
     data: categories = [],
     isLoading: catLoading,
@@ -98,7 +94,7 @@ export default function EquipmentPage() {
   const {
     data: feed,
     isLoading,
-    isFetching, // true również przy dociąganiu kolejnych stron
+    isFetching,
     isError,
     refetch,
   } = useGetEquipmentFeedQuery({
@@ -112,47 +108,86 @@ export default function EquipmentPage() {
 
   const [deleteEquipment, { isLoading: deleting }] = useDeleteEquipmentMutation();
 
-  // Reset strony przy zmianie filtrów
+  // Akumulator stron
+  const [accItems, setAccItems] = useState<EquipmentCatalogItem[]>([]);
+  const scrollBoxRef = useRef<HTMLDivElement | null>(null);
+  const observerTargetRef = useRef<HTMLDivElement | null>(null);
+  const loadingMoreRef = useRef(false);
+
+  // Reset przy zmianie filtrów / tabów
   useEffect(() => {
     setPage(0);
+    setAccItems([]);
+    loadingMoreRef.current = false;
   }, [searchTerm, categoryId, itemTypeFilter, activeTab]);
 
-  // IntersectionObserver – strażnik na dole listy
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
-  const hasMore = !!feed?.hasMore;
-
+  // Doklejanie stron
   useEffect(() => {
-    if (!hasMore || isFetching) return;
-    const el = sentinelRef.current;
-    if (!el) return;
+    const newItems = (feed?.items ?? []) as EquipmentCatalogItem[];
+
+    setAccItems((prev) => {
+      if (page === 0) return newItems;
+
+      const map = new Map<string, EquipmentCatalogItem>();
+      for (const it of prev) map.set(it.id, it);
+      for (const it of newItems) map.set(it.id, it);
+      return Array.from(map.values());
+    });
+  }, [feed?.items, page]);
+
+  const items = accItems;
+
+  // total / hasMore
+  const totalAll =
+    (feed as any)?.total ?? (feed as any)?.totalCount ?? (feed as any)?.count ?? null;
+
+  const hasMore =
+    typeof (feed as any)?.hasMore === 'boolean'
+      ? !!(feed as any)?.hasMore
+      : totalAll != null
+        ? items.length < Number(totalAll)
+        : (feed?.items ?? []).length === limit; // fallback
+
+  // zdejmij blokadę po fetchu
+  useEffect(() => {
+    if (!isFetching) loadingMoreRef.current = false;
+  }, [isFetching]);
+
+  // ✅ IO 1:1 jak w Messages: root = scrollBoxRef, target = observerTargetRef
+  useEffect(() => {
+    const root = scrollBoxRef.current;
+    const target = observerTargetRef.current;
+    if (!root || !target) return;
 
     const io = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting) {
-          setPage((p) => p + 1);
-        }
+        const first = entries[0];
+        if (!first?.isIntersecting) return;
+
+        if (!hasMore) return;
+        if (isFetching) return;
+
+        if (loadingMoreRef.current) return;
+        loadingMoreRef.current = true;
+
+        setPage((p) => p + 1);
       },
-      { rootMargin: '800px' },
+      {
+        root,
+        threshold: 0.1,
+        rootMargin: '600px 0px',
+      },
     );
 
-    io.observe(el);
+    io.observe(target);
     return () => io.disconnect();
   }, [hasMore, isFetching]);
 
-  // Lista elementów do renderu
-  const items: EquipmentCatalogItem[] = useMemo(() => feed?.items ?? [], [feed]);
+  const byId = useMemo(() => new Map(categories.map((c) => [c.id, c] as const)), [categories]);
 
-  // Kategorie – helpery
-  const mainCategories: WarehouseCategory[] = useMemo(
-    () => categories.filter((c) => c.level === 1),
-    [categories],
-  );
-
-  const byId = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
-
-  const getCategoryPath = (categoryId: string | null): string => {
-    if (!categoryId) return '';
-    let cur = byId.get(categoryId);
+  const getCategoryPath = (categoryId2: string | null): string => {
+    if (!categoryId2) return '';
+    let cur = byId.get(categoryId2);
     if (!cur) return '';
     const chain = [cur.name];
     while (cur.parent_id) {
@@ -174,16 +209,22 @@ export default function EquipmentPage() {
     return { available, total, color: 'text-green-400' };
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: string, isKit: boolean) => {
     const ok = await showConfirm('Czy na pewno chcesz usunąć?', 'Usuń');
     if (!ok) return;
 
     try {
-      await deleteEquipment(id).unwrap();
+      if (!isKit) {
+        await deleteEquipment(id).unwrap();
+      } else {
+        const { error } = await supabase.from('equipment_kits').delete().eq('id', id);
+        if (error) throw error;
+      }
       showSnackbar('Usunięto', 'success');
 
-      // po usunięciu odśwież bieżący feed od strony 0
       setPage(0);
+      setAccItems([]);
+      loadingMoreRef.current = false;
       refetch();
     } catch (error: any) {
       console.error('Delete error:', error);
@@ -215,7 +256,7 @@ export default function EquipmentPage() {
         weight_kg,
         power_consumption_w,
         storage_location_id,
-      } = original;
+      } = original as any;
 
       const { error: insertError } = await supabase.from('equipment_items').insert({
         name: `${name} (kopia)`,
@@ -233,7 +274,10 @@ export default function EquipmentPage() {
       if (insertError) throw insertError;
 
       showSnackbar('Przedmiot zduplikowany pomyślnie', 'success');
+
       setPage(0);
+      setAccItems([]);
+      loadingMoreRef.current = false;
       refetch();
     } catch (error) {
       console.error('Error duplicating equipment:', error);
@@ -290,7 +334,9 @@ export default function EquipmentPage() {
     return actions;
   }, [router, canManageModule, canCreateInModule]);
 
-  // Błędy / loading (kategorie albo feed)
+  const canManageEquipment = useMemo(() => canManageModule('equipment'), [canManageModule]);
+
+  // ====== ERR / LOADING ======
   if (isError || catError) {
     return (
       <div className="text-[#e5e4e2]/80">
@@ -314,20 +360,25 @@ export default function EquipmentPage() {
     );
   }
 
+  const showEmpty = !isFetching && items.length === 0;
+
   return (
     <div className="space-y-6">
       {/* HEADER */}
       <div className="mt-2 flex items-center justify-between">
-        <h2 className="text-2xl font-light text-[#e5e4e2]">Magazyn</h2>
-        <div className="flex items-center gap-3 pt-2">
-          <ResponsiveActionBar actions={equipmentActions} />
+        <div>
+          <h2 className="text-2xl font-light text-[#e5e4e2]">Magazyn</h2>
+          <div className="mt-1 text-sm text-[#e5e4e2]/60">
+            Wyświetlasz: <span className="text-[#e5e4e2]">{items.length}</span> /{' '}
+            <span className="text-[#e5e4e2]">{totalAll ?? '?'}</span>
+          </div>
         </div>
+
+        <ResponsiveActionBar actions={equipmentActions} />
       </div>
 
-      {/* TABS */}
       {/* Filtry typu + Search + toggle view */}
       <div className="flex items-center gap-4">
-        {/* Desktop: zostaje jak było */}
         <div className="hidden gap-2 md:flex">
           {(['all', 'equipment', 'kits'] as const).map((k) => (
             <button
@@ -359,22 +410,25 @@ export default function EquipmentPage() {
           <div className="flex gap-2">
             <button
               onClick={() => setViewMode('list')}
-              className={`rounded-lg p-2 ${viewMode === 'list' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#1c1f33] text-[#e5e4e2]'}`}
+              className={`rounded-lg p-2 ${
+                viewMode === 'list' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#1c1f33] text-[#e5e4e2]'
+              }`}
             >
               <List className="h-5 w-5" />
             </button>
             <button
               onClick={() => setViewMode('grid')}
-              className={`rounded-lg p-2 ${viewMode === 'grid' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#1c1f33] text-[#e5e4e2]'}`}
+              className={`rounded-lg p-2 ${
+                viewMode === 'grid' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#1c1f33] text-[#e5e4e2]'
+              }`}
             >
               <Grid className="h-5 w-5" />
             </button>
           </div>
         </div>
 
-        {/* Mobile: tylko ikonki */}
+        {/* Mobile */}
         <div className="flex w-full items-center gap-2 md:hidden">
-          {/* Lupka */}
           <button
             onClick={() => setIsSearchOpen(true)}
             className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-2 text-[#e5e4e2]"
@@ -383,30 +437,31 @@ export default function EquipmentPage() {
             <Search className="h-5 w-5" />
           </button>
 
-          {/* Filtry */}
           <button
             onClick={() => setIsFilterOpen(true)}
             className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-2 text-[#e5e4e2]"
             aria-label="Filtry"
           >
-            {/* jeśli nie masz Filter icon w lucide, użyj SlidersHorizontal */}
             <SlidersHorizontal className="h-5 w-5" />
           </button>
 
           <div className="flex-1" />
 
-          {/* Toggle view */}
           <div className="flex gap-2">
             <button
               onClick={() => setViewMode('list')}
-              className={`rounded-lg p-2 ${viewMode === 'list' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#1c1f33] text-[#e5e4e2]'}`}
+              className={`rounded-lg p-2 ${
+                viewMode === 'list' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#1c1f33] text-[#e5e4e2]'
+              }`}
               aria-label="Widok listy"
             >
               <List className="h-5 w-5" />
             </button>
             <button
               onClick={() => setViewMode('grid')}
-              className={`rounded-lg p-2 ${viewMode === 'grid' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#1c1f33] text-[#e5e4e2]'}`}
+              className={`rounded-lg p-2 ${
+                viewMode === 'grid' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#1c1f33] text-[#e5e4e2]'
+              }`}
               aria-label="Widok siatki"
             >
               <Grid className="h-5 w-5" />
@@ -499,220 +554,38 @@ export default function EquipmentPage() {
         </div>
       )}
 
-      {/* Lista */}
-      {items.length === 0 ? (
-        <div className="py-12 text-center text-[#e5e4e2]/60">Brak sprzętu</div>
-      ) : viewMode === 'grid' ? (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {items.map((item) => {
-            const stock = getStock(item as EquipmentListItem);
-            return (
-              <div
-                key={item.id}
-                onClick={() => {
-                  if (item.is_kit) {
-                    router.push(`/crm/equipment/kits?edit=${item.id}`);
-                  } else {
-                    router.push(`/crm/equipment/${item.id}`);
-                  }
-                }}
-                className="relative cursor-pointer rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6 hover:border-[#d3bb73]/30"
-              >
-                {canManageModule('equipment') && (
-                  <div className="absolute right-2 top-2" onClick={(e) => e.stopPropagation()}>
-                    <ResponsiveActionBar
-                      actions={[
-                        {
-                          label: 'Duplikuj',
-                          onClick: () => {
-                            void handleDuplicate(item.id);
-                          },
-                          icon: <Copy className="h-4 w-4" />,
-                          variant: 'default',
-                        },
-                        {
-                          label: deleting ? 'Usuwanie…' : 'Usuń',
-                          onClick: () => {
-                            // ignorujemy Promise żeby zgadzał się typ () => void
-                            void handleDelete(item.id);
-                          },
-                          icon: <Trash2 className="h-4 w-4" />,
-                          variant: 'danger',
-                        },
-                      ]}
-                    />
-                  </div>
-                )}
+      {/* ✅ SCROLL BOX (root dla IO) */}
+      <div ref={scrollBoxRef} className="max-h-[calc(100vh-420px)]">
+        {showEmpty ? (
+          <div className="py-12 text-center text-[#e5e4e2]/60">Brak sprzętu</div>
+        ) : viewMode === 'grid' ? (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {items.map((item) => {
+              const stock = getStock(item as any as EquipmentListItem);
+              return (
                 <div
-                  className="relative"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (item.is_kit) {
-                      router.push(`/crm/equipment/kits?edit=${item.id}`);
-                    } else {
-                      router.push(`/crm/equipment/${item.id}`);
-                    }
+                  key={item.id}
+                  onClick={() => {
+                    if ((item as any).is_kit) router.push(`/crm/equipment/kits?edit=${item.id}`);
+                    else router.push(`/crm/equipment/${item.id}`);
                   }}
+                  className="relative cursor-pointer rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6 hover:border-[#d3bb73]/30"
                 >
-                  {item.thumbnail_url ? (
-                    <Popover
-                      trigger={
-                        <img
-                          src={item.thumbnail_url}
-                          alt={item.name}
-                          className="mb-4 h-32 w-full cursor-pointer rounded-lg object-cover"
-                        />
-                      }
-                      content={
-                        <img
-                          src={item.thumbnail_url}
-                          alt={item.name ?? 'Sprzęt'}
-                          className="h-auto cursor-pointer rounded-lg object-contain transition-all"
-                        />
-                      }
-                      openOn="hover"
-                    />
-                  ) : (
-                    <div className="mb-4 flex h-32 w-full cursor-pointer items-center justify-center rounded-lg bg-[#0f1119]">
-                      <Package className="h-12 w-12 text-[#e5e4e2]/40" />
-                    </div>
-                  )}
-                  {item.is_kit && (
-                    <div className="pointer-events-none absolute left-2 top-2 rounded bg-[#d3bb73] px-2 py-1 text-xs font-medium text-[#1c1f33]">
-                      ZESTAW
-                    </div>
-                  )}
-                </div>
-                <h3 className="mb-2 font-medium text-[#e5e4e2]">
-                  {item.name}
-                  {item.is_kit && <span className="ml-2 text-xs text-[#d3bb73]">ZESTAW</span>}
-                  {item.is_active === false && (
-                    <span className="ml-2 text-xs text-red-400">NIEAKTYWNY</span>
-                  )}
-                </h3>
-                {item.warehouse_category_id && (
-                  <p className="mb-2 flex items-center gap-1 text-xs text-[#e5e4e2]/40">
-                    <ChevronRight className="h-3 w-3" />
-                    {getCategoryPath(item.warehouse_category_id)}
-                  </p>
-                )}
-                <div className="flex justify-between text-sm">
-                  {item.is_kit ? (
-                    <span className="italic text-[#e5e4e2]/60">Zestaw</span>
-                  ) : (
-                    <span className={stock.color}>
-                      {stock.available}/{stock.total}
-                    </span>
-                  )}
-                  {item.brand && <span className="text-[#e5e4e2]/60">{item.brand}</span>}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
-          {items.map((item) => {
-            const stock = getStock(item as EquipmentListItem);
-            return (
-              <div
-                key={item.id}
-                onClick={() => {
-                  if (item.is_kit) {
-                    router.push(`/crm/equipment/kits?edit=${item.id}`);
-                  } else {
-                    router.push(`/crm/equipment/${item.id}`);
-                  }
-                }}
-                className="flex cursor-pointer items-center gap-4 border-b border-[#d3bb73]/5 p-4 last:border-0 hover:bg-[#0f1119]"
-              >
-                <div
-                  className="relative"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (item.is_kit) {
-                      router.push(`/crm/equipment/kits?edit=${item.id}`);
-                    } else {
-                      router.push(`/crm/equipment/${item.id}`);
-                    }
-                  }}
-                >
-                  {item.thumbnail_url ? (
-                    <Popover
-                      trigger={
-                        <img
-                          src={item.thumbnail_url}
-                          alt={item.name ?? 'Sprzęt'}
-                          className="h-12 w-12 cursor-pointer rounded-lg object-cover"
-                        />
-                      }
-                      content={
-                        <img
-                          src={item.thumbnail_url}
-                          alt={item.name ?? 'Sprzęt'}
-                          className="h-auto cursor-pointer rounded-lg object-contain transition-all"
-                        />
-                      }
-                      openOn="hover"
-                    />
-                  ) : (
-                    <div className="flex h-12 w-12 cursor-pointer items-center justify-center rounded-lg bg-[#0f1119]">
-                      <Package className="h-6 w-6 text-[#e5e4e2]/40" />
-                    </div>
-                  )}
-                  {item.is_kit && (
-                    <div className="pointer-events-none absolute -left-1 -top-1 rounded bg-[#d3bb73] px-1 text-[10px] font-medium text-[#1c1f33]">
-                      KIT
-                    </div>
-                  )}
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-medium text-[#e5e4e2]">
-                    {item.name}
-                    {item.is_kit && <span className="ml-2 text-xs text-[#d3bb73]">ZESTAW</span>}
-                    {item.is_active === false && (
-                      <span className="ml-2 text-xs text-red-400">NIEAKTYWNY</span>
-                    )}
-                  </h3>
-                  <div className="flex gap-2 text-sm text-[#e5e4e2]/60">
-                    {item.brand && <span>{item.brand}</span>}
-                    {item.warehouse_category_id && (
-                      <>
-                        <span>•</span>
-                        <span className="flex items-center gap-1">
-                          <ChevronRight className="h-3 w-3" />
-                          {getCategoryPath(item.warehouse_category_id)}
-                        </span>
-                      </>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-4">
-                  {item.is_kit ? (
-                    <span className="text-sm italic text-[#e5e4e2]/60">Zestaw</span>
-                  ) : (
-                    <span className={`text-sm ${stock.color}`}>
-                      {stock.available}/{stock.total}
-                    </span>
-                  )}
                   {canManageModule('equipment') && (
                     <div className="absolute right-2 top-2" onClick={(e) => e.stopPropagation()}>
                       <ResponsiveActionBar
+                        mobileBreakpoint={2000}
+                        disabledBackground
                         actions={[
                           {
                             label: 'Duplikuj',
-                            onClick: () => {
-                              void handleDuplicate(item.id);
-                            },
+                            onClick: () => void handleDuplicate(item.id),
                             icon: <Copy className="h-4 w-4" />,
                             variant: 'default',
                           },
                           {
                             label: deleting ? 'Usuwanie…' : 'Usuń',
-                            onClick: () => {
-                              // ignorujemy Promise żeby zgadzał się typ () => void
-                              void handleDelete(item.id);
-                            },
+                            onClick: () => void handleDelete(item.id, !!(item as any).is_kit),
                             icon: <Trash2 className="h-4 w-4" />,
                             variant: 'danger',
                           },
@@ -720,19 +593,207 @@ export default function EquipmentPage() {
                       />
                     </div>
                   )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
 
-      {/* Sentinel do infinite scroll + status */}
-      <div ref={sentinelRef} />
-      {isFetching && <div className="py-6 text-center text-[#e5e4e2]/60">Ładowanie…</div>}
-      {!hasMore && !isFetching && items.length > 0 && (
-        <div className="py-6 text-center text-[#e5e4e2]/40">To już wszystko 🎉</div>
-      )}
+                  <div
+                    className="relative"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if ((item as any).is_kit) router.push(`/crm/equipment/kits?edit=${item.id}`);
+                      else router.push(`/crm/equipment/${item.id}`);
+                    }}
+                  >
+                    {(item as any).thumbnail_url ? (
+                      <Popover
+                        trigger={
+                          <img
+                            src={(item as any).thumbnail_url}
+                            alt={(item as any).name}
+                            className="mb-4 h-32 w-full cursor-pointer rounded-lg object-cover"
+                          />
+                        }
+                        content={
+                          <img
+                            src={(item as any).thumbnail_url}
+                            alt={(item as any).name ?? 'Sprzęt'}
+                            className="h-auto cursor-pointer rounded-lg object-contain transition-all"
+                          />
+                        }
+                        openOn="hover"
+                      />
+                    ) : (
+                      <div className="mb-4 flex h-32 w-full cursor-pointer items-center justify-center rounded-lg bg-[#0f1119]">
+                        <Package className="h-12 w-12 text-[#e5e4e2]/40" />
+                      </div>
+                    )}
+
+                    {!!(item as any).is_kit && (
+                      <div className="pointer-events-none absolute left-2 top-2 rounded bg-[#d3bb73] px-2 py-1 text-xs font-medium text-[#1c1f33]">
+                        ZESTAW
+                      </div>
+                    )}
+                  </div>
+
+                  <h3 className="mb-2 font-medium text-[#e5e4e2]">
+                    {(item as any).name}
+                    {!!(item as any).is_kit && (
+                      <span className="ml-2 text-xs text-[#d3bb73]">ZESTAW</span>
+                    )}
+                    {(item as any).is_active === false && (
+                      <span className="ml-2 text-xs text-red-400">NIEAKTYWNY</span>
+                    )}
+                  </h3>
+
+                  {(item as any).warehouse_category_id && (
+                    <p className="mb-2 flex items-center gap-1 text-xs text-[#e5e4e2]/40">
+                      <ChevronRight className="h-3 w-3" />
+                      {getCategoryPath((item as any).warehouse_category_id)}
+                    </p>
+                  )}
+
+                  <div className="flex justify-between text-sm">
+                    {!!(item as any).is_kit ? (
+                      <span className="italic text-[#e5e4e2]/60">Zestaw</span>
+                    ) : (
+                      <span className={stock.color}>
+                        {stock.available}/{stock.total}
+                      </span>
+                    )}
+                    {(item as any).brand && (
+                      <span className="text-[#e5e4e2]/60">{(item as any).brand}</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
+            {items.map((item) => {
+              const stock = getStock(item as any as EquipmentListItem);
+              return (
+                <div
+                  key={item.id}
+                  onClick={() => {
+                    if ((item as any).is_kit) router.push(`/crm/equipment/kits?edit=${item.id}`);
+                    else router.push(`/crm/equipment/${item.id}`);
+                  }}
+                  className="flex cursor-pointer items-center gap-4 border-b border-[#d3bb73]/5 p-4 last:border-0 hover:bg-[#0f1119]"
+                >
+                  <div
+                    className="relative"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if ((item as any).is_kit) router.push(`/crm/equipment/kits?edit=${item.id}`);
+                      else router.push(`/crm/equipment/${item.id}`);
+                    }}
+                  >
+                    {(item as any).thumbnail_url ? (
+                      <Popover
+                        trigger={
+                          <img
+                            src={(item as any).thumbnail_url}
+                            alt={(item as any).name ?? 'Sprzęt'}
+                            className="h-12 w-12 cursor-pointer rounded-lg object-cover"
+                          />
+                        }
+                        content={
+                          <img
+                            src={(item as any).thumbnail_url}
+                            alt={(item as any).name ?? 'Sprzęt'}
+                            className="h-auto cursor-pointer rounded-lg object-contain transition-all"
+                          />
+                        }
+                        openOn="hover"
+                      />
+                    ) : (
+                      <div className="flex h-12 w-12 cursor-pointer items-center justify-center rounded-lg bg-[#0f1119]">
+                        <Package className="h-6 w-6 text-[#e5e4e2]/40" />
+                      </div>
+                    )}
+
+                    {!!(item as any).is_kit && (
+                      <div className="pointer-events-none absolute -left-1 -top-1 rounded bg-[#d3bb73] px-1 text-[10px] font-medium text-[#1c1f33]">
+                        KIT
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex-1">
+                    <h3 className="font-medium text-[#e5e4e2]">
+                      {(item as any).name}
+                      {!!(item as any).is_kit && (
+                        <span className="ml-2 text-xs text-[#d3bb73]">ZESTAW</span>
+                      )}
+                      {(item as any).is_active === false && (
+                        <span className="ml-2 text-xs text-red-400">NIEAKTYWNY</span>
+                      )}
+                    </h3>
+
+                    <div className="flex gap-2 text-sm text-[#e5e4e2]/60">
+                      {(item as any).brand && <span>{(item as any).brand}</span>}
+                      {(item as any).warehouse_category_id && (
+                        <>
+                          <span>•</span>
+                          <span className="flex items-center gap-1">
+                            <ChevronRight className="h-3 w-3" />
+                            {getCategoryPath((item as any).warehouse_category_id)}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    {!!(item as any).is_kit ? (
+                      <span className="text-sm italic text-[#e5e4e2]/60">Zestaw</span>
+                    ) : (
+                      <span className={`text-sm ${stock.color}`}>
+                        {stock.available}/{stock.total}
+                      </span>
+                    )}
+
+                    {canManageEquipment && (
+                      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                        <ResponsiveActionBar
+                          disabledBackground
+                          mobileBreakpoint={2000}
+                          actions={[
+                            {
+                              label: 'Duplikuj',
+                              onClick: () => void handleDuplicate(item.id),
+                              icon: <Copy className="h-4 w-4" />,
+                              variant: 'default',
+                            },
+                            {
+                              label: deleting ? 'Usuwanie…' : 'Usuń',
+                              onClick: () => void handleDelete(item.id, !!(item as any).is_kit),
+                              icon: <Trash2 className="h-4 w-4" />,
+                              variant: 'danger',
+                            },
+                          ]}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ✅ TO BYŁO KLUCZOWE: target dla IO (musi być w DOM) */}
+        <div ref={observerTargetRef} className="h-1" />
+
+        {/* opcjonalny loader w środku scrollboxa (jak w Messages) */}
+        {hasMore && (
+          <div className="flex items-center justify-center py-6 text-[#e5e4e2]/60">
+            {isFetching ? 'Ładowanie…' : ' '}
+          </div>
+        )}
+        {!hasMore && !isFetching && items.length > 0 && (
+          <div className="py-6 text-center text-[#e5e4e2]/40">Koniec listy ✅</div>
+        )}
+      </div>
     </div>
   );
 }

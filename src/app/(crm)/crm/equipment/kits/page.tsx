@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase/browser';
 import { uploadImage } from '@/lib/storage';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
+import Image from 'next/image';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface EquipmentUnit {
@@ -84,6 +85,7 @@ export default function KitsPage() {
     description: '',
     thumbnail_url: '',
     warehouse_category_id: '',
+    id: '',
   });
   const [kitItems, setKitItems] = useState<
     { equipment_id: string | null; cable_id: string | null; quantity: number; notes: string }[]
@@ -185,6 +187,7 @@ export default function KitsPage() {
         description: kit.description || '',
         thumbnail_url: kit.thumbnail_url || '',
         warehouse_category_id: kit.warehouse_category_id || '',
+        id: kit.id,
       });
       setKitItems(
         kit.equipment_kit_items.map((item) => ({
@@ -201,6 +204,7 @@ export default function KitsPage() {
         description: '',
         thumbnail_url: '',
         warehouse_category_id: '',
+        id: '',
       });
       setKitItems([]);
     }
@@ -597,10 +601,12 @@ export default function KitsPage() {
           <div className="mb-6 grid grid-cols-1 gap-6 md:grid-cols-3">
             {viewingKit.thumbnail_url && (
               <div className="md:col-span-1">
-                <img
+                <Image
                   src={viewingKit.thumbnail_url}
                   alt={viewingKit.name}
                   className="h-48 w-full rounded-lg object-cover"
+                  width={100}
+                  height={100}
                 />
               </div>
             )}
@@ -639,10 +645,12 @@ export default function KitsPage() {
                   >
                     <div className="w-8 text-center font-mono text-[#e5e4e2]/40">{index + 1}.</div>
                     {displayItem?.thumbnail_url && (
-                      <img
+                      <Image
                         src={displayItem.thumbnail_url}
                         alt={displayItem.name}
                         className="h-16 w-16 rounded object-cover"
+                        width={100}
+                        height={100}
                       />
                     )}
                     <div className="flex-1">
@@ -717,10 +725,12 @@ export default function KitsPage() {
                 <label className="mb-2 block text-sm text-[#e5e4e2]/60">Miniaturka</label>
                 {kitForm.thumbnail_url ? (
                   <div className="relative aspect-square w-full overflow-hidden rounded-lg bg-[#1c1f33]">
-                    <img
+                    <Image
                       src={kitForm.thumbnail_url}
                       alt="Miniaturka"
                       className="h-full w-full object-cover"
+                      width={100}
+                      height={100}
                     />
                     <button
                       onClick={() => setKitForm((prev) => ({ ...prev, thumbnail_url: '' }))}
@@ -822,10 +832,12 @@ export default function KitsPage() {
                         className="flex items-start gap-3 rounded-lg bg-[#1c1f33] p-3"
                       >
                         {displayItem?.thumbnail_url && (
-                          <img
+                          <Image
                             src={displayItem.thumbnail_url}
                             alt={displayItem.name}
                             className="h-12 w-12 rounded object-cover"
+                            width={100}
+                            height={100}
                           />
                         )}
                         <div className="flex-1">
@@ -1116,10 +1128,15 @@ export default function KitsPage() {
                 className="overflow-hidden rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] transition-colors hover:border-[#d3bb73]/30"
               >
                 {kit.thumbnail_url ? (
-                  <div className="h-48 bg-[#0f1119]">
-                    <img
+                  <div
+                    className="h-48 cursor-pointer bg-[#0f1119]"
+                    onClick={() => router.push(`/crm/equipment/kits?edit=${kit.id}`)}
+                  >
+                    <Image
                       src={kit.thumbnail_url}
                       alt={kit.name}
+                      width={100}
+                      height={100}
                       className="h-full w-full object-cover"
                     />
                   </div>

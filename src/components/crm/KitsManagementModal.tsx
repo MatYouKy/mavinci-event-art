@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase/browser';
 import { uploadImage } from '@/lib/storage';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import Image from 'next/image';
 
 interface EquipmentUnit {
   id: string;
@@ -445,7 +446,7 @@ export default function KitsManagementModal({
             <>
               <div className="mb-6 flex items-center justify-between">
                 <p className="text-[#e5e4e2]/60">
-                  Zestawy pozwalają na grupowanie sprzętu (np. "Kablarka Standard 1")
+                  Zestawy pozwalają na grupowanie sprzętu (np. &quot;Kablarka Standard 1&quot;)
                 </p>
                 {canManage && (
                   <button
@@ -465,7 +466,7 @@ export default function KitsManagementModal({
                   <Package className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
                   <p className="text-[#e5e4e2]/60">Brak zestawów</p>
                   <p className="mt-2 text-sm text-[#e5e4e2]/40">
-                    Kliknij "Nowy zestaw" aby stworzyć pierwszy zestaw
+                    Kliknij &quot;Nowy zestaw&quot; aby stworzyć pierwszy zestaw
                   </p>
                 </div>
               ) : (
@@ -477,10 +478,12 @@ export default function KitsManagementModal({
                     >
                       <div className="mb-3 flex items-start gap-4">
                         {kit.thumbnail_url ? (
-                          <img
+                          <Image
                             src={kit.thumbnail_url}
                             alt={kit.name}
                             className="h-16 w-16 rounded-lg object-cover"
+                            width={100}
+                            height={100}
                           />
                         ) : (
                           <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-[#d3bb73]/20">
@@ -574,10 +577,12 @@ export default function KitsManagementModal({
                 <div className="space-y-4">
                   {kitForm.thumbnail_url && (
                     <div className="relative mx-auto h-32 w-32">
-                      <img
+                      <Image
                         src={kitForm.thumbnail_url}
                         alt="Miniaturka"
                         className="h-full w-full rounded-lg border border-[#d3bb73]/20 object-cover"
+                        width={100}
+                        height={100}
                       />
                       <button
                         onClick={() => setKitForm((prev) => ({ ...prev, thumbnail_url: '' }))}
@@ -684,10 +689,12 @@ export default function KitsManagementModal({
                         >
                           <div className="flex items-start gap-3">
                             {displayItem?.thumbnail_url && (
-                              <img
+                              <Image
                                 src={displayItem.thumbnail_url}
                                 alt={displayItem.name}
                                 className="h-12 w-12 rounded object-cover"
+                                width={100}
+                                height={100}
                               />
                             )}
                             <div className="flex-1">
@@ -800,10 +807,12 @@ export default function KitsManagementModal({
                               className="flex w-full items-center gap-3 rounded-lg p-2 transition-colors hover:bg-[#1c1f33]"
                             >
                               {item.thumbnail_url ? (
-                                <img
+                                <Image
                                   src={item.thumbnail_url}
                                   alt={item.name}
                                   className="h-10 w-10 rounded object-cover"
+                                  width={100}
+                                  height={100}
                                 />
                               ) : (
                                 <div className="flex h-10 w-10 items-center justify-center rounded bg-[#d3bb73]/20">
@@ -848,10 +857,12 @@ export default function KitsManagementModal({
                               className="flex w-full items-center gap-3 rounded-lg p-2 transition-colors hover:bg-[#1c1f33]"
                             >
                               {item.thumbnail_url ? (
-                                <img
+                                <Image
                                   src={item.thumbnail_url}
                                   alt={item.name}
                                   className="h-10 w-10 rounded object-cover"
+                                  width={100}
+                                  height={100}
                                 />
                               ) : (
                                 <div className="flex h-10 w-10 items-center justify-center rounded bg-[#d3bb73]/20">
@@ -987,10 +998,12 @@ export default function KitsManagementModal({
               <div className="flex-1 overflow-y-auto p-6">
                 <div className="mb-6 flex items-start gap-4">
                   {viewingKit.thumbnail_url && (
-                    <img
+                    <Image
                       src={viewingKit.thumbnail_url}
                       alt={viewingKit.name}
                       className="h-24 w-24 rounded-lg object-cover"
+                      width={100}
+                      height={100}
                     />
                   )}
                   <div>
