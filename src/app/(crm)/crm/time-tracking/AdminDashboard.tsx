@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
   Clock,
   Users,
@@ -14,6 +15,7 @@ import {
   User,
   Briefcase,
   ChevronRight,
+  ExternalLink,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -516,17 +518,34 @@ export default function AdminDashboard() {
                       )}
                       <ChevronRight className="h-4 w-4 text-[#d3bb73] opacity-0 transition-opacity group-hover:opacity-100" />
                     </div>
-                    <div className="text-sm text-[#e5e4e2]/60">
-                      {stats.entries_count} wpisów • {stats.active_days} dni
+                    <div className="flex items-center gap-2 text-sm text-[#e5e4e2]/60">
+                      <span>
+                        {stats.entries_count} wpisów • {stats.active_days} dni
+                      </span>
                       {activeEntries.has(stats.employee_id) && (
                         <>
-                          {' '}
-                          •{' '}
-                          <span className="text-green-400">
-                            {activeEntries.get(stats.employee_id)?.tasks?.title ||
-                              activeEntries.get(stats.employee_id)?.title ||
-                              'W trakcie pracy'}
-                          </span>
+                          <span>•</span>
+                          {activeEntries.get(stats.employee_id)?.task_id &&
+                          activeEntries.get(stats.employee_id)?.tasks?.title ? (
+                            <span className="flex items-center gap-1.5 text-green-400">
+                              <span>
+                                {activeEntries.get(stats.employee_id)?.tasks?.title}
+                              </span>
+                              <Link
+                                href={`/crm/tasks/${activeEntries.get(stats.employee_id)?.task_id}`}
+                                target="_blank"
+                                className="inline-flex items-center gap-1 rounded bg-green-500/10 px-1.5 py-0.5 text-xs font-medium text-green-400 transition-colors hover:bg-green-500/20"
+                                title="Otwórz task"
+                              >
+                                <ExternalLink className="h-3 w-3" />
+                              </Link>
+                            </span>
+                          ) : (
+                            <span className="text-green-400">
+                              {activeEntries.get(stats.employee_id)?.title ||
+                                'W trakcie pracy'}
+                            </span>
+                          )}
                         </>
                       )}
                     </div>

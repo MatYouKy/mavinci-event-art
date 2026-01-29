@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import {
   Clock,
   Play,
@@ -21,6 +22,7 @@ import {
   History,
   BarChart3,
   List,
+  ExternalLink,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -428,10 +430,23 @@ export default function TimeTrackingPage() {
                       <div className="h-3 w-3 animate-pulse rounded-full bg-green-500" />
                       <span className="text-sm text-[#e5e4e2]/60">Timer aktywny</span>
                     </div>
-                    <h3 className="mb-1 text-xl font-semibold text-[#e5e4e2]">
-                      {activeTimer.task_id && activeTimer.tasks
-                        ? `${activeTimer.tasks.title} (Task)`
-                        : activeTimer.title || activeTimer.task_title || 'Praca'}
+                    <h3 className="mb-1 flex items-center gap-2 text-xl font-semibold text-[#e5e4e2]">
+                      {activeTimer.task_id && activeTimer.tasks ? (
+                        <>
+                          <span>{activeTimer.tasks.title}</span>
+                          <Link
+                            href={`/crm/tasks/${activeTimer.task_id}`}
+                            target="_blank"
+                            className="inline-flex items-center gap-1 rounded bg-[#d3bb73]/10 px-2 py-1 text-xs font-medium text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"
+                            title="Otwórz task"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                            Task
+                          </Link>
+                        </>
+                      ) : (
+                        activeTimer.title || activeTimer.task_title || 'Praca'
+                      )}
                     </h3>
                     {activeTimer.description && (
                       <p className="text-sm text-[#e5e4e2]/60">{activeTimer.description}</p>
@@ -571,10 +586,23 @@ export default function TimeTrackingPage() {
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="mb-2 flex items-center gap-3">
-                        <h4 className="font-semibold text-[#e5e4e2]">
-                          {entry.task_id && entry.tasks
-                            ? `${entry.tasks.title} (Task)`
-                            : entry.title || entry.task_title || 'Praca'}
+                        <h4 className="flex items-center gap-2 font-semibold text-[#e5e4e2]">
+                          {entry.task_id && entry.tasks ? (
+                            <>
+                              <span>{entry.tasks.title}</span>
+                              <Link
+                                href={`/crm/tasks/${entry.task_id}`}
+                                target="_blank"
+                                className="inline-flex items-center gap-1 rounded bg-[#d3bb73]/10 px-2 py-1 text-xs font-medium text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"
+                                title="Otwórz task"
+                              >
+                                <ExternalLink className="h-3 w-3" />
+                                Przejdź
+                              </Link>
+                            </>
+                          ) : (
+                            entry.title || entry.task_title || 'Praca'
+                          )}
                         </h4>
                         {entry.is_billable && (
                           <span className="rounded bg-green-500/20 px-2 py-1 text-xs text-green-400">
