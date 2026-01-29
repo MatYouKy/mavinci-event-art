@@ -62,14 +62,63 @@ export default function DatabaseDetailPage() {
   const [editingColumnId, setEditingColumnId] = useState<string | null>(null);
   const [columnName, setColumnName] = useState('');
   const [newColumnName, setNewColumnName] = useState('');
-  const [newColumnType, setNewColumnType] = useState<'text' | 'number' | 'date' | 'boolean'>('text');
+  const [newColumnType, setNewColumnType] = useState<'text' | 'number' | 'date' | 'boolean' | 'phone' | 'email'>('text');
   const [isAddingColumn, setIsAddingColumn] = useState(false);
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+  const [resizingColumn, setResizingColumn] = useState<{ id: string; startX: number; startWidth: number } | null>(null);
+  const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
 
   useEffect(() => {
     if (database) {
       setDatabaseName(database.name);
     }
   }, [database]);
+
+  useEffect(() => {
+    if (columns.length > 0) {
+      const widths: Record<string, number> = {};
+      columns.forEach((col) => {
+        widths[col.id] = col.column_width || 200;
+      });
+      setColumnWidths(widths);
+    }
+  }, [columns]);
+
+  useEffect(() => {
+    if (!resizingColumn) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!resizingColumn) return;
+      const diff = e.clientX - resizingColumn.startX;
+      const newWidth = Math.max(100, resizingColumn.startWidth + diff);
+      setColumnWidths((prev) => ({ ...prev, [resizingColumn.id]: newWidth }));
+    };
+
+    const handleMouseUp = async () => {
+      if (!resizingColumn) return;
+
+      const newWidth = columnWidths[resizingColumn.id];
+      try {
+        await updateColumn({
+          id: resizingColumn.id,
+          database_id: databaseId,
+          column_width: newWidth,
+        }).unwrap();
+      } catch (error) {
+        console.error('Error updating column width:', error);
+      }
+
+      setResizingColumn(null);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [resizingColumn, columnWidths, updateColumn, databaseId]);
 
   const handleUpdateDatabaseName = async () => {
     if (!databaseName.trim()) {
@@ -122,7 +171,8 @@ export default function DatabaseDetailPage() {
     try {
       await updateColumn({
         id: columnId,
-        data: { name: columnName.trim() },
+        database_id: databaseId,
+        name: columnName.trim(),
       }).unwrap();
       showSnackbar('Kolumna zaktualizowana', 'success');
       setEditingColumnId(null);
@@ -146,6 +196,50 @@ export default function DatabaseDetailPage() {
       console.error('Error deleting column:', error);
       showSnackbar('Błąd podczas usuwania kolumny', 'error');
     }
+  };
+
+  const handleDragStart = (columnId: string) => {
+    setDraggedColumn(columnId);
+  };
+
+  const handleDragOver = (e: React.DragEvent, targetColumnId: string) => {
+    e.preventDefault();
+    if (!draggedColumn || draggedColumn === targetColumnId) return;
+  };
+
+  const handleDrop = async (e: React.DragEvent, targetColumnId: string) => {
+    e.preventDefault();
+    if (!draggedColumn || draggedColumn === targetColumnId) return;
+
+    const draggedIndex = columns.findIndex((col) => col.id === draggedColumn);
+    const targetIndex = columns.findIndex((col) => col.id === targetColumnId);
+
+    if (draggedIndex === -1 || targetIndex === -1) return;
+
+    const reorderedColumns = [...columns];
+    const [removed] = reorderedColumns.splice(draggedIndex, 1);
+    reorderedColumns.splice(targetIndex, 0, removed);
+
+    try {
+      for (let i = 0; i < reorderedColumns.length; i++) {
+        await updateColumn({
+          id: reorderedColumns[i].id,
+          database_id: databaseId,
+          order_index: i,
+        }).unwrap();
+      }
+      showSnackbar('Kolejność kolumn zaktualizowana', 'success');
+    } catch (error) {
+      console.error('Error reordering columns:', error);
+      showSnackbar('Błąd podczas zmiany kolejności', 'error');
+    }
+
+    setDraggedColumn(null);
+  };
+
+  const handleResizeStart = (columnId: string, startX: number) => {
+    const startWidth = columnWidths[columnId] || 200;
+    setResizingColumn({ id: columnId, startX, startWidth });
   };
 
   const handleAddRecord = async () => {
@@ -417,7 +511,12 @@ export default function DatabaseDetailPage() {
                 {columns.map((column) => (
                   <th
                     key={column.id}
-                    className="min-w-[200px] border border-[#d3bb73]/20 bg-[#1c1f33] p-2"
+                    draggable={canManage && !editingColumnId}
+                    onDragStart={() => handleDragStart(column.id)}
+                    onDragOver={(e) => handleDragOver(e, column.id)}
+                    onDrop={(e) => handleDrop(e, column.id)}
+                    style={{ width: columnWidths[column.id] || 200, minWidth: 100, position: 'relative' }}
+                    className="border border-[#d3bb73]/20 bg-[#1c1f33] p-2"
                   >
                     {editingColumnId === column.id ? (
                       <div className="flex items-center gap-2">
@@ -473,6 +572,16 @@ export default function DatabaseDetailPage() {
                         )}
                       </div>
                     )}
+                    {canManage && (
+                      <div
+                        className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-[#d3bb73]/0 hover:bg-[#d3bb73]/50"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleResizeStart(column.id, e.clientX);
+                        }}
+                      />
+                    )}
                   </th>
                 ))}
                 {canManage && (
@@ -496,6 +605,8 @@ export default function DatabaseDetailPage() {
                           <option value="number">Liczba</option>
                           <option value="date">Data</option>
                           <option value="boolean">Tak/Nie</option>
+                          <option value="phone">Telefon</option>
+                          <option value="email">Email</option>
                         </select>
                         <div className="flex gap-1">
                           <button
@@ -548,6 +659,7 @@ export default function DatabaseDetailPage() {
                     return (
                       <td
                         key={column.id}
+                        style={{ width: columnWidths[column.id] || 200, minWidth: 100 }}
                         className="border border-[#d3bb73]/20 bg-[#0f1119] p-0"
                         onClick={() => {
                           if (canManage && !isEditing) {
@@ -562,7 +674,11 @@ export default function DatabaseDetailPage() {
                                 ? 'number'
                                 : column.column_type === 'date'
                                   ? 'date'
-                                  : 'text'
+                                  : column.column_type === 'email'
+                                    ? 'email'
+                                    : column.column_type === 'phone'
+                                      ? 'tel'
+                                      : 'text'
                             }
                             defaultValue={value}
                             className="w-full border-none bg-[#1c1f33] px-2 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:ring-2 focus:ring-[#d3bb73]"

@@ -14,8 +14,9 @@ export interface DatabaseColumn {
   id: string;
   database_id: string;
   name: string;
-  column_type: 'text' | 'number' | 'date' | 'boolean';
+  column_type: 'text' | 'number' | 'date' | 'boolean' | 'phone' | 'email';
   order_index: number;
+  column_width?: number;
   created_at: string;
 }
 
@@ -36,8 +37,9 @@ export interface CreateDatabaseInput {
 export interface CreateColumnInput {
   database_id: string;
   name: string;
-  column_type: 'text' | 'number' | 'date' | 'boolean';
+  column_type: 'text' | 'number' | 'date' | 'boolean' | 'phone' | 'email';
   order_index?: number;
+  column_width?: number;
 }
 
 export interface CreateRecordInput {
@@ -137,16 +139,23 @@ export const databasesApi = createApi({
       invalidatesTags: (result, error, { database_id }) => [{ type: 'DatabaseColumn', id: database_id }],
     }),
 
-    updateColumn: builder.mutation<DatabaseColumn, { id: string; data: Partial<CreateColumnInput> }>({
-      query: ({ id, data }) => ({
-        table: 'custom_database_columns',
-        method: 'update',
-        select: '*',
-        data,
-        match: { id },
-        single: true,
-      }),
-      invalidatesTags: (result, error, { id }) => [{ type: 'DatabaseColumn', id }],
+    updateColumn: builder.mutation<DatabaseColumn, { id: string; database_id: string; name?: string; column_width?: number; order_index?: number }>({
+      query: ({ id, name, column_width, order_index }) => {
+        const data: any = {};
+        if (name !== undefined) data.name = name;
+        if (column_width !== undefined) data.column_width = column_width;
+        if (order_index !== undefined) data.order_index = order_index;
+
+        return {
+          table: 'custom_database_columns',
+          method: 'update',
+          select: '*',
+          data,
+          match: { id },
+          single: true,
+        };
+      },
+      invalidatesTags: (result, error, { database_id }) => [{ type: 'DatabaseColumn', id: database_id }],
     }),
 
     deleteColumn: builder.mutation<void, { id: string; database_id: string }>({
