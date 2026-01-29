@@ -13,7 +13,6 @@ import {
   Download,
   ChevronDown,
   User,
-  Briefcase,
   ChevronRight,
   ExternalLink,
 } from 'lucide-react';
