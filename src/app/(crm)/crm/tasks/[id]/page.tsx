@@ -5,6 +5,9 @@ import { useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
 import { ArrowLeft, Calendar, User, CheckCircle, Clock, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
+import { EmployeeAvatar } from '@/components/EmployeeAvatar';
+import { ImageMetadata } from '@/lib/supabase/types';
+import { IEmployee } from '../../employees/type';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -23,6 +26,7 @@ interface Task {
       name: string;
       surname: string;
       avatar_url: string | null;
+      avatar_metadata?: ImageMetadata | null;
     };
   }>;
   events?: {
@@ -65,6 +69,8 @@ export default function TaskDetailPage() {
   const [task, setTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(true);
 
+  console.log('task', task);
+
   useEffect(() => {
     if (!taskId) return;
 
@@ -79,7 +85,8 @@ export default function TaskDetailPage() {
               employees (
                 name,
                 surname,
-                avatar_url
+                avatar_url,
+                avatar_metadata
               )
             ),
             events (
@@ -214,10 +221,13 @@ export default function TaskDetailPage() {
                     className='flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2'
                   >
                     {assignee.employees.avatar_url ? (
-                      <img
-                        src={assignee.employees.avatar_url}
-                        alt={`${assignee.employees.name} ${assignee.employees.surname}`}
-                        className='h-6 w-6 rounded-full object-cover'
+                      <EmployeeAvatar
+                        avatarUrl={assignee.employees.avatar_url}
+                        avatarMetadata={assignee.employees.avatar_metadata}
+                        employeeName={`${assignee.employees.name} ${assignee.employees.surname}`}
+                        size={24}
+                        employee={assignee.employees as IEmployee}
+                        showActivityStatus
                       />
                     ) : (
                       <div className='flex h-6 w-6 items-center justify-center rounded-full bg-[#d3bb73]/20 text-xs font-medium text-[#d3bb73]'>
