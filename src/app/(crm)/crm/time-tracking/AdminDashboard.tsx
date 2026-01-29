@@ -19,6 +19,9 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { ImageMetadata } from '@/lib/supabase/types';
+import { EmployeeAvatar } from '@/components/EmployeeAvatar';
+import { IEmployee } from '../employees/type';
 
 interface TimeEntry {
   id: string;
@@ -43,6 +46,7 @@ interface Employee {
   name: string;
   surname: string;
   avatar_url: string | null;
+  avatar_metadata: ImageMetadata | null;
 }
 
 interface EmployeeStats {
@@ -50,6 +54,7 @@ interface EmployeeStats {
   employee_name: string;
   employee_surname: string;
   avatar_url: string | null;
+  avatar_metadata: ImageMetadata | null;
   total_hours: number;
   billable_hours: number;
   total_revenue: number;
@@ -195,7 +200,12 @@ export default function AdminDashboard() {
       });
 
       setEntries(allEntries);
-      setEmployees(employeesData || []);
+      setEmployees(
+        employeesData.map((emp: any) => ({
+          ...emp,
+          avatar_metadata: emp.avatar_metadata as ImageMetadata | null,
+        })) as Employee[],
+      );
 
       // 5. Stwórz mapę aktywnych timerów
       const activeMap = new Map<string, TimeEntry>();
@@ -234,6 +244,7 @@ export default function AdminDashboard() {
           employee_name: empData?.name || 'Nieznany',
           employee_surname: empData?.surname || '',
           avatar_url: empData?.avatar_url || null,
+          avatar_metadata: empData?.avatar_metadata || null,
           total_hours: 0,
           billable_hours: 0,
           total_revenue: 0,
@@ -489,22 +500,38 @@ export default function AdminDashboard() {
         <h3 className="mb-4 text-lg font-medium text-[#e5e4e2]">Pracownicy</h3>
         <div className="space-y-3">
           {employeeStats.map((stats) => (
-            <button
+            <div
               key={stats.employee_id}
-              onClick={() => router.push(`/crm/time-tracking/${stats.employee_id}`)}
               className="group w-full cursor-pointer rounded-lg bg-[#0f1119] p-4 text-left transition-colors hover:bg-[#0f1119]/80"
             >
               <div className="flex items-center justify-between">
                 <div className="flex flex-1 items-center gap-4">
                   {stats.avatar_url ? (
-                    <img
-                      src={stats.avatar_url}
-                      alt={`${stats.employee_name} ${stats.employee_surname}`}
-                      className="h-12 w-12 rounded-full object-cover"
-                    />
+                    <div
+                      className="flex h-12 w-12 items-center justify-center rounded-full bg-[#d3bb73]/20"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/crm/time-tracking/${stats.employee_id}`);
+                      }}
+                    >
+                      <EmployeeAvatar
+                        employee={stats as unknown as IEmployee}
+                        showActivityStatus
+                        size={48}
+                      />
+                    </div>
                   ) : (
-                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#d3bb73]/20">
-                      <User className="h-6 w-6 text-[#d3bb73]" />
+                    <div
+                      className="flex h-12 w-12 items-center justify-center rounded-full bg-[#d3bb73]/20"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/crm/time-tracking/${stats.employee_id}`);
+                      }}
+                    >
+                      <User className="h-6 w-6 text-[#d3bb73]" onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/crm/time-tracking/${stats.employee_id}`);
+                      }} />
                     </div>
                   )}
                   <div className="flex-1">
@@ -516,7 +543,10 @@ export default function AdminDashboard() {
                           <span className="text-xs font-medium text-green-400">Aktywny</span>
                         </span>
                       )}
-                      <ChevronRight className="h-4 w-4 text-[#d3bb73] opacity-0 transition-opacity group-hover:opacity-100" />
+                      <ChevronRight className="h-4 w-4 text-[#d3bb73] opacity-0 transition-opacity group-hover:opacity-100" onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/crm/time-tracking/${stats.employee_id}`);
+                      }} />
                     </div>
                     <div className="flex items-center gap-2 text-sm text-[#e5e4e2]/60">
                       <span>
@@ -528,9 +558,7 @@ export default function AdminDashboard() {
                           {activeEntries.get(stats.employee_id)?.task_id &&
                           activeEntries.get(stats.employee_id)?.tasks?.title ? (
                             <span className="flex items-center gap-1.5 text-green-400">
-                              <span>
-                                {activeEntries.get(stats.employee_id)?.tasks?.title}
-                              </span>
+                              <span>{activeEntries.get(stats.employee_id)?.tasks?.title}</span>
                               <Link
                                 href={`/crm/tasks/${activeEntries.get(stats.employee_id)?.task_id}`}
                                 target="_blank"
@@ -542,8 +570,7 @@ export default function AdminDashboard() {
                             </span>
                           ) : (
                             <span className="text-green-400">
-                              {activeEntries.get(stats.employee_id)?.title ||
-                                'W trakcie pracy'}
+                              {activeEntries.get(stats.employee_id)?.title || 'W trakcie pracy'}
                             </span>
                           )}
                         </>
@@ -574,7 +601,7 @@ export default function AdminDashboard() {
                   }}
                 />
               </div>
-            </button>
+            </div>
           ))}
 
           {employeeStats.length === 0 && (
