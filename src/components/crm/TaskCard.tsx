@@ -2,8 +2,9 @@
 
 import { useRouter } from 'next/navigation';
 import { Calendar, GripVertical, Edit, Trash2, UserPlus, MessageSquare } from 'lucide-react';
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import TaskAssigneeAvatars from './TaskAssigneeAvatars';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 export interface Task {
   id: string;
@@ -79,14 +80,28 @@ const TaskCard = memo(function TaskCard({
   additionalActions,
 }: TaskCardProps) {
   const router = useRouter();
+  const { employee } = useCurrentEmployee();
+  const currentEmployeeId = employee?.id;
 
-  const assignees = task.task_assignees?.map(a => ({
+  const assigneesRaw =
+  task.task_assignees?.map((a) => ({
     employee_id: a.employee_id,
     employees: a.employees,
-  })) || task.assignees?.map(a => ({
+  })) ||
+  task.assignees?.map((a) => ({
     employee_id: a.employee.id,
     employees: a.employee,
-  })) || [];
+  })) ||
+  [];
+
+const assignees = useMemo(() => {
+  if (!currentEmployeeId) return assigneesRaw;
+
+  // stabilnie: current user na początek, reszta bez zmian kolejności
+  const me = assigneesRaw.filter((a) => a.employee_id === currentEmployeeId);
+  const others = assigneesRaw.filter((a) => a.employee_id !== currentEmployeeId);
+  return [...me, ...others];
+}, [assigneesRaw, currentEmployeeId]);
 
   const handleTitleClick = (e: React.MouseEvent) => {
     e.stopPropagation();

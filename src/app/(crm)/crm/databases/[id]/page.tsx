@@ -31,7 +31,7 @@ import {
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import Loader from '@/components/UI/Loader';
+import { Loader } from '@/components/UI/Loader';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 
 export default function DatabaseDetailPage() {
@@ -351,7 +351,7 @@ export default function DatabaseDetailPage() {
       },
       icon: <Trash2 className="h-4 w-4" />,
       variant: 'danger' as const,
-      show: isAdmin(),
+      show: isAdmin,
     },
   ].filter((action) => action.show);
 

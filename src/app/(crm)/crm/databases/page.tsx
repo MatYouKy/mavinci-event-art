@@ -7,7 +7,7 @@ import { useGetDatabasesQuery, useCreateDatabaseMutation, useDeleteDatabaseMutat
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import Loader from '@/components/UI/Loader';
+import { Loader } from '@/components/UI/Loader';
 
 export default function DatabasesPage() {
   const router = useRouter();
@@ -181,7 +181,7 @@ export default function DatabasesPage() {
                   <div className="rounded-lg bg-[#d3bb73]/10 p-3">
                     <DatabaseIcon className="h-6 w-6 text-[#d3bb73]" />
                   </div>
-                  {isAdmin() && (
+                  {isAdmin && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();

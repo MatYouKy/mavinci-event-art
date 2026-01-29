@@ -1,5 +1,5 @@
 import { createApi } from '@reduxjs/toolkit/query/react';
-import { supabaseBaseQuery } from '@/lib/rtk/supabaseBaseQuery';
+import { supabaseTableBaseQuery } from '@/lib/rtkq/supabaseTableBaseQuery';
 
 export interface Database {
   id: string;
@@ -48,7 +48,7 @@ export interface CreateRecordInput {
 
 export const databasesApi = createApi({
   reducerPath: 'databasesApi',
-  baseQuery: supabaseBaseQuery,
+  baseQuery: supabaseTableBaseQuery(),
   tagTypes: ['Database', 'DatabaseColumn', 'DatabaseRecord'],
   endpoints: (builder) => ({
     getDatabases: builder.query<Database[], void>({
@@ -80,9 +80,7 @@ export const databasesApi = createApi({
         match: { database_id: databaseId },
         order: { column: 'order_index', ascending: true },
       }),
-      providesTags: (result, error, databaseId) => [
-        { type: 'DatabaseColumn', id: databaseId },
-      ],
+      providesTags: (result, error, databaseId) => [{ type: 'DatabaseColumn', id: databaseId }],
     }),
 
     getDatabaseRecords: builder.query<DatabaseRecord[], string>({
@@ -93,43 +91,36 @@ export const databasesApi = createApi({
         match: { database_id: databaseId },
         order: { column: 'order_index', ascending: true },
       }),
-      providesTags: (result, error, databaseId) => [
-        { type: 'DatabaseRecord', id: databaseId },
-      ],
+      providesTags: (result, error, databaseId) => [{ type: 'DatabaseRecord', id: databaseId }],
     }),
 
     createDatabase: builder.mutation<Database, CreateDatabaseInput>({
-      query: (data) => ({
+      query: (payload) => ({
         table: 'custom_databases',
         method: 'insert',
-        data: {
-          ...data,
-          created_by: 'auth.uid()',
-        },
+        select: '*',
+        data: payload,
       }),
       invalidatesTags: ['Database'],
     }),
 
-    updateDatabase: builder.mutation<
-      Database,
-      { id: string; data: Partial<CreateDatabaseInput> }
-    >({
+    updateDatabase: builder.mutation<Database, { id: string; data: Partial<CreateDatabaseInput> }>({
       query: ({ id, data }) => ({
         table: 'custom_databases',
         method: 'update',
+        select: '*',
         data,
         match: { id },
+        single: true,
       }),
-      invalidatesTags: (result, error, { id }) => [
-        'Database',
-        { type: 'Database', id },
-      ],
+      invalidatesTags: (result, error, { id }) => ['Database', { type: 'Database', id }],
     }),
 
     deleteDatabase: builder.mutation<void, string>({
       query: (id) => ({
         table: 'custom_databases',
         method: 'delete',
+        select: 'id',
         match: { id },
       }),
       invalidatesTags: ['Database'],
@@ -139,32 +130,30 @@ export const databasesApi = createApi({
       query: (data) => ({
         table: 'custom_database_columns',
         method: 'insert',
+        select: '*',
         data,
+        single: true,
       }),
-      invalidatesTags: (result, error, { database_id }) => [
-        { type: 'DatabaseColumn', id: database_id },
-      ],
+      invalidatesTags: (result, error, { database_id }) => [{ type: 'DatabaseColumn', id: database_id }],
     }),
 
-    updateColumn: builder.mutation<
-      DatabaseColumn,
-      { id: string; data: Partial<CreateColumnInput> }
-    >({
+    updateColumn: builder.mutation<DatabaseColumn, { id: string; data: Partial<CreateColumnInput> }>({
       query: ({ id, data }) => ({
         table: 'custom_database_columns',
         method: 'update',
+        select: '*',
         data,
         match: { id },
+        single: true,
       }),
-      invalidatesTags: (result, error, { id }) => [
-        { type: 'DatabaseColumn', id },
-      ],
+      invalidatesTags: (result, error, { id }) => [{ type: 'DatabaseColumn', id }],
     }),
 
     deleteColumn: builder.mutation<void, { id: string; database_id: string }>({
       query: ({ id }) => ({
         table: 'custom_database_columns',
         method: 'delete',
+        select: 'id',
         match: { id },
       }),
       invalidatesTags: (result, error, { database_id }) => [
@@ -177,11 +166,11 @@ export const databasesApi = createApi({
       query: (data) => ({
         table: 'custom_database_records',
         method: 'insert',
+        select: '*',
         data,
+        single: true,
       }),
-      invalidatesTags: (result, error, { database_id }) => [
-        { type: 'DatabaseRecord', id: database_id },
-      ],
+      invalidatesTags: (result, error, { database_id }) => [{ type: 'DatabaseRecord', id: database_id }],
     }),
 
     updateRecord: builder.mutation<
@@ -191,43 +180,39 @@ export const databasesApi = createApi({
       query: ({ id, data }) => ({
         table: 'custom_database_records',
         method: 'update',
+        select: '*',
         data: { data },
         match: { id },
+        single: true,
       }),
-      invalidatesTags: (result, error, { database_id }) => [
-        { type: 'DatabaseRecord', id: database_id },
-      ],
+      invalidatesTags: (result, error, { database_id }) => [{ type: 'DatabaseRecord', id: database_id }],
     }),
 
     deleteRecord: builder.mutation<void, { id: string; database_id: string }>({
       query: ({ id }) => ({
         table: 'custom_database_records',
         method: 'delete',
+        select: 'id',
         match: { id },
       }),
-      invalidatesTags: (result, error, { database_id }) => [
-        { type: 'DatabaseRecord', id: database_id },
-      ],
+      invalidatesTags: (result, error, { database_id }) => [{ type: 'DatabaseRecord', id: database_id }],
     }),
 
-    reorderColumns: builder.mutation<
-      void,
-      { database_id: string; columns: { id: string; order_index: number }[] }
-    >({
+    reorderColumns: builder.mutation<void, { database_id: string; columns: { id: string; order_index: number }[] }>({
       async queryFn({ columns }, api, extraOptions, baseQuery) {
         for (const col of columns) {
-          await baseQuery({
+          const res = await baseQuery({
             table: 'custom_database_columns',
             method: 'update',
+            select: 'id',
             data: { order_index: col.order_index },
             match: { id: col.id },
           });
+          if ('error' in res) return res as any;
         }
         return { data: undefined };
       },
-      invalidatesTags: (result, error, { database_id }) => [
-        { type: 'DatabaseColumn', id: database_id },
-      ],
+      invalidatesTags: (result, error, { database_id }) => [{ type: 'DatabaseColumn', id: database_id }],
     }),
   }),
 });

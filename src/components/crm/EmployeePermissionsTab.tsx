@@ -119,6 +119,10 @@ const permissionCategories: PermissionCategory[] = [
     label: 'Flota',
   },
   {
+    key: 'databases',
+    label: 'Bazy danych',
+  },
+  {
     key: 'time_tracking',
     label: 'Czas pracy',
   },
