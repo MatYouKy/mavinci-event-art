@@ -103,10 +103,55 @@ export default function AdminDashboard() {
     }
   }, [selectedPeriod]);
 
+  // Realtime subscription dla admin dashboard
+  useEffect(() => {
+    const channel = supabase
+      .channel('admin_time_entries_realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'time_entries',
+        },
+        (payload) => {
+          console.log('Admin: Time entry changed:', payload);
+          // Odśwież dane po każdej zmianie
+          fetchData();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [dateFrom, dateTo, selectedEmployee]);
+
   const fetchData = async () => {
     try {
       setLoading(true);
 
+      // 1. Pobierz AKTYWNE timery (zawsze, niezależnie od dat)
+      let activeQuery = supabase
+        .from('time_entries')
+        .select(
+          `
+          *,
+          employees!time_entries_employee_id_fkey(id, name, surname, avatar_url),
+          tasks(title, event_id, events(name)),
+          events(name)
+        `,
+        )
+        .is('end_time', null);
+
+      if (selectedEmployee !== 'all') {
+        activeQuery = activeQuery.eq('employee_id', selectedEmployee);
+      }
+
+      const { data: activeEntriesData, error: activeError } = await activeQuery;
+      if (activeError) throw activeError;
+
+      // 2. Pobierz wpisy z wybranego okresu
       let query = supabase
         .from('time_entries')
         .select(
@@ -129,6 +174,7 @@ export default function AdminDashboard() {
 
       if (entriesError) throw entriesError;
 
+      // 3. Pobierz pracowników
       const { data: employeesData, error: employeesError } = await supabase
         .from('employees')
         .select('id, name, surname, avatar_url')
@@ -137,18 +183,28 @@ export default function AdminDashboard() {
 
       if (employeesError) throw employeesError;
 
-      setEntries(entriesData || []);
+      // 4. Połącz aktywne timery z wpisami historycznymi (bez duplikatów)
+      const allEntries = [...(activeEntriesData || [])];
+      const activeIds = new Set((activeEntriesData || []).map((e: any) => e.id));
+      (entriesData || []).forEach((entry: any) => {
+        if (!activeIds.has(entry.id)) {
+          allEntries.push(entry);
+        }
+      });
+
+      setEntries(allEntries);
       setEmployees(employeesData || []);
 
+      // 5. Stwórz mapę aktywnych timerów
       const activeMap = new Map<string, TimeEntry>();
-      (entriesData || []).forEach((entry: any) => {
+      allEntries.forEach((entry: any) => {
         if (!entry.end_time) {
           activeMap.set(entry.employee_id, entry);
         }
       });
       setActiveEntries(activeMap);
 
-      calculateStats(entriesData || []);
+      calculateStats(allEntries);
     } catch (error) {
       console.error('Error fetching data:', error);
       showSnackbar('Błąd podczas pobierania danych', 'error');

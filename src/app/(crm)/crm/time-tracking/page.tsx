@@ -105,11 +105,37 @@ export default function TimeTrackingPage() {
     return () => clearInterval(interval);
   }, [activeTimer]);
 
+  // Realtime subscription dla time_entries
+  useEffect(() => {
+    if (!employee) return;
+
+    const channel = supabase
+      .channel('time_entries_realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'time_entries',
+        },
+        (payload) => {
+          console.log('Time entry changed:', payload);
+          // Odśwież dane po każdej zmianie
+          fetchData();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [employee, viewMode, filterEmployee, filterDateFrom, filterDateTo]);
+
   const fetchData = async () => {
     try {
       setLoading(true);
 
-      // Sprawdź aktywny timer
+      // Sprawdź aktywny timer użytkownika
       const { data: activeData } = await supabase
         .from('time_entries')
         .select(
@@ -130,9 +156,39 @@ export default function TimeTrackingPage() {
 
       setActiveTimer(activeData || null);
 
-      // Pobierz wpisy
+      // Pobierz AKTYWNE timery (zawsze, niezależnie od filtrów)
+      let activeQuery = supabase
+        .from('time_entries')
+        .select(
+          `
+          *,
+          tasks (
+            title,
+            event_id
+          ),
+          events (
+            name
+          )
+        `,
+        )
+        .is('end_time', null);
+
+      // Dla widoku "my" pokaż tylko swoje aktywne
+      if (viewMode === 'my') {
+        activeQuery = activeQuery.eq('employee_id', employee!.id);
+      }
+
+      // Jeśli filtrujemy po konkretnym pracowniku
+      if (filterEmployee) {
+        activeQuery = activeQuery.eq('employee_id', filterEmployee);
+      }
+
+      const { data: activeEntries, error: activeError } = await activeQuery;
+      if (activeError) throw activeError;
+
+      // Pobierz wpisy z wybranego okresu
       let query = supabase
-        .from(viewMode === 'all' && isAdmin ? 'admin_time_entries_view' : 'time_entries')
+        .from('time_entries')
         .select(
           `
           *,
@@ -167,7 +223,17 @@ export default function TimeTrackingPage() {
       const { data, error } = await query;
 
       if (error) throw error;
-      setEntries(data || []);
+
+      // Połącz aktywne wpisy z wpisami historycznymi (bez duplikatów)
+      const allEntries = [...(activeEntries || [])];
+      const activeIds = new Set((activeEntries || []).map((e: any) => e.id));
+      (data || []).forEach((entry: any) => {
+        if (!activeIds.has(entry.id)) {
+          allEntries.push(entry);
+        }
+      });
+
+      setEntries(allEntries);
     } catch (error) {
       console.error('Error fetching time entries:', error);
       showSnackbar('Błąd podczas ładowania wpisów czasu', 'error');
