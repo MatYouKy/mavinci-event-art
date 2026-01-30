@@ -88,6 +88,35 @@ export default function ContractTemplatesPage() {
     }
   };
 
+  const handleDuplicate = async (template: IContractTemplate) => {
+    if (!confirm(`Czy na pewno chcesz zduplikować szablon "${template.name}"?`)) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('contract_templates')
+        .insert([
+          {
+            name: `${template.name} (kopia)`,
+            description: template.description,
+            content: template.content,
+            content_html: template.content_html,
+            page_settings: template.page_settings,
+            is_active: false,
+          },
+        ])
+        .select();
+
+      if (error) throw error;
+
+      if (data && data[0]) {
+        showSnackbar('Szablon zduplikowany pomyślnie', 'success');
+        fetchTemplates();
+      }
+    } catch (err: any) {
+      showSnackbar(err.message || 'Błąd podczas duplikowania szablonu', 'error');
+    }
+  };
+
   const handleStartEdit = (template: IContractTemplate) => {
     setEditingId(template.id);
     setEditingName(template.name);
@@ -257,9 +286,9 @@ export default function ContractTemplatesPage() {
                       <Edit className="h-5 w-5" />
                     </button>
                     <button
-                      onClick={() => handleToggleActive(template.id, template.is_active)}
-                      className="rounded-lg p-2 text-yellow-400 transition-colors hover:bg-yellow-400/10"
-                      title={template.is_active ? 'Dezaktywuj' : 'Aktywuj'}
+                      onClick={() => handleDuplicate(template)}
+                      className="rounded-lg p-2 text-green-400 transition-colors hover:bg-green-400/10"
+                      title="Duplikuj szablon"
                     >
                       <Copy className="h-5 w-5" />
                     </button>
