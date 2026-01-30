@@ -543,6 +543,33 @@ export function EventContractTab({ eventId }: { eventId: string }) {
       (contractContainer as HTMLElement).style.padding = '0';
       (contractContainer as HTMLElement).style.background = 'white';
 
+      // Znajdź wszystkie elementy z przekreśleniem i dodaj inline realną linię
+      const strikethroughElements = contractContainer.querySelectorAll('s, strike, del');
+      const addedLines: HTMLElement[] = [];
+
+      strikethroughElements.forEach((el) => {
+        const htmlEl = el as HTMLElement;
+
+        // Ustaw element jako relative positioning i usuń natywne przekreślenie
+        htmlEl.style.position = 'relative';
+        htmlEl.style.display = 'inline-block';
+        htmlEl.style.textDecoration = 'none';
+
+        // Stwórz czarną linię przez środek tekstu
+        const line = document.createElement('span');
+        line.style.position = 'absolute';
+        line.style.left = '0';
+        line.style.right = '0';
+        line.style.top = '50%';
+        line.style.height = '1.5px';
+        line.style.backgroundColor = '#000';
+        line.style.marginTop = '-0.75px'; // połowa wysokości linii do wycentrowania
+        line.style.pointerEvents = 'none';
+
+        htmlEl.appendChild(line);
+        addedLines.push(line);
+      });
+
       // Zbierz wszystkie strony umowy i zapisz ich oryginalne style
       const pages = contractContainer.querySelectorAll('.contract-a4-page');
       const originalStyles: Array<{
@@ -589,6 +616,19 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         // Przywróć oryginalny padding i tło kontenera
         (contractContainer as HTMLElement).style.padding = originalPadding;
         (contractContainer as HTMLElement).style.background = originalBackground;
+
+        // Usuń dodane linie przekreślenia
+        addedLines.forEach((line) => {
+          line.remove();
+        });
+
+        // Resetuj style elementów przekreślonych - przywróć natywne przekreślenie
+        strikethroughElements.forEach((el) => {
+          const htmlEl = el as HTMLElement;
+          htmlEl.style.position = '';
+          htmlEl.style.display = '';
+          htmlEl.style.textDecoration = '';
+        });
 
         // Przywróć oryginalne style stron
         pages.forEach((page, index) => {
