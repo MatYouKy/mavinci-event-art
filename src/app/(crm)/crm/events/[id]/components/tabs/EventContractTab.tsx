@@ -560,8 +560,6 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         const computedStyle = window.getComputedStyle(htmlEl);
         const lineHeight = parseFloat(computedStyle.lineHeight);
         const fontSize = parseFloat(computedStyle.fontSize);
-
-        // Jeśli lineHeight jest 'normal', użyj 1.2 * fontSize
         const effectiveLineHeight = isNaN(lineHeight) ? fontSize * 1.2 : lineHeight;
 
         // Dodaj realny element jako linię przekreślenia
