@@ -14,9 +14,6 @@ import { getCurrentEmployeeServerCached } from '@/lib/CRM/auth/getCurrentEmploye
 import { IEmployee } from '@/app/(crm)/crm/employees/type';
 import { cookies } from 'next/headers';
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
-
 const SITE_URL = 'https://mavinci.pl';
 const OG_IMAGE = '/logo-mavinci-crm.png';
 
@@ -155,6 +152,8 @@ export const metadata: Metadata = {
     ICBM: 'Olsztyn, Poland', // bez współrzędnych, bo ich nie podajesz
   },
 };
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export default async function RootLayout({
   children,
@@ -163,9 +162,11 @@ export default async function RootLayout({
   children: React.ReactNode;
   params: { pathname: string };
 }) {
+  
   const breadcrumbSchema = buildBreadcrumbList(params.pathname);
   const cookieStore = cookies(); // ✅ w request scope
   const { notifications, unreadCount } = await fetchNotificationsServer(cookieStore, 100);
+  
   const employee = await getCurrentEmployeeServerCached();
 
   const localBusiness = {
