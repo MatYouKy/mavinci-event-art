@@ -46,10 +46,27 @@ export function EventContractTab({ eventId }: { eventId: string }) {
   }>({});
   const [generatedPdfPath, setGeneratedPdfPath] = useState<string | null>(null);
   const [modifiedAfterGeneration, setModifiedAfterGeneration] = useState(false);
+  const [availableTemplates, setAvailableTemplates] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchContractData();
+    fetchAvailableTemplates();
   }, [eventId]);
+
+  const fetchAvailableTemplates = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('contract_templates')
+        .select('id, name')
+        .order('name', { ascending: true });
+
+      if (error) throw error;
+      setAvailableTemplates(data || []);
+    } catch (err) {
+      console.error('Error fetching templates:', err);
+    }
+  };
 
   const fetchContractData = async () => {
     try {
@@ -152,6 +169,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
 
       setTemplateExists(true);
       setTemplateId(template.id);
+      setSelectedTemplateId(template.id);
 
       let templateToStore = template.content_html || template.content;
       let pageSettingsToStore = template.page_settings;
@@ -409,6 +427,63 @@ export function EventContractTab({ eventId }: { eventId: string }) {
     setEditMode(false);
   };
 
+  const handleTemplateChange = async (newTemplateId: string) => {
+    if (!newTemplateId) return;
+
+    try {
+      const { data: template, error } = await supabase
+        .from('contract_templates')
+        .select('id, name, content, content_html, page_settings')
+        .eq('id', newTemplateId)
+        .single();
+
+      if (error) throw error;
+
+      setSelectedTemplateId(newTemplateId);
+      setTemplateId(newTemplateId);
+
+      let templateToStore = template.content_html || template.content;
+
+      if (template.page_settings?.pages) {
+        templateToStore = JSON.stringify({
+          pages: template.page_settings.pages,
+          settings: {
+            logoScale: template.page_settings.logoScale || 80,
+            logoPositionX: template.page_settings.logoPositionX || 50,
+            logoPositionY: template.page_settings.logoPositionY || 0,
+            lineHeight: template.page_settings.lineHeight || 1.6,
+          },
+        });
+      }
+      setOriginalTemplate(templateToStore);
+
+      let contentToSet = '';
+      if (template.page_settings?.pages) {
+        const pages = template.page_settings.pages.map((page: string) =>
+          replaceVariables(page, variables),
+        );
+        contentToSet = JSON.stringify({
+          pages,
+          settings: {
+            logoScale: template.page_settings.logoScale || 80,
+            logoPositionX: template.page_settings.logoPositionX || 50,
+            logoPositionY: template.page_settings.logoPositionY || 0,
+            lineHeight: template.page_settings.lineHeight || 1.6,
+          },
+        });
+      } else {
+        const templateToUse = template.content_html || template.content;
+        contentToSet = replaceVariables(templateToUse, variables);
+      }
+      setContractContent(contentToSet);
+
+      showSnackbar(`Zmieniono szablon na: ${template.name}`, 'success');
+    } catch (err) {
+      console.error('Error changing template:', err);
+      showSnackbar('Błąd podczas zmiany szablonu', 'error');
+    }
+  };
+
   const handlePrint = async () => {
     let currentContractId = contractId;
 
@@ -435,7 +510,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
             title: `Umowa dla eventu ${eventId}`,
             content: contractContent,
             status: 'draft',
-            template_id: templateId,
+            template_id: selectedTemplateId || templateId,
           })
           .select('id')
           .single();
@@ -719,6 +794,8 @@ export function EventContractTab({ eventId }: { eventId: string }) {
           insertData[statusDateField] = new Date().toISOString();
         }
 
+        insertData.template_id = selectedTemplateId || templateId;
+
         const { data: newContract, error: createError } = await supabase
           .from('contracts')
           .insert(insertData)
@@ -934,59 +1011,87 @@ export function EventContractTab({ eventId }: { eventId: string }) {
             </div>
           </div>
 
-          <div className="flex items-center gap-6">
-            <div className="max-w-md flex-1">
-              <label className="mb-2 block text-sm text-[#e5e4e2]/60">
-                Wybierz status
-                {!canEdit && contractStatus === 'issued' && (
+          <div className="flex flex-col gap-6">
+            {!generatedPdfPath && availableTemplates.length > 0 && (
+              <div className="max-w-md">
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                  Szablon umowy
                   <span className="ml-2 text-xs text-amber-400">
-                    (🔒 Tylko admin może anulować)
+                    (zmiana możliwa tylko przed generacją PDF)
                   </span>
-                )}
-              </label>
-              <select
-                value={contractStatus}
-                onChange={(e) => handleStatusChange(e.target.value as ContractStatus)}
-                disabled={!canEdit && contractStatus !== 'draft'}
-                className="w-full cursor-pointer rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-base text-[#e5e4e2] transition-all hover:border-[#d3bb73]/40 focus:outline-none focus:ring-2 focus:ring-[#d3bb73] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {(
-                  [
-                    'draft',
-                    'issued',
-                    'sent',
-                    'signed_by_client',
-                    'signed_returned',
-                    'cancelled',
-                  ] as ContractStatus[]
-                ).map((status) => {
-                  const isDisabled =
-                    !isAdmin &&
-                    ((contractStatus === 'issued' && status !== 'issued') ||
-                      (status === 'cancelled' && contractStatus !== 'cancelled') ||
-                      (status === 'draft' && contractStatus !== 'draft'));
-
-                  return (
+                </label>
+                <select
+                  value={selectedTemplateId || ''}
+                  onChange={(e) => handleTemplateChange(e.target.value)}
+                  className="w-full cursor-pointer rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-base text-[#e5e4e2] transition-all hover:border-[#d3bb73]/40 focus:outline-none focus:ring-2 focus:ring-[#d3bb73]"
+                >
+                  {availableTemplates.map((template) => (
                     <option
-                      key={status}
-                      value={status}
-                      disabled={isDisabled}
+                      key={template.id}
+                      value={template.id}
                       className="bg-[#1c1f33] text-[#e5e4e2]"
                     >
-                      {getStatusLabel(status)}
+                      {template.name}
                     </option>
-                  );
-                })}
-              </select>
-            </div>
-            {getStatusDate(contractStatus) && (
-              <div className="flex-1">
-                <div className="mb-1 text-sm text-[#e5e4e2]/60">Data zmiany statusu</div>
-                <div className="text-base font-medium text-[#d3bb73]">
-                  {getStatusDate(contractStatus)}
-                </div>
+                  ))}
+                </select>
               </div>
             )}
+
+            <div className="flex items-center gap-6">
+              <div className="max-w-md flex-1">
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                  Wybierz status
+                  {!canEdit && contractStatus === 'issued' && (
+                    <span className="ml-2 text-xs text-amber-400">
+                      (🔒 Tylko admin może anulować)
+                    </span>
+                  )}
+                </label>
+                <select
+                  value={contractStatus}
+                  onChange={(e) => handleStatusChange(e.target.value as ContractStatus)}
+                  disabled={!canEdit && contractStatus !== 'draft'}
+                  className="w-full cursor-pointer rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-base text-[#e5e4e2] transition-all hover:border-[#d3bb73]/40 focus:outline-none focus:ring-2 focus:ring-[#d3bb73] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {(
+                    [
+                      'draft',
+                      'issued',
+                      'sent',
+                      'signed_by_client',
+                      'signed_returned',
+                      'cancelled',
+                    ] as ContractStatus[]
+                  ).map((status) => {
+                    const isDisabled =
+                      !isAdmin &&
+                      ((contractStatus === 'issued' && status !== 'issued') ||
+                        (status === 'cancelled' && contractStatus !== 'cancelled') ||
+                        (status === 'draft' && contractStatus !== 'draft'));
+
+                    return (
+                      <option
+                        key={status}
+                        value={status}
+                        disabled={isDisabled}
+                        className="bg-[#1c1f33] text-[#e5e4e2]"
+                      >
+                        {getStatusLabel(status)}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+              {getStatusDate(contractStatus) && (
+                <div className="flex-1">
+                  <div className="mb-1 text-sm text-[#e5e4e2]/60">Data zmiany statusu</div>
+                  <div className="text-base font-medium text-[#d3bb73]">
+                    {getStatusDate(contractStatus)}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
