@@ -36,13 +36,14 @@ export default function EditTemplateWYSIWYGPage() {
   const [logoPositionX, setLogoPositionX] = useState(50);
   const [logoPositionY, setLogoPositionY] = useState(0);
   const [lineHeight, setLineHeight] = useState(1.6);
-  const [history, setHistory] = useState<string[]>(['']);
+  const [history, setHistory] = useState<string[][]>([['']]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [pages, setPages] = useState<string[]>(['']);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [editingName, setEditingName] = useState(false);
   const [tempName, setTempName] = useState('');
+  const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     fetchTemplate();
@@ -131,11 +132,17 @@ export default function EditTemplateWYSIWYGPage() {
           if (data.page_settings.lineHeight) setLineHeight(data.page_settings.lineHeight);
           if (data.page_settings.pages && Array.isArray(data.page_settings.pages)) {
             setPages(data.page_settings.pages);
+            setHistory([data.page_settings.pages]);
+            setHistoryIndex(0);
           } else if (initialHtml) {
             setPages([initialHtml]);
+            setHistory([[initialHtml]]);
+            setHistoryIndex(0);
           }
         } else if (initialHtml) {
           setPages([initialHtml]);
+          setHistory([[initialHtml]]);
+          setHistoryIndex(0);
         }
       }
     } catch (err: any) {
@@ -221,9 +228,9 @@ export default function EditTemplateWYSIWYGPage() {
     }
   };
 
-  const addToHistory = (content: string) => {
+  const addToHistory = (newPages: string[]) => {
     const newHistory = history.slice(0, historyIndex + 1);
-    newHistory.push(content);
+    newHistory.push([...newPages]);
     if (newHistory.length > 50) newHistory.shift();
     setHistory(newHistory);
     setHistoryIndex(newHistory.length - 1);
@@ -233,10 +240,14 @@ export default function EditTemplateWYSIWYGPage() {
     if (historyIndex > 0) {
       const newIndex = historyIndex - 1;
       setHistoryIndex(newIndex);
-      setContentHtml(history[newIndex]);
-      if (editorRef.current) {
-        editorRef.current.innerHTML = history[newIndex];
-      }
+      const prevPages = history[newIndex];
+      setPages([...prevPages]);
+
+      prevPages.forEach((pageContent, index) => {
+        if (pageRefs.current[index]) {
+          pageRefs.current[index]!.innerHTML = pageContent;
+        }
+      });
     }
   };
 
@@ -244,20 +255,48 @@ export default function EditTemplateWYSIWYGPage() {
     if (historyIndex < history.length - 1) {
       const newIndex = historyIndex + 1;
       setHistoryIndex(newIndex);
-      setContentHtml(history[newIndex]);
-      if (editorRef.current) {
-        editorRef.current.innerHTML = history[newIndex];
-      }
+      const nextPages = history[newIndex];
+      setPages([...nextPages]);
+
+      nextPages.forEach((pageContent, index) => {
+        if (pageRefs.current[index]) {
+          pageRefs.current[index]!.innerHTML = pageContent;
+        }
+      });
     }
   };
 
   const execCommand = (command: string, value?: string) => {
-    document.execCommand(command, false, value);
-    if (editorRef.current) {
-      const newContent = editorRef.current.innerHTML;
-      setContentHtml(newContent);
-      addToHistory(newContent);
+    const selection = window.getSelection();
+    if (!selection) return;
+
+    const focusNode = selection.focusNode;
+    if (!focusNode) return;
+
+    let editorElement: HTMLElement | null = focusNode as HTMLElement;
+    if (focusNode.nodeType === Node.TEXT_NODE) {
+      editorElement = focusNode.parentElement;
     }
+
+    while (editorElement && !editorElement.classList?.contains('contract-content')) {
+      editorElement = editorElement.parentElement;
+    }
+
+    if (!editorElement) return;
+
+    const pageIndex = pageRefs.current.findIndex((ref) => ref === editorElement);
+    if (pageIndex === -1) return;
+
+    document.execCommand(command, false, value);
+
+    setTimeout(() => {
+      if (editorElement) {
+        const newPages = [...pages];
+        newPages[pageIndex] = editorElement.innerHTML;
+        setPages(newPages);
+        addToHistory(newPages);
+      }
+    }, 10);
   };
 
   const insertPlaceholder = (placeholder: string) => {
@@ -370,6 +409,14 @@ export default function EditTemplateWYSIWYGPage() {
     const newPages = [...pages];
     newPages[pageIndex] = content;
     setPages(newPages);
+
+    if (updateTimeoutRef.current) {
+      clearTimeout(updateTimeoutRef.current);
+    }
+
+    updateTimeoutRef.current = setTimeout(() => {
+      addToHistory(newPages);
+    }, 500);
   };
 
   const deletePage = (pageIndex: number) => {
@@ -379,6 +426,7 @@ export default function EditTemplateWYSIWYGPage() {
     }
     const newPages = pages.filter((_, i) => i !== pageIndex);
     setPages(newPages);
+    addToHistory(newPages);
     if (currentPageIndex >= newPages.length) {
       setCurrentPageIndex(newPages.length - 1);
     }
