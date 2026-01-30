@@ -542,15 +542,33 @@ export function EventContractTab({ eventId }: { eventId: string }) {
       (contractContainer as HTMLElement).style.padding = '0';
       (contractContainer as HTMLElement).style.background = 'white';
 
-      // Wymuś inline style dla przekreślenia - html2canvas ma problemy z text-decoration
+      // Wymuś inline style dla przekreślenia - html2canvas nie radzi sobie z text-decoration
+      // Zamiast polegać na pseudo-elementach, dodamy realny element <span> jako linię
       const strikethroughElements = contractContainer.querySelectorAll('s, strike, del');
       const originalStrikethroughStyles: Array<string> = [];
+      const addedLineElements: HTMLElement[] = [];
+
       strikethroughElements.forEach((el, index) => {
         const htmlEl = el as HTMLElement;
         originalStrikethroughStyles[index] = htmlEl.style.cssText;
-        htmlEl.style.textDecoration = 'line-through';
-        htmlEl.style.textDecorationColor = '#000';
-        htmlEl.style.textDecorationThickness = '1px';
+        htmlEl.style.position = 'relative';
+        htmlEl.style.display = 'inline-block';
+        htmlEl.style.textDecoration = 'none';
+
+        // Dodaj realny element jako linię przekreślenia (zamiast pseudo-elementu)
+        const lineElement = document.createElement('span');
+        lineElement.className = 'strikethrough-line-pdf';
+        lineElement.style.position = 'absolute';
+        lineElement.style.left = '0';
+        lineElement.style.top = '50%';
+        lineElement.style.width = '100%';
+        lineElement.style.height = '0';
+        lineElement.style.borderTop = '1.5px solid #000';
+        lineElement.style.transform = 'translateY(-50%)';
+        lineElement.style.pointerEvents = 'none';
+        lineElement.style.zIndex = '1';
+        htmlEl.appendChild(lineElement);
+        addedLineElements.push(lineElement);
       });
 
       // Zbierz wszystkie strony umowy i zapisz ich oryginalne style
@@ -599,6 +617,11 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         // Przywróć oryginalny padding i tło kontenera
         (contractContainer as HTMLElement).style.padding = originalPadding;
         (contractContainer as HTMLElement).style.background = originalBackground;
+
+        // Usuń dodane elementy linii przekreślenia
+        addedLineElements.forEach((lineEl) => {
+          lineEl.remove();
+        });
 
         // Przywróć oryginalne style przekreślenia
         strikethroughElements.forEach((el, index) => {
