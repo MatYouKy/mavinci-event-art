@@ -542,6 +542,17 @@ export function EventContractTab({ eventId }: { eventId: string }) {
       (contractContainer as HTMLElement).style.padding = '0';
       (contractContainer as HTMLElement).style.background = 'white';
 
+      // Wymuś inline style dla przekreślenia - html2canvas ma problemy z text-decoration
+      const strikethroughElements = contractContainer.querySelectorAll('s, strike, del');
+      const originalStrikethroughStyles: Array<string> = [];
+      strikethroughElements.forEach((el, index) => {
+        const htmlEl = el as HTMLElement;
+        originalStrikethroughStyles[index] = htmlEl.style.cssText;
+        htmlEl.style.textDecoration = 'line-through';
+        htmlEl.style.textDecorationColor = '#000';
+        htmlEl.style.textDecorationThickness = '1px';
+      });
+
       // Zbierz wszystkie strony umowy i zapisz ich oryginalne style
       const pages = contractContainer.querySelectorAll('.contract-a4-page');
       const originalStyles: Array<{
@@ -589,6 +600,12 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         (contractContainer as HTMLElement).style.padding = originalPadding;
         (contractContainer as HTMLElement).style.background = originalBackground;
 
+        // Przywróć oryginalne style przekreślenia
+        strikethroughElements.forEach((el, index) => {
+          const htmlEl = el as HTMLElement;
+          htmlEl.style.cssText = originalStrikethroughStyles[index] || '';
+        });
+
         // Przywróć oryginalne style stron
         pages.forEach((page, index) => {
           const htmlPage = page as HTMLElement;
@@ -619,6 +636,9 @@ export function EventContractTab({ eventId }: { eventId: string }) {
             scrollX: 0,
             windowWidth: 1200,
             logging: false,
+            allowTaint: true,
+            foreignObjectRendering: false,
+            removeContainer: false,
           },
           jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
           // Bez pagebreak - pozwól html2pdf automatycznie dzielić długie strony

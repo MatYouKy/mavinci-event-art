@@ -157,8 +157,13 @@
 .contract-content s,
 .contract-content strike,
 .contract-content del {
-  text-decoration: line-through;
-  color: #000;
+  text-decoration: line-through !important;
+  text-decoration-color: #000 !important;
+  text-decoration-thickness: 1px !important;
+  text-decoration-style: solid !important;
+  -webkit-text-decoration: line-through !important;
+  -webkit-text-decoration-color: #000 !important;
+  color: #000 !important;
 }
 
 .contract-footer {
@@ -374,6 +379,17 @@
     font-size: 10pt !important;
     line-height: 1.3 !important;
     color: #333 !important;
+  }
+
+  /* Wymuś przekreślenie także w druku */
+  .contract-content s,
+  .contract-content strike,
+  .contract-content del {
+    text-decoration: line-through !important;
+    text-decoration-color: #000 !important;
+    text-decoration-thickness: 1px !important;
+    -webkit-text-decoration: line-through !important;
+    color: #000 !important;
   }
 
 }
