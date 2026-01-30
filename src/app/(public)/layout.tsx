@@ -14,6 +14,9 @@ import { getCurrentEmployeeServerCached } from '@/lib/CRM/auth/getCurrentEmploye
 import { IEmployee } from '@/app/(crm)/crm/employees/type';
 import { cookies } from 'next/headers';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 const SITE_URL = 'https://mavinci.pl';
 const OG_IMAGE = '/logo-mavinci-crm.png';
 
