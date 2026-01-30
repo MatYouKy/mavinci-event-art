@@ -85,6 +85,18 @@
   white-space: pre-wrap;
 }
 
+/* Inline formatowanie musi pozostać inline */
+.contract-content strong,
+.contract-content b,
+.contract-content em,
+.contract-content i,
+.contract-content u,
+.contract-content s,
+.contract-content strike,
+.contract-content del {
+  display: inline !important;
+}
+
 .contract-content p,
 .contract-content pre {
   display: block;
@@ -134,6 +146,11 @@
 .contract-content em,
 .contract-content i {
   font-style: italic;
+  color: #000;
+}
+
+.contract-content u {
+  text-decoration: underline;
   color: #000;
 }
 

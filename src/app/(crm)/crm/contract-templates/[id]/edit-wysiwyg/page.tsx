@@ -266,7 +266,43 @@ export default function EditTemplateWYSIWYGPage() {
     }
   };
 
+  const toggleStrikethrough = () => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+
+    const range = selection.getRangeAt(0);
+    if (range.collapsed) return;
+
+    const selectedContent = range.extractContents();
+    const strikeElement = document.createElement('s');
+    strikeElement.appendChild(selectedContent);
+    range.insertNode(strikeElement);
+
+    selection.removeAllRanges();
+    const newRange = document.createRange();
+    newRange.selectNodeContents(strikeElement);
+    selection.addRange(newRange);
+
+    const container = strikeElement.closest('.contract-content');
+    if (container) {
+      const pageIndex = pageRefs.current.findIndex((ref) => ref === container);
+      if (pageIndex !== -1) {
+        setTimeout(() => {
+          const newPages = [...pages];
+          newPages[pageIndex] = container.innerHTML;
+          setPages(newPages);
+          addToHistory(newPages);
+        }, 10);
+      }
+    }
+  };
+
   const execCommand = (command: string, value?: string) => {
+    if (command === 'strikeThrough') {
+      toggleStrikethrough();
+      return;
+    }
+
     const selection = window.getSelection();
     if (!selection) return;
 
