@@ -270,6 +270,45 @@ export default function ContractTemplatesPage() {
 
                   <div className="flex items-center gap-2">
                     <button
+                      onClick={() => handleToggleActive(template.id, template.is_active)}
+                      className={`rounded-lg p-2 transition-colors ${
+                        template.is_active
+                          ? 'text-green-400 hover:bg-green-400/10'
+                          : 'text-gray-400 hover:bg-gray-400/10'
+                      }`}
+                      title={template.is_active ? 'Dezaktywuj' : 'Aktywuj'}
+                    >
+                      {template.is_active ? (
+                        <svg
+                          className="h-5 w-5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                          />
+                        </svg>
+                      ) : (
+                        <svg
+                          className="h-5 w-5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
+                          />
+                        </svg>
+                      )}
+                    </button>
+                    <button
                       onClick={() => router.push(`/crm/contract-templates/${template.id}`)}
                       className="rounded-lg p-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
                       title="Szczegóły"

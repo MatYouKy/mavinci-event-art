@@ -59,6 +59,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
       const { data, error } = await supabase
         .from('contract_templates')
         .select('id, name')
+        .eq('is_active', true)
         .order('name', { ascending: true });
 
       if (error) throw error;
