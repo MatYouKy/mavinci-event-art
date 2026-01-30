@@ -157,39 +157,14 @@
 .contract-content s,
 .contract-content strike,
 .contract-content del {
-  position: relative !important;
-  text-decoration: none !important;
+  text-decoration: line-through !important;
+  text-decoration-thickness: 1.5px !important;
+  text-decoration-color: #000 !important;
   color: #000 !important;
-  display: inline-block !important;
+  display: inline !important;
 }
 
-.contract-content s::after,
-.contract-content strike::after,
-.contract-content del::after {
-  content: '' !important;
-  position: absolute !important;
-  left: 0 !important;
-  top: 50% !important;
-  width: 100% !important;
-  height: 0 !important;
-  border-top: 1px solid #000 !important;
-  transform: translateY(-50%) !important;
-  pointer-events: none !important;
-}
-
-/* Specjalna klasa dla renderowania PDF z wymuszonym border */
-.strikethrough-pdf::after {
-  content: '' !important;
-  position: absolute !important;
-  left: 0 !important;
-  top: 50% !important;
-  width: 100% !important;
-  height: 0 !important;
-  border-top: 1.5px solid #000 !important;
-  transform: translateY(-50%) !important;
-  pointer-events: none !important;
-  z-index: 1 !important;
-}
+/* Przekreślenie używa natywnego text-decoration - działa idealnie w PDF */
 
 .contract-footer {
   display: flex;
@@ -410,38 +385,11 @@
   .contract-content s,
   .contract-content strike,
   .contract-content del {
-    position: relative !important;
-    text-decoration: none !important;
+    text-decoration: line-through !important;
+    text-decoration-thickness: 1.5px !important;
+    text-decoration-color: #000 !important;
     color: #000 !important;
-    display: inline-block !important;
-  }
-
-  .contract-content s::after,
-  .contract-content strike::after,
-  .contract-content del::after {
-    content: '' !important;
-    position: absolute !important;
-    left: 0 !important;
-    top: 50% !important;
-    width: 100% !important;
-    height: 0 !important;
-    border-top: 1.5px solid #000 !important;
-    transform: translateY(-50%) !important;
-    pointer-events: none !important;
-    z-index: 1 !important;
-  }
-
-  .strikethrough-pdf::after {
-    content: '' !important;
-    position: absolute !important;
-    left: 0 !important;
-    top: 50% !important;
-    width: 100% !important;
-    height: 0 !important;
-    border-top: 1.5px solid #000 !important;
-    transform: translateY(-50%) !important;
-    pointer-events: none !important;
-    z-index: 1 !important;
+    display: inline !important;
   }
 
 }

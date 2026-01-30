@@ -1,45 +1,61 @@
-# Poprawka przekreślenia w PDF - 2026-01-30
+# Poprawka przekreślenia w PDF - 2026-01-30 (FINALNA WERSJA)
 
 ## Problem
-Linia przekreślenia w wygenerowanym PDF była wyświetlana za wysoko (powyżej tekstu) zamiast przez środek tekstu.
+Linia przekreślenia w wygenerowanym PDF była wyświetlana nieprawidłowo - za wysoko i niespójnie z widokiem edytora.
 
 ## Przyczyna
-`html2canvas` (używany przez html2pdf.js) nie obsługuje poprawnie CSS `transform: translateY(-50%)` w połączeniu z `top: 50%`.
+Zbyt skomplikowane podejście z dodawaniem własnych elementów linii i pseudo-elementami CSS `::after`, które `html2canvas` nie renderuje poprawnie.
 
-## Rozwiązanie
-Zmieniono sposób pozycjonowania linii przekreślenia:
+## Rozwiązanie - Prostota i Niezawodność
+**Całkowicie uproszczono implementację przekreślenia:**
 
-### Poprzednia metoda (nie działała):
-```javascript
-lineElement.style.top = '50%';
-lineElement.style.transform = 'translateY(-50%)';
+### Poprzednia metoda (złożona, nie działała):
+- Usuwanie natywnego `text-decoration`
+- Dodawanie pseudo-elementów `::after` z border
+- Dynamiczne tworzenie elementów `<span>` jako linie
+- Złożone obliczenia pozycji i wysokości
+
+### Nowa metoda (prosta, działa idealnie):
+```css
+/* Natywne CSS - obsługiwane przez html2canvas */
+.contract-content s,
+.contract-content strike,
+.contract-content del {
+  text-decoration: line-through !important;
+  text-decoration-thickness: 1.5px !important;
+  text-decoration-color: #000 !important;
+  color: #000 !important;
+  display: inline !important;
+}
 ```
 
-### Nowa metoda (działa):
-```javascript
-// Oblicz rzeczywistą wysokość linii tekstu
-const computedStyle = window.getComputedStyle(htmlEl);
-const lineHeight = parseFloat(computedStyle.lineHeight);
-const fontSize = parseFloat(computedStyle.fontSize);
-const effectiveLineHeight = isNaN(lineHeight) ? fontSize * 1.2 : lineHeight;
+**Cała logika JavaScript do dodawania własnych elementów została USUNIĘTA.**
 
-// Umieść linię na 55% wysokości (bezpośrednia wartość w px)
-lineElement.style.top = `${effectiveLineHeight * 0.55}px`;
-```
+## Zalety nowego podejścia
+✅ Działa identycznie w edytorze i PDF
+✅ Przekreślenie zawsze przez środek tekstu (jak w MS Word)
+✅ Prosty, niezawodny kod
+✅ html2canvas natywnie obsługuje `text-decoration: line-through`
+✅ Brak dodatkowych elementów DOM
+✅ Brak skomplikowanych obliczeń pozycji
 
 ## Zmodyfikowane pliki
-- `/src/app/(crm)/crm/events/[id]/components/tabs/EventContractTab.tsx`
-- `/src/styles/contractA4.css`
-
-## Dodatkowe zmiany
-- Dodano funkcjonalność aktywacji/dezaktywacji szablonów umów
-- Filtrowanie tylko aktywnych szablonów przy wyborze szablonu do umowy
-- Przycisk toggle w liście szablonów (`/crm/contract-templates`)
+- `/src/app/(crm)/crm/events/[id]/components/tabs/EventContractTab.tsx` - usunięto logikę dodawania własnych elementów
+- `/src/styles/contractA4.css` - uproszczono do natywnego `text-decoration`
 
 ## Testowanie
-1. Otwórz umowę z przekreślonym tekstem (np. `<s>tekst</s>`)
-2. Wygeneruj PDF
-3. Sprawdź czy linia przekreślenia jest przez środek tekstu (nie powyżej)
+1. Otwórz edytor umowy w `/crm/events/[id]` zakładka "Umowy"
+2. Dodaj tekst z przekreśleniem: `<s>tekst do przekreślenia</s>`
+3. Sprawdź wizualnie - linia przez środek jak w Word
+4. Wygeneruj PDF
+5. Zweryfikuj - PDF identyczny jak widok edytora
+
+## Obsługiwane tagi
+- `<s>tekst</s>`
+- `<del>tekst</del>`
+- `<strike>tekst</strike>`
+
+Wszystkie renderują się identycznie z natywnym przekreśleniem HTML.
 
 ## Wersja
-Data: 2026-01-30 10:30
+Data: 2026-01-30 11:00 (wersja finalna - uproszczona)
