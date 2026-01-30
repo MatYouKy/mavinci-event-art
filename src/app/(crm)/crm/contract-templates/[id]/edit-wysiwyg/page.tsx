@@ -10,6 +10,7 @@ import {
   Bold,
   Italic,
   Underline,
+  Strikethrough,
   AlignLeft,
   AlignCenter,
   AlignRight,
@@ -83,6 +84,9 @@ export default function EditTemplateWYSIWYGPage() {
       } else if (ctrlKey && e.key === 'u') {
         e.preventDefault();
         execCommand('underline');
+      } else if (ctrlKey && e.shiftKey && e.key === 'X') {
+        e.preventDefault();
+        execCommand('strikeThrough');
       } else if (ctrlKey && e.key === 's') {
         e.preventDefault();
         handleSave();
@@ -495,6 +499,13 @@ export default function EditTemplateWYSIWYGPage() {
               title="Podkreślenie"
             >
               <Underline className="h-4 w-4 text-[#e5e4e2]" />
+            </button>
+            <button
+              onClick={() => execCommand('strikeThrough')}
+              className="rounded p-2 hover:bg-[#d3bb73]/10"
+              title="Przekreślenie"
+            >
+              <Strikethrough className="h-4 w-4 text-[#e5e4e2]" />
             </button>
 
             <div className="mx-2 h-6 w-px bg-[#d3bb73]/30" />
