@@ -140,21 +140,8 @@
 .contract-content s,
 .contract-content strike,
 .contract-content del {
-  text-decoration: none;
-  position: relative;
+  text-decoration: line-through;
   color: #000;
-}
-
-.contract-content s::after,
-.contract-content strike::after,
-.contract-content del::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 45%;
-  height: 1.5px;
-  background: currentColor;
 }
 
 .contract-footer {
