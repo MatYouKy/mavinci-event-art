@@ -556,16 +556,23 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         htmlEl.style.display = 'inline-block';
         htmlEl.style.textDecoration = 'none';
 
-        // Dodaj realny element jako linię przekreślenia (zamiast pseudo-elementu)
+        // Oblicz rzeczywistą wysokość tekstu
+        const computedStyle = window.getComputedStyle(htmlEl);
+        const lineHeight = parseFloat(computedStyle.lineHeight);
+        const fontSize = parseFloat(computedStyle.fontSize);
+
+        // Jeśli lineHeight jest 'normal', użyj 1.2 * fontSize
+        const effectiveLineHeight = isNaN(lineHeight) ? fontSize * 1.2 : lineHeight;
+
+        // Dodaj realny element jako linię przekreślenia
         const lineElement = document.createElement('span');
         lineElement.className = 'strikethrough-line-pdf';
         lineElement.style.position = 'absolute';
         lineElement.style.left = '0';
-        lineElement.style.top = '50%';
+        lineElement.style.top = `${effectiveLineHeight * 0.55}px`; // 55% wysokości linii
         lineElement.style.width = '100%';
         lineElement.style.height = '0';
         lineElement.style.borderTop = '1.5px solid #000';
-        lineElement.style.transform = 'translateY(-50%)';
         lineElement.style.pointerEvents = 'none';
         lineElement.style.zIndex = '1';
         htmlEl.appendChild(lineElement);
