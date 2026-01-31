@@ -38,8 +38,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   const { navigation, employeeId } = await getNavigationForUserServer();
 
-  console.log(navigation);
-
   return (
     <html lang="pl">
       <body>
