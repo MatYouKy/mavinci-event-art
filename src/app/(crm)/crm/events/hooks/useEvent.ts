@@ -1,84 +1,84 @@
 // useEvent.ts
-
-import { useCallback, useEffect, useState } from 'react';
-import {
-  useUpdateEventMutation,
-  useDeleteEventMutation,
-} from '@/app/(crm)/crm/events/store/api/eventsApi';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useUpdateEventMutation, useDeleteEventMutation } from '@/app/(crm)/crm/events/store/api/eventsApi';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
-import { IEvent } from '../type';
+import type { IEvent } from '../type';
 
 export function useEvent(initialEvent?: IEvent) {
-  const eventId = useParams().id as string;
-
-  const [event, setEvent] = useState<IEvent | null>(initialEvent || null);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<any>(null);
-
-  useEffect(() => {
-    if (initialEvent) {
-      setEvent(initialEvent);
-    }
-  }, [initialEvent]);
+  const params = useParams();
+  const eventId = params?.id as string;
 
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
 
-  const [updateEvent, { isLoading: isUpdating }] = useUpdateEventMutation();
-  const [deleteEvent, { isLoading: isDeleting }] = useDeleteEventMutation();
+  const [event, setEvent] = useState<IEvent | null>(initialEvent ?? null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<any>(null);
 
-  const handleUpdateEvent = useCallback(
-    async (data: any) => {
+  const [updateEventMutation, { isLoading: isUpdating }] = useUpdateEventMutation();
+  const [deleteEventMutation, { isLoading: isDeleting }] = useDeleteEventMutation();
+
+  // ✅ Stabilne "sygnały" do synchronizacji (nie zależymy od całego obiektu)
+  const initialId = initialEvent?.id ?? null;
+  const initialUpdatedAt = (initialEvent as any)?.updated_at ?? null; // jeśli masz
+
+  useEffect(() => {
+    if (!initialEvent) return;
+
+    setEvent((prev) => {
+      // 1) jeśli nie ma jeszcze eventu -> ustaw
+      if (!prev) return initialEvent;
+
+      // 2) jeśli zmienił się event (inna strona) -> ustaw
+      if (prev.id !== initialEvent.id) return initialEvent;
+
+      // 3) jeśli masz updated_at i się zmieniło -> ustaw
+      const prevUpdatedAt = (prev as any)?.updated_at ?? null;
+      if (initialUpdatedAt && prevUpdatedAt && prevUpdatedAt !== initialUpdatedAt) {
+        return initialEvent;
+      }
+
+      // 4) inaczej nie ruszaj stanu (unikamy pętli)
+      return prev;
+    });
+  }, [initialId, initialUpdatedAt]); // ✅ zamiast [initialEvent]
+
+  const updateEvent = useCallback(
+    async (data: Partial<IEvent>) => {
       try {
-        await updateEvent({ id: eventId, data }).unwrap();
-        // ⬆️ invalidatesTags => spowoduje REFRESH tylko tam,
-        // gdzie faktycznie użyto useGetEventDetailsQuery(eventId),
-        // czyli w głównym komponencie
+        // ✅ optymistycznie (opcjonalnie, ale fajne UX)
+        setEvent((prev) => (prev ? ({ ...prev, ...data } as IEvent) : prev));
+
+        await updateEventMutation({ id: eventId, data }).unwrap();
         showSnackbar('Wydarzenie zaktualizowane', 'success');
         return true;
-      } catch (error: any) {
-        showSnackbar(
-          `Błąd: ${error?.message ?? 'Nie udało się zaktualizować wydarzenia'}`,
-          'error',
-        );
+      } catch (err: any) {
+        showSnackbar(`Błąd: ${err?.message ?? 'Nie udało się zaktualizować wydarzenia'}`, 'error');
         return false;
       }
     },
-    [eventId, updateEvent, showSnackbar],
+    [eventId, updateEventMutation, showSnackbar],
   );
 
-  const handleDeleteEvent = useCallback(async () => {
+  const deleteEvent = useCallback(async () => {
     try {
-      await deleteEvent(eventId).unwrap();
+      await deleteEventMutation(eventId).unwrap();
       showSnackbar('Wydarzenie usunięte', 'success');
       router.push('/crm/events');
       return true;
-    } catch (error: any) {
-      showSnackbar(`Błąd: ${error?.message ?? 'Nie udało się usunąć wydarzenia'}`, 'error');
+    } catch (err: any) {
+      showSnackbar(`Błąd: ${err?.message ?? 'Nie udało się usunąć wydarzenia'}`, 'error');
       return false;
     }
-  }, [eventId, deleteEvent, showSnackbar, router]);
+  }, [eventId, deleteEventMutation, showSnackbar, router]);
 
   const logChange = useCallback(
-    async (
-      action: string,
-      description: string,
-      fieldName?: string,
-      oldValue?: any,
-      newValue?: any,
-    ) => {
+    async (action: string, description: string, fieldName?: string, oldValue?: any, newValue?: any) => {
       try {
         await supabase.from('event_audit_log').insert([
-          {
-            event_id: eventId,
-            action,
-            field_name: fieldName,
-            old_value: oldValue,
-            new_value: newValue,
-            description,
-          },
+          { event_id: eventId, action, field_name: fieldName, old_value: oldValue, new_value: newValue, description },
         ]);
       } catch (err) {
         console.error('Error logging change:', err);
@@ -112,8 +112,8 @@ export function useEvent(initialEvent?: IEvent) {
     event,
     loading,
     error,
-    updateEvent: handleUpdateEvent,
-    deleteEvent: handleDeleteEvent,
+    updateEvent,
+    deleteEvent,
     logChange,
     refetch,
     isUpdating,

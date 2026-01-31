@@ -112,6 +112,14 @@
   color: #000;
 }
 
+.contract-content s,
+.contract-content strike,
+.contract-content del {
+  text-decoration-line: line-through;
+  text-decoration-thickness: 2px;
+  text-decoration-skip-ink: none;
+}
+
 .contract-content h1,
 .contract-content h2,
 .contract-content h3,
@@ -154,15 +162,11 @@
   color: #000;
 }
 
-.contract-content s,
-.contract-content strike,
-.contract-content del {
-  text-decoration: line-through !important;
-  text-decoration-thickness: 1.5px !important;
-  text-decoration-color: #000 !important;
-  color: #000 !important;
-  display: inline !important;
-}
+/* .contract-content span[data-strike='1'] {
+  text-decoration-line: line-through;
+  text-decoration-thickness: 2px;
+  text-decoration-skip-ink: none;
+} */
 
 /* Podczas generowania PDF JavaScript dynamicznie dodaje <span> jako linię przekreślenia */
 
@@ -180,7 +184,6 @@
   position: relative;
   opacity: 0.7;
 }
-
 
 .footer-logo {
   width: 100%;
@@ -226,17 +229,26 @@
   color: #666;
 }
 
+/* było źle: [data-pdf-root="1"] .contract-a4-container */
+/* ✅ kontener MA atrybut, więc selektor bez spacji */
+.contract-a4-container[data-pdf-root='1'] {
+  background: white !important;
+  padding: 0 !important;
+  min-height: auto !important;
+  margin: 0 !important;
+  box-shadow: none !important;
+}
+
+/* ✅ strony są wewnątrz kontenera, więc tu spacja jest OK */
+.contract-a4-container[data-pdf-root='1'] .contract-a4-page {
+  margin: 0 !important;
+  box-shadow: none !important;
+}
 
 @media print {
   @page {
     size: A4 portrait;
     margin: 0;
-  }
-
-  * {
-    print-color-adjust: exact !important;
-    -webkit-print-color-adjust: exact !important;
-    color-adjust: exact !important;
   }
 
   html,
@@ -245,7 +257,6 @@
     padding: 0 !important;
     background: white !important;
     overflow: visible !important;
-    /* NIE wymuszamy tutaj sztywnej szerokości/wysokości */
   }
 
   body * {
@@ -273,26 +284,6 @@
     box-shadow: none !important;
   }
 
-  /* .contract-a4-page {
-    position: relative !important;
-    box-shadow: none !important;
-    page-break-after: always !important;
-    break-after: page !important;
-    margin: 0 auto !important;
-    padding: 20mm 25mm 5mm !important;
-    width: 210mm !important;
-    height: auto !important;
-    min-height: 297mm !important;
-    max-height: none !important;
-    background: white !important;
-    display: flex !important;
-    flex-direction: column !important;
-    box-sizing: border-box !important;
-    overflow: visible !important;
-  } */
-
-  /* Ostatnia strona nie próbuje już na siłę unikać podziału,
-     przeglądarka sama zdecyduje */
   .contract-a4-page:last-child,
   .contract-a4-page:last-of-type {
     page-break-after: auto !important;
@@ -314,9 +305,6 @@
     overflow: visible !important;
   }
 
-  /* Nie blokujemy łamania wewnątrz każdego paragrafu,
-     bo to powoduje duże puste dziury przy dłuższych tekstach.
-     Bezpiecznie zostawiamy tylko nagłówki jako "całość". */
   .contract-content h1,
   .contract-content h2,
   .contract-content h3,
@@ -331,11 +319,11 @@
   }
   .contract-header-logo {
     display: flex !important;
-    justify-content: center !important; /* zawsze środek */
+    justify-content: center !important;   
     align-items: center !important;
     width: 100% !important;
   }
-  
+
   .contract-header-logo img {
     max-width: 125px !important;
     height: auto !important;
@@ -355,25 +343,25 @@
     position: relative !important;
     opacity: 0.7 !important;
   }
-  
+
   .contract-footer .footer-logo,
   .contract-footer .footer-info {
     flex: 1 1 0 !important;
     width: auto !important;
   }
-  
+
   .contract-footer .footer-logo {
     display: flex !important;
     align-items: center !important;
     justify-content: flex-start !important;
   }
-  
+
   .contract-footer .footer-logo img {
     height: 40px !important;
     width: auto !important;
     object-fit: contain !important;
   }
-  
+
   .contract-footer .footer-info {
     text-align: right !important;
     font-size: 10pt !important;
@@ -381,28 +369,24 @@
     color: #333 !important;
   }
 
-  /* Wymuś przekreślenie także w druku - używamy pseudo-elementu z background */
+  .contract-a4-container[data-pdf-root='1'] {
+    background: white !important;
+    padding: 0 !important;
+    min-height: auto !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .contract-a4-container[data-pdf-root='1'] .contract-a4-page {
+    margin: 0 !important;
+    box-shadow: none !important;
+  }
+
   .contract-content s,
-  .contract-content strike,
-  .contract-content del {
-    position: relative !important;
-    text-decoration: none !important;
-    color: #000 !important;
-    display: inline-block !important;
-  }
-
-  .contract-content s::after,
-  .contract-content strike::after,
-  .contract-content del::after {
-    content: '' !important;
-    position: absolute !important;
-    left: 0 !important;
-    right: 0 !important;
-    top: 50% !important;
-    height: 1.5px !important;
-    background-color: #000 !important;
-    margin-top: -0.75px !important;
-    pointer-events: none !important;
-  }
-
+.contract-content strike,
+.contract-content del {
+  text-decoration-line: line-through;
+  text-decoration-thickness: 2px;
+  text-decoration-skip-ink: none;
+}
 }

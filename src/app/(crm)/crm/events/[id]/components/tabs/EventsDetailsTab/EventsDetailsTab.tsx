@@ -39,9 +39,9 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
   contact,
   organization,
   location,
-  initialEvent,
+  initialEvent: event,
 }) => {
-  const { event, updateEvent } = useEvent(initialEvent);
+  const { updateEvent } = useEvent();
 
   const [showEditClientModal, setShowEditClientModal] = useState(false);
   const router = useRouter();

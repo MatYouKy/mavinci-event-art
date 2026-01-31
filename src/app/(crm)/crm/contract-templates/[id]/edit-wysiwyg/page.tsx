@@ -269,32 +269,129 @@ export default function EditTemplateWYSIWYGPage() {
   const toggleStrikethrough = () => {
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return;
-
+  
     const range = selection.getRangeAt(0);
     if (range.collapsed) return;
-
-    const selectedContent = range.extractContents();
-    const strikeElement = document.createElement('s');
-    strikeElement.appendChild(selectedContent);
-    range.insertNode(strikeElement);
-
-    selection.removeAllRanges();
-    const newRange = document.createRange();
-    newRange.selectNodeContents(strikeElement);
-    selection.addRange(newRange);
-
-    const container = strikeElement.closest('.contract-content');
-    if (container) {
-      const pageIndex = pageRefs.current.findIndex((ref) => ref === container);
-      if (pageIndex !== -1) {
+  
+    // znajdź kontener .contract-content (żeby potem zapisać stronę)
+    let containerEl: HTMLElement | null =
+      range.commonAncestorContainer.nodeType === Node.TEXT_NODE
+        ? (range.commonAncestorContainer.parentElement as HTMLElement | null)
+        : (range.commonAncestorContainer as HTMLElement | null);
+  
+    while (containerEl && !containerEl.classList?.contains('contract-content')) {
+      containerEl = containerEl.parentElement;
+    }
+    if (!containerEl) return;
+  
+    const pageIndex = pageRefs.current.findIndex((ref) => ref === containerEl);
+    if (pageIndex === -1) return;
+  
+    // helper: sprawdź czy zakres jest "w całości" wewnątrz przekreślenia
+    const isRangeInsideStrike = (r: Range) => {
+      const startEl =
+        r.startContainer.nodeType === Node.TEXT_NODE
+          ? (r.startContainer.parentElement as HTMLElement | null)
+          : (r.startContainer as HTMLElement | null);
+      const endEl =
+        r.endContainer.nodeType === Node.TEXT_NODE
+          ? (r.endContainer.parentElement as HTMLElement | null)
+          : (r.endContainer as HTMLElement | null);
+  
+      const startStrike = startEl?.closest?.('span[data-strike="1"]');
+      const endStrike = endEl?.closest?.('span[data-strike="1"]');
+  
+      return !!startStrike && startStrike === endStrike;
+    };
+  
+    // helper: unwrap span
+    const unwrap = (el: HTMLElement) => {
+      const parent = el.parentNode;
+      if (!parent) return;
+      while (el.firstChild) parent.insertBefore(el.firstChild, el);
+      parent.removeChild(el);
+    };
+  
+    // Jeśli zaznaczenie w jednym strike-span → zdejmij przekreślenie (unwrap)
+    if (isRangeInsideStrike(range)) {
+      const startEl =
+        range.startContainer.nodeType === Node.TEXT_NODE
+          ? (range.startContainer.parentElement as HTMLElement)
+          : (range.startContainer as HTMLElement);
+      const strikeSpan = startEl.closest('span[data-strike="1"]') as HTMLElement | null;
+      if (strikeSpan) {
+        unwrap(strikeSpan);
+  
+        // zapis strony
         setTimeout(() => {
           const newPages = [...pages];
-          newPages[pageIndex] = container.innerHTML;
+          newPages[pageIndex] = containerEl!.innerHTML;
           setPages(newPages);
           addToHistory(newPages);
         }, 10);
       }
+      return;
     }
+  
+    // W przeciwnym razie: dodaj przekreślenie jako <span style="text-decoration:line-through">
+    const extracted = range.extractContents();
+  
+    const span = document.createElement('span');
+    span.setAttribute('data-strike', '1'); // łatwe wykrywanie/odwijanie
+    span.style.textDecorationLine = 'line-through';
+    span.style.textDecorationThickness = '2px';
+    span.style.textDecorationSkipInk = 'none';
+  
+    span.appendChild(extracted);
+    range.insertNode(span);
+  
+    // Uporządkuj: usuń zagnieżdżone strike, połącz sąsiednie
+    const normalize = () => {
+      // usuń zagnieżdżone strike w strike
+      span.querySelectorAll('span[data-strike="1"] span[data-strike="1"]').forEach((nested) => {
+        unwrap(nested as HTMLElement);
+      });
+  
+      // scal sąsiednie strike
+      const parent = span.parentElement;
+      if (!parent) return;
+  
+      const prev = span.previousSibling;
+      if (prev && prev.nodeType === Node.ELEMENT_NODE) {
+        const prevEl = prev as HTMLElement;
+        if (prevEl.matches('span[data-strike="1"]')) {
+          // przenieś dzieci
+          while (span.firstChild) prevEl.appendChild(span.firstChild);
+          span.remove();
+          return;
+        }
+      }
+      const next = span.nextSibling;
+      if (next && next.nodeType === Node.ELEMENT_NODE) {
+        const nextEl = next as HTMLElement;
+        if (nextEl.matches('span[data-strike="1"]')) {
+          // przenieś dzieci z next do span
+          while (nextEl.firstChild) span.appendChild(nextEl.firstChild);
+          nextEl.remove();
+        }
+      }
+    };
+  
+    normalize();
+  
+    // ustaw selekcję na nowym spanie
+    selection.removeAllRanges();
+    const newRange = document.createRange();
+    newRange.selectNodeContents(span);
+    selection.addRange(newRange);
+  
+    // zapis strony
+    setTimeout(() => {
+      const newPages = [...pages];
+      newPages[pageIndex] = containerEl!.innerHTML;
+      setPages(newPages);
+      addToHistory(newPages);
+    }, 10);
   };
 
   const execCommand = (command: string, value?: string) => {

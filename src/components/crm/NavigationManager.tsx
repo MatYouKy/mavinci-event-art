@@ -10,10 +10,8 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import { allNavigation } from '@/lib/CRM/navigation/registry.server';
-import { NavigationIcons } from '@/lib/CRM/navigation/registry.server';
-import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useGetUnreadCountQuery } from '@/store/api/messagesApi';
+import { NavigationIcons } from '@/lib/CRM/navigation/registry.client';
 
 interface NavigationItem {
   key: string;
@@ -190,12 +188,17 @@ export default function NavigationManager({
     setIsEditMode(false);
   };
 
-  // ✅ memo dla ikon: fallback gdy iconKey nie istnieje w mapie
+  
+
   const getIcon = useMemo(() => {
     return (item: NavigationItem) => {
-      if (item.iconKey && NavigationIcons[item.iconKey]) return NavigationIcons[item.iconKey];
-      if (item.icon) return item.icon;
-      return Home; // twardy fallback żeby nie wywalić Reacta
+      const candidate =
+        (item.iconKey && (NavigationIcons as any)[item.iconKey]) || item.icon || Home;
+  
+      // jeśli to string, to React będzie próbował <Clock> jako tag HTML
+      if (typeof candidate === 'string') return Home;
+  
+      return candidate;
     };
   }, []);
 

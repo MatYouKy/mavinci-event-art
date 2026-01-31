@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -242,6 +243,7 @@ export default function EventDetailPageClient({
   const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
 
   useEffect(() => {
+    let alive = true;
     const fetchLocations = async () => {
       if (event?.location_id && event?.location_id !== null) {
         const location = await getById(event.location_id);
@@ -251,7 +253,10 @@ export default function EventDetailPageClient({
       }
     };
     fetchLocations();
-  }, [getById, event?.location_id, initialLocation]);
+    return () => {
+      alive = false;
+    };
+  }, [event?.location_id, initialLocation]);
 
   const { data: organization } = useGetOrganizationByIdQuery(event?.organization_id, {
     skip: !event?.organization_id,
@@ -636,6 +641,9 @@ export default function EventDetailPageClient({
     return 0;
   }, [event?.actual_revenue]);
 
+
+  const stableInitialEvent = useMemo(() => initialEvent, [initialEvent.id]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -881,7 +889,7 @@ export default function EventDetailPageClient({
               </div>
             )}
             <EventsDetailsTab
-              initialEvent={event}
+              initialEvent={stableInitialEvent}
               location={location}
               organization={organization}
               contact={contact}

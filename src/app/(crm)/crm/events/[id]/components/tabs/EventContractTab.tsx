@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
@@ -11,6 +12,236 @@ import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import SendContractEmailModal from '@/components/crm/SendContractEmailModal';
 import { UnifiedContact } from '@/store/slices/contactsSlice';
 import { ILocation } from '@/app/(crm)/crm/locations/type';
+import { buildContractHtml } from '../../helpers/buildContractHtml';
+
+export const getContractCssForPrint = () => `
+/* ===== BASE: contractA4.css (Twoje, 1:1) ===== */
+.contract-a4-container {
+  background: #f5f5f5;
+  padding: 20px;
+  min-height: 100vh;
+}
+
+.contract-a4-page {
+  position: relative;
+  width: 210mm;
+  margin: 0 auto 20px auto;
+  padding: 20mm 25mm 5mm;
+  min-height: 297mm !important;
+  background: white;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  font-family: Arial, sans-serif;
+  font-size: 12pt;
+  line-height: 1.6;
+  color: #000;
+  page-break-after: always;
+  break-after: page;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+.contract-a4-page:last-of-type { margin-bottom: 0; }
+
+.contract-header-logo {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  margin-bottom: 4mm;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.contract-header-logo.justify-start { justify-content: flex-start; }
+.contract-header-logo.justify-center { justify-content: center; }
+.contract-header-logo.justify-end { justify-content: flex-end; }
+
+.contract-header-logo img {
+  height: auto;
+  object-fit: contain;
+  max-width: 80%;
+}
+
+.contract-current-date {
+  position: absolute;
+  top: 20mm;
+  right: 25mm;
+  text-align: right;
+  font-size: 10pt;
+  color: #333;
+  font-weight: 500;
+  z-index: 10;
+}
+
+.contract-content {
+  flex: 1;
+  text-align: justify;
+  color: #000;
+  font-family: Arial, sans-serif;
+  font-size: 12pt;
+  line-height: 1.6;
+  direction: ltr !important;
+  unicode-bidi: embed !important;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+.contract-content > * {
+  display: block;
+  white-space: pre-wrap;
+}
+
+/* inline formatowanie */
+.contract-content strong,
+.contract-content b,
+.contract-content em,
+.contract-content i,
+.contract-content u,
+.contract-content s,
+.contract-content strike,
+.contract-content del {
+  display: inline !important;
+}
+
+.contract-content p,
+.contract-content pre {
+  display: block;
+  margin: 0;
+  padding: 0;
+  text-align: justify;
+  white-space: pre-wrap;
+  font-family: Arial, sans-serif;
+  font-size: 12pt;
+  line-height: 1.6;
+  border: none;
+  background: transparent;
+  color: #000;
+}
+
+.contract-content s,
+.contract-content strike,
+.contract-content del {
+  text-decoration-line: line-through;
+  text-decoration-thickness: 2px;
+  text-decoration-skip-ink: none;
+}
+
+.contract-content h1,
+.contract-content h2,
+.contract-content h3,
+.contract-content h4 {
+  display: block;
+  margin-top: 1.5em;
+  margin-bottom: 0.75em;
+  font-weight: bold;
+  white-space: pre-wrap;
+  color: #000;
+}
+
+.contract-content h1 { font-size: 18pt; text-align: center; }
+.contract-content h2 { font-size: 16pt; }
+.contract-content h3 { font-size: 14pt; }
+
+.contract-content strong,
+.contract-content b { font-weight: bold; color: #000; }
+
+.contract-content em,
+.contract-content i { font-style: italic; color: #000; }
+
+.contract-content u { text-decoration: underline; color: #000; }
+
+.contract-footer {
+  display: flex;
+  justify-content: space-between;
+  border-top: 1px solid #d3bb73;
+  margin-top: auto;
+  width: 100%;
+  min-height: 15mm;
+  padding-top: 5px;
+  background: white;
+  pointer-events: none;
+  flex-shrink: 0;
+  position: relative;
+  opacity: 0.7;
+}
+
+.footer-logo {
+  width: 100%;
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+}
+
+.footer-logo img { height: 50px; width: auto; object-fit: contain; }
+
+.footer-info {
+  width: 100%;
+  text-align: right;
+  font-size: 10pt;
+  color: #333;
+  line-height: 1.2;
+}
+
+.footer-info p { margin: 4px 0; color: #333; }
+.footer-info strong { font-weight: bold; color: #000; }
+.footer-info em { font-style: italic; color: #666; }
+
+.footer-page-number {
+  position: absolute;
+  bottom: 10mm;
+  right: 25mm;
+  font-size: 10pt;
+  color: #666;
+}
+
+/* ===== PRINT (iframe) ===== */
+@page { size: A4 portrait; margin: 0; }
+
+html, body {
+  margin: 0 !important;
+  padding: 0 !important;
+  background: #fff !important;
+}
+
+* {
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+
+/* W iframe NIE robimy visibility:hidden na całe body — bo i tak drukujesz tylko iframe */
+.contract-a4-container {
+  background: #fff !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  min-height: auto !important;
+  box-shadow: none !important;
+}
+
+/* kluczowe: usuń “centrowanie” i dolny margines kartki, żeby nie było białych przesunięć */
+.contract-a4-page {
+  margin: 0 !important;
+  box-shadow: none !important;
+  width: 210mm !important;
+}
+
+/* ostatnia strona bez dokładania pustej */
+.contract-a4-page:last-child,
+.contract-a4-page:last-of-type {
+  page-break-after: auto !important;
+  break-after: auto !important;
+}
+
+/* ===== PATCH: zamiennik Tailwinda dla numeracji stron ===== */
+.contract-page-counter {
+  position: absolute;
+  bottom: 4mm;
+  left: 25mm;
+  right: 25mm;
+  text-align: center;
+  font-size: 10pt;
+  color: rgba(0,0,0,0.5);
+}
+`;
 
 type ContractStatus =
   | 'draft'
@@ -46,7 +277,9 @@ export function EventContractTab({ eventId }: { eventId: string }) {
   }>({});
   const [generatedPdfPath, setGeneratedPdfPath] = useState<string | null>(null);
   const [modifiedAfterGeneration, setModifiedAfterGeneration] = useState(false);
-  const [availableTemplates, setAvailableTemplates] = useState<Array<{ id: string; name: string }>>([]);
+  const [availableTemplates, setAvailableTemplates] = useState<Array<{ id: string; name: string }>>(
+    [],
+  );
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -487,22 +720,23 @@ export function EventContractTab({ eventId }: { eventId: string }) {
 
   const handlePrint = async () => {
     let currentContractId = contractId;
-
+  
+    // 1) upewnij się, że contract istnieje (zostawiam jak u Ciebie)
     if (!currentContractId) {
       if (!templateId) {
         showSnackbar('Brak szablonu umowy dla tej kategorii wydarzenia', 'error');
         return;
       }
-
+  
       try {
         const { data: eventData } = await supabase
           .from('events')
           .select('contact_person_id, organization_id')
           .eq('id', eventId)
           .single();
-
+  
         const clientId = eventData?.contact_person_id || eventData?.organization_id || null;
-
+  
         const { data: newContract, error: createError } = await supabase
           .from('contracts')
           .insert({
@@ -515,7 +749,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
           })
           .select('id')
           .single();
-
+  
         if (createError) throw createError;
         currentContractId = newContract.id;
         setContractId(newContract.id);
@@ -525,210 +759,52 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         return;
       }
     }
-
+  
+    // 2) PDF na backendzie (Chromium)
     try {
-      const { default: html2pdf } = await import('html2pdf.js');
-      const html2pdfFn: any = (html2pdf as any) || html2pdf;
-
-      // Pobierz kontener umowy
-      const contractContainer = document.querySelector('.contract-a4-container');
+      const contractContainer = document.querySelector('.contract-a4-container') as HTMLElement | null;
       if (!contractContainer) {
-        window.print();
+        showSnackbar('Nie znaleziono widoku umowy', 'error');
         return;
       }
-
-      // Tymczasowo usuń padding z kontenera dla czystego renderowania
-      const originalPadding = (contractContainer as HTMLElement).style.padding;
-      const originalBackground = (contractContainer as HTMLElement).style.background;
-      (contractContainer as HTMLElement).style.padding = '0';
-      (contractContainer as HTMLElement).style.background = 'white';
-
-      // Znajdź wszystkie elementy z przekreśleniem i dodaj inline realną linię
-      const strikethroughElements = contractContainer.querySelectorAll('s, strike, del');
-      const addedLines: HTMLElement[] = [];
-
-      strikethroughElements.forEach((el) => {
-        const htmlEl = el as HTMLElement;
-
-        // Ustaw element jako relative positioning i usuń natywne przekreślenie
-        htmlEl.style.position = 'relative';
-        htmlEl.style.display = 'inline-block';
-        htmlEl.style.textDecoration = 'none';
-
-        // Stwórz czarną linię przez środek tekstu
-        const line = document.createElement('span');
-        line.style.position = 'absolute';
-        line.style.left = '0';
-        line.style.right = '0';
-        line.style.top = '50%';
-        line.style.height = '1.5px';
-        line.style.backgroundColor = '#000';
-        line.style.marginTop = '-0.75px'; // połowa wysokości linii do wycentrowania
-        line.style.pointerEvents = 'none';
-
-        htmlEl.appendChild(line);
-        addedLines.push(line);
+  
+      const pagesHtml = contractContainer.innerHTML;
+  
+      // jeśli masz zamianę klas licznika stron – zostaw
+      const pagesHtmlForPrint = pagesHtml.replace(
+        /class="absolute bottom-4[^"]*text-\[#000\]\/50"/g,
+        'class="contract-page-counter"',
+      );
+  
+      const cssText = getContractCssForPrint();
+  
+      const res = await fetch('/api/events/contracts/generate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          eventId,
+          contractId: currentContractId,
+          pagesHtml: pagesHtmlForPrint,
+          cssText,
+          createdBy: employee?.id ?? null,
+          // fileName: `umowa-${eventId}.pdf` // opcjonalnie
+        }),
       });
-
-      // Zbierz wszystkie strony umowy i zapisz ich oryginalne style
-      const pages = contractContainer.querySelectorAll('.contract-a4-page');
-      const originalStyles: Array<{
-        marginBottom: string;
-        boxShadow: string;
-        minHeight: string;
-        height: string;
-        pageBreakAfter: string;
-        breakAfter: string;
-      }> = [];
-
-      pages.forEach((page, index) => {
-        const htmlPage = page as HTMLElement;
-        const isLastPage = index === pages.length - 1;
-
-        originalStyles[index] = {
-          marginBottom: htmlPage.style.marginBottom,
-          boxShadow: htmlPage.style.boxShadow,
-          minHeight: htmlPage.style.minHeight,
-          height: htmlPage.style.height,
-          pageBreakAfter: htmlPage.style.pageBreakAfter,
-          breakAfter: htmlPage.style.breakAfter,
-        };
-
-        // Optymalizuj style dla renderowania PDF
-        htmlPage.style.marginBottom = '0';
-        htmlPage.style.boxShadow = 'none';
-        htmlPage.style.minHeight = '';
-        htmlPage.style.height = '297mm';
-
-        // KLUCZOWE: Dla ostatniej strony użyj 'avoid', dla pozostałych 'auto'
-        // aby nie tworzyć pustych stron
-        if (isLastPage) {
-          htmlPage.style.pageBreakAfter = 'avoid';
-          htmlPage.style.breakAfter = 'avoid';
-        } else {
-          htmlPage.style.pageBreakAfter = 'auto';
-          htmlPage.style.breakAfter = 'auto';
-        }
-      });
-
-      // Funkcja pomocnicza do przywracania stylów
-      const restoreStyles = () => {
-        // Przywróć oryginalny padding i tło kontenera
-        (contractContainer as HTMLElement).style.padding = originalPadding;
-        (contractContainer as HTMLElement).style.background = originalBackground;
-
-        // Usuń dodane linie przekreślenia
-        addedLines.forEach((line) => {
-          line.remove();
-        });
-
-        // Resetuj style elementów przekreślonych - przywróć natywne przekreślenie
-        strikethroughElements.forEach((el) => {
-          const htmlEl = el as HTMLElement;
-          htmlEl.style.position = '';
-          htmlEl.style.display = '';
-          htmlEl.style.textDecoration = '';
-        });
-
-        // Przywróć oryginalne style stron
-        pages.forEach((page, index) => {
-          const htmlPage = page as HTMLElement;
-          const original = originalStyles[index];
-          if (original) {
-            htmlPage.style.marginBottom = original.marginBottom;
-            htmlPage.style.boxShadow = original.boxShadow;
-            htmlPage.style.minHeight = original.minHeight;
-            htmlPage.style.height = original.height;
-            htmlPage.style.pageBreakAfter = original.pageBreakAfter;
-            htmlPage.style.breakAfter = original.breakAfter;
-          }
-        });
-      };
-
-      let pdfBlob: Blob;
-
-      try {
-        // Opcje html2pdf - dostosowane do formatowania umowy A4
-        const opt: any = {
-          margin: 0, // Brak marginesów zewnętrznych, padding jest w CSS strony
-          filename: `umowa-${currentContractId}.pdf`,
-          image: { type: 'jpeg' as const, quality: 0.98 },
-          html2canvas: {
-            scale: 2,
-            useCORS: true,
-            scrollY: 0,
-            scrollX: 0,
-            windowWidth: 1200,
-            logging: false,
-            allowTaint: true,
-            foreignObjectRendering: false,
-            removeContainer: false,
-          },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-          // Bez pagebreak - pozwól html2pdf automatycznie dzielić długie strony
-        };
-
-        const worker = html2pdfFn().from(contractContainer).set(opt).toPdf();
-        pdfBlob = await worker.output('blob');
-      } finally {
-        // Zawsze przywróć style, nawet jeśli wystąpił błąd
-        restoreStyles();
+  
+      const json = await res.json();
+      if (!res.ok) {
+        console.error(json);
+        showSnackbar(json?.error || 'Błąd generowania PDF', 'error');
+        return;
       }
-
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-      const fileName = `umowa-${timestamp}.pdf`;
-      const storagePath = `${eventId}/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('event-files')
-        .upload(storagePath, pdfBlob, {
-          contentType: 'application/pdf',
-          upsert: false,
-        });
-
-      if (!uploadError) {
-        const { data: folderId } = await supabase.rpc('get_or_create_documents_subfolder', {
-          p_event_id: eventId,
-          p_subfolder_name: 'Umowy',
-          p_required_permission: 'contracts_manage',
-          p_created_by: employee?.id,
-        });
-
-        await supabase.from('event_files').insert([
-          {
-            event_id: eventId,
-            folder_id: folderId,
-            name: fileName,
-            original_name: fileName,
-            file_path: storagePath,
-            file_size: pdfBlob.size,
-            mime_type: 'application/pdf',
-            document_type: 'contract',
-            thumbnail_url: null,
-            uploaded_by: employee?.id,
-          },
-        ]);
-
-        await supabase
-          .from('contracts')
-          .update({
-            generated_pdf_path: storagePath,
-            generated_pdf_at: new Date().toISOString(),
-            modified_after_generation: false,
-          })
-          .eq('id', currentContractId);
-
-        setGeneratedPdfPath(storagePath);
-        setModifiedAfterGeneration(false);
-
-        showSnackbar('Umowa PDF została zapisana w zakładce Pliki', 'success');
-      }
-
-      const previewUrl = URL.createObjectURL(pdfBlob);
-      window.open(previewUrl, '_blank');
-    } catch (err) {
-      console.error('Error generating PDF:', err);
-      window.print();
+  
+      // odśwież dane umowy (żeby złapać generated_pdf_path)
+      await fetchContractData();
+  
+      showSnackbar('PDF umowy został wygenerowany i zapisany w Dokumenty → Umowy', 'success');
+    } catch (e) {
+      console.error(e);
+      showSnackbar('Błąd generowania PDF', 'error');
     }
   };
 
