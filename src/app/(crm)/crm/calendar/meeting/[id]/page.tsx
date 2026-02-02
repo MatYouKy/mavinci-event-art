@@ -5,10 +5,8 @@ import { useRouter, useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
 import { ArrowLeft, Save, Trash2, Calendar, MapPin, Users, FileText, Clock } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import {
-  utcToLocalDatetimeString,
-  localDatetimeStringToUTC,
-} from '@/lib/utils/dateTimeUtils';
+import { utcToLocalDatetimeString, localDatetimeStringToUTC } from '@/lib/utils/dateTimeUtils';
+import { useDialog } from '@/contexts/DialogContext';
 
 interface Meeting {
   event_id: any;
@@ -52,6 +50,7 @@ interface Meeting {
 }
 
 export default function MeetingDetailPage() {
+  const { showConfirm } = useDialog();
   const params = useParams();
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
@@ -132,17 +131,23 @@ export default function MeetingDetailPage() {
   };
 
   const handleSave = async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
     try {
       setSaving(true);
 
       const { error: updateError } = await supabase
         .from('meetings')
         .update({
+          created_by: session?.user?.id,
           title: formData.title,
           location_id: formData.location_id,
           location_text: formData.location_text || null,
           datetime_start: localDatetimeStringToUTC(formData.datetime_start),
-          datetime_end: formData.datetime_end ? localDatetimeStringToUTC(formData.datetime_end) : null,
+          datetime_end: formData.datetime_end
+            ? localDatetimeStringToUTC(formData.datetime_end)
+            : null,
           notes: formData.notes || null,
           color: formData.color,
           is_all_day: formData.is_all_day,
@@ -184,16 +189,12 @@ export default function MeetingDetailPage() {
   };
 
   const handleDelete = async () => {
-    if (!confirm('Czy na pewno chcesz usunąć to spotkanie?')) return;
+    if (!(await showConfirm('Czy na pewno chcesz usunąć to spotkanie?'))) return;
 
     try {
-      const { error } = await supabase
-        .from('meetings')
-        .update({ deleted_at: new Date().toISOString() })
-        .eq('id', meetingId);
-
+      const { error } = await supabase.from('meetings').delete().eq('id', meetingId);
       if (error) throw error;
-
+      await fetchMeeting();
       showSnackbar('Spotkanie zostało usunięte', 'success');
       router.push('/crm/calendar');
     } catch (error: any) {
