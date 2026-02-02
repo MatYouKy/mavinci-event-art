@@ -7,6 +7,7 @@ import LocationAutocomplete from './LocationAutocomplete';
 import RelatedEventsSelector from './RelatedEventsSelector';
 import { useCreateMeetingMutation } from '@/store/api/calendarApi';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { localDatetimeStringToUTC } from '@/lib/utils/dateTimeUtils';
 
 interface NewMeetingModalProps {
   isOpen: boolean;
@@ -122,11 +123,14 @@ export default function NewMeetingModal({
     setIsSaving(true);
 
     try {
-      const datetimeStart = isAllDay ? `${dateStart}T00:00:00Z` : `${dateStart}T${timeStart}:00Z`;
+      // Konwertuj czas lokalny na UTC używając pomocniczej funkcji
+      const datetimeStart = isAllDay
+        ? `${dateStart}T00:00:00Z`
+        : localDatetimeStringToUTC(`${dateStart}T${timeStart}`);
 
       const datetimeEnd =
         dateEnd && !isAllDay
-          ? `${dateEnd}T${timeEnd}:00Z`
+          ? localDatetimeStringToUTC(`${dateEnd}T${timeEnd}`)
           : isAllDay
             ? `${dateEnd || dateStart}T23:59:59Z`
             : null;

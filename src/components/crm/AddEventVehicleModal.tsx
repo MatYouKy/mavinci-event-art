@@ -14,6 +14,10 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import {
+  utcToLocalDatetimeString,
+  localDatetimeStringToUTC,
+} from '@/lib/utils/dateTimeUtils';
 
 interface AddEventVehicleModalProps {
   eventId: string;
@@ -190,7 +194,7 @@ export default function AddEventVehicleModal({
         external_trailer_name: data.external_trailer_name || '',
         external_trailer_company: data.external_trailer_company || '',
         external_trailer_rental_cost: data.external_trailer_rental_cost?.toString() || '',
-        external_trailer_return_date: data.external_trailer_return_date || '',
+        external_trailer_return_date: utcToLocalDatetimeString(data.external_trailer_return_date) || '',
         external_trailer_return_location: data.external_trailer_return_location || '',
         external_trailer_notes: data.external_trailer_notes || '',
       });
@@ -390,7 +394,9 @@ export default function AddEventVehicleModal({
           insertData.external_trailer_company = formData.external_trailer_company || null;
           insertData.external_trailer_rental_cost =
             parseFloat(formData.external_trailer_rental_cost) || null;
-          insertData.external_trailer_return_date = formData.external_trailer_return_date || null;
+          insertData.external_trailer_return_date = formData.external_trailer_return_date
+            ? localDatetimeStringToUTC(formData.external_trailer_return_date)
+            : null;
           insertData.external_trailer_return_location =
             formData.external_trailer_return_location || null;
           insertData.external_trailer_notes = formData.external_trailer_notes || null;

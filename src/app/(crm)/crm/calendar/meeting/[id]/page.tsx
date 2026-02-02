@@ -5,6 +5,10 @@ import { useRouter, useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
 import { ArrowLeft, Save, Trash2, Calendar, MapPin, Users, FileText, Clock } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import {
+  utcToLocalDatetimeString,
+  localDatetimeStringToUTC,
+} from '@/lib/utils/dateTimeUtils';
 
 interface Meeting {
   event_id: any;
@@ -106,8 +110,8 @@ export default function MeetingDetailPage() {
         title: data.title,
         location_id: data.location_id,
         location_text: data.location_text || '',
-        datetime_start: data.datetime_start,
-        datetime_end: data.datetime_end || '',
+        datetime_start: utcToLocalDatetimeString(data.datetime_start),
+        datetime_end: utcToLocalDatetimeString(data.datetime_end) || '',
         notes: data.notes || '',
         color: data.color,
         is_all_day: data.is_all_day,
@@ -137,8 +141,8 @@ export default function MeetingDetailPage() {
           title: formData.title,
           location_id: formData.location_id,
           location_text: formData.location_text || null,
-          datetime_start: formData.datetime_start,
-          datetime_end: formData.datetime_end || null,
+          datetime_start: localDatetimeStringToUTC(formData.datetime_start),
+          datetime_end: formData.datetime_end ? localDatetimeStringToUTC(formData.datetime_end) : null,
           notes: formData.notes || null,
           color: formData.color,
           is_all_day: formData.is_all_day,
@@ -306,7 +310,7 @@ export default function MeetingDetailPage() {
               {isEditing ? (
                 <input
                   type="datetime-local"
-                  value={formData.datetime_start.slice(0, 16)}
+                  value={formData.datetime_start}
                   onChange={(e) => setFormData({ ...formData, datetime_start: e.target.value })}
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#13161f] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 />
@@ -323,7 +327,7 @@ export default function MeetingDetailPage() {
               {isEditing ? (
                 <input
                   type="datetime-local"
-                  value={formData.datetime_end ? formData.datetime_end.slice(0, 16) : ''}
+                  value={formData.datetime_end || ''}
                   onChange={(e) => setFormData({ ...formData, datetime_end: e.target.value })}
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#13161f] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 />
