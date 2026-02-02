@@ -52,7 +52,7 @@ export const getEventsForDate = (date: Date, events: CalendarEvent[]): CalendarE
 export const getEventsForDateRange = (
   startDate: Date,
   endDate: Date,
-  events: CalendarEvent[]
+  events: CalendarEvent[],
 ): CalendarEvent[] => {
   return events.filter((event) => {
     const eventStart = new Date(event.event_date);
@@ -88,11 +88,19 @@ export const formatDate = (date: Date | string, options?: Intl.DateTimeFormatOpt
   return d.toLocaleDateString('pl-PL', options);
 };
 
-export const formatDateRange = (startDate: Date | string, endDate?: Date | string | null): string => {
+export const formatDateRange = (
+  startDate: Date | string,
+  endDate?: Date | string | null,
+): string => {
   const start = typeof startDate === 'string' ? new Date(startDate) : startDate;
 
   if (!endDate) {
-    return formatDate(start, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    return formatDate(start, {
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   }
 
   const end = typeof endDate === 'string' ? new Date(endDate) : endDate;
