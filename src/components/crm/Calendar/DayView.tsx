@@ -36,7 +36,7 @@ export default function DayView({
               {HOURS.map((hour) => (
                 <div
                   key={hour}
-                  className="h-[80px] flex items-start justify-end pr-3 text-sm text-[#e5e4e2]/40 border-b border-[#d3bb73]/5 pt-1"
+                  className="h-[60px] flex items-start justify-end pr-3 text-sm text-[#e5e4e2]/40 border-b border-[#d3bb73]/5 pt-1"
                 >
                   {hour.toString().padStart(2, '0')}:00
                 </div>
@@ -47,7 +47,7 @@ export default function DayView({
               {HOURS.map((hour) => (
                 <div
                   key={hour}
-                  className="h-[80px] border-b border-[#d3bb73]/5 hover:bg-[#d3bb73]/5 transition-colors cursor-pointer"
+                  className="h-[60px] border-b border-[#d3bb73]/5 hover:bg-[#d3bb73]/5 transition-colors cursor-pointer"
                   onClick={() => onDateClick(currentDate)}
                 />
               ))}

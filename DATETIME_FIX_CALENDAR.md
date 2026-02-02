@@ -126,6 +126,47 @@ Te pliki **NIE wymagały zmian** - już używają funkcji konwersji:
 ## Dokumentacja funkcji
 Pełna dokumentacja w `/src/lib/utils/DATETIME_USAGE.md`
 
+## Problem #2: Błędna pozycja spotkania na timeline (2026-02-02)
+
+### Problem
+Spotkanie utworzone na 14:04 wyświetlało się poprawnie w liście wydarzeń (14:04 - 14:24), ale na timeline było źle umieszczone między 10:30 a 11:00.
+
+### Przyczyna
+**Niezgodność wysokości godziny** między widokami:
+- **DayView**: używał `h-[80px]` dla każdej godziny
+- **WeekView**: używał `h-[60px]` dla każdej godziny
+- **getEventPosition()**: kalkulował pozycję używając `60px`
+
+### Kalkulacja błędnej pozycji
+```typescript
+// Dla spotkania o 14:04:
+const top = (14 + 4/60) * 60 = 844px
+
+// Ale DayView używał 80px na godzinę:
+// Godzina 08:00 = 8 * 80 = 640px
+// 844 - 640 = 204px od 08:00
+// 204px / 80px = 2.55 godziny
+// 08:00 + 2.55h ≈ 10:33 ❌
+```
+
+### Rozwiązanie
+Ujednolicono wysokość godziny na **60px** w DayView (jak w WeekView).
+
+**Zmieniony plik:** `/src/components/crm/Calendar/DayView.tsx`
+- Linia 39: `h-[80px]` → `h-[60px]` (lewa kolumna z godzinami)
+- Linia 50: `h-[80px]` → `h-[60px]` (główna kolumna timeline)
+
+### Po poprawce
+```typescript
+// Dla spotkania o 14:04:
+const top = (14 + 4/60) * 60 = 844px
+
+// DayView teraz używa 60px na godzinę:
+// Godzina 08:00 = 8 * 60 = 480px
+// Godzina 14:00 = 14 * 60 = 840px
+// Spotkanie o 14:04 = 844px ✅
+```
+
 ## Wersja
 Data: 2026-02-02
-Status: Zaimplementowano i przetestowano
+Status: Zaimplementowano i przetestowano - wszystkie problemy naprawione
