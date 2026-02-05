@@ -26,6 +26,8 @@ import {
   useUpdateTaskMutation,
   useDeleteTaskMutation,
 } from '@/store/api/tasksApi';
+import { IEmployee } from '@/app/(crm)/crm/employees/type';
+import { useEmployees } from '../employees/hooks/useEmployees';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -105,48 +107,52 @@ const TaskColumn = memo(function TaskColumn({
       <div
         className={`flex-1 overflow-y-auto ${isMobile ? '-mr-1 space-y-2 pr-1' : '-mr-2 space-y-3 pr-2'}`}
       >
-        {tasks.map((task) => (
-          <div
-            key={task.id}
-            draggable
-            onDragStart={() => onDragStart(task)}
-            onDragEnd={onDragEnd}
-            className="cursor-move"
-          >
-            <TaskCard
-              task={task}
-              isDragging={draggedTask?.id === task.id}
-              canManage={canManage}
-              showDragHandle={true}
-              onEdit={onEdit}
-              onDelete={onDelete}
-              additionalActions={
-                <button
-                  onClick={() => onStartTimer(task)}
-                  disabled={activeTimer?.task_id === task.id}
-                  className={`flex w-full items-center justify-center gap-1 rounded px-2 py-1 text-xs transition-colors ${
-                    activeTimer?.task_id === task.id
-                      ? 'cursor-default bg-green-500/20 text-green-400'
-                      : 'bg-[#d3bb73]/10 text-[#d3bb73] hover:bg-[#d3bb73]/20'
-                  }`}
-                  title={activeTimer?.task_id === task.id ? 'Timer aktywny' : 'Rozpocznij zadanie'}
-                >
-                  {activeTimer?.task_id === task.id ? (
-                    <>
-                      <Clock className="h-3 w-3 animate-pulse" />
-                      <span>Aktywny</span>
-                    </>
-                  ) : (
-                    <>
-                      <Play className="h-3 w-3" />
-                      <span>Rozpocznij</span>
-                    </>
-                  )}
-                </button>
-              }
-            />
-          </div>
-        ))}
+        {tasks.map((task) => {
+          return (
+            <div
+              key={task.id}
+              draggable
+              onDragStart={() => onDragStart(task)}
+              onDragEnd={onDragEnd}
+              className="cursor-move"
+            >
+              <TaskCard
+                task={task}
+                isDragging={draggedTask?.id === task.id}
+                canManage={canManage}
+                showDragHandle={true}
+                onEdit={onEdit}
+                onDelete={onDelete}
+                additionalActions={
+                  <button
+                    onClick={() => onStartTimer(task)}
+                    disabled={activeTimer?.task_id === task.id}
+                    className={`flex w-full items-center justify-center gap-1 rounded px-2 py-1 text-xs transition-colors ${
+                      activeTimer?.task_id === task.id
+                        ? 'cursor-default bg-green-500/20 text-green-400'
+                        : 'bg-[#d3bb73]/10 text-[#d3bb73] hover:bg-[#d3bb73]/20'
+                    }`}
+                    title={
+                      activeTimer?.task_id === task.id ? 'Timer aktywny' : 'Rozpocznij zadanie'
+                    }
+                  >
+                    {activeTimer?.task_id === task.id ? (
+                      <>
+                        <Clock className="h-3 w-3 animate-pulse" />
+                        <span>Aktywny</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play className="h-3 w-3" />
+                        <span>Rozpocznij</span>
+                      </>
+                    )}
+                  </button>
+                }
+              />
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -176,7 +182,7 @@ interface Task {
   } | null;
   task_assignees: {
     employee_id: string;
-    employees: { name: string; surname: string; avatar_url: string | null; avatar_metadata?: any };
+    employees: IEmployee;
   }[];
 }
 
@@ -258,7 +264,7 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
     if (currentEmployee) {
       checkActiveTimer();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentEmployee]);
 
   useEffect(() => {

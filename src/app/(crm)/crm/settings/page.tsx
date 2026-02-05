@@ -16,6 +16,8 @@ import {
   ArrowRight,
   Mail,
   Plus,
+  List,
+  Table2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -23,11 +25,13 @@ import ChangePasswordModal from '@/components/crm/ChangePasswordModal';
 import AddSystemEmailModal from '@/components/crm/AddSystemEmailModal';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
-interface ViewModePreference {
-  viewMode: 'list' | 'grid';
+export type ViewMode = 'list' | 'grid' | 'table';
+
+export interface ViewModePreference {
+  viewMode: ViewMode;
 }
 
-interface NotificationPreferences {
+export interface NotificationPreferences {
   email: boolean;
   push: boolean;
   soundEnabled: boolean;
@@ -40,13 +44,15 @@ interface NotificationPreferences {
   };
 }
 
-interface Preferences {
+export interface Preferences {
   clients?: ViewModePreference;
   equipment?: ViewModePreference;
   events?: ViewModePreference;
   tasks?: ViewModePreference;
   offers?: ViewModePreference;
   contracts?: ViewModePreference;
+  fleet?: ViewModePreference;
+  employees?: ViewModePreference;
   notifications?: NotificationPreferences;
 }
 
@@ -57,6 +63,8 @@ const modules = [
   { key: 'tasks', label: 'Zadania' },
   { key: 'offers', label: 'Oferty' },
   { key: 'contracts', label: 'Umowy' },
+  { key: 'fleet', label: 'Flota' },
+  { key: 'employees', label: 'Pracownicy' },
 ];
 
 export default function SettingsPage() {
@@ -152,7 +160,7 @@ export default function SettingsPage() {
     }
   };
 
-  const updateViewMode = (module: string, viewMode: 'list' | 'grid') => {
+  const updateViewMode = (module: string, viewMode: 'list' | 'grid' | 'table') => {
     setPreferences((prev) => ({
       ...prev,
       [module]: { viewMode },
@@ -223,6 +231,8 @@ export default function SettingsPage() {
     }
   };
 
+  console.log('preferences', preferences);
+console.log('employee', employee);
   if (employeeLoading || loading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
@@ -293,7 +303,7 @@ export default function SettingsPage() {
           )}
         </button>
 
-        <button
+        {employee?.permissions?.includes('admin') && <button
           onClick={() => setActiveTab('system-email')}
           className={`relative px-4 py-3 text-sm font-medium transition-colors ${
             activeTab === 'system-email'
@@ -309,8 +319,8 @@ export default function SettingsPage() {
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
           )}
         </button>
-
-        <button
+        }
+        {employee?.permissions?.includes('admin') && <button
           onClick={() => setActiveTab('admin')}
           className={`relative px-4 py-3 text-sm font-medium transition-colors ${
             activeTab === 'admin' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
@@ -324,6 +334,7 @@ export default function SettingsPage() {
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
           )}
         </button>
+        }
       </div>
 
       {activeTab === 'general' && (
@@ -347,8 +358,8 @@ export default function SettingsPage() {
                     <button
                       onClick={() => updateViewMode(module.key, 'list')}
                       className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-colors ${
-                        preferences[module.key as keyof Preferences]?.viewMode === 'list' ||
-                        !preferences[module.key as keyof Preferences]?.viewMode
+                        (preferences[module.key as keyof Preferences] as any)?.viewMode === 'list' ||
+                        !(preferences[module.key as keyof Preferences] as any)?.viewMode
                           ? 'bg-[#d3bb73] text-[#1c1f33]'
                           : 'bg-[#1c1f33] text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
                       }`}
@@ -360,13 +371,24 @@ export default function SettingsPage() {
                     <button
                       onClick={() => updateViewMode(module.key, 'grid')}
                       className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-colors ${
-                        preferences[module.key as keyof Preferences]?.viewMode === 'grid'
+                        (preferences[module.key] as any)?.viewMode === 'grid'
                           ? 'bg-[#d3bb73] text-[#1c1f33]'
                           : 'bg-[#1c1f33] text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
                       }`}
                     >
                       <LayoutGrid className="h-4 w-4" />
                       Kafelki
+                    </button>
+                    <button
+                      onClick={() => updateViewMode(module.key, 'table')}
+                      className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-colors ${
+                        (preferences[module.key] as any)?.viewMode === 'table'
+                          ? 'bg-[#d3bb73] text-[#1c1f33]'
+                          : 'bg-[#1c1f33] text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+                      }`}
+                    >
+                      <Table2 className="h-4 w-4" />
+                      Tabela
                     </button>
                   </div>
                 </div>

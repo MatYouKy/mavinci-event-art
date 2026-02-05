@@ -26,7 +26,6 @@ export default async function MessagesPage() {
   if (!employeeData) redirect('/crm');
 
   const permissions = employeeData.permissions || [];
-  console.log('permissions', permissions);
   const canManage = permissions.includes('messages_manage') || permissions.includes('admin');
   const canView = permissions.includes('messages_view') || canManage;
 

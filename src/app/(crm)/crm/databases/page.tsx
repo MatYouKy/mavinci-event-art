@@ -1,23 +1,41 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Database as DatabaseIcon, Search, Trash2, Users, X } from 'lucide-react';
-import { useGetDatabasesQuery, useCreateDatabaseMutation, useDeleteDatabaseMutation } from './api/databasesApi';
+import {
+  useGetDatabasesQuery,
+  useCreateDatabaseMutation,
+  useDeleteDatabaseMutation,
+} from './api/databasesApi';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { Loader } from '@/components/UI/Loader';
 import { supabase } from '@/lib/supabase/browser';
+import { EmployeeAvatar } from '@/components/EmployeeAvatar';
+import { IEmployee } from '../employees/type';
+
+type ShareRow = {
+  share_id: string;
+  database_id: string;
+  employee_id: string;
+  shared_by: string;
+  can_edit_records: boolean;
+  employee: Partial<IEmployee> | null;
+};
 
 export default function DatabasesPage() {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
-  const { canManageModule, isAdmin } = useCurrentEmployee();
+  const { canManageModule, canViewModule, isAdmin, employee } = useCurrentEmployee();
+
   const canManage = canManageModule('databases');
+  const canView = canViewModule('databases');
 
   const { data: databases = [], isLoading } = useGetDatabasesQuery();
+
   const [createDatabase] = useCreateDatabaseMutation();
   const [deleteDatabase] = useDeleteDatabaseMutation();
 
@@ -25,9 +43,10 @@ export default function DatabasesPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [newDatabaseName, setNewDatabaseName] = useState('');
   const [newDatabaseDescription, setNewDatabaseDescription] = useState('');
+
   const [sharingDatabaseId, setSharingDatabaseId] = useState<string | null>(null);
-  const [employees, setEmployees] = useState<any[]>([]);
-  const [shares, setShares] = useState<any[]>([]);
+  const [employees, setEmployees] = useState<Partial<IEmployee>[]>([]);
+  const [shares, setShares] = useState<Partial<ShareRow>[]>([]);
   const [loadingShares, setLoadingShares] = useState(false);
 
   const filteredDatabases = databases.filter(
@@ -80,18 +99,72 @@ export default function DatabasesPage() {
     setLoadingShares(true);
 
     try {
-      const { data: employeesData } = await supabase
+      // 1) wszyscy pracownicy do listy wyboru (bez adminów)
+      const { data: employeesData, error: employeesError } = await supabase
         .from('employees')
-        .select('id, name, surname, avatar_url')
+        .select('id, auth_user_id, name, surname, avatar_url, avatar_metadata')
+        .neq('role', 'admin')
         .order('name');
 
-      const { data: sharesData } = await supabase
-        .from('database_shares')
-        .select('id, employee_id, can_edit_records, employees(name, surname, avatar_url)')
-        .eq('database_id', databaseId);
+      if (employeesError) throw employeesError;
 
-      setEmployees(employeesData || []);
-      setShares(sharesData || []);
+      // 2) udostępnienia + join do employees (żeby mieć avatar/nazwę)
+      const { data: sharesData, error: sharesError } = await supabase
+      .from('database_shares')
+      .select(
+        `
+          id,
+          database_id,
+          employee_id,
+          shared_by,
+          can_edit_records,
+          employee:employees!database_shares_employee_id_fkey (
+            id,
+            auth_user_id,
+            name,
+            surname,
+            avatar_url,
+            avatar_metadata
+          )
+        `,
+      )
+      .eq('database_id', databaseId);
+
+      if (sharesError) throw sharesError;
+
+      const mappedEmployees: Partial<IEmployee>[] = (employeesData || []).map((e: any) => ({
+        id: e.id,
+        auth_user_id: e.auth_user_id ?? null,
+        name: e.name ?? null,
+        surname: e.surname ?? null,
+        avatar_url: e.avatar_url ?? null,
+        avatar_metadata: e.avatar_metadata ?? null,
+      }));
+
+      const mappedShares: ShareRow[] = (sharesData || []).map((s: any) => ({
+        share_id: s.id,
+        database_id: s.database_id,
+        employee_id: s.employee_id,
+        shared_by: s.shared_by,
+        can_edit_records: !!s.can_edit_records,
+        employee: s.employee
+          ? {
+              id: s.employee.id,
+              auth_user_id: s.employee.auth_user_id ?? null,
+              name: s.employee.name ?? null,
+              surname: s.employee.surname ?? null,
+              avatar_url: s.employee.avatar_url ?? null,
+              avatar_metadata: s.employee.avatar_metadata ?? null,
+            }
+          : null,
+      }));
+
+      // odfiltruj z listy wyboru tych, którzy już mają share
+      const sharedEmployeeIds = new Set(mappedShares.map((s) => s.employee_id));
+      const availableEmployees = mappedEmployees.filter((e) => !sharedEmployeeIds.has(e.id));
+
+      setEmployees(availableEmployees);
+      setShares(mappedShares);
     } catch (error) {
       console.error('Error fetching sharing data:', error);
       showSnackbar('Błąd podczas ładowania danych udostępniania', 'error');
@@ -103,17 +176,35 @@ export default function DatabasesPage() {
   const handleShareDatabase = async (employeeId: string) => {
     if (!sharingDatabaseId) return;
 
+    const target = employees.find((e) => e.id === employeeId);
+
     try {
-      const { error } = await supabase.from('database_shares').insert({
+      // 1) insert do database_shares (po employee.id)
+      const { error: insErr } = await supabase.from('database_shares').insert({
         database_id: sharingDatabaseId,
         employee_id: employeeId,
         can_edit_records: false,
       });
+      if (insErr) throw insErr;
 
-      if (error) throw error;
+      // 2) update custom_databases.shared_user_ids (po auth uid jako text)
+      const { data: db, error: dbErr } = await supabase
+        .from('custom_databases')
+        .select('shared_user_ids')
+        .eq('id', sharingDatabaseId)
+        .single();
+      if (dbErr) throw dbErr;
+
+      const next = [...new Set([...(db?.shared_user_ids || []), target?.id || ''])];
+
+      const { error: updErr } = await supabase
+        .from('custom_databases')
+        .update({ shared_user_ids: next })
+        .eq('id', sharingDatabaseId);
+      if (updErr) throw updErr;
 
       showSnackbar('Baza danych udostępniona', 'success');
-      handleOpenSharing(sharingDatabaseId);
+      await handleOpenSharing(sharingDatabaseId);
     } catch (error: any) {
       console.error('Error sharing database:', error);
       if (error?.code === '23505') {
@@ -124,16 +215,48 @@ export default function DatabasesPage() {
     }
   };
 
-  const handleRevokeShare = async (shareId: string) => {
-    if (!sharingDatabaseId) return;
+  const handleRevokeShare = async (databaseId: string, employeeId: string) => {
+    const confirmed = await showConfirm(`Czy na pewno chcesz odebrać dostęp do bazy danych?`, 'Odbierz');
+    if (!confirmed) return;
+
+    if (!databaseId || !employeeId) return;
 
     try {
-      const { error } = await supabase.from('database_shares').delete().eq('id', shareId);
+      // 1) usuń share
+      const { error: delErr } = await supabase
+        .from('database_shares')
+        .delete()
+        .eq('database_id', databaseId)
+        .eq('employee_id', employeeId);
+      if (delErr) throw delErr;
 
-      if (error) throw error;
+      // 2) usuń auth uid z shared_user_ids
+      const { data: empRow, error: empErr } = await supabase
+        .from('employees')
+        .select('id, auth_user_id')
+        .eq('id', employeeId)
+        .single();
+      if (empErr) throw empErr;
+
+      const authIdToRemove = (empRow?.auth_user_id || empRow?.id || '').toString();
+
+      const { data: db, error: dbErr } = await supabase
+        .from('custom_databases')
+        .select('shared_user_ids')
+        .eq('id', databaseId)
+        .single();
+      if (dbErr) throw dbErr;
+
+      const next = (db?.shared_user_ids || []).filter((id: string) => id !== authIdToRemove);
+
+      const { error: updErr } = await supabase
+        .from('custom_databases')
+        .update({ shared_user_ids: next })
+        .eq('id', databaseId);
+      if (updErr) throw updErr;
 
       showSnackbar('Dostęp odebrany', 'success');
-      handleOpenSharing(sharingDatabaseId);
+      await handleOpenSharing(databaseId);
     } catch (error) {
       console.error('Error revoking share:', error);
       showSnackbar('Błąd podczas odbierania dostępu', 'error');
@@ -146,9 +269,7 @@ export default function DatabasesPage() {
     setShares([]);
   };
 
-  if (isLoading) {
-    return <Loader />;
-  }
+  if (isLoading) return <Loader />;
 
   return (
     <div className="h-full overflow-y-auto bg-[#0f1119] p-6">
@@ -156,9 +277,7 @@ export default function DatabasesPage() {
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-[#e5e4e2]">Bazy Danych</h1>
-            <p className="mt-1 text-sm text-[#e5e4e2]/60">
-              Zarządzaj własnymi bazami danych w formie arkusza
-            </p>
+            <p className="mt-1 text-sm text-[#e5e4e2]/60">Zarządzaj własnymi bazami danych w formie arkusza</p>
           </div>
           {canManage && (
             <button
@@ -315,49 +434,60 @@ export default function DatabasesPage() {
                 </div>
               ) : (
                 <>
-                  <div className="mb-6">
+                  <div className="max-h-64 space-y-2 overflow-y-auto">
                     <h3 className="mb-3 text-sm font-medium text-[#e5e4e2]">Udostępniono dla:</h3>
+
                     {shares.length === 0 ? (
-                      <p className="text-sm text-[#e5e4e2]/60">
-                        Ta baza danych nie jest jeszcze nikomu udostępniona
-                      </p>
+                      <p className="text-sm text-[#e5e4e2]/60">Ta baza danych nie jest jeszcze nikomu udostępniona</p>
                     ) : (
                       <div className="space-y-2">
-                        {shares.map((share: any) => (
-                          <div
-                            key={share.id}
-                            className="flex items-center justify-between rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-3"
-                          >
-                            <div className="flex items-center gap-3">
-                              {share.employees?.avatar_url ? (
-                                <img
-                                  src={share.employees.avatar_url}
-                                  alt=""
-                                  className="h-8 w-8 rounded-full object-cover"
-                                />
-                              ) : (
-                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#d3bb73]/20 text-xs font-medium text-[#d3bb73]">
-                                  {share.employees?.name?.[0]}
-                                  {share.employees?.surname?.[0]}
-                                </div>
-                              )}
-                              <div>
-                                <div className="text-sm font-medium text-[#e5e4e2]">
-                                  {share.employees?.name} {share.employees?.surname}
-                                </div>
-                                <div className="text-xs text-[#e5e4e2]/60">
-                                  {share.can_edit_records ? 'Może edytować dane' : 'Tylko odczyt'}
+                        {shares.map((share) => {
+                          const emp = share.employee;
+                          const name = emp?.name || '';
+                          const surname = emp?.surname || '';
+
+                          return (
+                            <div
+                              key={share.share_id}
+                              className="flex items-center justify-between rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-3"
+                            >
+                              <div className="flex items-center gap-3">
+                                {emp?.avatar_url ? (
+                                  <EmployeeAvatar
+                                    avatarUrl={emp.avatar_url}
+                                    avatarMetadata={emp.avatar_metadata}
+                                    employeeName={`${name} ${surname}`}
+                                    employee={emp as IEmployee}
+                                    size={40}
+                                  />
+                                ) : (
+                                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#d3bb73]/20 text-xs font-medium text-[#d3bb73]">
+                                    {(name?.[0] || '') + (surname?.[0] || '')}
+                                  </div>
+                                )}
+
+                                <div>
+                                  <div className="text-sm font-medium text-[#e5e4e2]">
+                                    {name} {surname}
+                                  </div>
+                                  <div className="text-xs text-[#e5e4e2]/60">
+                                    {share.can_edit_records ? 'Może edytować dane' : 'Tylko odczyt'}
+                                  </div>
                                 </div>
                               </div>
+
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRevokeShare(share.database_id, share.employee_id);
+                                }}
+                                className="rounded-lg px-3 py-1.5 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/10"
+                              >
+                                Odbierz
+                              </button>
                             </div>
-                            <button
-                              onClick={() => handleRevokeShare(share.id)}
-                              className="rounded-lg px-3 py-1.5 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/10"
-                            >
-                              Odbierz
-                            </button>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -365,33 +495,32 @@ export default function DatabasesPage() {
                   <div className="border-t border-[#d3bb73]/10 pt-6">
                     <h3 className="mb-3 text-sm font-medium text-[#e5e4e2]">Udostępnij pracownikowi:</h3>
                     <div className="max-h-64 space-y-2 overflow-y-auto">
-                      {employees
-                        .filter((emp) => !shares.some((share: any) => share.employee_id === emp.id))
-                        .map((employee) => (
-                          <button
-                            key={employee.id}
-                            onClick={() => handleShareDatabase(employee.id)}
-                            className="flex w-full items-center gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-3 text-left transition-colors hover:border-[#d3bb73]/30 hover:bg-[#0f1119]/80"
-                          >
-                            {employee.avatar_url ? (
-                              <img
-                                src={employee.avatar_url}
-                                alt=""
-                                className="h-8 w-8 rounded-full object-cover"
-                              />
-                            ) : (
-                              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#d3bb73]/20 text-xs font-medium text-[#d3bb73]">
-                                {employee.name[0]}
-                                {employee.surname[0]}
-                              </div>
-                            )}
-                            <div>
-                              <div className="text-sm font-medium text-[#e5e4e2]">
-                                {employee.name} {employee.surname}
-                              </div>
+                      {employees.map((emp) => (
+                        <button
+                          key={emp.id}
+                          onClick={() => handleShareDatabase(emp.id)}
+                          className="flex w-full items-center gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-3 text-left transition-colors hover:border-[#d3bb73]/30 hover:bg-[#0f1119]/80"
+                        >
+                          {emp.avatar_url ? (
+                            <EmployeeAvatar
+                              avatarUrl={emp.avatar_url}
+                              avatarMetadata={emp.avatar_metadata}
+                              employeeName={`${emp.name || ''} ${emp.surname || ''}`}
+                              employee={emp as IEmployee}
+                              size={40}
+                            />
+                          ) : (
+                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#d3bb73]/20 text-xs font-medium text-[#d3bb73]">
+                              {(emp.name?.[0] || '') + (emp.surname?.[0] || '')}
                             </div>
-                          </button>
-                        ))}
+                          )}
+                          <div>
+                            <div className="text-sm font-medium text-[#e5e4e2]">
+                              {emp.name} {emp.surname}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
                     </div>
                   </div>
                 </>

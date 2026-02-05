@@ -40,8 +40,10 @@ export default function DatabaseDetailPage() {
   const databaseId = params.id as string;
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
-  const { canManageModule, isAdmin } = useCurrentEmployee();
+  const { canManageModule, canViewModule, isAdmin } = useCurrentEmployee();
   const canManage = canManageModule('databases');
+  const canView = canViewModule('databases');
+  console.log('canView', canView);
 
   const { data: database, isLoading: isLoadingDatabase } = useGetDatabaseByIdQuery(databaseId);
   const { data: columns = [], isLoading: isLoadingColumns } = useGetDatabaseColumnsQuery(databaseId);
@@ -499,6 +501,7 @@ export default function DatabaseDetailPage() {
           <p className="mt-2 text-sm text-[#e5e4e2]/60">{database.description}</p>
         )}
       </div>
+
 
       <div className="flex-1 overflow-auto p-4">
         <div className="min-w-full overflow-x-auto">

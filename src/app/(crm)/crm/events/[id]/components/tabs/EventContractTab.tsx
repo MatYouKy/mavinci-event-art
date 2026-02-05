@@ -778,7 +778,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
   
       const cssText = getContractCssForPrint();
   
-      const res = await fetch('/api/events/contracts/generate', {
+      const res = await fetch('/bridge/events/contracts/generate', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -1268,7 +1268,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
                           }}
                         >
                           <img
-                            src="/erulers_logo_vect.png"
+                            src="https://mavinci.pl/erulers_logo_vect.png"
                             alt="EVENT RULERS"
                             style={{
                               maxWidth: `${settings.logoScale}%`,
@@ -1299,7 +1299,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
 
                     <div className="contract-footer">
                       <div className="footer-logo">
-                        <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
+                        <img src="https://mavinci.pl/erulers_logo_vect.png" alt="EVENT RULERS" />
                       </div>
                       <div className="footer-info">
                         <p>
@@ -1325,7 +1325,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
             return (
               <div className="contract-a4-page">
                 <div className="contract-header-logo">
-                  <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
+                  <img src="https://mavinci.pl/erulers_logo_vect.png" alt="EVENT RULERS" />
                 </div>
 
                 <div className="contract-current-date">
@@ -1344,7 +1344,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
 
                 <div className="contract-footer">
                   <div className="footer-logo">
-                    <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
+                    <img src="https://mavinci.pl/erulers_logo_vect.png" alt="EVENT RULERS" />
                   </div>
                   <div className="footer-info">
                     <p>

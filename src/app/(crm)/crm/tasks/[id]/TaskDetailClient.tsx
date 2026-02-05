@@ -30,6 +30,7 @@ import { useMobile } from '@/hooks/useMobile';
 import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 import TaskAssigneeAvatars from '@/components/crm/TaskAssigneeAvatars';
 import LinkEventFileModal from '@/components/crm/LinkEventFileModal';
+import Image from 'next/image';
 import {
   useGetTaskByIdQuery,
   useUpdateTaskMutation,
@@ -1015,7 +1016,7 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
                         <EmployeeAvatar
                           employee={assignee.employees as unknown as IEmployee}
                           size={isMobile ? 32 : 40}
-                          showActivityStatus
+                          showActivityStatus={true}
                         />
                         {(task.created_by === currentEmployee?.id ||
                           currentEmployee?.id === assignee.employee_id) && (
@@ -1240,10 +1241,11 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
                               >
                                 {isImage(item.attachment.file_type) ? (
                                   <>
-                                    <EmployeeAvatar
-                                      employee={item.employee as unknown as IEmployee}
-                                      size={isMobile ? 128 : 256}
-                                      showActivityStatus
+                                    <Image
+                                      src={item.attachment.file_url as string}
+                                      alt={item.attachment.file_name}
+                                      width={isMobile ? 128 : 256}
+                                      height={isMobile ? 128 : 256}
                                     />
                                     <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
                                       <ZoomIn className="h-5 w-5 text-white" />
@@ -1473,10 +1475,11 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
             <div className="flex-1 overflow-auto p-4">
               {isImage(previewFile.type) && (
                 <div className="flex min-h-full items-center justify-center">
-                  <EmployeeAvatar
-                    employee={task?.creator as unknown as IEmployee}
-                    size={isMobile ? 128 : 512}
-                    showActivityStatus
+                  <Image
+                    src={previewFile.url}
+                    alt={previewFile.name}
+                    width={isMobile ? 128 : 512}
+                    height={isMobile ? 128 : 512}
                   />
                 </div>
               )}

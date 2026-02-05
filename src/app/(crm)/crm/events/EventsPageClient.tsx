@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Plus,
@@ -17,6 +17,7 @@ import {
   Grid,
   List,
   User,
+  Table2,
 } from 'lucide-react';
 import EventWizard from '@/components/crm/EventWizard';
 import { supabase } from '@/lib/supabase/browser';
@@ -26,6 +27,17 @@ import { useUserPreferences } from '@/hooks/useUserPreferences';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
 import { EventStatusBadge } from './UI/EventStatusBadge';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { ViewMode } from '../settings/page';
+
+const moveKey = (arr: EventsTableColKey[], from: EventsTableColKey, to: EventsTableColKey) => {
+  const a = [...arr];
+  const fromIdx = a.indexOf(from);
+  const toIdx = a.indexOf(to);
+  if (fromIdx === -1 || toIdx === -1) return a;
+  a.splice(fromIdx, 1);
+  a.splice(toIdx, 0, from);
+  return a;
+};
 
 /**
  * ✅ POPRAWKA: jeżeli organizations jest null, a mamy contacts,
@@ -106,6 +118,128 @@ const stop = (e: React.MouseEvent) => {
 type SortField = 'event_date' | 'name' | 'budget' | 'created_at';
 type SortDirection = 'asc' | 'desc';
 
+type EventsTableColKey =
+  | 'name'
+  | 'client'
+  | 'date'
+  | 'location'
+  | 'status'
+  | 'category'
+  | 'budget'
+  | 'actions';
+
+const DEFAULT_EVENTS_COL_WIDTHS: Record<EventsTableColKey, number> = {
+  name: 280,
+  client: 220,
+  date: 140,
+  location: 320,
+  status: 170,
+  category: 180,
+  budget: 140,
+  actions: 120,
+};
+
+const DEFAULT_COL_ORDER: EventsTableColKey[] = [
+  'name',
+  'client',
+  'date',
+  'location',
+  'status',
+  'category',
+  'budget',
+  'actions',
+];
+
+function ResizableTh({
+  label,
+  width,
+  min = 120,
+  max = 900,
+  align = 'left',
+  draggable = false,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onResize,
+  onResizeEnd,
+}: {
+  label: React.ReactNode;
+  width: number;
+  min?: number;
+  max?: number;
+  align?: 'left' | 'right' | 'center';
+
+  // drag reorder
+  draggable?: boolean;
+  onDragStart?: React.DragEventHandler<HTMLTableCellElement>;
+  onDragOver?: React.DragEventHandler<HTMLTableCellElement>;
+  onDrop?: React.DragEventHandler<HTMLTableCellElement>;
+
+  // resize
+  onResize: (nextWidth: number) => void; // ✅ live
+  onResizeEnd: (nextWidth: number) => void; // ✅ persist
+}) {
+  const draggingRef = useRef(false);
+  const startXRef = useRef(0);
+  const startWRef = useRef(0);
+
+  return (
+    <th
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      className="relative select-none border-b border-[#d3bb73]/10 bg-[#0f1117] px-3 py-3 text-xs font-medium uppercase tracking-wide text-[#e5e4e2]/60"
+      style={{
+        width,
+        minWidth: width,
+        maxWidth: width,
+        textAlign: align,
+      }}
+    >
+      <div className="truncate pr-3">{label}</div>
+
+      {/* uchwyt do resize */}
+      <div
+        className="absolute right-0 top-0 h-full w-2 cursor-col-resize hover:bg-[#d3bb73]/10"
+        title="Zmień szerokość kolumny"
+        onMouseDown={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+
+          draggingRef.current = true;
+          startXRef.current = e.clientX;
+          startWRef.current = width;
+
+          const onMove = (ev: MouseEvent) => {
+            if (!draggingRef.current) return;
+            const delta = ev.clientX - startXRef.current;
+            const next = Math.min(max, Math.max(min, startWRef.current + delta));
+            onResize(next); // ✅ LIVE
+          };
+
+          const onUp = (ev: MouseEvent) => {
+            if (!draggingRef.current) return;
+            draggingRef.current = false;
+
+            const delta = ev.clientX - startXRef.current;
+            const next = Math.min(max, Math.max(min, startWRef.current + delta));
+
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+
+            onResize(next); // domknij live
+            onResizeEnd(next); // ✅ PERSIST
+          };
+
+          document.addEventListener('mousemove', onMove);
+          document.addEventListener('mouseup', onUp);
+        }}
+      />
+    </th>
+  );
+}
+
 export default function EventsPageClient({
   initialEvents,
   initialCategories,
@@ -117,7 +251,7 @@ export default function EventsPageClient({
   const searchParams = useSearchParams();
   const { hasScope, isAdmin: isUserAdmin } = useCurrentEmployee();
   const { showSnackbar } = useSnackbar();
-  const { getViewMode, setViewMode } = useUserPreferences();
+  const { getViewMode, setViewMode, getModulePrefs, setModulePrefs } = useUserPreferences() as any;
   const [events, setEvents] = useState<any[]>(initialEvents);
   const [filteredEvents, setFilteredEvents] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>(initialCategories);
@@ -130,11 +264,52 @@ export default function EventsPageClient({
   const [showPastEvents, setShowPastEvents] = useState<boolean>(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [eventToDelete, setEventToDelete] = useState<any>(null);
-  const [viewMode, setLocalViewMode] = useState<'list' | 'grid'>(
-    getViewMode('events') === 'grid' ? 'grid' : 'list',
+  const initialMode = getViewMode('events');
+  const [viewMode, setLocalViewMode] = useState<ViewMode>(
+    initialMode === 'grid' || initialMode === 'table' ? initialMode : 'list',
   );
+  const modulePrefs = (getModulePrefs?.('events') ?? {}) as any;
+  const [colOrder, setColOrder] = useState<EventsTableColKey[]>(() => {
+    const prefOrder = modulePrefs?.table?.colOrder as EventsTableColKey[] | undefined;
+    const base = prefOrder?.length ? prefOrder : DEFAULT_COL_ORDER;
+
+    // jeśli user nie ma prawa do budżetu – usuń budget z order
+    return isUserAdmin ? base : base.filter((k) => k !== 'budget');
+  });
+
+  // ---- Table widths from prefs (fallback to defaults)
+
+
+  const [colWidths, setColWidths] = useState<Record<EventsTableColKey, number>>(() => ({
+    ...DEFAULT_EVENTS_COL_WIDTHS,
+    ...(modulePrefs?.table?.colWidths ?? {}),
+  }));
+  const persistColWidths = async (key: EventsTableColKey, w: number) => {
+    const next = { ...colWidths, [key]: w };
+    setColWidths(next);
+
+    await setModulePrefs?.('events', {
+      table: {
+        ...(modulePrefs?.table ?? {}),
+        colWidths: next,
+        colOrder: modulePrefs?.table?.colOrder, // nie zgub kolejności
+      },
+    });
+  };
   const [showMobileSearch, setShowMobileSearch] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
+
+  const persistColOrder = async (next: EventsTableColKey[]) => {
+    setColOrder(next);
+
+    await setModulePrefs?.('events', {
+      table: {
+        ...(modulePrefs?.table ?? {}),
+        colOrder: next,
+        colWidths, // nie zgub szerokości
+      },
+    });
+  };
 
   const canViewCommercials =
     isUserAdmin ||
@@ -145,10 +320,12 @@ export default function EventsPageClient({
     hasScope('invoices_manage') ||
     hasScope('invoices_view');
 
-  const handleViewModeChange = async (mode: 'list' | 'grid') => {
+  const handleViewModeChange = async (mode: ViewMode) => {
     setLocalViewMode(mode);
     await setViewMode('events', mode);
   };
+
+  const dragKeyRef = useRef<EventsTableColKey | null>(null);
 
   useEffect(() => {
     const channel = supabase
@@ -423,6 +600,87 @@ export default function EventsPageClient({
     }
   }, [searchParams, router, showSnackbar]);
 
+  const renderCell: Record<EventsTableColKey, (event: any) => React.ReactNode> = {
+    name: (event) => (
+      <td className="px-3 py-3">
+        <div className="truncate font-medium">{event.name}</div>
+        <div className="mt-0.5 truncate text-xs text-[#e5e4e2]/40">
+          {event.created_at
+            ? `Utworzono: ${new Date(event.created_at).toLocaleDateString('pl-PL')}`
+            : 'Utworzono: —'}
+        </div>
+      </td>
+    ),
+    client: (event) => {
+      const clientLabel = getOrgLabel(event.organizations, event.contacts);
+      const isContactClient = !event.organizations && !!getContactLabel(event.contacts);
+      return (
+        <td className="px-3 py-3 text-[#e5e4e2]/80">
+          <div className="flex min-w-0 items-center gap-2">
+            {isContactClient ? (
+              <User className="h-4 w-4 flex-shrink-0 text-[#e5e4e2]/50" />
+            ) : (
+              <Building2 className="h-4 w-4 flex-shrink-0 text-[#e5e4e2]/50" />
+            )}
+            <span className="truncate">{clientLabel}</span>
+          </div>
+        </td>
+      );
+    },
+    date: (event) => (
+      <td className="px-3 py-3 text-[#e5e4e2]/80">
+        {event.event_date ? new Date(event.event_date).toLocaleDateString('pl-PL') : '—'}
+      </td>
+    ),
+    location: (event) => (
+      <td className="px-3 py-3">
+        <a
+          href={getMapsHref(event.locations, event.location) ?? undefined}
+          target="_blank"
+          rel="noreferrer"
+          onClick={stop}
+          className="block truncate text-[#e5e4e2]/70 hover:text-[#d3bb73]"
+          title="Otwórz w mapach"
+        >
+          {getLocationLabelDesktop(event.locations, event.location)}
+        </a>
+      </td>
+    ),
+    status: (event) => (
+      <td className="px-3 py-3">
+        <EventStatusBadge status={event.status} />
+      </td>
+    ),
+    category: (event) => (
+      <td className="px-3 py-3 text-[#e5e4e2]/80">
+        <span className="block truncate">{event.event_categories?.name ?? '—'}</span>
+      </td>
+    ),
+    budget: (event) => (
+      <td className="px-3 py-3 text-right text-[#e5e4e2]/80">
+        <span className="font-medium text-[#d3bb73]">
+          {event.expected_revenue ? event.expected_revenue.toLocaleString() : '0'} zł
+        </span>
+      </td>
+    ),
+    actions: (event) => (
+      <td className="px-3 py-3 text-right" onClick={stop}>
+        {canViewCommercials && (<ResponsiveActionBar
+          disabledBackground
+          mobileBreakpoint={2000}
+          actions={[
+            {
+              label: 'Usuń',
+              onClick: () => handleDeleteClick(null, event),
+              icon: <Trash2 className="h-4 w-4" />,
+              variant: 'danger',
+            },
+          ]}
+        />)}
+      </td>
+    ),
+  };
+
   const actions = useMemo<Action[]>(() => {
     return [
       {
@@ -515,6 +773,17 @@ export default function EventsPageClient({
               title="Widok siatki"
             >
               <Grid className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => handleViewModeChange('table')}
+              className={`rounded-lg p-2 transition-colors ${
+                viewMode === 'table'
+                  ? 'bg-[#d3bb73] text-[#1c1f33]'
+                  : 'bg-[#0f1117] text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+              }`}
+              title="Widok tabeli"
+            >
+              <Table2 className="h-4 w-4" />
             </button>
           </div>
         </div>
@@ -631,6 +900,17 @@ export default function EventsPageClient({
               title="Widok siatki"
             >
               <Grid className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => handleViewModeChange('table')}
+              className={`rounded-lg p-2 transition-colors ${
+                viewMode === 'table'
+                  ? 'bg-[#d3bb73] text-[#1c1f33]'
+                  : 'bg-[#0f1117] text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+              }`}
+              title="Widok tabeli"
+            >
+              <Table2 className="h-4 w-4" />
             </button>
           </div>
         </div>
@@ -770,53 +1050,332 @@ export default function EventsPageClient({
         )}
       </div>
 
-      <div
-        className={
-          viewMode === 'grid'
-            ? 'grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3'
-            : 'grid gap-4'
-        }
-      >
-        {filteredEvents.map((event) => {
-          const eventDate = new Date(event.event_date);
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          eventDate.setHours(0, 0, 0, 0);
-          const isPast = eventDate < today;
+      {viewMode === 'table' ? (
+        <div className="overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
+          <div className="overflow-x-auto">
+            <table className="w-full table-fixed text-sm">
+              <thead>
+                <tr>
+                  {colOrder.map((key) => {
+                    // pomiń budget jeśli brak uprawnień (gdyby kiedyś prefs to zawierały)
+                    if (key === 'budget' && !canViewCommercials) return null;
 
-          const clientLabel = getOrgLabel(event.organizations, event.contacts);
-          const isContactClient = !event.organizations && !!getContactLabel(event.contacts);
+                    const labelMap: Record<EventsTableColKey, React.ReactNode> = {
+                      name: 'Nazwa',
+                      client: 'Klient',
+                      date: 'Data',
+                      location: 'Lokalizacja',
+                      status: 'Status',
+                      category: 'Kategoria',
+                      budget: 'Budżet',
+                      actions: 'Akcje',
+                    };
 
-          if (viewMode === 'grid') {
+                    const minMap: Partial<Record<EventsTableColKey, number>> = {
+                      name: 200,
+                      client: 160,
+                      date: 120,
+                      location: 220,
+                      status: 140,
+                      category: 140,
+                      budget: 120,
+                      actions: 100,
+                    };
+
+                    const align: 'left' | 'right' =
+                      key === 'budget' || key === 'actions' ? 'right' : 'left';
+
+                    return (
+                      <ResizableTh
+                        key={key}
+                        label={labelMap[key]}
+                        width={colWidths[key]}
+                        min={minMap[key] ?? 120}
+                        align={align}
+                        draggable
+                        onDragStart={() => {
+                          dragKeyRef.current = key;
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault(); // ✅ konieczne
+                        }}
+                        onDrop={() => {
+                          const from = dragKeyRef.current;
+                          if (!from || from === key) return;
+                          const nextOrder = moveKey(colOrder, from, key);
+                          persistColOrder(nextOrder);
+                          dragKeyRef.current = null;
+                        }}
+                        onResize={(w) => setColWidths((prev) => ({ ...prev, [key]: w }))}
+                        onResizeEnd={(w) => persistColWidths(key, w)}
+                      />
+                    );
+                  })}
+                </tr>
+              </thead>
+
+              <tbody>
+                {filteredEvents.map((event) => (
+                  <tr
+                    key={event.id}
+                    onClick={() => router.push(`/crm/events/${event.id}`)}
+                    className="cursor-pointer border-b border-[#d3bb73]/5 text-[#e5e4e2] hover:bg-[#0f1117]"
+                  >
+                    {colOrder.map((key) => {
+                      if (key === 'budget' && !canViewCommercials) return null;
+                      return renderCell[key](event);
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex items-center justify-between border-t border-[#d3bb73]/10 px-4 py-3 text-xs text-[#e5e4e2]/50">
+            <div>
+              Widok: <span className="text-[#d3bb73]">tabela</span>
+            </div>
+            <button
+              onClick={() => {
+                persistColOrder(
+                  canViewCommercials
+                    ? DEFAULT_COL_ORDER
+                    : DEFAULT_COL_ORDER.filter((k) => k !== 'budget'),
+                );
+                // szerokości też:
+                setColWidths(DEFAULT_EVENTS_COL_WIDTHS);
+                setModulePrefs?.('events', {
+                  table: {
+                    ...(modulePrefs?.table ?? {}),
+                    colOrder: canViewCommercials
+                      ? DEFAULT_COL_ORDER
+                      : DEFAULT_COL_ORDER.filter((k) => k !== 'budget'),
+                    colWidths: DEFAULT_EVENTS_COL_WIDTHS,
+                  },
+                });
+              }}
+              className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-1.5 text-[#e5e4e2]/70 hover:bg-[#d3bb73]/10"
+            >
+              Reset układu
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div
+          className={
+            viewMode === 'grid'
+              ? 'grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3'
+              : 'grid gap-4'
+          }
+        >
+          {filteredEvents.map((event) => {
+            const eventDate = new Date(event.event_date);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            eventDate.setHours(0, 0, 0, 0);
+            const isPast = eventDate < today;
+
+            const clientLabel = getOrgLabel(event.organizations, event.contacts);
+            const isContactClient = !event.organizations && !!getContactLabel(event.contacts);
+
+            if (viewMode === 'grid') {
+              return (
+                <div
+                  key={event.id}
+                  onClick={() => router.push(`/crm/events/${event.id}`)}
+                  className={`relative flex cursor-pointer flex-col rounded-xl border bg-[#1c1f33] p-4 transition-all hover:border-[#d3bb73]/30 md:p-6 ${
+                    isPast ? 'border-[#e5e4e2]/5 opacity-70' : 'border-[#d3bb73]/10'
+                  }`}
+                >
+                  {/* TWÓJ OBECNY GRID CONTENT 1:1 */}
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <h3 className="line-clamp-2 flex-1 text-base font-medium text-[#e5e4e2]">
+                      {event.name}
+                    </h3>
+
+                    <div className="flex items-center gap-2">
+                      <div className="hidden md:block">
+                        {canViewCommercials && (
+                          <button
+                          onClick={(e) => {
+                            stop(e);
+                            handleDeleteClick(e, event);
+                          }}
+                          className="flex-shrink-0 rounded-lg bg-red-500/10 p-2 text-red-500 transition-colors hover:bg-red-500/20"
+                          title="Usuń event"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                        )}
+                      </div>
+
+                      <div className="md:hidden">
+                        {canViewCommercials && (<ResponsiveActionBar
+                          actions={[
+                            {
+                              label: 'Usuń',
+                              onClick: () => handleDeleteClick(null, event),
+                              icon: <Trash2 className="h-4 w-4" />,
+                              variant: 'danger',
+                            },
+                          ]}
+                          disabledBackground
+                        />)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2 text-sm text-[#e5e4e2]/70">
+                    <div className="flex items-center gap-2">
+                      {isContactClient ? (
+                        <User className="h-4 w-4 flex-shrink-0" />
+                      ) : (
+                        <Building2 className="h-4 w-4 flex-shrink-0" />
+                      )}
+                      <span className="truncate">{clientLabel}</span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4 flex-shrink-0" />
+                      <span className="truncate">
+                        {new Date(event.event_date).toLocaleDateString('pl-PL')}
+                        {isPast && (
+                          <span className="ml-2 text-xs text-[#e5e4e2]/40">(przeszły)</span>
+                        )}
+                      </span>
+                    </div>
+
+                    <div className="flex items-start gap-2">
+                      <MapPin className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                      <span className="line-clamp-2">
+                        {getLocationLabel(event.locations, event.location)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <div>
+                      <EventStatusBadge status={event.status} />
+                    </div>
+
+                    {event.event_categories && (
+                      <div className="rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-2 py-1 text-xs text-[#d3bb73]">
+                        {event.event_categories.name}
+                      </div>
+                    )}
+                  </div>
+
+                  {canViewCommercials && (
+                    <div className="mt-3 text-sm text-[#e5e4e2]/70">
+                      Budżet:{' '}
+                      <span className="font-medium text-[#d3bb73]">
+                        {event.expected_revenue ? event.expected_revenue.toLocaleString() : '0'} zł
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="mt-3 hidden md:block">
+                    <EventStatusBadge status={event.status} />
+                  </div>
+                </div>
+              );
+            }
+
+            // LIST
             return (
               <div
                 key={event.id}
-                onClick={() => router.push(`/crm/events/${event.id}`)}
-                className={`relative flex cursor-pointer flex-col rounded-xl border bg-[#1c1f33] p-4 transition-all hover:border-[#d3bb73]/30 md:p-6 ${
+                className={`relative cursor-pointer rounded-xl border bg-[#1c1f33] p-2 transition-all hover:border-[#d3bb73]/30 sm:p-4 md:p-6 ${
                   isPast ? 'border-[#e5e4e2]/5 opacity-70' : 'border-[#d3bb73]/10'
                 }`}
+                onClick={() => router.push(`/crm/events/${event.id}`)}
               >
-                <div className="mb-3 flex items-start justify-between gap-3">
-                  <h3 className="line-clamp-2 flex-1 text-base font-medium text-[#e5e4e2]">
-                    {event.name}
-                  </h3>
+                {/* TWÓJ OBECNY LIST CONTENT 1:1 */}
+                <div className="flex items-start justify-between gap-1 sm:gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <h3 className="max-w-[240px] truncate text-base font-medium text-[#e5e4e2] md:text-lg">
+                        {event.name}
+                      </h3>
+                      {isPast && (
+                        <span className="hidden rounded bg-[#e5e4e2]/10 px-2 py-0.5 text-xs text-[#e5e4e2]/50 md:inline">
+                          Przeszły
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="mt-2 flex flex-col gap-1 text-sm text-[#e5e4e2]/70 md:flex-row md:flex-wrap md:gap-4">
+                      <div className="flex items-center gap-2">
+                        {isContactClient ? (
+                          <User className="h-4 w-4 flex-shrink-0" />
+                        ) : (
+                          <Building2 className="h-4 w-4 flex-shrink-0" />
+                        )}
+                        <span className="max-w-[250px] truncate">{clientLabel}</span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Calendar className="h-4 w-4 flex-shrink-0" />
+                        <span className="truncate">
+                          {new Date(event.event_date).toLocaleDateString('pl-PL')}
+                        </span>
+                      </div>
+
+                      <div className="flex min-w-0 items-center gap-2">
+                        <MapPin className="h-4 w-4 flex-shrink-0" />
+
+                        <div className="min-w-0 flex-1 truncate">
+                          <a
+                            href={getMapsHref(event.locations, event.location) ?? undefined}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={stop}
+                            className="block min-w-0 cursor-pointer truncate text-[#e5e4e2]/70 hover:text-[#d3bb73]"
+                            title="Otwórz w mapach"
+                          >
+                            <span className="block max-w-[calc(100vw-140px)] truncate whitespace-nowrap sm:hidden">
+                              {getLocationLabelMobile(event.locations, event.location)}
+                            </span>
+
+                            <span className="hidden sm:inline">
+                              {getLocationLabelDesktop(event.locations, event.location)}
+                            </span>
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
                   <div className="flex items-center gap-2">
+                    <div className="hidden items-center gap-2 md:flex">
+                      <div>
+                        <EventStatusBadge status={event.status} />
+                      </div>
+                      {event.event_categories && (
+                        <div className="flex items-center gap-1 rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-3 py-1 text-xs text-[#d3bb73]">
+                          <Tag className="h-3 w-3" />
+                          {event.event_categories.name}
+                        </div>
+                      )}
+                    </div>
+
                     <div className="hidden md:block">
-                      <button
+                      {canViewCommercials && (
+                        <button
                         onClick={(e) => {
                           stop(e);
                           handleDeleteClick(e, event);
                         }}
-                        className="flex-shrink-0 rounded-lg bg-red-500/10 p-2 text-red-500 transition-colors hover:bg-red-500/20"
+                        className="rounded-lg bg-red-500/10 p-2 text-red-500 transition-colors hover:bg-red-500/20"
                         title="Usuń event"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
+                      )}
                     </div>
 
-                    <div className="md:hidden">
-                      <ResponsiveActionBar
+                    <div className="md:hidden" onClick={stop}>
+                      {canViewCommercials && (<ResponsiveActionBar
                         actions={[
                           {
                             label: 'Usuń',
@@ -826,201 +1385,45 @@ export default function EventsPageClient({
                           },
                         ]}
                         disabledBackground
-                      />
+                      />)}
                     </div>
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-2 text-sm text-[#e5e4e2]/70">
-                  <div className="flex items-center gap-2">
-                    {isContactClient ? (
-                      <User className="h-4 w-4 flex-shrink-0" />
-                    ) : (
-                      <Building2 className="h-4 w-4 flex-shrink-0" />
-                    )}
-                    <span className="truncate">{clientLabel}</span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4 flex-shrink-0" />
-                    <span className="truncate">
-                      {new Date(event.event_date).toLocaleDateString('pl-PL')}
-                      {isPast && <span className="ml-2 text-xs text-[#e5e4e2]/40">(przeszły)</span>}
-                    </span>
-                  </div>
-
-                  <div className="flex items-start gap-2">
-                    <MapPin className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                    <span className="line-clamp-2">
-                      {getLocationLabel(event.locations, event.location)}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="mt-4 flex flex-wrap items-center gap-2">
-                  <div>
+                <div className="mt-3 flex flex-wrap items-center gap-2 md:hidden">
+                  <div
+                    className={`rounded-full border px-2 py-1 text-xs ${statusColors[event.status]}`}
+                  >
                     <EventStatusBadge status={event.status} />
                   </div>
-
                   {event.event_categories && (
                     <div className="rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-2 py-1 text-xs text-[#d3bb73]">
                       {event.event_categories.name}
                     </div>
                   )}
+                  {isPast && (
+                    <span className="rounded bg-[#e5e4e2]/10 px-2 py-0.5 text-xs text-[#e5e4e2]/50">
+                      Przeszły
+                    </span>
+                  )}
                 </div>
 
-                {canViewCommercials && (
-                  <div className="mt-3 text-sm text-[#e5e4e2]/70">
+                {canViewCommercials && (<div className="mt-4 flex items-center justify-between border-t border-[#d3bb73]/10 pt-4">
+                  <div className="text-sm text-[#e5e4e2]/70">
                     Budżet:{' '}
                     <span className="font-medium text-[#d3bb73]">
                       {event.expected_revenue ? event.expected_revenue.toLocaleString() : '0'} zł
                     </span>
                   </div>
-                )}
-                <div className="mt-3 hidden md:block">
-                  <EventStatusBadge status={event.status} />
+
+                  <div className="text-xs text-[#e5e4e2]/40 md:hidden">Szczegóły →</div>
                 </div>
+                )}
               </div>
             );
-          }
-
-          return (
-            <div
-              key={event.id}
-              className={`relative cursor-pointer rounded-xl border bg-[#1c1f33] p-2 transition-all hover:border-[#d3bb73]/30 sm:p-4 md:p-6 ${
-                isPast ? 'border-[#e5e4e2]/5 opacity-70' : 'border-[#d3bb73]/10'
-              }`}
-              onClick={() => router.push(`/crm/events/${event.id}`)}
-            >
-              <div className="flex items-start justify-between gap-1 sm:gap-2">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <h3 className="max-w-[240px] truncate text-base font-medium text-[#e5e4e2] md:text-lg">
-                      {event.name}
-                    </h3>
-                    {isPast && (
-                      <span className="hidden rounded bg-[#e5e4e2]/10 px-2 py-0.5 text-xs text-[#e5e4e2]/50 md:inline">
-                        Przeszły
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="mt-2 flex flex-col gap-1 text-sm text-[#e5e4e2]/70 md:flex-row md:flex-wrap md:gap-4">
-                    <div className="flex items-center gap-2">
-                      {isContactClient ? (
-                        <User className="h-4 w-4 flex-shrink-0" />
-                      ) : (
-                        <Building2 className="h-4 w-4 flex-shrink-0" />
-                      )}
-                      <span className="max-w-[250px] truncate">{clientLabel}</span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4 flex-shrink-0" />
-                      <span className="truncate">
-                        {new Date(event.event_date).toLocaleDateString('pl-PL')}
-                      </span>
-                    </div>
-
-                    <div className="flex min-w-0 items-center gap-2">
-                      <MapPin className="h-4 w-4 flex-shrink-0" />
-
-                      <div className="min-w-0 flex-1 truncate">
-                        <a
-                          href={getMapsHref(event.locations, event.location) ?? undefined}
-                          target="_blank"
-                          rel="noreferrer"
-                          onClick={stop}
-                          className="block min-w-0 cursor-pointer truncate text-[#e5e4e2]/70 hover:text-[#d3bb73]"
-                          title="Otwórz w mapach"
-                        >
-                          <span className="block max-w-[calc(100vw-140px)] truncate whitespace-nowrap sm:hidden">
-                            {getLocationLabelMobile(event.locations, event.location)}
-                          </span>
-
-                          <span className="hidden sm:inline">
-                            {getLocationLabelDesktop(event.locations, event.location)}
-                          </span>
-                        </a>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <div className="hidden items-center gap-2 md:flex">
-                    <div>
-                      <EventStatusBadge status={event.status} />
-                    </div>
-                    {event.event_categories && (
-                      <div className="flex items-center gap-1 rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-3 py-1 text-xs text-[#d3bb73]">
-                        <Tag className="h-3 w-3" />
-                        {event.event_categories.name}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="hidden md:block">
-                    <button
-                      onClick={(e) => {
-                        stop(e);
-                        handleDeleteClick(e, event);
-                      }}
-                      className="rounded-lg bg-red-500/10 p-2 text-red-500 transition-colors hover:bg-red-500/20"
-                      title="Usuń event"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-
-                  <div className="md:hidden" onClick={stop}>
-                    <ResponsiveActionBar
-                      actions={[
-                        {
-                          label: 'Usuń',
-                          onClick: () => handleDeleteClick(null, event),
-                          icon: <Trash2 className="h-4 w-4" />,
-                          variant: 'danger',
-                        },
-                      ]}
-                      disabledBackground
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-3 flex flex-wrap items-center gap-2 md:hidden">
-                <div
-                  className={`rounded-full border px-2 py-1 text-xs ${statusColors[event.status]}`}
-                >
-                  <EventStatusBadge status={event.status} />
-                </div>
-                {event.event_categories && (
-                  <div className="rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-2 py-1 text-xs text-[#d3bb73]">
-                    {event.event_categories.name}
-                  </div>
-                )}
-                {isPast && (
-                  <span className="rounded bg-[#e5e4e2]/10 px-2 py-0.5 text-xs text-[#e5e4e2]/50">
-                    Przeszły
-                  </span>
-                )}
-              </div>
-
-              <div className="mt-4 flex items-center justify-between border-t border-[#d3bb73]/10 pt-4">
-                <div className="text-sm text-[#e5e4e2]/70">
-                  Budżet:{' '}
-                  <span className="font-medium text-[#d3bb73]">
-                    {event.expected_revenue ? event.expected_revenue.toLocaleString() : '0'} zł
-                  </span>
-                </div>
-
-                <div className="text-xs text-[#e5e4e2]/40 md:hidden">Szczegóły →</div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+          })}
+        </div>
+      )}
 
       <EventWizard
         isOpen={isModalOpen}

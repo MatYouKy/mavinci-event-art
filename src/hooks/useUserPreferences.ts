@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/browser';
 import { useCurrentEmployee } from './useCurrentEmployee';
+import { ViewMode } from '@/app/(crm)/crm/settings/page';
 
-type ViewMode = 'list' | 'grid' | 'cards' | 'detailed';
 
 interface ViewModePreference {
   viewMode: ViewMode;
@@ -76,9 +76,9 @@ export function useUserPreferences() {
     ];
     if (viewModeModules.includes(module as keyof Preferences)) {
       const pref = preferences[module as keyof Preferences] as ViewModePreference | undefined;
-      return pref?.viewMode || 'cards';
+      return pref?.viewMode || 'grid';
     }
-    return 'cards';
+    return 'grid';
   };
 
   const setViewMode = async (module: string, viewMode: ViewMode) => {

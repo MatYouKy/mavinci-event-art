@@ -17,6 +17,7 @@ import {
   Gauge,
   CheckCircle,
 } from 'lucide-react';
+import Image from 'next/image';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
@@ -220,7 +221,9 @@ export default function FleetPage() {
         style={{ width: `${size}px`, height: `${size}px` }}
       >
         {avatarUrl ? (
-          <img
+          <Image
+            width={size}
+            height={size}
             src={avatarUrl}
             alt={`${name} ${surname}`}
             className="h-full w-full"
@@ -425,8 +428,10 @@ export default function FleetPage() {
                 >
                   {vehicle.all_images.length > 0 ? (
                     <>
-                      <img
-                        src={vehicle.all_images[imageIndexes[vehicle.id] || 0]?.image_url}
+                      <Image
+                        width={168}
+                        height={168}
+                        src={vehicle.all_images[imageIndexes[vehicle.id] || 0]?.image_url as string}
                         alt={
                           vehicle.all_images[imageIndexes[vehicle.id] || 0]?.title || vehicle.name
                         }
@@ -646,7 +651,9 @@ export default function FleetPage() {
                             {imageUrl ? (
                               <Popover
                                 trigger={
-                                  <img
+                                  <Image
+                                    width={40}
+                                    height={40}
                                     src={imageUrl}
                                     alt={vehicle.name ?? 'Pojazd'}
                                     className="h-16 w-16 object-cover"
@@ -654,7 +661,9 @@ export default function FleetPage() {
                                   />
                                 }
                                 content={
-                                  <img
+                                  <Image
+                                    width={300}
+                                    height={300}
                                     src={imageUrl}
                                     alt={vehicle.name ?? 'Pojazd'}
                                     className="h-auto cursor-pointer rounded-lg object-contain transition-all"
@@ -669,7 +678,9 @@ export default function FleetPage() {
                             {/* Popover on hover */}
                             {hoveredVehicleId === vehicle.id && vehicle.all_images.length > 0 && (
                               <div className="pointer-events-none absolute left-20 top-0 z-50 w-64 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-2 shadow-2xl">
-                                <img
+                                <Image
+                                  width={300}
+                                  height={300}
                                   src={vehicle.all_images[0]?.image_url}
                                   alt={vehicle.name}
                                   className="h-48 w-full rounded object-cover"

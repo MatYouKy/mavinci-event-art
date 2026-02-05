@@ -5,7 +5,7 @@ import '@/index.css';
 
 import CRMClientLayout from './CRMClientLayout';
 import PreferencesClientProvider from './PreferencesClientProvider';
-import { getEmployeePreferencesCached } from '@/lib/CRM/employees/getEmployeePreferences';
+import { getEmployeePreferences } from '@/lib/CRM/employees/getEmployeePreferences';
 import { getCurrentEmployeeServerCached } from '@/lib/CRM/auth/getCurrentEmployeeServer';
 import CrmProviders from './CrmProviders';
 import { fetchUnreadCountServer } from '@/lib/CRM/messages/unreadCounter';
@@ -32,7 +32,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     redirect('/login');
   }
 
-  const preferences = await getEmployeePreferencesCached(employee.id);
+  const preferences = await getEmployeePreferences(employee.id);
   const cookieStore = cookies(); // ✅ w request scope
   const { notifications, unreadCount } = await fetchNotificationsServer(cookieStore, 100);
 

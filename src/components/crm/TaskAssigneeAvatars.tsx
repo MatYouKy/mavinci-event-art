@@ -1,33 +1,14 @@
 'use client';
 
-import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Mail } from 'lucide-react';
 import Popover from '@/components/UI/Tooltip';
 import { EmployeeAvatar } from '../EmployeeAvatar';
-
-interface ImagePosition {
-  posX: number;
-  posY: number;
-  scale: number;
-}
-
-interface ImageMetadata {
-  desktop?: {
-    src?: string;
-    position?: ImagePosition;
-    objectFit?: string;
-  };
-}
+import { IEmployee } from '@/app/(crm)/crm/employees/type';
 
 interface Assignee {
   employee_id: string;
-  employees: {
-    name: string;
-    surname: string;
-    avatar_url: string | null;
-    avatar_metadata?: ImageMetadata | null;
-  };
+  employees: IEmployee;
 }
 
 interface Props {
@@ -49,17 +30,14 @@ export default function TaskAssigneeAvatars({ assignees, maxVisible = 5 }: Props
 
   const renderAvatar = (assignee: Assignee, index: number) => {
     const { employees } = assignee;
-    const position = employees.avatar_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 };
-    const objectFit = employees.avatar_metadata?.desktop?.objectFit || 'cover';
-    const fullName = `${employees.name} ${employees.surname}`;
-    const initials = `${employees.name[0]}${employees.surname[0]}`.toUpperCase();
+    const fullName = `${employees?.name} ${employees?.surname}`;
 
     const avatar = (
       <div className="cursor-pointer" onClick={() => handleProfileClick(assignee.employee_id)}>
         <EmployeeAvatar
           employeeId={assignee.employee_id}
-          avatarUrl={employees.avatar_url}
-          avatarMetadata={employees.avatar_metadata ?? null}
+          avatarUrl={employees?.avatar_url}
+          avatarMetadata={employees?.avatar_metadata ?? null}
           employeeName={fullName}
           size={28}
           showActivityStatus={true} // ✅ dot gdy online
@@ -78,9 +56,10 @@ export default function TaskAssigneeAvatars({ assignees, maxVisible = 5 }: Props
             onClick={() => handleProfileClick(assignee.employee_id)}
           >
             <EmployeeAvatar
+              employee={employees as IEmployee}
               employeeId={assignee.employee_id}
-              avatarUrl={employees.avatar_url}
-              avatarMetadata={employees.avatar_metadata ?? null}
+              avatarUrl={employees?.avatar_url}
+              avatarMetadata={employees?.avatar_metadata ?? null}
               employeeName={fullName}
               size={48}
               showActivityStatus={true}

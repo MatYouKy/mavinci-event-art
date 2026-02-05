@@ -16,5 +16,3 @@ export async function getEmployeePreferences(employeeId: string): Promise<Prefer
   if (error) throw error;
   return (data?.preferences ?? {}) as Preferences;
 }
-
-export const getEmployeePreferencesCached = cache(getEmployeePreferences);

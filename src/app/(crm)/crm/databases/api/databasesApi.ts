@@ -58,7 +58,7 @@ export const databasesApi = createApi({
         table: 'custom_databases',
         method: 'select',
         select: '*',
-        order: { column: 'created_at', ascending: false },
+        order: { column: 'name', ascending: true },
       }),
       providesTags: ['Database'],
     }),

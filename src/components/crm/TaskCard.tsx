@@ -6,6 +6,7 @@ import { Calendar, GripVertical, Edit, Trash2, UserPlus, MessageSquare } from 'l
 import { memo, useMemo } from 'react';
 import TaskAssigneeAvatars from './TaskAssigneeAvatars';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { IEmployee } from '@/app/(crm)/crm/employees/type';
 
 export interface Task {
   id: string;
@@ -25,23 +26,10 @@ export interface Task {
   } | null;
   task_assignees?: {
     employee_id: string;
-    employees: {
-      name: string;
-      surname: string;
-      avatar_url: string | null;
-      avatar_metadata?: any;
-    };
+    employees: IEmployee | null;
   }[];
   assignees?: {
-    employee: {
-      id: string;
-      name: string;
-      surname: string;
-      avatar_url: string | null;
-      avatar_metadata?: any;
-      email?: string;
-      phone_number?: string;
-    };
+    employee: IEmployee | null;
   }[];
 }
 
@@ -82,6 +70,7 @@ const TaskCard = memo(function TaskCard({
 }: TaskCardProps) {
   const router = useRouter();
   const { employee } = useCurrentEmployee();
+
   const currentEmployeeId = employee?.id;
 
   const assigneesRaw =

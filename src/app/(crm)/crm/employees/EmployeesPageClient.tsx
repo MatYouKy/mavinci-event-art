@@ -14,9 +14,9 @@ import {
 } from '@/components/crm/EmployeeViews';
 import { IEmployee } from './type';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
-import { useAuth } from '@/contexts/AuthContext';
+import { ViewMode } from '../settings/page';
 
-export default function EmployeesPageClient({ employees }: { employees: IEmployee[] }) {
+export default function EmployeesPageClient({ employees, viewMode }: { employees: IEmployee[], viewMode: ViewMode }) {
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -28,8 +28,13 @@ export default function EmployeesPageClient({ employees }: { employees: IEmploye
                   currentEmployee?.permissions?.includes('admin') ||
                   currentEmployee?.permissions?.includes('employees_manage');
 
-  const { getViewMode, setViewMode } = useUserPreferences();
-  const viewMode = getViewMode('employees');
+  const { setViewMode } = useUserPreferences();
+  const [localViewMode, setLocalViewMode] = useState<ViewMode>(viewMode);
+
+  const handleViewModeChange = async (mode: ViewMode) => {
+    setLocalViewMode(mode);
+    await setViewMode('employees', mode);
+  };
 
   const filteredEmployees = employees.filter((emp) =>
     `${emp.name} ${emp.surname} ${emp.nickname || ''} ${emp.email} ${emp.occupation || ''}`
@@ -124,9 +129,9 @@ export default function EmployeesPageClient({ employees }: { employees: IEmploye
 
         <div className="flex items-center gap-1 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-1">
           <button
-            onClick={() => setViewMode('employees', 'cards')}
+            onClick={() => handleViewModeChange('grid')}
             className={`rounded p-2 transition-colors ${
-              viewMode === 'cards'
+              localViewMode === 'grid'
                 ? 'bg-[#d3bb73] text-[#1c1f33]'
                 : 'text-[#e5e4e2]/60 hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]'
             }`}
@@ -135,9 +140,9 @@ export default function EmployeesPageClient({ employees }: { employees: IEmploye
             <LayoutGrid className="h-5 w-5" />
           </button>
           <button
-            onClick={() => setViewMode('employees', 'list')}
+            onClick={() => handleViewModeChange('list')}
             className={`rounded p-2 transition-colors ${
-              viewMode === 'list'
+              localViewMode === 'list'
                 ? 'bg-[#d3bb73] text-[#1c1f33]'
                 : 'text-[#e5e4e2]/60 hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]'
             }`}
@@ -146,9 +151,9 @@ export default function EmployeesPageClient({ employees }: { employees: IEmploye
             <List className="h-5 w-5" />
           </button>
           <button
-            onClick={() => setViewMode('employees', 'detailed')}
+            onClick={() => handleViewModeChange('table')}
             className={`rounded p-2 transition-colors ${
-              viewMode === 'detailed'
+              localViewMode === 'table'
                 ? 'bg-[#d3bb73] text-[#1c1f33]'
                 : 'text-[#e5e4e2]/60 hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]'
             }`}
@@ -168,7 +173,7 @@ export default function EmployeesPageClient({ employees }: { employees: IEmploye
         </div>
       ) : (
         <>
-          {viewMode === 'cards' && (
+          {localViewMode === 'grid' && (
             <EmployeeCardsView
             
               employees={filteredEmployees}
@@ -180,7 +185,7 @@ export default function EmployeesPageClient({ employees }: { employees: IEmploye
               onResetPassword={setResetPasswordEmployee}
             />
           )}
-          {viewMode === 'list' && (
+          {localViewMode === 'list' && (
             <EmployeeListView
               employees={filteredEmployees}
               getRoleLabel={getRoleLabel}
@@ -191,7 +196,7 @@ export default function EmployeesPageClient({ employees }: { employees: IEmploye
               onResetPassword={setResetPasswordEmployee}
             />
           )}
-          {viewMode === 'detailed' && (
+          {localViewMode === 'table' && (
             <EmployeeDetailedView
               employees={filteredEmployees}
               getRoleLabel={getRoleLabel}

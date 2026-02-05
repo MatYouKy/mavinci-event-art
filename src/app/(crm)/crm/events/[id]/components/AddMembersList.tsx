@@ -16,6 +16,17 @@ interface TeamMembersListProps {
   eventCreatorId?: string;
 }
 
+const getEmployeeLabel = (employee?: any) => {
+  if (!employee) return 'Brak danych pracownika';
+
+  if (employee.nickname && employee.nickname.trim().length > 0) {
+    return employee.nickname;
+  }
+
+  const name = `${employee.name ?? ''} ${employee.surname ?? ''}`.trim();
+  return name.length > 0 ? name : 'Brak danych pracownika';
+};
+
 export function TeamMembersList({
   employees,
   onRemove,
@@ -136,118 +147,128 @@ export function TeamMembersList({
     }
   };
 
+  
+
   return (
     <>
       <div className="space-y-3">
-        {employees.map((item) => {
-          const isEditing = editingId === item.id;
-          const isExpanded = expandedId === item.id;
-
-          return (
-            <div
-              key={item.id}
-              className={`overflow-hidden rounded-lg border bg-[#0f1119] ${
-                item.status === 'rejected' ? 'border-red-500/30' : 'border-[#d3bb73]/10'
-              }`}
-            >
+        {employees.length > 0 ? (
+          employees.map((item) => {
+            const isEditing = editingId === item.id;
+            const isExpanded = expandedId === item.id;
+            console.log(item);
+            {!item.employee && <div>Brak danych pracownika (RLS / relacja)</div>}
+            return item.employee && (
               <div
-                onClick={() => !isEditing && toggleExpand(item.id)}
-                className="flex cursor-pointer items-center gap-4 p-4 transition-colors hover:bg-[#d3bb73]/5"
+                key={item.id}
+                className={`overflow-hidden rounded-lg border bg-[#0f1119] ${
+                  item.status === 'rejected' ? 'border-red-500/30' : 'border-[#d3bb73]/10'
+                }`}
               >
-                <EmployeeAvatar
-                  employee={item.employee}
-                  avatarUrl={item.employee.avatar_url}
-                  avatarMetadata={item.employee.avatar_metadata}
-                  employeeName={`${item.employee.name} ${item.employee.surname}`}
-                  size={48}
-                  className="flex-shrink-0"
-                  showActivityStatus={true}
-                />
+                <div
+                  onClick={() => !isEditing && toggleExpand(item.id)}
+                  className="flex cursor-pointer items-center gap-4 p-4 transition-colors hover:bg-[#d3bb73]/5"
+                >
+                  <EmployeeAvatar
+                    size={50}
+                    employee={item.employee ?? null}
+                    avatarUrl={item.employee?.avatar_url ?? null}
+                    avatarMetadata={item.employee?.avatar_metadata ?? null}
+                    employeeName={getEmployeeLabel(item.employee)}
+                    showActivityStatus
+                  />
 
-                <div className="min-w-0 flex-1">
-                  <h3 className="font-medium text-[#e5e4e2]">
-                    {item.employee.nickname || `${item.employee.name} ${item.employee.surname}`}
-                  </h3>
-                  {item.role && !isEditing && <p className="text-sm text-[#d3bb73]">{item.role}</p>}
-                  <div className="mt-1 flex items-center gap-2">{getStatusBadge(item.status)}</div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-medium text-[#e5e4e2]">
+                      {getEmployeeLabel(item.employee)}
+                    </h3>
+                    {item.role && !isEditing && (
+                      <p className="text-sm text-[#d3bb73]">{item.role}</p>
+                    )}
+                    <div className="mt-1 flex items-center gap-2">
+                      {getStatusBadge(item.status)}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {!isEditing && canManageTeam && (
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <ResponsiveActionBar
+                          disabledBackground
+                          actions={[
+                            {
+                              label: '',
+                              onClick: () => startEdit(item),
+                              icon: <EditIcon className="h-4 w-4" />,
+                              variant: 'primary',
+                              show: true,
+                            },
+                            {
+                              label: '',
+                              onClick: () => openPermissionsModal(item),
+                              icon: <User className="h-4 w-4" />,
+                              variant: 'default',
+                              show: true,
+                            },
+                            {
+                              label: ``,
+                              onClick: () => onRemove(item.id),
+                              icon: <Trash2 className="h-4 w-4" />,
+                              variant: 'danger',
+                              show: true,
+                            },
+                          ]}
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  {!isEditing && canManageTeam && (
-                    <div onClick={(e) => e.stopPropagation()}>
-                      <ResponsiveActionBar
-                        disabledBackground
-                        actions={[
-                          {
-                            label: '',
-                            onClick: () => startEdit(item),
-                            icon: <EditIcon className="h-4 w-4" />,
-                            variant: 'primary',
-                            show: true,
-                          },
-                          {
-                            label: '',
-                            onClick: () => openPermissionsModal(item),
-                            icon: <User className="h-4 w-4" />,
-                            variant: 'default',
-                            show: true,
-                          },
-                          {
-                            label: ``,
-                            onClick: () => onRemove(item.id),
-                            icon: <Trash2 className="h-4 w-4" />,
-                            variant: 'danger',
-                            show: true,
-                          },
-                        ]}
+                {isEditing && (
+                  <div className="space-y-3 border-t border-[#d3bb73]/10 p-4">
+                    <div>
+                      <label className="mb-2 block text-sm text-[#e5e4e2]/60">Rola</label>
+                      <input
+                        type="text"
+                        value={editRole}
+                        onChange={(e) => setEditRole(e.target.value)}
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                        placeholder="np. Lead Audio, Technician..."
                       />
                     </div>
-                  )}
-                </div>
+                    <div>
+                      <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                        Zakres odpowiedzialności
+                      </label>
+                      <textarea
+                        value={editResponsibilities}
+                        onChange={(e) => setEditResponsibilities(e.target.value)}
+                        className="min-h-[80px] w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                        placeholder="Opisz zakres obowiązków..."
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => saveEdit(item.id)}
+                        className="rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] hover:bg-[#d3bb73]/90"
+                      >
+                        Zapisz
+                      </button>
+                      <button
+                        onClick={cancelEdit}
+                        className="rounded-lg px-4 py-2 text-[#e5e4e2]/60 hover:bg-[#1c1f33]"
+                      >
+                        Anuluj
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-
-              {isEditing && (
-                <div className="space-y-3 border-t border-[#d3bb73]/10 p-4">
-                  <div>
-                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Rola</label>
-                    <input
-                      type="text"
-                      value={editRole}
-                      onChange={(e) => setEditRole(e.target.value)}
-                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-                      placeholder="np. Lead Audio, Technician..."
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">
-                      Zakres odpowiedzialności
-                    </label>
-                    <textarea
-                      value={editResponsibilities}
-                      onChange={(e) => setEditResponsibilities(e.target.value)}
-                      className="min-h-[80px] w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-                      placeholder="Opisz zakres obowiązków..."
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => saveEdit(item.id)}
-                      className="rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] hover:bg-[#d3bb73]/90"
-                    >
-                      Zapisz
-                    </button>
-                    <button
-                      onClick={cancelEdit}
-                      className="rounded-lg px-4 py-2 text-[#e5e4e2]/60 hover:bg-[#1c1f33]"
-                    >
-                      Anuluj
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
+            );
+          })
+        ) : (
+          <div className="text-center text-sm text-[#e5e4e2]/60">Brak członków w zespole</div>
+        )}
       </div>
 
       {permissionsModal?.isOpen && (
@@ -256,8 +277,7 @@ export function TeamMembersList({
             <div className="mb-6">
               <h2 className="mb-2 text-xl font-light text-[#e5e4e2]">Zarządzaj uprawnieniami</h2>
               <p className="text-sm text-[#e5e4e2]/60">
-                {permissionsModal.assignment.employee?.nickname ||
-                  `${permissionsModal.assignment.employee?.name} ${permissionsModal.assignment.employee?.surname}`}
+                {getEmployeeLabel(permissionsModal.assignment.employee)}
               </p>
             </div>
 

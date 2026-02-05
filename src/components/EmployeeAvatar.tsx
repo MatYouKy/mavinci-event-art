@@ -1,10 +1,9 @@
-/* eslint-disable @next/next/no-img-element */
 'use client';
 
 import React from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { IEmployee } from '@/app/(crm)/crm/employees/type';
-
+import Image from 'next/image';
 interface ImagePosition {
   posX: number;
   posY: number;
@@ -115,8 +114,10 @@ export const EmployeeAvatar: React.FC<EmployeeAvatarProps> = (props) => {
         onClick={onClick}
       >
         {avatarUrl ? (
-          <img
-            src={avatarUrl}
+          <Image
+            width={size}
+            height={size}
+            src={avatarUrl as string}
             alt={employeeName}
             className="h-full w-full"
             style={{

@@ -2,13 +2,10 @@
 
 import React, { createContext, useContext, useMemo, useState, useTransition } from 'react';
 import { updateEmployeePreferences } from '@/app/(crm)/crm/actions/preferences.actions';
+import { Preferences, ViewMode } from './settings/page';
 
 
-type ViewMode = 'list' | 'grid' | 'cards' | 'detailed';
 
-interface ViewModePreference {
-  viewMode: ViewMode;
-}
 
 interface NotificationPreferences {
   email: boolean;
@@ -22,17 +19,6 @@ interface NotificationPreferences {
   };
 }
 
-export interface Preferences {
-  clients?: ViewModePreference;
-  equipment?: ViewModePreference;
-  events?: ViewModePreference;
-  tasks?: ViewModePreference;
-  offers?: ViewModePreference;
-  contracts?: ViewModePreference;
-  fleet?: ViewModePreference;
-  employees?: ViewModePreference;
-  notifications?: NotificationPreferences;
-}
 
 const defaultNotifications: NotificationPreferences = {
   email: true,
@@ -65,7 +51,7 @@ export default function PreferencesClientProvider({
   const [isPending, startTransition] = useTransition();
 
   const getViewMode = (module: keyof Preferences): ViewMode =>
-    (preferences[module] as any)?.viewMode || 'cards';
+    (preferences[module] as any)?.viewMode || 'grid';
 
   const setViewMode = (module: keyof Preferences, viewMode: ViewMode) => {
     const next = { ...preferences, [module]: { viewMode } };

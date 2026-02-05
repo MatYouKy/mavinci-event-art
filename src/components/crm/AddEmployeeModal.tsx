@@ -1,8 +1,11 @@
+/* eslint-disable react-hooks/rules-of-hooks */
 'use client';
 
 import { useState, useEffect } from 'react';
 import { X, Loader2, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useDialog } from '@/contexts/DialogContext';
 
 interface AddEmployeeModalProps {
   onClose: () => void;
@@ -17,6 +20,7 @@ interface AccessLevel {
 }
 
 export default function AddEmployeeModal({ onClose, onSuccess, isOpen }: AddEmployeeModalProps) {
+  const { showSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [accessLevels, setAccessLevels] = useState<AccessLevel[]>([]);
@@ -32,6 +36,7 @@ export default function AddEmployeeModal({ onClose, onSuccess, isOpen }: AddEmpl
     occupation: '',
   });
   const [error, setError] = useState('');
+  const { showDialog } = useDialog();
 
   if (!isOpen) return null;
 
@@ -50,6 +55,28 @@ export default function AddEmployeeModal({ onClose, onSuccess, isOpen }: AddEmpl
       setAccessLevels(data || []);
     } catch (err: any) {
       console.error('Error fetching access levels:', err);
+    }
+  };
+
+  const copyToClipboard = async (text: string, successMsg: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      showSnackbar(successMsg, 'success');
+    } catch {
+      // fallback dla przeglądarek / braku uprawnień
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      try {
+        document.execCommand('copy');
+        showSnackbar(successMsg, 'success');
+      } finally {
+        document.body.removeChild(ta);
+      }
     }
   };
 
@@ -109,13 +136,69 @@ export default function AddEmployeeModal({ onClose, onSuccess, isOpen }: AddEmpl
       }
 
       // Show success message with credentials info
-      alert(
-        `✅ Pracownik został utworzony pomyślnie!\n\n` +
-          `Email: ${formData.email}\n` +
-          `Hasło: ${formData.password}\n\n` +
-          `⚠️ Zapisz te dane i przekaż je pracownikowi!\n` +
-          `Pracownik może zmienić hasło po pierwszym logowaniu.`,
-      );
+      showDialog({
+        title: '✅ Pracownik utworzony',
+        type: 'success',
+        message: (
+          <div className="space-y-4 text-left">
+            <p className="text-[#e5e4e2]/80 text-sm">
+              Zapisz dane logowania i przekaż pracownikowi. Hasło można zmienić po pierwszym logowaniu.
+            </p>
+      
+            <div className="rounded-lg border border-[#d3bb73]/20 bg-[#13161f] p-3">
+              <div className="text-xs text-[#d3bb73] mb-1">Email</div>
+              <div className="flex items-center justify-between gap-2">
+                <code className="text-sm text-[#e5e4e2] break-all">{formData.email}</code>
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(formData.email, 'Skopiowano email')}
+                  className="rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/15 px-3 py-1.5 text-xs text-[#e5e4e2] hover:bg-[#d3bb73]/25 transition-colors"
+                >
+                  Kopiuj
+                </button>
+              </div>
+            </div>
+      
+            <div className="rounded-lg border border-[#d3bb73]/20 bg-[#13161f] p-3">
+              <div className="text-xs text-[#d3bb73] mb-1">Hasło tymczasowe</div>
+              <div className="flex items-center justify-between gap-2">
+                <code className="text-sm text-[#e5e4e2] break-all">{formData.password}</code>
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(formData.password, 'Skopiowano hasło')}
+                  className="rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/15 px-3 py-1.5 text-xs text-[#e5e4e2] hover:bg-[#d3bb73]/25 transition-colors"
+                >
+                  Kopiuj
+                </button>
+              </div>
+            </div>
+      
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  copyToClipboard(
+                    `Email: ${formData.email}\nHasło: ${formData.password}`,
+                    'Skopiowano dane logowania'
+                  )
+                }
+                className="flex-1 rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/15 px-3 py-2 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/25 transition-colors"
+              >
+                Kopiuj całość
+              </button>
+            </div>
+          </div>
+        ),
+        buttons: [
+          {
+            label: 'OK',
+            onClick: () => {
+              onSuccess(); // zamkniesz modal i odświeżysz listę jak masz w onSuccess
+            },
+            variant: 'primary',
+          },
+        ],
+      });
 
       // Success
       onSuccess();
