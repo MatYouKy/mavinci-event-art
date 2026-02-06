@@ -24,6 +24,7 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import ChangePasswordModal from '@/components/crm/ChangePasswordModal';
 import AddSystemEmailModal from '@/components/crm/AddSystemEmailModal';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { CalendarSettings } from './calendar-icam/CalendarSettings';
 
 export type ViewMode = 'list' | 'grid' | 'table';
 
@@ -279,7 +280,7 @@ console.log('employee', employee);
         >
           <div className="flex items-center gap-2">
             <Lock className="h-4 w-4" />
-            Hasło
+          Dostępy
           </div>
           {activeTab === 'password' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
@@ -434,6 +435,14 @@ console.log('employee', employee);
               <Lock className="h-4 w-4" />
               Zmień hasło
             </button>
+          </div>
+          <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+            <h3 className="mb-4 text-lg font-light text-[#e5e4e2]">Preferencje kalendarza</h3>
+            <p className="mb-6 text-sm text-[#e5e4e2]/60">
+              Zarządzaj sposobem w jaki otrzymujesz powiadomienia z kalendarza.
+            </p>
+
+<CalendarSettings />
           </div>
         </div>
       )}

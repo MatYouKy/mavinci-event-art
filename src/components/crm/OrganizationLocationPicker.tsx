@@ -1,145 +1,307 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { MapPin, ExternalLink, Plus } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
+import { Search, X, Plus } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
-import { useRouter } from 'next/navigation';
 
-interface Location {
+type LocationRow = {
   id: string;
-  name: string;
+  name: string | null;
   address: string | null;
   city: string | null;
   postal_code: string | null;
-}
+  country: string | null;
+  formatted_address: string | null;
+};
 
-interface Props {
+type Props = {
   organizationId: string;
-  currentLocationId: string | null;
+  currentLocationId?: string | null;
   onLocationChange: (locationId: string | null) => void;
   editMode: boolean;
+  onOpenAddLocation?: () => void;
+};
+
+function labelForInput(loc: LocationRow | null) {
+  // ✅ tylko nazwa w inpucie
+  return (loc?.name || '').trim();
 }
 
-export function OrganizationLocationPicker({
+function suggestionTitle(loc: LocationRow) {
+  return (loc.name || loc.formatted_address || '—').trim();
+}
+
+function suggestionSub(loc: LocationRow) {
+  // ✅ w podpowiedziach możesz dalej mieć adres (pomaga rozróżniać)
+  const line = [loc.address, loc.postal_code, loc.city, loc.country].filter(Boolean).join(', ');
+  return line || (loc.formatted_address || '');
+}
+
+/**
+ * PostgREST OR: wartości w cudzysłowie (przecinki w query nie rozwalą parsera)
+ */
+function quoteForOrIlike(raw: string) {
+  const pattern = `%${raw}%`;
+  const safe = pattern.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
+  return `"${safe}"`;
+}
+
+export default function OrganizationLocationPicker({
   organizationId,
   currentLocationId,
   onLocationChange,
   editMode,
+  onOpenAddLocation,
 }: Props) {
-  const router = useRouter();
-  const [locations, setLocations] = useState<Location[]>([]);
-  const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
-  const [loading, setLoading] = useState(true);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
+  const [currentLocation, setCurrentLocation] = useState<LocationRow | null>(null);
+
+  const [q, setQ] = useState('');
+  const [open, setOpen] = useState(false);
+  const [suggestions, setSuggestions] = useState<LocationRow[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const [fetchError, setFetchError] = useState<string>('');
+  const [isUserTyping, setIsUserTyping] = useState(false);
+
+  // fetch current location
   useEffect(() => {
-    fetchLocations();
-  }, []);
+    let alive = true;
 
-  useEffect(() => {
-    if (currentLocationId && locations.length > 0) {
-      const location = locations.find((l) => l.id === currentLocationId);
-      setSelectedLocation(location || null);
-    }
-  }, [currentLocationId, locations]);
+    const run = async () => {
+      if (!currentLocationId) {
+        if (!alive) return;
+        setCurrentLocation(null);
+        return;
+      }
 
-  const fetchLocations = async () => {
-    try {
       const { data, error } = await supabase
         .from('locations')
-        .select('id, name, address, city, postal_code')
-        .order('name');
+        .select('id,name,address,city,postal_code,country,formatted_address')
+        .eq('id', currentLocationId)
+        .maybeSingle();
 
-      if (error) throw error;
-      setLocations(data || []);
-    } catch (err) {
-      console.error('Error fetching locations:', err);
-    } finally {
-      setLoading(false);
-    }
+      if (!alive) return;
+
+      if (error) {
+        console.error('Fetch current location error:', error);
+        setCurrentLocation(null);
+        return;
+      }
+
+      setCurrentLocation((data as LocationRow) || null);
+    };
+
+    run();
+    return () => {
+      alive = false;
+    };
+  }, [currentLocationId]);
+
+  // click outside closes dropdown
+  useEffect(() => {
+    if (!editMode) return;
+
+    const onDown = (e: MouseEvent) => {
+      if (!rootRef.current) return;
+      if (!rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [editMode]);
+
+  // set input from selected location when not typing
+  useEffect(() => {
+    if (!editMode) return;
+    if (isUserTyping) return;
+    setQ(labelForInput(currentLocation)); // ✅ tylko nazwa
+  }, [editMode, currentLocation, isUserTyping]);
+
+  // debounce search
+  useEffect(() => {
+    if (!editMode) return;
+
+    const t = setTimeout(async () => {
+      const query = q.trim();
+
+      if (query.length < 2) {
+        setSuggestions([]);
+        setLoading(false);
+        if (isUserTyping) setFetchError('');
+        return;
+      }
+
+      try {
+        setLoading(true);
+
+        const v = quoteForOrIlike(query);
+
+        const { data, error } = await supabase
+          .from('locations')
+          .select('id,name,address,city,postal_code,country,formatted_address')
+          .or(`name.ilike.${v},address.ilike.${v},city.ilike.${v},formatted_address.ilike.${v}`)
+          .order('name', { ascending: true })
+          .limit(20);
+
+        if (error) throw error;
+
+        setSuggestions((data as LocationRow[]) || []);
+        setFetchError('');
+      } catch (e: any) {
+        console.error('Search locations error:', e);
+        setSuggestions([]);
+        setFetchError('Nie udało się pobrać lokalizacji');
+      } finally {
+        setLoading(false);
+      }
+    }, 250);
+
+    return () => clearTimeout(t);
+  }, [q, editMode, isUserTyping]);
+
+  const handlePick = (loc: LocationRow) => {
+    setFetchError('');
+    setIsUserTyping(false);
+
+    onLocationChange(loc.id);
+    setCurrentLocation(loc);
+
+    setQ(labelForInput(loc)); // ✅ tylko nazwa
+    setOpen(false);
+    setSuggestions([]);
+    setLoading(false);
+
+    requestAnimationFrame(() => inputRef.current?.focus());
   };
 
-  const handleLocationSelect = (locationId: string) => {
-    const location = locations.find((l) => l.id === locationId);
-    setSelectedLocation(location || null);
-    onLocationChange(locationId || null);
+  const clearSelection = () => {
+    setFetchError('');
+    setIsUserTyping(true);
+
+    onLocationChange(null);
+    setCurrentLocation(null);
+
+    setQ('');
+    setSuggestions([]);
+    setOpen(true);
+    requestAnimationFrame(() => inputRef.current?.focus());
   };
 
-  if (loading) {
-    return <div className="text-sm text-gray-400">Ładowanie lokalizacji...</div>;
+  // VIEW MODE: link
+  if (!editMode) {
+    return (
+      <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+        <div className="text-sm font-medium text-white/80">Lokalizacja</div>
+
+        <div className="mt-2">
+          {currentLocationId && currentLocation ? (
+            <Link
+              href={`/crm/locations/${currentLocationId}`}
+              className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/90 transition hover:border-[#d3bb73]/40 hover:bg-black/30"
+            >
+              <span className="truncate">{labelForInput(currentLocation) || '—'}</span>
+            </Link>
+          ) : (
+            <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/50">
+              Brak przypisanej lokalizacji
+            </div>
+          )}
+        </div>
+      </div>
+    );
   }
 
+  const showError = isUserTyping && !!fetchError;
+
   return (
-    <div className="space-y-3">
-      {editMode ? (
-        <>
-          <div className="flex gap-2">
-            <select
-              value={currentLocationId || ''}
-              onChange={(e) => handleLocationSelect(e.target.value)}
-              className="flex-1 rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-            >
-              <option value="">Brak lokalizacji (użyj ręcznego adresu)</option>
-              {locations.map((location) => (
-                <option key={location.id} value={location.id}>
-                  {location.name} - {location.city || 'Brak miasta'}
-                </option>
-              ))}
-            </select>
+    <div ref={rootRef} className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+      <div className="text-sm font-medium text-white/80">Lokalizacja</div>
+
+      <div className="mt-3 flex items-stretch gap-3">
+        <div className="relative flex-1">
+          {/* ✅ ikona lupy idealnie w pionie */}
+          <Search className="pointer-events-none absolute left-3 top-[22px] h-4 w-4 -translate-y-1/2 text-white/40" />
+
+          <input
+            ref={inputRef}
+            value={q}
+            onChange={(e) => {
+              setIsUserTyping(true);
+              setFetchError('');
+              setQ(e.target.value);
+              setOpen(true);
+            }}
+            onFocus={() => setOpen(true)}
+            placeholder="Wpisz min. 2 znaki…"
+            className={[
+              // ✅ stała wysokość inputa -> ikony zawsze trafiają w środek
+              'h-11 w-full rounded-lg border bg-black/20 py-2 pl-10 pr-10 text-sm text-white outline-none transition',
+              showError ? 'border-red-500/50' : 'border-white/10 focus:border-[#d3bb73]/40',
+            ].join(' ')}
+          />
+
+          {q && (
             <button
               type="button"
-              onClick={() => router.push('/crm/locations')}
-              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#0f1119] transition-colors hover:bg-[#c4a859]"
-              title="Dodaj nową lokalizację"
+              onClick={clearSelection}
+              className="absolute right-2 top-[22px] -translate-y-1/2 rounded-md p-2 text-white/40 transition hover:bg-white/5 hover:text-white/80"
+              aria-label="Wyczyść"
             >
-              <Plus className="h-4 w-4" />
-              Nowa
+              <X className="h-4 w-4" />
             </button>
-          </div>
-          {selectedLocation && (
-            <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-3">
-              <div className="mb-1 text-xs text-blue-400">✓ Wybrana lokalizacja:</div>
-              <div className="text-sm font-medium text-white">{selectedLocation.name}</div>
-              {selectedLocation.address && (
-                <div className="text-xs text-gray-400">
-                  {selectedLocation.address}, {selectedLocation.postal_code} {selectedLocation.city}
+          )}
+
+          {open && q.trim().length >= 2 && (
+            <div className="absolute z-50 mt-2 w-full overflow-hidden rounded-lg border border-white/10 bg-[#0f1119] shadow-2xl">
+              {loading ? (
+                <div className="px-4 py-3 text-sm text-white/60">Szukam…</div>
+              ) : suggestions.length === 0 ? (
+                <div className="px-4 py-3 text-sm text-white/60">
+                  Brak wyników. Możesz dodać nową lokalizację.
+                </div>
+              ) : (
+                <div className="max-h-64 overflow-y-auto">
+                  {suggestions.map((loc) => (
+                    <button
+                      key={loc.id}
+                      type="button"
+                      onClick={() => handlePick(loc)}
+                      className="w-full border-b border-white/5 px-4 py-3 text-left text-sm text-white/90 transition hover:bg-white/5"
+                    >
+                      <div className="font-medium">{suggestionTitle(loc)}</div>
+                      <div className="mt-0.5 text-xs text-white/50">{suggestionSub(loc)}</div>
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
           )}
-        </>
-      ) : (
-        <>
-          {selectedLocation ? (
-            <div className="flex items-start justify-between rounded-lg border border-gray-700 bg-[#0f1119] p-4">
-              <div className="flex-1">
-                <div className="mb-2 flex items-center gap-2">
-                  <MapPin className="h-4 w-4 text-[#d3bb73]" />
-                  <span className="text-sm font-medium text-[#d3bb73]">Powiązana lokalizacja:</span>
-                </div>
-                <div className="font-medium text-white">{selectedLocation.name}</div>
-                {selectedLocation.address && (
-                  <div className="mt-1 text-sm text-gray-400">
-                    {selectedLocation.address}
-                    <br />
-                    {selectedLocation.postal_code} {selectedLocation.city}
-                  </div>
-                )}
-              </div>
-              <button
-                onClick={() => router.push(`/crm/locations/${selectedLocation.id}`)}
-                className="flex items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"
-              >
-                <ExternalLink className="h-4 w-4" />
-                Szczegóły
-              </button>
-            </div>
-          ) : (
-            <div className="text-sm italic text-gray-400">
-              Brak powiązanej lokalizacji - używany jest ręczny adres
+
+          <div className="mt-1 text-xs text-white/40">
+            Wpisz min. 2 znaki — pokaże się podpowiedź. Jeśli nie ma na liście, dodaj nową
+            lokalizację.
+          </div>
+
+          {showError && (
+            <div className="mt-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+              {fetchError}
             </div>
           )}
-        </>
-      )}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => onOpenAddLocation?.()}
+          className="inline-flex h-11 items-center gap-2 rounded-lg bg-[#d3bb73] px-4 text-sm font-semibold text-[#0f1119] transition hover:bg-[#c4a859]"
+        >
+          <Plus className="h-4 w-4" />
+          Dodaj nową lokalizację
+        </button>
+      </div>
     </div>
   );
 }

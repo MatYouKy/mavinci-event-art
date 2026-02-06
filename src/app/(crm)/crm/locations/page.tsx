@@ -22,10 +22,10 @@ import {
   MapPinned,
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import GoogleMapsPicker from '@/components/crm/GoogleMapsPicker';
 import { ILocation } from './type';
 import { useLocations } from './useLocations';
 import { useDialog } from '@/contexts/DialogContext';
+import LocationModal from '@/components/crm/locations/modal/LocationModal';
 
 type ViewMode = 'grid' | 'list' | 'table';
 type SortField = 'name' | 'city' | 'created_at';
@@ -35,39 +35,20 @@ export default function LocationsPage() {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
-  const {
-    list: locations,
-    loading: isLoading,
-    error,
-    updateById,
-    create,
-    deleteById,
-  } = useLocations();
-  const [showModal, setShowModal] = useState(false);
-  const [editingLocation, setEditingLocation] = useState<ILocation | null>(null);
+  const { list: locations, loading: isLoading, deleteById } = useLocations();
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [cityFilter, setCityFilter] = useState<string>('all');
 
-  const [formData, setFormData] = useState({
-    name: '',
-    address: '',
-    city: '',
-    postal_code: '',
-    country: 'Polska',
-    nip: '',
-    contact_person_name: '',
-    contact_phone: '',
-    contact_email: '',
-    notes: '',
-    latitude: null as number | null,
-    longitude: null as number | null,
-    google_maps_url: '',
-    google_place_id: '',
-    formatted_address: '',
-  });
+  const [showModal, setShowModal] = useState(false);
+  const [editingLocation, setEditingLocation] = useState<ILocation | null>(null);
+
+  const handleOpenModal = (location?: ILocation) => {
+    setEditingLocation(location ?? null);
+    setShowModal(true);
+  };
 
   // Filtrowanie i sortowanie
   const filteredAndSortedLocations = useMemo(() => {
@@ -121,96 +102,6 @@ export default function LocationsPage() {
     });
     return Array.from(citySet).sort();
   }, [locations]);
-
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortField(field);
-      setSortDirection('asc');
-    }
-  };
-
-  const handleOpenModal = (location?: ILocation) => {
-    if (location) {
-      setEditingLocation(location);
-      setFormData({
-        name: location.name,
-        address: location.address || '',
-        city: location.city || '',
-        postal_code: location.postal_code || '',
-        country: location.country || 'Polska',
-        nip: location.nip || '',
-        contact_person_name: location.contact_person_name || '',
-        contact_phone: location.contact_phone || '',
-        contact_email: location.contact_email || '',
-        notes: location.notes || '',
-        latitude: location.latitude || null,
-        longitude: location.longitude || null,
-        google_maps_url: location.google_maps_url || '',
-        google_place_id: location.google_place_id || '',
-        formatted_address: location.formatted_address || '',
-      });
-    } else {
-      setEditingLocation(null);
-      setFormData({
-        name: '',
-        address: '',
-        city: '',
-        postal_code: '',
-        country: 'Polska',
-        nip: '',
-        contact_person_name: '',
-        contact_phone: '',
-        contact_email: '',
-        notes: '',
-        latitude: null,
-        longitude: null,
-        google_maps_url: '',
-        google_place_id: '',
-        formatted_address: '',
-      });
-    }
-    setShowModal(true);
-  };
-
-  const handleSave = async () => {
-    if (!formData.name) {
-      showSnackbar('Nazwa lokalizacji jest wymagana', 'error');
-      return;
-    }
-
-    const dataToSave = {
-      name: formData.name,
-      address: formData.address || null,
-      city: formData.city || null,
-      postal_code: formData.postal_code || null,
-      country: formData.country || 'Polska',
-      nip: formData.nip || null,
-      contact_person_name: formData.contact_person_name || null,
-      contact_phone: formData.contact_phone || null,
-      contact_email: formData.contact_email || null,
-      notes: formData.notes || null,
-      latitude: formData.latitude,
-      longitude: formData.longitude,
-      google_maps_url: formData.google_maps_url || null,
-      google_place_id: formData.google_place_id || null,
-      formatted_address: formData.formatted_address || null,
-    };
-
-    try {
-      if (editingLocation) {
-        await updateById(editingLocation.id, dataToSave);
-        showSnackbar('Lokalizacja zaktualizowana', 'success');
-      } else {
-        await create(dataToSave);
-        showSnackbar('Lokalizacja dodana', 'success');
-      }
-      setShowModal(false);
-    } catch (error) {
-      showSnackbar('Błąd podczas zapisywania lokalizacji', 'error');
-    }
-  };
 
   const handleDelete = async (id: string) => {
     const confirmed = await showConfirm(
@@ -429,170 +320,11 @@ export default function LocationsPage() {
         )}
 
         {/* Modal */}
-        {showModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-4">
-            <div className="my-8 w-full max-w-2xl rounded-lg bg-[#1c1f33]">
-              <div className="border-b border-[#d3bb73]/20 p-6">
-                <h2 className="text-xl font-bold text-[#e5e4e2]">
-                  {editingLocation ? 'Edytuj lokalizację' : 'Dodaj lokalizację'}
-                </h2>
-              </div>
-
-              <div className="max-h-[calc(90vh-200px)] space-y-4 overflow-y-auto p-6">
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-                    Nazwa lokalizacji *
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
-                    placeholder="np. Hotel Marriott Warsaw"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Adres</label>
-                    <input
-                      type="text"
-                      value={formData.address}
-                      onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
-                      placeholder="ul. Przykładowa 1"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Miasto</label>
-                    <input
-                      type="text"
-                      value={formData.city}
-                      onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
-                      placeholder="Warszawa"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-                      Kod pocztowy
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.postal_code}
-                      onChange={(e) => setFormData({ ...formData, postal_code: e.target.value })}
-                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
-                      placeholder="00-000"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">NIP</label>
-                    <input
-                      type="text"
-                      value={formData.nip}
-                      onChange={(e) => setFormData({ ...formData, nip: e.target.value })}
-                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
-                      placeholder="123-456-78-90"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-                    Osoba kontaktowa
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.contact_person_name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, contact_person_name: e.target.value })
-                    }
-                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
-                    placeholder="Jan Kowalski"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Telefon</label>
-                    <input
-                      type="tel"
-                      value={formData.contact_phone}
-                      onChange={(e) => setFormData({ ...formData, contact_phone: e.target.value })}
-                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
-                      placeholder="+48 123 456 789"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Email</label>
-                    <input
-                      type="email"
-                      value={formData.contact_email}
-                      onChange={(e) => setFormData({ ...formData, contact_email: e.target.value })}
-                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
-                      placeholder="kontakt@example.com"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Notatki</label>
-                  <textarea
-                    value={formData.notes}
-                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                    rows={3}
-                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
-                    placeholder="Dodatkowe informacje..."
-                  />
-                </div>
-
-                {/* Google Maps Picker */}
-                <div className="border-t border-[#d3bb73]/10 pt-4">
-                  <GoogleMapsPicker
-                    latitude={formData.latitude}
-                    longitude={formData.longitude}
-                    onLocationSelect={(data) => {
-                      setFormData({
-                        ...formData,
-                        name: data.name || formData.name,
-                        latitude: data.latitude,
-                        longitude: data.longitude,
-                        google_maps_url: data.google_maps_url,
-                        google_place_id: data.google_place_id || '',
-                        formatted_address: data.formatted_address,
-                        address: data.address || formData.address,
-                        city: data.city || formData.city,
-                        postal_code: data.postal_code || formData.postal_code,
-                        country: data.country || formData.country,
-                      });
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 border-t border-[#d3bb73]/20 p-6">
-                <button
-                  onClick={() => setShowModal(false)}
-                  className="rounded-lg px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10"
-                >
-                  Anuluj
-                </button>
-                <button
-                  onClick={handleSave}
-                  className="rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
-                >
-                  {editingLocation ? 'Zapisz zmiany' : 'Dodaj lokalizację'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        <LocationModal
+          open={showModal}
+          editingLocation={editingLocation}
+          onClose={() => setShowModal(false)}
+        />
       </div>
     </div>
   );

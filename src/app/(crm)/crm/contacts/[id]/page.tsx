@@ -32,7 +32,7 @@ import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { parseGoogleMapsUrl } from '@/lib/gus';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import { OrganizationLocationPicker } from '@/components/crm/OrganizationLocationPicker';
+import OrganizationLocationPicker from '@/components/crm/OrganizationLocationPicker';
 
 interface Organization {
   id: string;
@@ -115,6 +115,7 @@ interface OrganizationNote {
 }
 
 interface ContactHistory {
+  notes: any;
   id: string;
   contact_type: string;
   subject: string;
@@ -175,7 +176,7 @@ export default function OrganizationDetailPage() {
   const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
-  const [editedData, setEditedData] = useState<Partial<Organization | Contact>>({});
+  const [editedData, setEditedData] = useState<Partial<Organization & Contact>>({});
   const [saving, setSaving] = useState(false);
 
   const [showAddContactModal, setShowAddContactModal] = useState(false);
@@ -1228,8 +1229,8 @@ export default function OrganizationDetailPage() {
                   Lokalizacja z bazy danych
                 </label>
                 <OrganizationLocationPicker
-                  organizationId={params.id}
-                  currentLocationId={editMode ? editedData.location_id : organization.location_id}
+                  organizationId={organization.id}
+                  currentLocationId={organization.location_id}
                   onLocationChange={(locationId) =>
                     setEditedData({ ...editedData, location_id: locationId })
                   }
@@ -1237,145 +1238,7 @@ export default function OrganizationDetailPage() {
                 />
               </div>
 
-              {!(editMode ? editedData.location_id : organization.location_id) && (
-                <div className="mt-6 border-t border-gray-700 pt-6">
-                  <h3 className="mb-4 text-lg font-medium text-white">
-                    Ręczny adres (opcjonalnie)
-                  </h3>
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div className="md:col-span-2">
-                      <label className="mb-1 block text-sm font-medium text-gray-400">Adres</label>
-                      {editMode ? (
-                        <input
-                          type="text"
-                          value={editedData.address || ''}
-                          onChange={(e) =>
-                            setEditedData({ ...editedData, address: e.target.value })
-                          }
-                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                        />
-                      ) : (
-                        <p className="text-white">{organization.address || '-'}</p>
-                      )}
-                    </div>
 
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-gray-400">Miasto</label>
-                      {editMode ? (
-                        <input
-                          type="text"
-                          value={editedData.city || ''}
-                          onChange={(e) => setEditedData({ ...editedData, city: e.target.value })}
-                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                        />
-                      ) : (
-                        <p className="text-white">{organization.city || '-'}</p>
-                      )}
-                    </div>
-
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-gray-400">
-                        Kod pocztowy
-                      </label>
-                      {editMode ? (
-                        <input
-                          type="text"
-                          value={editedData.postal_code || ''}
-                          onChange={(e) =>
-                            setEditedData({ ...editedData, postal_code: e.target.value })
-                          }
-                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                        />
-                      ) : (
-                        <p className="text-white">{organization.postal_code || '-'}</p>
-                      )}
-                    </div>
-
-                    {editMode && (
-                      <>
-                        <div className="md:col-span-2">
-                          <label className="mb-1 block text-sm font-medium text-gray-400">
-                            URL Google Maps
-                          </label>
-                          <div className="flex space-x-2">
-                            <input
-                              type="url"
-                              value={editedData.google_maps_url || ''}
-                              onChange={(e) =>
-                                setEditedData({ ...editedData, google_maps_url: e.target.value })
-                              }
-                              className="flex-1 rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                              placeholder="https://maps.google.com/..."
-                            />
-                            <button
-                              type="button"
-                              onClick={handleParseGoogleMaps}
-                              className="flex items-center space-x-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#0f1119] transition-colors hover:bg-[#c4a859]"
-                            >
-                              <MapPin className="h-5 w-5" />
-                              <span>Pobierz</span>
-                            </button>
-                          </div>
-                          <p className="mt-1 text-xs text-gray-500">
-                            Otwórz miejsce w Google Maps, skopiuj PEŁNY URL z paska adresu
-                          </p>
-                        </div>
-
-                        <div>
-                          <label className="mb-1 block text-sm font-medium text-gray-400">
-                            Szerokość geograficzna
-                          </label>
-                          <input
-                            type="number"
-                            step="0.00000001"
-                            value={editedData.latitude || ''}
-                            onChange={(e) =>
-                              setEditedData({
-                                ...editedData,
-                                latitude: parseFloat(e.target.value) || null,
-                              })
-                            }
-                            className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="mb-1 block text-sm font-medium text-gray-400">
-                            Długość geograficzna
-                          </label>
-                          <input
-                            type="number"
-                            step="0.00000001"
-                            value={editedData.longitude || ''}
-                            onChange={(e) =>
-                              setEditedData({
-                                ...editedData,
-                                longitude: parseFloat(e.target.value) || null,
-                              })
-                            }
-                            className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                          />
-                        </div>
-                      </>
-                    )}
-
-                    {!editMode && organization.google_maps_url && (
-                      <div className="md:col-span-2">
-                        <a
-                          href={organization.google_maps_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center space-x-2 text-[#d3bb73] hover:underline"
-                        >
-                          <MapPin className="h-5 w-5" />
-                          <span>Otwórz w Google Maps</span>
-                          <ExternalLink className="h-4 w-4" />
-                        </a>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
 
             {organization.organization_type === 'subcontractor' && (

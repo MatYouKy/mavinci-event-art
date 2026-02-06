@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { MapPin, ExternalLink, Search, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { buildBestAddress } from '../CityMapEmbed/buildBestAddress';
 
 declare global {
   interface Window {
@@ -12,6 +13,7 @@ declare global {
 interface GoogleMapsPickerProps {
   latitude?: number | null;
   longitude?: number | null;
+  onConfirmLocation?: () => void;
   onLocationSelect: (data: {
     name?: string;
     latitude: number;
@@ -39,6 +41,7 @@ export default function GoogleMapsPicker({
   latitude,
   longitude,
   onLocationSelect,
+  onConfirmLocation,
 }: GoogleMapsPickerProps) {
   const [centerLat, setCenterLat] = useState<number>(latitude || 52.2297);
   const [centerLng, setCenterLng] = useState<number>(longitude || 21.0122);
@@ -53,6 +56,25 @@ export default function GoogleMapsPicker({
   const mapRef = useRef<any>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const getTargetZoomForPlace = (place: any) => {
+    const vp = place?.geometry?.viewport;
+  
+    // jeśli google zwróci viewport – dopasuj mapę do obszaru (najlepsze UX)
+    if (vp && mapRef.current?.fitBounds) {
+      return { type: 'fit' as const, vp };
+    }
+  
+    // fallback: “miejsce/POI” bliżej, adresy trochę dalej
+    const types: string[] = place?.types ?? [];
+    const isPOI =
+      types.includes('point_of_interest') ||
+      types.includes('establishment') ||
+      types.includes('restaurant') ||
+      types.includes('lodging');
+  
+    return { type: 'zoom' as const, zoom: isPOI ? 16 : 15 };
+  };
 
   // Inicjalizacja mapy Google Maps JavaScript API
   useEffect(() => {
@@ -71,6 +93,7 @@ export default function GoogleMapsPicker({
         mapTypeControl: true,
         streetViewControl: true,
         fullscreenControl: false,
+        clickableIcons: true,
       });
 
       mapRef.current = map;
@@ -107,65 +130,97 @@ export default function GoogleMapsPicker({
 
       // LISTENER NA KLIKNIĘCIE MAPY - pobierz info o miejscu
       map.addListener('click', async (e: any) => {
-        const lat = e.latLng.lat();
-        const lng = e.latLng.lng();
-
-        // Pobierz informacje o miejscu za pomocą Geocoding API
         try {
+          // ✅ Jeśli kliknięto POI, Google daje placeId
+          if (e.placeId) {
+            // ✅ blokuje domyślny biały popup Google
+            if (typeof e.stop === 'function') e.stop();
+
+            const placeId = e.placeId as string;
+
+            const detailsResponse = await fetch(
+              `/bridge/places/details?place_id=${encodeURIComponent(placeId)}`,
+            );
+            const detailsData = await detailsResponse.json();
+
+            if (detailsData.status === 'OK' && detailsData.result) {
+              const place = detailsData.result;
+              const lat = place.geometry.location.lat;
+              const lng = place.geometry.location.lng;
+
+              // parse adresu jak u Ciebie
+              let address = '';
+              let city = '';
+              let postalCode = '';
+              let country = '';
+
+              if (place.address_components) {
+                place.address_components.forEach((component: any) => {
+                  if (component.types.includes('route')) address = component.long_name;
+                  if (component.types.includes('street')) address = component.long_name;
+                  if (component.types.includes('street_number'))
+                    address = `${component.long_name} ${address}`.trim();
+                  if (component.types.includes('locality')) city = component.long_name;
+                  if (component.types.includes('postal_code')) postalCode = component.long_name;
+                  if (component.types.includes('country')) country = component.long_name;
+                });
+              }
+
+              const parsed = buildBestAddress(place);
+
+              setClickedPlace({
+                name: place.name || parsed.formatted_short || 'Wybrane miejsce',
+                lat,
+                lng,
+                place_id: place.place_id || placeId,
+                ...parsed,
+              });
+              setShowPlacePopup(true);
+              return;
+            }
+          }
+
+          // ✅ fallback: klik w “puste” miejsce → reverse geocode
+          const lat = e.latLng.lat();
+          const lng = e.latLng.lng();
+
           const geocoder = new window.google.maps.Geocoder();
           const result = await geocoder.geocode({ location: { lat, lng } });
 
           if (result.results && result.results.length > 0) {
             const place = result.results[0];
 
-            let name = '';
             let address = '';
             let city = '';
             let postalCode = '';
             let country = '';
 
-            // Spróbuj znaleźć nazwę POI (Point of Interest)
-            const poiResult = result.results.find((r: any) => r.types.includes('point_of_interest'));
-            if (poiResult) {
-              name = poiResult.name || '';
-            }
-
-            // Parse address components
             if (place.address_components) {
               place.address_components.forEach((component: any) => {
-                if (component.types.includes('route')) {
-                  address = component.long_name;
-                }
-                if (component.types.includes('street_number')) {
+                if (component.types.includes('route')) address = component.long_name;
+                if (component.types.includes('street')) address = component.long_name;
+                if (component.types.includes('street_number'))
                   address = `${component.long_name} ${address}`.trim();
-                }
-                if (component.types.includes('locality')) {
-                  city = component.long_name;
-                }
-                if (component.types.includes('postal_code')) {
-                  postalCode = component.long_name;
-                }
-                if (component.types.includes('country')) {
-                  country = component.long_name;
-                }
+                if (component.types.includes('locality')) city = component.long_name;
+                if (component.types.includes('postal_code')) postalCode = component.long_name;
+                if (component.types.includes('country')) country = component.long_name;
               });
             }
 
+            // ⛔ tutaj nie udawaj “nazwy”, bo reverse geocode jej nie ma
+            const parsed = buildBestAddress(place);
+
             setClickedPlace({
-              name: name || place.formatted_address?.split(',')[0] || '',
+              name: parsed.formatted_short || 'Wybrany punkt',
               lat,
               lng,
-              formatted_address: place.formatted_address,
               place_id: place.place_id,
-              address,
-              city,
-              postal_code: postalCode,
-              country,
+              ...parsed,
             });
             setShowPlacePopup(true);
           }
-        } catch (error) {
-          console.error('Błąd geocoding:', error);
+        } catch (err) {
+          console.error('Map click error', err);
         }
       });
     };
@@ -205,7 +260,7 @@ export default function GoogleMapsPicker({
     searchTimeoutRef.current = setTimeout(async () => {
       try {
         const response = await fetch(
-          `/api/places/autocomplete?input=${encodeURIComponent(searchQuery)}`
+          `/bridge/places/autocomplete?input=${encodeURIComponent(searchQuery)}`,
         );
 
         const data = await response.json();
@@ -229,9 +284,7 @@ export default function GoogleMapsPicker({
     setShowSuggestions(false);
 
     try {
-      const detailsResponse = await fetch(
-        `/api/places/details?place_id=${suggestion.place_id}`
-      );
+      const detailsResponse = await fetch(`/bridge/places/details?place_id=${suggestion.place_id}`);
 
       const detailsData = await detailsResponse.json();
 
@@ -239,53 +292,40 @@ export default function GoogleMapsPicker({
         const place = detailsData.result;
         const lat = place.geometry.location.lat;
         const lng = place.geometry.location.lng;
-
-        let address = '';
-        let city = '';
-        let postalCode = '';
-        let country = '';
-
-        if (place.address_components) {
-          place.address_components.forEach((component: any) => {
-            if (component.types.includes('route')) {
-              address = component.long_name;
-            }
-            if (component.types.includes('street_number')) {
-              address = `${component.long_name} ${address}`.trim();
-            }
-            if (component.types.includes('locality')) {
-              city = component.long_name;
-            }
-            if (component.types.includes('postal_code')) {
-              postalCode = component.long_name;
-            }
-            if (component.types.includes('country')) {
-              country = component.long_name;
-            }
-          });
-        }
-
+      
+        const parsed = buildBestAddress(place);
+      
         setCenterLat(lat);
         setCenterLng(lng);
-
+      
         if (mapRef.current) {
-          mapRef.current.setCenter({ lat, lng });
-          // Nie zmieniaj zoom - zachowaj aktualny poziom
+          // płynne przesunięcie
+          mapRef.current.panTo({ lat, lng });
+        
+          const z = getTargetZoomForPlace(place);
+        
+          if (z.type === 'fit') {
+            // viewport -> perfekcyjny zoom do obiektu/obszaru
+            mapRef.current.fitBounds(z.vp);
+          } else {
+            mapRef.current.setZoom(z.zoom);
+          }
         }
-
+      
         const googleMapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
 
         onLocationSelect({
           name: place.name || suggestion.structured_formatting.main_text || undefined,
           latitude: lat,
           longitude: lng,
-          formatted_address: place.formatted_address || `${lat.toFixed(6)}, ${lng.toFixed(6)}`,
+          formatted_address:
+            parsed.formatted_address || parsed.formatted_short || place.formatted_address || '',
           google_place_id: suggestion.place_id,
           google_maps_url: googleMapsUrl,
-          address: address || undefined,
-          city: city || undefined,
-          postal_code: postalCode || undefined,
-          country: country || undefined,
+          address: parsed.address,
+          city: parsed.city,
+          postal_code: parsed.postal_code,
+          country: parsed.country,
         });
       }
     } catch (error) {
@@ -318,7 +358,7 @@ export default function GoogleMapsPicker({
         },
         (error) => {
           alert('Nie udało się pobrać lokalizacji: ' + error.message);
-        }
+        },
       );
     } else {
       alert('Geolokalizacja nie jest dostępna w tej przeglądarce');
@@ -363,18 +403,17 @@ export default function GoogleMapsPicker({
     });
 
     setShowPlacePopup(false);
+    onConfirmLocation?.();
   };
 
   return (
     <div className="space-y-4">
       {/* Wyszukiwarka */}
       <div className="relative">
-        <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-          Wyszukaj miejsce
-        </label>
+        <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Wyszukaj miejsce</label>
         <div className="relative">
           <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/50">
-            <Search className="w-5 h-5" />
+            <Search className="h-5 w-5" />
           </div>
           <input
             type="text"
@@ -382,7 +421,7 @@ export default function GoogleMapsPicker({
             onChange={(e) => setSearchQuery(e.target.value)}
             onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
             placeholder="np. Hotel Omega Kraków, Stadion Narodowy..."
-            className="w-full pl-10 pr-10 py-3 bg-[#1c1f33] border border-[#d3bb73]/30 rounded-lg text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73] transition-colors"
+            className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33] py-3 pl-10 pr-10 text-[#e5e4e2] transition-colors focus:border-[#d3bb73] focus:outline-none"
           />
           {searchQuery && (
             <button
@@ -392,22 +431,22 @@ export default function GoogleMapsPicker({
                 setSuggestions([]);
                 setShowSuggestions(false);
               }}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/50 hover:text-[#e5e4e2] transition-colors"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/50 transition-colors hover:text-[#e5e4e2]"
             >
-              <X className="w-5 h-5" />
+              <X className="h-5 w-5" />
             </button>
           )}
         </div>
 
         {/* Sugestie */}
         {showSuggestions && suggestions.length > 0 && (
-          <div className="absolute z-50 w-full mt-2 bg-[#1c1f33] border border-[#d3bb73]/30 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+          <div className="absolute z-50 mt-2 max-h-60 w-full overflow-y-auto rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33] shadow-xl">
             {suggestions.map((suggestion, index) => (
               <button
                 key={index}
                 type="button"
                 onClick={() => handleSuggestionClick(suggestion)}
-                className="w-full text-left px-4 py-3 hover:bg-[#d3bb73]/10 transition-colors border-b border-[#d3bb73]/10 last:border-b-0"
+                className="w-full border-b border-[#d3bb73]/10 px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-[#d3bb73]/10"
               >
                 <div className="font-medium text-[#e5e4e2]">
                   {suggestion.structured_formatting.main_text}
@@ -425,115 +464,109 @@ export default function GoogleMapsPicker({
       <button
         type="button"
         onClick={handleGetCurrentLocation}
-        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-500/10 border border-blue-500/30 text-blue-300 rounded-lg hover:bg-blue-500/20 transition-colors"
+        className="flex w-full items-center justify-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-blue-300 transition-colors hover:bg-blue-500/20"
       >
-        <MapPin className="w-4 h-4" />
+        <MapPin className="h-4 w-4" />
         Użyj mojej lokalizacji GPS
       </button>
 
       {/* Mapa interaktywna - Google Maps JS API */}
       <div>
-        <label className="block text-sm font-medium text-[#e5e4e2] mb-2">
-          Mapa lokalizacji
-        </label>
-        <p className="text-xs text-[#e5e4e2]/60 mb-3">
-          Przesuń mapę aby znaleźć miejsce. Pinezka (🔴) w centrum pokazuje wybraną lokalizację.
-        </p>
-
         <div
-          className="relative bg-[#0f1117] border-2 border-[#d3bb73]/30 rounded-lg overflow-hidden"
+          className="relative overflow-hidden rounded-lg border-2 border-[#d3bb73]/30 bg-[#0f1117]"
           style={{ height: '500px' }}
         >
           {/* Google Maps Container */}
-          <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
+          <div ref={mapContainerRef} className="absolute inset-0 h-full w-full" />
 
           {/* Pinezka w centrum - stała pozycja */}
-          <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-10">
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
             <div className="relative">
               <MapPin
-                className="w-12 h-12 text-red-500"
+                className="h-12 w-12 text-red-500"
                 style={{
                   filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.7))',
                   strokeWidth: 2.5,
                   transform: 'translateY(-50%)',
                 }}
               />
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3 h-3 bg-red-500 rounded-full animate-ping" />
+              <div className="absolute left-1/2 top-0 h-3 w-3 -translate-x-1/2 animate-ping rounded-full bg-red-500" />
             </div>
           </div>
 
           {/* Overlay z współrzędnymi - lewy górny róg */}
-          <div className="absolute top-4 left-4 bg-[#1c1f33]/95 backdrop-blur-sm rounded-lg border border-[#d3bb73]/30 px-4 py-2 shadow-lg z-20">
-            <div className="text-xs text-[#e5e4e2]/70 mb-1">Wybrana lokalizacja:</div>
-            <div className="font-mono text-sm text-[#d3bb73] font-semibold">
+          <div className="absolute left-4 top-4 z-20 rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33]/95 px-4 py-2 shadow-lg backdrop-blur-sm">
+            <div className="mb-1 text-xs text-[#e5e4e2]/70">Wybrana lokalizacja:</div>
+            <div className="font-mono text-sm font-semibold text-[#d3bb73]">
               {centerLat.toFixed(6)}, {centerLng.toFixed(6)}
             </div>
           </div>
 
           {/* Kontrolki zoom - prawy górny róg */}
-          <div className="absolute right-4 top-4 flex flex-col gap-2 bg-[#1c1f33]/95 backdrop-blur-sm rounded-lg border border-[#d3bb73]/30 p-1 shadow-lg z-20">
+          <div className="absolute right-4 top-4 z-20 flex flex-col gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33]/95 p-1 shadow-lg backdrop-blur-sm">
             <button
               type="button"
               onClick={() => handleZoom(1)}
-              className="p-2 hover:bg-[#d3bb73]/20 rounded transition-colors text-[#e5e4e2]"
+              className="rounded p-2 text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/20"
               title="Przybliż"
             >
-              <ZoomIn className="w-5 h-5" />
+              <ZoomIn className="h-5 w-5" />
             </button>
             <div className="h-px bg-[#d3bb73]/30" />
             <button
               type="button"
               onClick={() => handleZoom(-1)}
-              className="p-2 hover:bg-[#d3bb73]/20 rounded transition-colors text-[#e5e4e2]"
+              className="rounded p-2 text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/20"
               title="Oddal"
             >
-              <ZoomOut className="w-5 h-5" />
+              <ZoomOut className="h-5 w-5" />
             </button>
           </div>
 
           {/* Instrukcja - lewy dolny róg */}
-          <div className="absolute left-4 bottom-4 bg-[#1c1f33]/95 backdrop-blur-sm rounded-lg border border-[#d3bb73]/30 px-4 py-3 max-w-xs shadow-lg z-20">
+          <div className="absolute bottom-4 left-4 z-20 max-w-xs rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33]/95 px-4 py-3 shadow-lg backdrop-blur-sm">
             <div className="flex items-start gap-2">
-              <MapPin className="w-4 h-4 text-[#d3bb73] flex-shrink-0 mt-0.5" />
+              <MapPin className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#d3bb73]" />
               <p className="text-xs text-[#e5e4e2]/70">
-                Przeciągnij mapę aby zmienić lokalizację. Czerwona pinezka zawsze wskazuje wybrany punkt.
+                Przeciągnij mapę aby zmienić lokalizację. Czerwona pinezka zawsze wskazuje wybrany
+                punkt.
               </p>
             </div>
           </div>
 
           {/* Link do pełnej Google Maps - prawy dolny róg */}
-          <div className="absolute right-4 bottom-4 z-20">
+          <div className="absolute bottom-4 right-4 z-20">
             <a
               href={`https://www.google.com/maps?q=${centerLat},${centerLng}&z=${zoom}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-2 px-4 py-2 bg-[#d3bb73] text-[#1c1f33] rounded-lg font-medium hover:bg-[#d3bb73]/90 transition-colors shadow-lg"
+              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] shadow-lg transition-colors hover:bg-[#d3bb73]/90"
             >
               Otwórz w Google Maps
-              <ExternalLink className="w-4 h-4" />
+              <ExternalLink className="h-4 w-4" />
             </a>
           </div>
 
           {/* Custom popup po kliknięciu na miejscu */}
           {showPlacePopup && clickedPlace && (
-            <div className="absolute inset-0 flex items-center justify-center z-50 bg-black/30 backdrop-blur-sm">
-              <div className="bg-[#1c1f33] border-2 border-[#d3bb73] rounded-xl shadow-2xl p-6 max-w-md w-full mx-4">
-                <div className="flex items-start justify-between mb-4">
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+              <div className="mx-4 w-full max-w-md rounded-xl border-2 border-[#d3bb73] bg-[#1c1f33] p-6 shadow-2xl">
+                <div className="mb-4 flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <MapPin className="w-6 h-6 text-[#d3bb73] flex-shrink-0" />
+                    <MapPin className="h-6 w-6 flex-shrink-0 text-[#d3bb73]" />
                     <h3 className="text-lg font-semibold text-[#e5e4e2]">
                       {clickedPlace.name || 'Wybrane miejsce'}
                     </h3>
                   </div>
                   <button
                     onClick={() => setShowPlacePopup(false)}
-                    className="p-1 hover:bg-[#d3bb73]/10 rounded transition-colors"
+                    className="rounded p-1 transition-colors hover:bg-[#d3bb73]/10"
                   >
-                    <X className="w-5 h-5 text-[#e5e4e2]/70" />
+                    <X className="h-5 w-5 text-[#e5e4e2]/70" />
                   </button>
                 </div>
 
-                <div className="space-y-3 mb-6">
+                <div className="mb-6 space-y-3">
                   {clickedPlace.address && (
                     <div className="text-sm text-[#e5e4e2]/80">
                       <span className="font-medium">Adres:</span> {clickedPlace.address}
@@ -546,11 +579,11 @@ export default function GoogleMapsPicker({
                     </div>
                   )}
                   {clickedPlace.formatted_address && (
-                    <div className="text-sm text-[#e5e4e2]/60 border-t border-[#d3bb73]/20 pt-3">
+                    <div className="border-t border-[#d3bb73]/20 pt-3 text-sm text-[#e5e4e2]/60">
                       {clickedPlace.formatted_address}
                     </div>
                   )}
-                  <div className="text-xs font-mono text-[#d3bb73]/80 bg-[#0f1117] px-3 py-2 rounded">
+                  <div className="rounded bg-[#0f1117] px-3 py-2 font-mono text-xs text-[#d3bb73]/80">
                     {clickedPlace.lat.toFixed(6)}, {clickedPlace.lng.toFixed(6)}
                   </div>
                 </div>
@@ -558,13 +591,13 @@ export default function GoogleMapsPicker({
                 <div className="flex gap-3">
                   <button
                     onClick={() => setShowPlacePopup(false)}
-                    className="flex-1 px-4 py-2.5 bg-[#0f1117] text-[#e5e4e2] rounded-lg hover:bg-[#d3bb73]/10 transition-colors font-medium"
+                    className="flex-1 rounded-lg bg-[#0f1117] px-4 py-2.5 font-medium text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10"
                   >
                     Anuluj
                   </button>
                   <button
                     onClick={handleUseClickedPlace}
-                    className="flex-1 px-4 py-2.5 bg-[#d3bb73] text-[#1c1f33] rounded-lg hover:bg-[#d3bb73]/90 transition-colors font-semibold shadow-lg"
+                    className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2.5 font-semibold text-[#1c1f33] shadow-lg transition-colors hover:bg-[#d3bb73]/90"
                   >
                     Użyj tej lokalizacji
                   </button>
@@ -573,25 +606,6 @@ export default function GoogleMapsPicker({
             </div>
           )}
         </div>
-      </div>
-
-      {/* Kopiowanie współrzędnych */}
-      <div className="flex items-center justify-between p-3 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-lg">
-        <div className="flex items-center gap-3">
-          <MapPin className="w-5 h-5 text-[#d3bb73]" />
-          <code className="text-sm text-[#e5e4e2] font-mono font-medium">
-            {centerLat.toFixed(6)}, {centerLng.toFixed(6)}
-          </code>
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            navigator.clipboard.writeText(`${centerLat}, ${centerLng}`);
-          }}
-          className="px-3 py-1.5 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10 rounded transition-colors font-medium"
-        >
-          Kopiuj współrzędne
-        </button>
       </div>
     </div>
   );

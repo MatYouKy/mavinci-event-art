@@ -16,12 +16,12 @@ import {
   Plus,
   X,
   MapPin,
-  Trash2,
   Check,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { fetchCompanyDataFromGUS, parseGoogleMapsUrl } from '@/lib/gus';
+import OrganizationLocationPicker from '@/components/crm/OrganizationLocationPicker';
 
 type ContactType = 'organization' | 'contact' | 'subcontractor' | 'individual';
 type BusinessType = 'company' | 'hotel' | 'restaurant' | 'venue' | 'freelancer' | 'other';
@@ -79,6 +79,9 @@ export default function NewContactPage() {
     notes: '',
     hourlyRate: '',
     specialization: [] as string[],
+
+    // ✅ NOWE: wybór lokalizacji z bazy (do organizacji/podwykonawcy)
+    location_id: '' as string,
   });
 
   const [availableContacts, setAvailableContacts] = useState<ExistingContact[]>([]);
@@ -165,11 +168,20 @@ export default function NewContactPage() {
       setSelectedContactIds([...selectedContactIds, data.id]);
       setShowNewContactForm(false);
       setNewContact({
+        ...newContact,
         firstName: '',
         lastName: '',
         email: '',
         phone: '',
         mobile: '',
+        // resztę zostawiamy (nip/position itd.) – jeśli chcesz czyścić też, daj znać
+        businessPhone: '',
+        nip: '',
+        position: '',
+        pesel: '',
+        idNumber: '',
+        eventType: '',
+        eventDetails: '',
       });
       showSnackbar('Kontakt dodany', 'success');
     } catch (error: any) {
@@ -267,14 +279,12 @@ export default function NewContactPage() {
           status: 'active' as const,
         };
 
-        // Dodatkowe pola dla kontaktu
         if (contactType === 'contact') {
           contactData.nip = newContact.nip || null;
           contactData.position = newContact.position || null;
           contactData.business_phone = newContact.businessPhone || null;
         }
 
-        // Dodatkowe pola dla osoby prywatnej
         if (contactType === 'individual') {
           contactData.pesel = newContact.pesel || null;
           contactData.id_number = newContact.idNumber || null;
@@ -298,7 +308,7 @@ export default function NewContactPage() {
         );
         router.push(`/crm/contacts/${contact.id}`);
       } else {
-        const orgData = {
+        const orgData: any = {
           organization_type: contactType === 'subcontractor' ? 'subcontractor' : 'client',
           business_type: formData.businessType,
           name: formData.name,
@@ -310,6 +320,10 @@ export default function NewContactPage() {
           email: formData.email || null,
           phone: formData.phone || null,
           website: formData.website || null,
+
+          // ✅ NOWE: wybór lokalizacji z bazy (z pickera)
+          location_id: formData.location_id ? formData.location_id : null,
+
           google_maps_url: formData.googleMapsUrl || null,
           latitude: formData.latitude ? parseFloat(formData.latitude) : null,
           longitude: formData.longitude ? parseFloat(formData.longitude) : null,
@@ -1028,81 +1042,15 @@ export default function NewContactPage() {
               </div>
 
               {(contactType === 'organization' || contactType === 'subcontractor') && (
-                <>
-                  <div className="border-t border-gray-700 pt-6">
-                    <h3 className="mb-4 flex items-center space-x-2 text-lg font-semibold text-white">
-                      <MapPin className="h-5 w-5 text-[#d3bb73]" />
-                      <span>Lokalizacja</span>
-                    </h3>
-                    <div className="space-y-4">
-                      <div>
-                        <label className="mb-2 block text-sm font-medium text-gray-300">
-                          URL Google Maps
-                        </label>
-                        <div className="flex space-x-2">
-                          <input
-                            type="url"
-                            value={formData.googleMapsUrl}
-                            onChange={(e) =>
-                              setFormData({ ...formData, googleMapsUrl: e.target.value })
-                            }
-                            className="flex-1 rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                            placeholder="https://maps.google.com/..."
-                          />
-                          <button
-                            type="button"
-                            onClick={handleParseGoogleMaps}
-                            className="flex items-center space-x-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#0f1119] transition-colors hover:bg-[#c4a859]"
-                          >
-                            <MapPin className="h-5 w-5" />
-                            <span>Pobierz</span>
-                          </button>
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="mb-2 block text-sm font-medium text-gray-300">
-                          Ulica i numer
-                        </label>
-                        <input
-                          type="text"
-                          value={formData.address}
-                          onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                        />
-                      </div>
-                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                        <div>
-                          <label className="mb-2 block text-sm font-medium text-gray-300">
-                            Miasto
-                          </label>
-                          <input
-                            type="text"
-                            value={formData.city}
-                            onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                            className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                          />
-                        </div>
-                        <div>
-                          <label className="mb-2 block text-sm font-medium text-gray-300">
-                            Kod pocztowy
-                          </label>
-                          <input
-                            type="text"
-                            value={formData.postalCode}
-                            onChange={(e) =>
-                              setFormData({ ...formData, postalCode: e.target.value })
-                            }
-                            className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                            placeholder="00-000"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </>
+                <OrganizationLocationPicker
+                  organizationId="__new__" // ✅ tutaj organizacja jeszcze nie istnieje
+                  currentLocationId={formData.location_id || null}
+                  onLocationChange={(locationId) =>
+                    setFormData((s) => ({ ...s, location_id: locationId ?? '' }))
+                  }
+                  editMode={true}
+                />
               )}
-
               {contactType === 'subcontractor' && (
                 <div className="border-t border-gray-700 pt-6">
                   <h3 className="mb-4 text-lg font-semibold text-white">

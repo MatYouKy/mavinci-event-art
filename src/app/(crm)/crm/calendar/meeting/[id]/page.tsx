@@ -8,12 +8,6 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { utcToLocalDatetimeString, localDatetimeStringToUTC } from '@/lib/utils/dateTimeUtils';
 import { useDialog } from '@/contexts/DialogContext';
 
-const getAccessToken = async () => {
-  const { data, error } = await supabase.auth.getSession();
-  if (error) throw error;
-  return data.session?.access_token;
-};
-
 interface Meeting {
   event_id: any;
   events: any;
@@ -80,53 +74,9 @@ export default function MeetingDetailPage() {
 
   const [selectedParticipants, setSelectedParticipants] = useState<string[]>([]);
 
-  const [icalUrl, setIcalUrl] = useState<string>('');
-  const [icalLoading, setIcalLoading] = useState(false);
-
-  const fetchIcalUrl = async () => {
-    try {
-      setIcalLoading(true);
-
-      const accessToken = await getAccessToken();
-      if (!accessToken) {
-        showSnackbar('Brak sesji użytkownika – zaloguj się ponownie', 'error');
-        return;
-      }
-
-      const res = await fetch('/bridge/calendar/ical-token', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      const json = await res.json();
-      if (!res.ok) throw json;
-
-      const token = json.token as string;
-      const origin = window.location.origin;
-      const url = `${origin}/bridge/calendar/ical/${token}`;
-
-      setIcalUrl(url);
-    } catch (e: any) {
-      console.error('fetchIcalUrl error', e);
-      showSnackbar('Nie udało się wygenerować linku iCal', 'error');
-    } finally {
-      setIcalLoading(false);
-    }
-  };
-
-  const copyIcalUrl = async () => {
-    if (!icalUrl) return;
-    await navigator.clipboard.writeText(icalUrl);
-    showSnackbar('Link iCal skopiowany', 'success');
-  };
 
   useEffect(() => {
     fetchMeeting();
-    // dodatkowo:
-    fetchIcalUrl();
   }, [meetingId]);
 
   const fetchMeeting = async () => {
@@ -284,53 +234,6 @@ export default function MeetingDetailPage() {
   return (
     <div className="min-h-screen bg-[#13161f] p-4 text-[#e5e4e2] md:p-8">
       <div className="mx-auto max-w-5xl">
-        <div className="mb-6 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-sm font-medium text-[#e5e4e2]">
-                Subskrypcja kalendarza (iPhone / Google)
-              </p>
-              <p className="text-xs text-[#e5e4e2]/60">
-                Skopiuj link i dodaj jako „Subskrybowany kalendarz” (iOS) lub „From URL” (Google).
-              </p>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                onClick={fetchIcalUrl}
-                disabled={icalLoading}
-                className="rounded-lg border border-[#d3bb73]/20 px-3 py-2 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10 disabled:opacity-50"
-              >
-                {icalLoading ? 'Generuję...' : 'Wygeneruj link'}
-              </button>
-
-              <button
-                onClick={copyIcalUrl}
-                disabled={!icalUrl}
-                className="rounded-lg bg-[#d3bb73] px-3 py-2 text-sm font-medium text-[#1c1f33] disabled:opacity-50"
-              >
-                Skopiuj
-              </button>
-
-              {icalUrl && (
-                <a
-                  href={icalUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-lg border border-[#d3bb73]/20 px-3 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/10"
-                >
-                  Otwórz
-                </a>
-              )}
-            </div>
-          </div>
-
-          {icalUrl && (
-            <div className="mt-3 break-all rounded-lg bg-[#13161f] p-3 text-xs text-[#e5e4e2]/80">
-              {icalUrl}
-            </div>
-          )}
-        </div>
 
         <div className="space-y-6 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
           <div
