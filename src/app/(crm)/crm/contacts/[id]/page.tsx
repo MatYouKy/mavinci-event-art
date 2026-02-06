@@ -1222,12 +1222,7 @@ export default function OrganizationDetailPage() {
             </div>
 
             <div className="rounded-lg border border-gray-700 bg-[#1a1d2e] p-6">
-              <h2 className="mb-4 text-xl font-semibold text-white">Adres i lokalizacja</h2>
-
               <div className="mb-6">
-                <label className="mb-2 block text-sm font-medium text-gray-400">
-                  Lokalizacja z bazy danych
-                </label>
                 <OrganizationLocationPicker
                   organizationId={organization.id}
                   currentLocationId={organization.location_id}
@@ -1237,8 +1232,6 @@ export default function OrganizationDetailPage() {
                   editMode={editMode}
                 />
               </div>
-
-
             </div>
 
             {organization.organization_type === 'subcontractor' && (
@@ -1246,7 +1239,7 @@ export default function OrganizationDetailPage() {
                 <h2 className="mb-4 text-xl font-semibold text-white">Informacje handlowe</h2>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
-                    <label className="mb-1 block flex items-center space-x-1 text-sm font-medium text-gray-400">
+                    <label className="mb-1 md:block flex items-center space-x-1 text-sm font-medium text-gray-400">
                       <DollarSign className="h-4 w-4" />
                       <span>Stawka godzinowa</span>
                     </label>

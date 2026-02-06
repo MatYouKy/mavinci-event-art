@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Search, X, Plus } from 'lucide-react';
+import { Search, X, Plus, ExternalLink } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 
 type LocationRow = {
@@ -35,7 +35,7 @@ function suggestionTitle(loc: LocationRow) {
 function suggestionSub(loc: LocationRow) {
   // ✅ w podpowiedziach możesz dalej mieć adres (pomaga rozróżniać)
   const line = [loc.address, loc.postal_code, loc.city, loc.country].filter(Boolean).join(', ');
-  return line || (loc.formatted_address || '');
+  return line || loc.formatted_address || '';
 }
 
 /**
@@ -194,23 +194,26 @@ export default function OrganizationLocationPicker({
   // VIEW MODE: link
   if (!editMode) {
     return (
-      <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
-        <div className="text-sm font-medium text-white/80">Lokalizacja</div>
-
-        <div className="mt-2">
-          {currentLocationId && currentLocation ? (
+      <div className="mt-2">
+        {currentLocationId && currentLocation ? (
+          <div className="border-t border-[#d3bb73]/10 pt-4">
             <Link
               href={`/crm/locations/${currentLocationId}`}
-              className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/90 transition hover:border-[#d3bb73]/40 hover:bg-black/30"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-[#d3bb73] transition-colors hover:bg-white/5 hover:text-[#d3bb73]/80 [&_*]:!cursor-pointer"
             >
-              <span className="truncate">{labelForInput(currentLocation) || '—'}</span>
+              <span className="min-w-0 flex-1 truncate transition-colors group-hover:text-[#d3bb73]/80">
+                {labelForInput(currentLocation) || '—'}
+              </span>
+              <ExternalLink className="h-4 w-4 transition-colors group-hover:text-[#d3bb73]/80" />
             </Link>
-          ) : (
-            <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/50">
-              Brak przypisanej lokalizacji
-            </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/50">
+            Brak przypisanej lokalizacji
+          </div>
+        )}
       </div>
     );
   }
