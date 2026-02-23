@@ -8,11 +8,12 @@ import ConferencesPageClient from './ConferencesPage';
 import { createSupabaseServerClient } from '@/lib/server';
 import { getConferencesData } from '@/lib/conferences-data';
 import CityMapEmbed from '@/components/CityMapEmbed/CityMapEmbed';
+import { cookies } from 'next/headers';
 
 const pageSlug = 'oferta/konferencje';
 
 export async function generateMetadata() {
-  return buildMetadataForSlug(pageSlug);
+  return buildMetadataForSlug(pageSlug, cookies());
 }
 
 export default async function Page() {

@@ -1,35 +1,93 @@
-import { supabase } from '@/lib/supabase/browser';
-import { useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Edit, Save } from 'lucide-react';
 import { logChange } from '../../../helpers/logChange';
-import { useEvent } from '@/app/(crm)/crm/events/hooks/useEvent';
-import { useParams } from 'next/navigation';
 
-export const EventDestailsDescription = ({
+type Props = {
+  eventId: string;
+  eventDescription: string;
+  hasLimitedAccess: boolean;
+  handleSaveDescription: (description: string) => Promise<void>;
+};
+
+function EventDestailsDescriptionInner({
+  eventId,
   eventDescription,
   hasLimitedAccess,
   handleSaveDescription,
-}: {
-  eventDescription: string;
-  hasLimitedAccess: boolean;
-  handleSaveDescription: (description: string) => void;
-}) => {
-  const [editedDescription, setEditedDescription] = useState(eventDescription);
+}: Props) {
+  // Lokalna "prawda" do renderu
+  const [description, setDescription] = useState(eventDescription ?? '');
+  const [editedDescription, setEditedDescription] = useState(eventDescription ?? '');
   const [isEditingDescription, setIsEditingDescription] = useState(false);
 
+  // Flaga: czy lokalnie nadpisaliśmy opis (po zapisie)
+  const hasLocalOverrideRef = useRef(false);
+
+  // Sync z propsów:
+  // - jeśli NIE mamy lokalnego override -> zawsze przyjmij props
+  // - jeśli MAMY override -> przyjmij props dopiero gdy będzie równy lokalnemu (czyli backend już "dogonił")
+  useEffect(() => {
+    const next = eventDescription ?? '';
+
+    if (!hasLocalOverrideRef.current) {
+      setDescription(next);
+      if (!isEditingDescription) setEditedDescription(next);
+      return;
+    }
+
+    // jeśli backend już zwrócił to co zapisaliśmy, to odblokuj sync
+    if (next === description) {
+      hasLocalOverrideRef.current = false;
+      // (opcjonalnie) wyrównaj editedDescription
+      if (!isEditingDescription) setEditedDescription(next);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventDescription, isEditingDescription]);
+
   const handleSaveDescriptionClick = async () => {
-    setIsEditingDescription(false);
-    await handleSaveDescription(editedDescription);
+    const oldDescription = description ?? '';
+    const newDescription = (editedDescription ?? '').trimEnd();
+
+    if (oldDescription === newDescription) {
+      setIsEditingDescription(false);
+      return;
+    }
+
+    try {
+      // 1) zapis do bazy (rodzic / hook / supabase update)
+      await handleSaveDescription(newDescription);
+
+      // 2) natychmiast aktualizujemy UI lokalnie
+      hasLocalOverrideRef.current = true;
+      setDescription(newDescription);
+
+      // 3) log audytu
+      await logChange(
+        eventId,
+        'UPDATE',
+        'Zmieniono opis wydarzenia',
+        'description',
+        oldDescription,
+        newDescription,
+      );
+
+      setIsEditingDescription(false);
+    } catch (err) {
+      console.error('Błąd zapisu opisu:', err);
+    }
   };
+
+  const displayed = useMemo(() => description || 'Brak opisu', [description]);
 
   return (
     <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-light text-[#e5e4e2]">Opis</h2>
+
         {!isEditingDescription && !hasLimitedAccess && (
           <button
             onClick={() => {
-              setEditedDescription(eventDescription || '');
+              setEditedDescription(description || '');
               setIsEditingDescription(true);
             }}
             className="text-sm text-[#d3bb73] hover:text-[#d3bb73]/80"
@@ -38,6 +96,7 @@ export const EventDestailsDescription = ({
           </button>
         )}
       </div>
+
       {isEditingDescription ? (
         <div className="space-y-3">
           <textarea
@@ -63,8 +122,20 @@ export const EventDestailsDescription = ({
           </div>
         </div>
       ) : (
-        <p className="leading-relaxed text-[#e5e4e2]/80">{eventDescription || 'Brak opisu'}</p>
+        <p className="leading-relaxed whitespace-pre-wrap text-[#e5e4e2]/80">
+          {displayed}
+        </p>
       )}
     </div>
   );
-};
+}
+
+// ✅ MEMO z custom compare (żeby nie renderował bez potrzeby)
+export const EventDestailsDescription = React.memo(
+  EventDestailsDescriptionInner,
+  (prev, next) =>
+    prev.eventId === next.eventId &&
+    prev.eventDescription === next.eventDescription &&
+    prev.hasLimitedAccess === next.hasLimitedAccess &&
+    prev.handleSaveDescription === next.handleSaveDescription,
+);

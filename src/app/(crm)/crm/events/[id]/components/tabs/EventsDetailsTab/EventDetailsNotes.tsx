@@ -1,18 +1,60 @@
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Edit, Save } from 'lucide-react';
-import React, { useState } from 'react';
+
 interface EventDetailsNotesProps {
   eventDetailsNotes: string;
-  handleUpdateNotes: (notes: string) => void;
+  handleUpdateNotes: (notes: string) => Promise<void>;
 }
 
-export const EventDetailsNotes = ({ eventDetailsNotes, handleUpdateNotes }: EventDetailsNotesProps) => {
-  const [editedNotes, setEditedNotes] = useState(eventDetailsNotes);
+function EventDetailsNotesInner({ eventDetailsNotes, handleUpdateNotes }: EventDetailsNotesProps) {
+  const [notes, setNotes] = useState(eventDetailsNotes ?? '');
+  const [editedNotes, setEditedNotes] = useState(eventDetailsNotes ?? '');
   const [isEditingNotes, setIsEditingNotes] = useState(false);
 
+  // Czy lokalnie nadpisaliśmy wartość po zapisie
+  const hasLocalOverrideRef = useRef(false);
+
+  // Sync z propsów (identycznie jak w opisie)
+  useEffect(() => {
+    const next = eventDetailsNotes ?? '';
+
+    if (!hasLocalOverrideRef.current) {
+      setNotes(next);
+      if (!isEditingNotes) setEditedNotes(next);
+      return;
+    }
+
+    // jeśli backend dogonił (props == lokalny stan), to odblokuj sync
+    if (next === notes) {
+      hasLocalOverrideRef.current = false;
+      if (!isEditingNotes) setEditedNotes(next);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventDetailsNotes, isEditingNotes]);
+
   const handleSaveNotes = async () => {
-    await handleUpdateNotes(editedNotes);
-    setIsEditingNotes(false);
+    const oldNotes = notes ?? '';
+    const newNotes = (editedNotes ?? '').trimEnd();
+
+    if (oldNotes === newNotes) {
+      setIsEditingNotes(false);
+      return;
+    }
+
+    try {
+      await handleUpdateNotes(newNotes);
+
+      // optimistic UI: od razu pokazuj zapisane notatki
+      hasLocalOverrideRef.current = true;
+      setNotes(newNotes);
+
+      setIsEditingNotes(false);
+    } catch (err) {
+      console.error('Błąd zapisu notatek:', err);
+    }
   };
+
+  const displayed = useMemo(() => notes || 'Brak notatek', [notes]);
 
   return (
     <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
@@ -21,7 +63,7 @@ export const EventDetailsNotes = ({ eventDetailsNotes, handleUpdateNotes }: Even
         {!isEditingNotes && (
           <button
             onClick={() => {
-              setEditedNotes(eventDetailsNotes);
+              setEditedNotes(notes);
               setIsEditingNotes(true);
             }}
             className="text-sm text-[#d3bb73] hover:text-[#d3bb73]/80"
@@ -30,6 +72,7 @@ export const EventDetailsNotes = ({ eventDetailsNotes, handleUpdateNotes }: Even
           </button>
         )}
       </div>
+
       {isEditingNotes ? (
         <div className="space-y-3">
           <textarea
@@ -55,8 +98,16 @@ export const EventDetailsNotes = ({ eventDetailsNotes, handleUpdateNotes }: Even
           </div>
         </div>
       ) : (
-        <p className="leading-relaxed text-[#e5e4e2]/80">{eventDetailsNotes || 'Brak notatek'}</p>
+        <p className="leading-relaxed whitespace-pre-wrap text-[#e5e4e2]/80">{displayed}</p>
       )}
     </div>
   );
-};
+}
+
+// ✅ memo: nie renderuj jeśli propsy się nie zmieniły
+export const EventDetailsNotes = React.memo(
+  EventDetailsNotesInner,
+  (prev, next) =>
+    prev.eventDetailsNotes === next.eventDetailsNotes &&
+    prev.handleUpdateNotes === next.handleUpdateNotes,
+);

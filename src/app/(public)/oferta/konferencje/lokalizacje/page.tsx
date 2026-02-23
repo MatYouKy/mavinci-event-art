@@ -81,8 +81,6 @@ export default function KonferencjeLokalizacjePage() {
         { name: 'Lokalizacje', url: 'https://mavinci.pl/oferta/konferencje/lokalizacje' },
       ]}
     >
-      <Navbar />
-
       <div className="min-h-screen bg-[#0f1119] pt-20">
         {/* Hero Section */}
         <section className="border-b border-[#d3bb73]/20 px-6 py-16">

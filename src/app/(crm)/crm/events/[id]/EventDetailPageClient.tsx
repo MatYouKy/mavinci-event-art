@@ -195,7 +195,7 @@ export default function EventDetailPageClient({
     error,
     refetch: refetchEvent,
   } = useGetEventByIdQuery(eventId, {
-    refetchOnMountOrArgChange: false, // ⬅️ tylko 1 fetch, bez refetch przy każdym wejściu
+    refetchOnMountOrArgChange: true, // ⬅️ tylko 1 fetch, bez refetch przy każdym wejściu
   });
 
   const [updateEventMutation] = useUpdateEventMutation();
@@ -641,9 +641,6 @@ export default function EventDetailPageClient({
     return 0;
   }, [event?.actual_revenue]);
 
-
-  const stableInitialEvent = useMemo(() => initialEvent, [initialEvent.id]);
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -889,7 +886,7 @@ export default function EventDetailPageClient({
               </div>
             )}
             <EventsDetailsTab
-              initialEvent={stableInitialEvent}
+              initialEvent={event}
               location={location}
               organization={organization}
               contact={contact}
@@ -1002,7 +999,9 @@ export default function EventDetailPageClient({
           eventId={event?.id as string}
           contact={contact}
           eventDate={event?.event_date as string}
-          location={`${location?.name}, ${location?.address}, ${location?.postal_code} ${location?.city}  ` as string}
+          location={
+            `${location?.name}, ${location?.address}, ${location?.postal_code} ${location?.city}  ` as string
+          }
           eventEndDate={event?.event_end_date as string}
           initialEvent={event}
         />
@@ -1371,7 +1370,18 @@ export default function EventDetailPageClient({
                 return;
               }
 
-              await refetchEvent();
+              // 1) instant UI (cache update)
+              dispatch(
+                eventsApi.util.updateQueryData('getEventById', eventId, (draft: any) => {
+                  Object.assign(draft, updatedData);
+                }) as any,
+              );
+
+              // 2) pewniak – wymuś prawdziwy refetch
+              await dispatch(
+                eventsApi.endpoints.getEventById.initiate(eventId, { forceRefetch: true }) as any,
+              );
+
               setShowEditEventModal(false);
               showSnackbar('Wydarzenie zaktualizowane', 'success');
             } catch (err) {

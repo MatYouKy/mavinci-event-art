@@ -39,24 +39,40 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
   contact,
   organization,
   location,
-  initialEvent: event,
+  initialEvent,
 }) => {
-  const { updateEvent } = useEvent();
+  const { updateEvent, refetch } = useEvent();
+
+  const [event, setEvent] = useState<IEvent>(initialEvent);
+
+  // gdy zmieni się initialEvent (np. po nawigacji), zsynchronizuj
+  useEffect(() => {
+    setEvent(initialEvent);
+  }, [initialEvent]);
 
   const [showEditClientModal, setShowEditClientModal] = useState(false);
   const router = useRouter();
 
   const handleUpdateDescription = async (description: string) => {
+    // optimistic UI
+    setEvent((prev) => ({ ...prev, description }));
+  
     try {
       await updateEvent({ description });
+      await refetch(); // opcjonalnie, jak chcesz dociągnąć całość z bazy
     } catch (err) {
       console.error('Error updating description:', err);
+      // opcjonalnie rollback:
+      // setEvent(initialEvent);
     }
   };
 
   const handleUpdateNotes = async (notes: string) => {
+    setEvent((prev) => ({ ...prev, notes }));
+  
     try {
       await updateEvent({ notes });
+      await refetch();
     } catch (err) {
       console.error('Error updating notes:', err);
     }
@@ -314,16 +330,28 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
             currentClientType={(event as any).client_type || 'business'}
             currentOrganizationId={event.organization_id}
             currentContactPersonId={event.contact_person_id}
-            onSuccess={() => {
+            onSuccess={async () => {
               setShowEditClientModal(false);
+            
+              const { data, error } = await supabase
+                .from('events')
+                .select('*')
+                .eq('id', event.id)
+                .single();
+            
+              if (!error && data) setEvent(data as IEvent);
             }}
           />
         )}
       </div>
       <EventDestailsDescription
+        eventId={event.id}
         handleSaveDescription={handleUpdateDescription}
         eventDescription={event.description}
         hasLimitedAccess={hasLimitedAccess}
+        // onSaved={async () => {
+        //   await refetch();
+        // }}
       />
       <EventDetailsNotes eventDetailsNotes={event.notes} handleUpdateNotes={handleUpdateNotes} />
     </>

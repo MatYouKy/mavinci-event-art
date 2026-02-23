@@ -4,6 +4,14 @@ export type PolishCityCases = {
   locative: string; // Miejscownik (w kim? w czym?)
 };
 
+type PartCases = { genitive: string; locative: string };
+
+const VOWELS = /[aeiouyąęó]/i;
+
+function isUppercaseWord(w: string) {
+  return w.length > 0 && w[0] === w[0].toUpperCase();
+}
+
 function capitalizeWord(word: string): string {
   if (!word) return word;
   return word[0].toUpperCase() + word.slice(1);
@@ -16,37 +24,110 @@ function capitalizePhrase(phrase: string): string {
     .join(' ');
 }
 
-type PartCases = { genitive: string; locative: string };
-
-const VOWELS = /[aeiouyąęó]/i;
-
-// Minimalny zestaw wyjątków – tylko te, które często psują reguły
+// Minimalny zestaw wyjątków – tylko te, które faktycznie łamią reguły
+// (tu warto trzymać “dziwne” przypadki historyczne / zwyczajowe)
 const EXCEPTIONS: Record<string, PolishCityCases> = {
-  łódź: { nominative: 'Łódź', genitive: 'Łodzi', locative: 'Łodzi' },
-  gdańsk: { nominative: 'Gdańsk', genitive: 'Gdańska', locative: 'Gdańsku' },
-  kraków: { nominative: 'Kraków', genitive: 'Krakowa', locative: 'Krakowie' },
-  wrocław: { nominative: 'Wrocław', genitive: 'Wrocławia', locative: 'Wrocławiu' },
-  poznań: { nominative: 'Poznań', genitive: 'Poznania', locative: 'Poznaniu' },
-  toruń: { nominative: 'Toruń', genitive: 'Torunia', locative: 'Toruniu' },
-  szczecin: { nominative: 'Szczecin', genitive: 'Szczecina', locative: 'Szczecinie' },
-  lublin: { nominative: 'Lublin', genitive: 'Lublina', locative: 'Lublinie' },
-  bydgoszcz: { nominative: 'Bydgoszcz', genitive: 'Bydgoszczy', locative: 'Bydgoszczy' },
-  brodnica: { nominative: 'Brodnica', genitive: 'Brodnicy', locative: 'Brodnicy' },
+  // klasyczne nieregularne
+  'łódź': { nominative: 'Łódź', genitive: 'Łodzi', locative: 'Łodzi' },
+  'bydgoszcz': { nominative: 'Bydgoszcz', genitive: 'Bydgoszczy', locative: 'Bydgoszczy' },
+  'zamość': { nominative: 'Zamość', genitive: 'Zamościa', locative: 'Zamościu' },
+
+  // -sk (nie wszystkie są regularne w loc)
+  'gdańsk': { nominative: 'Gdańsk', genitive: 'Gdańska', locative: 'Gdańsku' },
+  'olsztyn': { nominative: 'Olsztyn', genitive: 'Olsztyna', locative: 'Olsztynie' },
+
+  // -ów (loc -owie)
+  'kraków': { nominative: 'Kraków', genitive: 'Krakowa', locative: 'Krakowie' },
+  'tarnów': { nominative: 'Tarnów', genitive: 'Tarnowa', locative: 'Tarnowie' },
+
+  // -ław / -ławia
+  'wrocław': { nominative: 'Wrocław', genitive: 'Wrocławia', locative: 'Wrocławiu' },
+
+  // -nań
+  'poznań': { nominative: 'Poznań', genitive: 'Poznania', locative: 'Poznaniu' },
+
+  // -ruń
+  'toruń': { nominative: 'Toruń', genitive: 'Torunia', locative: 'Toruniu' },
+
+  // -cin / -lin / -in
+  'szczecin': { nominative: 'Szczecin', genitive: 'Szczecina', locative: 'Szczecinie' },
+  'lublin': { nominative: 'Lublin', genitive: 'Lublina', locative: 'Lublinie' },
+  'koszalin': { nominative: 'Koszalin', genitive: 'Koszalina', locative: 'Koszalinie' },
+
+  // -nica
+  'brodnica': { nominative: 'Brodnica', genitive: 'Brodnicy', locative: 'Brodnicy' },
+
+  // -stok (historyczna wymiana tematu)
+  'białystok': { nominative: 'Białystok', genitive: 'Białegostoku', locative: 'Białymstoku' },
+
+  // -rz / -mierz
+  'sandomierz': { nominative: 'Sandomierz', genitive: 'Sandomierza', locative: 'Sandomierzu' },
+  'kazimierz dolny': {
+    nominative: 'Kazimierz Dolny',
+    genitive: 'Kazimierza Dolnego',
+    locative: 'Kazimierzu Dolnym',
+  },
+
+  // -ce pluralia (nie zawsze reguła trafia)
+  'kielce': { nominative: 'Kielce', genitive: 'Kielc', locative: 'Kielcach' },
+  'tychy': { nominative: 'Tychy', genitive: 'Tychów', locative: 'Tychach' },
+
+  // -ia (dla bezpieczeństwa, choć reguła już działa)
+  'gdynia': { nominative: 'Gdynia', genitive: 'Gdyni', locative: 'Gdyni' },
+  'częstochowa': { nominative: 'Częstochowa', genitive: 'Częstochowy', locative: 'Częstochowie' },
+
+  // śląskie
+  'rybnik': { nominative: 'Rybnik', genitive: 'Rybnika', locative: 'Rybniku' },
+  'gliwice': { nominative: 'Gliwice', genitive: 'Gliwic', locative: 'Gliwicach' },
+  'zabrze': { nominative: 'Zabrze', genitive: 'Zabrza', locative: 'Zabrzu' },
+
+  // podkarpackie
+  'rzeszów': { nominative: 'Rzeszów', genitive: 'Rzeszowa', locative: 'Rzeszowie' },
+  'przemyśl': { nominative: 'Przemyśl', genitive: 'Przemyśla', locative: 'Przemyślu' },
+
+  // mazowieckie
+  'radom': { nominative: 'Radom', genitive: 'Radomia', locative: 'Radomiu' },
+  'płock': { nominative: 'Płock', genitive: 'Płocka', locative: 'Płocku' },
+  'siedlce': { nominative: 'Siedlce', genitive: 'Siedlec', locative: 'Siedlcach' },
+
+  // kujawsko-pomorskie
+  'włocławek': { nominative: 'Włocławek', genitive: 'Włocławka', locative: 'Włocławku' },
+  'grudziądz': { nominative: 'Grudziądz', genitive: 'Grudziądza', locative: 'Grudziądzu' },
+
+  // warmińsko-mazurskie
+  'elbląg': { nominative: 'Elbląg', genitive: 'Elbląga', locative: 'Elblągu' },
+
+  // lubuskie
+  'gorzów wielkopolski': {
+    nominative: 'Gorzów Wielkopolski',
+    genitive: 'Gorzowa Wielkopolskiego',
+    locative: 'Gorzowie Wielkopolskim',
+  },
+  'zielona góra': {
+    nominative: 'Zielona Góra',
+    genitive: 'Zielonej Góry',
+    locative: 'Zielonej Górze',
+  },
 };
 
-function isUppercaseWord(w: string) {
-  return w.length > 0 && w[0] === w[0].toUpperCase();
+function endsWithAny(s: string, suffixes: string[]) {
+  return suffixes.some((x) => s.endsWith(x));
 }
 
 /**
  * Odmienia jeden wyraz (najczęściej ostatni człon nazwy miasta).
  * Zwraca dopełniacz i miejscownik.
+ *
+ * To jest heurystyka – poprawi 90% popularnych przypadków,
+ * ale “dziwne” formy nadal powinny iść do EXCEPTIONS.
  */
 function inflectSingle(word: string): PartCases {
   const w = word.trim();
   if (!w) return { genitive: w, locative: w };
 
-  // słowa z dywizem odmieniają zwykle tylko ostatni segment
+
+
+  // Słowa z dywizem: odmienia się zwykle tylko ostatni segment
   if (w.includes('-')) {
     const parts = w.split('-');
     const last = parts.pop()!;
@@ -59,7 +140,12 @@ function inflectSingle(word: string): PartCases {
 
   const lower = w.toLowerCase();
 
-  // końcówki -ów: Kraków -> Krakowa / Krakowie
+  // 0) Szybkie wyjątki na pojedynczy człon (gdy ktoś poda tylko “Białystok” itd.)
+  if (EXCEPTIONS[lower]) {
+    return { genitive: EXCEPTIONS[lower].genitive, locative: EXCEPTIONS[lower].locative };
+  }
+
+  // 1) -ów: Kraków (ale Kraków jest wyjątkiem loc) / Tarnów -> Tarnowa / Tarnowie
   if (lower.endsWith('ów')) {
     return {
       genitive: w + 'a',
@@ -67,8 +153,16 @@ function inflectSingle(word: string): PartCases {
     };
   }
 
-  // -in / -yn / -lin / -cin: często miejscownik na -ie
-  // Szczecin -> Szczecinie, Lublin -> Lublinie, Koszalin -> Koszalinie
+  // 2) -sk / -ck (bardzo częste): Gdańsk (wyjątek), Sopot? (nie), Płock? -> “w Płocku”
+  // Typowo: gen +a, loc +u
+  if (endsWithAny(lower, ['sk', 'ck'])) {
+    return {
+      genitive: w + 'a',
+      locative: w + 'u',
+    };
+  }
+
+  // 3) -in / -yn / -lin / -cin: Szczecin -> Szczecina / Szczecinie
   if (/(in|yn|lin|cin)$/.test(lower)) {
     return {
       genitive: w + 'a',
@@ -76,8 +170,16 @@ function inflectSingle(word: string): PartCases {
     };
   }
 
-  // -ice: Katowice -> Katowic / Katowicach (tu bywa liczba mnoga)
-  // uprość: genitive bez "e", locative "ach"
+  // 4) -ek / -ok: Płock -> wcześniej, ale np. “Turek” -> Turka / Turku, “Sandomierz” nie
+  // Uproszczone, ale często trafia: gen +a, loc +u
+  if (endsWithAny(lower, ['ek', 'ok'])) {
+    return {
+      genitive: w + 'a',
+      locative: w + 'u',
+    };
+  }
+
+  // 5) -ice: Katowice -> Katowic / Katowicach
   if (lower.endsWith('ice')) {
     const base = w.slice(0, -1); // Katowic(e) -> Katowic
     return {
@@ -86,8 +188,9 @@ function inflectSingle(word: string): PartCases {
     };
   }
 
-  // -y / -i (często liczba mnoga): Tychy -> Tychów / Tychach
-  if (lower.endsWith('y') || lower.endsWith('i')) {
+  // 6) pluralia tantum (np. Tychy, Kielce): końcówka -y / -i,
+  // ALE NIE dotyczy form typu “Gdynia” (to -ia)
+  if ((lower.endsWith('y') || lower.endsWith('i')) && !lower.endsWith('ia')) {
     const base = w.slice(0, -1);
     return {
       genitive: base + 'ów',
@@ -95,19 +198,43 @@ function inflectSingle(word: string): PartCases {
     };
   }
 
-  // końcówka -a: Warszawa -> Warszawy / Warszawie
-  // uwaga: po spółgłosce twardej zwykle "-y", po miękkiej "-i"
-  if (lower.endsWith('a')) {
-    const base = w.slice(0, -1);
-    const last = base[base.length - 1]?.toLowerCase() ?? '';
-    const gen = /[kg]$/.test(last) ? base + 'i' : base + 'y'; // Krakowa to wyjątek, ale mamy w EXCEPTIONS
+  // 7) końcówka -ia / -ja:
+  // Gdynia -> Gdyni / Gdyni (naprawia Twoje “Gdyniie”)
+  // Zamościa tu nie ma (bo to -ść), ale np. “Narnia” (gdyby) też zadziała.
+  if (endsWithAny(lower, ['ia', 'ja'])) {
+    const base = w.slice(0, -1); // Gdyni(a) -> Gdyni
     return {
-      genitive: gen,
-      locative: base + 'ie',
+      genitive: base,
+      locative: base,
     };
   }
 
-  // końcówka -o / -e: Zamość nie, ale np. "Sokołowo" -> "Sokołowa" / "Sokołowie"
+  if (/(ica|yca|nica)$/.test(lower)) {
+    const base = w.slice(0, -1); // Nidzic(a) -> Nidzic
+    return {
+      genitive: base + 'y',
+      locative: base + 'y',
+    };
+  }
+
+  // 8) końcówka -a: Warszawa -> Warszawy / Warszawie
+  // Uwaga: jeśli temat już kończy się na i/y (np. “Gdyni(a)” obsłużone wyżej),
+  // to NIE doklejamy “ie” (żeby nie było “ii-e”).
+  if (lower.endsWith('a')) {
+    const base = w.slice(0, -1);
+    const baseLower = base.toLowerCase();
+    const last = baseLower[baseLower.length - 1] ?? '';
+
+    // gen: po k/g często “-i”, inaczej “-y” (bardzo uproszczone, ale praktyczne)
+    const gen = /[kg]$/.test(last) ? base + 'i' : base + 'y';
+
+    // loc: normalnie “-ie”, ale jeśli temat już kończy się na i/y -> zostaw temat
+    const loc = /[iy]$/.test(last) ? base : base + 'ie';
+
+    return { genitive: gen, locative: loc };
+  }
+
+  // 9) końcówka -o / -e: “Sokołowo” -> “Sokołowa” / “Sokołowie”
   if (lower.endsWith('o') || lower.endsWith('e')) {
     const base = w.slice(0, -1);
     return {
@@ -116,7 +243,7 @@ function inflectSingle(word: string): PartCases {
     };
   }
 
-  // końcówka -ść / -dź / -ź / -ż: często gen/loc na -i (Łódź wyjątek już jest)
+  // 10) -ść / -dź / -ź / -ż: zwykle -i (Łódź osobno)
   if (/(ść|dź|ź|ż)$/.test(lower)) {
     return {
       genitive: w + 'i',
@@ -124,8 +251,7 @@ function inflectSingle(word: string): PartCases {
     };
   }
 
-  // domyślnie: spółgłoska na końcu → +a / +u (Toruń wyjątek, ale i tak +a/+u pasuje)
-  // ale dla wielu miast lepsze locative -ie (Szczecin) już obsłużone wyżej
+  // 11) domyślnie: spółgłoska na końcu → +a / +u
   if (!VOWELS.test(w[w.length - 1])) {
     return {
       genitive: w + 'a',
@@ -149,7 +275,6 @@ export function getPolishCityCasesSmart(cityName: string): PolishCityCases {
   // 1) wyjątki pełne (case-insensitive)
   if (EXCEPTIONS[key]) return EXCEPTIONS[key];
 
-  // dalej bez zmian...
   const words = raw.split(/\s+/).filter(Boolean);
   if (words.length === 0) return { nominative: '', genitive: '', locative: '' };
 
@@ -157,12 +282,16 @@ export function getPolishCityCasesSmart(cityName: string): PolishCityCases {
   const lastInf = inflectSingle(last);
 
   let result: PolishCityCases;
+
   if (words.length >= 2) {
     const first = words[0].toLowerCase();
+
+    // “Nowy Sącz”, “Nowa Sól”, “Nowe Miasto…”
     if (first === 'nowy' || first === 'nowa' || first === 'nowe') {
       const firstGen = first === 'nowy' ? 'Nowego' : first === 'nowa' ? 'Nowej' : 'Nowego';
-      const firstLoc = first === 'nowy' ? 'Nowym'  : first === 'nowa' ? 'Nowej' : 'Nowym';
+      const firstLoc = first === 'nowy' ? 'Nowym' : first === 'nowa' ? 'Nowej' : 'Nowym';
       const rest = words.slice(1, -1);
+
       result = {
         nominative: raw,
         genitive: [firstGen, ...rest, lastInf.genitive].join(' '),

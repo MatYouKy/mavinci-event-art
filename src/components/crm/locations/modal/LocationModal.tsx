@@ -44,7 +44,8 @@ type Props = {
   open: boolean;
   onClose: () => void;
   editingLocation?: ILocation | null;
-  onLocationSaved: (location: ILocation) => void;
+  
+  onLocationSaved?: (location: ILocation) => void;
 };
 
 export default function LocationModal({ open, onClose, editingLocation = null, onLocationSaved }: Props) {
