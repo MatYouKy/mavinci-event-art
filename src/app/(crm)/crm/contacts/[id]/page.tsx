@@ -1422,6 +1422,12 @@ export default function OrganizationDetailPage() {
                 organizationId={organization.id}
                 primaryContact={primaryContact}
                 legalRepresentative={legalRepresentative}
+                editedPrimaryContactId={
+                  (editedData.primary_contact_id as string) ?? organization.primary_contact_id ?? null
+                }
+                editedLegalRepresentativeId={
+                  (editedData.legal_representative_id as string) ?? organization.legal_representative_id ?? null
+                }
                 legalRepresentativeTitle={
                   (editedData.legal_representative_title as string) ||
                   organization.legal_representative_title

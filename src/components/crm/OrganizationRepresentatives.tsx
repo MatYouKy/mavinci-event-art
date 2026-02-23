@@ -34,6 +34,8 @@ interface Props {
   editMode: boolean;
   onUpdate: () => void;
   onEditedDataChange: (field: string, value: any) => void;
+  editedPrimaryContactId: string | null;
+  editedLegalRepresentativeId: string | null;
 }
 
 export default function OrganizationRepresentatives({
@@ -47,6 +49,8 @@ export default function OrganizationRepresentatives({
   editMode,
   onUpdate,
   onEditedDataChange,
+  editedPrimaryContactId,
+  editedLegalRepresentativeId,
 }: Props) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newDM, setNewDM] = useState({
@@ -96,7 +100,7 @@ export default function OrganizationRepresentatives({
         {editMode ? (
           <>
             <select
-              value={primaryContact?.id || ''}
+              value={editedPrimaryContactId || ''}
               onChange={(e) => onEditedDataChange('primary_contact_id', e.target.value || null)}
               disabled={availableContacts.length === 0}
               className="w-full rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
@@ -158,7 +162,7 @@ export default function OrganizationRepresentatives({
             {editMode ? (
               <div className="space-y-3">
                 <select
-                  value={legalRepresentative?.id || ''}
+                  value={editedLegalRepresentativeId || ''}
                   onChange={(e) =>
                     onEditedDataChange('legal_representative_id', e.target.value || null)
                   }
