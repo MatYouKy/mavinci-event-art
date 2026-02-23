@@ -338,7 +338,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
       const { data: existingContract } = await supabase
         .from('contracts')
         .select(
-          'id, status, issued_at, sent_at, signed_by_client_at, signed_returned_at, cancelled_at, created_by, generated_pdf_path, modified_after_generation',
+          'id, status, issued_at, sent_at, signed_by_client_at, signed_returned_at, cancelled_at, created_by, generated_pdf_path, modified_after_generation, content',
         )
         .eq('event_id', eventId)
         .order('created_at', { ascending: false })
@@ -591,7 +591,12 @@ export function EventContractTab({ eventId }: { eventId: string }) {
       setEditedVariables(varsMap);
 
       let contentToSet = '';
-      if (template.page_settings?.pages) {
+
+      // Jeśli istnieje zapisana umowa, użyj jej contentu zamiast szablonu
+      if (existingContract?.content) {
+        contentToSet = existingContract.content;
+      } else if (template.page_settings?.pages) {
+        // Jeśli nie ma umowy, wygeneruj z szablonu
         const pages = template.page_settings.pages.map((page: string) =>
           replaceVariables(page, varsMap),
         );
@@ -727,6 +732,17 @@ export function EventContractTab({ eventId }: { eventId: string }) {
             logoPositionX: template.page_settings.logoPositionX || 50,
             logoPositionY: template.page_settings.logoPositionY || 0,
             lineHeight: template.page_settings.lineHeight || 1.6,
+            selectedLogo: template.page_settings.selectedLogo || '/erulers_logo_vect.png',
+            selectedFooter: template.page_settings.selectedFooter || 'default',
+            footerContent: template.page_settings.footerContent || {
+              companyName: 'EVENT RULERS',
+              tagline: 'Więcej niż Wodzireje!',
+              website: 'www.eventrulers.pl',
+              email: 'biuro@eventrulers.pl',
+              phone: '698-212-279',
+              logoUrl: '/erulers_logo_vect.png',
+            },
+            footerLogoScale: template.page_settings.footerLogoScale || 80,
           },
         });
       } else {
@@ -1308,7 +1324,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
                             src={
                               settings.selectedLogo?.startsWith('http')
                                 ? settings.selectedLogo
-                                : `https://mavinci.pl${settings.selectedLogo}`
+                                : `https://mavinci.pl${settings.selectedLogo || '/erulers_logo_vect.png'}`
                             }
                             alt="Logo"
                             style={{
@@ -1348,7 +1364,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
                                   settings.footerContent?.logoUrl || settings.selectedLogo
                                 )?.startsWith('http')
                                   ? settings.footerContent?.logoUrl || settings.selectedLogo
-                                  : `https://mavinci.pl${settings.footerContent?.logoUrl || settings.selectedLogo}`
+                                  : `https://mavinci.pl${settings.footerContent?.logoUrl || settings.selectedLogo || '/erulers_logo_vect.png'}`
                               }
                               alt="Logo"
                               style={{
