@@ -36,6 +36,8 @@ export default function EditTemplateWYSIWYGPage() {
   const [logoPositionX, setLogoPositionX] = useState(50);
   const [logoPositionY, setLogoPositionY] = useState(0);
   const [lineHeight, setLineHeight] = useState(1.6);
+  const [selectedLogo, setSelectedLogo] = useState('/erulers_logo_vect.png');
+  const [selectedFooter, setSelectedFooter] = useState<'default' | 'minimal' | 'none'>('default');
   const [history, setHistory] = useState<string[][]>([['']]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [pages, setPages] = useState<string[]>(['']);
@@ -130,6 +132,9 @@ export default function EditTemplateWYSIWYGPage() {
           if (data.page_settings.logoPositionY !== undefined)
             setLogoPositionY(data.page_settings.logoPositionY);
           if (data.page_settings.lineHeight) setLineHeight(data.page_settings.lineHeight);
+          if (data.page_settings.selectedLogo) setSelectedLogo(data.page_settings.selectedLogo);
+          if (data.page_settings.selectedFooter)
+            setSelectedFooter(data.page_settings.selectedFooter);
           if (data.page_settings.pages && Array.isArray(data.page_settings.pages)) {
             setPages(data.page_settings.pages);
             setHistory([data.page_settings.pages]);
@@ -182,16 +187,16 @@ export default function EditTemplateWYSIWYGPage() {
       return;
     }
 
-    if (!contentHtml || contentHtml.trim() === '') {
+    const allContent = pages.join('\n\n--- PAGE BREAK ---\n\n');
+    const plainText = allContent.replace(/<[^>]*>/g, '').trim();
+
+    if (!allContent || plainText === '') {
       showSnackbar('Treść szablonu nie może być pusta', 'error');
       return;
     }
 
     try {
       setSaving(true);
-
-      const allContent = pages.join('\n\n--- PAGE BREAK ---\n\n');
-      const plainText = allContent.replace(/<[^>]*>/g, '').trim();
 
       const updateData = {
         content: plainText || 'Szablon umowy',
@@ -201,6 +206,8 @@ export default function EditTemplateWYSIWYGPage() {
           logoPositionX,
           logoPositionY,
           lineHeight,
+          selectedLogo,
+          selectedFooter,
           pages,
           marginTop: 50,
           marginBottom: 50,
@@ -269,24 +276,24 @@ export default function EditTemplateWYSIWYGPage() {
   const toggleStrikethrough = () => {
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return;
-  
+
     const range = selection.getRangeAt(0);
     if (range.collapsed) return;
-  
+
     // znajdź kontener .contract-content (żeby potem zapisać stronę)
     let containerEl: HTMLElement | null =
       range.commonAncestorContainer.nodeType === Node.TEXT_NODE
         ? (range.commonAncestorContainer.parentElement as HTMLElement | null)
         : (range.commonAncestorContainer as HTMLElement | null);
-  
+
     while (containerEl && !containerEl.classList?.contains('contract-content')) {
       containerEl = containerEl.parentElement;
     }
     if (!containerEl) return;
-  
+
     const pageIndex = pageRefs.current.findIndex((ref) => ref === containerEl);
     if (pageIndex === -1) return;
-  
+
     // helper: sprawdź czy zakres jest "w całości" wewnątrz przekreślenia
     const isRangeInsideStrike = (r: Range) => {
       const startEl =
@@ -297,13 +304,13 @@ export default function EditTemplateWYSIWYGPage() {
         r.endContainer.nodeType === Node.TEXT_NODE
           ? (r.endContainer.parentElement as HTMLElement | null)
           : (r.endContainer as HTMLElement | null);
-  
+
       const startStrike = startEl?.closest?.('span[data-strike="1"]');
       const endStrike = endEl?.closest?.('span[data-strike="1"]');
-  
+
       return !!startStrike && startStrike === endStrike;
     };
-  
+
     // helper: unwrap span
     const unwrap = (el: HTMLElement) => {
       const parent = el.parentNode;
@@ -311,7 +318,7 @@ export default function EditTemplateWYSIWYGPage() {
       while (el.firstChild) parent.insertBefore(el.firstChild, el);
       parent.removeChild(el);
     };
-  
+
     // Jeśli zaznaczenie w jednym strike-span → zdejmij przekreślenie (unwrap)
     if (isRangeInsideStrike(range)) {
       const startEl =
@@ -321,7 +328,7 @@ export default function EditTemplateWYSIWYGPage() {
       const strikeSpan = startEl.closest('span[data-strike="1"]') as HTMLElement | null;
       if (strikeSpan) {
         unwrap(strikeSpan);
-  
+
         // zapis strony
         setTimeout(() => {
           const newPages = [...pages];
@@ -332,30 +339,30 @@ export default function EditTemplateWYSIWYGPage() {
       }
       return;
     }
-  
+
     // W przeciwnym razie: dodaj przekreślenie jako <span style="text-decoration:line-through">
     const extracted = range.extractContents();
-  
+
     const span = document.createElement('span');
     span.setAttribute('data-strike', '1'); // łatwe wykrywanie/odwijanie
     span.style.textDecorationLine = 'line-through';
     span.style.textDecorationThickness = '2px';
     span.style.textDecorationSkipInk = 'none';
-  
+
     span.appendChild(extracted);
     range.insertNode(span);
-  
+
     // Uporządkuj: usuń zagnieżdżone strike, połącz sąsiednie
     const normalize = () => {
       // usuń zagnieżdżone strike w strike
       span.querySelectorAll('span[data-strike="1"] span[data-strike="1"]').forEach((nested) => {
         unwrap(nested as HTMLElement);
       });
-  
+
       // scal sąsiednie strike
       const parent = span.parentElement;
       if (!parent) return;
-  
+
       const prev = span.previousSibling;
       if (prev && prev.nodeType === Node.ELEMENT_NODE) {
         const prevEl = prev as HTMLElement;
@@ -376,15 +383,15 @@ export default function EditTemplateWYSIWYGPage() {
         }
       }
     };
-  
+
     normalize();
-  
+
     // ustaw selekcję na nowym spanie
     selection.removeAllRanges();
     const newRange = document.createRange();
     newRange.selectNodeContents(span);
     selection.addRange(newRange);
-  
+
     // zapis strony
     setTimeout(() => {
       const newPages = [...pages];
@@ -479,7 +486,7 @@ export default function EditTemplateWYSIWYGPage() {
     if (pageIndex === -1) return;
 
     const img = document.createElement('img');
-    img.src = '/erulers_logo_vect.png';
+    img.src = selectedLogo;
     img.style.maxWidth = '300px';
     img.style.height = 'auto';
     img.style.display = 'block';
@@ -809,6 +816,21 @@ export default function EditTemplateWYSIWYGPage() {
 
             <div className="mx-2 h-6 w-px bg-[#d3bb73]/30" />
 
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[#e5e4e2]/60">Logo:</span>
+              <select
+                value={selectedLogo}
+                onChange={(e) => setSelectedLogo(e.target.value)}
+                className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1 text-sm text-[#e5e4e2]"
+              >
+                <option value="/erulers_logo_vect.png">EVENT RULERS (główne)</option>
+                <option value="/logo mavinci.svg">Mavinci (pełne)</option>
+                <option value="/logo mavinci-simple.svg">Mavinci (simple)</option>
+                <option value="/shape-mavinci.svg">Mavinci Shape (kolorowe)</option>
+                <option value="/shape-mavinci-black.svg">Mavinci Shape (czarne)</option>
+              </select>
+            </div>
+
             <button
               onClick={insertLogo}
               className="rounded bg-[#d3bb73] px-3 py-1.5 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
@@ -855,6 +877,23 @@ export default function EditTemplateWYSIWYGPage() {
                 />
                 <span className="w-8 text-xs text-[#e5e4e2]">{logoPositionY}mm</span>
               </div>
+            </div>
+
+            <div className="mx-2 h-6 w-px bg-[#d3bb73]/30" />
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[#e5e4e2]/60">Stopka:</span>
+              <select
+                value={selectedFooter}
+                onChange={(e) =>
+                  setSelectedFooter(e.target.value as 'default' | 'minimal' | 'none')
+                }
+                className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1 text-sm text-[#e5e4e2]"
+              >
+                <option value="default">Pełna (logo + kontakt)</option>
+                <option value="minimal">Minimalna (tylko kontakt)</option>
+                <option value="none">Brak stopki</option>
+              </select>
             </div>
 
             <div className="mx-2 h-6 w-px bg-[#d3bb73]/30" />
@@ -925,8 +964,8 @@ export default function EditTemplateWYSIWYGPage() {
                     }}
                   >
                     <img
-                      src="/erulers_logo_vect.png"
-                      alt="EVENT RULERS"
+                      src={selectedLogo}
+                      alt="Logo"
                       style={{
                         maxWidth: `${logoScale}%`,
                         height: 'auto',
@@ -967,19 +1006,23 @@ export default function EditTemplateWYSIWYGPage() {
                 }}
               />
 
-              <div className="contract-footer">
-                <div className="footer-logo">
-                  <img src="/erulers_logo_vect.png" alt="EVENT RULERS" />
+              {selectedFooter !== 'none' && (
+                <div className="contract-footer">
+                  {selectedFooter === 'default' && (
+                    <div className="footer-logo">
+                      <img src={selectedLogo} alt="Logo" />
+                    </div>
+                  )}
+                  <div className="footer-info">
+                    <p>
+                      <span className="font-bold">EVENT RULERS</span> –{' '}
+                      <span className="italic">Więcej niż Wodzireje!</span>
+                    </p>
+                    <p>www.eventrulers.pl | biuro@eventrulers.pl</p>
+                    <p>tel: 698-212-279</p>
+                  </div>
                 </div>
-                <div className="footer-info">
-                  <p>
-                    <span className="font-bold">EVENT RULERS</span> –{' '}
-                    <span className="italic">Więcej niż Wodzireje!</span>
-                  </p>
-                  <p>www.eventrulers.pl | biuro@eventrulers.pl</p>
-                  <p>tel: 698-212-279</p>
-                </div>
-              </div>
+              )}
 
               {pages.length > 1 && (
                 <button

@@ -416,6 +416,8 @@ export function EventContractTab({ eventId }: { eventId: string }) {
             logoPositionX: template.page_settings.logoPositionX || 50,
             logoPositionY: template.page_settings.logoPositionY || 0,
             lineHeight: template.page_settings.lineHeight || 1.6,
+            selectedLogo: template.page_settings.selectedLogo || '/erulers_logo_vect.png',
+            selectedFooter: template.page_settings.selectedFooter || 'default',
           },
         });
       }
@@ -591,6 +593,8 @@ export function EventContractTab({ eventId }: { eventId: string }) {
             logoPositionX: template.page_settings.logoPositionX || 50,
             logoPositionY: template.page_settings.logoPositionY || 0,
             lineHeight: template.page_settings.lineHeight || 1.6,
+            selectedLogo: template.page_settings.selectedLogo || '/erulers_logo_vect.png',
+            selectedFooter: template.page_settings.selectedFooter || 'default',
           },
         });
       } else {
@@ -686,6 +690,8 @@ export function EventContractTab({ eventId }: { eventId: string }) {
             logoPositionX: template.page_settings.logoPositionX || 50,
             logoPositionY: template.page_settings.logoPositionY || 0,
             lineHeight: template.page_settings.lineHeight || 1.6,
+            selectedLogo: template.page_settings.selectedLogo || '/erulers_logo_vect.png',
+            selectedFooter: template.page_settings.selectedFooter || 'default',
           },
         });
       }
@@ -720,23 +726,23 @@ export function EventContractTab({ eventId }: { eventId: string }) {
 
   const handlePrint = async () => {
     let currentContractId = contractId;
-  
+
     // 1) upewnij się, że contract istnieje (zostawiam jak u Ciebie)
     if (!currentContractId) {
       if (!templateId) {
         showSnackbar('Brak szablonu umowy dla tej kategorii wydarzenia', 'error');
         return;
       }
-  
+
       try {
         const { data: eventData } = await supabase
           .from('events')
           .select('contact_person_id, organization_id')
           .eq('id', eventId)
           .single();
-  
+
         const clientId = eventData?.contact_person_id || eventData?.organization_id || null;
-  
+
         const { data: newContract, error: createError } = await supabase
           .from('contracts')
           .insert({
@@ -749,7 +755,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
           })
           .select('id')
           .single();
-  
+
         if (createError) throw createError;
         currentContractId = newContract.id;
         setContractId(newContract.id);
@@ -759,25 +765,27 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         return;
       }
     }
-  
+
     // 2) PDF na backendzie (Chromium)
     try {
-      const contractContainer = document.querySelector('.contract-a4-container') as HTMLElement | null;
+      const contractContainer = document.querySelector(
+        '.contract-a4-container',
+      ) as HTMLElement | null;
       if (!contractContainer) {
         showSnackbar('Nie znaleziono widoku umowy', 'error');
         return;
       }
-  
+
       const pagesHtml = contractContainer.innerHTML;
-  
+
       // jeśli masz zamianę klas licznika stron – zostaw
       const pagesHtmlForPrint = pagesHtml.replace(
         /class="absolute bottom-4[^"]*text-\[#000\]\/50"/g,
         'class="contract-page-counter"',
       );
-  
+
       const cssText = getContractCssForPrint();
-  
+
       const res = await fetch('/bridge/events/contracts/generate', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -790,17 +798,17 @@ export function EventContractTab({ eventId }: { eventId: string }) {
           // fileName: `umowa-${eventId}.pdf` // opcjonalnie
         }),
       });
-  
+
       const json = await res.json();
       if (!res.ok) {
         console.error(json);
         showSnackbar(json?.error || 'Błąd generowania PDF', 'error');
         return;
       }
-  
+
       // odśwież dane umowy (żeby złapać generated_pdf_path)
       await fetchContractData();
-  
+
       showSnackbar('PDF umowy został wygenerowany i zapisany w Dokumenty → Umowy', 'success');
     } catch (e) {
       console.error(e);
@@ -1248,6 +1256,8 @@ export function EventContractTab({ eventId }: { eventId: string }) {
                 logoPositionX: 50,
                 logoPositionY: 0,
                 lineHeight: 1.6,
+                selectedLogo: '/erulers_logo_vect.png',
+                selectedFooter: 'default',
               };
 
               if (pages && Array.isArray(pages)) {
@@ -1268,8 +1278,8 @@ export function EventContractTab({ eventId }: { eventId: string }) {
                           }}
                         >
                           <img
-                            src="https://mavinci.pl/erulers_logo_vect.png"
-                            alt="EVENT RULERS"
+                            src={`https://mavinci.pl${settings.selectedLogo}`}
+                            alt="Logo"
                             style={{
                               maxWidth: `${settings.logoScale}%`,
                               height: 'auto',
@@ -1297,19 +1307,23 @@ export function EventContractTab({ eventId }: { eventId: string }) {
                       dangerouslySetInnerHTML={{ __html: pageContent }}
                     />
 
-                    <div className="contract-footer">
-                      <div className="footer-logo">
-                        <img src="https://mavinci.pl/erulers_logo_vect.png" alt="EVENT RULERS" />
+                    {settings.selectedFooter !== 'none' && (
+                      <div className="contract-footer">
+                        {settings.selectedFooter === 'default' && (
+                          <div className="footer-logo">
+                            <img src={`https://mavinci.pl${settings.selectedLogo}`} alt="Logo" />
+                          </div>
+                        )}
+                        <div className="footer-info">
+                          <p>
+                            <span className="font-bold">EVENT RULERS</span> –{' '}
+                            <span className="italic">Więcej niż Wodzireje!</span>
+                          </p>
+                          <p>www.eventrulers.pl | biuro@eventrulers.pl</p>
+                          <p>tel: 698-212-279</p>
+                        </div>
                       </div>
-                      <div className="footer-info">
-                        <p>
-                          <span className="font-bold">EVENT RULERS</span> –{' '}
-                          <span className="italic">Więcej niż Wodzireje!</span>
-                        </p>
-                        <p>www.eventrulers.pl | biuro@eventrulers.pl</p>
-                        <p>tel: 698-212-279</p>
-                      </div>
-                    </div>
+                    )}
 
                     {pages.length > 1 && (
                       <div className="absolute bottom-4 mx-auto w-[calc(100%-50mm)] text-center text-xs text-[#000]/50">
@@ -1321,41 +1335,41 @@ export function EventContractTab({ eventId }: { eventId: string }) {
               }
             } catch (e) {
               // Fallback dla starych szablonów
-            }
-            return (
-              <div className="contract-a4-page">
-                <div className="contract-header-logo">
-                  <img src="https://mavinci.pl/erulers_logo_vect.png" alt="EVENT RULERS" />
-                </div>
-
-                <div className="contract-current-date">
-                  Olsztyn,{' '}
-                  {new Date().toLocaleDateString('pl-PL', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
-                  })}
-                </div>
-
-                <div
-                  className="contract-content"
-                  dangerouslySetInnerHTML={{ __html: contractContent }}
-                />
-
-                <div className="contract-footer">
-                  <div className="footer-logo">
+              return (
+                <div className="contract-a4-page">
+                  <div className="contract-header-logo">
                     <img src="https://mavinci.pl/erulers_logo_vect.png" alt="EVENT RULERS" />
                   </div>
-                  <div className="footer-info">
-                    <p>
-                      <strong>EVENT RULERS</strong> – <em>Więcej niż Wodzireje!</em>
-                    </p>
-                    <p>www.eventrulers.pl | biuro@eventrulers.pl</p>
-                    <p>tel: 698-212-279</p>
+
+                  <div className="contract-current-date">
+                    Olsztyn,{' '}
+                    {new Date().toLocaleDateString('pl-PL', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                    })}
+                  </div>
+
+                  <div
+                    className="contract-content"
+                    dangerouslySetInnerHTML={{ __html: contractContent }}
+                  />
+
+                  <div className="contract-footer">
+                    <div className="footer-logo">
+                      <img src="https://mavinci.pl/erulers_logo_vect.png" alt="EVENT RULERS" />
+                    </div>
+                    <div className="footer-info">
+                      <p>
+                        <strong>EVENT RULERS</strong> – <em>Więcej niż Wodzireje!</em>
+                      </p>
+                      <p>www.eventrulers.pl | biuro@eventrulers.pl</p>
+                      <p>tel: 698-212-279</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
+              );
+            }
           })()}
         </div>
       </div>
