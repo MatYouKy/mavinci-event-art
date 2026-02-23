@@ -38,6 +38,14 @@ export default function EditTemplateWYSIWYGPage() {
   const [lineHeight, setLineHeight] = useState(1.6);
   const [selectedLogo, setSelectedLogo] = useState('/erulers_logo_vect.png');
   const [selectedFooter, setSelectedFooter] = useState<'default' | 'minimal' | 'none'>('default');
+  const [footerBrand, setFooterBrand] = useState<'event-rulers' | 'mavinci'>('event-rulers');
+  const [footerContent, setFooterContent] = useState({
+    companyName: 'EVENT RULERS',
+    tagline: 'Więcej niż Wodzireje!',
+    website: 'www.eventrulers.pl',
+    email: 'biuro@eventrulers.pl',
+    phone: '698-212-279',
+  });
   const [history, setHistory] = useState<string[][]>([['']]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [pages, setPages] = useState<string[]>(['']);
@@ -135,6 +143,8 @@ export default function EditTemplateWYSIWYGPage() {
           if (data.page_settings.selectedLogo) setSelectedLogo(data.page_settings.selectedLogo);
           if (data.page_settings.selectedFooter)
             setSelectedFooter(data.page_settings.selectedFooter);
+          if (data.page_settings.footerBrand) setFooterBrand(data.page_settings.footerBrand);
+          if (data.page_settings.footerContent) setFooterContent(data.page_settings.footerContent);
           if (data.page_settings.pages && Array.isArray(data.page_settings.pages)) {
             setPages(data.page_settings.pages);
             setHistory([data.page_settings.pages]);
@@ -208,6 +218,8 @@ export default function EditTemplateWYSIWYGPage() {
           lineHeight,
           selectedLogo,
           selectedFooter,
+          footerBrand,
+          footerContent,
           pages,
           marginTop: 50,
           marginBottom: 50,
@@ -232,6 +244,27 @@ export default function EditTemplateWYSIWYGPage() {
       showSnackbar(err.message || 'Błąd podczas zapisywania szablonu', 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleFooterBrandChange = (brand: 'event-rulers' | 'mavinci') => {
+    setFooterBrand(brand);
+    if (brand === 'event-rulers') {
+      setFooterContent({
+        companyName: 'EVENT RULERS',
+        tagline: 'Więcej niż Wodzireje!',
+        website: 'www.eventrulers.pl',
+        email: 'biuro@eventrulers.pl',
+        phone: '698-212-279',
+      });
+    } else {
+      setFooterContent({
+        companyName: 'MAVINCI',
+        tagline: 'Profesjonalna obsługa eventów',
+        website: 'www.mavinci.pl',
+        email: 'biuro@mavinci.pl',
+        phone: '698-212-279',
+      });
     }
   };
 
@@ -896,6 +929,26 @@ export default function EditTemplateWYSIWYGPage() {
               </select>
             </div>
 
+            {selectedFooter !== 'none' && (
+              <>
+                <div className="mx-2 h-6 w-px bg-[#d3bb73]/30" />
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-[#e5e4e2]/60">Brand:</span>
+                  <select
+                    value={footerBrand}
+                    onChange={(e) =>
+                      handleFooterBrandChange(e.target.value as 'event-rulers' | 'mavinci')
+                    }
+                    className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1 text-sm text-[#e5e4e2]"
+                  >
+                    <option value="event-rulers">EVENT RULERS</option>
+                    <option value="mavinci">MAVINCI</option>
+                  </select>
+                </div>
+              </>
+            )}
+
             <div className="mx-2 h-6 w-px bg-[#d3bb73]/30" />
 
             <span className="text-xs text-[#e5e4e2]/60">Placeholdery:</span>
@@ -943,6 +996,66 @@ export default function EditTemplateWYSIWYGPage() {
           </div>
         </div>
       </div>
+
+      {/* Footer Editor Panel */}
+      {selectedFooter !== 'none' && (
+        <div className="border-b border-[#d3bb73]/20 bg-[#16171d] px-4 py-3">
+          <div className="mx-auto max-w-[230mm]">
+            <div className="mb-2 text-xs font-semibold text-[#d3bb73]">
+              Edytor stopki ({footerBrand === 'event-rulers' ? 'EVENT RULERS' : 'MAVINCI'})
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <label className="mb-1 block text-xs text-[#e5e4e2]/60">Nazwa firmy</label>
+                <input
+                  type="text"
+                  value={footerContent.companyName}
+                  onChange={(e) =>
+                    setFooterContent({ ...footerContent, companyName: e.target.value })
+                  }
+                  className="w-full rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-sm text-[#e5e4e2]"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-[#e5e4e2]/60">Hasło / Tagline</label>
+                <input
+                  type="text"
+                  value={footerContent.tagline}
+                  onChange={(e) => setFooterContent({ ...footerContent, tagline: e.target.value })}
+                  className="w-full rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-sm text-[#e5e4e2]"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-[#e5e4e2]/60">Strona www</label>
+                <input
+                  type="text"
+                  value={footerContent.website}
+                  onChange={(e) => setFooterContent({ ...footerContent, website: e.target.value })}
+                  className="w-full rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-sm text-[#e5e4e2]"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-[#e5e4e2]/60">Email</label>
+                <input
+                  type="text"
+                  value={footerContent.email}
+                  onChange={(e) => setFooterContent({ ...footerContent, email: e.target.value })}
+                  className="w-full rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-sm text-[#e5e4e2]"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-[#e5e4e2]/60">Telefon</label>
+                <input
+                  type="text"
+                  value={footerContent.phone}
+                  onChange={(e) => setFooterContent({ ...footerContent, phone: e.target.value })}
+                  className="w-full rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-sm text-[#e5e4e2]"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* A4 Editor */}
       <div className="min-h-screen bg-[#f5f5f5] py-8">
@@ -1015,11 +1128,18 @@ export default function EditTemplateWYSIWYGPage() {
                   )}
                   <div className="footer-info">
                     <p>
-                      <span className="font-bold">EVENT RULERS</span> –{' '}
-                      <span className="italic">Więcej niż Wodzireje!</span>
+                      <span className="font-bold">{footerContent.companyName}</span>
+                      {footerContent.tagline && (
+                        <>
+                          {' '}
+                          – <span className="italic">{footerContent.tagline}</span>
+                        </>
+                      )}
                     </p>
-                    <p>www.eventrulers.pl | biuro@eventrulers.pl</p>
-                    <p>tel: 698-212-279</p>
+                    <p>
+                      {footerContent.website} | {footerContent.email}
+                    </p>
+                    <p>tel: {footerContent.phone}</p>
                   </div>
                 </div>
               )}

@@ -418,6 +418,14 @@ export function EventContractTab({ eventId }: { eventId: string }) {
             lineHeight: template.page_settings.lineHeight || 1.6,
             selectedLogo: template.page_settings.selectedLogo || '/erulers_logo_vect.png',
             selectedFooter: template.page_settings.selectedFooter || 'default',
+            footerBrand: template.page_settings.footerBrand || 'event-rulers',
+            footerContent: template.page_settings.footerContent || {
+              companyName: 'EVENT RULERS',
+              tagline: 'Więcej niż Wodzireje!',
+              website: 'www.eventrulers.pl',
+              email: 'biuro@eventrulers.pl',
+              phone: '698-212-279',
+            },
           },
         });
       }
@@ -692,6 +700,14 @@ export function EventContractTab({ eventId }: { eventId: string }) {
             lineHeight: template.page_settings.lineHeight || 1.6,
             selectedLogo: template.page_settings.selectedLogo || '/erulers_logo_vect.png',
             selectedFooter: template.page_settings.selectedFooter || 'default',
+            footerBrand: template.page_settings.footerBrand || 'event-rulers',
+            footerContent: template.page_settings.footerContent || {
+              companyName: 'EVENT RULERS',
+              tagline: 'Więcej niż Wodzireje!',
+              website: 'www.eventrulers.pl',
+              email: 'biuro@eventrulers.pl',
+              phone: '698-212-279',
+            },
           },
         });
       }
@@ -1258,6 +1274,14 @@ export function EventContractTab({ eventId }: { eventId: string }) {
                 lineHeight: 1.6,
                 selectedLogo: '/erulers_logo_vect.png',
                 selectedFooter: 'default',
+                footerBrand: 'event-rulers',
+                footerContent: {
+                  companyName: 'EVENT RULERS',
+                  tagline: 'Więcej niż Wodzireje!',
+                  website: 'www.eventrulers.pl',
+                  email: 'biuro@eventrulers.pl',
+                  phone: '698-212-279',
+                },
               };
 
               if (pages && Array.isArray(pages)) {
@@ -1316,11 +1340,21 @@ export function EventContractTab({ eventId }: { eventId: string }) {
                         )}
                         <div className="footer-info">
                           <p>
-                            <span className="font-bold">EVENT RULERS</span> –{' '}
-                            <span className="italic">Więcej niż Wodzireje!</span>
+                            <span className="font-bold">
+                              {settings.footerContent?.companyName || 'EVENT RULERS'}
+                            </span>
+                            {settings.footerContent?.tagline && (
+                              <>
+                                {' '}
+                                – <span className="italic">{settings.footerContent.tagline}</span>
+                              </>
+                            )}
                           </p>
-                          <p>www.eventrulers.pl | biuro@eventrulers.pl</p>
-                          <p>tel: 698-212-279</p>
+                          <p>
+                            {settings.footerContent?.website || 'www.eventrulers.pl'} |{' '}
+                            {settings.footerContent?.email || 'biuro@eventrulers.pl'}
+                          </p>
+                          <p>tel: {settings.footerContent?.phone || '698-212-279'}</p>
                         </div>
                       </div>
                     )}
