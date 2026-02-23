@@ -42,6 +42,9 @@ interface Organization {
   name: string;
   alias: string | null;
   nip: string | null;
+  legal_form: string | null;
+  krs: string | null;
+  regon: string | null;
   address: string | null;
   city: string | null;
   postal_code: string | null;
@@ -151,6 +154,19 @@ const businessTypeLabels = {
   venue: 'Miejsce eventowe',
   freelancer: 'Freelancer',
   other: 'Inne',
+};
+
+const legalFormLabels = {
+  jdg: 'Jednoosobowa działalność gospodarcza (JDG)',
+  sp_zoo: 'Spółka z ograniczoną odpowiedzialnością (sp. z o.o.)',
+  sp_jawna: 'Spółka jawna',
+  sp_komandytowa: 'Spółka komandytowa',
+  sp_komandytowo_akcyjna: 'Spółka komandytowo-akcyjna',
+  sp_akcyjna: 'Spółka akcyjna (S.A.)',
+  spoldzielnia: 'Spółdzielnia',
+  fundacja: 'Fundacja',
+  stowarzyszenie: 'Stowarzyszenie',
+  other: 'Inna',
 };
 
 const statusColors = {
@@ -1204,6 +1220,70 @@ export default function OrganizationDetailPage() {
                     />
                   ) : (
                     <p className="text-white">{organization.nip || '-'}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-400">
+                    Forma prawna
+                  </label>
+                  {editMode ? (
+                    <select
+                      value={editedData.legal_form || ''}
+                      onChange={(e) => setEditedData({ ...editedData, legal_form: e.target.value })}
+                      className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                    >
+                      <option value="">-- Wybierz formę prawną --</option>
+                      {Object.entries(legalFormLabels).map(([key, label]) => (
+                        <option key={key} value={key}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="text-white">
+                      {organization.legal_form
+                        ? legalFormLabels[
+                            organization.legal_form as keyof typeof legalFormLabels
+                          ] || organization.legal_form
+                        : '-'}
+                    </p>
+                  )}
+                </div>
+
+                {/* KRS - tylko dla form innych niż JDG */}
+                {(!editMode || (editedData.legal_form || organization.legal_form) !== 'jdg') && (
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-400">
+                      KRS{' '}
+                      {(editedData.legal_form || organization.legal_form) === 'jdg' &&
+                        '(nie dotyczy JDG)'}
+                    </label>
+                    {editMode ? (
+                      <input
+                        type="text"
+                        value={editedData.krs || ''}
+                        onChange={(e) => setEditedData({ ...editedData, krs: e.target.value })}
+                        disabled={(editedData.legal_form || organization.legal_form) === 'jdg'}
+                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
+                      />
+                    ) : (
+                      <p className="text-white">{organization.krs || '-'}</p>
+                    )}
+                  </div>
+                )}
+
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-400">REGON</label>
+                  {editMode ? (
+                    <input
+                      type="text"
+                      value={editedData.regon || ''}
+                      onChange={(e) => setEditedData({ ...editedData, regon: e.target.value })}
+                      className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                    />
+                  ) : (
+                    <p className="text-white">{organization.regon || '-'}</p>
                   )}
                 </div>
 
