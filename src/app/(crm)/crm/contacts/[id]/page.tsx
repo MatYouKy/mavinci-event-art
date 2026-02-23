@@ -33,6 +33,7 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { parseGoogleMapsUrl } from '@/lib/gus';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import OrganizationLocationPicker from '@/components/crm/OrganizationLocationPicker';
+import OrganizationRepresentatives from '@/components/crm/OrganizationRepresentatives';
 
 interface Organization {
   id: string;
@@ -61,6 +62,10 @@ interface Organization {
   longitude: number | null;
   location_notes: string | null;
   location_id: string | null;
+  primary_contact_id: string | null;
+  legal_representative_id: string | null;
+  legal_representative_title: string | null;
+  contact_is_representative: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -112,6 +117,17 @@ interface OrganizationNote {
   created_at: string;
   created_by: string | null;
   employees?: { name: string; surname: string } | null;
+}
+
+interface DecisionMaker {
+  id: string;
+  organization_id: string;
+  contact_id: string;
+  title: string | null;
+  can_sign_contracts: boolean;
+  notes: string | null;
+  created_at: string;
+  contact?: Contact;
 }
 
 interface ContactHistory {
@@ -200,6 +216,11 @@ export default function OrganizationDetailPage() {
   const [allowedContactTabs, setAllowedContactTabs] = useState<string[]>(['details']);
   const [allowedOrganizationTabs, setAllowedOrganizationTabs] = useState<string[]>(['details']);
 
+  const [decisionMakers, setDecisionMakers] = useState<DecisionMaker[]>([]);
+  const [showAddDecisionMakerModal, setShowAddDecisionMakerModal] = useState(false);
+  const [primaryContact, setPrimaryContact] = useState<Contact | null>(null);
+  const [legalRepresentative, setLegalRepresentative] = useState<Contact | null>(null);
+
   useEffect(() => {
     if (organizationId) {
       fetchData();
@@ -278,6 +299,52 @@ export default function OrganizationDetailPage() {
     };
   }, [organizationId]);
 
+  const fetchDecisionMakers = async (orgId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('organization_decision_makers')
+        .select('*, contact:contacts(*)')
+        .eq('organization_id', orgId);
+
+      if (error) throw error;
+      setDecisionMakers(data || []);
+    } catch (error: any) {
+      console.error('Error fetching decision makers:', error);
+    }
+  };
+
+  const handleAddDecisionMaker = async (contactId: string, title: string, canSign: boolean) => {
+    try {
+      const { error } = await supabase.from('organization_decision_makers').insert({
+        organization_id: organizationId,
+        contact_id: contactId,
+        title,
+        can_sign_contracts: canSign,
+      });
+
+      if (error) throw error;
+      showSnackbar('Osoba decyzyjna dodana', 'success');
+      fetchDecisionMakers(organizationId);
+      setShowAddDecisionMakerModal(false);
+    } catch (error: any) {
+      showSnackbar(error.message || 'Błąd podczas dodawania', 'error');
+    }
+  };
+
+  const handleRemoveDecisionMaker = async (id: string) => {
+    if (!confirm('Czy na pewno usunąć tę osobę z listy decyzyjnych?')) return;
+
+    try {
+      const { error } = await supabase.from('organization_decision_makers').delete().eq('id', id);
+
+      if (error) throw error;
+      showSnackbar('Osoba usunięta', 'success');
+      fetchDecisionMakers(organizationId);
+    } catch (error: any) {
+      showSnackbar(error.message || 'Błąd podczas usuwania', 'error');
+    }
+  };
+
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -340,6 +407,28 @@ export default function OrganizationDetailPage() {
 
         // Mapuj historię
         setHistory(fullData.history || []);
+
+        // Załaduj osoby decyzyjne
+        await fetchDecisionMakers(organizationId);
+
+        // Załaduj kontakt główny i reprezentanta
+        if (entityData.primary_contact_id) {
+          const { data: primaryContactData } = await supabase
+            .from('contacts')
+            .select('*')
+            .eq('id', entityData.primary_contact_id)
+            .single();
+          setPrimaryContact(primaryContactData);
+        }
+
+        if (entityData.legal_representative_id) {
+          const { data: legalRepData } = await supabase
+            .from('contacts')
+            .select('*')
+            .eq('id', entityData.legal_representative_id)
+            .single();
+          setLegalRepresentative(legalRepData);
+        }
 
         setLoading(false);
       }
@@ -1234,12 +1323,48 @@ export default function OrganizationDetailPage() {
               </div>
             </div>
 
+            {/* Sekcja reprezentantów i osób decyzyjnych */}
+            <div className="rounded-lg border border-gray-700 bg-[#1a1d2e] p-6">
+              <h2 className="mb-4 text-xl font-semibold text-white">
+                Reprezentanci i osoby decyzyjne
+              </h2>
+              <OrganizationRepresentatives
+                organizationId={organization.id}
+                primaryContact={primaryContact}
+                legalRepresentative={legalRepresentative}
+                legalRepresentativeTitle={
+                  (editedData.legal_representative_title as string) ||
+                  organization.legal_representative_title
+                }
+                contactIsRepresentative={
+                  editedData.contact_is_representative !== undefined
+                    ? (editedData.contact_is_representative as boolean)
+                    : organization.contact_is_representative
+                }
+                decisionMakers={decisionMakers}
+                availableContacts={contactPersons.map((cp) => ({
+                  id: cp.id,
+                  full_name: cp.full_name || `${cp.first_name} ${cp.last_name}`,
+                  first_name: cp.first_name,
+                  last_name: cp.last_name,
+                  email: cp.email,
+                  phone: cp.phone,
+                  position: cp.position,
+                }))}
+                editMode={editMode}
+                onUpdate={fetchData}
+                onEditedDataChange={(field, value) =>
+                  setEditedData({ ...editedData, [field]: value })
+                }
+              />
+            </div>
+
             {organization.organization_type === 'subcontractor' && (
               <div className="rounded-lg border border-gray-700 bg-[#1a1d2e] p-6">
                 <h2 className="mb-4 text-xl font-semibold text-white">Informacje handlowe</h2>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
-                    <label className="mb-1 md:block flex items-center space-x-1 text-sm font-medium text-gray-400">
+                    <label className="mb-1 flex items-center space-x-1 text-sm font-medium text-gray-400 md:block">
                       <DollarSign className="h-4 w-4" />
                       <span>Stawka godzinowa</span>
                     </label>
