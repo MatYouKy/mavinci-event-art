@@ -94,18 +94,30 @@ export default function OrganizationRepresentatives({
           <h3 className="font-semibold text-white">Osoba kontaktowa</h3>
         </div>
         {editMode ? (
-          <select
-            value={primaryContact?.id || ''}
-            onChange={(e) => onEditedDataChange('primary_contact_id', e.target.value || null)}
-            className="w-full rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white"
-          >
-            <option value="">-- Wybierz osobę --</option>
-            {availableContacts.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.full_name} {c.position ? `(${c.position})` : ''}
+          <>
+            <select
+              value={primaryContact?.id || ''}
+              onChange={(e) => onEditedDataChange('primary_contact_id', e.target.value || null)}
+              disabled={availableContacts.length === 0}
+              className="w-full rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <option value="">
+                {availableContacts.length === 0
+                  ? '-- Brak osób kontaktowych (dodaj w zakładce Kontakty) --'
+                  : '-- Wybierz osobę --'}
               </option>
-            ))}
-          </select>
+              {availableContacts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.full_name} {c.position ? `(${c.position})` : ''}
+                </option>
+              ))}
+            </select>
+            {availableContacts.length === 0 && (
+              <div className="mt-2 text-xs text-amber-400">
+                💡 Najpierw dodaj osoby kontaktowe w zakładce &quot;Kontakty&quot; poniżej
+              </div>
+            )}
+          </>
         ) : primaryContact ? (
           <div className="text-sm text-gray-300">
             <div className="font-medium">{primaryContact.full_name}</div>
@@ -150,9 +162,14 @@ export default function OrganizationRepresentatives({
                   onChange={(e) =>
                     onEditedDataChange('legal_representative_id', e.target.value || null)
                   }
-                  className="w-full rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white"
+                  disabled={availableContacts.length === 0}
+                  className="w-full rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <option value="">-- Wybierz osobę --</option>
+                  <option value="">
+                    {availableContacts.length === 0
+                      ? '-- Brak osób kontaktowych (dodaj w zakładce Kontakty) --'
+                      : '-- Wybierz osobę --'}
+                  </option>
                   {availableContacts.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.full_name}
@@ -164,8 +181,14 @@ export default function OrganizationRepresentatives({
                   value={legalRepresentativeTitle || ''}
                   onChange={(e) => onEditedDataChange('legal_representative_title', e.target.value)}
                   placeholder="Stanowisko (np. Prezes Zarządu)"
-                  className="w-full rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white placeholder-gray-500"
+                  disabled={!legalRepresentative && availableContacts.length === 0}
+                  className="w-full rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white placeholder-gray-500 disabled:cursor-not-allowed disabled:opacity-50"
                 />
+                {availableContacts.length === 0 && (
+                  <div className="text-xs text-amber-400">
+                    💡 Najpierw dodaj osoby kontaktowe w zakładce &quot;Kontakty&quot; poniżej
+                  </div>
+                )}
               </div>
             ) : legalRepresentative ? (
               <div className="text-sm text-gray-300">
@@ -268,15 +291,25 @@ export default function OrganizationRepresentatives({
                 <select
                   value={newDM.contact_id}
                   onChange={(e) => setNewDM({ ...newDM, contact_id: e.target.value })}
-                  className="w-full rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white"
+                  disabled={availableContacts.length === 0}
+                  className="w-full rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <option value="">-- Wybierz --</option>
+                  <option value="">
+                    {availableContacts.length === 0
+                      ? '-- Brak osób kontaktowych (dodaj w zakładce Kontakty) --'
+                      : '-- Wybierz --'}
+                  </option>
                   {availableContacts.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.full_name} {c.position ? `(${c.position})` : ''}
                     </option>
                   ))}
                 </select>
+                {availableContacts.length === 0 && (
+                  <div className="mt-2 text-xs text-amber-400">
+                    💡 Najpierw dodaj osoby kontaktowe w zakładce &quot;Kontakty&quot; poniżej
+                  </div>
+                )}
               </div>
               <div>
                 <label className="mb-1 block text-sm text-gray-300">

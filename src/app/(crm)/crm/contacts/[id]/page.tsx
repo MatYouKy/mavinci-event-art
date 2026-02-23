@@ -34,6 +34,7 @@ import { parseGoogleMapsUrl } from '@/lib/gus';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import OrganizationLocationPicker from '@/components/crm/OrganizationLocationPicker';
 import OrganizationRepresentatives from '@/components/crm/OrganizationRepresentatives';
+import AddLocationModal from '@/components/crm/AddLocationModal';
 
 interface Organization {
   id: string;
@@ -234,6 +235,7 @@ export default function OrganizationDetailPage() {
 
   const [decisionMakers, setDecisionMakers] = useState<DecisionMaker[]>([]);
   const [showAddDecisionMakerModal, setShowAddDecisionMakerModal] = useState(false);
+  const [showAddLocationModal, setShowAddLocationModal] = useState(false);
   const [primaryContact, setPrimaryContact] = useState<Contact | null>(null);
   const [legalRepresentative, setLegalRepresentative] = useState<Contact | null>(null);
 
@@ -745,6 +747,13 @@ export default function OrganizationDetailPage() {
     } catch (error: any) {
       showSnackbar(error.message || 'Błąd podczas usuwania', 'error');
     }
+  };
+
+  const handleLocationAdded = (location: any) => {
+    setEditedData({ ...editedData, location_id: location.id });
+    setShowAddLocationModal(false);
+    showSnackbar('Lokalizacja dodana i przypisana', 'success');
+    fetchData();
   };
 
   if (loading) {
@@ -1399,6 +1408,7 @@ export default function OrganizationDetailPage() {
                     setEditedData({ ...editedData, location_id: locationId })
                   }
                   editMode={editMode}
+                  onOpenAddLocation={() => setShowAddLocationModal(true)}
                 />
               </div>
             </div>
@@ -2017,6 +2027,13 @@ export default function OrganizationDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Modal dodawania lokalizacji */}
+      <AddLocationModal
+        isOpen={showAddLocationModal}
+        onClose={() => setShowAddLocationModal(false)}
+        onLocationAdded={handleLocationAdded}
+      />
     </div>
   );
 }
