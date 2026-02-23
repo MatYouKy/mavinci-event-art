@@ -607,6 +607,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
             logoPositionX: template.page_settings.logoPositionX || 50,
             logoPositionY: template.page_settings.logoPositionY || 0,
             lineHeight: template.page_settings.lineHeight || 1.6,
+            selectedFont: template.page_settings.selectedFont || 'Georgia, serif',
             selectedLogo: template.page_settings.selectedLogo || '/erulers_logo_vect.png',
             selectedFooter: template.page_settings.selectedFooter || 'default',
           },
@@ -732,6 +733,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
             logoPositionX: template.page_settings.logoPositionX || 50,
             logoPositionY: template.page_settings.logoPositionY || 0,
             lineHeight: template.page_settings.lineHeight || 1.6,
+            selectedFont: template.page_settings.selectedFont || 'Georgia, serif',
             selectedLogo: template.page_settings.selectedLogo || '/erulers_logo_vect.png',
             selectedFooter: template.page_settings.selectedFooter || 'default',
             footerContent: template.page_settings.footerContent || {
@@ -1349,6 +1351,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
                       className="contract-content"
                       style={{
                         lineHeight: String(settings.lineHeight),
+                        fontFamily: settings.selectedFont || 'Georgia, serif',
                         minHeight: pageIndex === 0 ? '160mm' : '250mm',
                       }}
                       dangerouslySetInnerHTML={{ __html: pageContent }}

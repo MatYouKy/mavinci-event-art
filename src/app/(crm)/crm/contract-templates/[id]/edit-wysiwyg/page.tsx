@@ -52,6 +52,9 @@ export default function EditTemplateWYSIWYGPage() {
   });
   const [history, setHistory] = useState<string[][]>([['']]);
   const [historyIndex, setHistoryIndex] = useState(0);
+  const [selectedFont, setSelectedFont] = useState<string>('Georgia, serif');
+  const [showPlaceholders, setShowPlaceholders] = useState(false);
+  const [placeholderCategory, setPlaceholderCategory] = useState<string>('contact');
   const [pages, setPages] = useState<string[]>(['']);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -145,6 +148,7 @@ export default function EditTemplateWYSIWYGPage() {
           if (data.page_settings.logoPositionY !== undefined)
             setLogoPositionY(data.page_settings.logoPositionY);
           if (data.page_settings.lineHeight) setLineHeight(data.page_settings.lineHeight);
+          if (data.page_settings.selectedFont) setSelectedFont(data.page_settings.selectedFont);
           if (data.page_settings.selectedLogo) setSelectedLogo(data.page_settings.selectedLogo);
           if (data.page_settings.selectedFooter)
             setSelectedFooter(data.page_settings.selectedFooter);
@@ -224,6 +228,7 @@ export default function EditTemplateWYSIWYGPage() {
           logoPositionX,
           logoPositionY,
           lineHeight,
+          selectedFont,
           selectedLogo,
           selectedFooter,
           selectedFooterTemplateId,
@@ -855,6 +860,28 @@ export default function EditTemplateWYSIWYGPage() {
             </select>
 
             <div className="ml-2 flex items-center gap-2">
+              <span className="text-xs text-[#e5e4e2]/60">Czcionka:</span>
+              <select
+                value={selectedFont}
+                onChange={(e) => {
+                  setSelectedFont(e.target.value);
+                  if (editorRef.current) {
+                    editorRef.current.style.fontFamily = e.target.value;
+                  }
+                }}
+                className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1 text-sm text-[#e5e4e2]"
+              >
+                <option value="Georgia, serif">Georgia</option>
+                <option value="'Times New Roman', Times, serif">Times New Roman</option>
+                <option value="'Crimson Text', Georgia, serif">Crimson Text</option>
+                <option value="'Lora', Georgia, serif">Lora</option>
+                <option value="'Merriweather', Georgia, serif">Merriweather</option>
+                <option value="Arial, sans-serif">Arial</option>
+                <option value="'Helvetica Neue', Helvetica, sans-serif">Helvetica</option>
+              </select>
+            </div>
+
+            <div className="ml-2 flex items-center gap-2">
               <span className="text-xs text-[#e5e4e2]/60">Odstęp linii:</span>
               <input
                 type="range"
@@ -1013,61 +1040,173 @@ export default function EditTemplateWYSIWYGPage() {
 
             <div className="mx-2 h-6 w-px bg-[#d3bb73]/30" />
 
-            <span className="text-xs text-[#e5e4e2]/60">Placeholdery:</span>
-
-            {[
-              { key: '{{contact_first_name}}', label: 'Imię' },
-              { key: '{{contact_last_name}}', label: 'Nazwisko' },
-              { key: '{{contact_full_name}}', label: 'Imię i nazwisko' },
-              { key: '{{contact_email}}', label: 'Email' },
-              { key: '{{contact_phone}}', label: 'Telefon' },
-              { key: '{{contact_pesel}}', label: 'PESEL' },
-              { key: '{{contact_address}}', label: 'Adres (ulica)' },
-              { key: '{{contact_city}}', label: 'Miasto' },
-              { key: '{{contact_postal_code}}', label: 'Kod pocztowy' },
-              { key: '{{organization_name}}', label: 'Nazwa firmy' },
-              { key: '{{organization_nip}}', label: 'NIP firmy' },
-              { key: '{{organization_legal_form}}', label: 'Forma prawna' },
-              { key: '{{organization_krs}}', label: 'KRS (auto-ukrywa dla JDG)' },
-              { key: '{{organization_regon}}', label: 'REGON' },
-              { key: '{{primary_contact_full_name}}', label: 'Osoba kontaktowa' },
-              { key: '{{primary_contact_position}}', label: 'Stanowisko osoby kont.' },
-              { key: '{{primary_contact_email}}', label: 'Email osoby kont.' },
-              { key: '{{primary_contact_phone}}', label: 'Telefon osoby kont.' },
-              { key: '{{legal_representative_full_name}}', label: 'Reprezentant prawny' },
-              { key: '{{legal_representative_title}}', label: 'Stanowisko reprezentanta' },
-              { key: '{{decision_makers_list}}', label: 'Lista osób decyzyjnych' },
-              { key: '{{event_name}}', label: 'Wydarzenie' },
-              { key: '{{event_date}}', label: 'Data i czas start' },
-              { key: '{{event_end_date}}', label: 'Data i czas koniec' },
-              { key: '{{event_date_only}}', label: 'Data start (DD.MM.RRRR)' },
-              { key: '{{event_end_date_only}}', label: 'Data koniec (DD.MM.RRRR)' },
-              { key: '{{event_time_start}}', label: 'Godzina start (HH:MM)' },
-              { key: '{{event_time_end}}', label: 'Godzina koniec (HH:MM)' },
-              { key: '{{location_name}}', label: 'Nazwa lokalizacji' },
-              { key: '{{location_address}}', label: 'Adres lokalizacji' },
-              { key: '{{location_city}}', label: 'Miasto lokalizacji' },
-              { key: '{{location_postal_code}}', label: 'Kod pocztowy lok.' },
-              { key: '{{location_full}}', label: 'Pełny adres lok.' },
-              { key: '{{budget}}', label: 'Budżet' },
-              { key: '{{budget_words}}', label: 'Budżet słownie' },
-              { key: '{{deposit_amount}}', label: 'Zadatek' },
-              { key: '{{deposit_words}}', label: 'Zadatek słownie' },
-              { key: '{{offer_items}}', label: 'Pozycje z oferty' },
-              { key: '{{OFFER_ITEMS_TABLE}}', label: 'Tabela pozycji oferty' },
-            ].map((p) => (
-              <button
-                key={p.key}
-                onClick={() => insertPlaceholder(p.key)}
-                className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
-                title={p.key}
-              >
-                {p.label}
-              </button>
-            ))}
+            <button
+              onClick={() => setShowPlaceholders(!showPlaceholders)}
+              className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-sm font-medium text-[#d3bb73] hover:bg-[#d3bb73]/10"
+            >
+              {showPlaceholders ? '✕ Ukryj' : '+ Zmienne'} (
+              {
+                {
+                  contact: 'Kontakt',
+                  organization: 'Firma',
+                  event: 'Wydarzenie',
+                  location: 'Lokalizacja',
+                  financial: 'Finanse',
+                }[placeholderCategory]
+              }
+              )
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Placeholders Panel */}
+      {showPlaceholders && (
+        <div className="border-b border-[#d3bb73]/20 bg-[#16171d] px-4 py-3">
+          <div className="mx-auto max-w-[230mm]">
+            <div className="mb-3 flex items-center gap-2">
+              <span className="text-xs font-semibold text-[#d3bb73]">Zmienne:</span>
+              <button
+                onClick={() => setPlaceholderCategory('contact')}
+                className={`rounded px-2 py-1 text-xs ${placeholderCategory === 'contact' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#0f1119] text-[#d3bb73] hover:bg-[#d3bb73]/10'}`}
+              >
+                Kontakt
+              </button>
+              <button
+                onClick={() => setPlaceholderCategory('organization')}
+                className={`rounded px-2 py-1 text-xs ${placeholderCategory === 'organization' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#0f1119] text-[#d3bb73] hover:bg-[#d3bb73]/10'}`}
+              >
+                Firma
+              </button>
+              <button
+                onClick={() => setPlaceholderCategory('event')}
+                className={`rounded px-2 py-1 text-xs ${placeholderCategory === 'event' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#0f1119] text-[#d3bb73] hover:bg-[#d3bb73]/10'}`}
+              >
+                Wydarzenie
+              </button>
+              <button
+                onClick={() => setPlaceholderCategory('location')}
+                className={`rounded px-2 py-1 text-xs ${placeholderCategory === 'location' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#0f1119] text-[#d3bb73] hover:bg-[#d3bb73]/10'}`}
+              >
+                Lokalizacja
+              </button>
+              <button
+                onClick={() => setPlaceholderCategory('financial')}
+                className={`rounded px-2 py-1 text-xs ${placeholderCategory === 'financial' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#0f1119] text-[#d3bb73] hover:bg-[#d3bb73]/10'}`}
+              >
+                Finanse
+              </button>
+              <button
+                onClick={() => setShowPlaceholders(false)}
+                className="ml-auto text-xs text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
+              >
+                Zamknij
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {placeholderCategory === 'contact' &&
+                [
+                  { key: '{{contact_first_name}}', label: 'Imię' },
+                  { key: '{{contact_last_name}}', label: 'Nazwisko' },
+                  { key: '{{contact_full_name}}', label: 'Imię i nazwisko' },
+                  { key: '{{contact_email}}', label: 'Email' },
+                  { key: '{{contact_phone}}', label: 'Telefon' },
+                  { key: '{{contact_pesel}}', label: 'PESEL' },
+                  { key: '{{contact_address}}', label: 'Adres (ulica)' },
+                  { key: '{{contact_city}}', label: 'Miasto' },
+                  { key: '{{contact_postal_code}}', label: 'Kod pocztowy' },
+                ].map((p) => (
+                  <button
+                    key={p.key}
+                    onClick={() => insertPlaceholder(p.key)}
+                    className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
+                    title={p.key}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              {placeholderCategory === 'organization' &&
+                [
+                  { key: '{{organization_name}}', label: 'Nazwa firmy' },
+                  { key: '{{organization_nip}}', label: 'NIP' },
+                  { key: '{{organization_legal_form}}', label: 'Forma prawna' },
+                  { key: '{{organization_krs}}', label: 'KRS (auto-ukrywa dla JDG)' },
+                  { key: '{{organization_regon}}', label: 'REGON' },
+                  { key: '{{primary_contact_full_name}}', label: 'Osoba kontaktowa' },
+                  { key: '{{primary_contact_position}}', label: 'Stanowisko osoby kont.' },
+                  { key: '{{primary_contact_email}}', label: 'Email osoby kont.' },
+                  { key: '{{primary_contact_phone}}', label: 'Telefon osoby kont.' },
+                  { key: '{{legal_representative_full_name}}', label: 'Reprezentant prawny' },
+                  { key: '{{legal_representative_title}}', label: 'Stanowisko reprezentanta' },
+                  { key: '{{decision_makers_list}}', label: 'Lista osób decyzyjnych' },
+                ].map((p) => (
+                  <button
+                    key={p.key}
+                    onClick={() => insertPlaceholder(p.key)}
+                    className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
+                    title={p.key}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              {placeholderCategory === 'event' &&
+                [
+                  { key: '{{event_name}}', label: 'Nazwa wydarzenia' },
+                  { key: '{{event_date}}', label: 'Data i czas start' },
+                  { key: '{{event_end_date}}', label: 'Data i czas koniec' },
+                  { key: '{{event_date_only}}', label: 'Data start (DD.MM.RRRR)' },
+                  { key: '{{event_end_date_only}}', label: 'Data koniec (DD.MM.RRRR)' },
+                  { key: '{{event_time_start}}', label: 'Godzina start (HH:MM)' },
+                  { key: '{{event_time_end}}', label: 'Godzina koniec (HH:MM)' },
+                ].map((p) => (
+                  <button
+                    key={p.key}
+                    onClick={() => insertPlaceholder(p.key)}
+                    className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
+                    title={p.key}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              {placeholderCategory === 'location' &&
+                [
+                  { key: '{{location_name}}', label: 'Nazwa lokalizacji' },
+                  { key: '{{location_address}}', label: 'Adres' },
+                  { key: '{{location_city}}', label: 'Miasto' },
+                  { key: '{{location_postal_code}}', label: 'Kod pocztowy' },
+                  { key: '{{location_full}}', label: 'Pełny adres' },
+                ].map((p) => (
+                  <button
+                    key={p.key}
+                    onClick={() => insertPlaceholder(p.key)}
+                    className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
+                    title={p.key}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              {placeholderCategory === 'financial' &&
+                [
+                  { key: '{{budget}}', label: 'Budżet (liczba)' },
+                  { key: '{{budget_words}}', label: 'Budżet słownie' },
+                  { key: '{{deposit_amount}}', label: 'Zadatek (liczba)' },
+                  { key: '{{deposit_words}}', label: 'Zadatek słownie' },
+                  { key: '{{offer_items}}', label: 'Pozycje z oferty (HTML)' },
+                  { key: '{{OFFER_ITEMS_TABLE}}', label: 'Tabela pozycji (HTML)' },
+                ].map((p) => (
+                  <button
+                    key={p.key}
+                    onClick={() => insertPlaceholder(p.key)}
+                    className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
+                    title={p.key}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Footer Editor Panel */}
       {selectedFooter !== 'none' && showFooterEditor && (
@@ -1226,6 +1365,7 @@ export default function EditTemplateWYSIWYGPage() {
                   direction: 'ltr',
                   unicodeBidi: 'embed',
                   lineHeight: String(lineHeight),
+                  fontFamily: selectedFont,
                   minHeight: pageIndex === 0 ? '160mm' : '250mm',
                 }}
               />
