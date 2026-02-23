@@ -38,13 +38,17 @@ export default function EditTemplateWYSIWYGPage() {
   const [lineHeight, setLineHeight] = useState(1.6);
   const [selectedLogo, setSelectedLogo] = useState('/erulers_logo_vect.png');
   const [selectedFooter, setSelectedFooter] = useState<'default' | 'minimal' | 'none'>('default');
-  const [footerBrand, setFooterBrand] = useState<'event-rulers' | 'mavinci'>('event-rulers');
+  const [selectedFooterTemplateId, setSelectedFooterTemplateId] = useState<string | null>(null);
+  const [footerTemplates, setFooterTemplates] = useState<any[]>([]);
+  const [showFooterEditor, setShowFooterEditor] = useState(false);
+  const [footerLogoScale, setFooterLogoScale] = useState(80);
   const [footerContent, setFooterContent] = useState({
     companyName: 'EVENT RULERS',
     tagline: 'Więcej niż Wodzireje!',
     website: 'www.eventrulers.pl',
     email: 'biuro@eventrulers.pl',
     phone: '698-212-279',
+    logoUrl: '/erulers_logo_vect.png',
   });
   const [history, setHistory] = useState<string[][]>([['']]);
   const [historyIndex, setHistoryIndex] = useState(0);
@@ -57,6 +61,7 @@ export default function EditTemplateWYSIWYGPage() {
 
   useEffect(() => {
     fetchTemplate();
+    fetchFooterTemplates();
   }, [templateId]);
 
   useEffect(() => {
@@ -143,8 +148,11 @@ export default function EditTemplateWYSIWYGPage() {
           if (data.page_settings.selectedLogo) setSelectedLogo(data.page_settings.selectedLogo);
           if (data.page_settings.selectedFooter)
             setSelectedFooter(data.page_settings.selectedFooter);
-          if (data.page_settings.footerBrand) setFooterBrand(data.page_settings.footerBrand);
+          if (data.page_settings.selectedFooterTemplateId)
+            setSelectedFooterTemplateId(data.page_settings.selectedFooterTemplateId);
           if (data.page_settings.footerContent) setFooterContent(data.page_settings.footerContent);
+          if (data.page_settings.footerLogoScale)
+            setFooterLogoScale(data.page_settings.footerLogoScale);
           if (data.page_settings.pages && Array.isArray(data.page_settings.pages)) {
             setPages(data.page_settings.pages);
             setHistory([data.page_settings.pages]);
@@ -218,8 +226,9 @@ export default function EditTemplateWYSIWYGPage() {
           lineHeight,
           selectedLogo,
           selectedFooter,
-          footerBrand,
+          selectedFooterTemplateId,
           footerContent,
+          footerLogoScale,
           pages,
           marginTop: 50,
           marginBottom: 50,
@@ -247,24 +256,60 @@ export default function EditTemplateWYSIWYGPage() {
     }
   };
 
-  const handleFooterBrandChange = (brand: 'event-rulers' | 'mavinci') => {
-    setFooterBrand(brand);
-    if (brand === 'event-rulers') {
+  const fetchFooterTemplates = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('footer_templates')
+        .select('*')
+        .order('is_default', { ascending: false })
+        .order('name');
+
+      if (error) throw error;
+      setFooterTemplates(data || []);
+    } catch (err: any) {
+      console.error('Error fetching footer templates:', err);
+    }
+  };
+
+  const handleFooterTemplateSelect = (templateId: string) => {
+    const template = footerTemplates.find((t) => t.id === templateId);
+    if (template) {
+      setSelectedFooterTemplateId(templateId);
       setFooterContent({
-        companyName: 'EVENT RULERS',
-        tagline: 'Więcej niż Wodzireje!',
-        website: 'www.eventrulers.pl',
-        email: 'biuro@eventrulers.pl',
-        phone: '698-212-279',
+        companyName: template.company_name,
+        tagline: template.tagline || '',
+        website: template.website,
+        email: template.email,
+        phone: template.phone,
+        logoUrl: template.logo_url,
       });
-    } else {
-      setFooterContent({
-        companyName: 'MAVINCI',
-        tagline: 'Profesjonalna obsługa eventów',
-        website: 'www.mavinci.pl',
-        email: 'biuro@mavinci.pl',
-        phone: '698-212-279',
+      setFooterLogoScale(template.logo_scale || 80);
+    }
+  };
+
+  const handleSaveAsNewFooterTemplate = async () => {
+    const name = prompt('Podaj nazwę szablonu stopki:');
+    if (!name) return;
+
+    try {
+      const { error } = await supabase.from('footer_templates').insert({
+        name,
+        company_name: footerContent.companyName,
+        tagline: footerContent.tagline,
+        website: footerContent.website,
+        email: footerContent.email,
+        phone: footerContent.phone,
+        logo_url: footerContent.logoUrl,
+        logo_scale: footerLogoScale,
+        is_default: false,
       });
+
+      if (error) throw error;
+      showSnackbar('Szablon stopki zapisany', 'success');
+      fetchFooterTemplates();
+    } catch (err: any) {
+      console.error('Error:', err);
+      showSnackbar(err.message || 'Błąd zapisu szablonu', 'error');
     }
   };
 
@@ -934,18 +979,35 @@ export default function EditTemplateWYSIWYGPage() {
                 <div className="mx-2 h-6 w-px bg-[#d3bb73]/30" />
 
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-[#e5e4e2]/60">Brand:</span>
+                  <span className="text-xs text-[#e5e4e2]/60">Szablon stopki:</span>
                   <select
-                    value={footerBrand}
-                    onChange={(e) =>
-                      handleFooterBrandChange(e.target.value as 'event-rulers' | 'mavinci')
-                    }
+                    value={selectedFooterTemplateId || ''}
+                    onChange={(e) => handleFooterTemplateSelect(e.target.value)}
                     className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1 text-sm text-[#e5e4e2]"
                   >
-                    <option value="event-rulers">EVENT RULERS</option>
-                    <option value="mavinci">MAVINCI</option>
+                    <option value="">-- Własna stopka --</option>
+                    {footerTemplates.map((template) => (
+                      <option key={template.id} value={template.id}>
+                        {template.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
+
+                <button
+                  onClick={() => setShowFooterEditor(!showFooterEditor)}
+                  className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
+                >
+                  {showFooterEditor ? 'Ukryj edytor' : 'Edytuj stopkę'}
+                </button>
+
+                <button
+                  onClick={handleSaveAsNewFooterTemplate}
+                  className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
+                  title="Zapisz aktualną stopkę jako nowy szablon"
+                >
+                  Zapisz jako szablon
+                </button>
               </>
             )}
 
@@ -998,11 +1060,24 @@ export default function EditTemplateWYSIWYGPage() {
       </div>
 
       {/* Footer Editor Panel */}
-      {selectedFooter !== 'none' && (
+      {selectedFooter !== 'none' && showFooterEditor && (
         <div className="border-b border-[#d3bb73]/20 bg-[#16171d] px-4 py-3">
           <div className="mx-auto max-w-[230mm]">
-            <div className="mb-2 text-xs font-semibold text-[#d3bb73]">
-              Edytor stopki ({footerBrand === 'event-rulers' ? 'EVENT RULERS' : 'MAVINCI'})
+            <div className="mb-3 flex items-center justify-between">
+              <div className="text-xs font-semibold text-[#d3bb73]">
+                Edytor stopki
+                {selectedFooterTemplateId && (
+                  <span className="ml-2 text-[#e5e4e2]/60">
+                    ({footerTemplates.find((t) => t.id === selectedFooterTemplateId)?.name})
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={() => setShowFooterEditor(false)}
+                className="text-xs text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
+              >
+                Zamknij
+              </button>
             </div>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
               <div>
@@ -1051,6 +1126,32 @@ export default function EditTemplateWYSIWYGPage() {
                   onChange={(e) => setFooterContent({ ...footerContent, phone: e.target.value })}
                   className="w-full rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-sm text-[#e5e4e2]"
                 />
+              </div>
+              <div className="md:col-span-2 lg:col-span-3">
+                <label className="mb-1 block text-xs text-[#e5e4e2]/60">URL logo</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={footerContent.logoUrl}
+                    onChange={(e) =>
+                      setFooterContent({ ...footerContent, logoUrl: e.target.value })
+                    }
+                    className="flex-1 rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-sm text-[#e5e4e2]"
+                    placeholder="/erulers_logo_vect.png"
+                  />
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-[#e5e4e2]/60">Skala:</span>
+                    <input
+                      type="range"
+                      min="20"
+                      max="120"
+                      value={footerLogoScale}
+                      onChange={(e) => setFooterLogoScale(Number(e.target.value))}
+                      className="h-1 w-32 cursor-pointer appearance-none rounded-lg bg-[#0f1119] accent-[#d3bb73]"
+                    />
+                    <span className="w-10 text-xs text-[#e5e4e2]">{footerLogoScale}%</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1123,7 +1224,11 @@ export default function EditTemplateWYSIWYGPage() {
                 <div className="contract-footer">
                   {selectedFooter === 'default' && (
                     <div className="footer-logo">
-                      <img src={selectedLogo} alt="Logo" />
+                      <img
+                        src={footerContent.logoUrl}
+                        alt="Logo"
+                        style={{ maxWidth: `${footerLogoScale}%`, height: 'auto' }}
+                      />
                     </div>
                   )}
                   <div className="footer-info">
