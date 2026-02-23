@@ -1305,7 +1305,11 @@ export function EventContractTab({ eventId }: { eventId: string }) {
                           }}
                         >
                           <img
-                            src={`https://mavinci.pl${settings.selectedLogo}`}
+                            src={
+                              settings.selectedLogo?.startsWith('http')
+                                ? settings.selectedLogo
+                                : `https://mavinci.pl${settings.selectedLogo}`
+                            }
                             alt="Logo"
                             style={{
                               maxWidth: `${settings.logoScale}%`,
@@ -1339,7 +1343,13 @@ export function EventContractTab({ eventId }: { eventId: string }) {
                         {settings.selectedFooter === 'default' && (
                           <div className="footer-logo">
                             <img
-                              src={`https://mavinci.pl${settings.footerContent?.logoUrl || settings.selectedLogo}`}
+                              src={
+                                (
+                                  settings.footerContent?.logoUrl || settings.selectedLogo
+                                )?.startsWith('http')
+                                  ? settings.footerContent?.logoUrl || settings.selectedLogo
+                                  : `https://mavinci.pl${settings.footerContent?.logoUrl || settings.selectedLogo}`
+                              }
                               alt="Logo"
                               style={{
                                 maxWidth: `${settings.footerLogoScale || 80}%`,
@@ -1378,11 +1388,22 @@ export function EventContractTab({ eventId }: { eventId: string }) {
                 ));
               }
             } catch (e) {
-              // Fallback dla starych szablonów
+              // Fallback dla starych szablonów - spróbuj wyciągnąć logo z parsed settings jeśli istnieje
+              let fallbackLogoUrl = 'https://mavinci.pl/erulers_logo_vect.png';
+              try {
+                const parsed = JSON.parse(contractContent);
+                const logoUrl = parsed?.settings?.selectedLogo || parsed?.selectedLogo;
+                if (logoUrl?.startsWith('http')) {
+                  fallbackLogoUrl = logoUrl;
+                }
+              } catch {
+                // Użyj domyślnego URL
+              }
+
               return (
                 <div className="contract-a4-page">
                   <div className="contract-header-logo">
-                    <img src="https://mavinci.pl/erulers_logo_vect.png" alt="EVENT RULERS" />
+                    <img src={fallbackLogoUrl} alt="EVENT RULERS" />
                   </div>
 
                   <div className="contract-current-date">
@@ -1401,7 +1422,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
 
                   <div className="contract-footer">
                     <div className="footer-logo">
-                      <img src="https://mavinci.pl/erulers_logo_vect.png" alt="EVENT RULERS" />
+                      <img src={fallbackLogoUrl} alt="EVENT RULERS" />
                     </div>
                     <div className="footer-info">
                       <p>
