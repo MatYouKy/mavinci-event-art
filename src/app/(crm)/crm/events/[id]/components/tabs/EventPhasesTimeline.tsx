@@ -19,7 +19,9 @@ import {
 import { PhaseTimelineView } from './PhaseTimelineView';
 import { PhaseResourcesPanel } from './PhaseResourcesPanel';
 import { ResourceTimeline } from './ResourceTimeline';
+import { PhaseAssignmentsLoader, PhaseAssignmentsData } from './PhaseAssignmentsLoader';
 import { AddPhaseModal } from '../Modals/AddPhaseModal';
+import { EditPhaseModal } from '../Modals/EditPhaseModal';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import {
@@ -55,10 +57,12 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
   const [resourceFilter, setResourceFilter] = useState<ResourceFilter>('all');
   const [selectedPhase, setSelectedPhase] = useState<EventPhase | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [showResourcePanel, setShowResourcePanel] = useState(false);
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [draftChanges, setDraftChanges] = useState<Record<string, { start_time: string; end_time: string }>>({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [phaseAssignments, setPhaseAssignments] = useState<PhaseAssignmentsData[]>([]);
 
   const timelineBounds = useMemo(() => {
     // Główne godziny wydarzenia to tylko agenda, ale timeline musi uwzględniać wszystkie fazy
@@ -167,6 +171,11 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
   const handlePhaseClick = (phase: EventPhase) => {
     setSelectedPhase(phase);
     setShowResourcePanel(true);
+  };
+
+  const handlePhaseDoubleClick = (phase: EventPhase) => {
+    setSelectedPhase(phase);
+    setShowEditModal(true);
   };
 
   const zoomLevels: { value: ZoomLevel; label: string }[] = [
@@ -343,6 +352,7 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
               selectedPhase={selectedPhase}
               phaseConflicts={phaseConflicts}
               onPhaseClick={handlePhaseClick}
+              onPhaseDoubleClick={handlePhaseDoubleClick}
               onPhaseResize={handlePhaseResizeDraft}
               onPhaseDelete={handlePhaseDelete}
               eventStartDate={eventStartDate}
@@ -355,6 +365,7 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
             <ResourceTimeline
               eventId={eventId}
               phases={displayPhases}
+              phaseAssignments={phaseAssignments}
               timelineBounds={timelineBounds}
               zoomLevel={zoomLevel}
               employees={employees}
@@ -365,6 +376,12 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
         </div>
       )}
 
+      {/* Phase Assignments Loader - pobiera dane w tle */}
+      <PhaseAssignmentsLoader
+        phases={phases}
+        onAllDataLoaded={setPhaseAssignments}
+      />
+
       {/* Add Phase Modal */}
       <AddPhaseModal
         open={showAddModal}
@@ -373,6 +390,16 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
         eventStartDate={eventStartDate}
         eventEndDate={eventEndDate}
         existingPhases={phases}
+      />
+
+      {/* Edit Phase Modal */}
+      <EditPhaseModal
+        open={showEditModal}
+        onClose={() => {
+          setShowEditModal(false);
+          setSelectedPhase(null);
+        }}
+        phase={selectedPhase}
       />
 
       {/* Resource Panel */}

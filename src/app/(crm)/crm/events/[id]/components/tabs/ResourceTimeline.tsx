@@ -3,15 +3,12 @@
 import React, { useState, useMemo } from 'react';
 import { User, Car, Package, ChevronDown, ChevronRight, Info } from 'lucide-react';
 import { EventPhase } from '@/store/api/eventPhasesApi';
-import {
-  useGetPhaseAssignmentsQuery,
-  useGetPhaseVehiclesQuery,
-  useGetPhaseEquipmentQuery,
-} from '@/store/api/eventPhasesApi';
+import { PhaseAssignmentsData } from './PhaseAssignmentsLoader';
 
 interface ResourceTimelineProps {
   eventId: string;
   phases: EventPhase[];
+  phaseAssignments: PhaseAssignmentsData[];
   timelineBounds: { start: Date; end: Date };
   zoomLevel: 'days' | 'hours' | 'minutes';
   employees: any[];
@@ -39,6 +36,7 @@ interface ResourceRow {
 
 export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   phases,
+  phaseAssignments,
   timelineBounds,
   zoomLevel,
   employees,
@@ -50,14 +48,6 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   const [showEquipmentDetails, setShowEquipmentDetails] = useState<string | null>(null);
 
   const totalDuration = timelineBounds.end.getTime() - timelineBounds.start.getTime();
-
-  // Pobierz wszystkie przypisania dla wszystkich faz
-  const phaseAssignments = phases.map(phase => {
-    const { data: assignments = [] } = useGetPhaseAssignmentsQuery(phase.id);
-    const { data: vehicleAssignments = [] } = useGetPhaseVehiclesQuery(phase.id);
-    const { data: equipmentAssignments = [] } = useGetPhaseEquipmentQuery(phase.id);
-    return { phase, assignments, vehicleAssignments, equipmentAssignments };
-  });
 
   // Sprawdź czy przypisanie to full range
   const isFullRangeAssignment = (startTime: string, endTime: string) => {
@@ -72,6 +62,17 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
 
   // Stwórz wiersze dla pracowników
   const employeeRows: ResourceRow[] = useMemo(() => {
+    console.log('[ResourceTimeline] Processing employees:', {
+      employeesCount: employees.length,
+      phaseAssignmentsCount: phaseAssignments.length,
+      phaseAssignments: phaseAssignments.map(pa => ({
+        phaseId: pa.phase.id,
+        phaseName: pa.phase.name,
+        assignmentsCount: pa.assignments.length,
+        assignments: pa.assignments,
+      })),
+    });
+
     return employees.map(emp => {
       const assignments = phaseAssignments
         .flatMap(({ phase, assignments }) => {
@@ -80,6 +81,7 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
 
           // Pomiń koordynatora - chyba że ma dodatkową konkretną rolę zasobową
           if (assignment.role === 'coordinator' || assignment.role === 'lead') {
+            console.log(`[ResourceTimeline] Skipping ${emp.name} - role: ${assignment.role}`);
             return [];
           }
 
@@ -94,6 +96,8 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
           }];
         })
         .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+
+      console.log(`[ResourceTimeline] Employee ${emp.name}: ${assignments.length} assignments`);
 
       return {
         id: emp.id,

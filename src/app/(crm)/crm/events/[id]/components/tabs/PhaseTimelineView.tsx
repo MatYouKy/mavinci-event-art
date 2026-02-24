@@ -11,6 +11,7 @@ interface PhaseTimelineViewProps {
   selectedPhase: EventPhase | null;
   phaseConflicts: Record<string, boolean>;
   onPhaseClick: (phase: EventPhase) => void;
+  onPhaseDoubleClick?: (phase: EventPhase) => void;
   onPhaseResize: (phaseId: string, newStart: Date, newEnd: Date) => void;
   onPhaseDelete: (phaseId: string) => void;
   eventStartDate?: string;
@@ -26,6 +27,7 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
   selectedPhase,
   phaseConflicts,
   onPhaseClick,
+  onPhaseDoubleClick,
   onPhaseResize,
   onPhaseDelete,
   eventStartDate,
@@ -196,6 +198,17 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
 
       {/* Phases */}
       <div className="relative min-h-[200px]">
+        {/* Separatory poziome między fazami */}
+        {phases.map((_, index) => (
+          index > 0 && (
+            <div
+              key={`separator-${index}`}
+              className="absolute left-0 right-0 border-t border-[#d3bb73]/10"
+              style={{ top: `${index * 80}px` }}
+            />
+          )
+        ))}
+
         {phases.map((phase, index) => {
           const position = getPhasePosition(phase);
           const isSelected = selectedPhase?.id === phase.id;
@@ -213,6 +226,7 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
                 if (!resizing.phaseId) setHoveredPhase(null);
               }}
               onClick={() => onPhaseClick(phase)}
+              onDoubleClick={() => onPhaseDoubleClick?.(phase)}
               className={`absolute flex cursor-pointer items-center rounded-lg border-l-4 px-2 transition-all ${
                 isSelected ? 'shadow-xl' : isHovered ? 'shadow-lg' : 'shadow'
               } ${
