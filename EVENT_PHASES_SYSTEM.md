@@ -251,16 +251,25 @@ Event (główne ramy: 2026-06-06 12:00 → 2026-06-07 02:00)
 
 ## Komponenty UI
 
+**UWAGA: Wszystkie komponenty używają Tailwind CSS (NIE Material-UI)!**
+Szczegółowa dokumentacja stylistyki: `EVENT_PHASES_STYLING.md`
+
 ### 1. `EventPhasesTimeline.tsx` - Główny Komponent
 
 **Lokalizacja:** `src/app/(crm)/crm/events/[id]/components/tabs/EventPhasesTimeline.tsx`
 
+**Stylistyka:**
+- Ciemny motyw: `#0f1119` + `#1c1f33`
+- Złoty akcent: `#d3bb73`
+- Lucide icons (Plus, Filter, Clock, AlertCircle)
+- Tailwind CSS classes
+
 **Funkcje:**
 - Wyświetla wszystkie fazy na osi czasu
-- Zoom (dni / godziny / minuty)
-- Filtry zasobów (wszystkie / wybrane / z wydarzenia)
-- Wykrywanie konfliktów (czerwony badge)
-- Drag & resize faz (handlery na krawędziach)
+- Zoom (dni / godziny / minuty) - 3 przyciski w grupie
+- Filtry zasobów (wszystkie / wybrane / z wydarzenia) - dropdown
+- Wykrywanie konfliktów (czerwony badge z AlertCircle)
+- Drag & resize faz (handlery GripVertical na krawędziach)
 - Kliknięcie otwiera panel zasobów
 
 **Użycie:**

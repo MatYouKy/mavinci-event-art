@@ -49,14 +49,13 @@ export interface EventPhaseAssignment {
   notes: string | null;
   created_at: string;
   updated_at: string;
-  created_by: string | null;
 }
 
 export interface EventPhaseEquipment {
   id: string;
   phase_id: string;
   equipment_item_id: string | null;
-  equipment_kit_id: string | null;
+  kit_id: string | null;
   cable_id: string | null;
   assigned_start: string;
   assigned_end: string;
@@ -64,42 +63,37 @@ export interface EventPhaseEquipment {
   notes: string | null;
   created_at: string;
   updated_at: string;
-  created_by: string | null;
 }
 
 export interface EventPhaseVehicle {
   id: string;
   phase_id: string;
   vehicle_id: string;
-  driver_id: string | null;
   assigned_start: string;
   assigned_end: string;
+  driver_id: string | null;
   purpose: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
-  created_by: string | null;
 }
 
 export interface PhaseConflict {
   phase_id: string;
+  phase_name: string;
   event_id: string;
   event_name: string;
-  phase_name: string;
-  assignment_start?: string;
-  assignment_end?: string;
-  assigned_start?: string;
-  assigned_end?: string;
+  start_time: string;
+  end_time: string;
 }
 
 export interface AlternativeEquipment {
-  item_id: string;
-  name: string;
-  model: string;
-  category_name: string;
-  is_available: boolean;
+  equipment_item_id: string;
+  equipment_name: string;
+  available: boolean;
 }
 
+// Input types
 export interface CreatePhaseInput {
   event_id: string;
   phase_type_id: string;
@@ -107,7 +101,7 @@ export interface CreatePhaseInput {
   description?: string;
   start_time: string;
   end_time: string;
-  sequence_order: number;
+  sequence_order?: number;
   color?: string;
   notes?: string;
 }
@@ -130,6 +124,7 @@ export interface CreatePhaseAssignmentInput {
   assignment_end: string;
   phase_work_start: string;
   phase_work_end: string;
+  invitation_status?: 'pending' | 'accepted' | 'rejected';
   role?: string;
   travel_to_notes?: string;
   travel_from_notes?: string;
@@ -151,16 +146,17 @@ export interface UpdatePhaseAssignmentInput {
 
 export const eventPhasesApi = createApi({
   reducerPath: 'eventPhasesApi',
-  baseQuery: supabaseTableBaseQuery,
+  baseQuery: supabaseTableBaseQuery(),
   tagTypes: ['PhaseTypes', 'Phases', 'PhaseAssignments', 'PhaseEquipment', 'PhaseVehicles'],
   endpoints: (builder) => ({
     // Phase Types
     getPhaseTypes: builder.query<EventPhaseType[], void>({
       query: () => ({
         table: 'event_phase_types',
+        method: 'select',
         select: '*',
+        match: { is_active: true },
         order: { column: 'sequence_priority', ascending: true },
-        filters: [{ column: 'is_active', operator: 'eq', value: true }],
       }),
       providesTags: ['PhaseTypes'],
     }),
@@ -170,6 +166,7 @@ export const eventPhasesApi = createApi({
         table: 'event_phase_types',
         method: 'insert',
         data,
+        select: '*',
       }),
       invalidatesTags: ['PhaseTypes'],
     }),
@@ -178,8 +175,9 @@ export const eventPhasesApi = createApi({
       query: ({ id, data }) => ({
         table: 'event_phase_types',
         method: 'update',
-        id,
+        match: { id },
         data,
+        select: '*',
       }),
       invalidatesTags: ['PhaseTypes'],
     }),
@@ -188,8 +186,9 @@ export const eventPhasesApi = createApi({
     getEventPhases: builder.query<EventPhase[], string>({
       query: (eventId) => ({
         table: 'event_phases',
+        method: 'select',
         select: '*, phase_type:event_phase_types(*)',
-        filters: [{ column: 'event_id', operator: 'eq', value: eventId }],
+        match: { event_id: eventId },
         order: { column: 'sequence_order', ascending: true },
       }),
       providesTags: (result, error, eventId) => [{ type: 'Phases', id: eventId }],
@@ -200,6 +199,7 @@ export const eventPhasesApi = createApi({
         table: 'event_phases',
         method: 'insert',
         data,
+        select: '*',
       }),
       invalidatesTags: (result, error, arg) => [{ type: 'Phases', id: arg.event_id }],
     }),
@@ -208,8 +208,9 @@ export const eventPhasesApi = createApi({
       query: ({ id, ...data }) => ({
         table: 'event_phases',
         method: 'update',
-        id,
+        match: { id },
         data,
+        select: '*',
       }),
       invalidatesTags: (result) => result ? [{ type: 'Phases', id: result.event_id }] : [],
     }),
@@ -218,7 +219,7 @@ export const eventPhasesApi = createApi({
       query: (id) => ({
         table: 'event_phases',
         method: 'delete',
-        id,
+        match: { id },
       }),
       invalidatesTags: ['Phases'],
     }),
@@ -227,8 +228,9 @@ export const eventPhasesApi = createApi({
     getPhaseAssignments: builder.query<EventPhaseAssignment[], string>({
       query: (phaseId) => ({
         table: 'event_phase_assignments',
+        method: 'select',
         select: '*',
-        filters: [{ column: 'phase_id', operator: 'eq', value: phaseId }],
+        match: { phase_id: phaseId },
       }),
       providesTags: (result, error, phaseId) => [{ type: 'PhaseAssignments', id: phaseId }],
     }),
@@ -238,6 +240,7 @@ export const eventPhasesApi = createApi({
         table: 'event_phase_assignments',
         method: 'insert',
         data,
+        select: '*',
       }),
       invalidatesTags: (result, error, arg) => [{ type: 'PhaseAssignments', id: arg.phase_id }],
     }),
@@ -246,11 +249,9 @@ export const eventPhasesApi = createApi({
       query: ({ id, ...data }) => ({
         table: 'event_phase_assignments',
         method: 'update',
-        id,
-        data: {
-          ...data,
-          invitation_responded_at: data.invitation_status ? new Date().toISOString() : undefined,
-        },
+        match: { id },
+        data,
+        select: '*',
       }),
       invalidatesTags: (result) => result ? [{ type: 'PhaseAssignments', id: result.phase_id }] : [],
     }),
@@ -259,7 +260,7 @@ export const eventPhasesApi = createApi({
       query: (id) => ({
         table: 'event_phase_assignments',
         method: 'delete',
-        id,
+        match: { id },
       }),
       invalidatesTags: ['PhaseAssignments'],
     }),
@@ -268,8 +269,9 @@ export const eventPhasesApi = createApi({
     getPhaseEquipment: builder.query<EventPhaseEquipment[], string>({
       query: (phaseId) => ({
         table: 'event_phase_equipment',
+        method: 'select',
         select: '*',
-        filters: [{ column: 'phase_id', operator: 'eq', value: phaseId }],
+        match: { phase_id: phaseId },
       }),
       providesTags: (result, error, phaseId) => [{ type: 'PhaseEquipment', id: phaseId }],
     }),
@@ -279,16 +281,16 @@ export const eventPhasesApi = createApi({
         table: 'event_phase_equipment',
         method: 'insert',
         data,
+        select: '*',
       }),
-      invalidatesTags: (result, error, arg) =>
-        arg.phase_id ? [{ type: 'PhaseEquipment', id: arg.phase_id }] : [],
+      invalidatesTags: (result, error, arg) => [{ type: 'PhaseEquipment', id: arg.phase_id }],
     }),
 
     deletePhaseEquipment: builder.mutation<void, string>({
       query: (id) => ({
         table: 'event_phase_equipment',
         method: 'delete',
-        id,
+        match: { id },
       }),
       invalidatesTags: ['PhaseEquipment'],
     }),
@@ -297,8 +299,9 @@ export const eventPhasesApi = createApi({
     getPhaseVehicles: builder.query<EventPhaseVehicle[], string>({
       query: (phaseId) => ({
         table: 'event_phase_vehicles',
+        method: 'select',
         select: '*',
-        filters: [{ column: 'phase_id', operator: 'eq', value: phaseId }],
+        match: { phase_id: phaseId },
       }),
       providesTags: (result, error, phaseId) => [{ type: 'PhaseVehicles', id: phaseId }],
     }),
@@ -308,16 +311,16 @@ export const eventPhasesApi = createApi({
         table: 'event_phase_vehicles',
         method: 'insert',
         data,
+        select: '*',
       }),
-      invalidatesTags: (result, error, arg) =>
-        arg.phase_id ? [{ type: 'PhaseVehicles', id: arg.phase_id }] : [],
+      invalidatesTags: (result, error, arg) => [{ type: 'PhaseVehicles', id: arg.phase_id }],
     }),
 
     deletePhaseVehicle: builder.mutation<void, string>({
       query: (id) => ({
         table: 'event_phase_vehicles',
         method: 'delete',
-        id,
+        match: { id },
       }),
       invalidatesTags: ['PhaseVehicles'],
     }),
@@ -330,8 +333,7 @@ export const eventPhasesApi = createApi({
       excludeAssignmentId?: string;
     }>({
       queryFn: async ({ employeeId, startTime, endTime, excludeAssignmentId }) => {
-        const { createClient } = await import('@/lib/supabase/client');
-        const supabase = createClient();
+        const { supabase } = await import('@/lib/supabase/client');
 
         const { data, error } = await supabase.rpc('get_employee_phase_conflicts', {
           p_employee_id: employeeId,
@@ -352,8 +354,7 @@ export const eventPhasesApi = createApi({
       excludeAssignmentId?: string;
     }>({
       queryFn: async ({ equipmentItemId, startTime, endTime, excludeAssignmentId }) => {
-        const { createClient } = await import('@/lib/supabase/client');
-        const supabase = createClient();
+        const { supabase } = await import('@/lib/supabase/client');
 
         const { data, error } = await supabase.rpc('get_equipment_phase_conflicts', {
           p_equipment_item_id: equipmentItemId,
@@ -373,8 +374,7 @@ export const eventPhasesApi = createApi({
       endTime: string;
     }>({
       queryFn: async ({ equipmentItemId, startTime, endTime }) => {
-        const { createClient } = await import('@/lib/supabase/client');
-        const supabase = createClient();
+        const { supabase } = await import('@/lib/supabase/client');
 
         const { data, error } = await supabase.rpc('get_alternative_equipment', {
           p_equipment_item_id: equipmentItemId,
@@ -407,10 +407,7 @@ export const {
   useGetPhaseVehiclesQuery,
   useCreatePhaseVehicleMutation,
   useDeletePhaseVehicleMutation,
-  useGetEmployeeConflictsQuery,
   useLazyGetEmployeeConflictsQuery,
-  useGetEquipmentConflictsQuery,
   useLazyGetEquipmentConflictsQuery,
-  useGetAlternativeEquipmentQuery,
   useLazyGetAlternativeEquipmentQuery,
 } = eventPhasesApi;

@@ -1,22 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
-import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  TextField,
-  Box,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Alert,
-  Chip,
-} from '@mui/material';
+import React, { useState, useEffect } from 'react';
+import { X, AlertCircle, Clock } from 'lucide-react';
 import { useGetPhaseTypesQuery, useCreatePhaseMutation, EventPhase } from '@/store/api/eventPhasesApi';
+import { useSnackbar } from '@/contexts/SnackbarContext';
 
 interface AddPhaseModalProps {
   open: boolean;
@@ -37,6 +24,7 @@ export const AddPhaseModal: React.FC<AddPhaseModalProps> = ({
 }) => {
   const { data: phaseTypes = [] } = useGetPhaseTypesQuery();
   const [createPhase, { isLoading }] = useCreatePhaseMutation();
+  const { showSnackbar } = useSnackbar();
 
   const [selectedTypeId, setSelectedTypeId] = useState('');
   const [phaseName, setPhaseName] = useState('');
@@ -45,7 +33,6 @@ export const AddPhaseModal: React.FC<AddPhaseModalProps> = ({
   const [endTime, setEndTime] = useState('');
   const [error, setError] = useState('');
 
-  // Update phase name when type changes
   const handleTypeChange = (typeId: string) => {
     setSelectedTypeId(typeId);
     const type = phaseTypes.find((t) => t.id === typeId);
@@ -54,19 +41,16 @@ export const AddPhaseModal: React.FC<AddPhaseModalProps> = ({
     }
   };
 
-  // Suggest start time (after last phase or event start)
   const suggestedStartTime = () => {
     if (existingPhases.length === 0) {
       return eventStartDate;
     }
-
     const sortedPhases = [...existingPhases].sort(
       (a, b) => new Date(b.end_time).getTime() - new Date(a.end_time).getTime()
     );
     return sortedPhases[0].end_time;
   };
 
-  // Calculate suggested end time based on phase type duration
   const calculateSuggestedEndTime = (start: string, typeId: string): string => {
     const type = phaseTypes.find((t) => t.id === typeId);
     if (!type || !start) return '';
@@ -76,16 +60,15 @@ export const AddPhaseModal: React.FC<AddPhaseModalProps> = ({
     return endDate.toISOString().slice(0, 16);
   };
 
-  // Auto-set times when type is selected
-  React.useEffect(() => {
+  useEffect(() => {
     if (selectedTypeId && !startTime) {
       const suggested = suggestedStartTime();
       setStartTime(new Date(suggested).toISOString().slice(0, 16));
       setEndTime(calculateSuggestedEndTime(suggested, selectedTypeId));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTypeId]);
 
-  // Validate overlap with existing phases
   const validateNoOverlap = (start: Date, end: Date): boolean => {
     return !existingPhases.some((phase) => {
       const phaseStart = new Date(phase.start_time);
@@ -99,7 +82,8 @@ export const AddPhaseModal: React.FC<AddPhaseModalProps> = ({
     });
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     setError('');
 
     if (!selectedTypeId) {
@@ -149,6 +133,7 @@ export const AddPhaseModal: React.FC<AddPhaseModalProps> = ({
         sequence_order: existingPhases.length + 1,
       }).unwrap();
 
+      showSnackbar('Faza została utworzona', 'success');
       handleClose();
     } catch (err: any) {
       setError(err.message || 'Błąd podczas tworzenia fazy');
@@ -167,101 +152,135 @@ export const AddPhaseModal: React.FC<AddPhaseModalProps> = ({
 
   const selectedType = phaseTypes.find((t) => t.id === selectedTypeId);
 
-  return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Dodaj Nową Fazę</DialogTitle>
-      <DialogContent>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
-          {error && <Alert severity="error">{error}</Alert>}
+  const calculateDuration = (): string => {
+    if (!startTime || !endTime) return '0h';
+    const duration = new Date(endTime).getTime() - new Date(startTime).getTime();
+    const hours = Math.round(duration / (1000 * 60 * 60));
+    return `${hours}h`;
+  };
 
-          <FormControl fullWidth>
-            <InputLabel>Typ Fazy</InputLabel>
-            <Select
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-lg rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-4">
+          <h2 className="text-lg font-semibold text-[#e5e4e2]">Dodaj Nową Fazę</h2>
+          <button
+            onClick={handleClose}
+            className="rounded-lg p-1 text-[#e5e4e2]/60 transition-colors hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <form onSubmit={handleSubmit} className="space-y-4 p-4">
+          {error && (
+            <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3">
+              <AlertCircle className="h-5 w-5 flex-shrink-0 text-red-400" />
+              <span className="text-sm text-red-400">{error}</span>
+            </div>
+          )}
+
+          {/* Type Selector */}
+          <div>
+            <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Typ Fazy</label>
+            <select
               value={selectedTypeId}
               onChange={(e) => handleTypeChange(e.target.value)}
-              label="Typ Fazy"
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] transition-colors focus:border-[#d3bb73] focus:outline-none"
             >
+              <option value="">Wybierz typ fazy</option>
               {phaseTypes.map((type) => (
-                <MenuItem key={type.id} value={type.id}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Box
-                      sx={{
-                        width: 12,
-                        height: 12,
-                        borderRadius: '50%',
-                        backgroundColor: type.color,
-                      }}
-                    />
-                    {type.name}
-                    <Chip
-                      label={`${type.default_duration_hours}h`}
-                      size="small"
-                      sx={{ ml: 'auto' }}
-                    />
-                  </Box>
-                </MenuItem>
+                <option key={type.id} value={type.id}>
+                  {type.name} ({type.default_duration_hours}h)
+                </option>
               ))}
-            </Select>
-          </FormControl>
+            </select>
+          </div>
 
-          <TextField
-            label="Nazwa Fazy"
-            fullWidth
-            value={phaseName}
-            onChange={(e) => setPhaseName(e.target.value)}
-            placeholder={selectedType?.name}
-          />
+          {/* Phase Name */}
+          <div>
+            <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Nazwa Fazy</label>
+            <input
+              type="text"
+              value={phaseName}
+              onChange={(e) => setPhaseName(e.target.value)}
+              placeholder={selectedType?.name || 'Wprowadź nazwę'}
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] placeholder:text-[#e5e4e2]/30 transition-colors focus:border-[#d3bb73] focus:outline-none"
+            />
+          </div>
 
-          <TextField
-            label="Opis (opcjonalnie)"
-            fullWidth
-            multiline
-            rows={2}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
+          {/* Description */}
+          <div>
+            <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+              Opis (opcjonalnie)
+            </label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={2}
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] placeholder:text-[#e5e4e2]/30 transition-colors focus:border-[#d3bb73] focus:outline-none"
+            />
+          </div>
 
-          <TextField
-            label="Rozpoczęcie"
-            type="datetime-local"
-            fullWidth
-            value={startTime}
-            onChange={(e) => {
-              setStartTime(e.target.value);
-              if (selectedTypeId) {
-                setEndTime(calculateSuggestedEndTime(e.target.value, selectedTypeId));
-              }
-            }}
-            InputLabelProps={{ shrink: true }}
-          />
+          {/* Time Inputs */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Rozpoczęcie</label>
+              <input
+                type="datetime-local"
+                value={startTime}
+                onChange={(e) => {
+                  setStartTime(e.target.value);
+                  if (selectedTypeId) {
+                    setEndTime(calculateSuggestedEndTime(e.target.value, selectedTypeId));
+                  }
+                }}
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] transition-colors focus:border-[#d3bb73] focus:outline-none"
+              />
+            </div>
 
-          <TextField
-            label="Zakończenie"
-            type="datetime-local"
-            fullWidth
-            value={endTime}
-            onChange={(e) => setEndTime(e.target.value)}
-            InputLabelProps={{ shrink: true }}
-          />
+            <div>
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Zakończenie</label>
+              <input
+                type="datetime-local"
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] transition-colors focus:border-[#d3bb73] focus:outline-none"
+              />
+            </div>
+          </div>
 
+          {/* Duration Display */}
           {startTime && endTime && (
-            <Alert severity="info">
-              Czas trwania:{' '}
-              {Math.round(
-                (new Date(endTime).getTime() - new Date(startTime).getTime()) /
-                  (1000 * 60 * 60)
-              )}{' '}
-              godzin
-            </Alert>
+            <div className="flex items-center gap-2 rounded-lg border border-blue-500/20 bg-blue-500/10 p-3">
+              <Clock className="h-4 w-4 text-blue-400" />
+              <span className="text-sm text-blue-400">Czas trwania: {calculateDuration()}</span>
+            </div>
           )}
-        </Box>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={handleClose}>Anuluj</Button>
-        <Button onClick={handleSubmit} variant="contained" disabled={isLoading}>
-          {isLoading ? 'Tworzenie...' : 'Utwórz Fazę'}
-        </Button>
-      </DialogActions>
-    </Dialog>
+        </form>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 border-t border-[#d3bb73]/10 p-4">
+          <button
+            type="button"
+            onClick={handleClose}
+            className="rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm font-medium text-[#e5e4e2]/80 transition-colors hover:bg-[#d3bb73]/10"
+          >
+            Anuluj
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={isLoading}
+            className="rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
+          >
+            {isLoading ? 'Tworzenie...' : 'Utwórz Fazę'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 };

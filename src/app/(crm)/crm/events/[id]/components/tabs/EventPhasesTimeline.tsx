@@ -1,18 +1,24 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Box, Typography, Button, IconButton, Chip, Alert } from '@mui/material';
-import { Add, ZoomIn, ZoomOut, Warning, CheckCircle, Cancel } from '@mui/icons-material';
+import {
+  Plus,
+  Filter,
+  AlertCircle,
+  Clock,
+  ChevronDown,
+} from 'lucide-react';
 import {
   useGetEventPhasesQuery,
-  useCreatePhaseMutation,
   useUpdatePhaseMutation,
   useDeletePhaseMutation,
   EventPhase,
 } from '@/store/api/eventPhasesApi';
 import { PhaseTimelineView } from './PhaseTimelineView';
-import { AddPhaseModal } from '../Modals/AddPhaseModal';
 import { PhaseResourcesPanel } from './PhaseResourcesPanel';
+import { AddPhaseModal } from '../Modals/AddPhaseModal';
+import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useDialog } from '@/contexts/DialogContext';
 
 interface EventPhasesTimelineProps {
   eventId: string;
@@ -21,62 +27,52 @@ interface EventPhasesTimelineProps {
 }
 
 type ZoomLevel = 'days' | 'hours' | 'minutes';
+type ResourceFilter = 'all' | 'selected' | 'event';
 
 export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
   eventId,
   eventStartDate,
   eventEndDate,
 }) => {
-  const [zoomLevel, setZoomLevel] = useState<ZoomLevel>('hours');
-  const [selectedPhase, setSelectedPhase] = useState<EventPhase | null>(null);
-  const [addPhaseOpen, setAddPhaseOpen] = useState(false);
-  const [resourceFilter, setResourceFilter] = useState<'all' | 'selected' | 'event'>('all');
-
-  const { data: phases = [], isLoading, error } = useGetEventPhasesQuery(eventId);
+  const { data: phases = [], isLoading } = useGetEventPhasesQuery(eventId);
   const [updatePhase] = useUpdatePhaseMutation();
   const [deletePhase] = useDeletePhaseMutation();
+  const { showSnackbar } = useSnackbar();
+  const { showConfirm } = useDialog();
 
-  // Calculate timeline bounds
+  const [zoomLevel, setZoomLevel] = useState<ZoomLevel>('hours');
+  const [resourceFilter, setResourceFilter] = useState<ResourceFilter>('all');
+  const [selectedPhase, setSelectedPhase] = useState<EventPhase | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showResourcePanel, setShowResourcePanel] = useState(false);
+  const [showFilterMenu, setShowFilterMenu] = useState(false);
+
   const timelineBounds = useMemo(() => {
     const start = new Date(eventStartDate);
     const end = new Date(eventEndDate);
-
-    // Add padding (10% of total duration)
-    const duration = end.getTime() - start.getTime();
-    const padding = duration * 0.1;
-
-    return {
-      start: new Date(start.getTime() - padding),
-      end: new Date(end.getTime() + padding),
-    };
+    return { start, end };
   }, [eventStartDate, eventEndDate]);
 
-  // Calculate phase conflicts
   const phaseConflicts = useMemo(() => {
     const conflicts: Record<string, boolean> = {};
+    phases.forEach((phase, index) => {
+      const phaseStart = new Date(phase.start_time);
+      const phaseEnd = new Date(phase.end_time);
 
-    for (let i = 0; i < phases.length; i++) {
-      for (let j = i + 1; j < phases.length; j++) {
-        const phase1 = phases[i];
-        const phase2 = phases[j];
+      const hasConflict = phases.some((otherPhase, otherIndex) => {
+        if (index === otherIndex) return false;
+        const otherStart = new Date(otherPhase.start_time);
+        const otherEnd = new Date(otherPhase.end_time);
 
-        const start1 = new Date(phase1.start_time).getTime();
-        const end1 = new Date(phase1.end_time).getTime();
-        const start2 = new Date(phase2.start_time).getTime();
-        const end2 = new Date(phase2.end_time).getTime();
+        return (
+          (phaseStart >= otherStart && phaseStart < otherEnd) ||
+          (phaseEnd > otherStart && phaseEnd <= otherEnd) ||
+          (phaseStart <= otherStart && phaseEnd >= otherEnd)
+        );
+      });
 
-        // Check for overlap
-        if (
-          (start1 >= start2 && start1 < end2) ||
-          (end1 > start2 && end1 <= end2) ||
-          (start1 <= start2 && end1 >= end2)
-        ) {
-          conflicts[phase1.id] = true;
-          conflicts[phase2.id] = true;
-        }
-      }
-    }
-
+      conflicts[phase.id] = hasConflict;
+    });
     return conflicts;
   }, [phases]);
 
@@ -87,162 +83,161 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
         start_time: newStart.toISOString(),
         end_time: newEnd.toISOString(),
       }).unwrap();
-    } catch (error) {
-      console.error('Failed to update phase:', error);
+      showSnackbar('Czas fazy zaktualizowany', 'success');
+    } catch (error: any) {
+      showSnackbar(error.message || 'Błąd podczas aktualizacji fazy', 'error');
+    }
+  };
+
+  const handlePhaseDelete = async (phaseId: string) => {
+    const confirmed = await showConfirm({
+      title: 'Usuń fazę',
+      message: 'Czy na pewno chcesz usunąć tę fazę? Wszystkie przypisania zostaną utracone.',
+      confirmText: 'Usuń',
+      cancelText: 'Anuluj',
+    });
+
+    if (confirmed) {
+      try {
+        await deletePhase(phaseId).unwrap();
+        showSnackbar('Faza usunięta', 'success');
+        if (selectedPhase?.id === phaseId) {
+          setSelectedPhase(null);
+          setShowResourcePanel(false);
+        }
+      } catch (error: any) {
+        showSnackbar(error.message || 'Błąd podczas usuwania fazy', 'error');
+      }
     }
   };
 
   const handlePhaseClick = (phase: EventPhase) => {
     setSelectedPhase(phase);
+    setShowResourcePanel(true);
   };
 
-  const handleDeletePhase = async (phaseId: string) => {
-    if (!confirm('Czy na pewno chcesz usunąć tę fazę? Wszystkie przypisania zostaną utracone.')) {
-      return;
-    }
+  const zoomLevels: { value: ZoomLevel; label: string }[] = [
+    { value: 'days', label: 'Dni' },
+    { value: 'hours', label: 'Godziny' },
+    { value: 'minutes', label: 'Minuty' },
+  ];
 
-    try {
-      await deletePhase(phaseId).unwrap();
-      if (selectedPhase?.id === phaseId) {
-        setSelectedPhase(null);
-      }
-    } catch (error) {
-      console.error('Failed to delete phase:', error);
-    }
-  };
+  const resourceFilters: { value: ResourceFilter; label: string }[] = [
+    { value: 'all', label: 'Wszystkie zasoby' },
+    { value: 'selected', label: 'Tylko wybrane' },
+    { value: 'event', label: 'Z tego wydarzenia' },
+  ];
 
-  const handleZoomIn = () => {
-    if (zoomLevel === 'days') setZoomLevel('hours');
-    else if (zoomLevel === 'hours') setZoomLevel('minutes');
-  };
-
-  const handleZoomOut = () => {
-    if (zoomLevel === 'minutes') setZoomLevel('hours');
-    else if (zoomLevel === 'hours') setZoomLevel('days');
-  };
+  const hasConflicts = Object.values(phaseConflicts).some((c) => c);
 
   if (isLoading) {
     return (
-      <Box sx={{ p: 3, textAlign: 'center' }}>
-        <Typography>Ładowanie faz...</Typography>
-      </Box>
+      <div className="flex h-96 items-center justify-center">
+        <div className="text-[#e5e4e2]/60">Ładowanie faz...</div>
+      </div>
     );
   }
-
-  if (error) {
-    return (
-      <Alert severity="error" sx={{ m: 2 }}>
-        Błąd podczas ładowania faz wydarzenia
-      </Alert>
-    );
-  }
-
-  const hasConflicts = Object.keys(phaseConflicts).length > 0;
 
   return (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div className="flex h-full flex-col">
       {/* Header */}
-      <Box
-        sx={{
-          p: 2,
-          borderBottom: 1,
-          borderColor: 'divider',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 2,
-        }}
-      >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Typography variant="h6">Fazy Wydarzenia</Typography>
-          <Chip
-            label={`${phases.length} ${phases.length === 1 ? 'faza' : 'faz'}`}
-            size="small"
-            color="primary"
-          />
+      <div className="flex items-center justify-between border-b border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+        <div className="flex items-center gap-3">
+          <Clock className="h-5 w-5 text-[#d3bb73]" />
+          <h2 className="text-lg font-semibold text-[#e5e4e2]">Fazy Wydarzenia</h2>
+          <span className="rounded-full bg-[#d3bb73]/20 px-3 py-1 text-xs font-medium text-[#d3bb73]">
+            {phases.length}
+          </span>
           {hasConflicts && (
-            <Chip
-              icon={<Warning />}
-              label="Nakładające się fazy!"
-              size="small"
-              color="error"
-            />
+            <div className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-2 py-1">
+              <AlertCircle className="h-3.5 w-3.5 text-red-400" />
+              <span className="text-xs text-red-400">Nakładające się fazy!</span>
+            </div>
           )}
-        </Box>
+        </div>
 
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          {/* Resource Filter */}
-          <Box sx={{ display: 'flex', gap: 0.5 }}>
-            <Button
-              size="small"
-              variant={resourceFilter === 'all' ? 'contained' : 'outlined'}
-              onClick={() => setResourceFilter('all')}
-            >
-              Wszystkie zasoby
-            </Button>
-            <Button
-              size="small"
-              variant={resourceFilter === 'selected' ? 'contained' : 'outlined'}
-              onClick={() => setResourceFilter('selected')}
-              disabled={!selectedPhase}
-            >
-              Wybrane
-            </Button>
-            <Button
-              size="small"
-              variant={resourceFilter === 'event' ? 'contained' : 'outlined'}
-              onClick={() => setResourceFilter('event')}
-            >
-              Z wydarzenia
-            </Button>
-          </Box>
-
+        <div className="flex items-center gap-2">
           {/* Zoom Controls */}
-          <Box sx={{ display: 'flex', gap: 0.5, borderLeft: 1, borderColor: 'divider', pl: 1 }}>
-            <IconButton size="small" onClick={handleZoomOut} disabled={zoomLevel === 'days'}>
-              <ZoomOut />
-            </IconButton>
-            <Chip label={zoomLevel === 'days' ? 'Dni' : zoomLevel === 'hours' ? 'Godziny' : 'Minuty'} size="small" />
-            <IconButton size="small" onClick={handleZoomIn} disabled={zoomLevel === 'minutes'}>
-              <ZoomIn />
-            </IconButton>
-          </Box>
+          <div className="flex items-center gap-1 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] p-1">
+            {zoomLevels.map((level) => (
+              <button
+                key={level.value}
+                onClick={() => setZoomLevel(level.value)}
+                className={`rounded px-3 py-1.5 text-xs font-medium transition-colors ${
+                  zoomLevel === level.value
+                    ? 'bg-[#d3bb73] text-[#1c1f33]'
+                    : 'text-[#e5e4e2]/60 hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]'
+                }`}
+              >
+                {level.label}
+              </button>
+            ))}
+          </div>
 
-          <Button
-            variant="contained"
-            startIcon={<Add />}
-            onClick={() => setAddPhaseOpen(true)}
+          {/* Resource Filter */}
+          <div className="relative">
+            <button
+              onClick={() => setShowFilterMenu(!showFilterMenu)}
+              className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-sm text-[#e5e4e2]/80 transition-colors hover:border-[#d3bb73]/40 hover:bg-[#0f1119]"
+            >
+              <Filter className="h-4 w-4" />
+              {resourceFilters.find((f) => f.value === resourceFilter)?.label}
+              <ChevronDown className="h-3.5 w-3.5" />
+            </button>
+
+            {showFilterMenu && (
+              <div className="absolute right-0 top-full z-10 mt-1 w-48 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] py-1 shadow-xl">
+                {resourceFilters.map((filter) => (
+                  <button
+                    key={filter.value}
+                    onClick={() => {
+                      setResourceFilter(filter.value);
+                      setShowFilterMenu(false);
+                    }}
+                    className={`w-full px-3 py-2 text-left text-sm transition-colors ${
+                      resourceFilter === filter.value
+                        ? 'bg-[#d3bb73]/20 text-[#d3bb73]'
+                        : 'text-[#e5e4e2]/80 hover:bg-[#d3bb73]/10'
+                    }`}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Add Phase Button */}
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73] px-4 py-1.5 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
           >
-            Dodaj fazę
-          </Button>
-        </Box>
-      </Box>
+            <Plus className="h-4 w-4" />
+            Dodaj Fazę
+          </button>
+        </div>
+      </div>
 
       {/* Timeline View */}
-      <Box sx={{ flex: 1, overflow: 'auto', position: 'relative' }}>
-        {phases.length === 0 ? (
-          <Box
-            sx={{
-              height: '100%',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 2,
-            }}
-          >
-            <Typography color="text.secondary">
-              To wydarzenie nie ma jeszcze żadnych faz
-            </Typography>
-            <Button
-              variant="contained"
-              startIcon={<Add />}
-              onClick={() => setAddPhaseOpen(true)}
+      {phases.length === 0 ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 p-12">
+          <Clock className="h-16 w-16 text-[#e5e4e2]/20" />
+          <div className="text-center">
+            <h3 className="mb-2 text-lg font-medium text-[#e5e4e2]">Brak faz</h3>
+            <p className="mb-4 text-sm text-[#e5e4e2]/60">
+              Podziel wydarzenie na fazy (montaż, realizacja, demontaż)
+            </p>
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
             >
-              Utwórz pierwszą fazę
-            </Button>
-          </Box>
-        ) : (
+              <Plus className="h-4 w-4" />
+              Dodaj Pierwszą Fazę
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-auto bg-[#0f1119]">
           <PhaseTimelineView
             phases={phases}
             timelineBounds={timelineBounds}
@@ -251,29 +246,32 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
             phaseConflicts={phaseConflicts}
             onPhaseClick={handlePhaseClick}
             onPhaseResize={handlePhaseResize}
-            onPhaseDelete={handleDeletePhase}
+            onPhaseDelete={handlePhaseDelete}
           />
-        )}
-      </Box>
-
-      {/* Phase Resources Panel */}
-      {selectedPhase && (
-        <PhaseResourcesPanel
-          phase={selectedPhase}
-          onClose={() => setSelectedPhase(null)}
-          resourceFilter={resourceFilter}
-        />
+        </div>
       )}
 
       {/* Add Phase Modal */}
       <AddPhaseModal
-        open={addPhaseOpen}
-        onClose={() => setAddPhaseOpen(false)}
+        open={showAddModal}
+        onClose={() => setShowAddModal(false)}
         eventId={eventId}
         eventStartDate={eventStartDate}
         eventEndDate={eventEndDate}
         existingPhases={phases}
       />
-    </Box>
+
+      {/* Resource Panel */}
+      {showResourcePanel && selectedPhase && (
+        <PhaseResourcesPanel
+          phase={selectedPhase}
+          onClose={() => {
+            setShowResourcePanel(false);
+            setSelectedPhase(null);
+          }}
+          resourceFilter={resourceFilter}
+        />
+      )}
+    </div>
   );
 };

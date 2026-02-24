@@ -1,40 +1,13 @@
 'use client';
 
 import React, { useState } from 'react';
-import {
-  Box,
-  Drawer,
-  Typography,
-  IconButton,
-  Tabs,
-  Tab,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemAvatar,
-  Avatar,
-  Chip,
-  Button,
-  Divider,
-  Alert,
-} from '@mui/material';
-import {
-  Close,
-  Person,
-  Inventory,
-  DirectionsCar,
-  Add,
-  Warning,
-  CheckCircle,
-  Cancel,
-} from '@mui/icons-material';
+import { X, User, Package, Car, Plus, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import {
   EventPhase,
   useGetPhaseAssignmentsQuery,
   useGetPhaseEquipmentQuery,
   useGetPhaseVehiclesQuery,
 } from '@/store/api/eventPhasesApi';
-import { AddPhaseAssignmentModal } from '../Modals/AddPhaseAssignmentModal';
 
 interface PhaseResourcesPanelProps {
   phase: EventPhase;
@@ -47,8 +20,7 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
   onClose,
   resourceFilter,
 }) => {
-  const [currentTab, setCurrentTab] = useState(0);
-  const [addAssignmentOpen, setAddAssignmentOpen] = useState(false);
+  const [currentTab, setCurrentTab] = useState<'employees' | 'equipment' | 'vehicles'>('employees');
 
   const { data: assignments = [] } = useGetPhaseAssignmentsQuery(phase.id);
   const { data: equipment = [] } = useGetPhaseEquipmentQuery(phase.id);
@@ -59,11 +31,11 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'accepted':
-        return <CheckCircle sx={{ color: 'success.main', fontSize: 20 }} />;
+        return <CheckCircle className="h-5 w-5 text-green-400" />;
       case 'rejected':
-        return <Cancel sx={{ color: 'error.main', fontSize: 20 }} />;
+        return <XCircle className="h-5 w-5 text-red-400" />;
       default:
-        return <Warning sx={{ color: 'warning.main', fontSize: 20 }} />;
+        return <AlertCircle className="h-5 w-5 text-yellow-400" />;
     }
   };
 
@@ -94,260 +66,246 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
     return `${hours}h ${minutes}m`;
   };
 
+  const tabs = [
+    { id: 'employees' as const, label: 'Pracownicy', icon: User, count: assignments.length },
+    { id: 'equipment' as const, label: 'Sprzęt', icon: Package, count: equipment.length },
+    { id: 'vehicles' as const, label: 'Pojazdy', icon: Car, count: vehicles.length },
+  ];
+
   return (
-    <>
-      <Drawer
-        anchor="right"
-        open={true}
-        onClose={onClose}
-        PaperProps={{
-          sx: { width: { xs: '100%', sm: 500 } },
-        }}
+    <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-[#d3bb73]/20 bg-[#1c1f33] shadow-2xl">
+      {/* Header */}
+      <div
+        className="border-b border-[#d3bb73]/10 p-4"
+        style={{ backgroundColor: `${phaseColor}10` }}
       >
-        {/* Header */}
-        <Box
-          sx={{
-            p: 2,
-            borderBottom: 1,
-            borderColor: 'divider',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            backgroundColor: phaseColor + '10',
-          }}
-        >
-          <Box>
-            <Typography variant="h6">{phase.name}</Typography>
-            <Typography variant="caption" color="text.secondary">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-[#e5e4e2]">{phase.name}</h2>
+            <p className="text-xs text-[#e5e4e2]/60">
               {formatTime(phase.start_time)} - {formatTime(phase.end_time)}
-            </Typography>
-          </Box>
-          <IconButton onClick={onClose}>
-            <Close />
-          </IconButton>
-        </Box>
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-lg p-1 text-[#e5e4e2]/60 transition-colors hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+      </div>
 
-        {/* Tabs */}
-        <Tabs value={currentTab} onChange={(_, v) => setCurrentTab(v)}>
-          <Tab
-            icon={<Person />}
-            label={`Pracownicy (${assignments.length})`}
-            iconPosition="start"
-          />
-          <Tab
-            icon={<Inventory />}
-            label={`Sprzęt (${equipment.length})`}
-            iconPosition="start"
-          />
-          <Tab
-            icon={<DirectionsCar />}
-            label={`Pojazdy (${vehicles.length})`}
-            iconPosition="start"
-          />
-        </Tabs>
+      {/* Tabs */}
+      <div className="flex border-b border-[#d3bb73]/10">
+        {tabs.map((tab) => {
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setCurrentTab(tab.id)}
+              className={`flex flex-1 items-center justify-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
+                currentTab === tab.id
+                  ? 'border-[#d3bb73] text-[#d3bb73]'
+                  : 'border-transparent text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              {tab.label}
+              <span className="rounded-full bg-[#d3bb73]/20 px-2 py-0.5 text-xs">
+                {tab.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
-        <Divider />
+      {/* Content */}
+      <div className="flex-1 overflow-auto">
+        {/* Employees Tab */}
+        {currentTab === 'employees' && (
+          <div>
+            <div className="border-b border-[#d3bb73]/10 p-4">
+              <button
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+                onClick={() => {
+                  // TODO: Open AddPhaseAssignmentModal when converted to Tailwind
+                  alert('Modal do dodawania pracowników - w trakcie konwersji na Tailwind');
+                }}
+              >
+                <Plus className="h-4 w-4" />
+                Dodaj Pracownika
+              </button>
+            </div>
 
-        {/* Tab Content */}
-        <Box sx={{ flex: 1, overflow: 'auto' }}>
-          {/* Employees Tab */}
-          {currentTab === 0 && (
-            <Box>
-              <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-                <Button
-                  variant="outlined"
-                  startIcon={<Add />}
-                  fullWidth
-                  onClick={() => setAddAssignmentOpen(true)}
-                >
-                  Dodaj Pracownika
-                </Button>
-              </Box>
+            {assignments.length === 0 ? (
+              <div className="p-8 text-center">
+                <User className="mx-auto mb-2 h-12 w-12 text-[#e5e4e2]/20" />
+                <p className="text-sm text-[#e5e4e2]/60">Brak przypisanych pracowników</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-[#d3bb73]/10">
+                {assignments.map((assignment) => (
+                  <div key={assignment.id} className="p-4">
+                    <div className="mb-2 flex items-center gap-2">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#d3bb73]/20">
+                        <User className="h-5 w-5 text-[#d3bb73]" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-[#e5e4e2]">
+                            ID: {assignment.employee_id.slice(0, 8)}
+                          </span>
+                          {getStatusIcon(assignment.invitation_status)}
+                        </div>
+                        <p className="text-xs text-[#e5e4e2]/50">
+                          {getStatusLabel(assignment.invitation_status)}
+                        </p>
+                      </div>
+                    </div>
 
-              {assignments.length === 0 ? (
-                <Box sx={{ p: 3, textAlign: 'center' }}>
-                  <Typography color="text.secondary">
-                    Brak przypisanych pracowników
-                  </Typography>
-                </Box>
-              ) : (
-                <List>
-                  {assignments.map((assignment) => (
-                    <ListItem key={assignment.id} divider>
-                      <ListItemAvatar>
-                        <Avatar>
-                          <Person />
-                        </Avatar>
-                      </ListItemAvatar>
-                      <ListItemText
-                        primary={
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Typography>ID: {assignment.employee_id.slice(0, 8)}</Typography>
-                            {getStatusIcon(assignment.invitation_status)}
-                          </Box>
-                        }
-                        secondary={
-                          <Box>
-                            <Typography variant="caption" display="block">
-                              Status: {getStatusLabel(assignment.invitation_status)}
-                            </Typography>
-                            <Typography variant="caption" display="block" sx={{ mt: 0.5 }}>
-                              Przypisanie: {formatTime(assignment.assignment_start)} -{' '}
-                              {formatTime(assignment.assignment_end)}
-                            </Typography>
-                            <Typography variant="caption" display="block">
-                              Praca: {formatTime(assignment.phase_work_start)} -{' '}
-                              {formatTime(assignment.phase_work_end)}
-                            </Typography>
-                            <Typography variant="caption" display="block" color="primary">
-                              Czas pracy:{' '}
-                              {calculateDuration(
-                                assignment.phase_work_start,
-                                assignment.phase_work_end
-                              )}
-                            </Typography>
-                            {assignment.role && (
-                              <Chip label={assignment.role} size="small" sx={{ mt: 0.5 }} />
-                            )}
-                          </Box>
-                        }
-                      />
-                    </ListItem>
-                  ))}
-                </List>
-              )}
-            </Box>
-          )}
+                    <div className="space-y-1 text-xs text-[#e5e4e2]/70">
+                      <p>
+                        <span className="font-medium">Przypisanie:</span>{' '}
+                        {formatTime(assignment.assignment_start)} -{' '}
+                        {formatTime(assignment.assignment_end)}
+                      </p>
+                      <p>
+                        <span className="font-medium">Praca:</span>{' '}
+                        {formatTime(assignment.phase_work_start)} -{' '}
+                        {formatTime(assignment.phase_work_end)}
+                      </p>
+                      <p className="text-[#d3bb73]">
+                        Czas pracy:{' '}
+                        {calculateDuration(
+                          assignment.phase_work_start,
+                          assignment.phase_work_end
+                        )}
+                      </p>
+                      {assignment.role && (
+                        <span className="inline-block rounded bg-[#d3bb73]/20 px-2 py-0.5 text-[#d3bb73]">
+                          {assignment.role}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
-          {/* Equipment Tab */}
-          {currentTab === 1 && (
-            <Box>
-              <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-                <Button variant="outlined" startIcon={<Add />} fullWidth>
-                  Dodaj Sprzęt
-                </Button>
-              </Box>
+        {/* Equipment Tab */}
+        {currentTab === 'equipment' && (
+          <div>
+            <div className="border-b border-[#d3bb73]/10 p-4">
+              <button
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm font-medium text-[#e5e4e2]/80 transition-colors hover:bg-[#d3bb73]/10"
+                disabled
+              >
+                <Plus className="h-4 w-4" />
+                Dodaj Sprzęt
+              </button>
+            </div>
 
-              {equipment.length === 0 ? (
-                <Box sx={{ p: 3, textAlign: 'center' }}>
-                  <Typography color="text.secondary">Brak przypisanego sprzętu</Typography>
-                </Box>
-              ) : (
-                <List>
-                  {equipment.map((item) => (
-                    <ListItem key={item.id} divider>
-                      <ListItemAvatar>
-                        <Avatar>
-                          <Inventory />
-                        </Avatar>
-                      </ListItemAvatar>
-                      <ListItemText
-                        primary={`Sprzęt ID: ${item.equipment_item_id?.slice(0, 8) || 'N/A'}`}
-                        secondary={
-                          <>
-                            <Typography variant="caption" display="block">
-                              {formatTime(item.assigned_start)} - {formatTime(item.assigned_end)}
-                            </Typography>
-                            <Typography variant="caption" display="block">
-                              Ilość: {item.quantity}
-                            </Typography>
-                          </>
-                        }
-                      />
-                    </ListItem>
-                  ))}
-                </List>
-              )}
-            </Box>
-          )}
+            {equipment.length === 0 ? (
+              <div className="p-8 text-center">
+                <Package className="mx-auto mb-2 h-12 w-12 text-[#e5e4e2]/20" />
+                <p className="text-sm text-[#e5e4e2]/60">Brak przypisanego sprzętu</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-[#d3bb73]/10">
+                {equipment.map((item) => (
+                  <div key={item.id} className="p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#d3bb73]/20">
+                        <Package className="h-5 w-5 text-[#d3bb73]" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-[#e5e4e2]">
+                          Sprzęt ID: {item.equipment_item_id?.slice(0, 8) || 'N/A'}
+                        </p>
+                        <p className="text-xs text-[#e5e4e2]/50">
+                          {formatTime(item.assigned_start)} - {formatTime(item.assigned_end)}
+                        </p>
+                        <p className="text-xs text-[#e5e4e2]/50">Ilość: {item.quantity}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
-          {/* Vehicles Tab */}
-          {currentTab === 2 && (
-            <Box>
-              <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-                <Button variant="outlined" startIcon={<Add />} fullWidth>
-                  Dodaj Pojazd
-                </Button>
-              </Box>
+        {/* Vehicles Tab */}
+        {currentTab === 'vehicles' && (
+          <div>
+            <div className="border-b border-[#d3bb73]/10 p-4">
+              <button
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm font-medium text-[#e5e4e2]/80 transition-colors hover:bg-[#d3bb73]/10"
+                disabled
+              >
+                <Plus className="h-4 w-4" />
+                Dodaj Pojazd
+              </button>
+            </div>
 
-              {vehicles.length === 0 ? (
-                <Box sx={{ p: 3, textAlign: 'center' }}>
-                  <Typography color="text.secondary">Brak przypisanych pojazdów</Typography>
-                </Box>
-              ) : (
-                <List>
-                  {vehicles.map((vehicle) => (
-                    <ListItem key={vehicle.id} divider>
-                      <ListItemAvatar>
-                        <Avatar>
-                          <DirectionsCar />
-                        </Avatar>
-                      </ListItemAvatar>
-                      <ListItemText
-                        primary={`Pojazd ID: ${vehicle.vehicle_id.slice(0, 8)}`}
-                        secondary={
-                          <>
-                            <Typography variant="caption" display="block">
-                              {formatTime(vehicle.assigned_start)} -{' '}
-                              {formatTime(vehicle.assigned_end)}
-                            </Typography>
-                            {vehicle.driver_id && (
-                              <Typography variant="caption" display="block">
-                                Kierowca: {vehicle.driver_id.slice(0, 8)}
-                              </Typography>
-                            )}
-                            {vehicle.purpose && (
-                              <Chip label={vehicle.purpose} size="small" sx={{ mt: 0.5 }} />
-                            )}
-                          </>
-                        }
-                      />
-                    </ListItem>
-                  ))}
-                </List>
-              )}
-            </Box>
-          )}
-        </Box>
+            {vehicles.length === 0 ? (
+              <div className="p-8 text-center">
+                <Car className="mx-auto mb-2 h-12 w-12 text-[#e5e4e2]/20" />
+                <p className="text-sm text-[#e5e4e2]/60">Brak przypisanych pojazdów</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-[#d3bb73]/10">
+                {vehicles.map((vehicle) => (
+                  <div key={vehicle.id} className="p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#d3bb73]/20">
+                        <Car className="h-5 w-5 text-[#d3bb73]" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-[#e5e4e2]">
+                          Pojazd ID: {vehicle.vehicle_id.slice(0, 8)}
+                        </p>
+                        <p className="text-xs text-[#e5e4e2]/50">
+                          {formatTime(vehicle.assigned_start)} -{' '}
+                          {formatTime(vehicle.assigned_end)}
+                        </p>
+                        {vehicle.driver_id && (
+                          <p className="text-xs text-[#e5e4e2]/50">
+                            Kierowca: {vehicle.driver_id.slice(0, 8)}
+                          </p>
+                        )}
+                        {vehicle.purpose && (
+                          <span className="mt-1 inline-block rounded bg-[#d3bb73]/20 px-2 py-0.5 text-xs text-[#d3bb73]">
+                            {vehicle.purpose}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
-        {/* Summary Footer */}
-        <Box
-          sx={{
-            p: 2,
-            borderTop: 1,
-            borderColor: 'divider',
-            backgroundColor: 'background.default',
-          }}
-        >
-          <Typography variant="body2" fontWeight="bold" gutterBottom>
-            Podsumowanie Fazy
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 2 }}>
-            <Chip
-              icon={<Person />}
-              label={`${assignments.length} pracowników`}
-              size="small"
-            />
-            <Chip
-              icon={<Inventory />}
-              label={`${equipment.length} pozycji sprzętu`}
-              size="small"
-            />
-            <Chip
-              icon={<DirectionsCar />}
-              label={`${vehicles.length} pojazdów`}
-              size="small"
-            />
-          </Box>
-        </Box>
-      </Drawer>
-
-      {/* Add Assignment Modal */}
-      <AddPhaseAssignmentModal
-        open={addAssignmentOpen}
-        onClose={() => setAddAssignmentOpen(false)}
-        phase={phase}
-      />
-    </>
+      {/* Footer Summary */}
+      <div className="border-t border-[#d3bb73]/10 bg-[#0f1119] p-4">
+        <p className="mb-2 text-xs font-semibold text-[#e5e4e2]">Podsumowanie Fazy</p>
+        <div className="flex gap-2">
+          <span className="rounded-full bg-[#d3bb73]/20 px-2 py-1 text-xs text-[#d3bb73]">
+            <User className="mb-0.5 inline h-3 w-3" /> {assignments.length}
+          </span>
+          <span className="rounded-full bg-[#d3bb73]/20 px-2 py-1 text-xs text-[#d3bb73]">
+            <Package className="mb-0.5 inline h-3 w-3" /> {equipment.length}
+          </span>
+          <span className="rounded-full bg-[#d3bb73]/20 px-2 py-1 text-xs text-[#d3bb73]">
+            <Car className="mb-0.5 inline h-3 w-3" /> {vehicles.length}
+          </span>
+        </div>
+      </div>
+    </div>
   );
 };

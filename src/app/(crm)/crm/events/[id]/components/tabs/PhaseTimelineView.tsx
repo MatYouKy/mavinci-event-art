@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Box, Typography, Tooltip, IconButton, Paper } from '@mui/material';
-import { Delete, DragIndicator, Warning } from '@mui/icons-material';
+import { Trash2, GripVertical, AlertTriangle } from 'lucide-react';
 import { EventPhase } from '@/store/api/eventPhasesApi';
 
 interface PhaseTimelineViewProps {
@@ -37,7 +36,6 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
 
   const totalDuration = timelineBounds.end.getTime() - timelineBounds.start.getTime();
 
-  // Calculate position and width for a phase
   const getPhasePosition = (phase: EventPhase) => {
     const start = new Date(phase.start_time).getTime();
     const end = new Date(phase.end_time).getTime();
@@ -45,21 +43,23 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
     const left = ((start - timelineBounds.start.getTime()) / totalDuration) * 100;
     const width = ((end - start) / totalDuration) * 100;
 
-    return { left: `${left}%`, width: `${width}%` };
+    return { left: `${Math.max(0, left)}%`, width: `${Math.max(1, width)}%` };
   };
 
-  // Format time label based on zoom level
   const formatTimeLabel = (date: Date): string => {
     if (zoomLevel === 'days') {
       return date.toLocaleDateString('pl-PL', { day: 'numeric', month: 'short' });
     } else if (zoomLevel === 'hours') {
       return date.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
     } else {
-      return date.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      return date.toLocaleTimeString('pl-PL', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      });
     }
   };
 
-  // Generate time markers
   const generateTimeMarkers = () => {
     const markers: Date[] = [];
     const start = new Date(timelineBounds.start);
@@ -67,11 +67,11 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
 
     let interval: number;
     if (zoomLevel === 'days') {
-      interval = 24 * 60 * 60 * 1000; // 1 day
+      interval = 24 * 60 * 60 * 1000;
     } else if (zoomLevel === 'hours') {
-      interval = 60 * 60 * 1000; // 1 hour
+      interval = 60 * 60 * 1000;
     } else {
-      interval = 15 * 60 * 1000; // 15 minutes
+      interval = 15 * 60 * 1000;
     }
 
     let current = new Date(Math.ceil(start.getTime() / interval) * interval);
@@ -85,13 +85,11 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
 
   const timeMarkers = generateTimeMarkers();
 
-  // Handle resize start
   const handleResizeStart = (phaseId: string, handle: 'start' | 'end', e: React.MouseEvent) => {
     e.stopPropagation();
     setResizing({ phaseId, handle });
   };
 
-  // Handle mouse move during resize
   useEffect(() => {
     if (!resizing.phaseId || !resizing.handle || !containerRef.current) return;
 
@@ -102,9 +100,7 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
       const rect = container.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const percent = Math.max(0, Math.min(1, x / rect.width));
-      const newTime = new Date(
-        timelineBounds.start.getTime() + percent * totalDuration
-      );
+      const newTime = new Date(timelineBounds.start.getTime() + percent * totalDuration);
 
       const phase = phases.find((p) => p.id === resizing.phaseId);
       if (!phase) return;
@@ -136,7 +132,6 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
     };
   }, [resizing, phases, timelineBounds, totalDuration, onPhaseResize]);
 
-  // Calculate phase duration text
   const getPhaseDuration = (phase: EventPhase): string => {
     const start = new Date(phase.start_time);
     const end = new Date(phase.end_time);
@@ -157,52 +152,29 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
   };
 
   return (
-    <Box ref={containerRef} sx={{ p: 3, height: '100%', position: 'relative' }}>
+    <div ref={containerRef} className="relative h-full p-6">
       {/* Time Axis */}
-      <Box
-        sx={{
-          position: 'relative',
-          height: 40,
-          borderBottom: 2,
-          borderColor: 'divider',
-          mb: 3,
-        }}
-      >
+      <div className="relative mb-6 h-10 border-b-2 border-[#d3bb73]/20">
         {timeMarkers.map((marker, index) => {
           const left =
             ((marker.getTime() - timelineBounds.start.getTime()) / totalDuration) * 100;
 
           return (
-            <Box
+            <div
               key={index}
-              sx={{
-                position: 'absolute',
-                left: `${left}%`,
-                top: 0,
-                height: '100%',
-                borderLeft: 1,
-                borderColor: 'divider',
-              }}
+              className="absolute top-0 h-full border-l border-[#d3bb73]/10"
+              style={{ left: `${left}%` }}
             >
-              <Typography
-                variant="caption"
-                sx={{
-                  position: 'absolute',
-                  left: 4,
-                  top: 8,
-                  fontSize: '0.7rem',
-                  color: 'text.secondary',
-                }}
-              >
+              <span className="absolute left-1 top-2 text-xs text-[#e5e4e2]/50">
                 {formatTimeLabel(marker)}
-              </Typography>
-            </Box>
+              </span>
+            </div>
           );
         })}
-      </Box>
+      </div>
 
       {/* Phases */}
-      <Box sx={{ position: 'relative', minHeight: 200 }}>
+      <div className="relative min-h-[200px]">
         {phases.map((phase, index) => {
           const position = getPhasePosition(phase);
           const isSelected = selectedPhase?.id === phase.id;
@@ -211,123 +183,101 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
           const phaseColor = phase.color || phase.phase_type?.color || '#3b82f6';
 
           return (
-            <Paper
+            <div
               key={phase.id}
-              elevation={isSelected ? 8 : isHovered ? 4 : 2}
               onMouseEnter={() => setHoveredPhase(phase.id)}
               onMouseLeave={() => setHoveredPhase(null)}
               onClick={() => onPhaseClick(phase)}
-              sx={{
-                position: 'absolute',
-                top: index * 80,
+              className={`absolute flex cursor-pointer items-center rounded-lg border-l-4 px-2 transition-all ${
+                isSelected ? 'shadow-xl' : isHovered ? 'shadow-lg' : 'shadow'
+              } ${
+                isHovered ? '-translate-y-1' : ''
+              } ${
+                hasConflict
+                  ? 'border-red-500 bg-red-500/10'
+                  : 'border-[var(--phase-color)] bg-[var(--phase-color)]'
+              }`}
+              style={{
+                top: `${index * 80}px`,
                 left: position.left,
                 width: position.width,
-                height: 60,
-                backgroundColor: hasConflict ? '#fee' : phaseColor + '20',
-                borderLeft: 4,
-                borderColor: hasConflict ? '#dc2626' : phaseColor,
-                cursor: 'pointer',
-                transition: 'all 0.2s',
-                display: 'flex',
-                alignItems: 'center',
-                px: 1,
-                '&:hover': {
-                  transform: 'translateY(-2px)',
-                },
-              }}
+                height: '60px',
+                '--phase-color': `${phaseColor}20`,
+                borderLeftColor: hasConflict ? '#dc2626' : phaseColor,
+              } as React.CSSProperties}
             >
               {/* Resize Handle - Start */}
-              <Box
+              <div
                 onMouseDown={(e) => handleResizeStart(phase.id, 'start', e)}
-                sx={{
-                  position: 'absolute',
-                  left: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: 8,
-                  cursor: 'ew-resize',
-                  backgroundColor: isHovered ? phaseColor + '40' : 'transparent',
-                  transition: 'background-color 0.2s',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  '&:hover': {
-                    backgroundColor: phaseColor + '60',
-                  },
-                }}
+                className={`absolute left-0 top-0 bottom-0 flex w-2 cursor-ew-resize items-center justify-center transition-colors ${
+                  isHovered ? 'bg-[var(--phase-color-60)]' : 'bg-transparent'
+                }`}
+                style={{
+                  '--phase-color-60': `${phaseColor}60`,
+                } as React.CSSProperties}
               >
-                {isHovered && <DragIndicator sx={{ fontSize: 12, color: phaseColor }} />}
-              </Box>
+                {isHovered && (
+                  <GripVertical
+                    className="h-3 w-3"
+                    style={{ color: phaseColor }}
+                  />
+                )}
+              </div>
 
               {/* Phase Content */}
-              <Box sx={{ flex: 1, px: 1, overflow: 'hidden' }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
-                  <Typography
-                    variant="body2"
-                    fontWeight="bold"
-                    sx={{
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {phase.name}
-                  </Typography>
+              <div className="flex-1 overflow-hidden px-2">
+                <div className="mb-1 flex items-center gap-1">
+                  <span className="truncate text-sm font-bold text-[#e5e4e2]">{phase.name}</span>
                   {hasConflict && (
-                    <Tooltip title="Faza nakłada się z inną fazą!">
-                      <Warning sx={{ fontSize: 16, color: '#dc2626' }} />
-                    </Tooltip>
+                    <div className="group relative">
+                      <AlertTriangle className="h-4 w-4 text-red-400" />
+                      <div className="pointer-events-none absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded bg-[#1c1f33] px-2 py-1 text-xs text-[#e5e4e2] shadow-lg group-hover:block">
+                        Faza nakłada się z inną fazą!
+                      </div>
+                    </div>
                   )}
-                </Box>
-                <Typography variant="caption" color="text.secondary">
+                </div>
+                <div className="text-xs text-[#e5e4e2]/70">
                   {formatTimeLabel(new Date(phase.start_time))} -{' '}
                   {formatTimeLabel(new Date(phase.end_time))}
-                </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                  ({getPhaseDuration(phase)})
-                </Typography>
-              </Box>
+                  <span className="ml-2 text-[#e5e4e2]/50">({getPhaseDuration(phase)})</span>
+                </div>
+              </div>
 
               {/* Delete Button */}
               {isHovered && (
-                <IconButton
-                  size="small"
+                <button
                   onClick={(e) => {
                     e.stopPropagation();
                     onPhaseDelete(phase.id);
                   }}
-                  sx={{ mr: 1 }}
+                  className="mr-2 rounded p-1 text-[#e5e4e2]/60 transition-colors hover:bg-red-500/20 hover:text-red-400"
                 >
-                  <Delete fontSize="small" />
-                </IconButton>
+                  <Trash2 className="h-4 w-4" />
+                </button>
               )}
 
               {/* Resize Handle - End */}
-              <Box
+              <div
                 onMouseDown={(e) => handleResizeStart(phase.id, 'end', e)}
-                sx={{
-                  position: 'absolute',
-                  right: 0,
-                  top: 0,
-                  bottom: 0,
-                  width: 8,
-                  cursor: 'ew-resize',
-                  backgroundColor: isHovered ? phaseColor + '40' : 'transparent',
-                  transition: 'background-color 0.2s',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  '&:hover': {
-                    backgroundColor: phaseColor + '60',
-                  },
-                }}
+                className={`absolute right-0 top-0 bottom-0 flex w-2 cursor-ew-resize items-center justify-center transition-colors ${
+                  isHovered ? 'bg-[var(--phase-color-60)]' : 'bg-transparent'
+                }`}
+                style={{
+                  '--phase-color-60': `${phaseColor}60`,
+                } as React.CSSProperties}
               >
-                {isHovered && <DragIndicator sx={{ fontSize: 12, color: phaseColor }} />}
-              </Box>
-            </Paper>
+                {isHovered && (
+                  <GripVertical
+                    className="h-3 w-3"
+                    style={{ color: phaseColor }}
+                  />
+                )}
+              </div>
+            </div>
           );
         })}
-      </Box>
-    </Box>
+      </div>
+    </div>
   );
 };
