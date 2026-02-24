@@ -206,6 +206,8 @@ export default function AddEventVehicleModal({
 
   const fetchEmployees = async () => {
     try {
+      console.log('fetchEmployees called', { vehicle_id: formData.vehicle_id, isExternal });
+
       // Pobierz kierowców już przypisanych do INNYCH pojazdów w tym wydarzeniu
       let query = supabase
         .from('event_vehicles')
@@ -221,9 +223,11 @@ export default function AddEventVehicleModal({
       const { data: assignedDrivers } = await query;
 
       const assignedDriverIds = assignedDrivers?.map((v) => v.driver_id) || [];
+      console.log('Already assigned drivers:', assignedDriverIds);
 
       // Jeśli nie wybrano pojazdu lub jest zewnętrzny, nie pokazuj żadnych kierowców
       if (!formData.vehicle_id || isExternal) {
+        console.log('No vehicle selected or external, clearing employees');
         setEmployees([]);
         return;
       }
@@ -236,8 +240,11 @@ export default function AddEventVehicleModal({
 
       if (reqError) throw reqError;
 
+      console.log('Vehicle requirements:', requirements);
+
       if (!requirements || requirements.length === 0) {
         // Pojazd nie ma wymagań - pokaż wszystkich aktywnych, którzy nie są zajęci
+        console.log('No requirements for vehicle, showing all active employees');
         const { data, error } = await supabase
           .from('employees')
           .select('id, name, surname')
@@ -247,11 +254,13 @@ export default function AddEventVehicleModal({
         if (error) throw error;
 
         const availableEmployees = (data || []).filter((e) => !assignedDriverIds.includes(e.id));
+        console.log('Available employees (no requirements):', availableEmployees.length);
         setEmployees(availableEmployees);
         return;
       }
 
       const categoryIds = requirements.map((r) => r.license_category_id);
+      console.log('Required license categories:', categoryIds);
 
       // Znajdź pracowników którzy mają WSZYSTKIE wymagane kategorie
       const { data: qualifiedEmployees, error: empError } = await supabase
@@ -263,24 +272,32 @@ export default function AddEventVehicleModal({
           employee:employees!employee_driving_licenses_employee_id_fkey(id, name, surname, is_active)
         `,
         )
-        .in('license_category_id', categoryIds)
-        .eq('employee.is_active', true);
+        .in('license_category_id', categoryIds);
 
-      if (empError) throw empError;
+      if (empError) {
+        console.error('Error fetching qualified employees:', empError);
+        throw empError;
+      }
+
+      console.log('Raw qualified employees data:', qualifiedEmployees?.length, qualifiedEmployees);
 
       // Grupuj według employee_id i sprawdź czy mają wszystkie wymagane kategorie
       const employeeMap = new Map<
         string,
-        { id: string; name: string; surname: string; categories: Set<string> }
+        { id: string; name: string; surname: string; categories: Set<string>; is_active: boolean }
       >();
 
       qualifiedEmployees?.forEach((item) => {
         const emp = item.employee as any;
+        // Pomiń nieaktywnych pracowników
+        if (!emp || !emp.is_active) return;
+
         if (!employeeMap.has(item.employee_id)) {
           employeeMap.set(item.employee_id, {
             id: emp.id,
             name: emp.name,
             surname: emp.surname,
+            is_active: emp.is_active,
             categories: new Set(),
           });
         }
@@ -297,6 +314,7 @@ export default function AddEventVehicleModal({
         .map(({ id, name, surname }) => ({ id, name, surname }))
         .sort((a, b) => a.name.localeCompare(b.name));
 
+      console.log('Qualified employees found:', fullyQualifiedEmployees.length, fullyQualifiedEmployees);
       setEmployees(fullyQualifiedEmployees);
     } catch (error) {
       console.error('Error fetching employees:', error);
@@ -614,14 +632,27 @@ export default function AddEventVehicleModal({
                 value={formData.driver_id}
                 onChange={(e) => setFormData({ ...formData, driver_id: e.target.value })}
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
+                disabled={!isExternal && !formData.vehicle_id}
               >
-                <option value="">Wybierz kierowcę...</option>
+                <option value="">
+                  {!isExternal && !formData.vehicle_id
+                    ? 'Najpierw wybierz pojazd...'
+                    : employees.length === 0 && formData.vehicle_id
+                      ? 'Brak kierowców z wymaganymi uprawnieniami'
+                      : 'Wybierz kierowcę...'}
+                </option>
                 {employees.map((e) => (
                   <option key={e.id} value={e.id}>
                     {e.name} {e.surname}
                   </option>
                 ))}
               </select>
+              {!isExternal && formData.vehicle_id && employees.length === 0 && (
+                <p className="mt-1 text-xs text-yellow-500">
+                  Brak dostępnych pracowników z wymaganymi prawami jazdy dla tego pojazdu.
+                  Sprawdź wymagania pojazdu w panelu floty.
+                </p>
+              )}
             </div>
           </div>
 
