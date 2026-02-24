@@ -7,6 +7,8 @@ import {
   AlertCircle,
   Clock,
   ChevronDown,
+  Save,
+  RotateCcw,
 } from 'lucide-react';
 import {
   useGetEventPhasesQuery,
@@ -46,6 +48,8 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
   const [showAddModal, setShowAddModal] = useState(false);
   const [showResourcePanel, setShowResourcePanel] = useState(false);
   const [showFilterMenu, setShowFilterMenu] = useState(false);
+  const [draftChanges, setDraftChanges] = useState<Record<string, { start_time: string; end_time: string }>>({});
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   const timelineBounds = useMemo(() => {
     const start = new Date(eventStartDate);
@@ -76,17 +80,39 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
     return conflicts;
   }, [phases]);
 
-  const handlePhaseResize = async (phaseId: string, newStart: Date, newEnd: Date) => {
-    try {
-      await updatePhase({
-        id: phaseId,
+  const handlePhaseResizeDraft = (phaseId: string, newStart: Date, newEnd: Date) => {
+    setDraftChanges(prev => ({
+      ...prev,
+      [phaseId]: {
         start_time: newStart.toISOString(),
         end_time: newEnd.toISOString(),
-      }).unwrap();
-      showSnackbar('Czas fazy zaktualizowany', 'success');
+      }
+    }));
+    setHasUnsavedChanges(true);
+  };
+
+  const handleSaveChanges = async () => {
+    try {
+      const promises = Object.entries(draftChanges).map(([phaseId, changes]) =>
+        updatePhase({
+          id: phaseId,
+          ...changes,
+        }).unwrap()
+      );
+
+      await Promise.all(promises);
+      showSnackbar('Zmiany zapisane pomyślnie', 'success');
+      setDraftChanges({});
+      setHasUnsavedChanges(false);
     } catch (error: any) {
-      showSnackbar(error.message || 'Błąd podczas aktualizacji fazy', 'error');
+      showSnackbar(error.message || 'Błąd podczas zapisywania zmian', 'error');
     }
+  };
+
+  const handleDiscardChanges = () => {
+    setDraftChanges({});
+    setHasUnsavedChanges(false);
+    showSnackbar('Zmiany odrzucone', 'info');
   };
 
   const handlePhaseDelete = async (phaseId: string) => {
@@ -130,6 +156,17 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
 
   const hasConflicts = Object.values(phaseConflicts).some((c) => c);
 
+  // Merge original phases with draft changes for display
+  const displayPhases = useMemo(() => {
+    return phases.map(phase => {
+      const draft = draftChanges[phase.id];
+      if (draft) {
+        return { ...phase, ...draft };
+      }
+      return phase;
+    });
+  }, [phases, draftChanges]);
+
   if (isLoading) {
     return (
       <div className="flex h-96 items-center justify-center">
@@ -157,6 +194,26 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Draft Changes Actions */}
+          {hasUnsavedChanges && (
+            <>
+              <button
+                onClick={handleSaveChanges}
+                className="flex items-center gap-2 rounded-lg border border-green-500/30 bg-green-500/20 px-4 py-1.5 text-sm font-medium text-green-400 transition-colors hover:bg-green-500/30"
+              >
+                <Save className="h-4 w-4" />
+                Zapisz zmiany
+              </button>
+              <button
+                onClick={handleDiscardChanges}
+                className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/20 px-4 py-1.5 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/30"
+              >
+                <RotateCcw className="h-4 w-4" />
+                Odrzuć
+              </button>
+            </>
+          )}
+
           {/* Zoom Controls */}
           <div className="flex items-center gap-1 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] p-1">
             {zoomLevels.map((level) => (
@@ -239,13 +296,13 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
       ) : (
         <div className="flex-1 overflow-auto bg-[#0f1119]">
           <PhaseTimelineView
-            phases={phases}
+            phases={displayPhases}
             timelineBounds={timelineBounds}
             zoomLevel={zoomLevel}
             selectedPhase={selectedPhase}
             phaseConflicts={phaseConflicts}
             onPhaseClick={handlePhaseClick}
-            onPhaseResize={handlePhaseResize}
+            onPhaseResize={handlePhaseResizeDraft}
             onPhaseDelete={handlePhaseDelete}
           />
         </div>
@@ -265,6 +322,7 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
       {showResourcePanel && selectedPhase && (
         <PhaseResourcesPanel
           phase={selectedPhase}
+          eventId={eventId}
           onClose={() => {
             setShowResourcePanel(false);
             setSelectedPhase(null);
