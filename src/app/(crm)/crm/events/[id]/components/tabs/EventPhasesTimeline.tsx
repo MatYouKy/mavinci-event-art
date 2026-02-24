@@ -61,10 +61,28 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   const timelineBounds = useMemo(() => {
-    const start = new Date(eventStartDate);
-    const end = new Date(eventEndDate);
+    // Główne godziny wydarzenia to tylko agenda, ale timeline musi uwzględniać wszystkie fazy
+    // (np. załadunek przed eventem, rozładunek po evencie)
+    const eventStart = new Date(eventStartDate);
+    const eventEnd = new Date(eventEndDate);
+
+    if (phases.length === 0) {
+      return { start: eventStart, end: eventEnd };
+    }
+
+    // Znajdź najwcześniejszą i najpóźniejszą fazę
+    const phaseStarts = phases.map(p => new Date(p.start_time).getTime());
+    const phaseEnds = phases.map(p => new Date(p.end_time).getTime());
+
+    const earliestPhase = Math.min(...phaseStarts);
+    const latestPhase = Math.max(...phaseEnds);
+
+    // Timeline pokazuje od najwcześniejszej fazy do najpóźniejszej
+    const start = new Date(Math.min(earliestPhase, eventStart.getTime()));
+    const end = new Date(Math.max(latestPhase, eventEnd.getTime()));
+
     return { start, end };
-  }, [eventStartDate, eventEndDate]);
+  }, [eventStartDate, eventEndDate, phases]);
 
   const phaseConflicts = useMemo(() => {
     const conflicts: Record<string, boolean> = {};
@@ -327,6 +345,8 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
               onPhaseClick={handlePhaseClick}
               onPhaseResize={handlePhaseResizeDraft}
               onPhaseDelete={handlePhaseDelete}
+              eventStartDate={eventStartDate}
+              eventEndDate={eventEndDate}
             />
           </div>
 

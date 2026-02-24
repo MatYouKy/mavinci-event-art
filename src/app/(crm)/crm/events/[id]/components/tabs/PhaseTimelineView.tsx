@@ -13,6 +13,8 @@ interface PhaseTimelineViewProps {
   onPhaseClick: (phase: EventPhase) => void;
   onPhaseResize: (phaseId: string, newStart: Date, newEnd: Date) => void;
   onPhaseDelete: (phaseId: string) => void;
+  eventStartDate?: string;
+  eventEndDate?: string;
 }
 
 type ResizeHandle = 'start' | 'end' | null;
@@ -26,6 +28,8 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
   onPhaseClick,
   onPhaseResize,
   onPhaseDelete,
+  eventStartDate,
+  eventEndDate,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [resizing, setResizing] = useState<{ phaseId: string; handle: ResizeHandle }>({
@@ -156,6 +160,22 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
     <div ref={containerRef} className="relative h-full p-6">
       {/* Time Axis */}
       <div className="relative mb-6 h-10 border-b-2 border-[#d3bb73]/20">
+        {/* Główne godziny wydarzenia (agenda/deklaracja dla klienta) */}
+        {eventStartDate && eventEndDate && (
+          <div
+            className="absolute top-0 h-full bg-[#d3bb73]/5 border-l-2 border-r-2 border-[#d3bb73]/30"
+            style={{
+              left: `${((new Date(eventStartDate).getTime() - timelineBounds.start.getTime()) / totalDuration) * 100}%`,
+              width: `${((new Date(eventEndDate).getTime() - new Date(eventStartDate).getTime()) / totalDuration) * 100}%`,
+            }}
+            title="Główne godziny wydarzenia (agenda dla klienta)"
+          >
+            <div className="absolute left-2 top-0 text-[10px] font-semibold text-[#d3bb73] bg-[#1c1f33] px-1 rounded-b">
+              Agenda
+            </div>
+          </div>
+        )}
+
         {timeMarkers.map((marker, index) => {
           const left =
             ((marker.getTime() - timelineBounds.start.getTime()) / totalDuration) * 100;

@@ -114,13 +114,8 @@ export const AddPhaseModal: React.FC<AddPhaseModalProps> = ({
       return;
     }
 
-    const eventStart = new Date(eventStartDate);
-    const eventEnd = new Date(eventEndDate);
-
-    if (start < eventStart || end > eventEnd) {
-      setError('Faza musi mieścić się w ramach czasowych wydarzenia');
-      return;
-    }
+    // Fazy mogą wykraczać poza ramy czasowe wydarzenia (np. załadunek przed eventem)
+    // Główne godziny wydarzenia to tylko agenda/deklaracja dla klienta
 
     try {
       await createPhase({

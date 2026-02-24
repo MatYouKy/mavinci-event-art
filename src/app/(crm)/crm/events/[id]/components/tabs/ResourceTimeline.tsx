@@ -77,6 +77,12 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
         .flatMap(({ phase, assignments }) => {
           const assignment = assignments.find((a: any) => a.employee_id === emp.id);
           if (!assignment) return [];
+
+          // Pomiń koordynatora - chyba że ma dodatkową konkretną rolę zasobową
+          if (assignment.role === 'coordinator' || assignment.role === 'lead') {
+            return [];
+          }
+
           const startTime = assignment.assignment_start || phase.start_time;
           const endTime = assignment.assignment_end || phase.end_time;
           return [{
