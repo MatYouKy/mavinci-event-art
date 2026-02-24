@@ -37,6 +37,7 @@ import EventLogisticsPanel from '@/app/(crm)/crm/events/[id]/components/tabs/Eve
 import OfferWizard from '@/app/(crm)/crm/offers/[id]/components/OfferWizzard/OfferWizard';
 import EventFinancesTab from '@/app/(crm)/crm/events/[id]/components/tabs/EventFinancesTab';
 import EventAgendaTab from '@/app/(crm)/crm/events/[id]/components/tabs/EventAgendaTab';
+import { EventPhasesTimeline } from '@/app/(crm)/crm/events/[id]/components/tabs/EventPhasesTimeline';
 
 import { useDialog } from '@/contexts/DialogContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -745,6 +746,7 @@ export default function EventDetailPageClient({
       <div className="flex gap-2 overflow-x-auto border-b border-[#d3bb73]/10">
         {[
           { id: 'overview', label: 'Przegląd', icon: FileText },
+          { id: 'phases', label: 'Fazy', icon: Clock },
           { id: 'offer', label: 'Oferta', icon: DollarSign },
           { id: 'finances', label: 'Finanse', icon: DollarSign },
           { id: 'contract', label: 'Umowa', icon: FileText },
@@ -1066,6 +1068,14 @@ export default function EventDetailPageClient({
       )}
 
       {activeTab === 'subcontractors' && <EventSubcontractorsPanel eventId={eventId} />}
+
+      {activeTab === 'phases' && event && (
+        <EventPhasesTimeline
+          eventId={event.id}
+          eventStartDate={event.event_date}
+          eventEndDate={event.event_end_date || event.event_date}
+        />
+      )}
 
       {activeTab === 'tasks' && event && (
         <EventTasksBoard eventId={event.id} canManage={canManageTeam} />
