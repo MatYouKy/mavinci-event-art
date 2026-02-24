@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { User, Car, ChevronDown, ChevronRight, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { User, Car, Package, ChevronDown, ChevronRight, Info } from 'lucide-react';
 import { EventPhase } from '@/store/api/eventPhasesApi';
 import {
   useGetPhaseAssignmentsQuery,
   useGetPhaseVehiclesQuery,
+  useGetPhaseEquipmentQuery,
 } from '@/store/api/eventPhasesApi';
 
 interface ResourceTimelineProps {
@@ -15,20 +16,24 @@ interface ResourceTimelineProps {
   zoomLevel: 'days' | 'hours' | 'minutes';
   employees: any[];
   vehicles: any[];
+  equipment: any[];
 }
 
-type ResourceType = 'employee' | 'vehicle';
+type ResourceType = 'employee' | 'vehicle' | 'equipment';
 
 interface ResourceRow {
   id: string;
   type: ResourceType;
   name: string;
   avatar_url?: string;
+  category?: string;
   assignments: {
     phase: EventPhase;
     start_time: string;
     end_time: string;
     role?: string;
+    quantity?: number;
+    isFullRange?: boolean;
   }[];
 }
 
@@ -38,9 +43,11 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   zoomLevel,
   employees,
   vehicles,
+  equipment,
 }) => {
   const [expandedResources, setExpandedResources] = useState<Set<string>>(new Set());
   const [rowHeight, setRowHeight] = useState<'compact' | 'normal' | 'expanded'>('normal');
+  const [showEquipmentDetails, setShowEquipmentDetails] = useState<string | null>(null);
 
   const totalDuration = timelineBounds.end.getTime() - timelineBounds.start.getTime();
 
@@ -48,8 +55,20 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   const phaseAssignments = phases.map(phase => {
     const { data: assignments = [] } = useGetPhaseAssignmentsQuery(phase.id);
     const { data: vehicleAssignments = [] } = useGetPhaseVehiclesQuery(phase.id);
-    return { phase, assignments, vehicleAssignments };
+    const { data: equipmentAssignments = [] } = useGetPhaseEquipmentQuery(phase.id);
+    return { phase, assignments, vehicleAssignments, equipmentAssignments };
   });
+
+  // Sprawdź czy przypisanie to full range
+  const isFullRangeAssignment = (startTime: string, endTime: string) => {
+    const start = new Date(startTime).getTime();
+    const end = new Date(endTime).getTime();
+    const eventStart = timelineBounds.start.getTime();
+    const eventEnd = timelineBounds.end.getTime();
+
+    const tolerance = 60 * 1000; // 1 minuta tolerancji
+    return Math.abs(start - eventStart) < tolerance && Math.abs(end - eventEnd) < tolerance;
+  };
 
   // Stwórz wiersze dla pracowników
   const employeeRows: ResourceRow[] = useMemo(() => {
@@ -58,11 +77,14 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
         .flatMap(({ phase, assignments }) => {
           const assignment = assignments.find((a: any) => a.employee_id === emp.id);
           if (!assignment) return [];
+          const startTime = assignment.assignment_start || phase.start_time;
+          const endTime = assignment.assignment_end || phase.end_time;
           return [{
             phase,
-            start_time: assignment.assignment_start || phase.start_time,
-            end_time: assignment.assignment_end || phase.end_time,
+            start_time: startTime,
+            end_time: endTime,
             role: assignment.role,
+            isFullRange: isFullRangeAssignment(startTime, endTime),
           }];
         })
         .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
@@ -85,10 +107,13 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
         .flatMap(({ phase, vehicleAssignments }) => {
           const assignment = vehicleAssignments.find((v: any) => v.vehicle_id === vehicle.id);
           if (!assignment) return [];
+          const startTime = assignment.assigned_start || phase.start_time;
+          const endTime = assignment.assigned_end || phase.end_time;
           return [{
             phase,
-            start_time: assignment.assigned_start || phase.start_time,
-            end_time: assignment.assigned_end || phase.end_time,
+            start_time: startTime,
+            end_time: endTime,
+            isFullRange: isFullRangeAssignment(startTime, endTime),
           }];
         })
         .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
@@ -102,9 +127,53 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
     });
   }, [vehicles, phaseAssignments]);
 
+  // Stwórz wiersze dla sprzętu
+  const equipmentRows: ResourceRow[] = useMemo(() => {
+    const equipmentMap = new Map<string, ResourceRow>();
+
+    equipment.forEach((item: any) => {
+      const equipmentItem = item.equipment_items || item;
+      const itemId = equipmentItem.id;
+
+      if (!equipmentMap.has(itemId)) {
+        equipmentMap.set(itemId, {
+          id: itemId,
+          type: 'equipment' as ResourceType,
+          name: equipmentItem.name || 'Bez nazwy',
+          category: equipmentItem.equipment_categories?.name,
+          assignments: [],
+        });
+      }
+
+      // Dodaj przypisania z faz
+      phaseAssignments.forEach(({ phase, equipmentAssignments }) => {
+        const assignment = equipmentAssignments.find((e: any) =>
+          e.equipment_item_id === itemId || e.kit_id === itemId
+        );
+        if (assignment) {
+          const row = equipmentMap.get(itemId)!;
+          const startTime = phase.start_time;
+          const endTime = phase.end_time;
+          row.assignments.push({
+            phase,
+            start_time: startTime,
+            end_time: endTime,
+            quantity: assignment.quantity,
+            isFullRange: isFullRangeAssignment(startTime, endTime),
+          });
+        }
+      });
+    });
+
+    return Array.from(equipmentMap.values())
+      .filter(row => row.assignments.length > 0)
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [equipment, phaseAssignments]);
+
   // Filtruj tylko te zasoby, które mają przypisania
   const activeEmployees = employeeRows.filter(row => row.assignments.length > 0);
   const activeVehicles = vehicleRows.filter(row => row.assignments.length > 0);
+  const activeEquipment = equipmentRows;
 
   const getRowHeightPx = () => {
     switch (rowHeight) {
@@ -148,14 +217,20 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
 
   const renderResourceRow = (resource: ResourceRow, index: number) => {
     const isExpanded = expandedResources.has(resource.id);
-    const Icon = resource.type === 'employee' ? User : Car;
+
+    let Icon = Package;
+    if (resource.type === 'employee') Icon = User;
+    if (resource.type === 'vehicle') Icon = Car;
+
+    // Sprawdź czy wszystkie przypisania to full range
+    const allFullRange = resource.assignments.every(a => a.isFullRange);
 
     return (
       <div key={resource.id} className="relative border-b border-[#d3bb73]/10">
         {/* Resource Label */}
         <div
           className="flex items-center gap-2 border-r border-[#d3bb73]/10 bg-[#1c1f33]/50 px-3 transition-colors hover:bg-[#1c1f33]/80"
-          style={{ height: `${heightPx}px` }}
+          style={{ height: `${heightPx}px`, width: '280px', position: 'absolute', left: 0, zIndex: 10 }}
         >
           <button
             onClick={() => toggleExpand(resource.id)}
@@ -171,15 +246,37 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
             <Icon className="h-4 w-4 text-[#d3bb73]" />
           </div>
           <div className="flex-1 overflow-hidden">
-            <p className="truncate text-sm font-medium text-[#e5e4e2]">{resource.name}</p>
-            <p className="text-xs text-[#e5e4e2]/50">
-              {resource.assignments.length} {resource.assignments.length === 1 ? 'przypisanie' : 'przypisań'}
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="truncate text-sm font-medium text-[#e5e4e2]">{resource.name}</p>
+              {allFullRange && resource.assignments.length === 1 && (
+                <span className="rounded bg-green-500/20 px-1.5 py-0.5 text-[10px] font-medium text-green-400">
+                  Full
+                </span>
+              )}
+            </div>
+            {resource.category && (
+              <p className="truncate text-xs text-[#e5e4e2]/50">{resource.category}</p>
+            )}
+            {resource.type === 'equipment' && resource.assignments.length > 0 && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowEquipmentDetails(showEquipmentDetails === resource.id ? null : resource.id);
+                }}
+                className="mt-1 flex items-center gap-1 text-xs text-[#d3bb73] hover:underline"
+              >
+                <Info className="h-3 w-3" />
+                <span>Zobacz detale</span>
+              </button>
+            )}
           </div>
         </div>
 
         {/* Timeline Row */}
-        <div className="absolute left-0 right-0 top-0" style={{ height: `${heightPx}px`, paddingLeft: '240px' }}>
+        <div
+          className="relative"
+          style={{ height: `${heightPx}px`, paddingLeft: '280px' }}
+        >
           {resource.assignments.map((assignment, idx) => {
             const position = getAssignmentPosition(assignment.start_time, assignment.end_time);
             const phaseColor = assignment.phase.color || assignment.phase.phase_type?.color || '#3b82f6';
@@ -187,21 +284,24 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
             return (
               <div
                 key={idx}
-                className="absolute flex items-center rounded border-l-4 px-2 shadow"
+                className="absolute flex items-center rounded border-l-4 px-2 shadow transition-all hover:shadow-lg"
                 style={{
                   top: '4px',
                   bottom: '4px',
                   left: position.left,
                   width: position.width,
-                  backgroundColor: `${phaseColor}30`,
+                  backgroundColor: assignment.isFullRange ? `${phaseColor}20` : `${phaseColor}30`,
                   borderLeftColor: phaseColor,
+                  borderLeftWidth: assignment.isFullRange ? '2px' : '4px',
                 }}
               >
                 <div className="flex-1 overflow-hidden">
-                  <p className="truncate text-xs font-semibold text-[#e5e4e2]">
-                    {assignment.phase.name}
-                  </p>
-                  {isExpanded && (
+                  {!assignment.isFullRange && (
+                    <p className="truncate text-xs font-semibold text-[#e5e4e2]">
+                      {assignment.phase.name}
+                    </p>
+                  )}
+                  {isExpanded && !assignment.isFullRange && (
                     <p className="truncate text-xs text-[#e5e4e2]/70">
                       {formatTime(assignment.start_time)} - {formatTime(assignment.end_time)}
                     </p>
@@ -209,32 +309,59 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
                   {assignment.role && isExpanded && (
                     <p className="truncate text-xs text-[#e5e4e2]/50">{assignment.role}</p>
                   )}
+                  {assignment.quantity && assignment.quantity > 1 && (
+                    <span className="ml-1 rounded bg-[#d3bb73]/30 px-1.5 py-0.5 text-[10px] font-bold text-[#d3bb73]">
+                      x{assignment.quantity}
+                    </span>
+                  )}
                 </div>
               </div>
             );
           })}
         </div>
+
+        {/* Equipment Details Modal */}
+        {showEquipmentDetails === resource.id && resource.type === 'equipment' && (
+          <div className="absolute left-[280px] top-full z-50 mt-1 w-80 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-4 shadow-xl">
+            <h4 className="mb-2 text-sm font-semibold text-[#e5e4e2]">Zablokowany w fazach:</h4>
+            <ul className="space-y-2">
+              {resource.assignments.map((assignment, idx) => (
+                <li key={idx} className="text-xs text-[#e5e4e2]/70">
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="h-2 w-2 rounded-full"
+                      style={{ backgroundColor: assignment.phase.color || '#3b82f6' }}
+                    />
+                    <span className="font-medium">{assignment.phase.name}</span>
+                  </div>
+                  <div className="ml-4 mt-1 text-[#e5e4e2]/50">
+                    {formatTime(assignment.start_time)} - {formatTime(assignment.end_time)}
+                    {assignment.quantity && assignment.quantity > 1 && (
+                      <span className="ml-2 text-[#d3bb73]">Ilość: {assignment.quantity}</span>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     );
   };
 
-  if (activeEmployees.length === 0 && activeVehicles.length === 0) {
-    return (
-      <div className="flex h-40 items-center justify-center">
-        <p className="text-sm text-[#e5e4e2]/50">
-          Brak przypisanych zasobów do faz
-        </p>
-      </div>
-    );
+  if (activeEmployees.length === 0 && activeVehicles.length === 0 && activeEquipment.length === 0) {
+    return null;
   }
 
   return (
     <div className="relative">
       {/* Controls */}
-      <div className="mb-4 flex items-center justify-between border-b border-[#d3bb73]/10 pb-3">
-        <h3 className="text-sm font-semibold text-[#e5e4e2]">Harmonogram Zasobów</h3>
+      <div className="mb-3 flex items-center justify-between px-6">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-[#e5e4e2]/70">
+          Zasoby Wydarzenia
+        </h3>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-[#e5e4e2]/50">Wysokość wierszy:</span>
+          <span className="text-xs text-[#e5e4e2]/50">Wysokość:</span>
           <div className="flex gap-1 rounded-lg bg-[#1c1f33] p-1">
             <button
               onClick={() => setRowHeight('compact')}
@@ -244,7 +371,7 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
                   : 'text-[#e5e4e2]/70 hover:bg-[#d3bb73]/20'
               }`}
             >
-              Kompaktowy
+              S
             </button>
             <button
               onClick={() => setRowHeight('normal')}
@@ -254,7 +381,7 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
                   : 'text-[#e5e4e2]/70 hover:bg-[#d3bb73]/20'
               }`}
             >
-              Normalny
+              M
             </button>
             <button
               onClick={() => setRowHeight('expanded')}
@@ -264,52 +391,23 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
                   : 'text-[#e5e4e2]/70 hover:bg-[#d3bb73]/20'
               }`}
             >
-              Rozszerzony
+              L
             </button>
           </div>
         </div>
       </div>
 
-      {/* Timeline Grid */}
-      <div className="relative" style={{ paddingLeft: '240px', minHeight: '200px' }}>
-        {/* Grid Lines (aligned with main timeline) */}
-        <div className="absolute inset-0" style={{ left: '240px' }}>
-          {Array.from({ length: 24 }, (_, i) => (
-            <div
-              key={i}
-              className="absolute h-full border-l border-[#d3bb73]/5"
-              style={{ left: `${(i / 24) * 100}%` }}
-            />
-          ))}
-        </div>
-      </div>
-
       {/* Resources */}
       <div className="relative">
-        {/* Employees Section */}
-        {activeEmployees.length > 0 && (
-          <div className="mb-4">
-            <div className="mb-2 flex items-center gap-2 px-3">
-              <User className="h-4 w-4 text-[#d3bb73]" />
-              <span className="text-xs font-semibold uppercase tracking-wide text-[#e5e4e2]/70">
-                Pracownicy ({activeEmployees.length})
-              </span>
-            </div>
-            {activeEmployees.map((employee, index) => renderResourceRow(employee, index))}
-          </div>
-        )}
+        {/* Employees */}
+        {activeEmployees.map((employee, index) => renderResourceRow(employee, index))}
 
-        {/* Vehicles Section */}
-        {activeVehicles.length > 0 && (
-          <div>
-            <div className="mb-2 flex items-center gap-2 px-3">
-              <Car className="h-4 w-4 text-[#d3bb73]" />
-              <span className="text-xs font-semibold uppercase tracking-wide text-[#e5e4e2]/70">
-                Pojazdy ({activeVehicles.length})
-              </span>
-            </div>
-            {activeVehicles.map((vehicle, index) => renderResourceRow(vehicle, index))}
-          </div>
+        {/* Vehicles */}
+        {activeVehicles.map((vehicle, index) => renderResourceRow(vehicle, index + activeEmployees.length))}
+
+        {/* Equipment */}
+        {activeEquipment.map((equip, index) =>
+          renderResourceRow(equip, index + activeEmployees.length + activeVehicles.length)
         )}
       </div>
     </div>

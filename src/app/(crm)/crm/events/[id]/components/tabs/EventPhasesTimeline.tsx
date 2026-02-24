@@ -25,6 +25,7 @@ import { useDialog } from '@/contexts/DialogContext';
 import {
   useGetEventEmployeesQuery,
   useGetEventVehiclesQuery,
+  useGetEventEquipmentQuery,
 } from '../../../store/api/eventsApi';
 
 interface EventPhasesTimelineProps {
@@ -44,6 +45,7 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
   const { data: phases = [], isLoading } = useGetEventPhasesQuery(eventId);
   const { data: eventEmployees = [] } = useGetEventEmployeesQuery(eventId, { skip: !eventId });
   const { data: eventVehicles = [] } = useGetEventVehiclesQuery(eventId, { skip: !eventId });
+  const { data: eventEquipment = [] } = useGetEventEquipmentQuery(eventId, { skip: !eventId });
   const [updatePhase] = useUpdatePhaseMutation();
   const [deletePhase] = useDeletePhaseMutation();
   const { showSnackbar } = useSnackbar();
@@ -329,7 +331,7 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
           </div>
 
           {/* Resource Timeline */}
-          <div className="border-t-2 border-[#d3bb73]/20 pt-6">
+          <div className="mt-4">
             <ResourceTimeline
               eventId={eventId}
               phases={displayPhases}
@@ -337,6 +339,7 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
               zoomLevel={zoomLevel}
               employees={employees}
               vehicles={eventVehicles}
+              equipment={eventEquipment}
             />
           </div>
         </div>
