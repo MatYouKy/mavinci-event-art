@@ -266,6 +266,7 @@ export default function EventDetailPageClient({
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [activeTab, setActiveTab] = useState<
     | 'overview'
+    | 'phases'
     | 'equipment'
     | 'team'
     | 'files'
