@@ -8,11 +8,7 @@ import {
   useGetPhaseEquipmentQuery,
   useGetPhaseVehiclesQuery,
 } from '@/store/api/eventPhasesApi';
-import {
-  useGetEventEquipmentQuery,
-  useGetEventEmployeesQuery,
-  useGetEventVehiclesQuery,
-} from '../../store/api/eventsApi';
+import { useGetEventEmployeesQuery, useGetEventEquipmentQuery, useGetEventVehiclesQuery } from '../../../store/api/eventsApi';
 
 interface PhaseResourcesPanelProps {
   phase: EventPhase;
