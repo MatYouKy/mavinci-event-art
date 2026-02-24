@@ -8,9 +8,11 @@ import {
   useGetPhaseEquipmentQuery,
   useGetPhaseVehiclesQuery,
 } from '@/store/api/eventPhasesApi';
-import { useEventEquipment } from '../../hooks/useEventEquipment';
-import { useEventTeam } from '../../hooks/useEventTeam';
-import { useEventVehicles } from '../../hooks/useEventVehicles';
+import {
+  useGetEventEquipmentQuery,
+  useGetEventEmployeesQuery,
+  useGetEventVehiclesQuery,
+} from '../../store/api/eventsApi';
 
 interface PhaseResourcesPanelProps {
   phase: EventPhase;
@@ -28,9 +30,15 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
   const [currentTab, setCurrentTab] = useState<'employees' | 'equipment' | 'vehicles'>('employees');
 
   // Get all data from event
-  const { eventEquipment, isLoading: equipmentLoading } = useEventEquipment(eventId);
-  const { employees: eventEmployees, isLoading: teamLoading } = useEventTeam(eventId);
-  const { vehicles: eventVehicles, isLoading: vehiclesLoading } = useEventVehicles(eventId);
+  const { data: eventEquipment = [], isLoading: equipmentLoading } = useGetEventEquipmentQuery(eventId, {
+    skip: !eventId,
+  });
+  const { data: eventEmployees = [], isLoading: teamLoading } = useGetEventEmployeesQuery(eventId, {
+    skip: !eventId,
+  });
+  const { data: eventVehicles = [], isLoading: vehiclesLoading } = useGetEventVehiclesQuery(eventId, {
+    skip: !eventId,
+  });
 
   // Get phase-specific assignments
   const { data: phaseAssignments = [] } = useGetPhaseAssignmentsQuery(phase.id);
@@ -40,23 +48,18 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
   // Filter event data to show only items in this phase's timeframe
   const filteredEquipment = useMemo(() => {
     if (!eventEquipment) return [];
-    const phaseStart = new Date(phase.start_time);
-    const phaseEnd = new Date(phase.end_time);
-
-    return eventEquipment.filter(item => {
-      // Show equipment if it overlaps with phase time
-      if (!item.event_date) return false;
-      const itemStart = new Date(item.event_date);
-      const itemEnd = item.event_end_date ? new Date(item.event_end_date) : itemStart;
-
-      return (itemStart <= phaseEnd && itemEnd >= phaseStart);
-    });
-  }, [eventEquipment, phase.start_time, phase.end_time]);
+    // Equipment is assigned to entire event, not specific times
+    // Show all equipment for the event in all phases
+    return eventEquipment;
+  }, [eventEquipment]);
 
   const filteredEmployees = useMemo(() => {
     if (!eventEmployees) return [];
-    // Show all event employees - they can be assigned to specific phases
-    return eventEmployees;
+    // eventEmployees contains employee_assignments with nested employee object
+    // Extract and flatten the employee data
+    return eventEmployees
+      .map((assignment: any) => assignment.employee)
+      .filter((emp: any) => emp); // Filter out any null employees
   }, [eventEmployees]);
 
   const filteredVehicles = useMemo(() => {
@@ -282,27 +285,31 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
                   </div>
                 ) : (
                   <div className="divide-y divide-[#d3bb73]/10">
-                    {filteredEquipment.map((item) => (
-                      <div key={item.id} className="p-4">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#d3bb73]/20">
-                            <Package className="h-5 w-5 text-[#d3bb73]" />
-                          </div>
-                          <div className="flex-1">
-                            <p className="text-sm font-medium text-[#e5e4e2]">
-                              {item.equipment_item_name || 'Bez nazwy'}
-                            </p>
-                            <p className="text-xs text-[#e5e4e2]/50">
-                              {item.event_date && formatTime(item.event_date)}
-                              {item.event_end_date && ` - ${formatTime(item.event_end_date)}`}
-                            </p>
-                            {item.quantity && (
-                              <p className="text-xs text-[#e5e4e2]/50">Ilość: {item.quantity}</p>
-                            )}
+                    {filteredEquipment.map((item) => {
+                      const itemName = item.equipment?.name || item.kit?.name || 'Bez nazwy';
+                      const itemType = item.equipment_id ? 'Sprzęt' : 'Zestaw';
+
+                      return (
+                        <div key={item.id} className="p-4">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#d3bb73]/20">
+                              <Package className="h-5 w-5 text-[#d3bb73]" />
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-[#e5e4e2]">
+                                {itemName}
+                              </p>
+                              <p className="text-xs text-[#e5e4e2]/50">
+                                {itemType} • Ilość: {item.quantity || 1}
+                              </p>
+                              {item.notes && (
+                                <p className="text-xs text-[#e5e4e2]/50">{item.notes}</p>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -332,29 +339,36 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
                   </div>
                 ) : (
                   <div className="divide-y divide-[#d3bb73]/10">
-                    {filteredVehicles.map((vehicle) => (
-                      <div key={vehicle.id} className="p-4">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#d3bb73]/20">
-                            <Car className="h-5 w-5 text-[#d3bb73]" />
-                          </div>
-                          <div className="flex-1">
-                            <p className="text-sm font-medium text-[#e5e4e2]">
-                              {vehicle.vehicle_name || 'Bez nazwy'}
-                            </p>
-                            <p className="text-xs text-[#e5e4e2]/50">
-                              {vehicle.assigned_start && formatTime(vehicle.assigned_start)}
-                              {vehicle.assigned_end && ` - ${formatTime(vehicle.assigned_end)}`}
-                            </p>
-                            {vehicle.driver_name && (
-                              <p className="text-xs text-[#e5e4e2]/50">
-                                Kierowca: {vehicle.driver_name}
+                    {filteredVehicles.map((vehicleAssignment) => {
+                      const vehicle = vehicleAssignment.vehicle;
+                      const driver = vehicleAssignment.driver;
+                      const vehicleName = vehicle?.name || vehicle?.registration_number || 'Bez nazwy';
+                      const driverName = driver ? `${driver.name} ${driver.surname}` : null;
+
+                      return (
+                        <div key={vehicleAssignment.id} className="p-4">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#d3bb73]/20">
+                              <Car className="h-5 w-5 text-[#d3bb73]" />
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-[#e5e4e2]">
+                                {vehicleName}
                               </p>
-                            )}
+                              <p className="text-xs text-[#e5e4e2]/50">
+                                {vehicleAssignment.assigned_start && formatTime(vehicleAssignment.assigned_start)}
+                                {vehicleAssignment.assigned_end && ` - ${formatTime(vehicleAssignment.assigned_end)}`}
+                              </p>
+                              {driverName && (
+                                <p className="text-xs text-[#e5e4e2]/50">
+                                  Kierowca: {driverName}
+                                </p>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
