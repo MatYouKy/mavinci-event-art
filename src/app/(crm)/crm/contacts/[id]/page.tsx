@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -1297,7 +1298,7 @@ export default function OrganizationDetailPage() {
                 </div>
 
                 <div>
-                  <label className="mb-1 block flex items-center space-x-1 text-sm font-medium text-gray-400">
+                  <label className="mb-1 flex items-center space-x-1 text-sm font-medium text-gray-400">
                     <Mail className="h-4 w-4" />
                     <span>Email</span>
                   </label>
@@ -1314,7 +1315,7 @@ export default function OrganizationDetailPage() {
                 </div>
 
                 <div>
-                  <label className="mb-1 block flex items-center space-x-1 text-sm font-medium text-gray-400">
+                  <label className="mb-1 flex items-center space-x-1 text-sm font-medium text-gray-400">
                     <Phone className="h-4 w-4" />
                     <span>Telefon</span>
                   </label>
@@ -1331,7 +1332,7 @@ export default function OrganizationDetailPage() {
                 </div>
 
                 <div>
-                  <label className="mb-1 block flex items-center space-x-1 text-sm font-medium text-gray-400">
+                  <label className="mb-1 flex items-center space-x-1 text-sm font-medium text-gray-400">
                     <Globe className="h-4 w-4" />
                     <span>Strona www</span>
                   </label>
@@ -1502,7 +1503,7 @@ export default function OrganizationDetailPage() {
                   </div>
 
                   <div className="md:col-span-2">
-                    <label className="mb-1 block flex items-center space-x-1 text-sm font-medium text-gray-400">
+                    <label className="mb-1 flex items-center space-x-1 text-sm font-medium text-gray-400">
                       <CreditCard className="h-4 w-4" />
                       <span>Numer konta bankowego</span>
                     </label>
