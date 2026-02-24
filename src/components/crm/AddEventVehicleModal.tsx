@@ -14,10 +14,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import {
-  utcToLocalDatetimeString,
-  localDatetimeStringToUTC,
-} from '@/lib/utils/dateTimeUtils';
+import { utcToLocalDatetimeString, localDatetimeStringToUTC } from '@/lib/utils/dateTimeUtils';
 
 interface AddEventVehicleModalProps {
   eventId: string;
@@ -194,7 +191,8 @@ export default function AddEventVehicleModal({
         external_trailer_name: data.external_trailer_name || '',
         external_trailer_company: data.external_trailer_company || '',
         external_trailer_rental_cost: data.external_trailer_rental_cost?.toString() || '',
-        external_trailer_return_date: utcToLocalDatetimeString(data.external_trailer_return_date) || '',
+        external_trailer_return_date:
+          utcToLocalDatetimeString(data.external_trailer_return_date) || '',
         external_trailer_return_location: data.external_trailer_return_location || '',
         external_trailer_notes: data.external_trailer_notes || '',
       });
@@ -206,8 +204,6 @@ export default function AddEventVehicleModal({
 
   const fetchEmployees = async () => {
     try {
-      console.log('fetchEmployees called', { vehicle_id: formData.vehicle_id, isExternal });
-
       // Pobierz kierowców już przypisanych do INNYCH pojazdów w tym wydarzeniu
       let query = supabase
         .from('event_vehicles')
@@ -223,11 +219,9 @@ export default function AddEventVehicleModal({
       const { data: assignedDrivers } = await query;
 
       const assignedDriverIds = assignedDrivers?.map((v) => v.driver_id) || [];
-      console.log('Already assigned drivers:', assignedDriverIds);
 
       // Jeśli nie wybrano pojazdu lub jest zewnętrzny, nie pokazuj żadnych kierowców
       if (!formData.vehicle_id || isExternal) {
-        console.log('No vehicle selected or external, clearing employees');
         setEmployees([]);
         return;
       }
@@ -240,11 +234,8 @@ export default function AddEventVehicleModal({
 
       if (reqError) throw reqError;
 
-      console.log('Vehicle requirements:', requirements);
-
       if (!requirements || requirements.length === 0) {
         // Pojazd nie ma wymagań - pokaż wszystkich aktywnych, którzy nie są zajęci
-        console.log('No requirements for vehicle, showing all active employees');
         const { data, error } = await supabase
           .from('employees')
           .select('id, name, surname')
@@ -254,13 +245,11 @@ export default function AddEventVehicleModal({
         if (error) throw error;
 
         const availableEmployees = (data || []).filter((e) => !assignedDriverIds.includes(e.id));
-        console.log('Available employees (no requirements):', availableEmployees.length);
         setEmployees(availableEmployees);
         return;
       }
 
       const categoryIds = requirements.map((r) => r.license_category_id);
-      console.log('Required license categories:', categoryIds);
 
       // Znajdź pracowników którzy mają WSZYSTKIE wymagane kategorie
       const { data: qualifiedEmployees, error: empError } = await supabase
@@ -274,12 +263,7 @@ export default function AddEventVehicleModal({
         )
         .in('license_category_id', categoryIds);
 
-      if (empError) {
-        console.error('Error fetching qualified employees:', empError);
-        throw empError;
-      }
-
-      console.log('Raw qualified employees data:', qualifiedEmployees?.length, qualifiedEmployees);
+      if (empError) throw empError;
 
       // Grupuj według employee_id i sprawdź czy mają wszystkie wymagane kategorie
       const employeeMap = new Map<
@@ -314,7 +298,6 @@ export default function AddEventVehicleModal({
         .map(({ id, name, surname }) => ({ id, name, surname }))
         .sort((a, b) => a.name.localeCompare(b.name));
 
-      console.log('Qualified employees found:', fullyQualifiedEmployees.length, fullyQualifiedEmployees);
       setEmployees(fullyQualifiedEmployees);
     } catch (error) {
       console.error('Error fetching employees:', error);
@@ -649,8 +632,8 @@ export default function AddEventVehicleModal({
               </select>
               {!isExternal && formData.vehicle_id && employees.length === 0 && (
                 <p className="mt-1 text-xs text-yellow-500">
-                  Brak dostępnych pracowników z wymaganymi prawami jazdy dla tego pojazdu.
-                  Sprawdź wymagania pojazdu w panelu floty.
+                  Brak dostępnych pracowników z wymaganymi prawami jazdy dla tego pojazdu. Sprawdź
+                  wymagania pojazdu w panelu floty.
                 </p>
               )}
             </div>
