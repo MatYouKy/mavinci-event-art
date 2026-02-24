@@ -88,6 +88,7 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
   const handleResizeStart = (phaseId: string, handle: 'start' | 'end', e: React.MouseEvent) => {
     e.stopPropagation();
     setResizing({ phaseId, handle });
+    setHoveredPhase(null); // Zatrzymaj hover podczas resizing
   };
 
   useEffect(() => {
@@ -185,13 +186,17 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
           return (
             <div
               key={phase.id}
-              onMouseEnter={() => setHoveredPhase(phase.id)}
-              onMouseLeave={() => setHoveredPhase(null)}
+              onMouseEnter={() => {
+                if (!resizing.phaseId) setHoveredPhase(phase.id);
+              }}
+              onMouseLeave={() => {
+                if (!resizing.phaseId) setHoveredPhase(null);
+              }}
               onClick={() => onPhaseClick(phase)}
               className={`absolute flex cursor-pointer items-center rounded-lg border-l-4 px-2 transition-all ${
                 isSelected ? 'shadow-xl' : isHovered ? 'shadow-lg' : 'shadow'
               } ${
-                isHovered ? '-translate-y-1' : ''
+                isHovered && !resizing.phaseId ? '-translate-y-1' : ''
               } ${
                 hasConflict
                   ? 'border-red-500 bg-red-500/10'

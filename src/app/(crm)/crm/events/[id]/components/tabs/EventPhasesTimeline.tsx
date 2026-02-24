@@ -18,9 +18,14 @@ import {
 } from '@/store/api/eventPhasesApi';
 import { PhaseTimelineView } from './PhaseTimelineView';
 import { PhaseResourcesPanel } from './PhaseResourcesPanel';
+import { ResourceTimeline } from './ResourceTimeline';
 import { AddPhaseModal } from '../Modals/AddPhaseModal';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
+import {
+  useGetEventEmployeesQuery,
+  useGetEventVehiclesQuery,
+} from '../../../store/api/eventsApi';
 
 interface EventPhasesTimelineProps {
   eventId: string;
@@ -37,6 +42,8 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
   eventEndDate,
 }) => {
   const { data: phases = [], isLoading } = useGetEventPhasesQuery(eventId);
+  const { data: eventEmployees = [] } = useGetEventEmployeesQuery(eventId, { skip: !eventId });
+  const { data: eventVehicles = [] } = useGetEventVehiclesQuery(eventId, { skip: !eventId });
   const [updatePhase] = useUpdatePhaseMutation();
   const [deletePhase] = useDeletePhaseMutation();
   const { showSnackbar } = useSnackbar();
@@ -167,6 +174,13 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
     });
   }, [phases, draftChanges]);
 
+  // Prepare employees data (extract from assignments)
+  const employees = useMemo(() => {
+    return eventEmployees
+      .map((assignment: any) => assignment.employee)
+      .filter((emp: any) => emp);
+  }, [eventEmployees]);
+
   if (isLoading) {
     return (
       <div className="flex h-96 items-center justify-center">
@@ -295,16 +309,36 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
         </div>
       ) : (
         <div className="flex-1 overflow-auto bg-[#0f1119]">
-          <PhaseTimelineView
-            phases={displayPhases}
-            timelineBounds={timelineBounds}
-            zoomLevel={zoomLevel}
-            selectedPhase={selectedPhase}
-            phaseConflicts={phaseConflicts}
-            onPhaseClick={handlePhaseClick}
-            onPhaseResize={handlePhaseResizeDraft}
-            onPhaseDelete={handlePhaseDelete}
-          />
+          {/* Main Phase Timeline */}
+          <div className="mb-6">
+            <div className="mb-2 px-6">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-[#e5e4e2]/70">
+                Fazy Główne
+              </h3>
+            </div>
+            <PhaseTimelineView
+              phases={displayPhases}
+              timelineBounds={timelineBounds}
+              zoomLevel={zoomLevel}
+              selectedPhase={selectedPhase}
+              phaseConflicts={phaseConflicts}
+              onPhaseClick={handlePhaseClick}
+              onPhaseResize={handlePhaseResizeDraft}
+              onPhaseDelete={handlePhaseDelete}
+            />
+          </div>
+
+          {/* Resource Timeline */}
+          <div className="border-t-2 border-[#d3bb73]/20 pt-6">
+            <ResourceTimeline
+              eventId={eventId}
+              phases={displayPhases}
+              timelineBounds={timelineBounds}
+              zoomLevel={zoomLevel}
+              employees={employees}
+              vehicles={eventVehicles}
+            />
+          </div>
         </div>
       )}
 
