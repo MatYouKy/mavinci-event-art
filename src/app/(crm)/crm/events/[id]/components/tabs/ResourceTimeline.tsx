@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useCallback, memo, useRef } from 'react';
+import React, { useState, useMemo, useCallback, memo, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import { Trash2, GripVertical } from 'lucide-react';
 import { EventPhase, useDeletePhaseAssignmentMutation, useUpdatePhaseAssignmentMutation } from '@/store/api/eventPhasesApi';
@@ -51,7 +51,60 @@ const getInitials = (name: string) =>
     .map((s) => s[0]?.toUpperCase())
     .join('');
 
-// Zmemoizowany komponent dla pojedynczego assignment bar
+// ============================================
+// PODKOMPONENTY - zmemoizowane
+// ============================================
+
+// Avatar komponent
+const ResourceAvatar = memo<{ avatar_url?: string; name: string }>(({ avatar_url, name }) => {
+  if (avatar_url) {
+    return (
+      <Image
+        src={avatar_url}
+        alt={name}
+        width={24}
+        height={24}
+        className="h-6 w-6 rounded-full object-cover"
+      />
+    );
+  }
+  return (
+    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#d3bb73]/25 text-[10px] font-bold text-[#d3bb73]">
+      {getInitials(name)}
+    </div>
+  );
+});
+ResourceAvatar.displayName = 'ResourceAvatar';
+
+// Resize Handle komponent
+const ResizeHandle = memo<{
+  side: 'left' | 'right';
+  onMouseDown: (e: React.MouseEvent) => void;
+}>(({ side, onMouseDown }) => (
+  <div
+    className={`${side === 'left' ? 'absolute left-0 top-0 bottom-0' : ''} w-2 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-[#d3bb73]/40 flex items-center justify-center ${side === 'right' ? 'h-full' : ''}`}
+    onMouseDown={onMouseDown}
+  >
+    <GripVertical className="h-3 w-3 text-[#d3bb73]" />
+  </div>
+));
+ResizeHandle.displayName = 'ResizeHandle';
+
+// Delete Button komponent
+const DeleteButton = memo<{ onClick: (e: React.MouseEvent) => void }>(({ onClick }) => (
+  <button
+    onClick={onClick}
+    className="opacity-0 group-hover:opacity-100 transition-opacity rounded p-1 hover:bg-red-500/20 text-red-400"
+    title="Usuń z fazy"
+  >
+    <Trash2 className="h-3 w-3" />
+  </button>
+));
+DeleteButton.displayName = 'DeleteButton';
+
+// ============================================
+// GŁÓWNY ASSIGNMENT BAR
+// ============================================
 interface AssignmentBarProps {
   assignment: Assignment;
   resource: ResourceRow;
@@ -86,6 +139,8 @@ const AssignmentBar = memo<AssignmentBarProps>(({
   containerRef,
 }) => {
   const barRef = useRef<HTMLDivElement>(null);
+  const [dragPreview, setDragPreview] = useState<{ left: string; width: string } | null>(null);
+
   const { dragMode, startDrag } = useTimelineDrag({
     timelineBounds,
     zoomLevel,
@@ -93,24 +148,91 @@ const AssignmentBar = memo<AssignmentBarProps>(({
       if (assignment.id) {
         onTimeUpdate(assignment.id, newStart, newEnd);
       }
+      setDragPreview(null);
     },
   });
 
+  // Live preview podczas drag - sprawdzaj atrybuty data-* na containerze
+  useEffect(() => {
+    if (!dragMode || !containerRef?.current) return;
+
+    const interval = setInterval(() => {
+      const container = containerRef.current;
+      if (!container) return;
+
+      const dragStart = container.getAttribute('data-drag-start');
+      const dragEnd = container.getAttribute('data-drag-end');
+
+      if (dragStart && dragEnd) {
+        const start = new Date(dragStart).getTime();
+        const end = new Date(dragEnd).getTime();
+        const totalDuration = timelineBounds.end.getTime() - timelineBounds.start.getTime();
+        const left = ((start - timelineBounds.start.getTime()) / totalDuration) * 100;
+        const width = ((end - start) / totalDuration) * 100;
+
+        setDragPreview({
+          left: `${Math.max(0, left)}%`,
+          width: `${Math.max(1, width)}%`,
+        });
+      }
+    }, 16); // ~60fps
+
+    return () => clearInterval(interval);
+  }, [dragMode, containerRef, timelineBounds]);
+
   const isHovered = hoveredAssignment === assignment.id;
   const isDragging = !!dragMode;
+  const currentPosition = dragPreview || position;
+
+  // Zwiększona wysokość podczas drag
+  const barHeight = isDragging ? heightPx * 1.2 : heightPx - 12;
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (containerRef?.current) {
+      startDrag(
+        'resize-start',
+        e.clientX,
+        new Date(assignment.start_time),
+        new Date(assignment.end_time),
+        containerRef.current
+      );
+    }
+  }, [startDrag, assignment.start_time, assignment.end_time, containerRef]);
+
+  const handleResizeEnd = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (containerRef?.current) {
+      startDrag(
+        'resize-end',
+        e.clientX,
+        new Date(assignment.start_time),
+        new Date(assignment.end_time),
+        containerRef.current
+      );
+    }
+  }, [startDrag, assignment.start_time, assignment.end_time, containerRef]);
+
+  const handleDelete = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onDelete(assignment.id!, assignment.phaseId!);
+  }, [onDelete, assignment.id, assignment.phaseId]);
 
   return (
     <div
       ref={barRef}
       className="group absolute flex items-center justify-between rounded border-l-4 px-3 shadow-sm transition-all hover:shadow-lg cursor-pointer"
       style={{
-        top: '6px',
-        bottom: '6px',
-        left: position.left,
-        width: position.width,
-        backgroundColor: `${phaseColor}25`,
+        top: `${(heightPx - barHeight) / 2}px`,
+        height: `${barHeight}px`,
+        left: currentPosition.left,
+        width: currentPosition.width,
+        backgroundColor: isDragging ? `${phaseColor}40` : `${phaseColor}25`,
         borderLeftColor: phaseColor,
-        opacity: isDragging ? 0.7 : 1,
+        opacity: isDragging ? 0.9 : 1,
+        transform: isDragging ? 'scale(1.02)' : 'scale(1)',
+        zIndex: isDragging ? 100 : 'auto',
+        boxShadow: isDragging ? '0 4px 12px rgba(211, 187, 115, 0.3)' : undefined,
       }}
       title={`${resource.name}\n${formatTime(assignment.start_time)} - ${formatTime(
         assignment.end_time,
@@ -120,37 +242,11 @@ const AssignmentBar = memo<AssignmentBarProps>(({
     >
       {/* Left resize handle - tylko dla pracowników */}
       {isEmployee && assignment.phaseId && containerRef?.current && (
-        <div
-          className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-[#d3bb73]/40 flex items-center justify-center"
-          onMouseDown={(e) => {
-            e.stopPropagation();
-            startDrag(
-              'resize-start',
-              e.clientX,
-              new Date(assignment.start_time),
-              new Date(assignment.end_time),
-              containerRef.current!
-            );
-          }}
-        >
-          <GripVertical className="h-3 w-3 text-[#d3bb73]" />
-        </div>
+        <ResizeHandle side="left" onMouseDown={handleResizeStart} />
       )}
 
       <div className="flex items-center gap-2 overflow-hidden flex-1">
-        {resource.avatar_url ? (
-          <Image
-            src={resource.avatar_url}
-            alt={resource.name}
-            width={24}
-            height={24}
-            className="h-6 w-6 rounded-full object-cover"
-          />
-        ) : (
-          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#d3bb73]/25 text-[10px] font-bold text-[#d3bb73]">
-            {getInitials(resource.name)}
-          </div>
-        )}
+        <ResourceAvatar avatar_url={resource.avatar_url} name={resource.name} />
 
         <span className="truncate text-xs font-semibold text-[#e5e4e2]">
           {resource.name}
@@ -170,32 +266,8 @@ const AssignmentBar = memo<AssignmentBarProps>(({
       {/* Right resize handle + Delete button */}
       {isEmployee && assignment.phaseId && containerRef?.current && (
         <div className="flex items-center gap-1">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete(assignment.id!, assignment.phaseId);
-            }}
-            className="opacity-0 group-hover:opacity-100 transition-opacity rounded p-1 hover:bg-red-500/20 text-red-400"
-            title="Usuń z fazy"
-          >
-            <Trash2 className="h-3 w-3" />
-          </button>
-
-          <div
-            className="w-2 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-[#d3bb73]/40 flex items-center justify-center h-full"
-            onMouseDown={(e) => {
-              e.stopPropagation();
-              startDrag(
-                'resize-end',
-                e.clientX,
-                new Date(assignment.start_time),
-                new Date(assignment.end_time),
-                containerRef.current!
-              );
-            }}
-          >
-            <GripVertical className="h-3 w-3 text-[#d3bb73]" />
-          </div>
+          <DeleteButton onClick={handleDelete} />
+          <ResizeHandle side="right" onMouseDown={handleResizeEnd} />
         </div>
       )}
     </div>
