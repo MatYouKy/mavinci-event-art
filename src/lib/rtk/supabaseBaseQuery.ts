@@ -19,7 +19,19 @@ export const supabaseBaseQuery =
         case "employees.list": {
           const q = supabase
             .from("employees")
-            .select("*")
+            .select(`
+              *,
+              employee_skills(
+                id,
+                skill_id,
+                proficiency,
+                skills(
+                  id,
+                  name,
+                  description
+                )
+              )
+            `)
             .order("order_index", { ascending: true })
             .order("created_at", { ascending: false });
 

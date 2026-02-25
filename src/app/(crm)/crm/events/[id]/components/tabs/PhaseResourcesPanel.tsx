@@ -388,7 +388,6 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
         onClose={() => setShowAddEmployeeModal(false)}
         phase={phase}
         eventId={eventId}
-        availableEmployees={filteredEmployees}
         eventOffers={eventOffers}
       />
     </div>

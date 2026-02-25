@@ -8,6 +8,7 @@ import {
   useLazyGetEmployeeConflictsQuery,
 } from '@/store/api/eventPhasesApi';
 import { useGetEventPhasesQuery } from '@/store/api/eventPhasesApi';
+import { useGetEmployeesQuery } from '@/app/(crm)/crm/employees/store/employeeApi';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
 interface AddPhaseAssignmentModalProps {
@@ -15,7 +16,6 @@ interface AddPhaseAssignmentModalProps {
   onClose: () => void;
   phase: EventPhase;
   eventId: string;
-  availableEmployees: any[];
   eventOffers?: any[]; // Oferty z produktami
 }
 
@@ -31,13 +31,13 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
   onClose,
   phase,
   eventId,
-  availableEmployees,
   eventOffers = [],
 }) => {
   const [createAssignment, { isLoading }] = useCreatePhaseAssignmentMutation();
   const [checkConflicts, { data: conflicts, isFetching: checkingConflicts }] =
     useLazyGetEmployeeConflictsQuery();
   const { data: allPhases = [] } = useGetEventPhasesQuery(eventId);
+  const { data: allEmployees = [], isLoading: employeesLoading } = useGetEmployeesQuery({ activeOnly: true });
   const { showSnackbar } = useSnackbar();
 
   // State
@@ -49,6 +49,8 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
 
   // Oblicz sugerowanych pracowników na podstawie wymagań w produktach
   const suggestedEmployees = useMemo<SuggestedEmployee[]>(() => {
+    if (!allEmployees.length) return [];
+
     const suggestions: SuggestedEmployee[] = [];
 
     // Pobierz wymagane umiejętności z produktów w ofertach
@@ -67,9 +69,11 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
     });
 
     // Oceń każdego pracownika
-    availableEmployees.forEach(emp => {
-      const empSkills = emp.employee_skills || emp.skills || [];
-      const empSkillNames = empSkills.map((s: any) => s.skill?.name || s.name).filter(Boolean);
+    allEmployees.forEach(emp => {
+      const empSkills = emp.employee_skills || [];
+      const empSkillNames = empSkills
+        .map((es: any) => es.skills?.name || es.skill?.name)
+        .filter(Boolean);
 
       // Oblicz match score
       let matchScore = 0;
@@ -101,19 +105,19 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
 
     // Sortuj po score
     return suggestions.sort((a, b) => b.matchScore - a.matchScore).slice(0, 5);
-  }, [availableEmployees, eventOffers]);
+  }, [allEmployees, eventOffers]);
 
   // Filtruj pracowników przez wyszukiwarkę
   const filteredEmployees = useMemo(() => {
-    if (!searchQuery) return availableEmployees;
+    if (!searchQuery) return allEmployees;
 
     const query = searchQuery.toLowerCase();
-    return availableEmployees.filter(emp => {
+    return allEmployees.filter(emp => {
       const fullName = `${emp.name} ${emp.surname}`.toLowerCase();
       const email = (emp.email || '').toLowerCase();
       return fullName.includes(query) || email.includes(query);
     });
-  }, [availableEmployees, searchQuery]);
+  }, [allEmployees, searchQuery]);
 
   // Inne fazy do przypisania
   const otherPhases = useMemo(() => {
@@ -223,7 +227,14 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
-          {!selectedEmployee ? (
+          {employeesLoading ? (
+            <div className="flex h-64 items-center justify-center">
+              <div className="text-center">
+                <div className="mb-2 text-[#d3bb73]">Ładowanie pracowników...</div>
+                <div className="text-sm text-[#e5e4e2]/50">Pobieranie listy z systemu</div>
+              </div>
+            </div>
+          ) : !selectedEmployee ? (
             <>
               {/* Sugerowani pracownicy */}
               {suggestedEmployees.length > 0 && (
@@ -271,21 +282,36 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
 
               {/* Wyszukiwarka */}
               <div>
-                <div className="mb-3 flex items-center gap-2">
-                  <Search className="h-4 w-4 text-[#e5e4e2]/50" />
-                  <h3 className="text-sm font-semibold text-[#e5e4e2]">
-                    {suggestedEmployees.length > 0 ? 'Wszyscy pracownicy' : 'Wybierz pracownika'}
-                  </h3>
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Search className="h-4 w-4 text-[#e5e4e2]/50" />
+                    <h3 className="text-sm font-semibold text-[#e5e4e2]">
+                      {suggestedEmployees.length > 0 ? 'Wszyscy pracownicy' : 'Wybierz pracownika'}
+                    </h3>
+                  </div>
+                  <span className="text-xs text-[#e5e4e2]/50">
+                    {allEmployees.length} {allEmployees.length === 1 ? 'pracownik' : 'pracowników'} w systemie
+                  </span>
                 </div>
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Wyszukaj pracownika..."
+                  placeholder="Wyszukaj pracownika po nazwisku lub e-mailu..."
                   className="mb-3 w-full rounded-lg border border-[#d3bb73]/20 bg-[#0d0f1a] px-4 py-2 text-[#e5e4e2] placeholder-[#e5e4e2]/30 focus:border-[#d3bb73] focus:outline-none"
                 />
+                {searchQuery && (
+                  <div className="mb-2 text-xs text-[#e5e4e2]/50">
+                    Znaleziono: {filteredEmployees.length} {filteredEmployees.length === 1 ? 'pracownik' : filteredEmployees.length < 5 ? 'pracowników' : 'pracowników'}
+                  </div>
+                )}
                 <div className="max-h-64 space-y-2 overflow-y-auto">
-                  {filteredEmployees.map(employee => (
+                  {filteredEmployees.length === 0 ? (
+                    <div className="py-8 text-center text-sm text-[#e5e4e2]/50">
+                      Nie znaleziono pracowników pasujących do wyszukiwania
+                    </div>
+                  ) : (
+                    filteredEmployees.map(employee => (
                     <button
                       key={employee.id}
                       onClick={() => handleEmployeeSelect(employee)}
@@ -311,7 +337,7 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
                         </div>
                       </div>
                     </button>
-                  ))}
+                  )))}
                 </div>
               </div>
             </>
