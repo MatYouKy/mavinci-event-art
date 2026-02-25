@@ -206,7 +206,11 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
           const startTime = assignment.assigned_start || phase.start_time;
           const endTime = assignment.assigned_end || phase.end_time;
           return [{
+            id: assignment.id,
             phase,
+            phaseId: phase.id,
+            resourceId: vehicle.id,
+            resourceType: 'vehicle' as ResourceType,
             start_time: startTime,
             end_time: endTime,
             isFullRange: isFullRangeAssignment(startTime, endTime),
@@ -251,7 +255,11 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
           const startTime = phase.start_time;
           const endTime = phase.end_time;
           row.assignments.push({
+            id: assignment.id,
             phase,
+            phaseId: phase.id,
+            resourceId: itemId,
+            resourceType: 'equipment' as ResourceType,
             start_time: startTime,
             end_time: endTime,
             quantity: assignment.quantity,
@@ -469,7 +477,7 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
     );
   };
 
-  if (activeEmployees.length === 0 && activeVehicles.length === 0 && activeEquipment.length === 0) {
+  if (filteredEmployees.length === 0 && filteredVehicles.length === 0 && filteredEquipment.length === 0) {
     return null;
   }
 
@@ -520,14 +528,14 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
       {/* Resources */}
       <div className="relative">
         {/* Employees */}
-        {activeEmployees.map((employee, index) => renderResourceRow(employee, index))}
+        {filteredEmployees.map((employee, index) => renderResourceRow(employee, index))}
 
         {/* Vehicles */}
-        {activeVehicles.map((vehicle, index) => renderResourceRow(vehicle, index + activeEmployees.length))}
+        {filteredVehicles.map((vehicle, index) => renderResourceRow(vehicle, index + filteredEmployees.length))}
 
         {/* Equipment */}
-        {activeEquipment.map((equip, index) =>
-          renderResourceRow(equip, index + activeEmployees.length + activeVehicles.length)
+        {filteredEquipment.map((equip, index) =>
+          renderResourceRow(equip, index + filteredEmployees.length + filteredVehicles.length)
         )}
       </div>
     </div>
