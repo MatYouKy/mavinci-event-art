@@ -1,15 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import {
-  Plus,
-  Filter,
-  AlertCircle,
-  Clock,
-  ChevronDown,
-  Save,
-  RotateCcw,
-} from 'lucide-react';
+import { Plus, Filter, AlertCircle, Clock, ChevronDown, Save, RotateCcw } from 'lucide-react';
 import {
   useGetEventPhasesQuery,
   useUpdatePhaseMutation,
@@ -60,7 +52,9 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
   const [showEditModal, setShowEditModal] = useState(false);
   const [showResourcePanel, setShowResourcePanel] = useState(false);
   const [showFilterMenu, setShowFilterMenu] = useState(false);
-  const [draftChanges, setDraftChanges] = useState<Record<string, { start_time: string; end_time: string }>>({});
+  const [draftChanges, setDraftChanges] = useState<
+    Record<string, { start_time: string; end_time: string }>
+  >({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [phaseAssignments, setPhaseAssignments] = useState<PhaseAssignmentsData[]>([]);
 
@@ -75,8 +69,8 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
     }
 
     // Znajdź najwcześniejszą i najpóźniejszą fazę
-    const phaseStarts = phases.map(p => new Date(p.start_time).getTime());
-    const phaseEnds = phases.map(p => new Date(p.end_time).getTime());
+    const phaseStarts = phases.map((p) => new Date(p.start_time).getTime());
+    const phaseEnds = phases.map((p) => new Date(p.end_time).getTime());
 
     const earliestPhase = Math.min(...phaseStarts);
     const latestPhase = Math.max(...phaseEnds);
@@ -112,12 +106,12 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
   }, [phases]);
 
   const handlePhaseResizeDraft = (phaseId: string, newStart: Date, newEnd: Date) => {
-    setDraftChanges(prev => ({
+    setDraftChanges((prev) => ({
       ...prev,
       [phaseId]: {
         start_time: newStart.toISOString(),
         end_time: newEnd.toISOString(),
-      }
+      },
     }));
     setHasUnsavedChanges(true);
   };
@@ -128,7 +122,7 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
         updatePhase({
           id: phaseId,
           ...changes,
-        }).unwrap()
+        }).unwrap(),
       );
 
       await Promise.all(promises);
@@ -194,7 +188,7 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
 
   // Merge original phases with draft changes for display
   const displayPhases = useMemo(() => {
-    return phases.map(phase => {
+    return phases.map((phase) => {
       const draft = draftChanges[phase.id];
       if (draft) {
         return { ...phase, ...draft };
@@ -205,9 +199,7 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
 
   // Prepare employees data (extract from assignments)
   const employees = useMemo(() => {
-    return eventEmployees
-      .map((assignment: any) => assignment.employee)
-      .filter((emp: any) => emp);
+    return eventEmployees.map((assignment: any) => assignment.employee).filter((emp: any) => emp);
   }, [eventEmployees]);
 
   if (isLoading) {
@@ -379,7 +371,14 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
       {/* Phase Assignments Loader - pobiera dane w tle */}
       <PhaseAssignmentsLoader
         phases={phases}
-        onAllDataLoaded={setPhaseAssignments}
+        onAllDataLoaded={(next) => {
+          setPhaseAssignments((prev) => {
+            // jeśli loader daje w kółko te same dane, to zatrzymasz re-render
+            const prevStr = JSON.stringify(prev);
+            const nextStr = JSON.stringify(next);
+            return prevStr === nextStr ? prev : next;
+          });
+        }}
       />
 
       {/* Add Phase Modal */}

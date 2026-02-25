@@ -1,7 +1,12 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { EventPhase, useGetPhaseAssignmentsQuery, useGetPhaseVehiclesQuery, useGetPhaseEquipmentQuery } from '@/store/api/eventPhasesApi';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  EventPhase,
+  useGetPhaseAssignmentsQuery,
+  useGetPhaseVehiclesQuery,
+  useGetPhaseEquipmentQuery,
+} from '@/store/api/eventPhasesApi';
 
 export interface PhaseAssignmentsData {
   phase: EventPhase;
@@ -42,33 +47,61 @@ interface PhaseAssignmentsLoaderProps {
  * Helper komponent który pobiera dane dla wszystkich faz.
  * Tworzy osobny komponent dla każdej fazy aby uniknąć błędów React hooks.
  */
-export const PhaseAssignmentsLoader: React.FC<PhaseAssignmentsLoaderProps> = ({ phases, onAllDataLoaded }) => {
+export const PhaseAssignmentsLoader: React.FC<PhaseAssignmentsLoaderProps> = ({
+  phases,
+  onAllDataLoaded,
+}) => {
   const [loadedData, setLoadedData] = useState<Map<string, PhaseAssignmentsData>>(new Map());
 
-  const handlePhaseDataLoaded = (data: PhaseAssignmentsData) => {
-    setLoadedData(prev => {
+  const handlePhaseDataLoaded = useCallback((data: PhaseAssignmentsData) => {
+    setLoadedData((prev) => {
+      const existing = prev.get(data.phase.id);
+
+      // Jeśli nic istotnego nie zmieniło się w tej fazie, nie aktualizuj mapy (nie triggeruj rerendera)
+      if (
+        existing &&
+        existing.assignments.length === data.assignments.length &&
+        existing.vehicleAssignments.length === data.vehicleAssignments.length &&
+        existing.equipmentAssignments.length === data.equipmentAssignments.length
+      ) {
+        return prev;
+      }
+
       const next = new Map(prev);
       next.set(data.phase.id, data);
       return next;
     });
-  };
+  }, []);
 
   // Gdy wszystkie fazy są załadowane, wywołaj callback
+  const lastEmittedKeyRef = useRef<string>('');
+
   useEffect(() => {
-    if (loadedData.size === phases.length && phases.length > 0) {
-      const allData = phases.map(phase => loadedData.get(phase.id)!).filter(Boolean);
-      onAllDataLoaded(allData);
-    }
+    if (phases.length === 0) return;
+    if (loadedData.size !== phases.length) return;
+
+    const allData = phases
+      .map((phase) => loadedData.get(phase.id))
+      .filter(Boolean) as PhaseAssignmentsData[];
+
+    // Tani klucz – oparty o kolejność faz i długości list
+    const emitKey = allData
+      .map(
+        (d) =>
+          `${d.phase.id}:${d.assignments.length}:${d.vehicleAssignments.length}:${d.equipmentAssignments.length}`,
+      )
+      .join('|');
+
+    if (lastEmittedKeyRef.current === emitKey) return;
+    lastEmittedKeyRef.current = emitKey;
+
+    onAllDataLoaded(allData);
   }, [loadedData, phases, onAllDataLoaded]);
 
   return (
     <>
-      {phases.map(phase => (
-        <SinglePhaseLoader
-          key={phase.id}
-          phase={phase}
-          onDataLoaded={handlePhaseDataLoaded}
-        />
+      {phases.map((phase) => (
+        <SinglePhaseLoader key={phase.id} phase={phase} onDataLoaded={handlePhaseDataLoaded} />
       ))}
     </>
   );

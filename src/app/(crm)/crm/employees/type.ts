@@ -1,6 +1,8 @@
 import { ImageMetadata } from '@/lib/supabase/types';
 
 export interface IEmployee {
+  employee_skills: any[];
+  years_experience: number;
   position: any;
   permissions: any;
   id: string;

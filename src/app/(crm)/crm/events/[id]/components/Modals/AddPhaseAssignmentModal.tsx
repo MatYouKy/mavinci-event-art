@@ -10,6 +10,7 @@ import {
 import { useGetEventPhasesQuery } from '@/store/api/eventPhasesApi';
 import { useGetEmployeesQuery } from '@/app/(crm)/crm/employees/store/employeeApi';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import Image from 'next/image';
 
 interface AddPhaseAssignmentModalProps {
   open: boolean;
@@ -37,7 +38,11 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
   const [checkConflicts, { data: conflicts, isFetching: checkingConflicts }] =
     useLazyGetEmployeeConflictsQuery();
   const { data: allPhases = [] } = useGetEventPhasesQuery(eventId);
-  const { data: allEmployees = [], isLoading: employeesLoading } = useGetEmployeesQuery({ activeOnly: true });
+  const { data: allEmployees = [], isLoading: employeesLoading } = useGetEmployeesQuery({
+    activeOnly: true,
+  });
+
+  console.log('allEmployees', allEmployees);
   const { showSnackbar } = useSnackbar();
 
   // State
@@ -55,7 +60,7 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
 
     // Pobierz wymagane umiejętności z produktów w ofertach
     const requiredSkills = new Set<string>();
-    eventOffers.forEach(offer => {
+    eventOffers.forEach((offer) => {
       offer.offer_items?.forEach((item: any) => {
         const product = item.offer_product;
         if (product?.staff_requirements) {
@@ -69,7 +74,7 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
     });
 
     // Oceń każdego pracownika
-    allEmployees.forEach(emp => {
+    allEmployees.forEach((emp) => {
       const empSkills = emp.employee_skills || [];
       const empSkillNames = empSkills
         .map((es: any) => es.skills?.name || es.skill?.name)
@@ -79,7 +84,7 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
       let matchScore = 0;
       const matchedSkills: string[] = [];
 
-      requiredSkills.forEach(reqSkill => {
+      requiredSkills.forEach((reqSkill) => {
         if (empSkillNames.includes(reqSkill)) {
           matchScore += 20;
           matchedSkills.push(reqSkill);
@@ -94,9 +99,10 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
       if (matchScore > 0) {
         suggestions.push({
           employee: emp,
-          reason: matchedSkills.length > 0
-            ? `Umiejętności: ${matchedSkills.join(', ')}`
-            : 'Doświadczony pracownik',
+          reason:
+            matchedSkills.length > 0
+              ? `Umiejętności: ${matchedSkills.join(', ')}`
+              : 'Doświadczony pracownik',
           matchScore,
           requiredSkills: matchedSkills,
         });
@@ -112,7 +118,7 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
     if (!searchQuery) return allEmployees;
 
     const query = searchQuery.toLowerCase();
-    return allEmployees.filter(emp => {
+    return allEmployees.filter((emp) => {
       const fullName = `${emp.name} ${emp.surname}`.toLowerCase();
       const email = (emp.email || '').toLowerCase();
       return fullName.includes(query) || email.includes(query);
@@ -121,7 +127,7 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
 
   // Inne fazy do przypisania
   const otherPhases = useMemo(() => {
-    return allPhases.filter(p => p.id !== phase.id);
+    return allPhases.filter((p) => p.id !== phase.id);
   }, [allPhases, phase.id]);
 
   // Reset po zamknięciu
@@ -156,7 +162,7 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
   };
 
   const handlePhaseToggle = (phaseId: string) => {
-    setSelectedPhases(prev => {
+    setSelectedPhases((prev) => {
       const next = new Set(prev);
       if (next.has(phaseId)) {
         // Nie pozwól usunąć głównej fazy
@@ -177,8 +183,8 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
 
     try {
       // Przypisz do wszystkich wybranych faz
-      const promises = Array.from(selectedPhases).map(phaseId => {
-        const targetPhase = allPhases.find(p => p.id === phaseId);
+      const promises = Array.from(selectedPhases).map((phaseId) => {
+        const targetPhase = allPhases.find((p) => p.id === phaseId);
         if (!targetPhase) return Promise.resolve();
 
         return createAssignment({
@@ -187,6 +193,8 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
           role,
           assignment_start: targetPhase.start_time,
           assignment_end: targetPhase.end_time,
+          phase_work_start: '',
+          phase_work_end: '',
         }).unwrap();
       });
 
@@ -195,7 +203,7 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
       const phaseCount = selectedPhases.size;
       showSnackbar(
         `Pracownik przypisany do ${phaseCount} ${phaseCount === 1 ? 'fazy' : 'faz'}`,
-        'success'
+        'success',
       );
       onClose();
     } catch (err: any) {
@@ -207,7 +215,7 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-3xl max-h-[90vh] overflow-hidden rounded-lg bg-[#1c1f33] shadow-2xl flex flex-col">
+      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-[#1c1f33] shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#d3bb73]/20 px-6 py-4">
           <div className="flex items-center gap-2">
@@ -253,9 +261,11 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
                             {employee.avatar_url ? (
-                              <img
+                              <Image
                                 src={employee.avatar_url}
                                 alt={employee.name}
+                                width={40}
+                                height={40}
                                 className="h-10 w-10 rounded-full object-cover"
                               />
                             ) : (
@@ -290,7 +300,8 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
                     </h3>
                   </div>
                   <span className="text-xs text-[#e5e4e2]/50">
-                    {allEmployees.length} {allEmployees.length === 1 ? 'pracownik' : 'pracowników'} w systemie
+                    {allEmployees.length} {allEmployees.length === 1 ? 'pracownik' : 'pracowników'}{' '}
+                    w systemie
                   </span>
                 </div>
                 <input
@@ -302,7 +313,12 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
                 />
                 {searchQuery && (
                   <div className="mb-2 text-xs text-[#e5e4e2]/50">
-                    Znaleziono: {filteredEmployees.length} {filteredEmployees.length === 1 ? 'pracownik' : filteredEmployees.length < 5 ? 'pracowników' : 'pracowników'}
+                    Znaleziono: {filteredEmployees.length}{' '}
+                    {filteredEmployees.length === 1
+                      ? 'pracownik'
+                      : filteredEmployees.length < 5
+                        ? 'pracowników'
+                        : 'pracowników'}
                   </div>
                 )}
                 <div className="max-h-64 space-y-2 overflow-y-auto">
@@ -311,33 +327,36 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
                       Nie znaleziono pracowników pasujących do wyszukiwania
                     </div>
                   ) : (
-                    filteredEmployees.map(employee => (
-                    <button
-                      key={employee.id}
-                      onClick={() => handleEmployeeSelect(employee)}
-                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0d0f1a] p-3 text-left transition-all hover:border-[#d3bb73] hover:bg-[#d3bb73]/5"
-                    >
-                      <div className="flex items-center gap-3">
-                        {employee.avatar_url ? (
-                          <img
-                            src={employee.avatar_url}
-                            alt={employee.name}
-                            className="h-10 w-10 rounded-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#e5e4e2]/10 text-[#e5e4e2]">
-                            {employee.name?.[0]}
+                    filteredEmployees.map((employee) => (
+                      <button
+                        key={employee.id}
+                        onClick={() => handleEmployeeSelect(employee)}
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0d0f1a] p-3 text-left transition-all hover:border-[#d3bb73] hover:bg-[#d3bb73]/5"
+                      >
+                        <div className="flex items-center gap-3">
+                          {employee.avatar_url ? (
+                            <Image
+                              src={employee.avatar_url}
+                              alt={employee.name}
+                              width={40}
+                              height={40}
+                              className="h-10 w-10 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#e5e4e2]/10 text-[#e5e4e2]">
+                              {employee.name?.[0]}
+                            </div>
+                          )}
+                          <div>
+                            <div className="font-medium text-[#e5e4e2]">
+                              {employee.name} {employee.surname}
+                            </div>
+                            <div className="text-xs text-[#e5e4e2]/50">{employee.email}</div>
                           </div>
-                        )}
-                        <div>
-                          <div className="font-medium text-[#e5e4e2]">
-                            {employee.name} {employee.surname}
-                          </div>
-                          <div className="text-xs text-[#e5e4e2]/50">{employee.email}</div>
                         </div>
-                      </div>
-                    </button>
-                  )))}
+                      </button>
+                    ))
+                  )}
                 </div>
               </div>
             </>
@@ -351,9 +370,11 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     {selectedEmployee.avatar_url ? (
-                      <img
+                      <Image
                         src={selectedEmployee.avatar_url}
                         alt={selectedEmployee.name}
+                        width={48}
+                        height={48}
                         className="h-12 w-12 rounded-full object-cover"
                       />
                     ) : (
@@ -417,12 +438,7 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
                   <div className="space-y-2">
                     {/* Główna faza - zawsze zaznaczona */}
                     <div className="flex items-center gap-2 rounded-lg border border-[#d3bb73] bg-[#d3bb73]/10 px-3 py-2">
-                      <input
-                        type="checkbox"
-                        checked={true}
-                        disabled
-                        className="h-4 w-4"
-                      />
+                      <input type="checkbox" checked={true} disabled className="h-4 w-4" />
                       <div className="flex-1">
                         <div className="text-sm font-medium text-[#e5e4e2]">{phase.name}</div>
                         <div className="text-xs text-[#e5e4e2]/50">
@@ -433,7 +449,7 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
                     </div>
 
                     {/* Inne fazy */}
-                    {otherPhases.map(p => (
+                    {otherPhases.map((p) => (
                       <label
                         key={p.id}
                         className="flex cursor-pointer items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#0d0f1a] px-3 py-2 transition-all hover:border-[#d3bb73] hover:bg-[#d3bb73]/5"
@@ -475,7 +491,9 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
                 disabled={isLoading}
                 className="rounded-lg bg-[#d3bb73] px-6 py-2 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
               >
-                {isLoading ? 'Przypisywanie...' : `Przypisz do ${selectedPhases.size} ${selectedPhases.size === 1 ? 'fazy' : 'faz'}`}
+                {isLoading
+                  ? 'Przypisywanie...'
+                  : `Przypisz do ${selectedPhases.size} ${selectedPhases.size === 1 ? 'fazy' : 'faz'}`}
               </button>
             </div>
           </div>
