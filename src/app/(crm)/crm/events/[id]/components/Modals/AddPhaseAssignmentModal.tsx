@@ -55,6 +55,7 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
   const [selectedEmployee, setSelectedEmployee] = useState<any | null>(null);
   const [selectedPhases, setSelectedPhases] = useState<Set<string>>(new Set([phase.id]));
   const [showPhaseSelector, setShowPhaseSelector] = useState(false);
+  const [assignToAllPhases, setAssignToAllPhases] = useState(false);
   const [role, setRole] = useState('technician');
 
   // Oblicz sugerowanych pracowników na podstawie wymagań w produktach
@@ -141,6 +142,7 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
       setSelectedEmployee(null);
       setSelectedPhases(new Set([phase.id]));
       setShowPhaseSelector(false);
+      setAssignToAllPhases(false);
       setSearchQuery('');
       setRole('technician');
     }
@@ -187,8 +189,13 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
     }
 
     try {
+      // Jeśli "Przypisz do całego wydarzenia", użyj wszystkich faz
+      const phasesToAssign = assignToAllPhases
+        ? allPhases.map(p => p.id)
+        : Array.from(selectedPhases);
+
       // Przypisz do wszystkich wybranych faz
-      const promises = Array.from(selectedPhases).map((phaseId) => {
+      const promises = phasesToAssign.map((phaseId) => {
         const targetPhase = allPhases.find((p) => p.id === phaseId);
         if (!targetPhase) return Promise.resolve();
 
@@ -198,16 +205,18 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
           role,
           assignment_start: targetPhase.start_time,
           assignment_end: targetPhase.end_time,
-          phase_work_start: '',
-          phase_work_end: '',
+          phase_work_start: null,
+          phase_work_end: null,
         }).unwrap();
       });
 
       await Promise.all(promises);
 
-      const phaseCount = selectedPhases.size;
+      const phaseCount = phasesToAssign.length;
       showSnackbar(
-        `Pracownik przypisany do ${phaseCount} ${phaseCount === 1 ? 'fazy' : 'faz'}`,
+        assignToAllPhases
+          ? `Pracownik przypisany do całego wydarzenia (${phaseCount} faz)`
+          : `Pracownik przypisany do ${phaseCount} ${phaseCount === 1 ? 'fazy' : 'faz'}`,
         'success',
       );
       onClose();
@@ -440,7 +449,27 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
                       Przypisz również do innych faz?
                     </h3>
                   </div>
-                  <div className="space-y-2">
+
+                  {/* Checkbox: Przypisz do całego wydarzenia */}
+                  <label className="mb-4 flex cursor-pointer items-center gap-3 rounded-lg border-2 border-[#d3bb73] bg-[#d3bb73]/10 px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={assignToAllPhases}
+                      onChange={(e) => setAssignToAllPhases(e.target.checked)}
+                      className="h-5 w-5 accent-[#d3bb73]"
+                    />
+                    <div className="flex-1">
+                      <div className="text-sm font-bold text-[#e5e4e2]">
+                        Przypisz do całego wydarzenia
+                      </div>
+                      <div className="text-xs text-[#e5e4e2]/60">
+                        Przypisze pracownika automatycznie do wszystkich {allPhases.length} faz
+                      </div>
+                    </div>
+                  </label>
+
+                  {!assignToAllPhases && (
+                    <div className="space-y-2">
                     {/* Główna faza - zawsze zaznaczona */}
                     <div className="flex items-center gap-2 rounded-lg border border-[#d3bb73] bg-[#d3bb73]/10 px-3 py-2">
                       <input type="checkbox" checked={true} disabled className="h-4 w-4" />
@@ -474,7 +503,8 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
                         </div>
                       </label>
                     ))}
-                  </div>
+                    </div>
+                  )}
                 </div>
               )}
             </>
