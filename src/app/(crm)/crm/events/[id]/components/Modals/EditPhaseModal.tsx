@@ -78,7 +78,7 @@ export const EditPhaseModal: React.FC<EditPhaseModalProps> = ({ open, onClose, p
   if (!open || !phase) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-lg rounded-lg bg-[#1c1f33] shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#d3bb73]/20 px-6 py-4">

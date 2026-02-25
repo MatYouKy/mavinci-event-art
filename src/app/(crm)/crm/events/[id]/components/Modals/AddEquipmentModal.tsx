@@ -559,7 +559,7 @@ export function AddEquipmentModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 p-4">
       <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] p-6">
         <Header />
 

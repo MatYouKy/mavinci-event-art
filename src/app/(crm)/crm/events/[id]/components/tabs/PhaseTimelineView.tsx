@@ -236,7 +236,7 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
   return (
     <div ref={containerRef} className="relative h-full p-6">
       {/* Time Axis - Sticky */}
-      <div ref={timeAxisRef} className="sticky top-0 z-20 bg-[#0f1119] relative mb-6 h-10 border-b-2 border-[#d3bb73]/20">
+      <div ref={timeAxisRef} className="sticky top-0 z-10 bg-[#0f1119] relative mb-6 h-10 border-b-2 border-[#d3bb73]/20">
         {/* Główne godziny wydarzenia (agenda/deklaracja dla klienta) */}
         {eventStartDate && eventEndDate && (
           <div
@@ -323,7 +323,7 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
                 left: position.left,
                 width: position.width,
                 height: '60px',
-                zIndex: isSelected ? 100 : isHovered ? 50 : 10 + index,
+                zIndex: isSelected ? 30 : isHovered ? 20 : 10 + index,
                 '--phase-color': `${phaseColor}20`,
                 '--phase-color-border': phaseColor,
                 borderLeftColor: phaseColor,

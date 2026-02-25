@@ -38,11 +38,11 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
   const [checkConflicts, { data: conflicts, isFetching: checkingConflicts }] =
     useLazyGetEmployeeConflictsQuery();
   const { data: allPhases = [] } = useGetEventPhasesQuery(eventId);
-  const { data: allEmployees = [], isLoading: employeesLoading } = useGetEmployeesQuery({
-    activeOnly: true,
+  const { data: allEmployees = [], isLoading: employeesLoading, error: employeesError } = useGetEmployeesQuery({
+    activeOnly: false, // Zmienione z true na false - pobierz wszystkich
   });
 
-  console.log('allEmployees', allEmployees);
+  console.log('🔍 allEmployees:', allEmployees, 'loading:', employeesLoading, 'error:', employeesError);
   const { showSnackbar } = useSnackbar();
 
   // State
@@ -214,7 +214,7 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 p-4">
       <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-[#1c1f33] shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#d3bb73]/20 px-6 py-4">

@@ -106,7 +106,7 @@ export function AddEventEmployeeModal({
     canViewBudget;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-4">
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center overflow-y-auto bg-black/50 p-4">
       <div className="my-8 max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] p-6">
         <div className="mb-6 flex items-center justify-between">
           <h2 className="text-xl font-light text-[#e5e4e2]">Dodaj osobę do zespołu</h2>
