@@ -116,6 +116,19 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
     return position;
   }, [currentTime, timelineBounds, totalDuration]);
 
+  // Wykryj nakładające się fazy
+  const getOverlappingPhases = (phase: EventPhase): EventPhase[] => {
+    const phaseStart = new Date(phase.start_time).getTime();
+    const phaseEnd = new Date(phase.end_time).getTime();
+
+    return phases.filter(p => {
+      if (p.id === phase.id) return false;
+      const pStart = new Date(p.start_time).getTime();
+      const pEnd = new Date(p.end_time).getTime();
+      return (phaseStart < pEnd && phaseEnd > pStart);
+    });
+  };
+
   const handleResizeStart = (phaseId: string, handle: 'start' | 'end', e: React.MouseEvent) => {
     e.stopPropagation();
     setResizing({ phaseId, handle });
@@ -184,7 +197,8 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
   };
 
   // Algorytm układania faz w liniach (rows) - fazy nakładające się trafiają do różnych linii
-  const getPhaseLayout = (): Map<string, number> => {
+  // USUNIĘTE - system rzędów zastąpiony nakładaniem
+  const getPhaseLayoutOLD = (): Map<string, number> => {
     const layout = new Map<string, number>();
     const rows: Array<{ endTime: number; phases: EventPhase[] }> = [];
 
@@ -216,11 +230,8 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
     return layout;
   };
 
-  const phaseLayout = getPhaseLayout();
-
-  // Oblicz wymaganą wysokość kontenera w zależności od liczby rzędów
-  const maxRowIndex = Math.max(...Array.from(phaseLayout.values()), 0);
-  const containerHeight = Math.max(200, (maxRowIndex + 1) * 80 + 20); // +20 dla marginesu
+  // Stała wysokość dla pojedynczego paska faz (wszystkie nakładają się)
+  const containerHeight = 80;
 
   return (
     <div ref={containerRef} className="relative h-full p-6">
@@ -272,29 +283,15 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
         )}
       </div>
 
-      {/* Phases */}
+      {/* Phases - wszystkie na jednej wysokości z nakładaniem */}
       <div className="relative" style={{ minHeight: `${containerHeight}px` }}>
-        {/* Separatory poziome między rzędami faz */}
-        {Array.from(phaseLayout.values())
-          .filter((v, i, arr) => arr.indexOf(v) === i) // unique row numbers
-          .sort((a, b) => a - b)
-          .map((rowIndex) => (
-            rowIndex > 0 && (
-              <div
-                key={`separator-${rowIndex}`}
-                className="absolute left-0 right-0 border-t border-[#d3bb73]/10"
-                style={{ top: `${rowIndex * 80}px` }}
-              />
-            )
-          ))}
-
-        {phases.map((phase) => {
+        {phases.map((phase, index) => {
           const position = getPhasePosition(phase);
-          const rowIndex = phaseLayout.get(phase.id) || 0;
           const isSelected = selectedPhase?.id === phase.id;
           const isHovered = hoveredPhase === phase.id;
           const hasConflict = phaseConflicts[phase.id];
           const phaseColor = phase.color || phase.phase_type?.color || '#3b82f6';
+          const overlappingPhases = getOverlappingPhases(phase);
 
           return (
             <div
@@ -318,22 +315,57 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
               }}
               onClick={() => onPhaseClick(phase)}
               onDoubleClick={() => onPhaseDoubleClick?.(phase)}
-              className={`absolute flex cursor-pointer items-center rounded-lg border-l-4 px-2 transition-all ${
+              className={`absolute flex cursor-pointer items-center rounded-lg border-l-4 px-2 transition-all overflow-hidden ${
                 isSelected ? 'shadow-xl' : isHovered ? 'shadow-lg' : 'shadow'
-              } ${
-                hasConflict
-                  ? 'border-red-500 bg-red-500/10 bg-[repeating-linear-gradient(45deg,transparent,transparent_10px,rgba(220,38,38,0.1)_10px,rgba(220,38,38,0.1)_20px)]'
-                  : 'border-[var(--phase-color)] bg-[var(--phase-color)]'
-              }`}
+              } border-[var(--phase-color-border)] bg-[var(--phase-color)]`}
               style={{
-                top: `${rowIndex * 80}px`,
+                top: '10px',
                 left: position.left,
                 width: position.width,
                 height: '60px',
+                zIndex: isSelected ? 100 : isHovered ? 50 : 10 + index,
                 '--phase-color': `${phaseColor}20`,
-                borderLeftColor: hasConflict ? '#dc2626' : phaseColor,
+                '--phase-color-border': phaseColor,
+                borderLeftColor: phaseColor,
               } as React.CSSProperties}
             >
+              {/* Overlapping areas - przekreślone */}
+              {overlappingPhases.map(overlappingPhase => {
+                const phaseStart = new Date(phase.start_time).getTime();
+                const phaseEnd = new Date(phase.end_time).getTime();
+                const overlapStart = new Date(overlappingPhase.start_time).getTime();
+                const overlapEnd = new Date(overlappingPhase.end_time).getTime();
+
+                const intersectionStart = Math.max(phaseStart, overlapStart);
+                const intersectionEnd = Math.min(phaseEnd, overlapEnd);
+
+                if (intersectionStart >= intersectionEnd) return null;
+
+                const phaseDuration = phaseEnd - phaseStart;
+                const leftPercent = ((intersectionStart - phaseStart) / phaseDuration) * 100;
+                const widthPercent = ((intersectionEnd - intersectionStart) / phaseDuration) * 100;
+
+                return (
+                  <div
+                    key={overlappingPhase.id}
+                    className="absolute top-0 bottom-0 pointer-events-none"
+                    style={{
+                      left: `${leftPercent}%`,
+                      width: `${widthPercent}%`,
+                      background: `repeating-linear-gradient(
+                        45deg,
+                        rgba(220, 38, 38, 0.15),
+                        rgba(220, 38, 38, 0.15) 8px,
+                        transparent 8px,
+                        transparent 16px
+                      )`,
+                      borderLeft: '2px solid rgba(220, 38, 38, 0.5)',
+                      borderRight: '2px solid rgba(220, 38, 38, 0.5)',
+                    }}
+                  />
+                );
+              })}
+
               {/* Resize Handle - Start */}
               <div
                 onMouseDown={(e) => handleResizeStart(phase.id, 'start', e)}
