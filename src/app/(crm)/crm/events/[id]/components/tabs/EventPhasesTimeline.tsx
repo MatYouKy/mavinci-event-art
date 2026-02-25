@@ -201,23 +201,34 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
   const employees = useMemo(() => {
     const employeeMap = new Map();
 
+    console.log('[EventPhasesTimeline] Building employees list:', {
+      eventEmployeesCount: eventEmployees.length,
+      phaseAssignmentsCount: phaseAssignments.length,
+    });
+
     // Add employees from event assignments (old system)
     eventEmployees.forEach((assignment: any) => {
       if (assignment.employee) {
         employeeMap.set(assignment.employee.id, assignment.employee);
+        console.log('[EventPhasesTimeline] Added from event:', assignment.employee.name, assignment.employee.surname);
       }
     });
 
     // Add employees from phase assignments (new system)
     phaseAssignments.forEach((phaseData) => {
+      console.log('[EventPhasesTimeline] Phase:', phaseData.phase.name, 'assignments:', phaseData.assignments.length);
       phaseData.assignments.forEach((assignment: any) => {
+        console.log('[EventPhasesTimeline] Assignment:', assignment);
         if (assignment.employee && !employeeMap.has(assignment.employee.id)) {
           employeeMap.set(assignment.employee.id, assignment.employee);
+          console.log('[EventPhasesTimeline] Added from phase:', assignment.employee.name, assignment.employee.surname);
         }
       });
     });
 
-    return Array.from(employeeMap.values()).filter((emp: any) => emp);
+    const result = Array.from(employeeMap.values()).filter((emp: any) => emp);
+    console.log('[EventPhasesTimeline] Final employees:', result.map(e => `${e.name} ${e.surname}`));
+    return result;
   }, [eventEmployees, phaseAssignments]);
 
   if (isLoading) {

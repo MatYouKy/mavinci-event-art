@@ -247,7 +247,7 @@ export const eventPhasesApi = createApi({
         table: 'event_phase_assignments',
         method: 'insert',
         data,
-        select: '*',
+        select: '*, employee:employees(*)',
       }),
       invalidatesTags: (result, error, arg) => [{ type: 'PhaseAssignments', id: arg.phase_id }],
     }),

@@ -45,6 +45,11 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
   const { data: phaseEquipment = [] } = useGetPhaseEquipmentQuery(phase.id);
   const { data: phaseVehicles = [] } = useGetPhaseVehiclesQuery(phase.id);
 
+  // Debug logging
+  console.log('[PhaseResourcesPanel] Phase:', phase.name, phase.id);
+  console.log('[PhaseResourcesPanel] Phase assignments:', phaseAssignments);
+  console.log('[PhaseResourcesPanel] Event employees:', eventEmployees);
+
   // Filter event data to show only items in this phase's timeframe
   const filteredEquipment = useMemo(() => {
     if (!eventEquipment) return [];
