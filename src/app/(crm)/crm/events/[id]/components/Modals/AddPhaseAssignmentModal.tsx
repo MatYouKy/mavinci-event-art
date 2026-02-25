@@ -11,6 +11,9 @@ import { useGetEventPhasesQuery } from '@/store/api/eventPhasesApi';
 import { useGetEmployeesQuery } from '@/app/(crm)/crm/employees/store/employeeApi';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import Image from 'next/image';
+import { getCurrentEmployeeServer } from '@/lib/CRM/auth/getCurrentEmployeeServer';
+import { supabase } from '@/lib/supabase/browser';
+import { useEmployees } from '@/app/(crm)/crm/employees/hooks/useEmployees';
 
 interface AddPhaseAssignmentModalProps {
   open: boolean;
@@ -38,14 +41,16 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
   const [checkConflicts, { data: conflicts, isFetching: checkingConflicts }] =
     useLazyGetEmployeeConflictsQuery();
   const { data: allPhases = [] } = useGetEventPhasesQuery(eventId);
-  const { data: allEmployees = [], isLoading: employeesLoading, error: employeesError } = useGetEmployeesQuery({
+  const {
+    data: allEmployees = [],
+    isLoading: employeesLoading,
+    error: employeesError,
+  } = useGetEmployeesQuery({
     activeOnly: false, // Zmienione z true na false - pobierz wszystkich
   });
 
-  console.log('🔍 allEmployees:', allEmployees, 'loading:', employeesLoading, 'error:', employeesError);
   const { showSnackbar } = useSnackbar();
 
-  // State
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedEmployee, setSelectedEmployee] = useState<any | null>(null);
   const [selectedPhases, setSelectedPhases] = useState<Set<string>>(new Set([phase.id]));

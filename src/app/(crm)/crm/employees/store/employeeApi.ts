@@ -8,16 +8,16 @@ export const employeesApi = createApi({
   baseQuery: supabaseBaseQuery(),
   tagTypes: ["Employees", "Employee", "EmployeesByPermission"],
   endpoints: (builder) => ({
-    getEmployees: builder.query<IEmployee[], { activeOnly?: boolean }>({
-      query: (arg = {}) => ({ fn: "employees.list", payload: arg }),
-      providesTags: (result) =>
-        result
-          ? [
-              { type: "Employees", id: "LIST" },
-              ...result.map((e) => ({ type: "Employee" as const, id: e.id })),
-            ]
-          : [{ type: "Employees", id: "LIST" }],
-    }),
+getEmployees: builder.query<IEmployee[], { activeOnly?: boolean }>({
+  query: (arg = {}) => ({ fn: "employees_public_list", payload: arg }),
+  providesTags: (result) =>
+    result
+      ? [
+          { type: "Employees", id: "LIST" },
+          ...result.map((e) => ({ type: "Employee" as const, id: e.id })),
+        ]
+      : [{ type: "Employees", id: "LIST" }],
+}),
 
     getEmployeeById: builder.query<IEmployee, string>({
       query: (id) => ({ fn: "employees.byId", payload: { id } }),
