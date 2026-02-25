@@ -197,10 +197,28 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
     });
   }, [phases, draftChanges]);
 
-  // Prepare employees data (extract from assignments)
+  // Prepare employees data (extract from both old and new assignments)
   const employees = useMemo(() => {
-    return eventEmployees.map((assignment: any) => assignment.employee).filter((emp: any) => emp);
-  }, [eventEmployees]);
+    const employeeMap = new Map();
+
+    // Add employees from event assignments (old system)
+    eventEmployees.forEach((assignment: any) => {
+      if (assignment.employee) {
+        employeeMap.set(assignment.employee.id, assignment.employee);
+      }
+    });
+
+    // Add employees from phase assignments (new system)
+    phaseAssignments.forEach((phaseData) => {
+      phaseData.assignments.forEach((assignment: any) => {
+        if (assignment.employee && !employeeMap.has(assignment.employee.id)) {
+          employeeMap.set(assignment.employee.id, assignment.employee);
+        }
+      });
+    });
+
+    return Array.from(employeeMap.values()).filter((emp: any) => emp);
+  }, [eventEmployees, phaseAssignments]);
 
   if (isLoading) {
     return (

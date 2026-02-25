@@ -49,6 +49,13 @@ export interface EventPhaseAssignment {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  employee?: {
+    id: string;
+    name: string;
+    surname: string;
+    email?: string;
+    phone?: string;
+  };
 }
 
 export interface EventPhaseEquipment {
@@ -229,7 +236,7 @@ export const eventPhasesApi = createApi({
       query: (phaseId) => ({
         table: 'event_phase_assignments',
         method: 'select',
-        select: '*',
+        select: '*, employee:employees(*)',
         match: { phase_id: phaseId },
       }),
       providesTags: (result, error, phaseId) => [{ type: 'PhaseAssignments', id: phaseId }],

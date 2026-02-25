@@ -54,13 +54,28 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
   }, [eventEquipment]);
 
   const filteredEmployees = useMemo(() => {
-    if (!eventEmployees) return [];
-    // eventEmployees contains employee_assignments with nested employee object
-    // Extract and flatten the employee data
-    return eventEmployees
-      .map((assignment: any) => assignment.employee)
-      .filter((emp: any) => emp); // Filter out any null employees
-  }, [eventEmployees]);
+    const employeeMap = new Map();
+
+    // Add employees from event assignments (old system)
+    if (eventEmployees) {
+      eventEmployees.forEach((assignment: any) => {
+        if (assignment.employee) {
+          employeeMap.set(assignment.employee.id, assignment.employee);
+        }
+      });
+    }
+
+    // Add employees from phase assignments (new system)
+    if (phaseAssignments) {
+      phaseAssignments.forEach((assignment: any) => {
+        if (assignment.employee) {
+          employeeMap.set(assignment.employee.id, assignment.employee);
+        }
+      });
+    }
+
+    return Array.from(employeeMap.values()).filter((emp: any) => emp);
+  }, [eventEmployees, phaseAssignments]);
 
   const filteredVehicles = useMemo(() => {
     if (!eventVehicles) return [];
@@ -232,18 +247,27 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
                                 {formatTime(assignment.assignment_start)} -{' '}
                                 {formatTime(assignment.assignment_end)}
                               </p>
-                              <p>
-                                <span className="font-medium">Praca:</span>{' '}
-                                {formatTime(assignment.phase_work_start)} -{' '}
-                                {formatTime(assignment.phase_work_end)}
-                              </p>
-                              <p className="text-[#d3bb73]">
-                                Czas pracy:{' '}
-                                {calculateDuration(
-                                  assignment.phase_work_start,
-                                  assignment.phase_work_end
-                                )}
-                              </p>
+                              {assignment.phase_work_start && assignment.phase_work_end && (
+                                <>
+                                  <p>
+                                    <span className="font-medium">Praca:</span>{' '}
+                                    {formatTime(assignment.phase_work_start)} -{' '}
+                                    {formatTime(assignment.phase_work_end)}
+                                  </p>
+                                  <p className="text-[#d3bb73]">
+                                    Czas pracy:{' '}
+                                    {calculateDuration(
+                                      assignment.phase_work_start,
+                                      assignment.phase_work_end
+                                    )}
+                                  </p>
+                                </>
+                              )}
+                              {!assignment.phase_work_start && (
+                                <p className="text-[#e5e4e2]/50">
+                                  Przypisany do całej fazy
+                                </p>
+                              )}
                               {assignment.role && (
                                 <span className="inline-block rounded bg-[#d3bb73]/20 px-2 py-0.5 text-[#d3bb73]">
                                   {assignment.role}
