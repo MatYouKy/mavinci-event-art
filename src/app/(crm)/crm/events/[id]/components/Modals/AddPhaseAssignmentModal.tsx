@@ -189,24 +189,22 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
     }
 
     try {
-      // Jeśli "Przypisz do całego wydarzenia", użyj wszystkich faz
       const phasesToAssign = assignToAllPhases
-        ? allPhases.map(p => p.id)
+        ? allPhases.map((p) => p.id)
         : Array.from(selectedPhases);
 
-      // Przypisz do wszystkich wybranych faz
       const promises = phasesToAssign.map((phaseId) => {
         const targetPhase = allPhases.find((p) => p.id === phaseId);
         if (!targetPhase) return Promise.resolve();
 
         return createAssignment({
           phase_id: phaseId,
-          employee_id: selectedEmployee.id,
+          employee_id: selectedEmployee.id,          // musi być employees.id
           role,
           assignment_start: targetPhase.start_time,
           assignment_end: targetPhase.end_time,
-          phase_work_start: null,
-          phase_work_end: null,
+          phase_work_start: targetPhase.start_time,  // jeśli NOT NULL
+          phase_work_end: targetPhase.end_time,      // jeśli NOT NULL
         }).unwrap();
       });
 
@@ -221,7 +219,7 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
       );
       onClose();
     } catch (err: any) {
-      showSnackbar(err.message || 'Błąd podczas przypisywania pracownika', 'error');
+      showSnackbar(err?.message || 'Błąd podczas przypisywania pracownika', 'error');
     }
   };
 
@@ -470,39 +468,39 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
 
                   {!assignToAllPhases && (
                     <div className="space-y-2">
-                    {/* Główna faza - zawsze zaznaczona */}
-                    <div className="flex items-center gap-2 rounded-lg border border-[#d3bb73] bg-[#d3bb73]/10 px-3 py-2">
-                      <input type="checkbox" checked={true} disabled className="h-4 w-4" />
-                      <div className="flex-1">
-                        <div className="text-sm font-medium text-[#e5e4e2]">{phase.name}</div>
-                        <div className="text-xs text-[#e5e4e2]/50">
-                          {new Date(phase.start_time).toLocaleString('pl-PL')} -{' '}
-                          {new Date(phase.end_time).toLocaleString('pl-PL')}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Inne fazy */}
-                    {otherPhases.map((p) => (
-                      <label
-                        key={p.id}
-                        className="flex cursor-pointer items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#0d0f1a] px-3 py-2 transition-all hover:border-[#d3bb73] hover:bg-[#d3bb73]/5"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedPhases.has(p.id)}
-                          onChange={() => handlePhaseToggle(p.id)}
-                          className="h-4 w-4"
-                        />
+                      {/* Główna faza - zawsze zaznaczona */}
+                      <div className="flex items-center gap-2 rounded-lg border border-[#d3bb73] bg-[#d3bb73]/10 px-3 py-2">
+                        <input type="checkbox" checked={true} disabled className="h-4 w-4" />
                         <div className="flex-1">
-                          <div className="text-sm font-medium text-[#e5e4e2]">{p.name}</div>
+                          <div className="text-sm font-medium text-[#e5e4e2]">{phase.name}</div>
                           <div className="text-xs text-[#e5e4e2]/50">
-                            {new Date(p.start_time).toLocaleString('pl-PL')} -{' '}
-                            {new Date(p.end_time).toLocaleString('pl-PL')}
+                            {new Date(phase.start_time).toLocaleString('pl-PL')} -{' '}
+                            {new Date(phase.end_time).toLocaleString('pl-PL')}
                           </div>
                         </div>
-                      </label>
-                    ))}
+                      </div>
+
+                      {/* Inne fazy */}
+                      {otherPhases.map((p) => (
+                        <label
+                          key={p.id}
+                          className="flex cursor-pointer items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#0d0f1a] px-3 py-2 transition-all hover:border-[#d3bb73] hover:bg-[#d3bb73]/5"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedPhases.has(p.id)}
+                            onChange={() => handlePhaseToggle(p.id)}
+                            className="h-4 w-4"
+                          />
+                          <div className="flex-1">
+                            <div className="text-sm font-medium text-[#e5e4e2]">{p.name}</div>
+                            <div className="text-xs text-[#e5e4e2]/50">
+                              {new Date(p.start_time).toLocaleString('pl-PL')} -{' '}
+                              {new Date(p.end_time).toLocaleString('pl-PL')}
+                            </div>
+                          </div>
+                        </label>
+                      ))}
                     </div>
                   )}
                 </div>

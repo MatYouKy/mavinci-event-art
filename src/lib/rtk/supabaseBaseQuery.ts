@@ -18,54 +18,25 @@ export const supabaseBaseQuery =
     try {
       switch (args.fn) {
         /**
-         * LISTA (bez RPC) - czyta bezpośrednio z tabeli employees + relacje
-         * (wymaga poprawnych RLS/policies dla employees/employee_skills/skills)
+         * UWAGA:
+         * - W DB masz public.employees_public_list() bez parametrów.
+         * - Dlatego RPC wołamy bez args, a activeOnly filtrujemy w JS.
+         *
+         * Dodatkowo: "employees.list" mapujemy na public listę,
+         * żeby hook useEmployees({activeOnly:false}) zawsze działał.
          */
-        case "employees.list": {
-          const q = supabase
-            .from("employees")
-            .select(
-              `
-              *,
-              employee_skills(
-                id,
-                skill_id,
-                proficiency,
-                skills(
-                  id,
-                  name,
-                  description
-                )
-              )
-            `,
-            )
-            .order("order_index", { ascending: true })
-            .order("created_at", { ascending: false });
-
-          const { data, error } =
-            args.payload?.activeOnly === true ? await q.eq("is_active", true) : await q;
-
-          if (error) throw error;
-          return { data: data ?? [] };
-        }
-
-        /**
-         * LISTA (RPC) - publiczna lista z Supabase function:
-         * public.employees_public_list(...)
-         * Używaj tego, jeśli RLS blokuje bezpośredni SELECT na tabeli.
-         */
+        case "employees.list":
         case "employees_public_list": {
-          // Funkcja w DB nie przyjmuje argumentów (args: ""),
-          // więc NIE wolno wysyłać { activeOnly: ... } do rpc.
           const { data, error } = await supabase.rpc("employees_public_list");
-        
+
           if (error) throw error;
-        
-          const list = (data as any[]) ?? [];
-          const filtered =
-            args.payload?.activeOnly === true ? list.filter((e) => e?.is_active === true) : list;
-        
-          return { data: filtered };
+
+          const rows = (data ?? []) as any[];
+          const activeOnly = args.payload?.activeOnly === true;
+
+          return {
+            data: activeOnly ? rows.filter((r) => r?.is_active === true) : rows,
+          };
         }
 
         case "employees.byId": {
@@ -81,7 +52,6 @@ export const supabaseBaseQuery =
 
         // ✅ Wariant A: relacja employee_permissions(employee_id, permission_key)
         case "employees.byPermission": {
-          // 1) bierzemy employee_id z relacji
           const { data: rel, error: relErr } = await supabase
             .from("employee_permissions")
             .select("employee_id")
@@ -92,7 +62,6 @@ export const supabaseBaseQuery =
           const ids = (rel ?? []).map((r: any) => r.employee_id).filter(Boolean);
           if (ids.length === 0) return { data: [] };
 
-          // 2) dociągamy employees po id
           const { data, error } = await supabase
             .from("employees")
             .select("*")
@@ -128,15 +97,17 @@ export const supabaseBaseQuery =
         }
 
         case "employees.deleteById": {
-          const { error } = await supabase.from("employees").delete().eq("id", args.payload.id);
+          const { error } = await supabase
+            .from("employees")
+            .delete()
+            .eq("id", args.payload.id);
 
           if (error) throw error;
           return { data: { ok: true } };
         }
 
         default:
-          // żebyś od razu widział co przyszło w args.fn
-          return { error: { message: `Unsupported operation: ${(args as any)?.fn}` } };
+          return { error: { message: "Unsupported operation" } };
       }
     } catch (e) {
       const err = e as PostgrestError | any;

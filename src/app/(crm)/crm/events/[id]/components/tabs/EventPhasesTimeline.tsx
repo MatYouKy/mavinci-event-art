@@ -231,6 +231,20 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
     return result;
   }, [eventEmployees, phaseAssignments]);
 
+  const employeesFromAssignments = useMemo(() => {
+    const map = new Map<string, any>();
+  
+    phaseAssignments.forEach(pa => {
+      pa.assignments?.forEach((a: any) => {
+        if (a.employee_id && a.employee) {
+          map.set(a.employee_id, { ...a.employee, id: a.employee_id });
+        }
+      });
+    });
+  
+    return Array.from(map.values());
+  }, [phaseAssignments]);
+
   if (isLoading) {
     return (
       <div className="flex h-96 items-center justify-center">
@@ -397,7 +411,7 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
               phaseAssignments={phaseAssignments}
               timelineBounds={timelineBounds}
               zoomLevel={zoomLevel}
-              employees={employees}
+              employees={employeesFromAssignments}
               vehicles={eventVehicles}
               equipment={eventEquipment}
             />

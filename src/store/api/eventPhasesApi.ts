@@ -232,11 +232,18 @@ export const eventPhasesApi = createApi({
     }),
 
     // Phase Assignments
+
+    // Phase Assignments
     getPhaseAssignments: builder.query<EventPhaseAssignment[], string>({
       query: (phaseId) => ({
         table: 'event_phase_assignments',
         method: 'select',
-        select: '*, employee:employees(*)',
+        // ✅ NIE embedujemy employees — bo masz więcej niż 1 relację i PostgREST nie wie którą wybrać
+        // ✅ bierzemy tylko pola z tabeli assignments
+        select: `*,
+        employee:employees!event_phase_assignments_employee_id_fkey(*),
+        created_by_employee:employees!event_phase_assignments_created_by_fkey(id,name,surname,avatar_url)
+        `,
         match: { phase_id: phaseId },
       }),
       providesTags: (result, error, phaseId) => [{ type: 'PhaseAssignments', id: phaseId }],
@@ -247,7 +254,11 @@ export const eventPhasesApi = createApi({
         table: 'event_phase_assignments',
         method: 'insert',
         data,
-        select: '*, employee:employees(*)',
+        // ✅ też bez embed — inaczej insert potrafi wywalić tym samym błędem relacji
+        select: `*,
+        employee:employees!event_phase_assignments_employee_id_fkey(*),
+        created_by_employee:employees!event_phase_assignments_created_by_fkey(id,name,surname,avatar_url)
+        `,
       }),
       invalidatesTags: (result, error, arg) => [{ type: 'PhaseAssignments', id: arg.phase_id }],
     }),
@@ -260,16 +271,17 @@ export const eventPhasesApi = createApi({
         data,
         select: '*',
       }),
-      invalidatesTags: (result) => result ? [{ type: 'PhaseAssignments', id: result.phase_id }] : [],
+      invalidatesTags: (result) => (result ? [{ type: 'PhaseAssignments', id: result.phase_id }] : []),
     }),
 
-    deletePhaseAssignment: builder.mutation<void, string>({
-      query: (id) => ({
+    // ✅ WAŻNE: delete przyjmuje też phase_id, żeby odświeżyć właściwą listę
+    deletePhaseAssignment: builder.mutation<void, { id: string; phase_id: string }>({
+      query: ({ id }) => ({
         table: 'event_phase_assignments',
         method: 'delete',
         match: { id },
       }),
-      invalidatesTags: ['PhaseAssignments'],
+      invalidatesTags: (_res, _err, arg) => [{ type: 'PhaseAssignments', id: arg.phase_id }],
     }),
 
     // Phase Equipment
