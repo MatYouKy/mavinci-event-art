@@ -38,8 +38,8 @@ export interface EventPhaseAssignment {
   employee_id: string;
   assignment_start: string;
   assignment_end: string;
-  phase_work_start: string;
-  phase_work_end: string;
+  phase_work_start: string | null;
+  phase_work_end: string | null;
   invitation_status: 'pending' | 'accepted' | 'rejected';
   invitation_sent_at: string;
   invitation_responded_at: string | null;
@@ -122,8 +122,8 @@ export interface CreatePhaseAssignmentInput {
   employee_id: string;
   assignment_start: string;
   assignment_end: string;
-  phase_work_start: string;
-  phase_work_end: string;
+  phase_work_start: string | null;
+  phase_work_end: string | null;
   invitation_status?: 'pending' | 'accepted' | 'rejected';
   role?: string;
   travel_to_notes?: string;
