@@ -2,7 +2,8 @@
 
 import React, { useState, useMemo } from 'react';
 import Image from 'next/image';
-import { EventPhase } from '@/store/api/eventPhasesApi';
+import { Trash2, GripVertical } from 'lucide-react';
+import { EventPhase, useDeletePhaseAssignmentMutation, useUpdatePhaseAssignmentMutation } from '@/store/api/eventPhasesApi';
 import { PhaseAssignmentsData } from './PhaseAssignmentsLoader';
 
 interface ResourceTimelineProps {
@@ -59,6 +60,18 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   equipment,
 }) => {
   const [rowHeight, setRowHeight] = useState<'compact' | 'normal' | 'expanded'>('normal');
+  const [hoveredAssignment, setHoveredAssignment] = useState<string | null>(null);
+  const [editingAssignment, setEditingAssignment] = useState<{
+    id: string;
+    phaseId: string;
+    start: string;
+    end: string;
+    name: string;
+  } | null>(null);
+
+  // Mutations
+  const [deleteAssignment] = useDeletePhaseAssignmentMutation();
+  const [updateAssignment] = useUpdatePhaseAssignmentMutation();
 
   console.log('vehicles', vehicles);
   console.log('equipment', equipment);
@@ -96,6 +109,34 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
     const left = ((start - timelineBounds.start.getTime()) / totalDuration) * 100;
     const width = ((end - start) / totalDuration) * 100;
     return { left: `${Math.max(0, left)}%`, width: `${Math.max(1, width)}%` };
+  };
+
+  // Handlers for employee assignments
+  const handleDeleteEmployeeAssignment = async (assignmentId: string, phaseId: string) => {
+    if (!confirm('Czy na pewno chcesz usunąć tego pracownika z fazy?')) return;
+
+    try {
+      await deleteAssignment({ id: assignmentId, phase_id: phaseId }).unwrap();
+    } catch (error) {
+      console.error('Failed to delete assignment:', error);
+      alert('Nie udało się usunąć przypisania');
+    }
+  };
+
+  const handleSaveTimeEdit = async () => {
+    if (!editingAssignment) return;
+
+    try {
+      await updateAssignment({
+        id: editingAssignment.id,
+        assignment_start: editingAssignment.start,
+        assignment_end: editingAssignment.end,
+      }).unwrap();
+      setEditingAssignment(null);
+    } catch (error) {
+      console.error('Failed to update assignment:', error);
+      alert('Nie udało się zaktualizować czasu');
+    }
   };
 
   const formatTime = (date: string): string => {
@@ -168,7 +209,8 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
       const vehicle = veh.vehicle || veh;
       const vehicleId = vehicle?.id;
 
-      const assignments = phaseAssignments
+      // Pobierz przypisania z event_phase_vehicles (nowy system)
+      const phaseAssignmentsList = phaseAssignments
         .flatMap(({ phase, vehicleAssignments }) => {
           const found = (vehicleAssignments ?? []).filter(
             (v: any) => v?.vehicle_id === vehicleId,
@@ -190,14 +232,33 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
               isFullRange: isFullRangeAssignment(startTime, endTime),
             };
           });
-        })
-        .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+        });
+
+      // Jeśli pojazd jest z event_vehicles (Logistyka) ale nie ma przypisań do faz,
+      // pokaż go jako "dostępny na całe wydarzenie"
+      if (phaseAssignmentsList.length === 0 && veh.vehicle_available_from && veh.vehicle_available_until) {
+        // To jest pojazd z zakładki Logistyka - pokaż całą jego dostępność
+        phaseAssignmentsList.push({
+          id: veh.id, // event_vehicle id
+          phase: null as any, // brak konkretnej fazy
+          phaseId: null as any,
+          resourceId: vehicleId,
+          resourceType: 'vehicle' as ResourceType,
+          start_time: veh.vehicle_available_from,
+          end_time: veh.vehicle_available_until,
+          isFullRange: false,
+        });
+      }
+
+      const assignments = phaseAssignmentsList.sort((a, b) =>
+        new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+      );
 
       return {
         id: vehicleId,
         type: 'vehicle',
         name: vehicle?.name || vehicle?.registration_number || 'Bez nazwy',
-        avatar_url: vehicle?.avatar_url, // jeśli masz
+        avatar_url: vehicle?.avatar_url,
         assignments,
       };
     });
@@ -286,10 +347,12 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
             const phaseColor =
               assignment.phase.color || assignment.phase.phase_type?.color || '#3b82f6';
 
+            const isHovered = hoveredAssignment === assignment.id;
+
             return (
               <div
                 key={assignment.id ?? idx}
-                className="absolute flex items-center rounded border-l-4 px-3 shadow-sm transition-all hover:shadow-lg cursor-pointer"
+                className="group absolute flex items-center justify-between rounded border-l-4 px-3 shadow-sm transition-all hover:shadow-lg cursor-pointer"
                 style={{
                   top: '6px',
                   bottom: '6px',
@@ -301,8 +364,21 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
                 title={`${resource.name}\n${formatTime(assignment.start_time)} - ${formatTime(
                   assignment.end_time,
                 )}${assignment.role ? `\nRola: ${assignment.role}` : ''}`}
+                onMouseEnter={() => setHoveredAssignment(assignment.id ?? null)}
+                onMouseLeave={() => setHoveredAssignment(null)}
+                onClick={() => {
+                  if (isEmployee && assignment.id && assignment.phaseId) {
+                    setEditingAssignment({
+                      id: assignment.id,
+                      phaseId: assignment.phaseId,
+                      start: assignment.start_time,
+                      end: assignment.end_time,
+                      name: resource.name,
+                    });
+                  }
+                }}
               >
-                <div className="flex items-center gap-2 overflow-hidden">
+                <div className="flex items-center gap-2 overflow-hidden flex-1">
                   {resource.avatar_url ? (
                     <Image
                       src={resource.avatar_url}
@@ -331,6 +407,20 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
                     </span>
                   )}
                 </div>
+
+                {/* Delete button - tylko dla pracowników z konkretną fazą */}
+                {isEmployee && assignment.phaseId && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteEmployeeAssignment(assignment.id!, assignment.phaseId);
+                    }}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity rounded p-1 hover:bg-red-500/20 text-red-400"
+                    title="Usuń z fazy"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                )}
               </div>
             );
           })}
@@ -371,6 +461,64 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
         {filteredVehicles.map(renderResourceRow)}
         {filteredEquipment.map(renderResourceRow)}
       </div>
+
+      {/* Edit Time Modal */}
+      {editingAssignment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setEditingAssignment(null)}>
+          <div className="bg-[#1c1f33] rounded-lg p-6 w-96 border border-[#d3bb73]/20" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-[#e5e4e2] mb-4">
+              Edytuj czas pracy: {editingAssignment.name}
+            </h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-[#e5e4e2]/70 mb-1">Początek</label>
+                <input
+                  type="datetime-local"
+                  value={editingAssignment.start.slice(0, 16)}
+                  onChange={(e) =>
+                    setEditingAssignment({
+                      ...editingAssignment,
+                      start: e.target.value + ':00.000Z',
+                    })
+                  }
+                  className="w-full rounded bg-[#0f1119] border border-[#d3bb73]/20 px-3 py-2 text-[#e5e4e2]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-[#e5e4e2]/70 mb-1">Koniec</label>
+                <input
+                  type="datetime-local"
+                  value={editingAssignment.end.slice(0, 16)}
+                  onChange={(e) =>
+                    setEditingAssignment({
+                      ...editingAssignment,
+                      end: e.target.value + ':00.000Z',
+                    })
+                  }
+                  className="w-full rounded bg-[#0f1119] border border-[#d3bb73]/20 px-3 py-2 text-[#e5e4e2]"
+                />
+              </div>
+
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => setEditingAssignment(null)}
+                  className="px-4 py-2 rounded bg-[#0f1119] text-[#e5e4e2]/70 hover:bg-[#0f1119]/80"
+                >
+                  Anuluj
+                </button>
+                <button
+                  onClick={handleSaveTimeEdit}
+                  className="px-4 py-2 rounded bg-[#d3bb73] text-[#1c1f33] font-medium hover:bg-[#d3bb73]/90"
+                >
+                  Zapisz
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
