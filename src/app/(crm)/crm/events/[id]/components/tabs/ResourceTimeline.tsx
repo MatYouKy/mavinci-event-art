@@ -52,6 +52,12 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   vehicles,
   equipment,
 }) => {
+  console.log('[ResourceTimeline] RENDER with props:', {
+    employeesCount: employees.length,
+    phaseAssignmentsCount: phaseAssignments.length,
+    phasesCount: phases.length,
+  });
+
   const [expandedResources, setExpandedResources] = useState<Set<string>>(new Set());
   const [rowHeight, setRowHeight] = useState<'compact' | 'normal' | 'expanded'>('normal');
   const [showEquipmentDetails, setShowEquipmentDetails] = useState<string | null>(null);
@@ -144,12 +150,17 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   const employeeRows: ResourceRow[] = useMemo(() => {
     console.log('[ResourceTimeline] Processing employees:', {
       employeesCount: employees.length,
+      employees: employees.map(e => ({ id: e.id, name: e.name, surname: e.surname })),
       phaseAssignmentsCount: phaseAssignments.length,
       phaseAssignments: phaseAssignments.map(pa => ({
         phaseId: pa.phase.id,
         phaseName: pa.phase.name,
         assignmentsCount: pa.assignments.length,
-        assignments: pa.assignments,
+        assignments: pa.assignments.map(a => ({
+          employee_id: a.employee_id,
+          employee: a.employee ? `${a.employee.name} ${a.employee.surname}` : 'NO EMPLOYEE',
+          role: a.role,
+        })),
       })),
     });
 
@@ -302,6 +313,14 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   const filteredEmployees = filterResources(employeeRows.filter(row => row.assignments.length > 0));
   const filteredVehicles = filterResources(vehicleRows.filter(row => row.assignments.length > 0));
   const filteredEquipment = filterResources(equipmentRows);
+
+  console.log('[ResourceTimeline] Filtered results:', {
+    employeeRows: employeeRows.length,
+    employeeRowsWithAssignments: employeeRows.filter(row => row.assignments.length > 0).length,
+    filteredEmployees: filteredEmployees.length,
+    filteredVehicles: filteredVehicles.length,
+    filteredEquipment: filteredEquipment.length,
+  });
 
   const getRowHeightPx = () => {
     switch (rowHeight) {
