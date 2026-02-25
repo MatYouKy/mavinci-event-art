@@ -9,12 +9,14 @@ import {
   useGetPhaseVehiclesQuery,
 } from '@/store/api/eventPhasesApi';
 import { useGetEventEmployeesQuery, useGetEventEquipmentQuery, useGetEventVehiclesQuery } from '../../../store/api/eventsApi';
+import { AddPhaseAssignmentModal } from '../Modals/AddPhaseAssignmentModal';
 
 interface PhaseResourcesPanelProps {
   phase: EventPhase;
   eventId: string;
   onClose: () => void;
   resourceFilter: 'all' | 'selected' | 'event';
+  eventOffers?: any[]; // Oferty z produktami do sugestii pracowników
 }
 
 export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
@@ -22,8 +24,10 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
   eventId,
   onClose,
   resourceFilter,
+  eventOffers = [],
 }) => {
   const [currentTab, setCurrentTab] = useState<'employees' | 'equipment' | 'vehicles'>('employees');
+  const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
 
   // Get all data from event
   const { data: eventEquipment = [], isLoading: equipmentLoading } = useGetEventEquipmentQuery(eventId, {
@@ -181,9 +185,7 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
                 <div className="border-b border-[#d3bb73]/10 p-4">
                   <button
                     className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
-                    onClick={() => {
-                      alert('Modal do dodawania pracowników - w trakcie implementacji');
-                    }}
+                    onClick={() => setShowAddEmployeeModal(true)}
                   >
                     <Plus className="h-4 w-4" />
                     Przypisz do fazy
@@ -379,6 +381,16 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
           <p>Pokazuje zasoby przypisane do wydarzenia w czasie trwania tej fazy</p>
         </div>
       </div>
+
+      {/* Add Employee Modal */}
+      <AddPhaseAssignmentModal
+        open={showAddEmployeeModal}
+        onClose={() => setShowAddEmployeeModal(false)}
+        phase={phase}
+        eventId={eventId}
+        availableEmployees={filteredEmployees}
+        eventOffers={eventOffers}
+      />
     </div>
   );
 };
