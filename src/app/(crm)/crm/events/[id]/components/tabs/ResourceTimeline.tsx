@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback, memo, useRef } from 'react';
 import Image from 'next/image';
 import { Trash2, GripVertical } from 'lucide-react';
 import { EventPhase, useDeletePhaseAssignmentMutation, useUpdatePhaseAssignmentMutation } from '@/store/api/eventPhasesApi';
 import { PhaseAssignmentsData } from './PhaseAssignmentsLoader';
+import { useTimelineDrag } from './useTimelineDrag';
 
 interface ResourceTimelineProps {
   eventId: string;
@@ -50,6 +51,159 @@ const getInitials = (name: string) =>
     .map((s) => s[0]?.toUpperCase())
     .join('');
 
+// Zmemoizowany komponent dla pojedynczego assignment bar
+interface AssignmentBarProps {
+  assignment: Assignment;
+  resource: ResourceRow;
+  position: { left: string; width: string };
+  phaseColor: string;
+  heightPx: number;
+  isEmployee: boolean;
+  hoveredAssignment: string | null;
+  formatTime: (date: string) => string;
+  timelineBounds: { start: Date; end: Date };
+  zoomLevel: 'days' | 'hours' | 'minutes';
+  onHoverChange: (id: string | null) => void;
+  onDelete: (assignmentId: string, phaseId: string) => void;
+  onTimeUpdate: (assignmentId: string, newStart: Date, newEnd: Date) => void;
+  containerRef?: React.RefObject<HTMLDivElement>;
+}
+
+const AssignmentBar = memo<AssignmentBarProps>(({
+  assignment,
+  resource,
+  position,
+  phaseColor,
+  heightPx,
+  isEmployee,
+  hoveredAssignment,
+  formatTime,
+  timelineBounds,
+  zoomLevel,
+  onHoverChange,
+  onDelete,
+  onTimeUpdate,
+  containerRef,
+}) => {
+  const barRef = useRef<HTMLDivElement>(null);
+  const { dragMode, startDrag } = useTimelineDrag({
+    timelineBounds,
+    zoomLevel,
+    onDragEnd: (newStart, newEnd) => {
+      if (assignment.id) {
+        onTimeUpdate(assignment.id, newStart, newEnd);
+      }
+    },
+  });
+
+  const isHovered = hoveredAssignment === assignment.id;
+  const isDragging = !!dragMode;
+
+  return (
+    <div
+      ref={barRef}
+      className="group absolute flex items-center justify-between rounded border-l-4 px-3 shadow-sm transition-all hover:shadow-lg cursor-pointer"
+      style={{
+        top: '6px',
+        bottom: '6px',
+        left: position.left,
+        width: position.width,
+        backgroundColor: `${phaseColor}25`,
+        borderLeftColor: phaseColor,
+        opacity: isDragging ? 0.7 : 1,
+      }}
+      title={`${resource.name}\n${formatTime(assignment.start_time)} - ${formatTime(
+        assignment.end_time,
+      )}${assignment.role ? `\nRola: ${assignment.role}` : ''}`}
+      onMouseEnter={() => onHoverChange(assignment.id ?? null)}
+      onMouseLeave={() => onHoverChange(null)}
+    >
+      {/* Left resize handle - tylko dla pracowników */}
+      {isEmployee && assignment.phaseId && containerRef?.current && (
+        <div
+          className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-[#d3bb73]/40 flex items-center justify-center"
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            startDrag(
+              'resize-start',
+              e.clientX,
+              new Date(assignment.start_time),
+              new Date(assignment.end_time),
+              containerRef.current!
+            );
+          }}
+        >
+          <GripVertical className="h-3 w-3 text-[#d3bb73]" />
+        </div>
+      )}
+
+      <div className="flex items-center gap-2 overflow-hidden flex-1">
+        {resource.avatar_url ? (
+          <Image
+            src={resource.avatar_url}
+            alt={resource.name}
+            width={24}
+            height={24}
+            className="h-6 w-6 rounded-full object-cover"
+          />
+        ) : (
+          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#d3bb73]/25 text-[10px] font-bold text-[#d3bb73]">
+            {getInitials(resource.name)}
+          </div>
+        )}
+
+        <span className="truncate text-xs font-semibold text-[#e5e4e2]">
+          {resource.name}
+        </span>
+
+        {isEmployee && assignment.role && (
+          <span className="truncate text-[10px] text-[#e5e4e2]/60">{assignment.role}</span>
+        )}
+
+        {assignment.quantity && assignment.quantity > 1 && (
+          <span className="ml-1 rounded bg-[#d3bb73]/30 px-1.5 py-0.5 text-[10px] font-bold text-[#d3bb73]">
+            x{assignment.quantity}
+          </span>
+        )}
+      </div>
+
+      {/* Right resize handle + Delete button */}
+      {isEmployee && assignment.phaseId && containerRef?.current && (
+        <div className="flex items-center gap-1">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(assignment.id!, assignment.phaseId);
+            }}
+            className="opacity-0 group-hover:opacity-100 transition-opacity rounded p-1 hover:bg-red-500/20 text-red-400"
+            title="Usuń z fazy"
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+
+          <div
+            className="w-2 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-[#d3bb73]/40 flex items-center justify-center h-full"
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              startDrag(
+                'resize-end',
+                e.clientX,
+                new Date(assignment.start_time),
+                new Date(assignment.end_time),
+                containerRef.current!
+              );
+            }}
+          >
+            <GripVertical className="h-3 w-3 text-[#d3bb73]" />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+});
+
+AssignmentBar.displayName = 'AssignmentBar';
+
 export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   phases,
   phaseAssignments,
@@ -61,13 +215,7 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
 }) => {
   const [rowHeight, setRowHeight] = useState<'compact' | 'normal' | 'expanded'>('normal');
   const [hoveredAssignment, setHoveredAssignment] = useState<string | null>(null);
-  const [editingAssignment, setEditingAssignment] = useState<{
-    id: string;
-    phaseId: string;
-    start: string;
-    end: string;
-    name: string;
-  } | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // Mutations
   const [deleteAssignment] = useDeletePhaseAssignmentMutation();
@@ -103,16 +251,16 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
 
   const heightPx = getRowHeightPx();
 
-  const getAssignmentPosition = (startTime: string, endTime: string) => {
+  const getAssignmentPosition = useCallback((startTime: string, endTime: string) => {
     const start = new Date(startTime).getTime();
     const end = new Date(endTime).getTime();
     const left = ((start - timelineBounds.start.getTime()) / totalDuration) * 100;
     const width = ((end - start) / totalDuration) * 100;
     return { left: `${Math.max(0, left)}%`, width: `${Math.max(1, width)}%` };
-  };
+  }, [timelineBounds, totalDuration]);
 
-  // Handlers for employee assignments
-  const handleDeleteEmployeeAssignment = async (assignmentId: string, phaseId: string) => {
+  // Handlers for employee assignments - zmemoizowane
+  const handleDeleteEmployeeAssignment = useCallback(async (assignmentId: string, phaseId: string) => {
     if (!confirm('Czy na pewno chcesz usunąć tego pracownika z fazy?')) return;
 
     try {
@@ -121,31 +269,32 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
       console.error('Failed to delete assignment:', error);
       alert('Nie udało się usunąć przypisania');
     }
-  };
+  }, [deleteAssignment]);
 
-  const handleSaveTimeEdit = async () => {
-    if (!editingAssignment) return;
-
+  const handleTimeUpdate = useCallback(async (assignmentId: string, newStart: Date, newEnd: Date) => {
     try {
       await updateAssignment({
-        id: editingAssignment.id,
-        assignment_start: editingAssignment.start,
-        assignment_end: editingAssignment.end,
+        id: assignmentId,
+        assignment_start: newStart.toISOString(),
+        assignment_end: newEnd.toISOString(),
       }).unwrap();
-      setEditingAssignment(null);
     } catch (error) {
       console.error('Failed to update assignment:', error);
       alert('Nie udało się zaktualizować czasu');
     }
-  };
+  }, [updateAssignment]);
 
-  const formatTime = (date: string): string => {
+  const handleHoverChange = useCallback((id: string | null) => {
+    setHoveredAssignment(id);
+  }, []);
+
+  const formatTime = useCallback((date: string): string => {
     const d = new Date(date);
     if (zoomLevel === 'days') {
       return d.toLocaleDateString('pl-PL', { day: 'numeric', month: 'short' });
     }
     return d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
-  };
+  }, [zoomLevel]);
 
   // =========================
   // EMPLOYEES
@@ -332,102 +481,55 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   const filteredVehicles = vehicleRows.filter((r) => r.assignments.length > 0);
   const filteredEquipment = equipmentRows.filter((r) => r.assignments.length > 0);
 
-  if (filteredEmployees.length === 0 && filteredVehicles.length === 0 && filteredEquipment.length === 0) {
-    return null;
-  }
-
-  const renderResourceRow = (resource: ResourceRow) => {
+  const renderResourceRow = useCallback((resource: ResourceRow) => {
     const isEmployee = resource.type === 'employee';
 
     return (
       <div key={resource.id} className="relative border-b border-[#d3bb73]/10 overflow-hidden">
-        <div className="relative" style={{ height: `${heightPx}px` }}>
+        <div ref={containerRef} className="relative" style={{ height: `${heightPx}px` }}>
           {resource.assignments.map((assignment, idx) => {
             const position = getAssignmentPosition(assignment.start_time, assignment.end_time);
             const phaseColor =
-              assignment.phase.color || assignment.phase.phase_type?.color || '#3b82f6';
-
-            const isHovered = hoveredAssignment === assignment.id;
+              assignment.phase?.color || assignment.phase?.phase_type?.color || '#3b82f6';
 
             return (
-              <div
+              <AssignmentBar
                 key={assignment.id ?? idx}
-                className="group absolute flex items-center justify-between rounded border-l-4 px-3 shadow-sm transition-all hover:shadow-lg cursor-pointer"
-                style={{
-                  top: '6px',
-                  bottom: '6px',
-                  left: position.left,
-                  width: position.width,
-                  backgroundColor: `${phaseColor}25`,
-                  borderLeftColor: phaseColor,
-                }}
-                title={`${resource.name}\n${formatTime(assignment.start_time)} - ${formatTime(
-                  assignment.end_time,
-                )}${assignment.role ? `\nRola: ${assignment.role}` : ''}`}
-                onMouseEnter={() => setHoveredAssignment(assignment.id ?? null)}
-                onMouseLeave={() => setHoveredAssignment(null)}
-                onClick={() => {
-                  if (isEmployee && assignment.id && assignment.phaseId) {
-                    setEditingAssignment({
-                      id: assignment.id,
-                      phaseId: assignment.phaseId,
-                      start: assignment.start_time,
-                      end: assignment.end_time,
-                      name: resource.name,
-                    });
-                  }
-                }}
-              >
-                <div className="flex items-center gap-2 overflow-hidden flex-1">
-                  {resource.avatar_url ? (
-                    <Image
-                      src={resource.avatar_url}
-                      alt={resource.name}
-                      width={24}
-                      height={24}
-                      className="h-6 w-6 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#d3bb73]/25 text-[10px] font-bold text-[#d3bb73]">
-                      {getInitials(resource.name)}
-                    </div>
-                  )}
-
-                  <span className="truncate text-xs font-semibold text-[#e5e4e2]">
-                    {resource.name}
-                  </span>
-
-                  {isEmployee && assignment.role && (
-                    <span className="truncate text-[10px] text-[#e5e4e2]/60">{assignment.role}</span>
-                  )}
-
-                  {assignment.quantity && assignment.quantity > 1 && (
-                    <span className="ml-1 rounded bg-[#d3bb73]/30 px-1.5 py-0.5 text-[10px] font-bold text-[#d3bb73]">
-                      x{assignment.quantity}
-                    </span>
-                  )}
-                </div>
-
-                {/* Delete button - tylko dla pracowników z konkretną fazą */}
-                {isEmployee && assignment.phaseId && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteEmployeeAssignment(assignment.id!, assignment.phaseId);
-                    }}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity rounded p-1 hover:bg-red-500/20 text-red-400"
-                    title="Usuń z fazy"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
+                assignment={assignment}
+                resource={resource}
+                position={position}
+                phaseColor={phaseColor}
+                heightPx={heightPx}
+                isEmployee={isEmployee}
+                hoveredAssignment={hoveredAssignment}
+                formatTime={formatTime}
+                timelineBounds={timelineBounds}
+                zoomLevel={zoomLevel}
+                onHoverChange={handleHoverChange}
+                onDelete={handleDeleteEmployeeAssignment}
+                onTimeUpdate={handleTimeUpdate}
+                containerRef={containerRef}
+              />
             );
           })}
         </div>
       </div>
     );
-  };
+  }, [
+    heightPx,
+    hoveredAssignment,
+    formatTime,
+    timelineBounds,
+    zoomLevel,
+    handleHoverChange,
+    handleDeleteEmployeeAssignment,
+    handleTimeUpdate,
+    getAssignmentPosition,
+  ]);
+
+  if (filteredEmployees.length === 0 && filteredVehicles.length === 0 && filteredEquipment.length === 0) {
+    return null;
+  }
 
   return (
     <div className="relative">
@@ -461,64 +563,6 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
         {filteredVehicles.map(renderResourceRow)}
         {filteredEquipment.map(renderResourceRow)}
       </div>
-
-      {/* Edit Time Modal */}
-      {editingAssignment && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setEditingAssignment(null)}>
-          <div className="bg-[#1c1f33] rounded-lg p-6 w-96 border border-[#d3bb73]/20" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold text-[#e5e4e2] mb-4">
-              Edytuj czas pracy: {editingAssignment.name}
-            </h3>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm text-[#e5e4e2]/70 mb-1">Początek</label>
-                <input
-                  type="datetime-local"
-                  value={editingAssignment.start.slice(0, 16)}
-                  onChange={(e) =>
-                    setEditingAssignment({
-                      ...editingAssignment,
-                      start: e.target.value + ':00.000Z',
-                    })
-                  }
-                  className="w-full rounded bg-[#0f1119] border border-[#d3bb73]/20 px-3 py-2 text-[#e5e4e2]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm text-[#e5e4e2]/70 mb-1">Koniec</label>
-                <input
-                  type="datetime-local"
-                  value={editingAssignment.end.slice(0, 16)}
-                  onChange={(e) =>
-                    setEditingAssignment({
-                      ...editingAssignment,
-                      end: e.target.value + ':00.000Z',
-                    })
-                  }
-                  className="w-full rounded bg-[#0f1119] border border-[#d3bb73]/20 px-3 py-2 text-[#e5e4e2]"
-                />
-              </div>
-
-              <div className="flex gap-2 justify-end">
-                <button
-                  onClick={() => setEditingAssignment(null)}
-                  className="px-4 py-2 rounded bg-[#0f1119] text-[#e5e4e2]/70 hover:bg-[#0f1119]/80"
-                >
-                  Anuluj
-                </button>
-                <button
-                  onClick={handleSaveTimeEdit}
-                  className="px-4 py-2 rounded bg-[#d3bb73] text-[#1c1f33] font-medium hover:bg-[#d3bb73]/90"
-                >
-                  Zapisz
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
