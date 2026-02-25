@@ -352,8 +352,16 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
             />
           </div>
 
+          {/* Separator between main phases and resources */}
+          <div className="mx-6 my-6 border-t-2 border-[#d3bb73]/30"></div>
+
           {/* Resource Timeline */}
-          <div className="mt-4">
+          <div className="mb-2 px-6">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-[#e5e4e2]/70">
+              Zasoby Wydarzenia
+            </h3>
+          </div>
+          <div className="mt-2">
             <ResourceTimeline
               eventId={eventId}
               phases={displayPhases}

@@ -273,10 +273,8 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
               className={`absolute flex cursor-pointer items-center rounded-lg border-l-4 px-2 transition-all ${
                 isSelected ? 'shadow-xl' : isHovered ? 'shadow-lg' : 'shadow'
               } ${
-                isHovered && !resizing.phaseId ? '-translate-y-1' : ''
-              } ${
                 hasConflict
-                  ? 'border-red-500 bg-red-500/10'
+                  ? 'border-red-500 bg-red-500/10 bg-[repeating-linear-gradient(45deg,transparent,transparent_10px,rgba(220,38,38,0.1)_10px,rgba(220,38,38,0.1)_20px)]'
                   : 'border-[var(--phase-color)] bg-[var(--phase-color)]'
               }`}
               style={{
