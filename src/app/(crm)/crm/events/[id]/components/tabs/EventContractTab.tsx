@@ -454,7 +454,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         .toString()
         .padStart(3, '0')}`;
       const totalPrice = offers?.total_amount || event.budget || 0;
-      const depositAmount = Math.round(totalPrice * 0.5);
+      const depositAmount = Math.round(totalPrice * 0.3);
 
       const formatDate = (dateStr: string) => {
         if (!dateStr) return '';
