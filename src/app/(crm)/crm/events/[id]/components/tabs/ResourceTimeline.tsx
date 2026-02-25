@@ -1,9 +1,11 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
-import { User, Car, Package, ChevronDown, ChevronRight, Info } from 'lucide-react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { User, Car, Package, ChevronDown, ChevronRight, Info, Search, Pencil, Trash2, Copy, AlertTriangle } from 'lucide-react';
 import { EventPhase } from '@/store/api/eventPhasesApi';
 import { PhaseAssignmentsData } from './PhaseAssignmentsLoader';
+import { TimelineTooltip, TooltipContent } from './TimelineTooltip';
+import { useTimelineDrag, DragMode } from './useTimelineDrag';
 
 interface ResourceTimelineProps {
   eventId: string;
@@ -18,20 +20,27 @@ interface ResourceTimelineProps {
 
 type ResourceType = 'employee' | 'vehicle' | 'equipment';
 
+interface Assignment {
+  id?: string;
+  phase: EventPhase;
+  phaseId: string;
+  resourceId: string;
+  resourceType: ResourceType;
+  start_time: string;
+  end_time: string;
+  role?: string;
+  quantity?: number;
+  isFullRange?: boolean;
+}
+
 interface ResourceRow {
   id: string;
   type: ResourceType;
   name: string;
   avatar_url?: string;
   category?: string;
-  assignments: {
-    phase: EventPhase;
-    start_time: string;
-    end_time: string;
-    role?: string;
-    quantity?: number;
-    isFullRange?: boolean;
-  }[];
+  assignments: Assignment[];
+  hasConflicts?: boolean;
 }
 
 export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
@@ -46,18 +55,89 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   const [expandedResources, setExpandedResources] = useState<Set<string>>(new Set());
   const [rowHeight, setRowHeight] = useState<'compact' | 'normal' | 'expanded'>('normal');
   const [showEquipmentDetails, setShowEquipmentDetails] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showOnlyAssigned, setShowOnlyAssigned] = useState(false);
+  const [showOnlyConflicts, setShowOnlyConflicts] = useState(false);
+  const [hideFullRange, setHideFullRange] = useState(false);
+  const [hoveredAssignment, setHoveredAssignment] = useState<Assignment | null>(null);
+  const [tooltipState, setTooltipState] = useState<{ x: number; y: number; assignment: Assignment | null }>({ x: 0, y: 0, assignment: null });
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const timelineContainerRef = useRef<HTMLDivElement>(null);
 
   const totalDuration = timelineBounds.end.getTime() - timelineBounds.start.getTime();
 
-  // Sprawdź czy przypisanie to full range
-  const isFullRangeAssignment = (startTime: string, endTime: string) => {
-    const start = new Date(startTime).getTime();
-    const end = new Date(endTime).getTime();
-    const eventStart = timelineBounds.start.getTime();
-    const eventEnd = timelineBounds.end.getTime();
+  // Update current time every 60 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
-    const tolerance = 60 * 1000; // 1 minuta tolerancji
-    return Math.abs(start - eventStart) < tolerance && Math.abs(end - eventEnd) < tolerance;
+  // Calculate NOW position
+  const nowPosition = useMemo(() => {
+    const now = currentTime.getTime();
+    const start = timelineBounds.start.getTime();
+    const end = timelineBounds.end.getTime();
+    if (now < start || now > end) return null;
+    return ((now - start) / totalDuration) * 100;
+  }, [currentTime, timelineBounds, totalDuration]);
+
+  // Sprawdź czy przypisanie to full range
+  const isFullRangeAssignment = useMemo(
+    () => (startTime: string, endTime: string) => {
+      const start = new Date(startTime).getTime();
+      const end = new Date(endTime).getTime();
+      const eventStart = timelineBounds.start.getTime();
+      const eventEnd = timelineBounds.end.getTime();
+
+      const tolerance = 60 * 1000; // 1 minuta tolerancji
+      return Math.abs(start - eventStart) < tolerance && Math.abs(end - eventEnd) < tolerance;
+    },
+    [timelineBounds]
+  );
+
+  // Wykryj konflikty w przypisaniach zasobu
+  const detectConflicts = (assignments: Assignment[]): boolean => {
+    for (let i = 0; i < assignments.length; i++) {
+      for (let j = i + 1; j < assignments.length; j++) {
+        const a1Start = new Date(assignments[i].start_time).getTime();
+        const a1End = new Date(assignments[i].end_time).getTime();
+        const a2Start = new Date(assignments[j].start_time).getTime();
+        const a2End = new Date(assignments[j].end_time).getTime();
+
+        // Check overlap
+        if ((a1Start < a2End && a1End > a2Start) || (a2Start < a1End && a2End > a1Start)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  // Callbacks for assignment actions (to be implemented by parent)
+  const handleEditAssignment = (assignment: Assignment) => {
+    console.log('[ResourceTimeline] Edit assignment:', assignment);
+    // TODO: Show edit modal
+  };
+
+  const handleDeleteAssignment = (assignment: Assignment) => {
+    console.log('[ResourceTimeline] Delete assignment:', assignment);
+    // TODO: Call delete API
+  };
+
+  const handleDuplicateAssignment = (assignment: Assignment) => {
+    console.log('[ResourceTimeline] Duplicate assignment:', assignment);
+    // TODO: Call create API with same data
+  };
+
+  const handleAssignmentDragEnd = (assignment: Assignment, newStart: Date, newEnd: Date) => {
+    console.log('[ResourceTimeline] Assignment drag ended:', {
+      assignment,
+      newStart,
+      newEnd,
+    });
+    // TODO: Call update API
   };
 
   // Stwórz wiersze dla pracowników
@@ -88,7 +168,11 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
           const startTime = assignment.assignment_start || phase.start_time;
           const endTime = assignment.assignment_end || phase.end_time;
           return [{
+            id: assignment.id,
             phase,
+            phaseId: phase.id,
+            resourceId: emp.id,
+            resourceType: 'employee' as ResourceType,
             start_time: startTime,
             end_time: endTime,
             role: assignment.role,
@@ -97,7 +181,8 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
         })
         .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
 
-      console.log(`[ResourceTimeline] Employee ${emp.name}: ${assignments.length} assignments`);
+      const hasConflicts = detectConflicts(assignments);
+      console.log(`[ResourceTimeline] Employee ${emp.name}: ${assignments.length} assignments, conflicts: ${hasConflicts}`);
 
       return {
         id: emp.id,
@@ -105,9 +190,10 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
         name: `${emp.name} ${emp.surname}`,
         avatar_url: emp.avatar_url,
         assignments,
+        hasConflicts,
       };
     });
-  }, [employees, phaseAssignments]);
+  }, [employees, phaseAssignments, isFullRangeAssignment]);
 
   // Stwórz wiersze dla pojazdów
   const vehicleRows: ResourceRow[] = useMemo(() => {
@@ -135,7 +221,7 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
         assignments,
       };
     });
-  }, [vehicles, phaseAssignments]);
+  }, [vehicles, phaseAssignments, isFullRangeAssignment]);
 
   // Stwórz wiersze dla sprzętu
   const equipmentRows: ResourceRow[] = useMemo(() => {
@@ -178,12 +264,36 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
     return Array.from(equipmentMap.values())
       .filter(row => row.assignments.length > 0)
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [equipment, phaseAssignments]);
+  }, [equipment, phaseAssignments, isFullRangeAssignment]);
 
-  // Filtruj tylko te zasoby, które mają przypisania
-  const activeEmployees = employeeRows.filter(row => row.assignments.length > 0);
-  const activeVehicles = vehicleRows.filter(row => row.assignments.length > 0);
-  const activeEquipment = equipmentRows;
+  // Filtruj zasoby według kryteriów
+  const filterResources = (rows: ResourceRow[]): ResourceRow[] => {
+    return rows.filter(row => {
+      // Filtr: tylko przypisane
+      if (showOnlyAssigned && row.assignments.length === 0) return false;
+
+      // Filtr: tylko konflikty
+      if (showOnlyConflicts && !row.hasConflicts) return false;
+
+      // Filtr: ukryj full-range
+      if (hideFullRange) {
+        const hasNonFullRange = row.assignments.some(a => !a.isFullRange);
+        if (!hasNonFullRange) return false;
+      }
+
+      // Wyszukiwanie
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        return row.name.toLowerCase().includes(query);
+      }
+
+      return true;
+    });
+  };
+
+  const filteredEmployees = filterResources(employeeRows.filter(row => row.assignments.length > 0));
+  const filteredVehicles = filterResources(vehicleRows.filter(row => row.assignments.length > 0));
+  const filteredEquipment = filterResources(equipmentRows);
 
   const getRowHeightPx = () => {
     switch (rowHeight) {

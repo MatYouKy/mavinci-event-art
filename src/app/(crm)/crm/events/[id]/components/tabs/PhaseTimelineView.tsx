@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Trash2, GripVertical, AlertTriangle } from 'lucide-react';
 import { EventPhase } from '@/store/api/eventPhasesApi';
+import { TimelineTooltip, TooltipContent } from './TimelineTooltip';
 
 interface PhaseTimelineViewProps {
   phases: EventPhase[];
@@ -34,11 +35,14 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
   eventEndDate,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const timeAxisRef = useRef<HTMLDivElement>(null);
   const [resizing, setResizing] = useState<{ phaseId: string; handle: ResizeHandle }>({
     phaseId: '',
     handle: null,
   });
   const [hoveredPhase, setHoveredPhase] = useState<string | null>(null);
+  const [tooltipState, setTooltipState] = useState<{ x: number; y: number; phase: EventPhase | null }>({ x: 0, y: 0, phase: null });
+  const [currentTime, setCurrentTime] = useState(new Date());
 
   const totalDuration = timelineBounds.end.getTime() - timelineBounds.start.getTime();
 
@@ -90,6 +94,27 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
   };
 
   const timeMarkers = generateTimeMarkers();
+
+  // Update current time every 60 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Calculate "NOW" line position
+  const nowPosition = useMemo(() => {
+    const now = currentTime.getTime();
+    const start = timelineBounds.start.getTime();
+    const end = timelineBounds.end.getTime();
+
+    if (now < start || now > end) return null;
+
+    const position = ((now - start) / totalDuration) * 100;
+    return position;
+  }, [currentTime, timelineBounds, totalDuration]);
 
   const handleResizeStart = (phaseId: string, handle: 'start' | 'end', e: React.MouseEvent) => {
     e.stopPropagation();
@@ -199,8 +224,8 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
 
   return (
     <div ref={containerRef} className="relative h-full p-6">
-      {/* Time Axis */}
-      <div className="relative mb-6 h-10 border-b-2 border-[#d3bb73]/20">
+      {/* Time Axis - Sticky */}
+      <div ref={timeAxisRef} className="sticky top-0 z-20 bg-[#0f1119] relative mb-6 h-10 border-b-2 border-[#d3bb73]/20">
         {/* Główne godziny wydarzenia (agenda/deklaracja dla klienta) */}
         {eventStartDate && eventEndDate && (
           <div
@@ -233,6 +258,18 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
             </div>
           );
         })}
+
+        {/* NOW Line */}
+        {nowPosition !== null && (
+          <div
+            className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-10 pointer-events-none"
+            style={{ left: `${nowPosition}%` }}
+          >
+            <div className="absolute -top-1 left-1/2 -translate-x-1/2 bg-red-500 text-white text-[10px] font-bold px-1 rounded whitespace-nowrap">
+              Teraz
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Phases */}
@@ -262,11 +299,22 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
           return (
             <div
               key={phase.id}
-              onMouseEnter={() => {
-                if (!resizing.phaseId) setHoveredPhase(phase.id);
+              onMouseEnter={(e) => {
+                if (!resizing.phaseId) {
+                  setHoveredPhase(phase.id);
+                  setTooltipState({ x: e.clientX, y: e.clientY, phase });
+                }
+              }}
+              onMouseMove={(e) => {
+                if (!resizing.phaseId && isHovered) {
+                  setTooltipState({ x: e.clientX, y: e.clientY, phase });
+                }
               }}
               onMouseLeave={() => {
-                if (!resizing.phaseId) setHoveredPhase(null);
+                if (!resizing.phaseId) {
+                  setHoveredPhase(null);
+                  setTooltipState({ x: 0, y: 0, phase: null });
+                }
               }}
               onClick={() => onPhaseClick(phase)}
               onDoubleClick={() => onPhaseDoubleClick?.(phase)}
@@ -357,7 +405,35 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
             </div>
           );
         })}
+
+        {/* NOW Line in phases area */}
+        {nowPosition !== null && (
+          <div
+            className="absolute top-0 w-[2px] bg-red-500 pointer-events-none z-30"
+            style={{ left: `${nowPosition}%`, height: `${containerHeight}px` }}
+          />
+        )}
       </div>
+
+      {/* Tooltip */}
+      <TimelineTooltip
+        x={tooltipState.x}
+        y={tooltipState.y}
+        visible={!!tooltipState.phase && !resizing.phaseId}
+        content={
+          tooltipState.phase ? (
+            <TooltipContent
+              title={tooltipState.phase.name}
+              startTime={formatTimeLabel(new Date(tooltipState.phase.start_time))}
+              endTime={formatTimeLabel(new Date(tooltipState.phase.end_time))}
+              details={[
+                { label: 'Typ', value: tooltipState.phase.phase_type?.name || 'Nieokreślony' },
+                { label: 'Czas trwania', value: getPhaseDuration(tooltipState.phase) },
+              ]}
+            />
+          ) : null
+        }
+      />
     </div>
   );
 };
