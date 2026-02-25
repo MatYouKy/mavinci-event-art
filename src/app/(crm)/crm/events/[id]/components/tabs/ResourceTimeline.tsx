@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useCallback, memo, useRef, useEffect } from 'react';
 import Image from 'next/image';
-import { Trash2, GripVertical } from 'lucide-react';
+import { Trash2, GripVertical, Save, X } from 'lucide-react';
 import { EventPhase, useDeletePhaseAssignmentMutation, useUpdatePhaseAssignmentMutation } from '@/store/api/eventPhasesApi';
 import { PhaseAssignmentsData } from './PhaseAssignmentsLoader';
 import { useTimelineDrag } from './useTimelineDrag';
@@ -54,6 +54,37 @@ const getInitials = (name: string) =>
 // ============================================
 // PODKOMPONENTY - zmemoizowane
 // ============================================
+
+// Przyciski akcji - zapisz/odrzuć
+interface ActionButtonsProps {
+  onSave: () => void;
+  onDiscard: () => void;
+  isLoading?: boolean;
+}
+
+const ActionButtons = memo<ActionButtonsProps>(({ onSave, onDiscard, isLoading }) => (
+  <div className="absolute top-4 right-4 z-50 flex gap-2 animate-in fade-in slide-in-from-top-2 duration-200">
+    <button
+      onClick={onSave}
+      disabled={isLoading}
+      className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-semibold text-[#1a1a1a] shadow-lg transition-all hover:bg-[#e5cd85] hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+      title="Zapisz zmiany (Enter)"
+    >
+      <Save className="h-4 w-4" />
+      Zapisz zmiany
+    </button>
+    <button
+      onClick={onDiscard}
+      disabled={isLoading}
+      className="flex items-center gap-2 rounded-lg bg-red-500/90 px-4 py-2 text-sm font-semibold text-white shadow-lg transition-all hover:bg-red-600 hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+      title="Odrzuć zmiany (Esc)"
+    >
+      <X className="h-4 w-4" />
+      Odrzuć
+    </button>
+  </div>
+));
+ActionButtons.displayName = 'ActionButtons';
 
 // Avatar komponent
 const ResourceAvatar = memo<{ avatar_url?: string; name: string }>(({ avatar_url, name }) => {
@@ -118,8 +149,9 @@ interface AssignmentBarProps {
   zoomLevel: 'days' | 'hours' | 'minutes';
   onHoverChange: (id: string | null) => void;
   onDelete: (assignmentId: string, phaseId: string) => void;
-  onTimeUpdate: (assignmentId: string, newStart: Date, newEnd: Date) => void;
+  onTimeUpdate: (assignmentId: string, newStart: Date, newEnd: Date, originalStart: string, originalEnd: string) => void;
   containerRef?: React.RefObject<HTMLDivElement>;
+  editedTimes?: { start: Date; end: Date } | null; // Tymczasowe czasy z edycji
 }
 
 const AssignmentBar = memo<AssignmentBarProps>(({
@@ -137,16 +169,21 @@ const AssignmentBar = memo<AssignmentBarProps>(({
   onDelete,
   onTimeUpdate,
   containerRef,
+  editedTimes,
 }) => {
   const barRef = useRef<HTMLDivElement>(null);
   const [dragPreview, setDragPreview] = useState<{ left: string; width: string } | null>(null);
+
+  // Użyj editedTimes jeśli dostępne, w przeciwnym razie oryginalne czasy
+  const displayStartTime = editedTimes ? editedTimes.start.toISOString() : assignment.start_time;
+  const displayEndTime = editedTimes ? editedTimes.end.toISOString() : assignment.end_time;
 
   const { dragMode, startDrag } = useTimelineDrag({
     timelineBounds,
     zoomLevel,
     onDragEnd: (newStart, newEnd) => {
       if (assignment.id) {
-        onTimeUpdate(assignment.id, newStart, newEnd);
+        onTimeUpdate(assignment.id, newStart, newEnd, assignment.start_time, assignment.end_time);
       }
       setDragPreview(null);
     },
@@ -182,10 +219,27 @@ const AssignmentBar = memo<AssignmentBarProps>(({
 
   const isHovered = hoveredAssignment === assignment.id;
   const isDragging = !!dragMode;
-  const currentPosition = dragPreview || position;
 
-  // Zwiększona wysokość podczas drag
-  const barHeight = isDragging ? heightPx * 1.2 : heightPx - 12;
+  // Jeśli są editedTimes, przelicz pozycję na ich podstawie
+  const displayPosition = useMemo(() => {
+    if (!editedTimes) return position;
+
+    const start = editedTimes.start.getTime();
+    const end = editedTimes.end.getTime();
+    const totalDuration = timelineBounds.end.getTime() - timelineBounds.start.getTime();
+    const left = ((start - timelineBounds.start.getTime()) / totalDuration) * 100;
+    const width = ((end - start) / totalDuration) * 100;
+
+    return {
+      left: `${Math.max(0, left)}%`,
+      width: `${Math.max(1, width)}%`,
+    };
+  }, [editedTimes, position, timelineBounds]);
+
+  const currentPosition = dragPreview || displayPosition;
+
+  // Zwiększona wysokość podczas drag lub edycji
+  const barHeight = (isDragging || editedTimes) ? heightPx * 1.2 : heightPx - 12;
 
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -193,12 +247,12 @@ const AssignmentBar = memo<AssignmentBarProps>(({
       startDrag(
         'resize-start',
         e.clientX,
-        new Date(assignment.start_time),
-        new Date(assignment.end_time),
+        new Date(displayStartTime),
+        new Date(displayEndTime),
         containerRef.current
       );
     }
-  }, [startDrag, assignment.start_time, assignment.end_time, containerRef]);
+  }, [startDrag, displayStartTime, displayEndTime, containerRef]);
 
   const handleResizeEnd = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -206,12 +260,12 @@ const AssignmentBar = memo<AssignmentBarProps>(({
       startDrag(
         'resize-end',
         e.clientX,
-        new Date(assignment.start_time),
-        new Date(assignment.end_time),
+        new Date(displayStartTime),
+        new Date(displayEndTime),
         containerRef.current
       );
     }
-  }, [startDrag, assignment.start_time, assignment.end_time, containerRef]);
+  }, [startDrag, displayStartTime, displayEndTime, containerRef]);
 
   const handleDelete = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -234,9 +288,9 @@ const AssignmentBar = memo<AssignmentBarProps>(({
         zIndex: isDragging ? 100 : 'auto',
         boxShadow: isDragging ? '0 4px 12px rgba(211, 187, 115, 0.3)' : undefined,
       }}
-      title={`${resource.name}\n${formatTime(assignment.start_time)} - ${formatTime(
-        assignment.end_time,
-      )}${assignment.role ? `\nRola: ${assignment.role}` : ''}`}
+      title={`${resource.name}\n${formatTime(displayStartTime)} - ${formatTime(
+        displayEndTime,
+      )}${assignment.role ? `\nRola: ${assignment.role}` : ''}${editedTimes ? '\n[EDYCJA]' : ''}`}
       onMouseEnter={() => onHoverChange(assignment.id ?? null)}
       onMouseLeave={() => onHoverChange(null)}
     >
@@ -276,6 +330,15 @@ const AssignmentBar = memo<AssignmentBarProps>(({
 
 AssignmentBar.displayName = 'AssignmentBar';
 
+// Stan edycji dla assignment
+interface EditState {
+  assignmentId: string;
+  originalStart: string;
+  originalEnd: string;
+  newStart: Date;
+  newEnd: Date;
+}
+
 export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   phases,
   phaseAssignments,
@@ -287,11 +350,12 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
 }) => {
   const [rowHeight, setRowHeight] = useState<'compact' | 'normal' | 'expanded'>('normal');
   const [hoveredAssignment, setHoveredAssignment] = useState<string | null>(null);
+  const [editState, setEditState] = useState<EditState | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Mutations
   const [deleteAssignment] = useDeletePhaseAssignmentMutation();
-  const [updateAssignment] = useUpdatePhaseAssignmentMutation();
+  const [updateAssignment, { isLoading: isUpdating }] = useUpdatePhaseAssignmentMutation();
 
   console.log('vehicles', vehicles);
   console.log('equipment', equipment);
@@ -343,18 +407,56 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
     }
   }, [deleteAssignment]);
 
-  const handleTimeUpdate = useCallback(async (assignmentId: string, newStart: Date, newEnd: Date) => {
+  // Callback po drag - ustawia stan edycji
+  const handleTimeUpdate = useCallback((assignmentId: string, newStart: Date, newEnd: Date, originalStart: string, originalEnd: string) => {
+    setEditState({
+      assignmentId,
+      originalStart,
+      originalEnd,
+      newStart,
+      newEnd,
+    });
+  }, []);
+
+  // Zapisz zmiany
+  const handleSaveChanges = useCallback(async () => {
+    if (!editState) return;
+
     try {
       await updateAssignment({
-        id: assignmentId,
-        assignment_start: newStart.toISOString(),
-        assignment_end: newEnd.toISOString(),
+        id: editState.assignmentId,
+        assignment_start: editState.newStart.toISOString(),
+        assignment_end: editState.newEnd.toISOString(),
       }).unwrap();
+      setEditState(null);
     } catch (error) {
       console.error('Failed to update assignment:', error);
       alert('Nie udało się zaktualizować czasu');
     }
-  }, [updateAssignment]);
+  }, [editState, updateAssignment]);
+
+  // Odrzuć zmiany
+  const handleDiscardChanges = useCallback(() => {
+    setEditState(null);
+  }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    if (!editState) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && !isUpdating) {
+        e.preventDefault();
+        handleSaveChanges();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        handleDiscardChanges();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [editState, isUpdating, handleSaveChanges, handleDiscardChanges]);
 
   const handleHoverChange = useCallback((id: string | null) => {
     setHoveredAssignment(id);
@@ -581,6 +683,11 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
                 onDelete={handleDeleteEmployeeAssignment}
                 onTimeUpdate={handleTimeUpdate}
                 containerRef={containerRef}
+                editedTimes={
+                  editState?.assignmentId === assignment.id
+                    ? { start: editState.newStart, end: editState.newEnd }
+                    : null
+                }
               />
             );
           })}
@@ -597,6 +704,7 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
     handleDeleteEmployeeAssignment,
     handleTimeUpdate,
     getAssignmentPosition,
+    editState,
   ]);
 
   if (filteredEmployees.length === 0 && filteredVehicles.length === 0 && filteredEquipment.length === 0) {
@@ -605,6 +713,15 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
 
   return (
     <div className="relative">
+      {/* Przyciski akcji - pokazują się gdy jest editState */}
+      {editState && (
+        <ActionButtons
+          onSave={handleSaveChanges}
+          onDiscard={handleDiscardChanges}
+          isLoading={isUpdating}
+        />
+      )}
+
       <div className="mb-3 flex items-center justify-between px-6">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-[#e5e4e2]/70">
           Zasoby Wydarzenia
