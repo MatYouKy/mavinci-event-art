@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
+import Image from 'next/image';
 import { EventPhase } from '@/store/api/eventPhasesApi';
 import { PhaseAssignmentsData } from './PhaseAssignmentsLoader';
 
@@ -154,6 +155,15 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   // VEHICLES
   // =========================
   const vehicleRows: ResourceRow[] = useMemo(() => {
+    console.log('[ResourceTimeline] Processing vehicles:', {
+      vehiclesCount: vehicles.length,
+      vehicles: vehicles.map(v => ({ id: v.id, registration: v.registration_number, vehicle: v.vehicle })),
+      phaseAssignments: phaseAssignments.map(pa => ({
+        phase: pa.phase.name,
+        vehicleAssignmentsCount: pa.vehicleAssignments?.length || 0,
+      })),
+    });
+
     return vehicles.map((veh) => {
       const vehicle = veh.vehicle || veh;
       const vehicleId = vehicle?.id;
@@ -197,6 +207,15 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   // EQUIPMENT
   // =========================
   const equipmentRows: ResourceRow[] = useMemo(() => {
+    console.log('[ResourceTimeline] Processing equipment:', {
+      equipmentCount: equipment.length,
+      equipment: equipment.map(e => ({ id: e.id, name: e.equipment_items?.name || e.name })),
+      phaseAssignments: phaseAssignments.map(pa => ({
+        phase: pa.phase.name,
+        equipmentAssignmentsCount: pa.equipmentAssignments?.length || 0,
+      })),
+    });
+
     const equipmentMap = new Map<string, ResourceRow>();
 
     equipment.forEach((item: any) => {
@@ -285,9 +304,11 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
               >
                 <div className="flex items-center gap-2 overflow-hidden">
                   {resource.avatar_url ? (
-                    <img
+                    <Image
                       src={resource.avatar_url}
                       alt={resource.name}
+                      width={24}
+                      height={24}
                       className="h-6 w-6 rounded-full object-cover"
                     />
                   ) : (

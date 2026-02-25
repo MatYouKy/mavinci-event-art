@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { X, User, Package, Car, Plus, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { X, User, Package, Car, Plus, CheckCircle, XCircle, AlertCircle, Trash2 } from 'lucide-react';
 import {
   EventPhase,
   useGetPhaseAssignmentsQuery,
   useGetPhaseEquipmentQuery,
   useGetPhaseVehiclesQuery,
+  useDeletePhaseAssignmentMutation,
 } from '@/store/api/eventPhasesApi';
 import { useGetEventEmployeesQuery, useGetEventEquipmentQuery, useGetEventVehiclesQuery } from '../../../store/api/eventsApi';
 import { AddPhaseAssignmentModal } from '../Modals/AddPhaseAssignmentModal';
@@ -44,6 +45,21 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
   const { data: phaseAssignments = [] } = useGetPhaseAssignmentsQuery(phase.id);
   const { data: phaseEquipment = [] } = useGetPhaseEquipmentQuery(phase.id);
   const { data: phaseVehicles = [] } = useGetPhaseVehiclesQuery(phase.id);
+
+  // Mutations
+  const [deleteAssignment] = useDeletePhaseAssignmentMutation();
+
+  // Handlers
+  const handleRemoveEmployee = async (assignmentId: string) => {
+    if (!confirm('Czy na pewno chcesz usunąć tego pracownika z fazy?')) return;
+
+    try {
+      await deleteAssignment({ id: assignmentId, phase_id: phase.id }).unwrap();
+    } catch (error) {
+      console.error('Failed to remove employee:', error);
+      alert('Nie udało się usunąć pracownika z fazy');
+    }
+  };
 
   // Debug logging
   console.log('[PhaseResourcesPanel] Phase:', phase.name, phase.id);
@@ -243,6 +259,15 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
                                 </p>
                               )}
                             </div>
+                            {assignment && (
+                              <button
+                                onClick={() => handleRemoveEmployee(assignment.id)}
+                                className="rounded-lg p-2 text-[#e5e4e2]/60 transition-colors hover:bg-red-500/20 hover:text-red-400"
+                                title="Usuń z fazy"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            )}
                           </div>
 
                           {assignment && (

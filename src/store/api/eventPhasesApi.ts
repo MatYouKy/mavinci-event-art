@@ -70,6 +70,18 @@ export interface EventPhaseEquipment {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  equipment_items?: {
+    id: string;
+    name: string;
+    thumbnail_url?: string;
+    equipment_categories?: {
+      name: string;
+    };
+  };
+  equipment_kits?: {
+    id: string;
+    name: string;
+  };
 }
 
 export interface EventPhaseVehicle {
@@ -83,6 +95,12 @@ export interface EventPhaseVehicle {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  vehicle?: {
+    id: string;
+    registration_number: string;
+    brand: string;
+    model: string;
+  };
 }
 
 export interface PhaseConflict {
@@ -289,7 +307,7 @@ export const eventPhasesApi = createApi({
       query: (phaseId) => ({
         table: 'event_phase_equipment',
         method: 'select',
-        select: '*',
+        select: '*, equipment_items(*), equipment_kits(*)',
         match: { phase_id: phaseId },
       }),
       providesTags: (result, error, phaseId) => [{ type: 'PhaseEquipment', id: phaseId }],
@@ -319,7 +337,7 @@ export const eventPhasesApi = createApi({
       query: (phaseId) => ({
         table: 'event_phase_vehicles',
         method: 'select',
-        select: '*',
+        select: '*, vehicle:vehicles(*)',
         match: { phase_id: phaseId },
       }),
       providesTags: (result, error, phaseId) => [{ type: 'PhaseVehicles', id: phaseId }],

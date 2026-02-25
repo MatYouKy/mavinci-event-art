@@ -40,6 +40,13 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
   const { data: eventEmployees = [] } = useGetEventEmployeesQuery(eventId, { skip: !eventId });
   const { data: eventVehicles = [] } = useGetEventVehiclesQuery(eventId, { skip: !eventId });
   const { data: eventEquipment = [] } = useGetEventEquipmentQuery(eventId, { skip: !eventId });
+
+  console.log('[EventPhasesTimeline] Resources:', {
+    vehiclesCount: eventVehicles.length,
+    equipmentCount: eventEquipment.length,
+    vehicles: eventVehicles,
+    equipment: eventEquipment,
+  });
   const [updatePhase] = useUpdatePhaseMutation();
   const [deletePhase] = useDeletePhaseMutation();
   const { showSnackbar } = useSnackbar();
