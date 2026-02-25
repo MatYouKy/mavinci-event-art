@@ -158,6 +158,45 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
     }
   };
 
+  // Algorytm układania faz w liniach (rows) - fazy nakładające się trafiają do różnych linii
+  const getPhaseLayout = (): Map<string, number> => {
+    const layout = new Map<string, number>();
+    const rows: Array<{ endTime: number; phases: EventPhase[] }> = [];
+
+    // Sortuj fazy według czasu rozpoczęcia
+    const sortedPhases = [...phases].sort(
+      (a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+    );
+
+    sortedPhases.forEach((phase) => {
+      const phaseStart = new Date(phase.start_time).getTime();
+      const phaseEnd = new Date(phase.end_time).getTime();
+
+      // Znajdź pierwszy rząd, gdzie faza się zmieści (nie nakłada się z żadną fazą w tym rzędzie)
+      let rowIndex = rows.findIndex((row) => row.endTime <= phaseStart);
+
+      if (rowIndex === -1) {
+        // Brak wolnego rzędu - utwórz nowy
+        rowIndex = rows.length;
+        rows.push({ endTime: phaseEnd, phases: [phase] });
+      } else {
+        // Dodaj do istniejącego rzędu
+        rows[rowIndex].endTime = phaseEnd;
+        rows[rowIndex].phases.push(phase);
+      }
+
+      layout.set(phase.id, rowIndex);
+    });
+
+    return layout;
+  };
+
+  const phaseLayout = getPhaseLayout();
+
+  // Oblicz wymaganą wysokość kontenera w zależności od liczby rzędów
+  const maxRowIndex = Math.max(...Array.from(phaseLayout.values()), 0);
+  const containerHeight = Math.max(200, (maxRowIndex + 1) * 80 + 20); // +20 dla marginesu
+
   return (
     <div ref={containerRef} className="relative h-full p-6">
       {/* Time Axis */}
@@ -197,20 +236,24 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
       </div>
 
       {/* Phases */}
-      <div className="relative min-h-[200px]">
-        {/* Separatory poziome między fazami */}
-        {phases.map((_, index) => (
-          index > 0 && (
-            <div
-              key={`separator-${index}`}
-              className="absolute left-0 right-0 border-t border-[#d3bb73]/10"
-              style={{ top: `${index * 80}px` }}
-            />
-          )
-        ))}
+      <div className="relative" style={{ minHeight: `${containerHeight}px` }}>
+        {/* Separatory poziome między rzędami faz */}
+        {Array.from(phaseLayout.values())
+          .filter((v, i, arr) => arr.indexOf(v) === i) // unique row numbers
+          .sort((a, b) => a - b)
+          .map((rowIndex) => (
+            rowIndex > 0 && (
+              <div
+                key={`separator-${rowIndex}`}
+                className="absolute left-0 right-0 border-t border-[#d3bb73]/10"
+                style={{ top: `${rowIndex * 80}px` }}
+              />
+            )
+          ))}
 
-        {phases.map((phase, index) => {
+        {phases.map((phase) => {
           const position = getPhasePosition(phase);
+          const rowIndex = phaseLayout.get(phase.id) || 0;
           const isSelected = selectedPhase?.id === phase.id;
           const isHovered = hoveredPhase === phase.id;
           const hasConflict = phaseConflicts[phase.id];
@@ -237,7 +280,7 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
                   : 'border-[var(--phase-color)] bg-[var(--phase-color)]'
               }`}
               style={{
-                top: `${index * 80}px`,
+                top: `${rowIndex * 80}px`,
                 left: position.left,
                 width: position.width,
                 height: '60px',
