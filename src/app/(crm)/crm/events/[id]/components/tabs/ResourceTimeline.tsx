@@ -3,7 +3,13 @@
 import React, { useState, useMemo, useCallback, memo, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import { Trash2, GripVertical, Save, X } from 'lucide-react';
-import { EventPhase, useDeletePhaseAssignmentMutation, useUpdatePhaseAssignmentMutation } from '@/store/api/eventPhasesApi';
+import {
+  EventPhase,
+  useDeletePhaseAssignmentMutation,
+  useUpdatePhaseAssignmentMutation,
+  useUpdatePhaseVehicleMutation,
+  useUpdatePhaseEquipmentMutation,
+} from '@/store/api/eventPhasesApi';
 import { PhaseAssignmentsData } from './PhaseAssignmentsLoader';
 import { useTimelineDrag } from './useTimelineDrag';
 
@@ -149,9 +155,10 @@ interface AssignmentBarProps {
   zoomLevel: 'days' | 'hours' | 'minutes';
   onHoverChange: (id: string | null) => void;
   onDelete: (assignmentId: string, phaseId: string) => void;
-  onTimeUpdate: (assignmentId: string, newStart: Date, newEnd: Date, originalStart: string, originalEnd: string) => void;
+  onTimeUpdate: (assignmentId: string, newStart: Date, newEnd: Date, originalStart: string, originalEnd: string, resourceType: 'employee' | 'vehicle' | 'equipment') => void;
   containerRef?: React.RefObject<HTMLDivElement>;
   editedTimes?: { start: Date; end: Date } | null; // Tymczasowe czasy z edycji
+  resourceType: 'employee' | 'vehicle' | 'equipment';
 }
 
 const AssignmentBar = memo<AssignmentBarProps>(({
@@ -170,6 +177,7 @@ const AssignmentBar = memo<AssignmentBarProps>(({
   onTimeUpdate,
   containerRef,
   editedTimes,
+  resourceType,
 }) => {
   const barRef = useRef<HTMLDivElement>(null);
   const [dragPreview, setDragPreview] = useState<{ left: string; width: string } | null>(null);
@@ -183,7 +191,7 @@ const AssignmentBar = memo<AssignmentBarProps>(({
     zoomLevel,
     onDragEnd: (newStart, newEnd) => {
       if (assignment.id) {
-        onTimeUpdate(assignment.id, newStart, newEnd, assignment.start_time, assignment.end_time);
+        onTimeUpdate(assignment.id, newStart, newEnd, assignment.start_time, assignment.end_time, resourceType);
       }
       setDragPreview(null);
     },
@@ -337,6 +345,7 @@ interface EditState {
   originalEnd: string;
   newStart: Date;
   newEnd: Date;
+  resourceType: 'employee' | 'vehicle' | 'equipment'; // Typ zasobu
 }
 
 export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
@@ -355,7 +364,11 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
 
   // Mutations
   const [deleteAssignment] = useDeletePhaseAssignmentMutation();
-  const [updateAssignment, { isLoading: isUpdating }] = useUpdatePhaseAssignmentMutation();
+  const [updateAssignment, { isLoading: isUpdatingEmployee }] = useUpdatePhaseAssignmentMutation();
+  const [updateVehicle, { isLoading: isUpdatingVehicle }] = useUpdatePhaseVehicleMutation();
+  const [updateEquipment, { isLoading: isUpdatingEquipment }] = useUpdatePhaseEquipmentMutation();
+
+  const isUpdating = isUpdatingEmployee || isUpdatingVehicle || isUpdatingEquipment;
 
   console.log('vehicles', vehicles);
   console.log('equipment', equipment);
@@ -408,13 +421,21 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   }, [deleteAssignment]);
 
   // Callback po drag - ustawia stan edycji
-  const handleTimeUpdate = useCallback((assignmentId: string, newStart: Date, newEnd: Date, originalStart: string, originalEnd: string) => {
+  const handleTimeUpdate = useCallback((
+    assignmentId: string,
+    newStart: Date,
+    newEnd: Date,
+    originalStart: string,
+    originalEnd: string,
+    resourceType: 'employee' | 'vehicle' | 'equipment'
+  ) => {
     setEditState({
       assignmentId,
       originalStart,
       originalEnd,
       newStart,
       newEnd,
+      resourceType,
     });
   }, []);
 
@@ -422,19 +443,53 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   const handleSaveChanges = useCallback(async () => {
     if (!editState) return;
 
+    console.log('💾 Saving assignment:', {
+      id: editState.assignmentId,
+      type: editState.resourceType,
+      start: editState.newStart.toISOString(),
+      end: editState.newEnd.toISOString(),
+    });
+
     try {
-      await updateAssignment({
-        id: editState.assignmentId,
-        assignment_start: editState.newStart.toISOString(),
-        assignment_end: editState.newEnd.toISOString(),
-      }).unwrap();
+      let result;
+
+      // Użyj odpowiedniej mutacji w zależności od typu zasobu
+      if (editState.resourceType === 'employee') {
+        result = await updateAssignment({
+          id: editState.assignmentId,
+          assignment_start: editState.newStart.toISOString(),
+          assignment_end: editState.newEnd.toISOString(),
+        }).unwrap();
+      } else if (editState.resourceType === 'vehicle') {
+        result = await updateVehicle({
+          id: editState.assignmentId,
+          assigned_start: editState.newStart.toISOString(),
+          assigned_end: editState.newEnd.toISOString(),
+        }).unwrap();
+      } else if (editState.resourceType === 'equipment') {
+        result = await updateEquipment({
+          id: editState.assignmentId,
+          assigned_start: editState.newStart.toISOString(),
+          assigned_end: editState.newEnd.toISOString(),
+        }).unwrap();
+      }
+
+      console.log('✅ Assignment updated successfully:', result);
       // NIE czyścimy editState tutaj - poczekaj aż dane się odświeżą z API
       // editState zostanie wyczyszczony przez useEffect poniżej
-    } catch (error) {
-      console.error('Failed to update assignment:', error);
-      alert('Nie udało się zaktualizować czasu');
+    } catch (error: any) {
+      console.error('❌ Failed to update assignment:', error);
+      console.error('Error details:', {
+        message: error?.message,
+        status: error?.status,
+        data: error?.data,
+        originalStatus: error?.originalStatus,
+      });
+
+      const errorMsg = error?.data?.message || error?.message || 'Nie udało się zaktualizować czasu';
+      alert(`Błąd: ${errorMsg}`);
     }
-  }, [editState, updateAssignment]);
+  }, [editState, updateAssignment, updateVehicle, updateEquipment]);
 
   // Odrzuć zmiany
   const handleDiscardChanges = useCallback(() => {
@@ -717,6 +772,7 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
                     ? { start: editState.newStart, end: editState.newEnd }
                     : null
                 }
+                resourceType={assignment.resourceType || resource.type}
               />
             );
           })}

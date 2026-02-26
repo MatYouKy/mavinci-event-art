@@ -323,6 +323,17 @@ export const eventPhasesApi = createApi({
       invalidatesTags: (result, error, arg) => [{ type: 'PhaseEquipment', id: arg.phase_id }],
     }),
 
+    updatePhaseEquipment: builder.mutation<EventPhaseEquipment, { id: string; assigned_start?: string; assigned_end?: string; notes?: string }>({
+      query: ({ id, ...data }) => ({
+        table: 'event_phase_equipment',
+        method: 'update',
+        match: { id },
+        data,
+        select: '*',
+      }),
+      invalidatesTags: (result) => (result ? [{ type: 'PhaseEquipment', id: result.phase_id }] : []),
+    }),
+
     deletePhaseEquipment: builder.mutation<void, string>({
       query: (id) => ({
         table: 'event_phase_equipment',
@@ -351,6 +362,17 @@ export const eventPhasesApi = createApi({
         select: '*',
       }),
       invalidatesTags: (result, error, arg) => [{ type: 'PhaseVehicles', id: arg.phase_id }],
+    }),
+
+    updatePhaseVehicle: builder.mutation<EventPhaseVehicle, { id: string; assigned_start?: string; assigned_end?: string; notes?: string; purpose?: string }>({
+      query: ({ id, ...data }) => ({
+        table: 'event_phase_vehicles',
+        method: 'update',
+        match: { id },
+        data,
+        select: '*',
+      }),
+      invalidatesTags: (result) => (result ? [{ type: 'PhaseVehicles', id: result.phase_id }] : []),
     }),
 
     deletePhaseVehicle: builder.mutation<void, string>({
@@ -440,9 +462,11 @@ export const {
   useDeletePhaseAssignmentMutation,
   useGetPhaseEquipmentQuery,
   useCreatePhaseEquipmentMutation,
+  useUpdatePhaseEquipmentMutation,
   useDeletePhaseEquipmentMutation,
   useGetPhaseVehiclesQuery,
   useCreatePhaseVehicleMutation,
+  useUpdatePhaseVehicleMutation,
   useDeletePhaseVehicleMutation,
   useLazyGetEmployeeConflictsQuery,
   useLazyGetEquipmentConflictsQuery,
