@@ -1,4 +1,4 @@
-# Automatyczne Przypisywanie Pojazdów do Faz Logistycznych
+# Automatyczne Przypisywanie Pojazdów do Wydarzenia
 
 ## Przegląd
 
@@ -6,8 +6,8 @@ Przy dodawaniu pojazdu do wydarzenia w zakładce **Logistyka**, system automatyc
 
 1. **Sprawdza** czy istnieją fazy logistyczne (Załadunek, Dojazd, Powrót, Rozładunek)
 2. **Tworzy** brakujące fazy jeśli nie istnieją
-3. **Przypisuje** pojazd do każdej z tych faz w odpowiednich przedziałach czasowych
-4. **Wyświetla** pojazd w timeline na zakładce "Fazy"
+3. **Przypisuje pojazd do CAŁEGO wydarzenia** jako jedna ciągła linia (od początku załadunku do końca rozładunku)
+4. **Wyświetla** pojazd w timeline na zakładce "Fazy" jako **jedną ciągłą linię**
 
 ## Fazy Logistyczne
 
@@ -47,24 +47,25 @@ Przy dodawaniu pojazdu do wydarzenia w zakładce **Logistyka**, system automatyc
 **Timeline wygląda tak:**
 ```
 [Załadunek] → [Dojazd] → [Realizacja] → [Powrót] → [Rozładunek]
-  Pojazd       Pojazd                      Pojazd     Pojazd
+|═══════════════════════ POJAZD ══════════════════════════════|
 ```
+
+Pojazd jest widoczny jako **jedna ciągła linia** od początku załadunku do końca rozładunku.
 
 ### Scenariusz 2: Fazy już istnieją
 
 ```
 1. Użytkownik dodaje pojazd w zakładce "Logistyka"
 2. System sprawdza: czy są fazy Załadunek/Dojazd/Powrót/Rozładunek?
-3. TAK → System używa istniejących czasów faz
-4. System przypisuje pojazd do każdej istniejącej fazy
-5. Pojazd pojawia się w timeline w istniejących blokach
+3. TAK → System używa istniejących faz
+4. System przypisuje pojazd do CAŁEGO wydarzenia (od początku Załadunku do końca Rozładunku)
+5. Pojazd pojawia się w timeline jako jedna ciągła linia
 ```
 
 **Timeline wygląda tak:**
 ```
 [Załadunek] → [Dojazd] → [Realizacja] → [Powrót] → [Rozładunek]
-  Pojazd       Pojazd                      Pojazd     Pojazd
-  (istn.)      (istn.)                     (istn.)    (istn.)
+|═══════════════════════ POJAZD (istn. fazy) ══════════════════|
 ```
 
 ### Scenariusz 3: Częściowo istnieją fazy
@@ -74,7 +75,7 @@ Przy dodawaniu pojazdu do wydarzenia w zakładce **Logistyka**, system automatyc
 2. System sprawdza: Załadunek ✓, Dojazd ✓, Powrót ✗, Rozładunek ✗
 3. System używa istniejących czasów dla Załadunek i Dojazd
 4. System tworzy Powrót i Rozładunek z obliczonych czasów
-5. Pojazd jest przypisany do wszystkich 4 faz
+5. Pojazd jest przypisany do całego wydarzenia jako jedna ciągła linia
 ```
 
 ## Implementacja
@@ -86,26 +87,36 @@ Funkcja `assignVehicleToLogisticPhases()`:
 1. Pobiera typy faz (Załadunek, Dojazd, Powrót, Rozładunek) z `event_phase_types`
 2. Pobiera istniejące fazy dla wydarzenia
 3. Pobiera wszystkie fazy aby znaleźć rzeczywisty koniec wydarzenia
-4. Dla każdego typu fazy:
-   - Jeśli faza istnieje → użyj jej czasów
-   - Jeśli nie istnieje → oblicz czasy i utwórz fazę
-5. Tworzy przypisania w `event_phase_vehicles` dla każdej fazy
+4. Oblicza czasy dla wszystkich faz:
+   - Załadunek: `departureTime - loading_time_minutes` → `departureTime`
+   - Dojazd: `departureTime` → `eventDateTime`
+   - Powrót: `eventEnd` → `eventEnd + travel_time_minutes`
+   - Rozładunek: `returnEnd` → `returnEnd + loading_time_minutes`
+5. Tworzy brakujące fazy z obliczonymi czasami
+6. Tworzy **JEDNO** przypisanie w `event_phase_vehicles`:
+   - `phase_id`: ID fazy "Załadunek" (pierwsza faza)
+   - `assigned_start`: Początek załadunku
+   - `assigned_end`: Koniec rozładunku
+   - `purpose`: "Pojazd przypisany do całego wydarzenia (załadunek → rozładunek)"
 
 ### ResourceTimeline.tsx
 
 Timeline automatycznie:
-1. Pobiera `vehicleAssignments` dla każdej fazy (przez `PhaseAssignmentsLoader`)
-2. Wyświetla pojazdy w odpowiednich blokach czasowych
-3. Umożliwia edycję czasu przypisania (drag & drop)
-4. Pokazuje konflikty gdy pojazd jest zajęty w tym samym czasie
+1. Pobiera `vehicleAssignments` dla fazy "Załadunek" (przez `PhaseAssignmentsLoader`)
+2. Wykrywa że przypisanie obejmuje cały event (od `assigned_start` do `assigned_end`)
+3. Wyświetla pojazd jako **jedną ciągłą linię** przez cały zakres wydarzenia
+4. Umożliwia edycję czasu przypisania (drag & drop)
+5. Pokazuje konflikty gdy pojazd jest zajęty w tym samym czasie
 
 ## Zalety
 
-✅ **Automatyzacja** - Użytkownik nie musi ręcznie przypisywać pojazdu do każdej fazy
-✅ **Spójność** - Wszystkie pojazdy logistyczne są widoczne w timeline
+✅ **Automatyzacja** - Użytkownik nie musi ręcznie przypisywać pojazdu
+✅ **Spójność** - Pojazd widoczny jako jedna ciągła linia przez cały event
+✅ **Uproszczenie** - Jedno przypisanie zamiast czterech osobnych
 ✅ **Elastyczność** - System radzi sobie zarówno z nowymi jak i istniejącymi fazami
 ✅ **Bezpieczeństwo** - Konflikty są wykrywane i pokazywane w timeline
 ✅ **Edycja** - Czasy przypisań można modyfikować w timeline
+✅ **Wizualizacja** - Łatwe zrozumienie że pojazd jest zajęty przez cały okres
 
 ## Dostęp do danych
 

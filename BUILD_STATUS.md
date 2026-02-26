@@ -1,10 +1,14 @@
-# Status Buildu - Automatyczne Przypisywanie Pojazdów do Faz
+# Status Buildu - Przypisywanie Pojazdów do Całego Wydarzenia
 
-## Wprowadzone Zmiany
+## Wprowadzone Zmiany (2026-02-26)
 
 ### Zmodyfikowane pliki:
-1. ✅ `src/components/crm/AddEventVehicleModal.tsx`
-   - Dodano funkcję `assignVehicleToLogisticPhases()`
+1. ✅ `src/components/crm/AddEventVehicleModal.tsx` (PRZEPISANA FUNKCJA)
+   - Przepisano funkcję `assignVehicleToLogisticPhases()`
+   - **ZMIANA:** Pojazd jest teraz przypisywany do CAŁEGO wydarzenia jako jedna ciągła linia
+   - **PRZED:** 4 osobne przypisania do każdej fazy (Załadunek, Dojazd, Powrót, Rozładunek)
+   - **TERAZ:** 1 przypisanie obejmujące cały okres od załadunku do rozładunku
+   - Uproszczony kod - mniej zapytań do bazy
    - Dodano invalidację RTK Query cache
    - Dodano import `useAppDispatch` i `eventPhasesApi`
 
@@ -21,8 +25,11 @@
    - Dodano console.log dla debugowania
    - Pojazdy w timeline odświeżają się automatycznie
 
-### Nowe pliki:
-5. ✅ `VEHICLE_PHASE_ASSIGNMENTS.md` - dokumentacja systemu
+### Zaktualizowane pliki dokumentacji:
+5. ✅ `VEHICLE_PHASE_ASSIGNMENTS.md` - zaktualizowana dokumentacja systemu
+   - Zmieniono opisy z "przypisywanie do każdej fazy" na "przypisywanie do całego wydarzenia"
+   - Zaktualizowano diagramy timeline
+   - Dodano informacje o jednym przypisaniu zamiast czterech
 6. ✅ `VEHICLE_LOGISTICS_TESTING.md` - instrukcje testowania
 7. ✅ `BUILD_STATUS.md` - ten dokument
 
