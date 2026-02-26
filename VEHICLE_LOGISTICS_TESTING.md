@@ -19,7 +19,13 @@
 - ✅ Gdy fazy się zmieniają, lista pojazdów odświeża się automatycznie
 - ✅ Konsola loguje zmiany dla debugowania
 
-### 4. Dokumentacja
+### 4. EventPhasesTimeline.tsx
+- ✅ Dodano realtime subscription dla `event_phase_vehicles`
+- ✅ Gdy pojazdy są przypisywane do faz, timeline odświeża się automatycznie
+- ✅ Invalidacja RTK Query cache dla `PhaseVehicles` po każdej zmianie
+- ✅ Konsola loguje zmiany w przypisaniach pojazdów
+
+### 5. Dokumentacja
 - ✅ `VEHICLE_PHASE_ASSIGNMENTS.md` - pełna dokumentacja systemu
 - ✅ `VEHICLE_LOGISTICS_TESTING.md` - instrukcje testowania (ten plik)
 
@@ -48,9 +54,17 @@
   - **Rozładunek** (60 min po powrocie)
 
 **Sprawdź w konsoli przeglądarki:**
+
+W zakładce **Logistyka**:
 ```
 event_vehicles changed - refreshing logistics
 event_phases changed - refreshing logistics
+```
+
+W zakładce **Fazy** (Timeline):
+```
+[EventPhasesTimeline] Setting up realtime for event_phase_vehicles
+[EventPhasesTimeline] event_phase_vehicles changed: { eventType: 'INSERT', ... }
 ```
 
 ### Test 2: Dodanie pojazdu gdy fazy już istnieją
@@ -160,6 +174,15 @@ Już dodane:
 ```typescript
 console.log('event_vehicles changed - refreshing logistics');
 console.log('event_phases changed - refreshing logistics');
+```
+
+### Console.log w EventPhasesTimeline
+
+Już dodane:
+```typescript
+console.log('[EventPhasesTimeline] Setting up realtime for event_phase_vehicles');
+console.log('[EventPhasesTimeline] event_phase_vehicles changed:', payload);
+console.log('[EventPhasesTimeline] Cleaning up realtime subscription');
 ```
 
 ### Sprawdź w bazie danych

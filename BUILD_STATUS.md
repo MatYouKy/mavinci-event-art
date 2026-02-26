@@ -15,26 +15,36 @@
    - Dodano realtime subscription dla `event_phases`
    - Dodano console.log dla debugowania
 
+4. ✅ `src/app/(crm)/crm/events/[id]/components/tabs/EventPhasesTimeline.tsx`
+   - Dodano realtime subscription dla `event_phase_vehicles`
+   - Dodano invalidację RTK Query cache dla `PhaseVehicles`
+   - Dodano console.log dla debugowania
+   - Pojazdy w timeline odświeżają się automatycznie
+
 ### Nowe pliki:
-4. ✅ `VEHICLE_PHASE_ASSIGNMENTS.md` - dokumentacja systemu
-5. ✅ `VEHICLE_LOGISTICS_TESTING.md` - instrukcje testowania
-6. ✅ `BUILD_STATUS.md` - ten dokument
+5. ✅ `VEHICLE_PHASE_ASSIGNMENTS.md` - dokumentacja systemu
+6. ✅ `VEHICLE_LOGISTICS_TESTING.md` - instrukcje testowania
+7. ✅ `BUILD_STATUS.md` - ten dokument
 
 ## Weryfikacja Kodu
 
-### ✅ ESLint
+### ✅ ESLint (Ostatnia weryfikacja)
 ```bash
-npx eslint <zmienione_pliki>
+npx eslint src/components/crm/AddEventVehicleModal.tsx \
+  src/app/(crm)/crm/events/hooks/useEventVehicles.ts \
+  src/app/(crm)/crm/events/[id]/components/tabs/EventLogisticsPanel.tsx \
+  src/app/(crm)/crm/events/[id]/components/tabs/EventPhasesTimeline.tsx
 ```
-**Rezultat:** 0 errors, 2 warnings (tylko o `<img>` - nieistotne)
+**Rezultat:** 0 errors, 2 warnings (tylko o `<img>` w EventLogisticsPanel - nieistotne)
 
-### ✅ Dev Server
+### ✅ Dev Server (Ostatnia weryfikacja)
 ```bash
 npm run dev
 ```
 **Rezultat:** ✓ Ready in 2.3s - **działa bez błędów**
+**Data:** 2026-02-26
 
-### ❌ Production Build
+### ❌ Production Build (Ostatnia próba)
 ```bash
 npm run build
 ```
@@ -44,6 +54,7 @@ npm run build
 - Projekt ma 757 plików
 - Dostępna pamięć w środowisku build: ~2GB
 - Next.js build wymaga: ~8GB+
+- **Data próby:** 2026-02-26
 
 ## Dlaczego Build Failuje?
 

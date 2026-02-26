@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Plus, Filter, AlertCircle, Clock, ChevronDown, Save, RotateCcw } from 'lucide-react';
 import {
   useGetEventPhasesQuery,
   useUpdatePhaseMutation,
   useDeletePhaseMutation,
   EventPhase,
+  eventPhasesApi,
 } from '@/store/api/eventPhasesApi';
 import { PhaseTimelineView } from './PhaseTimelineView';
 import { PhaseResourcesPanel } from './PhaseResourcesPanel';
@@ -21,6 +22,8 @@ import {
   useGetEventVehiclesQuery,
   useGetEventEquipmentQuery,
 } from '../../../store/api/eventsApi';
+import { useAppDispatch } from '@/store/hooks';
+import { supabase } from '@/lib/supabase/client';
 
 interface EventPhasesTimelineProps {
   eventId: string;
@@ -36,6 +39,7 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
   eventStartDate,
   eventEndDate,
 }) => {
+  const dispatch = useAppDispatch();
   const { data: phases = [], isLoading } = useGetEventPhasesQuery(eventId);
   const { data: eventEmployees = [] } = useGetEventEmployeesQuery(eventId, { skip: !eventId });
   const { data: eventVehicles = [] } = useGetEventVehiclesQuery(eventId, { skip: !eventId });
@@ -64,6 +68,40 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
   >({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [phaseAssignments, setPhaseAssignments] = useState<PhaseAssignmentsData[]>([]);
+
+  // Realtime subscription dla przypisań pojazdów do faz
+  useEffect(() => {
+    if (!eventId) return;
+
+    console.log('[EventPhasesTimeline] Setting up realtime for event_phase_vehicles');
+
+    const channel = supabase
+      .channel(`event_phase_vehicles_${eventId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'event_phase_vehicles',
+        },
+        (payload) => {
+          console.log('[EventPhasesTimeline] event_phase_vehicles changed:', payload);
+
+          // Invaliduj cache dla wszystkich faz tego wydarzenia
+          phases.forEach((phase) => {
+            dispatch(
+              eventPhasesApi.util.invalidateTags([{ type: 'PhaseVehicles', id: phase.id }])
+            );
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      console.log('[EventPhasesTimeline] Cleaning up realtime subscription');
+      supabase.removeChannel(channel);
+    };
+  }, [eventId, phases, dispatch]);
 
   const timelineBounds = useMemo(() => {
     // Główne godziny wydarzenia to tylko agenda, ale timeline musi uwzględniać wszystkie fazy
