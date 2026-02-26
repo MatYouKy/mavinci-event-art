@@ -243,15 +243,17 @@ function ResizableTh({
 export default function EventsPageClient({
   initialEvents,
   initialCategories,
+  initialViewMode,
 }: {
   initialEvents: any[];
   initialCategories: any[];
+  initialViewMode: ViewMode;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { hasScope, isAdmin: isUserAdmin } = useCurrentEmployee();
   const { showSnackbar } = useSnackbar();
-  const { getViewMode, setViewMode, getModulePrefs, setModulePrefs } = useUserPreferences() as any;
+  const { setViewMode, getModulePrefs, setModulePrefs } = useUserPreferences() as any;
   const [events, setEvents] = useState<any[]>(initialEvents);
   const [filteredEvents, setFilteredEvents] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>(initialCategories);
@@ -264,10 +266,9 @@ export default function EventsPageClient({
   const [showPastEvents, setShowPastEvents] = useState<boolean>(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [eventToDelete, setEventToDelete] = useState<any>(null);
-  const initialMode = getViewMode('events');
-  const [viewMode, setLocalViewMode] = useState<ViewMode>(
-    initialMode === 'grid' || initialMode === 'table' ? initialMode : 'list',
-  );
+  
+  const [viewMode, setLocalViewMode] = useState<ViewMode>(initialViewMode);
+  
   const modulePrefs = (getModulePrefs?.('events') ?? {}) as any;
   const [colOrder, setColOrder] = useState<EventsTableColKey[]>(() => {
     const prefOrder = modulePrefs?.table?.colOrder as EventsTableColKey[] | undefined;

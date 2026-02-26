@@ -747,7 +747,7 @@ export default function EventDetailPageClient({
       <div className="flex gap-2 overflow-x-auto border-b border-[#d3bb73]/10">
         {[
           { id: 'overview', label: 'Przegląd', icon: FileText },
-          { id: 'phases', label: 'Fazy', icon: Clock },
+          { id: 'phases', label: 'Timeline', icon: Clock },
           { id: 'offer', label: 'Oferta', icon: DollarSign },
           { id: 'finances', label: 'Finanse', icon: DollarSign },
           { id: 'contract', label: 'Umowa', icon: FileText },
