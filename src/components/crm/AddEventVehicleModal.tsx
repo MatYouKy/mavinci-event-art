@@ -54,13 +54,19 @@ interface Conflict {
   overlap_end: string;
 }
 
+interface EventPhaseType {
+  id: string;
+  name: string;
+}
+
 interface EventPhase {
   id: string;
   name: string;
-  phase_type: string;
+  phase_type_id: string | null;
+  phase_type?: EventPhaseType | null;
   start_time: string;
   end_time: string;
-  sort_order: number;
+  sequence_order: number;
 }
 
 interface SuggestedTimes {
@@ -92,6 +98,9 @@ export default function AddEventVehicleModal({
   const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [eventPhases, setEventPhases] = useState<EventPhase[]>([]);
   const [suggestedTimes, setSuggestedTimes] = useState<SuggestedTimes | null>(null);
+
+  console.log('eventPhases', eventPhases);
+  console.log('suggestedTimes', suggestedTimes);
 
   const [formData, setFormData] = useState({
     vehicle_id: '',
@@ -150,7 +159,7 @@ export default function AddEventVehicleModal({
       const suggested = calculateSuggestedTimes();
       setSuggestedTimes(suggested);
     }
-  }, [eventPhases, calculateSuggestedTimes]);
+  }, [eventPhases]);
 
   const fetchVehicles = async () => {
     try {
@@ -191,16 +200,28 @@ export default function AddEventVehicleModal({
     try {
       const { data, error } = await supabase
         .from('event_phases')
-        .select('id, name, phase_type, start_time, end_time, sort_order')
+        .select(`
+          id,
+          name,
+          phase_type_id,
+          start_time,
+          end_time,
+          sequence_order,
+          phase_type:event_phase_types(*)
+        `)
         .eq('event_id', eventId)
-        .order('sort_order');
-
+        .order('sequence_order', { ascending: true });
+  
       if (error) throw error;
-      setEventPhases(data || []);
+  
+      console.log('[fetchEventPhases] data:', data);
+      setEventPhases((data as any) || []);
     } catch (error) {
       console.error('Error fetching event phases:', error);
+      setEventPhases([]);
     }
   };
+  console.log('eventPhases', eventPhases);
 
   const calculateSuggestedTimes = useCallback((): SuggestedTimes | null => {
     if (eventPhases.length === 0) {
@@ -209,15 +230,24 @@ export default function AddEventVehicleModal({
 
     // Sprawdź czy są fazy załadunku i rozładunku
     const loadingPhase = eventPhases.find((p) =>
-      ['loading', 'załadunek', 'zaladune'].some((t) => p.phase_type?.toLowerCase().includes(t) || p.name.toLowerCase().includes(t))
+      ['loading', 'załadunek', 'zaladunek'].some((t) => {
+        const typeName = (p.phase_type?.name || '').toLowerCase();
+        const phaseName = (p.name || '').toLowerCase();
+        return typeName.includes(t) || phaseName.includes(t);
+      }),
     );
+
     const unloadingPhase = eventPhases.find((p) =>
-      ['unloading', 'rozładunek', 'rozladunek'].some((t) => p.phase_type?.toLowerCase().includes(t) || p.name.toLowerCase().includes(t))
+      ['unloading', 'rozładunek', 'rozladunek'].some((t) => {
+        const typeName = (p.phase_type?.name || '').toLowerCase();
+        const phaseName = (p.name || '').toLowerCase();
+        return typeName.includes(t) || phaseName.includes(t);
+      }),
     );
 
     // Znajdź najwcześniejszą i najpóźniejszą fazę
     const sortedPhases = [...eventPhases].sort(
-      (a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+      (a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime(),
     );
     const earliestPhase = sortedPhases[0];
     const latestPhase = sortedPhases[sortedPhases.length - 1];
@@ -264,7 +294,7 @@ export default function AddEventVehicleModal({
     const eventDateTime = new Date(eventDate);
     const totalMinutesBeforeEvent = Math.max(
       0,
-      Math.floor((eventDateTime.getTime() - suggestedTimes.availableFrom.getTime()) / 60000)
+      Math.floor((eventDateTime.getTime() - suggestedTimes.availableFrom.getTime()) / 60000),
     );
 
     // Rozłóż na loading (60%), preparation (20%), travel (20%)
@@ -612,24 +642,22 @@ export default function AddEventVehicleModal({
       // z zakresem czasu obejmującym cały event
       const firstPhase = createdPhases.find((p) => p.name === 'Załadunek');
       if (firstPhase) {
-        const { error: assignError } = await supabase
-          .from('event_phase_vehicles')
-          .upsert(
-            [
-              {
-                phase_id: firstPhase.id,
-                vehicle_id: vehicleId,
-                assigned_start: loadingStart.toISOString(),
-                assigned_end: unloadingEnd.toISOString(),
-                driver_id: driverId,
-                purpose: 'Pojazd przypisany do całego wydarzenia (załadunek → rozładunek)',
-                notes: 'Automatycznie przypisany pojazd do wydarzenia',
-              },
-            ],
+        const { error: assignError } = await supabase.from('event_phase_vehicles').upsert(
+          [
             {
-              onConflict: 'phase_id,vehicle_id',
+              phase_id: firstPhase.id,
+              vehicle_id: vehicleId,
+              assigned_start: loadingStart.toISOString(),
+              assigned_end: unloadingEnd.toISOString(),
+              driver_id: driverId,
+              purpose: 'Pojazd przypisany do całego wydarzenia (załadunek → rozładunek)',
+              notes: 'Automatycznie przypisany pojazd do wydarzenia',
             },
-          );
+          ],
+          {
+            onConflict: 'phase_id,vehicle_id',
+          },
+        );
 
         if (assignError) {
           console.error('Error assigning vehicle to event:', assignError);
@@ -754,10 +782,12 @@ export default function AddEventVehicleModal({
         }
 
         // Invaliduj cache pojazdów i logistyki dla wydarzenia
-        dispatch(eventsApi.util.invalidateTags([
-          { type: 'EventVehicles', id: eventId },
-          { type: 'EventLogistics', id: eventId },
-        ]));
+        dispatch(
+          eventsApi.util.invalidateTags([
+            { type: 'EventVehicles', id: eventId },
+            { type: 'EventLogistics', id: eventId },
+          ]),
+        );
 
         showSnackbar('Pojazd został dodany do wydarzenia', 'success');
       }
@@ -1167,23 +1197,7 @@ export default function AddEventVehicleModal({
             </h4>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              <div>
-                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-                  Czas przygotowania (min)
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  value={formData.preparation_time_minutes}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      preparation_time_minutes: parseInt(e.target.value) || 0,
-                    })
-                  }
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
-                />
-              </div>
+
 
               {/* Sugerowane czasy na podstawie faz */}
               {suggestedTimes && (
@@ -1259,23 +1273,6 @@ export default function AddEventVehicleModal({
                   }
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
                 />
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/10 p-3">
-              <div className="mb-1 text-sm text-[#e5e4e2]/80">Obliczony czas wyjazdu:</div>
-              <div className="text-lg font-bold text-[#d3bb73]">
-                {departureTime.toLocaleString('pl-PL', {
-                  dateStyle: 'short',
-                  timeStyle: 'short',
-                })}
-              </div>
-              <div className="mt-1 text-xs text-[#e5e4e2]/60">
-                Suma czasów:{' '}
-                {formData.preparation_time_minutes +
-                  formData.loading_time_minutes +
-                  formData.travel_time_minutes}{' '}
-                minut
               </div>
             </div>
           </div>
