@@ -459,6 +459,9 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
           id: editState.assignmentId,
           assignment_start: editState.newStart.toISOString(),
           assignment_end: editState.newEnd.toISOString(),
+          // WAŻNE: Aktualizuj też phase_work aby constraint był spełniony
+          phase_work_start: editState.newStart.toISOString(),
+          phase_work_end: editState.newEnd.toISOString(),
         }).unwrap();
       } else if (editState.resourceType === 'vehicle') {
         result = await updateVehicle({
