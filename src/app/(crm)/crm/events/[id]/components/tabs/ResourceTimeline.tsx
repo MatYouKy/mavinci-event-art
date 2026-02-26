@@ -428,7 +428,8 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
         assignment_start: editState.newStart.toISOString(),
         assignment_end: editState.newEnd.toISOString(),
       }).unwrap();
-      setEditState(null);
+      // NIE czyścimy editState tutaj - poczekaj aż dane się odświeżą z API
+      // editState zostanie wyczyszczony przez useEffect poniżej
     } catch (error) {
       console.error('Failed to update assignment:', error);
       alert('Nie udało się zaktualizować czasu');
@@ -439,6 +440,34 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   const handleDiscardChanges = useCallback(() => {
     setEditState(null);
   }, []);
+
+  // Auto-clear editState gdy dane z API się zaktualizują
+  useEffect(() => {
+    if (!editState) return;
+
+    // Znajdź assignment w aktualnych danych
+    const currentAssignment = phaseAssignments.flatMap(p =>
+      [...(p.assignments || []), ...(p.vehicleAssignments || []), ...(p.equipmentAssignments || [])]
+    ).find(a => a.id === editState.assignmentId);
+
+    if (!currentAssignment) return;
+
+    // Sprawdź czy dane w API są już zaktualizowane
+    const apiStartTime = new Date(currentAssignment.start_time).getTime();
+    const editedStartTime = editState.newStart.getTime();
+    const apiEndTime = new Date(currentAssignment.end_time).getTime();
+    const editedEndTime = editState.newEnd.getTime();
+
+    // Jeśli czasy się zgadzają (z tolerancją 1s), wyczyść editState
+    const tolerance = 1000; // 1 sekunda tolerancji
+    if (
+      Math.abs(apiStartTime - editedStartTime) < tolerance &&
+      Math.abs(apiEndTime - editedEndTime) < tolerance
+    ) {
+      console.log('✅ Dane zaktualizowane w API - czyszczę editState');
+      setEditState(null);
+    }
+  }, [editState, phaseAssignments]);
 
   // Keyboard shortcuts
   useEffect(() => {
