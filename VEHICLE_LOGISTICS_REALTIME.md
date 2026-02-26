@@ -166,12 +166,63 @@ System używa następujących tagów do automatycznej invalidacji:
    - Zmiany w `event_phase_vehicles`
    - Nie trzeba dodawać dodatkowych subskrypcji
 
+## Wyświetlanie Pojazdów - Jedna Ciągła Linia
+
+### Problem
+Wcześniej pojazdy były wyświetlane jako **wiele osobnych segmentów** - jeden dla każdej fazy (Załadunek, Dojazd, Realizacja, Powrót, Rozładunek).
+
+### Rozwiązanie
+Pojazdy są teraz wyświetlane jako **jedna ciągła linia** od najwcześniejszej do najpóźniejszej fazy.
+
+```typescript
+// ResourceTimeline.tsx - logika dla pojazdów
+const vehicleRows: ResourceRow[] = useMemo(() => {
+  return vehicles.map((veh: any) => {
+    // Zbierz wszystkie przypisania z faz
+    const allPhaseAssignments: { start: Date; end: Date; phase: any; id: string }[] = [];
+
+    phaseAssignments.forEach(({ phase, vehicleAssignments }: any) => {
+      const found = vehicleAssignments.filter(
+        (v: any) => v?.vehicle_id === fleetVehicleId
+      );
+
+      found.forEach((v: any) => {
+        allPhaseAssignments.push({
+          start: new Date(startTime),
+          end: new Date(endTime),
+          phase,
+          id: v.id,
+        });
+      });
+    });
+
+    // Znajdź najwcześniejszy start i najpóźniejszy koniec
+    const earliestStart = new Date(Math.min(...allPhaseAssignments.map(a => a.start.getTime())));
+    const latestEnd = new Date(Math.max(...allPhaseAssignments.map(a => a.end.getTime())));
+
+    // ✅ JEDNO przypisanie obejmujące cały czas
+    assignments = [{
+      id: `vehicle_continuous_${veh.id}`,
+      start_time: earliestStart.toISOString(),
+      end_time: latestEnd.toISOString(),
+      // ... pozostałe pola
+    }];
+  });
+}, [vehicles, phaseAssignments]);
+```
+
+**Efekt:**
+- ✅ Pojazd wyświetlany jako **jedna nieprzerwana linia**
+- ✅ Linia rozpoczyna się od **najwcześniejszej fazy** (np. Załadunek)
+- ✅ Linia kończy się na **najpóźniejszej fazie** (np. Rozładunek)
+- ✅ Bez podziału na segmenty - ciągła obecność pojazdu
+
 ## Zalety
 
 ✅ **Natychmiastowa aktualizacja** - użytkownik widzi zmiany od razu
 ✅ **Automatyczna synchronizacja** - timeline i logistyka zawsze spójne
-✅ **Bez duplikatów** - `ResourceTimeline` deduplikuje przypisania
-✅ **Jedna ciągła linia** - pojazd wyświetlany od załadunku do rozładunku
+✅ **Jedna ciągła linia** - pojazd wyświetlany od najwcześniejszej do najpóźniejszej fazy
+✅ **Bez segmentacji** - brak podziału na osobne bloki dla każdej fazy
 ✅ **Realtime** - zmiany od innych użytkowników też są widoczne
 
 ## Testowanie
