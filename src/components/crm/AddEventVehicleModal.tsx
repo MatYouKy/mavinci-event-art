@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   X,
   Truck,
@@ -150,7 +150,7 @@ export default function AddEventVehicleModal({
       const suggested = calculateSuggestedTimes();
       setSuggestedTimes(suggested);
     }
-  }, [eventPhases]);
+  }, [eventPhases, calculateSuggestedTimes]);
 
   const fetchVehicles = async () => {
     try {
@@ -202,8 +202,10 @@ export default function AddEventVehicleModal({
     }
   };
 
-  const calculateSuggestedTimes = (): SuggestedTimes | null => {
-    if (eventPhases.length === 0) return null;
+  const calculateSuggestedTimes = useCallback((): SuggestedTimes | null => {
+    if (eventPhases.length === 0) {
+      return null;
+    }
 
     // Sprawdź czy są fazy załadunku i rozładunku
     const loadingPhase = eventPhases.find((p) =>
@@ -253,7 +255,7 @@ export default function AddEventVehicleModal({
       hasUnloadingPhase: !!unloadingPhase,
       explanation,
     };
-  };
+  }, [eventPhases]);
 
   const applySuggestedTimes = () => {
     if (!suggestedTimes) return;
