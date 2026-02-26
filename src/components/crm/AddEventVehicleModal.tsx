@@ -17,6 +17,7 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { utcToLocalDatetimeString, localDatetimeStringToUTC } from '@/lib/utils/dateTimeUtils';
 import { useAppDispatch } from '@/store/hooks';
 import { eventPhasesApi } from '@/store/api/eventPhasesApi';
+import { eventsApi } from '@/app/(crm)/crm/events/store/api/eventsApi';
 
 interface AddEventVehicleModalProps {
   eventId: string;
@@ -629,6 +630,12 @@ export default function AddEventVehicleModal({
             );
           }
         }
+
+        // Invaliduj cache pojazdów i logistyki dla wydarzenia
+        dispatch(eventsApi.util.invalidateTags([
+          { type: 'EventVehicles', id: eventId },
+          { type: 'EventLogistics', id: eventId },
+        ]));
 
         showSnackbar('Pojazd został dodany do wydarzenia', 'success');
       }

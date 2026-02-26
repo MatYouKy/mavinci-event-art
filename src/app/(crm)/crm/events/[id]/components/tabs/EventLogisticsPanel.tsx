@@ -31,6 +31,9 @@ import AddEventVehicleModal from '../../../../../../../components/crm/AddEventVe
 import VehicleHandoverModal from '../../../../../../../components/crm/VehicleHandoverModal';
 import Popover from '@/components/UI/Tooltip';
 import { useEventLogisticsLazy } from '../../../hooks/useEventVehicles';
+import { useAppDispatch } from '@/store/hooks';
+import { eventsApi } from '../../../store/api/eventsApi';
+import { eventPhasesApi } from '@/store/api/eventPhasesApi';
 
 interface EventLogisticsProps {
   eventId: string;
@@ -138,6 +141,7 @@ export default function EventLogisticsPanel({
   eventDate,
   canManage,
 }: EventLogisticsProps) {
+  const dispatch = useAppDispatch();
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
   const { employee } = useCurrentEmployee();
@@ -207,9 +211,39 @@ export default function EventLogisticsPanel({
     if (!confirmed) return;
 
     try {
+      // Najpierw pobierz vehicle_id przed usunięciem aby wiedzieć które fazy invalidować
+      const { data: vehicleData } = await supabase
+        .from('event_vehicles')
+        .select('vehicle_id')
+        .eq('id', vehicleId)
+        .single();
+
       const { error } = await supabase.from('event_vehicles').delete().eq('id', vehicleId);
 
       if (error) throw error;
+
+      // Invaliduj cache dla pojazdów i logistyki
+      dispatch(eventsApi.util.invalidateTags([
+        { type: 'EventVehicles', id: eventId },
+        { type: 'EventLogistics', id: eventId },
+      ]));
+
+      // Invaliduj cache dla faz logistycznych (jeśli pojazd był przypisany do faz)
+      if (vehicleData?.vehicle_id) {
+        const { data: logisticPhases } = await supabase
+          .from('event_phases')
+          .select('id')
+          .eq('event_id', eventId)
+          .in('name', ['Załadunek', 'Dojazd', 'Powrót', 'Rozładunek']);
+
+        if (logisticPhases?.length) {
+          dispatch(
+            eventPhasesApi.util.invalidateTags(
+              logisticPhases.map((p) => ({ type: 'PhaseVehicles' as const, id: p.id })),
+            ),
+          );
+        }
+      }
 
       showSnackbar('Pojazd został usunięty', 'success');
       fetchLogistics({ eventId, canManage, employeeId: employee?.id ?? null });
