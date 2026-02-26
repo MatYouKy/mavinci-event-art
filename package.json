@@ -2,6 +2,7 @@
   "name": "mavinci-nextjs",
   "version": "0.1.0",
   "private": true,
+  "//": "⚠️ UWAGA: NIE URUCHAMIAJ 'npm run build' automatycznie! Zobacz .build-policy.md",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

@@ -1,0 +1,23 @@
+🚨 NIE BUDUJ TEGO PROJEKTU AUTOMATYCZNIE 🚨
+
+Ten plik istnieje jako przypomnienie dla AI/systemów automatycznych:
+
+NIGDY NIE URUCHAMIAJ: npm run build
+
+DLACZEGO?
+- Wymaga 8GB+ RAM
+- Kończy się SIGKILL (Out of Memory)
+- Nie jest potrzebny do weryfikacji kodu
+- Frustruje użytkownika
+
+CO ROBIĆ ZAMIAST TEGO?
+✅ Zapisz zmiany w plikach
+✅ Sprawdź ESLint/TypeScript jeśli potrzeba
+✅ Powiedz użytkownikowi że kod jest gotowy
+
+JEDYNY WYJĄTEK:
+Buduj projekt TYLKO gdy użytkownik wyraźnie napisze:
+"zbuduj projekt" lub "npm run build"
+
+---
+Zobacz .build-policy.md dla pełnej dokumentacji

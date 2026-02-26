@@ -2,6 +2,14 @@
 
 System zarządzania klientami, wydarzeniami i zasobami z aplikacją webową (Next.js) i mobilną (React Native).
 
+## 🚨 WAŻNE - Polityka Buildowania
+
+**NIE URUCHAMIAJ `npm run build` BEZ WYRAŹNEGO POLECENIA!**
+
+Ten projekt wymaga 8GB+ RAM do zbudowania. Build kończy się SIGKILL (Out of Memory) w większości środowisk.
+
+👉 **Zobacz [.build-policy.md](./.build-policy.md) dla szczegółów**
+
 ## 🏗️ Struktura projektu
 
 ```
