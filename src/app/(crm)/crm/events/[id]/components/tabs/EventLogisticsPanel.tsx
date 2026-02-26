@@ -178,7 +178,18 @@ export default function EventLogisticsPanel({
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'event_vehicles', filter: `event_id=eq.${eventId}` },
-        () => fetchLogisticsRef.current(args),
+        () => {
+          console.log('event_vehicles changed - refreshing logistics');
+          fetchLogisticsRef.current(args);
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'event_phases', filter: `event_id=eq.${eventId}` },
+        () => {
+          console.log('event_phases changed - refreshing logistics');
+          fetchLogisticsRef.current(args);
+        },
       )
       .subscribe();
 

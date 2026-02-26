@@ -15,6 +15,8 @@ import {
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { utcToLocalDatetimeString, localDatetimeStringToUTC } from '@/lib/utils/dateTimeUtils';
+import { useAppDispatch } from '@/store/hooks';
+import { eventPhasesApi } from '@/store/api/eventPhasesApi';
 
 interface AddEventVehicleModalProps {
   eventId: string;
@@ -61,6 +63,7 @@ export default function AddEventVehicleModal({
   onSuccess,
 }: AddEventVehicleModalProps) {
   const { showSnackbar } = useSnackbar();
+  const dispatch = useAppDispatch();
 
   const [isExternal, setIsExternal] = useState(false);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -625,6 +628,9 @@ export default function AddEventVehicleModal({
             formData.preparation_time_minutes,
             formData.travel_time_minutes
           );
+
+          // Invaliduj cache RTK Query dla faz aby timeline się odświeżył
+          dispatch(eventPhasesApi.util.invalidateTags(['Phases', 'PhaseVehicles']));
         }
 
         showSnackbar('Pojazd został dodany do wydarzenia', 'success');

@@ -13,9 +13,9 @@ export function useEventLogisticsLazy() {
   // Stabilna referencja funkcji (nie zmienia się co render)
   const fetchLogistics = useCallback(
     (params: Params) => {
-      // preferCacheValue = true -> RTK Query może zwrócić cache jeśli jest
-      // jeśli chcesz ZAWSZE odświeżać, daj false
-      return trigger(params, true);
+      // preferCacheValue = false -> ZAWSZE odświeża dane z serwera
+      // To zapewnia że po dodaniu/usunięciu pojazdu lista się zaktualizuje
+      return trigger(params, false);
     },
     [trigger],
   );
