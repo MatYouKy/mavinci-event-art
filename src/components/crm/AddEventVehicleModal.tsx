@@ -54,6 +54,23 @@ interface Conflict {
   overlap_end: string;
 }
 
+interface EventPhase {
+  id: string;
+  name: string;
+  phase_type: string;
+  start_time: string;
+  end_time: string;
+  sort_order: number;
+}
+
+interface SuggestedTimes {
+  availableFrom: Date;
+  availableUntil: Date;
+  hasLoadingPhase: boolean;
+  hasUnloadingPhase: boolean;
+  explanation: string;
+}
+
 export default function AddEventVehicleModal({
   eventId,
   eventDate,
@@ -73,6 +90,8 @@ export default function AddEventVehicleModal({
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [loading, setLoading] = useState(false);
   const [checkingAvailability, setCheckingAvailability] = useState(false);
+  const [eventPhases, setEventPhases] = useState<EventPhase[]>([]);
+  const [suggestedTimes, setSuggestedTimes] = useState<SuggestedTimes | null>(null);
 
   const [formData, setFormData] = useState({
     vehicle_id: '',
@@ -102,7 +121,7 @@ export default function AddEventVehicleModal({
 
   useEffect(() => {
     const init = async () => {
-      await Promise.all([fetchVehicles(), fetchTrailers()]);
+      await Promise.all([fetchVehicles(), fetchTrailers(), fetchEventPhases()]);
       if (editingVehicleId) {
         await loadVehicleData();
       }
@@ -124,6 +143,14 @@ export default function AddEventVehicleModal({
     formData.preparation_time_minutes,
     formData.travel_time_minutes,
   ]);
+
+  // Oblicz sugerowane czasy gdy fazy się załadują
+  useEffect(() => {
+    if (eventPhases.length > 0) {
+      const suggested = calculateSuggestedTimes();
+      setSuggestedTimes(suggested);
+    }
+  }, [eventPhases]);
 
   const fetchVehicles = async () => {
     try {
@@ -158,6 +185,99 @@ export default function AddEventVehicleModal({
     } catch (error) {
       console.error('Error fetching trailers:', error);
     }
+  };
+
+  const fetchEventPhases = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('event_phases')
+        .select('id, name, phase_type, start_time, end_time, sort_order')
+        .eq('event_id', eventId)
+        .order('sort_order');
+
+      if (error) throw error;
+      setEventPhases(data || []);
+    } catch (error) {
+      console.error('Error fetching event phases:', error);
+    }
+  };
+
+  const calculateSuggestedTimes = (): SuggestedTimes | null => {
+    if (eventPhases.length === 0) return null;
+
+    // Sprawdź czy są fazy załadunku i rozładunku
+    const loadingPhase = eventPhases.find((p) =>
+      ['loading', 'załadunek', 'zaladune'].some((t) => p.phase_type?.toLowerCase().includes(t) || p.name.toLowerCase().includes(t))
+    );
+    const unloadingPhase = eventPhases.find((p) =>
+      ['unloading', 'rozładunek', 'rozladunek'].some((t) => p.phase_type?.toLowerCase().includes(t) || p.name.toLowerCase().includes(t))
+    );
+
+    // Znajdź najwcześniejszą i najpóźniejszą fazę
+    const sortedPhases = [...eventPhases].sort(
+      (a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+    );
+    const earliestPhase = sortedPhases[0];
+    const latestPhase = sortedPhases[sortedPhases.length - 1];
+
+    let availableFrom: Date;
+    let availableUntil: Date;
+    let explanation = '';
+
+    // Logika dla availableFrom
+    if (loadingPhase) {
+      availableFrom = new Date(loadingPhase.start_time);
+      explanation = 'Pojazd dostępny od rozpoczęcia fazy załadunku';
+    } else {
+      // Dodaj 30 minut przed najwcześniejszą fazą na załadunek
+      availableFrom = new Date(new Date(earliestPhase.start_time).getTime() - 30 * 60000);
+      explanation = 'Pojazd dostępny 30 minut przed pierwszą fazą (czas na załadunek)';
+    }
+
+    // Logika dla availableUntil
+    if (unloadingPhase) {
+      availableUntil = new Date(unloadingPhase.end_time);
+      if (explanation) explanation += '. ';
+      explanation += 'Dostępny do zakończenia fazy rozładunku';
+    } else {
+      // Dodaj 30 minut po najpóźniejszej fazie na rozładunek
+      availableUntil = new Date(new Date(latestPhase.end_time).getTime() + 30 * 60000);
+      if (explanation) explanation += '. ';
+      explanation += 'Dostępny 30 minut po ostatniej fazie (czas na rozładunek)';
+    }
+
+    return {
+      availableFrom,
+      availableUntil,
+      hasLoadingPhase: !!loadingPhase,
+      hasUnloadingPhase: !!unloadingPhase,
+      explanation,
+    };
+  };
+
+  const applySuggestedTimes = () => {
+    if (!suggestedTimes) return;
+
+    // Oblicz różnicę czasów aby uzupełnić formularz
+    const eventDateTime = new Date(eventDate);
+    const totalMinutesBeforeEvent = Math.max(
+      0,
+      Math.floor((eventDateTime.getTime() - suggestedTimes.availableFrom.getTime()) / 60000)
+    );
+
+    // Rozłóż na loading (60%), preparation (20%), travel (20%)
+    const loadingMinutes = Math.floor(totalMinutesBeforeEvent * 0.6);
+    const preparationMinutes = Math.floor(totalMinutesBeforeEvent * 0.2);
+    const travelMinutes = totalMinutesBeforeEvent - loadingMinutes - preparationMinutes;
+
+    setFormData((prev) => ({
+      ...prev,
+      loading_time_minutes: loadingMinutes || 60,
+      preparation_time_minutes: preparationMinutes || 30,
+      travel_time_minutes: travelMinutes || 60,
+    }));
+
+    showSnackbar('Zastosowano sugerowane czasy na podstawie faz wydarzenia', 'success');
   };
 
   const loadVehicleData = async () => {
@@ -1062,6 +1182,46 @@ export default function AddEventVehicleModal({
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
                 />
               </div>
+
+              {/* Sugerowane czasy na podstawie faz */}
+              {suggestedTimes && (
+                <div className="col-span-3 rounded-lg border border-blue-500/30 bg-blue-500/10 p-4">
+                  <div className="mb-2 flex items-center gap-2">
+                    <Clock className="h-5 w-5 text-blue-400" />
+                    <span className="text-sm font-semibold text-blue-300">
+                      Sugerowane czasy na podstawie faz wydarzenia
+                    </span>
+                  </div>
+                  <div className="mb-3 text-xs text-[#e5e4e2]/70">{suggestedTimes.explanation}</div>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <div className="text-xs text-[#e5e4e2]/60">Dostępny od:</div>
+                      <div className="font-medium text-blue-300">
+                        {suggestedTimes.availableFrom.toLocaleString('pl-PL', {
+                          dateStyle: 'short',
+                          timeStyle: 'short',
+                        })}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-[#e5e4e2]/60">Dostępny do:</div>
+                      <div className="font-medium text-blue-300">
+                        {suggestedTimes.availableUntil.toLocaleString('pl-PL', {
+                          dateStyle: 'short',
+                          timeStyle: 'short',
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={applySuggestedTimes}
+                    className="mt-3 w-full rounded-lg bg-blue-500/20 px-4 py-2 text-sm font-medium text-blue-300 transition-colors hover:bg-blue-500/30"
+                  >
+                    Użyj sugerowanych czasów
+                  </button>
+                </div>
+              )}
 
               <div>
                 <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">

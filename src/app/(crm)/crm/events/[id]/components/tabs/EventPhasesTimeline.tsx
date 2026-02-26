@@ -417,49 +417,54 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
           </div>
         </div>
       ) : (
-        <div className="flex-1 overflow-auto bg-[#0f1119]">
-          {/* Main Phase Timeline */}
-          <div className="mb-6">
-            <div className="mb-2 px-6">
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-[#e5e4e2]/70">
-                Fazy Główne
-              </h3>
+        <div className="flex flex-1 flex-col bg-[#0f1119]">
+          {/* Scrollowalny kontener (X i Y) */}
+          <div className="flex-1 overflow-x-auto overflow-y-auto" style={{ maxHeight: '70vh' }}>
+            <div style={{ minWidth: '1200px' }}>
+              {/* Main Phase Timeline */}
+              <div className="mb-6">
+                <div className="mb-2 px-6">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-[#e5e4e2]/70">
+                    Fazy Główne
+                  </h3>
+                </div>
+                <PhaseTimelineView
+                  phases={displayPhases}
+                  timelineBounds={timelineBounds}
+                  zoomLevel={zoomLevel}
+                  selectedPhase={selectedPhase}
+                  phaseConflicts={phaseConflicts}
+                  onPhaseClick={handlePhaseClick}
+                  onPhaseDoubleClick={handlePhaseDoubleClick}
+                  onPhaseResize={handlePhaseResizeDraft}
+                  onPhaseDelete={handlePhaseDelete}
+                  eventStartDate={eventStartDate}
+                  eventEndDate={eventEndDate}
+                />
+              </div>
+
+              {/* Separator between main phases and resources */}
+              <div className="mx-6 my-6 border-t-2 border-[#d3bb73]/30"></div>
+
+              {/* Resource Timeline */}
+              <div className="mb-2 px-6">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-[#e5e4e2]/70">
+                  Zasoby Wydarzenia
+                </h3>
+              </div>
+              <div className="mt-2">
+                <ResourceTimeline
+                  eventId={eventId}
+                  phases={displayPhases}
+                  phaseAssignments={phaseAssignments}
+                  timelineBounds={timelineBounds}
+                  zoomLevel={zoomLevel}
+                  employees={employeesFromAssignments}
+                  vehicles={eventVehicles}
+                  equipment={eventEquipment}
+                />
+              </div>
             </div>
-            <PhaseTimelineView
-              phases={displayPhases}
-              timelineBounds={timelineBounds}
-              zoomLevel={zoomLevel}
-              selectedPhase={selectedPhase}
-              phaseConflicts={phaseConflicts}
-              onPhaseClick={handlePhaseClick}
-              onPhaseDoubleClick={handlePhaseDoubleClick}
-              onPhaseResize={handlePhaseResizeDraft}
-              onPhaseDelete={handlePhaseDelete}
-              eventStartDate={eventStartDate}
-              eventEndDate={eventEndDate}
-            />
-          </div>
-
-          {/* Separator between main phases and resources */}
-          <div className="mx-6 my-6 border-t-2 border-[#d3bb73]/30"></div>
-
-          {/* Resource Timeline */}
-          <div className="mb-2 px-6">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-[#e5e4e2]/70">
-              Zasoby Wydarzenia
-            </h3>
-          </div>
-          <div className="mt-2">
-            <ResourceTimeline
-              eventId={eventId}
-              phases={displayPhases}
-              phaseAssignments={phaseAssignments}
-              timelineBounds={timelineBounds}
-              zoomLevel={zoomLevel}
-              employees={employeesFromAssignments}
-              vehicles={eventVehicles}
-              equipment={eventEquipment}
-            />
           </div>
         </div>
       )}
