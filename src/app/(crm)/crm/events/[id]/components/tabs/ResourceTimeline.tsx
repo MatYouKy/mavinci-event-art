@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 'use client';
 
 import React, { useState, useMemo, useCallback, memo, useRef, useEffect } from 'react';
@@ -12,6 +13,7 @@ import {
 } from '@/store/api/eventPhasesApi';
 import { PhaseAssignmentsData } from './PhaseAssignmentsLoader';
 import { useTimelineDrag } from './useTimelineDrag';
+import { useSnackbar } from '@/contexts/SnackbarContext';
 
 interface ResourceTimelineProps {
   eventId: string;
@@ -346,6 +348,7 @@ interface EditState {
   newStart: Date;
   newEnd: Date;
   resourceType: 'employee' | 'vehicle' | 'equipment'; // Typ zasobu
+  status: 'dirty' | 'saving';
 }
 
 export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
@@ -360,8 +363,9 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   const [rowHeight, setRowHeight] = useState<'compact' | 'normal' | 'expanded'>('normal');
   const [hoveredAssignment, setHoveredAssignment] = useState<string | null>(null);
   const [editState, setEditState] = useState<EditState | null>(null);
+  
   const containerRef = useRef<HTMLDivElement>(null);
-
+  const { showSnackbar } = useSnackbar();
   // Mutations
   const [deleteAssignment] = useDeletePhaseAssignmentMutation();
   const [updateAssignment, { isLoading: isUpdatingEmployee }] = useUpdatePhaseAssignmentMutation();
@@ -436,19 +440,14 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
       newStart,
       newEnd,
       resourceType,
+      status: 'dirty',
     });
   }, []);
 
   // Zapisz zmiany
   const handleSaveChanges = useCallback(async () => {
+    setEditState({ ...editState, status: 'saving' });
     if (!editState) return;
-
-    console.log('💾 Saving assignment:', {
-      id: editState.assignmentId,
-      type: editState.resourceType,
-      start: editState.newStart.toISOString(),
-      end: editState.newEnd.toISOString(),
-    });
 
     try {
       let result;
@@ -478,6 +477,7 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
       }
 
       console.log('✅ Assignment updated successfully:', result);
+      showSnackbar('Zmiany zapisane pomyślnie', 'success');
       // NIE czyścimy editState tutaj - poczekaj aż dane się odświeżą z API
       // editState zostanie wyczyszczony przez useEffect poniżej
     } catch (error: any) {
@@ -491,41 +491,69 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
 
       const errorMsg = error?.data?.message || error?.message || 'Nie udało się zaktualizować czasu';
       alert(`Błąd: ${errorMsg}`);
+
+      showSnackbar('Błąd podczas zapisywania zmian', 'error');
     }
   }, [editState, updateAssignment, updateVehicle, updateEquipment]);
 
   // Odrzuć zmiany
   const handleDiscardChanges = useCallback(() => {
     setEditState(null);
+    showSnackbar('Zmiany odrzucone', 'info');
   }, []);
 
   // Auto-clear editState gdy dane z API się zaktualizują
+  const getApiTimes = (a: any, type: EditState['resourceType']) => {
+    if (type === 'employee') {
+      return { start: a.assignment_start, end: a.assignment_end };
+    }
+    // vehicle + equipment
+    return { start: a.assigned_start, end: a.assigned_end };
+  };
+
   useEffect(() => {
     if (!editState) return;
-
-    // Znajdź assignment w aktualnych danych
-    const currentAssignment = phaseAssignments.flatMap(p =>
-      [...(p.assignments || []), ...(p.vehicleAssignments || []), ...(p.equipmentAssignments || [])]
-    ).find(a => a.id === editState.assignmentId);
-
+  
+    const currentAssignment = phaseAssignments
+      .flatMap(p => [
+        ...(p.assignments || []),
+        ...(p.vehicleAssignments || []),
+        ...(p.equipmentAssignments || []),
+      ])
+      .find((a: any) => a.id === editState.assignmentId);
+  
     if (!currentAssignment) return;
-
-    // Sprawdź czy dane w API są już zaktualizowane
-    const apiStartTime = new Date(currentAssignment.start_time).getTime();
-    const editedStartTime = editState.newStart.getTime();
-    const apiEndTime = new Date(currentAssignment.end_time).getTime();
-    const editedEndTime = editState.newEnd.getTime();
-
-    // Jeśli czasy się zgadzają (z tolerancją 1s), wyczyść editState
-    const tolerance = 1000; // 1 sekunda tolerancji
-    if (
-      Math.abs(apiStartTime - editedStartTime) < tolerance &&
-      Math.abs(apiEndTime - editedEndTime) < tolerance
-    ) {
-      console.log('✅ Dane zaktualizowane w API - czyszczę editState');
+  
+    const getApiTimes = (a: any) => {
+      if (editState.resourceType === 'employee') {
+        return {
+          start: a.assignment_start ?? a.phase_work_start ?? a.start_time,
+          end: a.assignment_end ?? a.phase_work_end ?? a.end_time,
+        };
+      }
+      // vehicle / equipment
+      return {
+        start: a.assigned_start ?? a.start_time,
+        end: a.assigned_end ?? a.end_time,
+      };
+    };
+  
+    const api = getApiTimes(currentAssignment);
+    if (!api.start || !api.end) return;
+  
+    const apiStart = new Date(api.start).getTime();
+    const apiEnd = new Date(api.end).getTime();
+  
+    const editedStart = editState.newStart.getTime();
+    const editedEnd = editState.newEnd.getTime();
+  
+    const tolerance = 1000;
+  
+    if (Math.abs(apiStart - editedStart) < tolerance && Math.abs(apiEnd - editedEnd) < tolerance) {
       setEditState(null);
+      showSnackbar('Zmiany zapisane pomyślnie', 'success');
     }
-  }, [editState, phaseAssignments]);
+  }, [editState, phaseAssignments, showSnackbar]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -802,7 +830,7 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   return (
     <div className="relative">
       {/* Przyciski akcji - pokazują się gdy jest editState */}
-      {editState && (
+      {editState?.status === 'dirty' && (
         <ActionButtons
           onSave={handleSaveChanges}
           onDiscard={handleDiscardChanges}
