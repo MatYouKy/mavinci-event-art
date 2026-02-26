@@ -360,7 +360,7 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   vehicles,
   equipment,
 }) => {
-  const [rowHeight, setRowHeight] = useState<'compact' | 'normal' | 'expanded'>('normal');
+  const [rowHeight, setRowHeight] = useState<'compact' | 'normal' | 'expanded'>('compact');
   const [hoveredAssignment, setHoveredAssignment] = useState<string | null>(null);
   const [editState, setEditState] = useState<EditState | null>(null);
   
@@ -373,9 +373,6 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   const [updateEquipment, { isLoading: isUpdatingEquipment }] = useUpdatePhaseEquipmentMutation();
 
   const isUpdating = isUpdatingEmployee || isUpdatingVehicle || isUpdatingEquipment;
-
-  console.log('vehicles', vehicles);
-  console.log('equipment', equipment);
 
   const totalDuration = timelineBounds.end.getTime() - timelineBounds.start.getTime();
 
@@ -634,69 +631,79 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   // VEHICLES
   // =========================
   const vehicleRows: ResourceRow[] = useMemo(() => {
-    console.log('[ResourceTimeline] Processing vehicles:', {
-      vehiclesCount: vehicles.length,
-      vehicles: vehicles.map(v => ({ id: v.id, registration: v.registration_number, vehicle: v.vehicle })),
-      phaseAssignments: phaseAssignments.map(pa => ({
-        phase: pa.phase.name,
-        vehicleAssignmentsCount: pa.vehicleAssignments?.length || 0,
-      })),
-    });
-
-    return vehicles.map((veh) => {
-      const vehicle = veh.vehicle || veh;
-      const vehicleId = vehicle?.id;
-
-      // Pobierz przypisania z event_phase_vehicles (nowy system)
-      const phaseAssignmentsList = phaseAssignments
-        .flatMap(({ phase, vehicleAssignments }) => {
+    console.log('vehicles', vehicles);
+    return vehicles.map((veh: any) => {
+      // veh = rekord z event_vehicles
+      // veh.vehicle = (opcjonalnie) zembedowany rekord z vehicles
+      const vehicleObj = veh.vehicle ?? null;
+      console.log('vehicleObj', vehicleObj);
+  
+      // ✅ NAJWAŻNIEJSZE: ID do matchowania musi być vehicle_id (z floty), nie id z event_vehicles
+      const fleetVehicleId: string | null = veh.vehicle_id ?? vehicleObj?.id ?? null;
+  
+      // 1) Przypisania z event_phase_vehicles (nowy system)
+      const phaseAssignmentsList: Assignment[] = phaseAssignments.flatMap(
+        ({ phase, vehicleAssignments }: any) => {
           const found = (vehicleAssignments ?? []).filter(
-            (v: any) => v?.vehicle_id === vehicleId,
+            (v: any) => v?.vehicle_id === fleetVehicleId
           );
           if (found.length === 0) return [];
-
+  
           return found.map((v: any) => {
             const startTime = v.assigned_start || phase.start_time;
             const endTime = v.assigned_end || phase.end_time;
-
+  
             return {
-              id: v.id,
+              id: v.id,                 // id z event_phase_vehicles
               phase,
               phaseId: phase.id,
-              resourceId: vehicleId,
-              resourceType: 'vehicle' as ResourceType,
+              resourceId: fleetVehicleId!,
+              resourceType: 'vehicle',
               start_time: startTime,
               end_time: endTime,
               isFullRange: isFullRangeAssignment(startTime, endTime),
             };
           });
-        });
-
-      // Jeśli pojazd jest z event_vehicles (Logistyka) ale nie ma przypisań do faz,
-      // pokaż go jako "dostępny na całe wydarzenie"
-      if (phaseAssignmentsList.length === 0 && veh.vehicle_available_from && veh.vehicle_available_until) {
-        // To jest pojazd z zakładki Logistyka - pokaż całą jego dostępność
+        }
+      );
+  
+      // 2) Fallback: jeśli to pojazd logistyczny z event_vehicles, a nie ma przypisań do faz
+      if (
+        phaseAssignmentsList.length === 0 &&
+        veh.vehicle_available_from &&
+        veh.vehicle_available_until &&
+        fleetVehicleId
+      ) {
         phaseAssignmentsList.push({
-          id: veh.id, // event_vehicle id
-          phase: null as any, // brak konkretnej fazy
+          id: `event_vehicle_${veh.id}`, // żeby nie kolidowało z id z event_phase_vehicles
+          phase: null as any,
           phaseId: null as any,
-          resourceId: vehicleId,
-          resourceType: 'vehicle' as ResourceType,
+          resourceId: fleetVehicleId,
+          resourceType: 'vehicle',
           start_time: veh.vehicle_available_from,
           end_time: veh.vehicle_available_until,
           isFullRange: false,
         });
       }
-
-      const assignments = phaseAssignmentsList.sort((a, b) =>
-        new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+  
+      const assignments = phaseAssignmentsList.sort(
+        (a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
       );
-
+  
+      // ✅ Nazwa do UI: najpierw z embed, potem fallback
+      const displayName =
+        vehicleObj?.name
+          ? `${vehicleObj.name}${vehicleObj.registration_number ? ` (${vehicleObj.registration_number})` : ''}`
+          : (veh.external_vehicle_name
+              ? veh.external_vehicle_name
+              : (veh.vehicle_id ? `Pojazd ${veh.vehicle_id.slice(0, 6)}…` : 'Bez nazwy'));
+  
+      console.log('vehicleObj thumb_url', vehicleObj);
       return {
-        id: vehicleId,
+        id: fleetVehicleId ?? veh.id, // id wiersza
         type: 'vehicle',
-        name: vehicle?.name || vehicle?.registration_number || 'Bez nazwy',
-        avatar_url: vehicle?.avatar_url,
+        name: displayName,
+        avatar_url: vehicleObj?.thumb_url ?? null,
         assignments,
       };
     });
@@ -829,21 +836,7 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
 
   return (
     <div className="relative">
-      {/* Przyciski akcji - pokazują się gdy jest editState */}
-      {editState?.status === 'dirty' && (
-        <ActionButtons
-          onSave={handleSaveChanges}
-          onDiscard={handleDiscardChanges}
-          isLoading={isUpdating}
-        />
-      )}
-
-      <div className="mb-3 flex items-center justify-between px-6">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-[#e5e4e2]/70">
-          Zasoby Wydarzenia
-        </h3>
-
-        <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2">
           <span className="text-xs text-[#e5e4e2]/50">Wysokość:</span>
           <div className="flex gap-1 rounded-lg bg-[#1c1f33] p-1">
             {(['compact', 'normal', 'expanded'] as const).map((size) => (
@@ -861,10 +854,24 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
             ))}
           </div>
         </div>
+      {/* Przyciski akcji - pokazują się gdy jest editState */}
+      {editState?.status === 'dirty' && (
+        <ActionButtons
+          onSave={handleSaveChanges}
+          onDiscard={handleDiscardChanges}
+          isLoading={isUpdating}
+        />
+      )}
+
+      <div className="mb-3 flex items-center justify-between px-6">
+        
       </div>
 
       <div className="relative">
         {filteredEmployees.map(renderResourceRow)}
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-[#e5e4e2]/70 mt-2">
+          Pojazdy
+        </h3>
         {filteredVehicles.map(renderResourceRow)}
         {filteredEquipment.map(renderResourceRow)}
       </div>

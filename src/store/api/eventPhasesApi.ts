@@ -351,7 +351,10 @@ export const eventPhasesApi = createApi({
         select: '*, vehicle:vehicles(*)',
         match: { phase_id: phaseId },
       }),
-      providesTags: (result, error, phaseId) => [{ type: 'PhaseVehicles', id: phaseId }],
+      providesTags: (result, error, phaseId) => [
+        { type: 'PhaseVehicles', id: phaseId },
+        { type: 'PhaseVehicles', id: 'LIST' },
+      ],
     }),
 
     createPhaseVehicle: builder.mutation<EventPhaseVehicle, Partial<EventPhaseVehicle>>({

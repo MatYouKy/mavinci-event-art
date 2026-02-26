@@ -351,6 +351,10 @@ export default function AddEventVehicleModal({
    * Przypisuje pojazd do faz logistycznych (Załadunek, Dojazd, Powrót, Rozładunek)
    * Jeśli fazy nie istnieją - tworzy je automatycznie
    */
+  /**
+   * Przypisuje pojazd do faz logistycznych (Załadunek, Dojazd, Powrót, Rozładunek)
+   * Jeśli fazy nie istnieją - tworzy je automatycznie
+   */
   const assignVehicleToLogisticPhases = async (
     eventId: string,
     vehicleId: string,
@@ -359,7 +363,7 @@ export default function AddEventVehicleModal({
     driverId: string | null,
     loadingMinutes: number,
     preparationMinutes: number,
-    travelMinutes: number
+    travelMinutes: number,
   ) => {
     try {
       // 1. Pobierz wszystkie phase_types (Załadunek, Dojazd, Powrót, Rozładunek)
@@ -379,7 +383,7 @@ export default function AddEventVehicleModal({
         .eq('event_id', eventId)
         .in(
           'name',
-          phaseTypes.map((pt) => pt.name)
+          phaseTypes.map((pt) => pt.name),
         );
 
       if (phasesError) throw phasesError;
@@ -521,9 +525,12 @@ export default function AddEventVehicleModal({
           notes: 'Automatycznie przypisany pojazd logistyczny',
         }));
 
+        // ✅ ZAMIANA: INSERT -> UPSERT (unika duplicate key na unikalnym (phase_id, vehicle_id))
         const { error: assignError } = await supabase
           .from('event_phase_vehicles')
-          .insert(vehicleAssignments);
+          .upsert(vehicleAssignments, {
+            onConflict: 'phase_id,vehicle_id',
+          });
 
         if (assignError) {
           console.error('Error assigning vehicle to phases:', assignError);
@@ -537,6 +544,7 @@ export default function AddEventVehicleModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     setLoading(true);
 
     try {
@@ -617,6 +625,7 @@ export default function AddEventVehicleModal({
         if (error) throw error;
 
         // Przypisz pojazd do faz logistycznych
+        // Przypisz pojazd do faz logistycznych
         if (!isExternal && formData.vehicle_id) {
           await assignVehicleToLogisticPhases(
             eventId,
@@ -626,11 +635,23 @@ export default function AddEventVehicleModal({
             formData.driver_id,
             formData.loading_time_minutes,
             formData.preparation_time_minutes,
-            formData.travel_time_minutes
+            formData.travel_time_minutes,
           );
 
-          // Invaliduj cache RTK Query dla faz aby timeline się odświeżył
-          dispatch(eventPhasesApi.util.invalidateTags(['Phases', 'PhaseVehicles']));
+          // ✅ PEWNA INVALIDACJA: pobierz ID faz logistycznych i invaliduj per-phase
+          const { data: logisticPhases, error: logisticPhasesError } = await supabase
+            .from('event_phases')
+            .select('id')
+            .eq('event_id', eventId)
+            .in('name', ['Załadunek', 'Dojazd', 'Powrót', 'Rozładunek']);
+
+          if (!logisticPhasesError && logisticPhases?.length) {
+            dispatch(
+              eventPhasesApi.util.invalidateTags(
+                logisticPhases.map((p) => ({ type: 'PhaseVehicles' as const, id: p.id })),
+              ),
+            );
+          }
         }
 
         showSnackbar('Pojazd został dodany do wydarzenia', 'success');

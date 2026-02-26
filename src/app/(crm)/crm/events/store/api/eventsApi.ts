@@ -732,26 +732,41 @@ export const eventsApi = createApi({
         try {
           const { data, error } = await supabase
             .from('event_vehicles')
-            .select(
-              `
-              *,
-              vehicle:vehicles(*),
-              driver:employees!driver_id(id, name, surname, avatar_url),
-              trailer:vehicles!trailer_id(*)
-            `,
-            )
+            .select('*')
             .eq('event_id', eventId)
             .order('created_at', { ascending: true });
-
+    
           if (error) throw error;
-          return { data: data || [] };
+    
+          const rows = data || [];
+    
+          // ⬇️ MUSI BYĆ ID
+          const { data: vehicles, error: vehiclesError } = await supabase
+            .from('vehicles')
+            .select('id, brand, model, name, thumb_url, registration_number')
+            .in('id', rows.map((v: any) => v.vehicle_id).filter(Boolean));
+    
+          if (vehiclesError) throw vehiclesError;
+    
+          const vehiclesMap = new Map(
+            (vehicles || []).map((v: any) => [v.id, v])
+          );
+    
+          const enrichedData = rows.map((v: any) => ({
+            ...v,
+            vehicle: v.vehicle_id ? vehiclesMap.get(v.vehicle_id) ?? null : null,
+          }));
+    
+          return { data: enrichedData };
         } catch (error: any) {
           return {
             error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError,
           };
         }
       },
-      providesTags: (result, error, eventId) => [{ type: 'EventVehicles', id: eventId }],
+      providesTags: (result, error, eventId) => [
+        { type: 'EventVehicles', id: eventId },
+      ],
     }),
 
     // ============ SUBCONTRACTORS ENDPOINTS ============
