@@ -344,6 +344,194 @@ export default function AddEventVehicleModal({
     return new Date(eventDateTime.getTime() - totalMinutes * 60000);
   };
 
+  /**
+   * Przypisuje pojazd do faz logistycznych (Załadunek, Dojazd, Powrót, Rozładunek)
+   * Jeśli fazy nie istnieją - tworzy je automatycznie
+   */
+  const assignVehicleToLogisticPhases = async (
+    eventId: string,
+    vehicleId: string,
+    departureTime: Date,
+    eventDateTime: Date,
+    driverId: string | null,
+    loadingMinutes: number,
+    preparationMinutes: number,
+    travelMinutes: number
+  ) => {
+    try {
+      // 1. Pobierz wszystkie phase_types (Załadunek, Dojazd, Powrót, Rozładunek)
+      const { data: phaseTypes, error: phaseTypesError } = await supabase
+        .from('event_phase_types')
+        .select('id, name, default_duration_hours, sequence_priority')
+        .in('name', ['Załadunek', 'Dojazd', 'Powrót', 'Rozładunek'])
+        .order('sequence_priority');
+
+      if (phaseTypesError) throw phaseTypesError;
+      if (!phaseTypes || phaseTypes.length === 0) return;
+
+      // 2. Pobierz istniejące fazy dla tego wydarzenia
+      const { data: existingPhases, error: phasesError } = await supabase
+        .from('event_phases')
+        .select('id, phase_type_id, name, start_time, end_time')
+        .eq('event_id', eventId)
+        .in(
+          'name',
+          phaseTypes.map((pt) => pt.name)
+        );
+
+      if (phasesError) throw phasesError;
+
+      // 3. Pobierz też inne fazy (np. Realizacja) aby znać rzeczywisty koniec wydarzenia
+      const { data: allPhases } = await supabase
+        .from('event_phases')
+        .select('start_time, end_time, name')
+        .eq('event_id', eventId)
+        .order('end_time', { ascending: false })
+        .limit(1);
+
+      // Jeśli są jakieś fazy - użyj ostatniego czasu jako końca wydarzenia
+      let eventEnd = new Date(eventDateTime.getTime() + 8 * 60 * 60000); // Domyślnie +8h
+      if (allPhases && allPhases.length > 0 && allPhases[0].end_time) {
+        eventEnd = new Date(allPhases[0].end_time);
+      }
+
+      // 4. Mapa phase_type_id -> phase
+      const existingPhasesMap = new Map<
+        string,
+        { id: string; phase_type_id: string; name: string; start_time: string; end_time: string }
+      >((existingPhases || []).map((p) => [p.phase_type_id, p]));
+
+      // 5. Dla każdego phase_type sprawdź czy faza istnieje, jeśli nie - utwórz
+      const phaseAssignments: Array<{
+        phase_id: string;
+        start: Date;
+        end: Date;
+        purpose: string;
+      }> = [];
+
+      // Oblicz czasy dla każdej fazy
+      const loadingStart = new Date(departureTime.getTime() - loadingMinutes * 60000);
+      const loadingEnd = departureTime;
+
+      const travelStart = departureTime;
+      const travelEnd = eventDateTime;
+
+      const returnStart = eventEnd;
+      const returnEnd = new Date(returnStart.getTime() + travelMinutes * 60000);
+
+      const unloadingStart = returnEnd;
+      const unloadingEnd = new Date(unloadingStart.getTime() + loadingMinutes * 60000);
+
+      for (const phaseType of phaseTypes) {
+        let phase = existingPhasesMap.get(phaseType.id);
+        let phaseStart: Date;
+        let phaseEnd: Date;
+        let purpose = '';
+
+        // Jeśli faza już istnieje - użyj jej czasów
+        if (phase) {
+          phaseStart = new Date(phase.start_time);
+          phaseEnd = new Date(phase.end_time);
+
+          // Określ cel
+          if (phaseType.name === 'Załadunek') {
+            purpose = 'Załadunek sprzętu';
+          } else if (phaseType.name === 'Dojazd') {
+            purpose = 'Transport do miejsca wydarzenia';
+          } else if (phaseType.name === 'Powrót') {
+            purpose = 'Transport powrotny';
+          } else if (phaseType.name === 'Rozładunek') {
+            purpose = 'Rozładunek i składowanie sprzętu';
+          }
+        } else {
+          // Określ czasy i cel w zależności od typu fazy
+          if (phaseType.name === 'Załadunek') {
+            phaseStart = loadingStart;
+            phaseEnd = loadingEnd;
+            purpose = 'Załadunek sprzętu';
+          } else if (phaseType.name === 'Dojazd') {
+            phaseStart = travelStart;
+            phaseEnd = travelEnd;
+            purpose = 'Transport do miejsca wydarzenia';
+          } else if (phaseType.name === 'Powrót') {
+            phaseStart = returnStart;
+            phaseEnd = returnEnd;
+            purpose = 'Transport powrotny';
+          } else if (phaseType.name === 'Rozładunek') {
+            phaseStart = unloadingStart;
+            phaseEnd = unloadingEnd;
+            purpose = 'Rozładunek i składowanie sprzętu';
+          } else {
+            continue;
+          }
+        }
+
+        // Jeśli faza nie istnieje - utwórz ją
+        if (!phase) {
+          const { data: newPhase, error: createError } = await supabase
+            .from('event_phases')
+            .insert([
+              {
+                event_id: eventId,
+                phase_type_id: phaseType.id,
+                name: phaseType.name,
+                start_time: phaseStart.toISOString(),
+                end_time: phaseEnd.toISOString(),
+                sequence_order: phaseType.sequence_priority,
+              },
+            ])
+            .select('id')
+            .single();
+
+          if (createError) {
+            console.error(`Error creating phase ${phaseType.name}:`, createError);
+            continue;
+          }
+
+          phase = {
+            id: newPhase.id,
+            phase_type_id: phaseType.id,
+            name: phaseType.name,
+            start_time: phaseStart.toISOString(),
+            end_time: phaseEnd.toISOString(),
+          };
+        }
+
+        // Dodaj przypisanie pojazdu do fazy
+        phaseAssignments.push({
+          phase_id: phase.id,
+          start: phaseStart,
+          end: phaseEnd,
+          purpose,
+        });
+      }
+
+      // 5. Przypisz pojazd do wszystkich faz logistycznych
+      if (phaseAssignments.length > 0) {
+        const vehicleAssignments = phaseAssignments.map((pa) => ({
+          phase_id: pa.phase_id,
+          vehicle_id: vehicleId,
+          assigned_start: pa.start.toISOString(),
+          assigned_end: pa.end.toISOString(),
+          driver_id: driverId,
+          purpose: pa.purpose,
+          notes: 'Automatycznie przypisany pojazd logistyczny',
+        }));
+
+        const { error: assignError } = await supabase
+          .from('event_phase_vehicles')
+          .insert(vehicleAssignments);
+
+        if (assignError) {
+          console.error('Error assigning vehicle to phases:', assignError);
+        }
+      }
+    } catch (error) {
+      console.error('Error in assignVehicleToLogisticPhases:', error);
+      // Nie rzucamy błędu - przypisanie do faz jest opcjonalne
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -417,9 +605,28 @@ export default function AddEventVehicleModal({
         showSnackbar('Pojazd został zaktualizowany', 'success');
       } else {
         // Tryb dodawania - INSERT
-        const { error } = await supabase.from('event_vehicles').insert([insertData]);
+        const { data: insertedVehicle, error } = await supabase
+          .from('event_vehicles')
+          .insert([insertData])
+          .select('id')
+          .single();
 
         if (error) throw error;
+
+        // Przypisz pojazd do faz logistycznych
+        if (!isExternal && formData.vehicle_id) {
+          await assignVehicleToLogisticPhases(
+            eventId,
+            formData.vehicle_id,
+            departureTime,
+            eventDateTime,
+            formData.driver_id,
+            formData.loading_time_minutes,
+            formData.preparation_time_minutes,
+            formData.travel_time_minutes
+          );
+        }
+
         showSnackbar('Pojazd został dodany do wydarzenia', 'success');
       }
 
