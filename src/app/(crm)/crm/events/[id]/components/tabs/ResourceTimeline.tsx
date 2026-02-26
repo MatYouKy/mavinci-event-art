@@ -637,35 +637,40 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
       // veh.vehicle = (opcjonalnie) zembedowany rekord z vehicles
       const vehicleObj = veh.vehicle ?? null;
       console.log('vehicleObj', vehicleObj);
-  
+
       // ✅ NAJWAŻNIEJSZE: ID do matchowania musi być vehicle_id (z floty), nie id z event_vehicles
       const fleetVehicleId: string | null = veh.vehicle_id ?? vehicleObj?.id ?? null;
-  
+
       // 1) Przypisania z event_phase_vehicles (nowy system)
-      const phaseAssignmentsList: Assignment[] = phaseAssignments.flatMap(
-        ({ phase, vehicleAssignments }: any) => {
-          const found = (vehicleAssignments ?? []).filter(
-            (v: any) => v?.vehicle_id === fleetVehicleId
-          );
-          if (found.length === 0) return [];
-  
-          return found.map((v: any) => {
-            const startTime = v.assigned_start || phase.start_time;
-            const endTime = v.assigned_end || phase.end_time;
-  
-            return {
-              id: v.id,                 // id z event_phase_vehicles
-              phase,
-              phaseId: phase.id,
-              resourceId: fleetVehicleId!,
-              resourceType: 'vehicle',
-              start_time: startTime,
-              end_time: endTime,
-              isFullRange: isFullRangeAssignment(startTime, endTime),
-            };
+      // ✅ WAŻNE: Używamy Map aby uniknąć duplikatów tego samego przypisania
+      const assignmentsMap = new Map<string, Assignment>();
+
+      phaseAssignments.forEach(({ phase, vehicleAssignments }: any) => {
+        const found = (vehicleAssignments ?? []).filter(
+          (v: any) => v?.vehicle_id === fleetVehicleId
+        );
+
+        found.forEach((v: any) => {
+          // Jeśli to przypisanie już jest w mapie - pomiń (unikamy duplikatów)
+          if (assignmentsMap.has(v.id)) return;
+
+          const startTime = v.assigned_start || phase.start_time;
+          const endTime = v.assigned_end || phase.end_time;
+
+          assignmentsMap.set(v.id, {
+            id: v.id,                 // id z event_phase_vehicles
+            phase,
+            phaseId: phase.id,
+            resourceId: fleetVehicleId!,
+            resourceType: 'vehicle',
+            start_time: startTime,
+            end_time: endTime,
+            isFullRange: isFullRangeAssignment(startTime, endTime),
           });
-        }
-      );
+        });
+      });
+
+      const phaseAssignmentsList: Assignment[] = Array.from(assignmentsMap.values());
   
       // 2) Fallback: jeśli to pojazd logistyczny z event_vehicles, a nie ma przypisań do faz
       if (

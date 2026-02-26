@@ -154,6 +154,8 @@ const { data: vehicleAssignments } = useGetPhaseVehiclesQuery(phaseId);
 
 ⚠️ **Usuwanie** - Usunięcie pojazdu z "Logistyki" NIE usuwa automatycznie przypisań do faz (może być to feature w przyszłości)
 
+✅ **Migracja** - Migracja `cleanup_duplicate_vehicle_phase_assignments` automatycznie usuwa stare przypisania (4 osobne do każdej fazy) i konsoliduje je do jednego przypisania obejmującego cały event
+
 ## Przyszłe ulepszenia
 
 🔄 **Synchronizacja** - Aktualizacja czasów pojazdu w "Logistyce" mogłaby automatycznie aktualizować przypisania do faz
