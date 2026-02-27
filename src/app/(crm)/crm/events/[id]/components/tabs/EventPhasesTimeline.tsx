@@ -124,7 +124,12 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
     const start = new Date(Math.min(earliestPhase, eventStart.getTime()));
     const end = new Date(Math.max(latestPhase, eventEnd.getTime()));
 
-    return { start, end };
+    // Dodaj bufor 1 godziny (3600000 ms) z lewej i prawej strony
+    const BUFFER_MS = 60 * 60 * 1000; // 1 godzina
+    const bufferedStart = new Date(start.getTime() - BUFFER_MS);
+    const bufferedEnd = new Date(end.getTime() + BUFFER_MS);
+
+    return { start: bufferedStart, end: bufferedEnd };
   }, [eventStartDate, eventEndDate, phases]);
 
   const phaseConflicts = useMemo(() => {

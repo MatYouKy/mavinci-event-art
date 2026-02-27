@@ -269,19 +269,19 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
             </div>
           );
         })}
-
-        {/* NOW Line */}
-        {nowPosition !== null && (
-          <div
-            className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-10 pointer-events-none"
-            style={{ left: `${nowPosition}%` }}
-          >
-            <div className="absolute -top-1 left-1/2 -translate-x-1/2 bg-red-500 text-white text-[10px] font-bold px-1 rounded whitespace-nowrap">
-              Teraz
-            </div>
-          </div>
-        )}
       </div>
+
+      {/* NOW Line - przez całą wysokość timeline */}
+      {nowPosition !== null && (
+        <div
+          className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-20 pointer-events-none"
+          style={{ left: `calc(${nowPosition}% + 24px)` }}
+        >
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-red-500 text-white text-[10px] font-bold px-1 rounded whitespace-nowrap">
+            Teraz
+          </div>
+        </div>
+      )}
 
       {/* Phases - wszystkie na jednej wysokości z nakładaniem */}
       <div className="relative" style={{ minHeight: `${containerHeight}px` }}>
