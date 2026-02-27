@@ -45,12 +45,6 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
   const { data: eventVehicles = [] } = useGetEventVehiclesQuery(eventId, { skip: !eventId });
   const { data: eventEquipment = [] } = useGetEventEquipmentQuery(eventId, { skip: !eventId });
 
-  console.log('[EventPhasesTimeline] Resources:', {
-    vehiclesCount: eventVehicles.length,
-    equipmentCount: eventEquipment.length,
-    vehicles: eventVehicles,
-    equipment: eventEquipment,
-  });
   const [updatePhase] = useUpdatePhaseMutation();
   const [deletePhase] = useDeletePhaseMutation();
   const { showSnackbar } = useSnackbar();
@@ -72,8 +66,6 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
   // Realtime subscription dla przypisań pojazdów do faz
   useEffect(() => {
     if (!eventId) return;
-
-    console.log('[EventPhasesTimeline] Setting up realtime for event_phase_vehicles');
 
     const channel = supabase
       .channel(`event_phase_vehicles_${eventId}`)
@@ -98,7 +90,6 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
       .subscribe();
 
     return () => {
-      console.log('[EventPhasesTimeline] Cleaning up realtime subscription');
       supabase.removeChannel(channel);
     };
   }, [eventId, phases, dispatch]);
@@ -120,9 +111,25 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
     const earliestPhase = Math.min(...phaseStarts);
     const latestPhase = Math.max(...phaseEnds);
 
-    // Timeline pokazuje od najwcześniejszej fazy do najpóźniejszej
-    const start = new Date(Math.min(earliestPhase, eventStart.getTime()));
-    const end = new Date(Math.max(latestPhase, eventEnd.getTime()));
+    // Uwzględnij też czasy przypisań pojazdów (assigned_start/assigned_end)
+    const vehicleTimes: number[] = [];
+    phaseAssignments.forEach((assignment) => {
+      assignment.vehicleAssignments?.forEach((v: any) => {
+        if (v.assigned_start) {
+          vehicleTimes.push(new Date(v.assigned_start).getTime());
+        }
+        if (v.assigned_end) {
+          vehicleTimes.push(new Date(v.assigned_end).getTime());
+        }
+      });
+    });
+
+    const earliestVehicle = vehicleTimes.length > 0 ? Math.min(...vehicleTimes) : Infinity;
+    const latestVehicle = vehicleTimes.length > 0 ? Math.max(...vehicleTimes) : -Infinity;
+
+    // Timeline pokazuje od najwcześniejszej fazy/pojazdu do najpóźniejszej
+    const start = new Date(Math.min(earliestPhase, earliestVehicle, eventStart.getTime()));
+    const end = new Date(Math.max(latestPhase, latestVehicle, eventEnd.getTime()));
 
     // Dodaj bufor 1 godziny (3600000 ms) z lewej i prawej strony
     const BUFFER_MS = 60 * 60 * 1000; // 1 godzina
@@ -130,7 +137,7 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
     const bufferedEnd = new Date(end.getTime() + BUFFER_MS);
 
     return { start: bufferedStart, end: bufferedEnd };
-  }, [eventStartDate, eventEndDate, phases]);
+  }, [eventStartDate, eventEndDate, phases, phaseAssignments]);
 
   const phaseConflicts = useMemo(() => {
     const conflicts: Record<string, boolean> = {};

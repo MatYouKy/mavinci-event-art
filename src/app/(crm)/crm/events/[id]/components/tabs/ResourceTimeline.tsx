@@ -473,7 +473,6 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
         }).unwrap();
       }
 
-      console.log('✅ Assignment updated successfully:', result);
       showSnackbar('Zmiany zapisane pomyślnie', 'success');
       // NIE czyścimy editState tutaj - poczekaj aż dane się odświeżą z API
       // editState zostanie wyczyszczony przez useEffect poniżej
@@ -639,9 +638,9 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
       // ✅ NAJWAŻNIEJSZE: ID do matchowania musi być vehicle_id (z floty), nie id z event_vehicles
       const fleetVehicleId: string | null = veh.vehicle_id ?? vehicleObj?.id ?? null;
 
-      // ✅ DLA POJAZDÓW: Tworzymy OSOBNE BLOKI dla każdej fazy (tak jak dla pracowników)
-      // Zbierz wszystkie przypisania z faz
-      const allPhaseAssignments: Assignment[] = [];
+      // ✅ DLA POJAZDÓW: Tworzymy JEDNĄ CIĄGŁĄ LINIĘ od najwcześniejszej do najpóźniejszej fazy
+      // Zbierz wszystkie przypisania z faz aby znaleźć zakres czasowy
+      const allPhaseAssignments: { start: Date; end: Date; phase: any; id: string }[] = [];
 
       phaseAssignments.forEach(({ phase, vehicleAssignments }: any) => {
         const found = (vehicleAssignments ?? []).filter(
@@ -652,19 +651,33 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
           const startTime = v.assigned_start || phase.start_time;
           const endTime = v.assigned_end || phase.end_time;
           allPhaseAssignments.push({
-            id: v.id,
+            start: new Date(startTime),
+            end: new Date(endTime),
             phase,
-            phaseId: phase.id,
-            resourceId: fleetVehicleId!,
-            resourceType: 'vehicle',
-            start_time: startTime,
-            end_time: endTime,
-            isFullRange: isFullRangeAssignment(startTime, endTime),
+            id: v.id,
           });
         });
       });
 
-      let assignments: Assignment[] = allPhaseAssignments;
+      let assignments: Assignment[] = [];
+
+      if (allPhaseAssignments.length > 0) {
+        // Znajdź najwcześniejszy start i najpóźniejszy koniec
+        const earliestStart = new Date(Math.min(...allPhaseAssignments.map(a => a.start.getTime())));
+        const latestEnd = new Date(Math.max(...allPhaseAssignments.map(a => a.end.getTime())));
+
+        // Utwórz JEDNO przypisanie obejmujące cały czas
+        assignments = [{
+          id: `vehicle_continuous_${veh.id}`,
+          phase: allPhaseAssignments[0].phase, // używamy pierwszej fazy jako referencji
+          phaseId: allPhaseAssignments[0].phase.id,
+          resourceId: fleetVehicleId!,
+          resourceType: 'vehicle',
+          start_time: earliestStart.toISOString(),
+          end_time: latestEnd.toISOString(),
+          isFullRange: isFullRangeAssignment(earliestStart.toISOString(), latestEnd.toISOString()),
+        }];
+      }
 
       if (
         assignments.length === 0 &&
@@ -707,14 +720,6 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   // EQUIPMENT
   // =========================
   const equipmentRows: ResourceRow[] = useMemo(() => {
-    console.log('[ResourceTimeline] Processing equipment:', {
-      equipmentCount: equipment.length,
-      equipment: equipment.map(e => ({ id: e.id, name: e.equipment_items?.name || e.name })),
-      phaseAssignments: phaseAssignments.map(pa => ({
-        phase: pa.phase.name,
-        equipmentAssignmentsCount: pa.equipmentAssignments?.length || 0,
-      })),
-    });
 
     const equipmentMap = new Map<string, ResourceRow>();
 
