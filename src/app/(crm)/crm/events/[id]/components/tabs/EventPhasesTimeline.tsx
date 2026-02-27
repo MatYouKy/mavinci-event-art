@@ -31,7 +31,7 @@ interface EventPhasesTimelineProps {
   eventEndDate: string;
 }
 
-type ZoomLevel = 'days' | 'hours' | 'minutes';
+type ZoomLevel = 'days' | 'hours' | 'quarter_hours';
 type ResourceFilter = 'all' | 'selected' | 'event';
 
 export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
@@ -275,7 +275,7 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
   const zoomLevels: { value: ZoomLevel; label: string }[] = [
     { value: 'days', label: 'Dni' },
     { value: 'hours', label: 'Godziny' },
-    { value: 'minutes', label: 'Kwadrans' },
+    { value: 'quarter_hours', label: 'Kwadrans' },
   ];
 
   const resourceFilters: { value: ResourceFilter; label: string }[] = [
