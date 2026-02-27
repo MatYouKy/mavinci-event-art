@@ -98,9 +98,7 @@ export default function AddEventVehicleModal({
   const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [eventPhases, setEventPhases] = useState<EventPhase[]>([]);
   const [suggestedTimes, setSuggestedTimes] = useState<SuggestedTimes | null>(null);
-
-  console.log('eventPhases', eventPhases);
-  console.log('suggestedTimes', suggestedTimes);
+  const [useSuggestedTimes, setUseSuggestedTimes] = useState(false);
 
   const [formData, setFormData] = useState({
     vehicle_id: '',
@@ -290,7 +288,10 @@ export default function AddEventVehicleModal({
   const applySuggestedTimes = () => {
     if (!suggestedTimes) return;
 
-    // Oblicz różnicę czasów aby uzupełnić formularz
+    // Ustaw flagę aby użyć sugerowanych czasów bezpośrednio
+    setUseSuggestedTimes(true);
+
+    // Oblicz różnicę czasów aby uzupełnić formularz (dla display only)
     const eventDateTime = new Date(eventDate);
     const totalMinutesBeforeEvent = Math.max(
       0,
@@ -676,14 +677,22 @@ export default function AddEventVehicleModal({
 
     try {
       const eventDateTime = new Date(eventDate);
-      const departureTime = calculateDepartureTime();
-      const totalMinutes =
-        (formData.loading_time_minutes || 0) +
-        (formData.preparation_time_minutes || 0) +
-        (formData.travel_time_minutes || 0);
 
-      const availableFrom = departureTime.toISOString();
-      const availableUntil = new Date(eventDateTime.getTime() + 8 * 60 * 60000).toISOString();
+      // Jeśli używamy sugerowanych czasów, użyj ich bezpośrednio
+      let availableFrom: string;
+      let availableUntil: string;
+      let departureTime: Date;
+
+      if (useSuggestedTimes && suggestedTimes) {
+        availableFrom = suggestedTimes.availableFrom.toISOString();
+        availableUntil = suggestedTimes.availableUntil.toISOString();
+        departureTime = suggestedTimes.availableFrom;
+      } else {
+        // Standardowe obliczanie na podstawie formularza
+        departureTime = calculateDepartureTime();
+        availableFrom = departureTime.toISOString();
+        availableUntil = new Date(eventDateTime.getTime() + 8 * 60 * 60000).toISOString();
+      }
 
       const insertData: any = {
         event_id: eventId,
@@ -1247,12 +1256,13 @@ export default function AddEventVehicleModal({
                   type="number"
                   min="0"
                   value={formData.loading_time_minutes}
-                  onChange={(e) =>
+                  onChange={(e) => {
                     setFormData({
                       ...formData,
                       loading_time_minutes: parseInt(e.target.value) || 0,
-                    })
-                  }
+                    });
+                    setUseSuggestedTimes(false); // Reset przy ręcznej zmianie
+                  }}
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
                 />
               </div>
@@ -1265,12 +1275,13 @@ export default function AddEventVehicleModal({
                   type="number"
                   min="0"
                   value={formData.travel_time_minutes}
-                  onChange={(e) =>
+                  onChange={(e) => {
                     setFormData({
                       ...formData,
                       travel_time_minutes: parseInt(e.target.value) || 0,
-                    })
-                  }
+                    });
+                    setUseSuggestedTimes(false); // Reset przy ręcznej zmianie
+                  }}
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
                 />
               </div>
