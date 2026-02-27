@@ -4,7 +4,7 @@ export type DragMode = 'move' | 'resize-start' | 'resize-end' | null;
 
 interface UseTimelineDragProps {
   timelineBounds: { start: Date; end: Date };
-  zoomLevel: 'days' | 'hours' | 'minutes';
+  zoomLevel: 'days' | 'hours' | 'quarter_hours';
   onDragEnd?: (newStart: Date, newEnd: Date) => void;
 }
 
@@ -15,7 +15,7 @@ export const useTimelineDrag = ({ timelineBounds, zoomLevel, onDragEnd }: UseTim
 
   const getSnapInterval = (): number => {
     switch (zoomLevel) {
-      case 'minutes':
+      case 'quarter_hours':
         return 5 * 60 * 1000; // 5 min
       case 'hours':
         return 15 * 60 * 1000; // 15 min
@@ -28,7 +28,7 @@ export const useTimelineDrag = ({ timelineBounds, zoomLevel, onDragEnd }: UseTim
 
   const getMinDuration = (): number => {
     switch (zoomLevel) {
-      case 'minutes':
+      case 'quarter_hours':
         return 5 * 60 * 1000; // 5 min
       case 'hours':
         return 15 * 60 * 1000; // 15 min

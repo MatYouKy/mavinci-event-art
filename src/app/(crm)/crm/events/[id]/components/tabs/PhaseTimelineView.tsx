@@ -8,7 +8,7 @@ import { TimelineTooltip, TooltipContent } from './TimelineTooltip';
 interface PhaseTimelineViewProps {
   phases: EventPhase[];
   timelineBounds: { start: Date; end: Date };
-  zoomLevel: 'days' | 'hours' | 'minutes';
+  zoomLevel: 'days' | 'hours' | 'quarter_hours';
   selectedPhase: EventPhase | null;
   phaseConflicts: Record<string, boolean>;
   onPhaseClick: (phase: EventPhase) => void;
@@ -258,7 +258,7 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
             ((marker.getTime() - timelineBounds.start.getTime()) / totalDuration) * 100;
 
           // Grubsza linia dla głównych godzin w widoku minut
-          const isMainHour = zoomLevel === 'minutes' && marker.getMinutes() === 0;
+          const isMainHour = zoomLevel === 'quarter_hours' && marker.getMinutes() % 15 === 0;
           const borderOpacity = isMainHour ? '20' : '10';
 
           return (

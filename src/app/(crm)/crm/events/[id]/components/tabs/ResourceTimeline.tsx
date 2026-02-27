@@ -20,7 +20,7 @@ interface ResourceTimelineProps {
   phases: EventPhase[];
   phaseAssignments: PhaseAssignmentsData[];
   timelineBounds: { start: Date; end: Date };
-  zoomLevel: 'days' | 'hours' | 'minutes';
+  zoomLevel: 'days' | 'hours' | 'quarter_hours';
   employees: any[];
   vehicles: any[];
   equipment: any[];
