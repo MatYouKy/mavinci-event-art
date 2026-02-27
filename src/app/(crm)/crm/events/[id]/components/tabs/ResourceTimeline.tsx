@@ -140,10 +140,12 @@ interface AssignmentBarProps {
   heightPx: number;
   isEmployee: boolean;
   hoveredAssignment: string | null;
+  focusedAssignment: string | null;
   formatTime: (date: string) => string;
   timelineBounds: { start: Date; end: Date };
   zoomLevel: 'days' | 'hours' | 'minutes';
   onHoverChange: (id: string | null) => void;
+  onFocusChange: (id: string | null) => void;
   onDelete: (assignmentId: string, phaseId: string) => void;
   onTimeUpdate: (assignmentId: string, newStart: Date, newEnd: Date, originalStart: string, originalEnd: string, resourceType: 'employee' | 'vehicle' | 'equipment') => void;
   onContextMenu?: (e: React.MouseEvent, assignment: Assignment, resource: ResourceRow) => void;
@@ -160,10 +162,12 @@ const AssignmentBar = memo<AssignmentBarProps>(({
   heightPx,
   isEmployee,
   hoveredAssignment,
+  focusedAssignment,
   formatTime,
   timelineBounds,
   zoomLevel,
   onHoverChange,
+  onFocusChange,
   onDelete,
   onTimeUpdate,
   onContextMenu,
@@ -218,6 +222,7 @@ const AssignmentBar = memo<AssignmentBarProps>(({
   }, [dragMode, containerRef, timelineBounds]);
 
   const isHovered = hoveredAssignment === assignment.id;
+  const isFocused = focusedAssignment === assignment.id;
   const isDragging = !!dragMode;
 
   // Jeśli są editedTimes, przelicz pozycję na ich podstawie
@@ -238,8 +243,8 @@ const AssignmentBar = memo<AssignmentBarProps>(({
 
   const currentPosition = dragPreview || displayPosition;
 
-  // Zwiększona wysokość podczas drag lub edycji
-  const barHeight = (isDragging || editedTimes) ? heightPx * 1.2 : heightPx - 12;
+  // Zwiększona wysokość podczas drag, edycji lub focusu
+  const barHeight = (isDragging || editedTimes || isFocused) ? heightPx * 1.2 : heightPx - 12;
 
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -272,6 +277,12 @@ const AssignmentBar = memo<AssignmentBarProps>(({
     onDelete(assignment.id!, assignment.phaseId!);
   }, [onDelete, assignment.id, assignment.phaseId]);
 
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    // Kliknięcie ustawia focus na to przypisanie
+    onFocusChange(assignment.id ?? null);
+  }, [onFocusChange, assignment.id]);
+
   return (
     <div
       ref={barRef}
@@ -281,16 +292,24 @@ const AssignmentBar = memo<AssignmentBarProps>(({
         height: `${barHeight}px`,
         left: currentPosition.left,
         width: currentPosition.width,
-        backgroundColor: isDragging ? `${phaseColor}40` : `${phaseColor}25`,
+        backgroundColor: isDragging ? `${phaseColor}40` : isFocused ? `${phaseColor}40` : `${phaseColor}25`,
         borderLeftColor: phaseColor,
-        opacity: isDragging ? 0.9 : 1,
-        transform: isDragging ? 'scale(1.02)' : 'scale(1)',
-        zIndex: isDragging ? 100 : 'auto',
-        boxShadow: isDragging ? '0 4px 12px rgba(211, 187, 115, 0.3)' : undefined,
+        borderLeftWidth: isFocused ? '6px' : '4px',
+        opacity: isDragging ? 0.9 : isFocused ? 1 : 1,
+        transform: isDragging ? 'scale(1.02)' : isFocused ? 'scale(1.05)' : 'scale(1)',
+        zIndex: isDragging ? 100 : isFocused ? 90 : 'auto',
+        boxShadow: isDragging
+          ? '0 4px 12px rgba(211, 187, 115, 0.3)'
+          : isFocused
+          ? '0 6px 20px rgba(211, 187, 115, 0.5), 0 0 0 3px rgba(211, 187, 115, 0.3)'
+          : undefined,
+        outline: isFocused ? `2px solid ${phaseColor}` : undefined,
+        outlineOffset: isFocused ? '2px' : undefined,
       }}
       title={`${resource.name}\n${formatTime(displayStartTime)} - ${formatTime(
         displayEndTime,
-      )}${assignment.role ? `\nRola: ${assignment.role}` : ''}${editedTimes ? '\n[EDYCJA]' : ''}`}
+      )}${assignment.role ? `\nRola: ${assignment.role}` : ''}${editedTimes ? '\n[EDYCJA]' : ''}${isFocused ? '\n[FOCUS]' : ''}`}
+      onClick={handleClick}
       onMouseEnter={() => onHoverChange(assignment.id ?? null)}
       onMouseLeave={() => onHoverChange(null)}
       onContextMenu={(e) => {
@@ -357,6 +376,7 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
 }) => {
   const [rowHeight, setRowHeight] = useState<'compact' | 'normal' | 'expanded'>('compact');
   const [hoveredAssignment, setHoveredAssignment] = useState<string | null>(null);
+  const [focusedAssignment, setFocusedAssignment] = useState<string | null>(null);
   const [editState, setEditState] = useState<EditState | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -623,6 +643,10 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
 
   const handleHoverChange = useCallback((id: string | null) => {
     setHoveredAssignment(id);
+  }, []);
+
+  const handleFocusChange = useCallback((id: string | null) => {
+    setFocusedAssignment(id);
   }, []);
 
   const formatTime = useCallback((date: string): string => {
@@ -929,10 +953,12 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
                 heightPx={heightPx}
                 isEmployee={isEmployee}
                 hoveredAssignment={hoveredAssignment}
+                focusedAssignment={focusedAssignment}
                 formatTime={formatTime}
                 timelineBounds={timelineBounds}
                 zoomLevel={zoomLevel}
                 onHoverChange={handleHoverChange}
+                onFocusChange={handleFocusChange}
                 onDelete={handleDeleteEmployeeAssignment}
                 onTimeUpdate={handleTimeUpdate}
                 onContextMenu={handleContextMenu}
@@ -952,10 +978,12 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   }, [
     heightPx,
     hoveredAssignment,
+    focusedAssignment,
     formatTime,
     timelineBounds,
     zoomLevel,
     handleHoverChange,
+    handleFocusChange,
     handleDeleteEmployeeAssignment,
     handleTimeUpdate,
     handleContextMenu,
@@ -1001,7 +1029,15 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
         
       </div>
 
-      <div className="relative">
+      <div
+        className="relative"
+        onClick={(e) => {
+          // Kliknięcie w tło usuwa focus
+          if (e.target === e.currentTarget) {
+            setFocusedAssignment(null);
+          }
+        }}
+      >
         {filteredEmployees.map(renderResourceRow)}
         <h3 className="text-sm font-semibold uppercase tracking-wide text-[#e5e4e2]/70 mt-2">
           Pojazdy
