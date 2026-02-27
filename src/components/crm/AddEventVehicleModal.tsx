@@ -198,7 +198,8 @@ export default function AddEventVehicleModal({
     try {
       const { data, error } = await supabase
         .from('event_phases')
-        .select(`
+        .select(
+          `
           id,
           name,
           phase_type_id,
@@ -206,12 +207,13 @@ export default function AddEventVehicleModal({
           end_time,
           sequence_order,
           phase_type:event_phase_types(*)
-        `)
+        `,
+        )
         .eq('event_id', eventId)
         .order('sequence_order', { ascending: true });
-  
+
       if (error) throw error;
-  
+
       console.log('[fetchEventPhases] data:', data);
       setEventPhases((data as any) || []);
     } catch (error) {
@@ -222,66 +224,50 @@ export default function AddEventVehicleModal({
   console.log('eventPhases', eventPhases);
 
   const calculateSuggestedTimes = useCallback((): SuggestedTimes | null => {
-    if (eventPhases.length === 0) {
-      return null;
-    }
-
-    // Sprawdź czy są fazy załadunku i rozładunku
+    if (!eventPhases.length) return null;
+  
+    const normalize = (v?: string) => (v || '').toLowerCase();
+  
     const loadingPhase = eventPhases.find((p) =>
-      ['loading', 'załadunek', 'zaladunek'].some((t) => {
-        const typeName = (p.phase_type?.name || '').toLowerCase();
-        const phaseName = (p.name || '').toLowerCase();
-        return typeName.includes(t) || phaseName.includes(t);
-      }),
+      normalize(p.name).includes('załad')
     );
-
+  
     const unloadingPhase = eventPhases.find((p) =>
-      ['unloading', 'rozładunek', 'rozladunek'].some((t) => {
-        const typeName = (p.phase_type?.name || '').toLowerCase();
-        const phaseName = (p.name || '').toLowerCase();
-        return typeName.includes(t) || phaseName.includes(t);
-      }),
+      normalize(p.name).includes('rozład')
     );
-
-    // Znajdź najwcześniejszą i najpóźniejszą fazę
-    const sortedPhases = [...eventPhases].sort(
-      (a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime(),
-    );
-    const earliestPhase = sortedPhases[0];
-    const latestPhase = sortedPhases[sortedPhases.length - 1];
-
-    let availableFrom: Date;
-    let availableUntil: Date;
-    let explanation = '';
-
-    // Logika dla availableFrom
-    if (loadingPhase) {
-      availableFrom = new Date(loadingPhase.start_time);
-      explanation = 'Pojazd dostępny od rozpoczęcia fazy załadunku';
-    } else {
-      // Dodaj 30 minut przed najwcześniejszą fazą na załadunek
-      availableFrom = new Date(new Date(earliestPhase.start_time).getTime() - 30 * 60000);
-      explanation = 'Pojazd dostępny 30 minut przed pierwszą fazą (czas na załadunek)';
+  
+    if (!loadingPhase || !unloadingPhase) {
+      return {
+        availableFrom: new Date(),
+        availableUntil: new Date(),
+        hasLoadingPhase: !!loadingPhase,
+        hasUnloadingPhase: !!unloadingPhase,
+        explanation:
+          'Brak wymaganych faz logistycznych (Załadunek / Rozładunek). Utwórz je, aby poprawnie wyznaczyć zakres rezerwacji pojazdu.',
+      };
     }
-
-    // Logika dla availableUntil
-    if (unloadingPhase) {
-      availableUntil = new Date(unloadingPhase.end_time);
-      if (explanation) explanation += '. ';
-      explanation += 'Dostępny do zakończenia fazy rozładunku';
-    } else {
-      // Dodaj 30 minut po najpóźniejszej fazie na rozładunek
-      availableUntil = new Date(new Date(latestPhase.end_time).getTime() + 30 * 60000);
-      if (explanation) explanation += '. ';
-      explanation += 'Dostępny 30 minut po ostatniej fazie (czas na rozładunek)';
+  
+    const availableFrom = new Date(loadingPhase.start_time);
+    const availableUntil = new Date(unloadingPhase.end_time);
+  
+    if (availableUntil.getTime() < availableFrom.getTime()) {
+      return {
+        availableFrom,
+        availableUntil,
+        hasLoadingPhase: true,
+        hasUnloadingPhase: true,
+        explanation:
+          'Uwaga: faza Rozładunek kończy się przed rozpoczęciem Załadunku. Sprawdź czasy faz.',
+      };
     }
-
+  
     return {
       availableFrom,
       availableUntil,
-      hasLoadingPhase: !!loadingPhase,
-      hasUnloadingPhase: !!unloadingPhase,
-      explanation,
+      hasLoadingPhase: true,
+      hasUnloadingPhase: true,
+      explanation:
+        'Pojazd będzie zarezerwowany od początku fazy Załadunek do końca fazy Rozładunek.',
     };
   }, [eventPhases]);
 
@@ -317,11 +303,7 @@ export default function AddEventVehicleModal({
     if (!editingVehicleId) return;
 
     try {
-      const { data, error } = await supabase
-        .from('event_vehicles')
-        .select('*')
-        .eq('id', editingVehicleId)
-        .single();
+      const { data, error } = await supabase.from('event_vehicles').select('*').eq('id', editingVehicleId).single();
 
       if (error) throw error;
       if (!data) return;
@@ -348,8 +330,7 @@ export default function AddEventVehicleModal({
         external_trailer_name: data.external_trailer_name || '',
         external_trailer_company: data.external_trailer_company || '',
         external_trailer_rental_cost: data.external_trailer_rental_cost?.toString() || '',
-        external_trailer_return_date:
-          utcToLocalDatetimeString(data.external_trailer_return_date) || '',
+        external_trailer_return_date: utcToLocalDatetimeString(data.external_trailer_return_date) || '',
         external_trailer_return_location: data.external_trailer_return_location || '',
         external_trailer_notes: data.external_trailer_notes || '',
       });
@@ -449,8 +430,7 @@ export default function AddEventVehicleModal({
       const fullyQualifiedEmployees = Array.from(employeeMap.values())
         .filter(
           (emp) =>
-            categoryIds.every((catId) => emp.categories.has(catId)) &&
-            !assignedDriverIds.includes(emp.id),
+            categoryIds.every((catId) => emp.categories.has(catId)) && !assignedDriverIds.includes(emp.id),
         )
         .map(({ id, name, surname }) => ({ id, name, surname }))
         .sort((a, b) => a.name.localeCompare(b.name));
@@ -463,26 +443,31 @@ export default function AddEventVehicleModal({
 
   const checkAvailability = async () => {
     if (!formData.vehicle_id) return;
-
+  
     setCheckingAvailability(true);
     try {
-      const eventDateTime = new Date(eventDate);
-      const totalMinutes =
-        (formData.loading_time_minutes || 0) +
-        (formData.preparation_time_minutes || 0) +
-        (formData.travel_time_minutes || 0);
-
-      const availableFrom = new Date(eventDateTime.getTime() - totalMinutes * 60000).toISOString();
-
-      const availableUntil = new Date(eventDateTime.getTime() + 8 * 60 * 60000).toISOString();
-
+      // BIERZEMY Z FAKTYCZNYCH FAZ: Załadunek -> Rozładunek
+      const suggested = calculateSuggestedTimes();
+  
+      // fallback (jak brak faz) – możesz też zablokować sprawdzanie
+      const fallbackStart = new Date(eventDate).toISOString();
+      const fallbackEnd = new Date(new Date(eventDate).getTime() + 2 * 60 * 60000).toISOString(); // np. +2h
+  
+      const availableFrom = suggested?.availableFrom
+        ? suggested.availableFrom.toISOString()
+        : fallbackStart;
+  
+      const availableUntil = suggested?.availableUntil
+        ? suggested.availableUntil.toISOString()
+        : fallbackEnd;
+  
       const { data, error } = await supabase.rpc('check_vehicle_availability', {
         p_vehicle_id: formData.vehicle_id,
         p_start_time: availableFrom,
         p_end_time: availableUntil,
         p_exclude_event_id: eventId,
       });
-
+  
       if (error) throw error;
       setConflicts(data || []);
     } catch (error) {
@@ -498,6 +483,8 @@ export default function AddEventVehicleModal({
       (formData.loading_time_minutes || 0) +
       (formData.preparation_time_minutes || 0) +
       (formData.travel_time_minutes || 0);
+    // UWAGA: historycznie to zwraca "start całej logistyki" (start załadunku),
+    // mimo że w DB pole nazywa się departure_time.
     return new Date(eventDateTime.getTime() - totalMinutes * 60000);
   };
 
@@ -505,12 +492,15 @@ export default function AddEventVehicleModal({
    * Przypisuje pojazd do całego wydarzenia (od załadunku do rozładunku)
    * Tworzy fazy logistyczne jeśli nie istnieją
    * Pojazd jest widoczny w timeline jako jedna ciągła linia przez cały event
+   *
+   * ✅ FIX: departureTime traktujemy jako START LOGISTYKI (start załadunku),
+   * a nie "wyjazd". Dzięki temu nie odejmujemy loadingMinutes drugi raz.
    */
   const assignVehicleToLogisticPhases = async (
     eventId: string,
     vehicleId: string,
-    departureTime: Date,
-    eventDateTime: Date,
+    departureTime: Date, // START LOGISTYKI / START ZAŁADUNKU
+    eventDateTime: Date, // START WYDARZENIA / ARRIVAL
     driverId: string | null,
     loadingMinutes: number,
     preparationMinutes: number,
@@ -539,13 +529,16 @@ export default function AddEventVehicleModal({
 
       if (phasesError) throw phasesError;
 
+      const LOGISTIC_NAMES = ['Załadunek', 'Dojazd', 'Powrót', 'Rozładunek'];
+
       // 3. Pobierz też inne fazy (np. Realizacja) aby znać rzeczywisty koniec wydarzenia
       const { data: allPhases } = await supabase
-        .from('event_phases')
-        .select('start_time, end_time, name')
-        .eq('event_id', eventId)
-        .order('end_time', { ascending: false })
-        .limit(1);
+      .from('event_phases')
+      .select('end_time, name')
+      .eq('event_id', eventId)
+      .not('name', 'in', `(${LOGISTIC_NAMES.map((n) => `"${n}"`).join(',')})`)
+      .order('end_time', { ascending: false })
+      .limit(1);
 
       // Jeśli są jakieś fazy - użyj ostatniego czasu jako końca wydarzenia
       let eventEnd = new Date(eventDateTime.getTime() + 8 * 60 * 60000); // Domyślnie +8h
@@ -553,11 +546,28 @@ export default function AddEventVehicleModal({
         eventEnd = new Date(allPhases[0].end_time);
       }
 
-      // 4. Oblicz czasy dla wszystkich faz
-      const loadingStart = new Date(departureTime.getTime() - loadingMinutes * 60000);
-      const loadingEnd = departureTime;
+      /**
+       * ✅ SPÓJNA OŚ CZASU (bez podwójnego odejmowania/dodawania):
+       *
+       * loadingStart  = departureTime (start logistyki / start załadunku)
+       * loadingEnd    = loadingStart + loadingMinutes
+       * prepStart     = loadingEnd
+       * prepEnd       = prepStart + preparationMinutes
+       * travelStart   = prepEnd (to jest realny "wyjazd")
+       * travelEnd     = eventDateTime (przyjazd / start eventu)
+       *
+       * returnStart   = eventEnd
+       * returnEnd     = returnStart + travelMinutes
+       * unloadingStart= returnEnd
+       * unloadingEnd  = unloadingStart + loadingMinutes (symetrycznie do załadunku)
+       */
+      const loadingStart = new Date(departureTime);
+      const loadingEnd = new Date(loadingStart.getTime() + loadingMinutes * 60000);
 
-      const travelStart = departureTime;
+      const preparationStart = loadingEnd;
+      const preparationEnd = new Date(preparationStart.getTime() + preparationMinutes * 60000);
+
+      const travelStart = preparationEnd;
       const travelEnd = eventDateTime;
 
       const returnStart = eventEnd;
@@ -639,8 +649,6 @@ export default function AddEventVehicleModal({
       }
 
       // 7. Przypisz pojazd do CAŁEGO wydarzenia (od początku załadunku do końca rozładunku)
-      // Zamiast osobnych przypisań do każdej fazy, przypisz pojazd raz do pierwszej fazy (Załadunek)
-      // z zakresem czasu obejmującym cały event
       const firstPhase = createdPhases.find((p) => p.name === 'Załadunek');
       if (firstPhase) {
         const { error: assignError } = await supabase.from('event_phase_vehicles').upsert(
@@ -679,19 +687,27 @@ export default function AddEventVehicleModal({
       const eventDateTime = new Date(eventDate);
 
       // Jeśli używamy sugerowanych czasów, użyj ich bezpośrednio
+
       let availableFrom: string;
       let availableUntil: string;
       let departureTime: Date;
-
-      if (useSuggestedTimes && suggestedTimes) {
-        availableFrom = suggestedTimes.availableFrom.toISOString();
-        availableUntil = suggestedTimes.availableUntil.toISOString();
-        departureTime = suggestedTimes.availableFrom;
+      
+      // DLA POJAZDU Z FLOTY: zawsze z faz załad/rozład
+      if (!isExternal) {
+        const range = calculateSuggestedTimes();
+      
+        if (!range || !range.hasLoadingPhase || !range.hasUnloadingPhase) {
+          throw new Error('Brak faz Załadunek/Rozładunek – nie można poprawnie zarezerwować pojazdu.');
+        }
+      
+        departureTime = range.availableFrom;
+        availableFrom = range.availableFrom.toISOString();
+        availableUntil = range.availableUntil.toISOString();
       } else {
-        // Standardowe obliczanie na podstawie formularza
+        // zewnętrzny – możesz zostawić obecne liczenie (albo też wymusić fazy)
         departureTime = calculateDepartureTime();
         availableFrom = departureTime.toISOString();
-        availableUntil = new Date(eventDateTime.getTime() + 8 * 60 * 60000).toISOString();
+        availableUntil = new Date(new Date(eventDate).getTime() + 8 * 60 * 60000).toISOString(); // albo coś innego
       }
 
       const insertData: any = {
@@ -728,13 +744,11 @@ export default function AddEventVehicleModal({
           insertData.is_trailer_external = true;
           insertData.external_trailer_name = formData.external_trailer_name || null;
           insertData.external_trailer_company = formData.external_trailer_company || null;
-          insertData.external_trailer_rental_cost =
-            parseFloat(formData.external_trailer_rental_cost) || null;
+          insertData.external_trailer_rental_cost = parseFloat(formData.external_trailer_rental_cost) || null;
           insertData.external_trailer_return_date = formData.external_trailer_return_date
             ? localDatetimeStringToUTC(formData.external_trailer_return_date)
             : null;
-          insertData.external_trailer_return_location =
-            formData.external_trailer_return_location || null;
+          insertData.external_trailer_return_location = formData.external_trailer_return_location || null;
           insertData.external_trailer_notes = formData.external_trailer_notes || null;
         } else {
           insertData.trailer_vehicle_id = formData.trailer_vehicle_id || null;
@@ -743,10 +757,7 @@ export default function AddEventVehicleModal({
 
       if (editingVehicleId) {
         // Tryb edycji - UPDATE
-        const { error } = await supabase
-          .from('event_vehicles')
-          .update(insertData)
-          .eq('id', editingVehicleId);
+        const { error } = await supabase.from('event_vehicles').update(insertData).eq('id', editingVehicleId);
 
         if (error) throw error;
         showSnackbar('Pojazd został zaktualizowany', 'success');
@@ -761,12 +772,11 @@ export default function AddEventVehicleModal({
         if (error) throw error;
 
         // Przypisz pojazd do faz logistycznych
-        // Przypisz pojazd do faz logistycznych
         if (!isExternal && formData.vehicle_id) {
           await assignVehicleToLogisticPhases(
             eventId,
             formData.vehicle_id,
-            departureTime,
+            departureTime, // start logistyki (start załadunku) - spójne z nową osią czasu
             eventDateTime,
             formData.driver_id,
             formData.loading_time_minutes,
@@ -857,9 +867,7 @@ export default function AddEventVehicleModal({
           {/* Wybór pojazdu */}
           {!isExternal ? (
             <div>
-              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-                Wybierz pojazd *
-              </label>
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Wybierz pojazd *</label>
               <select
                 required
                 value={formData.vehicle_id}
@@ -884,24 +892,18 @@ export default function AddEventVehicleModal({
                   type="text"
                   required
                   value={formData.external_company_name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, external_company_name: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, external_company_name: e.target.value })}
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
                   placeholder="np. Rent-a-Car"
                 />
               </div>
               <div>
-                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-                  Nazwa pojazdu *
-                </label>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Nazwa pojazdu *</label>
                 <input
                   type="text"
                   required
                   value={formData.external_vehicle_name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, external_vehicle_name: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, external_vehicle_name: e.target.value })}
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
                   placeholder="np. Mercedes Sprinter"
                 />
@@ -914,9 +916,7 @@ export default function AddEventVehicleModal({
                   type="number"
                   step="0.01"
                   value={formData.external_rental_cost}
-                  onChange={(e) =>
-                    setFormData({ ...formData, external_rental_cost: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, external_rental_cost: e.target.value })}
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
                   placeholder="0.00"
                 />
@@ -967,9 +967,7 @@ export default function AddEventVehicleModal({
           {/* Szczegóły */}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
-              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-                Rola pojazdu *
-              </label>
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Rola pojazdu *</label>
               <select
                 required
                 value={formData.role}
@@ -1010,12 +1008,13 @@ export default function AddEventVehicleModal({
               </select>
               {!isExternal && formData.vehicle_id && employees.length === 0 && (
                 <p className="mt-1 text-xs text-yellow-500">
-                  Brak dostępnych pracowników z wymaganymi prawami jazdy dla tego pojazdu. Sprawdź
-                  wymagania pojazdu w panelu floty.
+                  Brak dostępnych pracowników z wymaganymi prawami jazdy dla tego pojazdu. Sprawdź wymagania pojazdu w
+                  panelu floty.
                 </p>
               )}
             </div>
           </div>
+
 
           {/* Przyczepka */}
           {!isExternal && (
