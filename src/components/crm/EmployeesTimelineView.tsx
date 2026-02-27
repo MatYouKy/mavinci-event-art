@@ -32,6 +32,7 @@ interface EmployeesTimelineViewProps {
 
 const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees }) => {
   const [zoomLevel, setZoomLevel] = useState<ZoomLevel>('week');
+  const [prevZoomLevel, setPrevZoomLevel] = useState<ZoomLevel>('week');
   const [timelineBounds, setTimelineBounds] = useState<TimelineBounds>({
     start: (() => {
       const now = new Date();
@@ -65,6 +66,56 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
   useEffect(() => {
     fetchTimelineData();
   }, [employeeIds, timelineBounds]);
+
+  useEffect(() => {
+    if (zoomLevel !== prevZoomLevel) {
+      adjustTimelineForZoom();
+      setPrevZoomLevel(zoomLevel);
+    }
+  }, [zoomLevel]);
+
+  const adjustTimelineForZoom = () => {
+    const now = new Date();
+    const isToday =
+      timelineBounds.start.getDate() === now.getDate() &&
+      timelineBounds.start.getMonth() === now.getMonth() &&
+      timelineBounds.start.getFullYear() === now.getFullYear();
+
+    if (!isToday) return;
+
+    now.setHours(0, 0, 0, 0);
+
+    switch (zoomLevel) {
+      case 'month':
+        const monthEnd = new Date(now);
+        monthEnd.setDate(monthEnd.getDate() + 30);
+        monthEnd.setHours(23, 59, 59, 999);
+        setTimelineBounds({ start: now, end: monthEnd });
+        break;
+
+      case 'week':
+        const weekEnd = new Date(now);
+        weekEnd.setDate(weekEnd.getDate() + 7);
+        weekEnd.setHours(23, 59, 59, 999);
+        setTimelineBounds({ start: now, end: weekEnd });
+        break;
+
+      case 'day':
+        const dayEnd = new Date(now);
+        dayEnd.setHours(23, 59, 59, 999);
+        setTimelineBounds({ start: now, end: dayEnd });
+        break;
+
+      case 'hours':
+        const nowWithTime = new Date();
+        const hoursStart = new Date(nowWithTime);
+        hoursStart.setMinutes(0, 0, 0);
+        const hoursEnd = new Date(hoursStart);
+        hoursEnd.setHours(hoursStart.getHours() + 12);
+        setTimelineBounds({ start: hoursStart, end: hoursEnd });
+        break;
+    }
+  };
 
   const fetchTimelineData = async () => {
     if (employeeIds.length === 0) {
@@ -114,9 +165,9 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
       case 'week':
         return 120;
       case 'day':
-        return 240;
+        return 800;
       case 'hours':
-        return 480;
+        return 1600;
       default:
         return 120;
     }
@@ -182,7 +233,47 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
   };
 
   const resetToToday = () => {
-    setQuickRange('week');
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+
+    switch (zoomLevel) {
+      case 'month':
+        const monthEnd = new Date(now);
+        monthEnd.setDate(monthEnd.getDate() + 30);
+        monthEnd.setHours(23, 59, 59, 999);
+        setTimelineBounds({ start: now, end: monthEnd });
+        break;
+
+      case 'week':
+        const weekEnd = new Date(now);
+        weekEnd.setDate(weekEnd.getDate() + 7);
+        weekEnd.setHours(23, 59, 59, 999);
+        setTimelineBounds({ start: now, end: weekEnd });
+        break;
+
+      case 'day':
+        const dayEnd = new Date(now);
+        dayEnd.setHours(23, 59, 59, 999);
+        setTimelineBounds({ start: now, end: dayEnd });
+        break;
+
+      case 'hours':
+        const nowWithTime = new Date();
+        const hoursStart = new Date(nowWithTime);
+        hoursStart.setMinutes(0, 0, 0);
+        const hoursEnd = new Date(hoursStart);
+        hoursEnd.setHours(hoursStart.getHours() + 12);
+        setTimelineBounds({ start: hoursStart, end: hoursEnd });
+        break;
+
+      default:
+        const defaultEnd = new Date(now);
+        defaultEnd.setDate(defaultEnd.getDate() + 7);
+        defaultEnd.setHours(23, 59, 59, 999);
+        setTimelineBounds({ start: now, end: defaultEnd });
+    }
+
+    setQuickDateRange('custom');
   };
 
   const getItemPosition = (item: TimelineItem) => {
@@ -300,6 +391,21 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
     const start = timelineBounds.start.toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' });
     const end = timelineBounds.end.toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' });
     return `${start} - ${end}`;
+  };
+
+  const getTodayButtonLabel = () => {
+    switch (zoomLevel) {
+      case 'month':
+        return 'Obecny miesiąc';
+      case 'week':
+        return 'Obecny tydzień';
+      case 'day':
+        return 'Dzisiaj';
+      case 'hours':
+        return 'Teraz';
+      default:
+        return 'Dzisiaj';
+    }
   };
 
   const minWidth = getMinWidth();
@@ -525,10 +631,10 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
           <button
             onClick={resetToToday}
             className="rounded-lg bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/20"
-            title="Dzisiaj"
+            title={getTodayButtonLabel()}
           >
             <Calendar className="mr-2 inline h-4 w-4" />
-            Dzisiaj
+            {getTodayButtonLabel()}
           </button>
           <button
             onClick={() => shiftTimeline('right')}
