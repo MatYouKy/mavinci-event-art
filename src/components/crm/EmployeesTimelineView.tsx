@@ -773,7 +773,7 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
               return (
                 <div
                   key={employee.id}
-                  className="border-b border-[#d3bb73]/10 hover:bg-[#1c1f33]/50"
+                  className="border-b border-[#d3bb73]/30 hover:bg-[#1c1f33]/50"
                 >
                   <div className="flex">
                     {/* Employee info - sticky */}
@@ -808,10 +808,10 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
                             key={idx}
                             className={`absolute top-0 h-full border-l ${
                               isFullDay
-                                ? 'border-[#e5e4e2]/12'
+                                ? 'border-[#e5e4e2]/8'
                                 : isFullHour
-                                ? 'border-[#e5e4e2]/6'
-                                : 'border-[#e5e4e2]/2'
+                                ? 'border-[#e5e4e2]/4'
+                                : 'border-[#e5e4e2]/[0.01]'
                             }`}
                             style={{ left: `${left}%` }}
                           />
