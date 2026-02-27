@@ -275,7 +275,7 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
   const zoomLevels: { value: ZoomLevel; label: string }[] = [
     { value: 'days', label: 'Dni' },
     { value: 'hours', label: 'Godziny' },
-    { value: 'quarter_hours', label: 'Kwadransy' },
+    { value: 'quarter_hours', label: 'Kwadrans' },
   ];
 
   const resourceFilters: { value: ResourceFilter; label: string }[] = [
