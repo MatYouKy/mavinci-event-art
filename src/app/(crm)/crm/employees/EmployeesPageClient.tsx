@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, User, Lock, LayoutGrid, List, ListTree } from 'lucide-react';
+import { Plus, Search, User, Lock, LayoutGrid, List, ListTree, Clock } from 'lucide-react';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
 import AdminResetPasswordModal from '@/components/crm/AdminResetPasswordModal';
@@ -12,6 +12,7 @@ import {
   EmployeeListView,
   EmployeeDetailedView,
 } from '@/components/crm/EmployeeViews';
+import EmployeesTimelineView from '@/components/crm/EmployeesTimelineView';
 import { IEmployee } from './type';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import { ViewMode } from '../settings/page';
@@ -161,6 +162,17 @@ export default function EmployeesPageClient({ employees, viewMode }: { employees
           >
             <ListTree className="h-5 w-5" />
           </button>
+          <button
+            onClick={() => handleViewModeChange('timeline')}
+            className={`rounded p-2 transition-colors ${
+              localViewMode === 'timeline'
+                ? 'bg-[#d3bb73] text-[#1c1f33]'
+                : 'text-[#e5e4e2]/60 hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]'
+            }`}
+            title="Oś czasu"
+          >
+            <Clock className="h-5 w-5" />
+          </button>
         </div>
       </div>
 
@@ -206,6 +218,9 @@ export default function EmployeesPageClient({ employees, viewMode }: { employees
               isAdmin={isAdmin}
               onResetPassword={setResetPasswordEmployee}
             />
+          )}
+          {localViewMode === 'timeline' && (
+            <EmployeesTimelineView employees={filteredEmployees} />
           )}
         </>
       )}

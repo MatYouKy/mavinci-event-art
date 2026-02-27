@@ -27,7 +27,7 @@ import AddSystemEmailModal from '@/components/crm/AddSystemEmailModal';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { CalendarSettings } from './calendar-icam/CalendarSettings';
 
-export type ViewMode = 'list' | 'grid' | 'table';
+export type ViewMode = 'list' | 'grid' | 'table' | 'timeline';
 
 export interface ViewModePreference {
   viewMode: ViewMode;

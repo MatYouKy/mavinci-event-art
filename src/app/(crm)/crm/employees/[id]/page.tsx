@@ -36,6 +36,7 @@ import { uploadImage } from '@/lib/storage';
 import { IUploadImage, IImage, IImageMetadataUpload } from '@/types/image';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import PrivateTasksBoard from '@/components/crm/PrivateTasksBoard';
+import EmployeeTimelineTab from '@/components/crm/EmployeeTimelineTab';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
 
 interface ImagePosition {
@@ -648,6 +649,7 @@ export default function EmployeeDetailPage() {
             ? [{ id: 'tasks', label: 'Zadania', icon: CheckSquare }]
             : []),
           { id: 'events', label: 'Wydarzenia', icon: Calendar },
+          { id: 'timeline', label: 'Oś czasu', icon: Clock },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -1294,6 +1296,10 @@ export default function EmployeeDetailPage() {
             </div>
           )}
         </div>
+      )}
+
+      {activeTab === 'timeline' && (
+        <EmployeeTimelineTab employeeId={employeeId} canEdit={canEdit} />
       )}
 
       {showAddDocumentModal && (
