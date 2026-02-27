@@ -623,17 +623,24 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
 
     // Aktualizuj przypisanie aby wyrównać do fazy
     try {
-      const updateData = {
-        assignment_start: phaseStartTime,
-        assignment_end: phaseEndTime,
-      };
-
       if (assignment.resourceType === 'employee') {
-        await updateAssignment({ id: assignment.id, updates: updateData }).unwrap();
+        await updateAssignment({
+          id: assignment.id,
+          assignment_start: phaseStartTime,
+          assignment_end: phaseEndTime,
+        }).unwrap();
       } else if (assignment.resourceType === 'vehicle') {
-        await updateVehicle({ id: assignment.id, updates: updateData }).unwrap();
+        await updateVehicle({
+          id: assignment.id,
+          assigned_start: phaseStartTime,
+          assigned_end: phaseEndTime,
+        }).unwrap();
       } else if (assignment.resourceType === 'equipment') {
-        await updateEquipment({ id: assignment.id, updates: updateData }).unwrap();
+        await updateEquipment({
+          id: assignment.id,
+          assigned_start: phaseStartTime,
+          assigned_end: phaseEndTime,
+        }).unwrap();
       }
 
       showSnackbar('Przypisanie wyrównane do fazy', 'success');
@@ -976,6 +983,27 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
                     {contextMenu.assignment.phase.name}
                   </span>
                 </div>
+              </button>
+            )}
+
+            {/* Separator */}
+            {contextMenu.assignment.phase && (
+              <div className="my-1 h-px bg-[#d3bb73]/10" />
+            )}
+
+            {/* Przycisk usuń */}
+            {contextMenu.assignment.id && contextMenu.assignment.phaseId && (
+              <button
+                onClick={() => {
+                  if (confirm(`Czy na pewno chcesz usunąć przypisanie: ${contextMenu.resource.name}?`)) {
+                    handleDeleteEmployeeAssignment(contextMenu.assignment.id!, contextMenu.assignment.phaseId!);
+                    setContextMenu(null);
+                  }
+                }}
+                className="flex w-full items-center gap-3 px-4 py-2 text-sm text-red-400 transition-colors hover:bg-red-500/20"
+              >
+                <Trash2 className="h-4 w-4" />
+                <span className="font-medium">Usuń przypisanie</span>
               </button>
             )}
           </div>
