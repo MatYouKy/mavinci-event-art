@@ -705,7 +705,7 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
         >
           <div style={{ minWidth, paddingBottom: '24px' }}>
             {/* Time markers header */}
-            <div className="sticky top-0 z-10 flex border-b border-[#d3bb73]/10 bg-[#1c1f33]">
+            <div className="sticky top-0 z-10 flex border-b border-[#d3bb73]/20 bg-[#1c1f33] shadow-sm">
               {/* Empty space for employee info column */}
               <div className="w-64 flex-shrink-0 border-r border-[#d3bb73]/10" />
 
@@ -726,10 +726,10 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
                       <div
                         className={`h-full border-l ${
                           isFullDay
-                            ? 'border-[#e5e4e2]/30'
+                            ? 'border-[#d3bb73]/20'
                             : isFullHour
-                            ? 'border-[#e5e4e2]/10'
-                            : 'border-[#e5e4e2]/3'
+                            ? 'border-[#d3bb73]/10'
+                            : 'border-[#d3bb73]/5'
                         }`}
                       />
                       <div
@@ -769,16 +769,20 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
             </div>
 
             {/* Employee rows */}
-            {filteredEmployees.map((employee) => {
+            {filteredEmployees.map((employee, idx) => {
               const items = timelineData[employee.id] || [];
               return (
                 <div
                   key={employee.id}
-                  className="border-b border-[#d3bb73]/30 hover:bg-[#1c1f33]/50"
+                  className={`border-b border-[#d3bb73]/20 transition-colors hover:bg-[#1c1f33]/70 ${
+                    idx % 2 === 0 ? 'bg-[#0f1119]' : 'bg-[#0f1119]/50'
+                  }`}
                 >
                   <div className="flex">
                     {/* Employee info - sticky */}
-                    <div className="sticky left-0 z-10 w-64 border-r border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+                    <div className={`sticky left-0 z-10 w-64 border-r border-[#d3bb73]/10 p-4 ${
+                      idx % 2 === 0 ? 'bg-[#0f1119]' : 'bg-[#0f1119]/50'
+                    }`}>
                       <div className="flex items-center gap-3">
                         <EmployeeAvatar
                           employee={employee}
@@ -809,10 +813,10 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
                             key={idx}
                             className={`absolute top-0 h-full border-l ${
                               isFullDay
-                                ? 'border-[#e5e4e2]/8'
+                                ? 'border-[#d3bb73]/10'
                                 : isFullHour
-                                ? 'border-[#e5e4e2]/4'
-                                : 'border-[#e5e4e2]/[0.01]'
+                                ? 'border-[#d3bb73]/5'
+                                : 'border-transparent'
                             }`}
                             style={{ left: `${leftPx}px` }}
                           />
