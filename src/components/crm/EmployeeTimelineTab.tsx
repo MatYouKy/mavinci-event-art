@@ -60,19 +60,25 @@ const EmployeeTimelineTab: React.FC<EmployeeTimelineTabProps> = ({ employeeId, c
   };
 
   const handleApprove = async (absenceId: string) => {
+    const notes = prompt('Dodaj notatkę do zatwierdzenia (opcjonalnie):');
+    if (notes === null) return; // User cancelled
+
     try {
-      const { error } = await supabase
-        .from('employee_absences')
-        .update({
-          status: 'approved',
-          approved_by: currentEmployee?.id,
-          approved_at: new Date().toISOString(),
-        })
-        .eq('id', absenceId);
+      const { data, error } = await supabase.rpc('approve_absence', {
+        p_absence_id: absenceId,
+        p_approver_id: currentEmployee?.id,
+        p_notes: notes || null,
+      });
 
       if (error) throw error;
-      showSnackbar('Nieobecność zatwierdzona', 'success');
-      fetchAbsences();
+
+      const result = data as { success: boolean; message?: string; error?: string };
+      if (result.success) {
+        showSnackbar('Nieobecność zatwierdzona', 'success');
+        fetchAbsences();
+      } else {
+        showSnackbar(result.error || 'Błąd podczas zatwierdzania', 'error');
+      }
     } catch (error) {
       console.error('Error approving absence:', error);
       showSnackbar('Błąd podczas zatwierdzania', 'error');
@@ -80,19 +86,28 @@ const EmployeeTimelineTab: React.FC<EmployeeTimelineTabProps> = ({ employeeId, c
   };
 
   const handleReject = async (absenceId: string) => {
+    const reason = prompt('Podaj powód odrzucenia:');
+    if (!reason) {
+      showSnackbar('Powód odrzucenia jest wymagany', 'warning');
+      return;
+    }
+
     try {
-      const { error } = await supabase
-        .from('employee_absences')
-        .update({
-          status: 'rejected',
-          approved_by: currentEmployee?.id,
-          approved_at: new Date().toISOString(),
-        })
-        .eq('id', absenceId);
+      const { data, error } = await supabase.rpc('reject_absence', {
+        p_absence_id: absenceId,
+        p_rejector_id: currentEmployee?.id,
+        p_reason: reason,
+      });
 
       if (error) throw error;
-      showSnackbar('Nieobecność odrzucona', 'success');
-      fetchAbsences();
+
+      const result = data as { success: boolean; message?: string; error?: string };
+      if (result.success) {
+        showSnackbar('Nieobecność odrzucona', 'success');
+        fetchAbsences();
+      } else {
+        showSnackbar(result.error || 'Błąd podczas odrzucania', 'error');
+      }
     } catch (error) {
       console.error('Error rejecting absence:', error);
       showSnackbar('Błąd podczas odrzucania', 'error');
