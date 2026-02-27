@@ -348,7 +348,10 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
   const timeMarkers = generateTimeMarkers();
 
   const getItemTypeLabel = (type: string) => {
-    return type === 'event' ? 'Wydarzenie' : 'Nieobecność';
+    if (type === 'event') return 'Wydarzenie';
+    if (type === 'event_phase') return 'Faza wydarzenia';
+    if (type === 'absence') return 'Nieobecność';
+    return type;
   };
 
   const getStatusColor = (status: string, type: string) => {
@@ -356,6 +359,9 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
       if (status === 'pending') return 'border-yellow-500/50';
       if (status === 'approved') return 'border-green-500/50';
       return 'border-red-500/50';
+    }
+    if (type === 'event_phase') {
+      return 'border-purple-500/50';
     }
     return 'border-blue-500/50';
   };
@@ -878,6 +884,10 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
         <div className="flex items-center gap-2">
           <div className="h-3 w-3 rounded border-l-4 border-blue-500/50 bg-blue-500/40" />
           <span className="text-[#e5e4e2]/80">Wydarzenie</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="h-3 w-3 rounded border-l-4 border-purple-500/50 bg-purple-500/40" />
+          <span className="text-[#e5e4e2]/80">Faza wydarzenia</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="h-3 w-3 rounded border-l-4 border-green-500/50 bg-green-500/40" />
