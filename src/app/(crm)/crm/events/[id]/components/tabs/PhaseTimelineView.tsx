@@ -62,11 +62,13 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
     } else if (zoomLevel === 'hours') {
       return date.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
     } else {
-      return date.toLocaleTimeString('pl-PL', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-      });
+      // W widoku kwadransa pokazuj pełne godziny z godziną, a kwadransy tylko minuty
+      const minutes = date.getMinutes();
+      if (minutes === 0) {
+        return date.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+      } else {
+        return `:${minutes.toString().padStart(2, '0')}`;
+      }
     }
   };
 
