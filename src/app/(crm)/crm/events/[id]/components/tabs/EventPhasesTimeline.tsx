@@ -141,8 +141,8 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
     const start = new Date(Math.min(earliestPhase, earliestVehicle, eventStart.getTime()));
     const end = new Date(Math.max(latestPhase, latestVehicle, eventEnd.getTime()));
 
-    // Dodaj bufor 1 godziny (3600000 ms) z lewej i prawej strony
-    const BUFFER_MS = 60 * 60 * 1000; // 1 godzina
+    // Dodaj bufor 15 minut (900000 ms) z lewej i prawej strony
+    const BUFFER_MS = 15 * 60 * 1000; // 15 minut
     const bufferedStart = new Date(start.getTime() - BUFFER_MS);
     const bufferedEnd = new Date(end.getTime() + BUFFER_MS);
 
