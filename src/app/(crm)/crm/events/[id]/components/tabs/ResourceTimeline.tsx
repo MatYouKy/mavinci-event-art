@@ -129,18 +129,6 @@ const ResizeHandle = memo<{
 ));
 ResizeHandle.displayName = 'ResizeHandle';
 
-// Delete Button komponent
-const DeleteButton = memo<{ onClick: (e: React.MouseEvent) => void }>(({ onClick }) => (
-  <button
-    onClick={onClick}
-    className="opacity-0 group-hover:opacity-100 transition-opacity rounded p-1 hover:bg-red-500/20 text-red-400"
-    title="Usuń z fazy"
-  >
-    <Trash2 className="h-3 w-3" />
-  </button>
-));
-DeleteButton.displayName = 'DeleteButton';
-
 // ============================================
 // GŁÓWNY ASSIGNMENT BAR
 // ============================================
@@ -338,7 +326,6 @@ const AssignmentBar = memo<AssignmentBarProps>(({
       {/* Right resize handle + Delete button */}
       {isEmployee && assignment.phaseId && containerRef?.current && (
         <div className="flex items-center gap-1">
-          <DeleteButton onClick={handleDelete} />
           <ResizeHandle side="right" onMouseDown={handleResizeEnd} />
         </div>
       )}
