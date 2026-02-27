@@ -158,6 +158,7 @@ interface AssignmentBarProps {
   onHoverChange: (id: string | null) => void;
   onDelete: (assignmentId: string, phaseId: string) => void;
   onTimeUpdate: (assignmentId: string, newStart: Date, newEnd: Date, originalStart: string, originalEnd: string, resourceType: 'employee' | 'vehicle' | 'equipment') => void;
+  onContextMenu?: (e: React.MouseEvent, assignment: Assignment, resource: ResourceRow) => void;
   containerRef?: React.RefObject<HTMLDivElement>;
   editedTimes?: { start: Date; end: Date } | null; // Tymczasowe czasy z edycji
   resourceType: 'employee' | 'vehicle' | 'equipment';
@@ -177,6 +178,7 @@ const AssignmentBar = memo<AssignmentBarProps>(({
   onHoverChange,
   onDelete,
   onTimeUpdate,
+  onContextMenu,
   containerRef,
   editedTimes,
   resourceType,
@@ -303,6 +305,12 @@ const AssignmentBar = memo<AssignmentBarProps>(({
       )}${assignment.role ? `\nRola: ${assignment.role}` : ''}${editedTimes ? '\n[EDYCJA]' : ''}`}
       onMouseEnter={() => onHoverChange(assignment.id ?? null)}
       onMouseLeave={() => onHoverChange(null)}
+      onContextMenu={(e) => {
+        if (onContextMenu) {
+          e.preventDefault();
+          onContextMenu(e, assignment, resource);
+        }
+      }}
     >
       {/* Left resize handle - tylko dla pracowników */}
       {isEmployee && assignment.phaseId && containerRef?.current && (
@@ -363,7 +371,13 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   const [rowHeight, setRowHeight] = useState<'compact' | 'normal' | 'expanded'>('compact');
   const [hoveredAssignment, setHoveredAssignment] = useState<string | null>(null);
   const [editState, setEditState] = useState<EditState | null>(null);
-  
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    assignment: Assignment;
+    resource: ResourceRow;
+  } | null>(null);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const { showSnackbar } = useSnackbar();
   // Mutations
@@ -569,6 +583,22 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [editState, isUpdating, handleSaveChanges, handleDiscardChanges]);
 
+  // Zamykanie menu kontekstowego przy kliknięciu
+  useEffect(() => {
+    if (!contextMenu) return;
+
+    const handleClick = () => setContextMenu(null);
+    const handleScroll = () => setContextMenu(null);
+
+    window.addEventListener('click', handleClick);
+    window.addEventListener('scroll', handleScroll, true);
+
+    return () => {
+      window.removeEventListener('click', handleClick);
+      window.removeEventListener('scroll', handleScroll, true);
+    };
+  }, [contextMenu]);
+
   const handleHoverChange = useCallback((id: string | null) => {
     setHoveredAssignment(id);
   }, []);
@@ -580,6 +610,49 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
     }
     return d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
   }, [zoomLevel]);
+
+  // Funkcja wyrównania przypisania do fazy
+  const handleAlignToPhase = useCallback(async (assignment: Assignment) => {
+    if (!assignment.id || !assignment.phase) {
+      showSnackbar('Brak informacji o fazie', 'error');
+      return;
+    }
+
+    const phaseStartTime = assignment.phase.start_time;
+    const phaseEndTime = assignment.phase.end_time;
+
+    // Aktualizuj przypisanie aby wyrównać do fazy
+    try {
+      const updateData = {
+        assignment_start: phaseStartTime,
+        assignment_end: phaseEndTime,
+      };
+
+      if (assignment.resourceType === 'employee') {
+        await updateAssignment({ id: assignment.id, updates: updateData }).unwrap();
+      } else if (assignment.resourceType === 'vehicle') {
+        await updateVehicle({ id: assignment.id, updates: updateData }).unwrap();
+      } else if (assignment.resourceType === 'equipment') {
+        await updateEquipment({ id: assignment.id, updates: updateData }).unwrap();
+      }
+
+      showSnackbar('Przypisanie wyrównane do fazy', 'success');
+    } catch (error: any) {
+      console.error('Failed to align to phase:', error);
+      showSnackbar(error?.message || 'Błąd podczas wyrównywania do fazy', 'error');
+    }
+  }, [updateAssignment, updateVehicle, updateEquipment, showSnackbar]);
+
+  // Handler menu kontekstowego
+  const handleContextMenu = useCallback((e: React.MouseEvent, assignment: Assignment, resource: ResourceRow) => {
+    e.preventDefault();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      assignment,
+      resource,
+    });
+  }, []);
 
   // =========================
   // EMPLOYEES
@@ -803,6 +876,7 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
                 onHoverChange={handleHoverChange}
                 onDelete={handleDeleteEmployeeAssignment}
                 onTimeUpdate={handleTimeUpdate}
+                onContextMenu={handleContextMenu}
                 containerRef={containerRef}
                 editedTimes={
                   editState?.assignmentId === assignment.id
@@ -825,6 +899,7 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
     handleHoverChange,
     handleDeleteEmployeeAssignment,
     handleTimeUpdate,
+    handleContextMenu,
     getAssignmentPosition,
     editState,
   ]);
@@ -874,6 +949,38 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
         {filteredVehicles.map(renderResourceRow)}
         {filteredEquipment.map(renderResourceRow)}
       </div>
+
+      {/* Menu kontekstowe */}
+      {contextMenu && (
+        <div
+          className="fixed z-[9999] rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl"
+          style={{
+            left: `${contextMenu.x}px`,
+            top: `${contextMenu.y}px`,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="py-1">
+            {contextMenu.assignment.phase && (
+              <button
+                onClick={() => {
+                  handleAlignToPhase(contextMenu.assignment);
+                  setContextMenu(null);
+                }}
+                className="flex w-full items-center gap-3 px-4 py-2 text-sm text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/20"
+              >
+                <span>🎯</span>
+                <div className="flex flex-col items-start">
+                  <span className="font-medium">Wyrównaj do fazy</span>
+                  <span className="text-xs text-[#e5e4e2]/60">
+                    {contextMenu.assignment.phase.name}
+                  </span>
+                </div>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
