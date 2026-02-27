@@ -143,7 +143,7 @@ interface AssignmentBarProps {
   focusedAssignment: string | null;
   formatTime: (date: string) => string;
   timelineBounds: { start: Date; end: Date };
-  zoomLevel: 'days' | 'hours' | 'minutes';
+  zoomLevel: 'days' | 'hours' | 'quarter_hours';
   onHoverChange: (id: string | null) => void;
   onFocusChange: (id: string | null) => void;
   onDelete: (assignmentId: string, phaseId: string) => void;

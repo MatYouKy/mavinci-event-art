@@ -4,9 +4,10 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, Calendar, ZoomIn, ZoomOut } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { IEmployee } from '@/app/(crm)/crm/employees/type';
-import EmployeeAvatar from './EmployeeAvatar';
+import { EmployeeAvatar } from '../EmployeeAvatar';
 
-type ZoomLevel = 'days' | 'hours' | 'minutes';
+
+type ZoomLevel = 'days' | 'hours' | 'quarter_hours';
 
 interface TimelineItem {
   employee_id: string;
@@ -222,7 +223,7 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
 
         <div className="flex items-center gap-2">
           <span className="mr-2 text-sm text-[#e5e4e2]/60">Zoom:</span>
-          {(['days', 'hours', 'minutes'] as ZoomLevel[]).map((level) => (
+          {(['days', 'hours', 'quarter_hours'] as ZoomLevel[]).map((level) => (
             <button
               key={level}
               onClick={() => setZoomLevel(level)}
@@ -232,7 +233,7 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
                   : 'bg-[#d3bb73]/10 text-[#e5e4e2] hover:bg-[#d3bb73]/20'
               }`}
             >
-              {level === 'days' ? 'Dni' : level === 'hours' ? 'Godziny' : 'Kwadrans'}
+              {level === 'days' ? 'Dni' : level === 'hours' ? 'Godziny' : 'Kwadranse'}
             </button>
           ))}
         </div>
@@ -252,7 +253,7 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
                 {timeMarkers.map((marker, idx) => {
                   const totalDuration = timelineBounds.end.getTime() - timelineBounds.start.getTime();
                   const left = ((marker.getTime() - timelineBounds.start.getTime()) / totalDuration) * 100;
-                  const isFullHour = marker.getMinutes() === 0;
+                  const isFullHour = zoomLevel === 'quarter_hours' && marker.getMinutes() % 15 === 0;
 
                   return (
                     <div
@@ -292,7 +293,8 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
                       <div className="flex items-center gap-3">
                         <EmployeeAvatar
                           employee={employee}
-                          size="sm"
+                          size={80}
+                          showActivityStatus
                         />
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-medium text-[#e5e4e2]">
@@ -311,7 +313,7 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
                       {timeMarkers.map((marker, idx) => {
                         const totalDuration = timelineBounds.end.getTime() - timelineBounds.start.getTime();
                         const left = ((marker.getTime() - timelineBounds.start.getTime()) / totalDuration) * 100;
-                        const isFullHour = marker.getMinutes() === 0;
+                        const isFullHour = zoomLevel === 'quarter_hours' && marker.getMinutes() % 15 === 0;
                         return (
                           <div
                             key={idx}
