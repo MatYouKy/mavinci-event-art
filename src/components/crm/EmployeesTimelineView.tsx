@@ -165,9 +165,9 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
       case 'week':
         return 120;
       case 'day':
-        return 800;
+        return 1200;
       case 'hours':
-        return 1600;
+        return 2400;
       default:
         return 120;
     }
@@ -181,7 +181,7 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
 
   const shiftTimeline = (direction: 'left' | 'right') => {
     const duration = timelineBounds.end.getTime() - timelineBounds.start.getTime();
-    const shift = duration * 0.25;
+    const shift = duration;
 
     if (direction === 'left') {
       setTimelineBounds({
@@ -393,16 +393,42 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
     return `${start} - ${end}`;
   };
 
-  const getTodayButtonLabel = () => {
+  const getDateButtonLabel = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const startDate = new Date(timelineBounds.start);
+    startDate.setHours(0, 0, 0, 0);
+
+    const dayDiff = Math.round((startDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
     switch (zoomLevel) {
       case 'month':
-        return 'Obecny miesiąc';
+        return startDate.toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' });
+
       case 'week':
-        return 'Obecny tydzień';
+        if (dayDiff === 0) return 'Obecny tydzień';
+        if (dayDiff === 7) return 'Przyszły tydzień';
+        if (dayDiff === -7) return 'Poprzedni tydzień';
+        return startDate.toLocaleDateString('pl-PL', { day: 'numeric', month: 'long' });
+
       case 'day':
-        return 'Dzisiaj';
+        if (dayDiff === 0) return 'Dzisiaj';
+        if (dayDiff === 1) return 'Jutro';
+        if (dayDiff === 2) return 'Pojutrze';
+        if (dayDiff === -1) return 'Wczoraj';
+        if (dayDiff === -2) return 'Przedwczoraj';
+        return startDate.toLocaleDateString('pl-PL', { day: 'numeric', month: 'long' });
+
       case 'hours':
-        return 'Teraz';
+        const now = new Date();
+        const hoursDiff = Math.abs(Math.round((timelineBounds.start.getTime() - now.getTime()) / (1000 * 60 * 60)));
+
+        if (hoursDiff < 1) return 'Teraz';
+        if (dayDiff === 0) return 'Dzisiaj';
+        if (dayDiff === 1) return 'Jutro';
+        if (dayDiff === -1) return 'Wczoraj';
+        return startDate.toLocaleDateString('pl-PL', { day: 'numeric', month: 'long' });
+
       default:
         return 'Dzisiaj';
     }
@@ -630,11 +656,11 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
           </button>
           <button
             onClick={resetToToday}
-            className="rounded-lg bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/20"
-            title={getTodayButtonLabel()}
+            className="min-w-[140px] rounded-lg bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/20"
+            title="Przejdź do bieżącego okresu"
           >
             <Calendar className="mr-2 inline h-4 w-4" />
-            {getTodayButtonLabel()}
+            {getDateButtonLabel()}
           </button>
           <button
             onClick={() => shiftTimeline('right')}
@@ -688,7 +714,11 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
                     >
                       <div
                         className={`h-full border-l ${
-                          isFullDay ? 'border-[#e5e4e2]/30' : isFullHour ? 'border-[#e5e4e2]/15' : 'border-[#e5e4e2]/5'
+                          isFullDay
+                            ? 'border-[#e5e4e2]/30'
+                            : isFullHour
+                            ? 'border-[#e5e4e2]/10'
+                            : 'border-[#e5e4e2]/3'
                         }`}
                       />
                       <div
@@ -744,7 +774,11 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
                           <div
                             key={idx}
                             className={`absolute top-0 h-full border-l ${
-                              isFullDay ? 'border-[#e5e4e2]/15' : isFullHour ? 'border-[#e5e4e2]/8' : 'border-[#e5e4e2]/3'
+                              isFullDay
+                                ? 'border-[#e5e4e2]/12'
+                                : isFullHour
+                                ? 'border-[#e5e4e2]/6'
+                                : 'border-[#e5e4e2]/2'
                             }`}
                             style={{ left: `${left}%` }}
                           />
