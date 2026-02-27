@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Plus, Filter, AlertCircle, Clock, ChevronDown, Save, RotateCcw } from 'lucide-react';
 import {
   useGetEventPhasesQuery,
@@ -50,6 +50,7 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
 
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [zoomLevel, setZoomLevel] = useState<ZoomLevel>('hours');
   const [resourceFilter, setResourceFilter] = useState<ResourceFilter>('all');
   const [selectedPhase, setSelectedPhase] = useState<EventPhase | null>(null);
@@ -171,6 +172,38 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
     });
     return conflicts;
   }, [phases]);
+
+  // Zachowaj proporcjonalną pozycję scrolla przy zmianie zoomu
+  const previousScrollPercentageRef = useRef(0);
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    // Zapisz bieżącą pozycję przed zmianą
+    const handleScroll = () => {
+      if (container.scrollWidth > container.clientWidth) {
+        previousScrollPercentageRef.current =
+          container.scrollLeft / (container.scrollWidth - container.clientWidth);
+      }
+    };
+
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    // Po zmianie zoomu przywróć proporcjonalną pozycję
+    requestAnimationFrame(() => {
+      if (container.scrollWidth > container.clientWidth) {
+        const newScrollLeft = previousScrollPercentageRef.current * (container.scrollWidth - container.clientWidth);
+        container.scrollLeft = newScrollLeft;
+      }
+    });
+  }, [zoomLevel]);
 
   const handlePhaseResizeDraft = (phaseId: string, newStart: Date, newEnd: Date) => {
     setDraftChanges((prev) => ({
@@ -441,8 +474,14 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
       ) : (
         <div className="flex flex-1 flex-col bg-[#0f1119]">
           {/* Scrollowalny kontener (X i Y) */}
-          <div className="flex-1 overflow-x-auto overflow-y-auto" style={{ maxHeight: '70vh' }}>
-            <div style={{ minWidth: '1200px' }}>
+          <div
+            ref={scrollContainerRef}
+            className="flex-1 overflow-x-auto overflow-y-auto scroll-smooth"
+          >
+            <div style={{
+              minWidth: zoomLevel === 'days' ? '1200px' : zoomLevel === 'hours' ? '2400px' : '4800px',
+              paddingBottom: '24px'
+            }}>
               {/* Main Phase Timeline */}
               <div className="mb-6">
                 <div className="mb-2 px-6">

@@ -257,13 +257,17 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
           const left =
             ((marker.getTime() - timelineBounds.start.getTime()) / totalDuration) * 100;
 
+          // Grubsza linia dla głównych godzin w widoku minut
+          const isMainHour = zoomLevel === 'minutes' && marker.getMinutes() === 0;
+          const borderOpacity = isMainHour ? '20' : '10';
+
           return (
             <div
               key={index}
-              className="absolute top-0 h-full border-l border-[#d3bb73]/10"
+              className={`absolute top-0 h-full border-l border-[#d3bb73]/${borderOpacity}`}
               style={{ left: `${left}%` }}
             >
-              <span className="absolute left-1 top-2 text-xs text-[#e5e4e2]/50">
+              <span className={`absolute left-1 top-2 text-xs ${isMainHour ? 'text-[#e5e4e2]/70 font-semibold' : 'text-[#e5e4e2]/50'}`}>
                 {formatTimeLabel(marker)}
               </span>
             </div>
