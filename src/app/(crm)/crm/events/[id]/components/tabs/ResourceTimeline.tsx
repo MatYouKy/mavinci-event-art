@@ -410,6 +410,41 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
     return { left: `${Math.max(0, left)}%`, width: `${Math.max(1, width)}%` };
   }, [timelineBounds, totalDuration]);
 
+  // Funkcja wykrywająca nakładające się przypisania pracownika
+  const detectOverlaps = useCallback((assignments: Assignment[]) => {
+    const overlaps: Array<{
+      start: Date;
+      end: Date;
+      assignments: Assignment[];
+    }> = [];
+
+    for (let i = 0; i < assignments.length; i++) {
+      for (let j = i + 1; j < assignments.length; j++) {
+        const a1 = assignments[i];
+        const a2 = assignments[j];
+
+        const start1 = new Date(a1.start_time);
+        const end1 = new Date(a1.end_time);
+        const start2 = new Date(a2.start_time);
+        const end2 = new Date(a2.end_time);
+
+        // Sprawdź czy nakładają się
+        const overlapStart = new Date(Math.max(start1.getTime(), start2.getTime()));
+        const overlapEnd = new Date(Math.min(end1.getTime(), end2.getTime()));
+
+        if (overlapStart < overlapEnd) {
+          overlaps.push({
+            start: overlapStart,
+            end: overlapEnd,
+            assignments: [a1, a2],
+          });
+        }
+      }
+    }
+
+    return overlaps;
+  }, []);
+
   // Handlers for employee assignments - zmemoizowane
   const handleDeleteEmployeeAssignment = useCallback(async (assignmentId: string, phaseId: string) => {
     if (!confirm('Czy na pewno chcesz usunąć tego pracownika z fazy?')) return;
@@ -846,9 +881,39 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   const renderResourceRow = useCallback((resource: ResourceRow) => {
     const isEmployee = resource.type === 'employee';
 
+    // Wykryj nakładające się przypisania tylko dla pracowników
+    const overlaps = isEmployee ? detectOverlaps(resource.assignments) : [];
+
     return (
       <div key={resource.id} className="relative border-b border-[#d3bb73]/10 overflow-hidden">
         <div ref={containerRef} className="relative" style={{ height: `${heightPx}px` }}>
+          {/* Renderuj nakładające się obszary (kreskowany wzór) */}
+          {overlaps.map((overlap, idx) => {
+            const position = getAssignmentPosition(
+              overlap.start.toISOString(),
+              overlap.end.toISOString()
+            );
+
+            return (
+              <div
+                key={`overlap-${idx}`}
+                className="absolute pointer-events-none z-50"
+                style={{
+                  left: position.left,
+                  width: position.width,
+                  top: 0,
+                  height: '100%',
+                  background: 'repeating-linear-gradient(45deg, #ef4444 0px, #ef4444 4px, transparent 4px, transparent 8px)',
+                  opacity: 0.5,
+                  borderLeft: '2px solid #ef4444',
+                  borderRight: '2px solid #ef4444',
+                }}
+                title={`Konflikt: ${overlap.assignments.length} przypisań w tym samym czasie`}
+              />
+            );
+          })}
+
+          {/* Renderuj wszystkie przypisania */}
           {resource.assignments.map((assignment, idx) => {
             const position = getAssignmentPosition(assignment.start_time, assignment.end_time);
             const phaseColor =
@@ -896,6 +961,7 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
     handleContextMenu,
     getAssignmentPosition,
     editState,
+    detectOverlaps,
   ]);
 
   if (filteredEmployees.length === 0 && filteredVehicles.length === 0 && filteredEquipment.length === 0) {
