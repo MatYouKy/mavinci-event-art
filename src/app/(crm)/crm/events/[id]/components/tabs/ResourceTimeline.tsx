@@ -243,8 +243,8 @@ const AssignmentBar = memo<AssignmentBarProps>(({
 
   const currentPosition = dragPreview || displayPosition;
 
-  // Zwiększona wysokość podczas drag, edycji lub focusu
-  const barHeight = (isDragging || editedTimes || isFocused) ? heightPx * 1.2 : heightPx - 12;
+  // Zwiększona wysokość podczas drag lub edycji (ale nie focusu)
+  const barHeight = (isDragging || editedTimes) ? heightPx * 1.2 : heightPx - 12;
 
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -292,23 +292,16 @@ const AssignmentBar = memo<AssignmentBarProps>(({
         height: `${barHeight}px`,
         left: currentPosition.left,
         width: currentPosition.width,
-        backgroundColor: isDragging ? `${phaseColor}40` : isFocused ? `${phaseColor}40` : `${phaseColor}25`,
+        backgroundColor: isDragging ? `${phaseColor}40` : `${phaseColor}25`,
         borderLeftColor: phaseColor,
-        borderLeftWidth: isFocused ? '6px' : '4px',
-        opacity: isDragging ? 0.9 : isFocused ? 1 : 1,
-        transform: isDragging ? 'scale(1.02)' : isFocused ? 'scale(1.05)' : 'scale(1)',
+        opacity: isDragging ? 0.9 : 1,
+        transform: isDragging ? 'scale(1.02)' : 'scale(1)',
         zIndex: isDragging ? 100 : isFocused ? 90 : 'auto',
-        boxShadow: isDragging
-          ? '0 4px 12px rgba(211, 187, 115, 0.3)'
-          : isFocused
-          ? '0 6px 20px rgba(211, 187, 115, 0.5), 0 0 0 3px rgba(211, 187, 115, 0.3)'
-          : undefined,
-        outline: isFocused ? `2px solid ${phaseColor}` : undefined,
-        outlineOffset: isFocused ? '2px' : undefined,
+        boxShadow: isDragging ? '0 4px 12px rgba(211, 187, 115, 0.3)' : undefined,
       }}
       title={`${resource.name}\n${formatTime(displayStartTime)} - ${formatTime(
         displayEndTime,
-      )}${assignment.role ? `\nRola: ${assignment.role}` : ''}${editedTimes ? '\n[EDYCJA]' : ''}${isFocused ? '\n[FOCUS]' : ''}`}
+      )}${assignment.role ? `\nRola: ${assignment.role}` : ''}${editedTimes ? '\n[EDYCJA]' : ''}`}
       onClick={handleClick}
       onMouseEnter={() => onHoverChange(assignment.id ?? null)}
       onMouseLeave={() => onHoverChange(null)}
@@ -551,6 +544,7 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   // Odrzuć zmiany
   const handleDiscardChanges = useCallback(() => {
     setEditState(null);
+    setFocusedAssignment(null); // Resetuj focus przy odrzuceniu zmian
     showSnackbar('Zmiany odrzucone', 'info');
   }, []);
 
@@ -603,6 +597,7 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   
     if (Math.abs(apiStart - editedStart) < tolerance && Math.abs(apiEnd - editedEnd) < tolerance) {
       setEditState(null);
+      setFocusedAssignment(null); // Resetuj focus po zapisaniu
       showSnackbar('Zmiany zapisane pomyślnie', 'success');
     }
   }, [editState, phaseAssignments, showSnackbar]);
