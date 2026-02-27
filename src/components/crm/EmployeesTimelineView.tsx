@@ -698,8 +698,12 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
         >
           <div style={{ minWidth, paddingBottom: '24px' }}>
             {/* Time markers header */}
-            <div className="sticky top-0 z-10 border-b border-[#d3bb73]/10 bg-[#1c1f33]">
-              <div className="relative h-16">
+            <div className="sticky top-0 z-10 flex border-b border-[#d3bb73]/10 bg-[#1c1f33]">
+              {/* Empty space for employee info column */}
+              <div className="w-64 flex-shrink-0 border-r border-[#d3bb73]/10" />
+
+              {/* Timeline header */}
+              <div className="relative h-16 flex-1">
                 {timeMarkers.map((marker, idx) => {
                   const totalDuration = timelineBounds.end.getTime() - timelineBounds.start.getTime();
                   const left = ((marker.getTime() - timelineBounds.start.getTime()) / totalDuration) * 100;
@@ -731,6 +735,29 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
                     </div>
                   );
                 })}
+
+                {/* Today/Now indicator line */}
+                {(() => {
+                  const now = new Date();
+                  const nowTime = now.getTime();
+                  const totalDuration = timelineBounds.end.getTime() - timelineBounds.start.getTime();
+
+                  if (nowTime >= timelineBounds.start.getTime() && nowTime <= timelineBounds.end.getTime()) {
+                    const leftPos = ((nowTime - timelineBounds.start.getTime()) / totalDuration) * 100;
+                    return (
+                      <div
+                        className="absolute top-0 h-full"
+                        style={{ left: `${leftPos}%` }}
+                      >
+                        <div className="h-full w-0.5 bg-[#d3bb73] shadow-lg shadow-[#d3bb73]/50" />
+                        <div className="absolute -top-1 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-[#d3bb73] px-2 py-0.5 text-xs font-semibold text-[#1c1f33]">
+                          Teraz
+                        </div>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
             </div>
 
@@ -816,6 +843,26 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
                           <span className="text-xs text-[#e5e4e2]/40">Brak zajętości</span>
                         </div>
                       )}
+
+                      {/* Today/Now indicator line for this row */}
+                      {(() => {
+                        const now = new Date();
+                        const nowTime = now.getTime();
+                        const totalDuration = timelineBounds.end.getTime() - timelineBounds.start.getTime();
+
+                        if (nowTime >= timelineBounds.start.getTime() && nowTime <= timelineBounds.end.getTime()) {
+                          const leftPos = ((nowTime - timelineBounds.start.getTime()) / totalDuration) * 100;
+                          return (
+                            <div
+                              className="pointer-events-none absolute top-0 h-full"
+                              style={{ left: `${leftPos}%` }}
+                            >
+                              <div className="h-full w-0.5 bg-[#d3bb73] opacity-50" />
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -839,6 +886,10 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
         <div className="flex items-center gap-2">
           <div className="h-3 w-3 rounded border-l-4 border-yellow-500/50 bg-yellow-500/40" />
           <span className="text-[#e5e4e2]/80">Nieobecność (oczekująca)</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="h-3 w-0.5 bg-[#d3bb73]" />
+          <span className="text-[#e5e4e2]/80">Bieżąca data/czas</span>
         </div>
         <div className="ml-auto text-[#e5e4e2]/60">
           Wyświetlam {filteredEmployees.length} pracowników
