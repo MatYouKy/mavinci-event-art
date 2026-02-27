@@ -298,6 +298,8 @@ const AssignmentBar = memo<AssignmentBarProps>(({
         transform: isDragging ? 'scale(1.02)' : 'scale(1)',
         zIndex: isDragging ? 100 : isFocused ? 90 : 'auto',
         boxShadow: isDragging ? '0 4px 12px rgba(211, 187, 115, 0.3)' : undefined,
+        outline: isFocused ? `2px solid ${phaseColor}` : undefined,
+        outlineOffset: isFocused ? '1px' : undefined,
       }}
       title={`${resource.name}\n${formatTime(displayStartTime)} - ${formatTime(
         displayEndTime,
@@ -665,10 +667,13 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
     // Aktualizuj przypisanie aby wyrównać do fazy
     try {
       if (assignment.resourceType === 'employee') {
+        // WAŻNE: Dla pracowników musimy zaktualizować zarówno assignment_* jak i phase_work_*
         await updateAssignment({
           id: assignment.id,
           assignment_start: phaseStartTime,
           assignment_end: phaseEndTime,
+          phase_work_start: phaseStartTime,
+          phase_work_end: phaseEndTime,
         }).unwrap();
       } else if (assignment.resourceType === 'vehicle') {
         await updateVehicle({
