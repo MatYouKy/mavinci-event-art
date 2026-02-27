@@ -162,7 +162,7 @@ export default function EmployeesPageClient({ employees, viewMode }: { employees
           >
             <ListTree className="h-5 w-5" />
           </button>
-          <button
+          {isAdmin && <button
             onClick={() => handleViewModeChange('timeline')}
             className={`rounded p-2 transition-colors ${
               localViewMode === 'timeline'
@@ -172,7 +172,7 @@ export default function EmployeesPageClient({ employees, viewMode }: { employees
             title="Oś czasu"
           >
             <Clock className="h-5 w-5" />
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -219,7 +219,7 @@ export default function EmployeesPageClient({ employees, viewMode }: { employees
               onResetPassword={setResetPasswordEmployee}
             />
           )}
-          {localViewMode === 'timeline' && (
+          {localViewMode === 'timeline' && isAdmin && (
             <EmployeesTimelineView employees={filteredEmployees} />
           )}
         </>
