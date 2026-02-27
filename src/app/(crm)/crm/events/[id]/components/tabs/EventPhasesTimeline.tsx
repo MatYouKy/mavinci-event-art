@@ -111,7 +111,7 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
     const earliestPhase = Math.min(...phaseStarts);
     const latestPhase = Math.max(...phaseEnds);
 
-    // Uwzględnij też czasy przypisań pojazdów (assigned_start/assigned_end)
+    // Uwzględnij też czasy przypisań pojazdów (assigned_start/assigned_end z phase_vehicles)
     const vehicleTimes: number[] = [];
     phaseAssignments.forEach((assignment) => {
       assignment.vehicleAssignments?.forEach((v: any) => {
@@ -122,6 +122,16 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
           vehicleTimes.push(new Date(v.assigned_end).getTime());
         }
       });
+    });
+
+    // Uwzględnij także pojazdy logistyczne z event_vehicles (vehicle_available_from/until)
+    eventVehicles.forEach((ev: any) => {
+      if (ev.vehicle_available_from) {
+        vehicleTimes.push(new Date(ev.vehicle_available_from).getTime());
+      }
+      if (ev.vehicle_available_until) {
+        vehicleTimes.push(new Date(ev.vehicle_available_until).getTime());
+      }
     });
 
     const earliestVehicle = vehicleTimes.length > 0 ? Math.min(...vehicleTimes) : Infinity;
@@ -137,7 +147,7 @@ export const EventPhasesTimeline: React.FC<EventPhasesTimelineProps> = ({
     const bufferedEnd = new Date(end.getTime() + BUFFER_MS);
 
     return { start: bufferedStart, end: bufferedEnd };
-  }, [eventStartDate, eventEndDate, phases, phaseAssignments]);
+  }, [eventStartDate, eventEndDate, phases, phaseAssignments, eventVehicles]);
 
   const phaseConflicts = useMemo(() => {
     const conflicts: Record<string, boolean> = {};
