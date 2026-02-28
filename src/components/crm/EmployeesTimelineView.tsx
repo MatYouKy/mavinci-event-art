@@ -280,10 +280,10 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
     const start = new Date(item.item_start).getTime();
     const end = new Date(item.item_end).getTime();
     const totalDuration = timelineBounds.end.getTime() - timelineBounds.start.getTime();
-    const totalWidth = parseInt(minWidth);
+    const timelineWidth = parseInt(minWidth) - 256;
 
-    const leftPx = ((start - timelineBounds.start.getTime()) / totalDuration) * totalWidth;
-    const widthPx = ((end - start) / totalDuration) * totalWidth;
+    const leftPx = ((start - timelineBounds.start.getTime()) / totalDuration) * timelineWidth;
+    const widthPx = ((end - start) / totalDuration) * timelineWidth;
 
     return {
       left: `${Math.max(0, leftPx)}px`,
@@ -703,17 +703,18 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
           className="overflow-x-auto overflow-y-auto scroll-smooth"
           style={{ maxHeight: '70vh' }}
         >
-          <div style={{ minWidth, paddingBottom: '24px' }}>
+          <div style={{ width: minWidth, paddingBottom: '24px' }}>
             {/* Time markers header */}
             <div className="sticky top-0 z-10 flex border-b border-[#d3bb73]/20 bg-[#1c1f33] shadow-sm">
               {/* Empty space for employee info column */}
               <div className="w-64 flex-shrink-0 border-r border-[#d3bb73]/10" />
 
               {/* Timeline header */}
-              <div className="relative h-16" style={{ width: minWidth }}>
+              <div className="relative h-16 flex-1">
                 {timeMarkers.map((marker, idx) => {
                   const totalDuration = timelineBounds.end.getTime() - timelineBounds.start.getTime();
-                  const leftPx = ((marker.getTime() - timelineBounds.start.getTime()) / totalDuration) * parseInt(minWidth);
+                  const timelineWidth = parseInt(minWidth) - 256;
+                  const leftPx = ((marker.getTime() - timelineBounds.start.getTime()) / totalDuration) * timelineWidth;
                   const isFullDay = marker.getHours() === 0;
                   const isFullHour = marker.getMinutes() === 0;
 
@@ -748,13 +749,14 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
                   const now = new Date();
                   const nowTime = now.getTime();
                   const totalDuration = timelineBounds.end.getTime() - timelineBounds.start.getTime();
+                  const timelineWidth = parseInt(minWidth) - 256;
 
                   if (nowTime >= timelineBounds.start.getTime() && nowTime <= timelineBounds.end.getTime()) {
-                    const leftPos = ((nowTime - timelineBounds.start.getTime()) / totalDuration) * 100;
+                    const leftPx = ((nowTime - timelineBounds.start.getTime()) / totalDuration) * timelineWidth;
                     return (
                       <div
                         className="absolute top-0 h-full"
-                        style={{ left: `${leftPos}%` }}
+                        style={{ left: `${leftPx}px` }}
                       >
                         <div className="h-full w-0.5 bg-[#d3bb73] shadow-lg shadow-[#d3bb73]/50" />
                         <div className="absolute -top-1 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-[#d3bb73] px-2 py-0.5 text-xs font-semibold text-[#1c1f33]">
@@ -801,11 +803,12 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
                     </div>
 
                     {/* Timeline items */}
-                    <div className="relative min-h-[80px] p-2" style={{ width: minWidth }}>
+                    <div className="relative min-h-[80px] flex-1 p-2">
                       {/* Grid lines */}
                       {timeMarkers.map((marker, idx) => {
                         const totalDuration = timelineBounds.end.getTime() - timelineBounds.start.getTime();
-                        const leftPx = ((marker.getTime() - timelineBounds.start.getTime()) / totalDuration) * parseInt(minWidth);
+                        const timelineWidth = parseInt(minWidth) - 256;
+                        const leftPx = ((marker.getTime() - timelineBounds.start.getTime()) / totalDuration) * timelineWidth;
                         const isFullDay = marker.getHours() === 0;
                         const isFullHour = marker.getMinutes() === 0;
                         return (
@@ -860,13 +863,14 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
                         const now = new Date();
                         const nowTime = now.getTime();
                         const totalDuration = timelineBounds.end.getTime() - timelineBounds.start.getTime();
+                        const timelineWidth = parseInt(minWidth) - 256;
 
                         if (nowTime >= timelineBounds.start.getTime() && nowTime <= timelineBounds.end.getTime()) {
-                          const leftPos = ((nowTime - timelineBounds.start.getTime()) / totalDuration) * 100;
+                          const leftPx = ((nowTime - timelineBounds.start.getTime()) / totalDuration) * timelineWidth;
                           return (
                             <div
                               className="pointer-events-none absolute top-0 h-full"
-                              style={{ left: `${leftPos}%` }}
+                              style={{ left: `${leftPx}px` }}
                             >
                               <div className="h-full w-0.5 bg-[#d3bb73] opacity-50" />
                             </div>
