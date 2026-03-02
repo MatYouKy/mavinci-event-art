@@ -20,6 +20,7 @@ import {
   Activity,
   Image as ImageIcon,
   X,
+  TrendingUp,
 } from 'lucide-react';
 
 import { useVehicleDetail } from '@/app/(crm)/crm/fleet/hooks/useVehicleDetail';
@@ -34,6 +35,7 @@ import AddFuelEntryModal from '@/components/crm/AddFuelEntryModal';
 import VehicleGallery from '@/components/crm/VehicleGallery';
 import VehicleAttributesPanel from '@/components/crm/VehicleAttributesPanel';
 import VehicleLicenseRequirementsPanel from '@/components/crm/VehicleLicenseRequirementsPanel';
+import VehicleSingleTimeline from '@/components/crm/VehicleSingleTimeline';
 
 interface Vehicle {
   id: string;
@@ -230,7 +232,7 @@ export default function VehicleDetailPage() {
   ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   const [activeTab, setActiveTab] = useState<
-    'overview' | 'fuel' | 'maintenance' | 'insurance' | 'gallery' | 'history'
+    'overview' | 'fuel' | 'maintenance' | 'insurance' | 'gallery' | 'history' | 'timeline'
   >('overview');
 
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
@@ -551,6 +553,7 @@ export default function VehicleDetailPage() {
         <div className="flex gap-4">
           {[
             { id: 'overview', label: 'Informacje', icon: Car },
+            { id: 'timeline', label: 'Timeline', icon: TrendingUp },
             ...(vehicle.vehicle_type !== 'trailer'
               ? [{ id: 'fuel', label: 'Tankowania', icon: Fuel }]
               : []),
@@ -1058,6 +1061,12 @@ export default function VehicleDetailPage() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {activeTab === 'timeline' && (
+          <div className="space-y-4">
+            <VehicleSingleTimeline vehicleId={vehicleId} />
           </div>
         )}
 

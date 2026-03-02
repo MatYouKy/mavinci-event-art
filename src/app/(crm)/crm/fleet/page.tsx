@@ -1,22 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import {
-  Car,
-  Plus,
-  Search,
-  Fuel,
-  Wrench,
-  Users,
-  Edit,
-  Trash2,
-  Eye,
-  Shield,
-  DollarSign,
-  Activity,
-  Gauge,
-  CheckCircle,
-} from 'lucide-react';
+import { Car, Plus, Search, Fuel, Wrench, Users, CreditCard as Edit, Trash2, Eye, Shield, DollarSign, Activity, Gauge, CheckCircle } from 'lucide-react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -26,10 +11,11 @@ import { useRouter } from 'next/navigation';
 import QuickFuelModal from '@/components/crm/QuickFuelModal';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
 import Popover from '@/components/UI/Tooltip';
-import { ChevronLeft, ChevronRight, LayoutGrid, List } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LayoutGrid, List, TrendingUp } from 'lucide-react';
 import { IVehicle } from './types/fleet.types';
 import { useAppDispatch } from '@/store/hooks';
 import { fleetApi, useDeleteVehicleMutation, useGetFleetVehiclesQuery } from './api/fleetApi';
+import VehiclesTimelineView from '@/components/crm/VehiclesTimelineView';
 
 export default function FleetPage() {
   const router = useRouter();
@@ -63,7 +49,7 @@ export default function FleetPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
-  const [viewMode, setViewMode] = useState<'cards' | 'table'>(
+  const [viewMode, setViewMode] = useState<'cards' | 'table' | 'timeline'>(
     getViewMode('fleet') === 'grid' ? 'cards' : 'table',
   );
 
@@ -396,12 +382,28 @@ export default function FleetPage() {
               <List className="h-4 w-4" />
               Lista
             </button>
+            <button
+              onClick={() => {
+                setViewMode('timeline');
+                saveViewMode('fleet', 'timeline');
+              }}
+              className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-colors ${
+                viewMode === 'timeline'
+                  ? 'bg-[#d3bb73] text-[#1c1f33]'
+                  : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#0f1119]/80'
+              }`}
+            >
+              <TrendingUp className="h-4 w-4" />
+              Timeline
+            </button>
           </div>
         </div>
       </div>
 
       {/* Lista pojazdów */}
-      {filteredVehicles.length === 0 ? (
+      {viewMode === 'timeline' ? (
+        <VehiclesTimelineView />
+      ) : filteredVehicles.length === 0 ? (
         <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-12 text-center">
           <Car className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
           <p className="text-lg text-[#e5e4e2]/60">
