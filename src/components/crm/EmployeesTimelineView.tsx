@@ -460,202 +460,165 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
     );
   }
 
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (selectedEmployeeIds.length > 0) count += selectedEmployeeIds.length;
+    if (selectedAbsenceTypes.length > 0) count += selectedAbsenceTypes.length;
+    return count;
+  }, [selectedEmployeeIds, selectedAbsenceTypes]);
+
   return (
     <div className="flex flex-col gap-4">
-      {/* Header with date range and filters */}
+      {/* Header with date range */}
       <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-lg font-medium text-[#e5e4e2]">Oś czasu pracowników</h3>
             <p className="mt-1 text-sm text-[#e5e4e2]/60">{formatDateRange()}</p>
           </div>
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className="flex items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/20"
-          >
-            <SlidersHorizontal className="h-4 w-4" />
-            Filtry
-            {(selectedEmployeeIds.length > 0 || selectedAbsenceTypes.length > 0) && (
-              <span className="rounded-full bg-[#d3bb73] px-2 py-0.5 text-xs text-[#1c1f33]">
-                {selectedEmployeeIds.length + selectedAbsenceTypes.length}
-              </span>
-            )}
-          </button>
         </div>
-
-        {/* Active Filters Summary */}
-        {(selectedEmployeeIds.length > 0 ||
-          selectedAbsenceTypes.length > 0 ||
-          quickDateRange === 'custom') && (
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#d3bb73]/10 pt-3">
-            <span className="text-xs text-[#e5e4e2]/60">Aktywne filtry:</span>
-            {selectedEmployeeIds.map((id) => {
-              const emp = employees.find((e) => e.id === id);
-              return (
-                <span
-                  key={id}
-                  className="flex items-center gap-1 rounded bg-[#d3bb73]/20 px-2 py-1 text-xs text-[#e5e4e2]"
-                >
-                  {emp?.nickname || `${emp?.name} ${emp?.surname}`}
-                  <X
-                    className="h-3 w-3 cursor-pointer hover:text-[#d3bb73]"
-                    onClick={() => toggleEmployeeFilter(id)}
-                  />
-                </span>
-              );
-            })}
-            {selectedAbsenceTypes.map((type) => {
-              const typeLabel = absenceTypes.find((t) => t.value === type)?.label;
-              return (
-                <span
-                  key={type}
-                  className="flex items-center gap-1 rounded bg-[#d3bb73]/20 px-2 py-1 text-xs text-[#e5e4e2]"
-                >
-                  {typeLabel}
-                  <X
-                    className="h-3 w-3 cursor-pointer hover:text-[#d3bb73]"
-                    onClick={() => toggleAbsenceTypeFilter(type)}
-                  />
-                </span>
-              );
-            })}
-            {quickDateRange === 'custom' && (
-              <span className="flex items-center gap-1 rounded bg-[#d3bb73]/20 px-2 py-1 text-xs text-[#e5e4e2]">
-                <Calendar className="h-3 w-3" />
-                Niestandardowy zakres
-              </span>
-            )}
-            <button
-              onClick={clearAllFilters}
-              className="ml-auto text-xs text-[#d3bb73] hover:underline"
-            >
-              Wyczyść wszystkie
-            </button>
-          </div>
-        )}
       </div>
 
-      {/* Filters Panel */}
+      {/* Filters Modal */}
       {showFilters && (
-        <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-          <div className="mb-4 flex items-center justify-between">
-            <h4 className="text-lg font-medium text-[#e5e4e2]">Filtry</h4>
-            <button
-              onClick={() => setShowFilters(false)}
-              className="rounded-lg p-2 text-[#e5e4e2]/60 transition-colors hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-
-          <div className="space-y-6">
-            {/* Quick Date Ranges */}
-            <div>
-              <label className="mb-3 block text-sm font-medium text-[#e5e4e2]">
-                Zakres czasowy
-              </label>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => setQuickRange('week')}
-                  className={`rounded-lg px-4 py-2 text-sm transition-colors ${
-                    quickDateRange === 'week'
-                      ? 'bg-[#d3bb73] text-[#1c1f33]'
-                      : 'bg-[#d3bb73]/10 text-[#e5e4e2] hover:bg-[#d3bb73]/20'
-                  }`}
-                >
-                  Tydzień
-                </button>
-                <button
-                  onClick={() => setQuickRange('month')}
-                  className={`rounded-lg px-4 py-2 text-sm transition-colors ${
-                    quickDateRange === 'month'
-                      ? 'bg-[#d3bb73] text-[#1c1f33]'
-                      : 'bg-[#d3bb73]/10 text-[#e5e4e2] hover:bg-[#d3bb73]/20'
-                  }`}
-                >
-                  Miesiąc
-                </button>
-              </div>
-
-              <div className="mt-4 grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-2 block text-xs text-[#e5e4e2]/60">Data początkowa</label>
-                  <input
-                    type="date"
-                    value={customStartDate}
-                    onChange={(e) => setCustomStartDate(e.target.value)}
-                    className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="mb-2 block text-xs text-[#e5e4e2]/60">Data końcowa</label>
-                  <input
-                    type="date"
-                    value={customEndDate}
-                    onChange={(e) => setCustomEndDate(e.target.value)}
-                    className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
-                  />
-                </div>
-              </div>
-              {customStartDate && customEndDate && (
-                <button
-                  onClick={applyCustomDateRange}
-                  className="mt-2 w-full rounded-lg bg-[#d3bb73] px-4 py-2 text-sm text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
-                >
-                  Zastosuj niestandardowy zakres
-                </button>
-              )}
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-2xl rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl">
+            <div className="flex items-center justify-between border-b border-[#d3bb73]/20 p-4">
+              <h4 className="text-lg font-semibold text-[#e5e4e2]">Filtry</h4>
+              <button
+                onClick={() => setShowFilters(false)}
+                className="rounded-lg p-2 text-[#e5e4e2]/60 transition-colors hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]"
+              >
+                <X className="h-5 w-5" />
+              </button>
             </div>
 
-            {/* Employee Filter */}
-            <div>
-              <label className="mb-3 flex items-center gap-2 text-sm font-medium text-[#e5e4e2]">
-                <Users className="h-4 w-4" />
-                Pracownicy ({selectedEmployeeIds.length}/{employees.length})
-              </label>
-              <div className="max-h-64 space-y-2 overflow-y-auto rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-3">
-                {employees.map((employee) => (
-                  <label
-                    key={employee.id}
-                    className="flex cursor-pointer items-center gap-3 rounded p-2 transition-colors hover:bg-[#d3bb73]/10"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedEmployeeIds.includes(employee.id)}
-                      onChange={() => toggleEmployeeFilter(employee.id)}
-                      className="h-4 w-4 rounded border-[#d3bb73]/30"
-                    />
-                    <EmployeeAvatar employee={employee} size={32} />
-                    <span className="text-sm text-[#e5e4e2]">
-                      {employee.nickname || `${employee.name} ${employee.surname}`}
-                    </span>
+            <div className="max-h-[600px] overflow-y-auto p-6">
+              <div className="space-y-6">
+                {/* Quick Date Ranges */}
+                <div>
+                  <label className="mb-3 block text-sm font-medium text-[#e5e4e2]">
+                    Zakres czasowy
                   </label>
-                ))}
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => setQuickRange('week')}
+                      className={`rounded-lg px-4 py-2 text-sm transition-colors ${
+                        quickDateRange === 'week'
+                          ? 'bg-[#d3bb73] text-[#1c1f33]'
+                          : 'bg-[#d3bb73]/10 text-[#e5e4e2] hover:bg-[#d3bb73]/20'
+                      }`}
+                    >
+                      Tydzień
+                    </button>
+                    <button
+                      onClick={() => setQuickRange('month')}
+                      className={`rounded-lg px-4 py-2 text-sm transition-colors ${
+                        quickDateRange === 'month'
+                          ? 'bg-[#d3bb73] text-[#1c1f33]'
+                          : 'bg-[#d3bb73]/10 text-[#e5e4e2] hover:bg-[#d3bb73]/20'
+                      }`}
+                    >
+                      Miesiąc
+                    </button>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-2 block text-xs text-[#e5e4e2]/60">Data początkowa</label>
+                      <input
+                        type="date"
+                        value={customStartDate}
+                        onChange={(e) => setCustomStartDate(e.target.value)}
+                        className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-xs text-[#e5e4e2]/60">Data końcowa</label>
+                      <input
+                        type="date"
+                        value={customEndDate}
+                        onChange={(e) => setCustomEndDate(e.target.value)}
+                        className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                  {customStartDate && customEndDate && (
+                    <button
+                      onClick={applyCustomDateRange}
+                      className="mt-2 w-full rounded-lg bg-[#d3bb73] px-4 py-2 text-sm text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+                    >
+                      Zastosuj niestandardowy zakres
+                    </button>
+                  )}
+                </div>
+
+                {/* Employee Filter */}
+                <div>
+                  <label className="mb-3 flex items-center gap-2 text-sm font-medium text-[#e5e4e2]">
+                    <Users className="h-4 w-4" />
+                    Pracownicy ({selectedEmployeeIds.length}/{employees.length})
+                  </label>
+                  <div className="max-h-64 space-y-2 overflow-y-auto rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-3">
+                    {employees.map((employee) => (
+                      <label
+                        key={employee.id}
+                        className="flex cursor-pointer items-center gap-3 rounded p-2 transition-colors hover:bg-[#d3bb73]/10"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedEmployeeIds.includes(employee.id)}
+                          onChange={() => toggleEmployeeFilter(employee.id)}
+                          className="h-4 w-4 rounded border-[#d3bb73]/30"
+                        />
+                        <EmployeeAvatar employee={employee} size={32} />
+                        <span className="text-sm text-[#e5e4e2]">
+                          {employee.nickname || `${employee.name} ${employee.surname}`}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Absence Type Filter */}
+                <div>
+                  <label className="mb-3 flex items-center gap-2 text-sm font-medium text-[#e5e4e2]">
+                    <Filter className="h-4 w-4" />
+                    Typy nieobecności ({selectedAbsenceTypes.length}/{absenceTypes.length})
+                  </label>
+                  <div className="space-y-2 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-3">
+                    {absenceTypes.map((type) => (
+                      <label
+                        key={type.value}
+                        className="flex cursor-pointer items-center gap-3 rounded p-2 transition-colors hover:bg-[#d3bb73]/10"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedAbsenceTypes.includes(type.value)}
+                          onChange={() => toggleAbsenceTypeFilter(type.value)}
+                          className="h-4 w-4 rounded border-[#d3bb73]/30"
+                        />
+                        <span className="text-sm text-[#e5e4e2]">{type.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Absence Type Filter */}
-            <div>
-              <label className="mb-3 flex items-center gap-2 text-sm font-medium text-[#e5e4e2]">
-                <Filter className="h-4 w-4" />
-                Typy nieobecności ({selectedAbsenceTypes.length}/{absenceTypes.length})
-              </label>
-              <div className="space-y-2 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-3">
-                {absenceTypes.map((type) => (
-                  <label
-                    key={type.value}
-                    className="flex cursor-pointer items-center gap-3 rounded p-2 transition-colors hover:bg-[#d3bb73]/10"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedAbsenceTypes.includes(type.value)}
-                      onChange={() => toggleAbsenceTypeFilter(type.value)}
-                      className="h-4 w-4 rounded border-[#d3bb73]/30"
-                    />
-                    <span className="text-sm text-[#e5e4e2]">{type.label}</span>
-                  </label>
-                ))}
-              </div>
+            <div className="flex gap-2 border-t border-[#d3bb73]/20 p-4">
+              <button
+                onClick={clearAllFilters}
+                className="flex-1 rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm font-medium text-[#e5e4e2] hover:bg-[#d3bb73]/10"
+              >
+                Wyczyść
+              </button>
+              <button
+                onClick={() => setShowFilters(false)}
+                className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
+              >
+                Zastosuj
+              </button>
             </div>
           </div>
         </div>
@@ -689,7 +652,22 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="mr-2 text-sm text-[#e5e4e2]/60">Zoom:</span>
+          <button
+            onClick={() => setShowFilters(true)}
+            className="relative rounded-lg bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/20"
+            title="Filtry"
+          >
+            <Filter className="h-4 w-4" />
+            {activeFiltersCount > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#d3bb73] text-xs font-bold text-[#1c1f33]">
+                {activeFiltersCount}
+              </span>
+            )}
+          </button>
+
+          <div className="mx-2 h-6 w-px bg-[#d3bb73]/20" />
+
+          <span className="text-sm text-[#e5e4e2]/60">Zoom:</span>
           {(['month', 'week', 'day'] as ZoomLevel[]).map((level) => (
             <button
               key={level}

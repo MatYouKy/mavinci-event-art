@@ -13,9 +13,9 @@ import { useUserPreferences } from '@/hooks/useUserPreferences';
 import Popover from '@/components/UI/Tooltip';
 import { ChevronLeft, ChevronRight, LayoutGrid, List, TrendingUp } from 'lucide-react';
 import { IVehicle } from './types/fleet.types';
+import VehiclesTimelineView from '@/components/crm/VehiclesTimelineView';
 import { useAppDispatch } from '@/store/hooks';
 import { fleetApi, useDeleteVehicleMutation, useGetFleetVehiclesQuery } from './api/fleetApi';
-import VehiclesTimelineView from '@/components/crm/VehiclesTimelineView';
 
 export default function FleetPage() {
   const router = useRouter();
