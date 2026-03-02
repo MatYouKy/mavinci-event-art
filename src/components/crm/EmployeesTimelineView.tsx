@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase/browser';
 import { IEmployee } from '@/app/(crm)/crm/employees/type';
 import { EmployeeAvatar } from '../EmployeeAvatar';
 
-type ZoomLevel = 'month' | 'week' | 'day' | 'hours';
+type ZoomLevel = 'month' | 'week' | 'day';
 
 interface TimelineItem {
   employee_id: string;
@@ -105,15 +105,6 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
         dayEnd.setHours(23, 59, 59, 999);
         setTimelineBounds({ start: now, end: dayEnd });
         break;
-
-      case 'hours':
-        const nowWithTime = new Date();
-        const hoursStart = new Date(nowWithTime);
-        hoursStart.setMinutes(0, 0, 0);
-        const hoursEnd = new Date(hoursStart);
-        hoursEnd.setHours(hoursStart.getHours() + 12);
-        setTimelineBounds({ start: hoursStart, end: hoursEnd });
-        break;
     }
   };
 
@@ -163,9 +154,7 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
       case 'week':
         return 200;
       case 'day':
-        return 120;
-      case 'hours':
-        return 150;
+        return 200;
       default:
         return 200;
     }
@@ -186,9 +175,6 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
         break;
       case 'day':
         units = 24;
-        break;
-      case 'hours':
-        units = Math.ceil((end - start) / (1000 * 60 * 60));
         break;
     }
 
@@ -273,15 +259,6 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
         setTimelineBounds({ start: now, end: dayEnd });
         break;
 
-      case 'hours':
-        const nowWithTime = new Date();
-        const hoursStart = new Date(nowWithTime);
-        hoursStart.setMinutes(0, 0, 0);
-        const hoursEnd = new Date(hoursStart);
-        hoursEnd.setHours(hoursStart.getHours() + 12);
-        setTimelineBounds({ start: hoursStart, end: hoursEnd });
-        break;
-
       default:
         const defaultEnd = new Date(now);
         defaultEnd.setDate(defaultEnd.getDate() + 7);
@@ -315,8 +292,6 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
         return date.toLocaleDateString('pl-PL', { day: 'numeric', month: 'short' });
       case 'day':
         return date.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
-      case 'hours':
-        return date.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
       default:
         return date.toLocaleDateString('pl-PL', { day: 'numeric', month: 'short' });
     }
@@ -348,13 +323,6 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
         while (current <= end) {
           markers.push(new Date(current));
           current.setHours(current.getHours() + 1);
-        }
-        break;
-      case 'hours':
-        current.setMinutes(0, 0, 0);
-        while (current <= end) {
-          markers.push(new Date(current));
-          current.setMinutes(current.getMinutes() + 30);
         }
         break;
     }
@@ -440,16 +408,6 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
         if (dayDiff === 2) return 'Pojutrze';
         if (dayDiff === -1) return 'Wczoraj';
         if (dayDiff === -2) return 'Przedwczoraj';
-        return startDate.toLocaleDateString('pl-PL', { day: 'numeric', month: 'long' });
-
-      case 'hours':
-        const now = new Date();
-        const hoursDiff = Math.abs(Math.round((timelineBounds.start.getTime() - now.getTime()) / (1000 * 60 * 60)));
-
-        if (hoursDiff < 1) return 'Teraz';
-        if (dayDiff === 0) return 'Dzisiaj';
-        if (dayDiff === 1) return 'Jutro';
-        if (dayDiff === -1) return 'Wczoraj';
         return startDate.toLocaleDateString('pl-PL', { day: 'numeric', month: 'long' });
 
       default:
@@ -696,7 +654,7 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
 
         <div className="flex items-center gap-2">
           <span className="mr-2 text-sm text-[#e5e4e2]/60">Zoom:</span>
-          {(['month', 'week', 'day', 'hours'] as ZoomLevel[]).map((level) => (
+          {(['month', 'week', 'day'] as ZoomLevel[]).map((level) => (
             <button
               key={level}
               onClick={() => setZoomLevel(level)}
@@ -706,7 +664,7 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
                   : 'bg-[#d3bb73]/10 text-[#e5e4e2] hover:bg-[#d3bb73]/20'
               }`}
             >
-              {level === 'month' ? 'Miesiąc' : level === 'week' ? 'Tydzień' : level === 'day' ? 'Dzień' : 'Godziny'}
+              {level === 'month' ? 'Miesiąc' : level === 'week' ? 'Tydzień' : 'Dzień'}
             </button>
           ))}
         </div>
