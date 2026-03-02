@@ -285,23 +285,23 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
   const getItemPosition = (item: TimelineItem) => {
     const rawStart = new Date(item.item_start).getTime();
     const rawEnd = new Date(item.item_end).getTime();
-  
+
     const tStart = timelineBounds.start.getTime();
     const tEnd = timelineBounds.end.getTime();
-  
+
     // poza widokiem -> nie renderuj
     if (rawEnd <= tStart || rawStart >= tEnd) return null;
-  
+
     // przycięcie do okna
     const start = Math.max(rawStart, tStart);
     const end = Math.min(rawEnd, tEnd);
-  
+
     const totalDuration = tEnd - tStart;
     const timelineWidth = parseInt(minWidth, 10) - 256;
-  
+
     const leftPx = ((start - tStart) / totalDuration) * timelineWidth;
     const widthPx = ((end - start) / totalDuration) * timelineWidth;
-  
+
     return {
       left: `${Math.max(0, leftPx)}px`,
       width: `${Math.max(10, widthPx)}px`,
@@ -449,6 +449,13 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
 
   const minWidth = getMinWidth();
 
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (selectedEmployeeIds.length > 0) count += selectedEmployeeIds.length;
+    if (selectedAbsenceTypes.length > 0) count += selectedAbsenceTypes.length;
+    return count;
+  }, [selectedEmployeeIds, selectedAbsenceTypes]);
+
   if (loading) {
     return (
       <div className="flex h-96 items-center justify-center">
@@ -460,25 +467,8 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
     );
   }
 
-  const activeFiltersCount = useMemo(() => {
-    let count = 0;
-    if (selectedEmployeeIds.length > 0) count += selectedEmployeeIds.length;
-    if (selectedAbsenceTypes.length > 0) count += selectedAbsenceTypes.length;
-    return count;
-  }, [selectedEmployeeIds, selectedAbsenceTypes]);
-
   return (
     <div className="flex flex-col gap-4">
-      {/* Header with date range */}
-      <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-medium text-[#e5e4e2]">Oś czasu pracowników</h3>
-            <p className="mt-1 text-sm text-[#e5e4e2]/60">{formatDateRange()}</p>
-          </div>
-        </div>
-      </div>
-
       {/* Filters Modal */}
       {showFilters && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
@@ -525,7 +515,9 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
 
                   <div className="mt-4 grid grid-cols-2 gap-3">
                     <div>
-                      <label className="mb-2 block text-xs text-[#e5e4e2]/60">Data początkowa</label>
+                      <label className="mb-2 block text-xs text-[#e5e4e2]/60">
+                        Data początkowa
+                      </label>
                       <input
                         type="date"
                         value={customStartDate}
@@ -650,6 +642,10 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
             <ChevronRight className="h-5 w-5" />
           </button>
         </div>
+        <div>
+            <h3 className="text-lg font-medium text-[#e5e4e2]">Oś czasu pracowników</h3>
+            <p className="mt-1 text-sm text-[#e5e4e2]/60">{formatDateRange()}</p>
+          </div>
 
         <div className="flex items-center gap-2">
           <button
@@ -693,7 +689,7 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
         >
           <div style={{ width: minWidth, paddingBottom: '24px' }}>
             {/* Time markers header */}
-            <div className="sticky top-0 z-10 flex border-b border-[#d3bb73]/20 bg-[#1c1f33] shadow-sm ">
+            <div className="sticky top-0 z-10 flex border-b border-[#d3bb73]/20 bg-[#1c1f33] shadow-sm">
               {/* Empty space for employee info column */}
               <div className="w-64 flex-shrink-0 border-r border-[#d3bb73]/10" />
 
@@ -775,11 +771,11 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
                 >
                   <div className="flex">
                     {/* Employee info - sticky */}
-                    
+
                     <div
-                      className={`sticky left-0 z-10 w-64 border-r border-[#d3bb73]/10 p-4 bg-[#0f1119]`}
+                      className={`sticky left-0 z-10 w-64 border-r border-[#d3bb73]/10 bg-[#0f1119] p-4`}
                     >
-                      <div className="flex items-center gap-3 bg-[#0f1119] z-1000">
+                      <div className="z-1000 flex items-center gap-3 bg-[#0f1119]">
                         <EmployeeAvatar employee={employee} size={80} showActivityStatus />
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-medium text-[#e5e4e2]">
