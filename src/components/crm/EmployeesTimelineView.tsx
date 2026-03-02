@@ -54,6 +54,7 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
   const [quickDateRange, setQuickDateRange] = useState<'week' | 'month' | 'custom'>('week');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
+  const [containerWidth, setContainerWidth] = useState(0);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const filteredEmployees = useMemo(() => {
@@ -62,6 +63,19 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
   }, [employees, selectedEmployeeIds]);
 
   const employeeIds = useMemo(() => filteredEmployees.map((e) => e.id), [filteredEmployees]);
+
+  useEffect(() => {
+    const updateContainerWidth = () => {
+      if (scrollContainerRef.current) {
+        setContainerWidth(scrollContainerRef.current.clientWidth);
+      }
+    };
+
+    updateContainerWidth();
+    window.addEventListener('resize', updateContainerWidth);
+
+    return () => window.removeEventListener('resize', updateContainerWidth);
+  }, []);
 
   useEffect(() => {
     fetchTimelineData();
@@ -156,27 +170,11 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
     }
   };
 
-  const getPixelsPerDay = () => {
-    const durationInDays = (timelineBounds.end.getTime() - timelineBounds.start.getTime()) / (1000 * 60 * 60 * 24);
-
-    switch (zoomLevel) {
-      case 'month':
-        return 40;
-      case 'week':
-        return 120;
-      case 'day':
-        return 1200;
-      case 'hours':
-        return 2400;
-      default:
-        return 120;
-    }
-  };
-
   const getMinWidth = () => {
-    const durationInDays = (timelineBounds.end.getTime() - timelineBounds.start.getTime()) / (1000 * 60 * 60 * 24);
-    const pixelsPerDay = getPixelsPerDay();
-    return `${Math.max(1200, durationInDays * pixelsPerDay)}px`;
+    if (containerWidth > 0) {
+      return `${containerWidth}px`;
+    }
+    return '100%';
   };
 
   const shiftTimeline = (direction: 'left' | 'right') => {
