@@ -163,9 +163,9 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
       case 'week':
         return 200;
       case 'day':
-        return 60;
+        return 120;
       case 'hours':
-        return 60;
+        return 150;
       default:
         return 200;
     }
