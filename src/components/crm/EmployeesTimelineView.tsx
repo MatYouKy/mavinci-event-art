@@ -54,7 +54,6 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
   const [quickDateRange, setQuickDateRange] = useState<'week' | 'month' | 'custom'>('week');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
-  const [containerWidth, setContainerWidth] = useState(0);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const filteredEmployees = useMemo(() => {
@@ -63,19 +62,6 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
   }, [employees, selectedEmployeeIds]);
 
   const employeeIds = useMemo(() => filteredEmployees.map((e) => e.id), [filteredEmployees]);
-
-  useEffect(() => {
-    const updateContainerWidth = () => {
-      if (scrollContainerRef.current) {
-        setContainerWidth(scrollContainerRef.current.clientWidth);
-      }
-    };
-
-    updateContainerWidth();
-    window.addEventListener('resize', updateContainerWidth);
-
-    return () => window.removeEventListener('resize', updateContainerWidth);
-  }, []);
 
   useEffect(() => {
     fetchTimelineData();
@@ -170,11 +156,43 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
     }
   };
 
-  const getMinWidth = () => {
-    if (containerWidth > 0) {
-      return `${containerWidth}px`;
+  const getPixelsPerUnit = () => {
+    switch (zoomLevel) {
+      case 'month':
+        return 80;
+      case 'week':
+        return 200;
+      case 'day':
+        return 60;
+      case 'hours':
+        return 60;
+      default:
+        return 200;
     }
-    return '100%';
+  };
+
+  const getMinWidth = () => {
+    const start = timelineBounds.start.getTime();
+    const end = timelineBounds.end.getTime();
+    const pixelsPerUnit = getPixelsPerUnit();
+
+    let units = 0;
+    switch (zoomLevel) {
+      case 'month':
+        units = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+        break;
+      case 'week':
+        units = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+        break;
+      case 'day':
+        units = 24;
+        break;
+      case 'hours':
+        units = Math.ceil((end - start) / (1000 * 60 * 60));
+        break;
+    }
+
+    return `${Math.max(1200, units * pixelsPerUnit)}px`;
   };
 
   const shiftTimeline = (direction: 'left' | 'right') => {
