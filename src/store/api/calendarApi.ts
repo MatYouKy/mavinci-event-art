@@ -389,6 +389,8 @@ export const calendarApi = createApi({
                 name: row.event_name,
                 event_date: row.event_start,
                 event_end_date: row.event_end,
+                event_start_datetime: row.event_start,
+                event_end_datetime: row.event_end,
                 status: row.event_status,
                 event_vehicles: [],
                 event_equipment: [],
