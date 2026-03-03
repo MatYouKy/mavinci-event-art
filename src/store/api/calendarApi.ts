@@ -363,20 +363,17 @@ export const calendarApi = createApi({
                 event_vehicles(
                   id,
                   vehicle_id,
-                  status,
-                  vehicles(id, name, registration_number)
+                  status
                 ),
                 event_equipment(
                   id,
                   equipment_item_id,
-                  status,
-                  equipment_items(id, name)
+                  status
                 ),
                 employee_assignments(
                   id,
                   employee_id,
-                  invitation_status,
-                  employees(id, name, surname)
+                  invitation_status
                 )
               `,
                 )
