@@ -68,6 +68,19 @@ export default function TimelineView({
     equipment: true,
   });
 
+  // Debug logging
+  console.log('TimelineView Debug:', {
+    vehicles: vehicles.length,
+    employees: employees.length,
+    equipment: equipment.length,
+    eventsWithAssignments: eventsWithAssignments.length,
+    events: events.length,
+    vehiclesData: vehicles.slice(0, 2),
+    employeesData: employees.slice(0, 2),
+    equipmentData: equipment.slice(0, 2),
+    eventsData: eventsWithAssignments.slice(0, 2),
+  });
+
   // Generuj zakres dat dla tygodnia
   const weekStart = useMemo(() => {
     const date = new Date(currentDate);
@@ -295,8 +308,17 @@ export default function TimelineView({
         {allResources.length === 0 ? (
           <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-8 text-center">
             <p className="text-sm text-[#e5e4e2]/60">
-              Brak zasobów do wyświetlenia. Wybierz przynajmniej jeden typ zasobu.
+              Brak zasobów do wyświetlenia.
             </p>
+            <div className="mt-4 text-xs text-[#e5e4e2]/40">
+              <div>Pojazdy: {vehicles.length} (filtr: {resourceFilters.vehicles ? 'włączony' : 'wyłączony'})</div>
+              <div>Pracownicy: {employees.length} (filtr: {resourceFilters.employees ? 'włączony' : 'wyłączony'})</div>
+              <div>Sprzęt: {equipment.length} (filtr: {resourceFilters.equipment ? 'włączony' : 'wyłączony'})</div>
+              <div className="mt-2">Wydarzenia z przypisaniami: {eventsWithAssignments.length}</div>
+              <div>vehicleTimeline: {vehicleTimeline.length}</div>
+              <div>employeeTimeline: {employeeTimeline.length}</div>
+              <div>equipmentTimeline: {equipmentTimeline.length}</div>
+            </div>
           </div>
         ) : (
           allResources.map((resource) => (

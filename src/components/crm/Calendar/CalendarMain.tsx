@@ -754,15 +754,35 @@ export default function CalendarMain({
       )}
 
       {view === 'timeline' && (
-        <TimelineView
-          currentDate={currentDate}
-          events={events}
-          onEventClick={handleEventClick}
-          vehicles={timelineResources?.vehicles || []}
-          employees={timelineResources?.employees || []}
-          equipment={timelineResources?.equipment || []}
-          eventsWithAssignments={timelineResources?.eventsWithAssignments || []}
-        />
+        <>
+          {timelineResourcesLoading ? (
+            <div className="flex items-center justify-center p-8">
+              <div className="text-center">
+                <div className="mb-2 text-sm text-[#e5e4e2]/60">Ładowanie zasobów...</div>
+              </div>
+            </div>
+          ) : (
+            <>
+              {console.log('CalendarMain Timeline Debug:', {
+                timelineResources,
+                hasData: !!timelineResources,
+                vehicles: timelineResources?.vehicles?.length || 0,
+                employees: timelineResources?.employees?.length || 0,
+                equipment: timelineResources?.equipment?.length || 0,
+                eventsWithAssignments: timelineResources?.eventsWithAssignments?.length || 0,
+              })}
+              <TimelineView
+                currentDate={currentDate}
+                events={events}
+                onEventClick={handleEventClick}
+                vehicles={timelineResources?.vehicles || []}
+                employees={timelineResources?.employees || []}
+                equipment={timelineResources?.equipment || []}
+                eventsWithAssignments={timelineResources?.eventsWithAssignments || []}
+              />
+            </>
+          )}
+        </>
       )}
 
       {hoveredEvent && (

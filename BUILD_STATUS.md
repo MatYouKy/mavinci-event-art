@@ -62,6 +62,7 @@
 ### Nowe migracje:
 1. `add_vehicle_availability_functions_v2.sql`
 2. `fix_vehicle_availability_functions.sql`
+3. `fix_timeline_resources_rls_for_calendar_view.sql` - naprawia RLS dla zasobów timeline
 
 ## Weryfikacja Kodu
 
@@ -176,7 +177,7 @@ Automatycznie alokują odpowiednią pamięć.
 | Dokumentacja | ✅ | Kompletna |
 | **Production Build** | ❌ | **OOM - wymaga więcej RAM** |
 
-## Fix - Problem z znikającymi wydarzeniami (2026-03-03)
+## Fix 1 - Problem z znikającymi wydarzeniami (2026-03-03)
 
 ### Problem:
 Po dodaniu rozszerzonych relacji do zapytania głównego, wydarzenia przestały się wyświetlać w standardowych widokach.
@@ -195,6 +196,35 @@ Zbyt skomplikowane zapytanie z wieloma relacjami (`event_vehicles`, `event_equip
 - `src/store/api/calendarApi.ts` - rozdzielone zapytania
 - `src/components/crm/Calendar/TimelineView.tsx` - używa eventsWithAssignments
 - `src/components/crm/Calendar/CalendarMain.tsx` - przekazuje eventsWithAssignments
+
+---
+
+## Fix 2 - Brak zasobów w widoku Timeline (2026-03-03)
+
+### Problem:
+Widok Timeline nie pokazywał zasobów (pojazdy, pracownicy, sprzęt) mimo że wydarzenia działały.
+
+### Przyczyna:
+Polityki RLS (Row Level Security) dla tabel `vehicles`, `employees`, i `equipment_items` wymagały uprawnień `fleet_manage`, `fleet_view` lub `equipment_manage`. Użytkownicy z uprawnieniem `calendar_view` nie mieli dostępu do tych zasobów.
+
+### Rozwiązanie:
+1. ✅ Dodano uprawnienie `calendar_view` do polityki SELECT dla `vehicles`
+2. ✅ Zmieniono politykę SELECT dla `employees` - wszyscy authenticated użytkownicy mogą czytać listę pracowników (potrzebne dla kalendarza i przypisań)
+3. ✅ Dodano uprawnienie `calendar_view` do polityki SELECT dla `equipment_items`
+4. ✅ Dodano uprawnienie `calendar_view` do polityk SELECT dla `event_vehicles`, `event_equipment`, `employee_assignments`
+5. ✅ Dodano diagnostyczne console.log aby ułatwić debugowanie w przyszłości
+
+### Zmienione pliki:
+- Nowa migracja: `fix_timeline_resources_rls_for_calendar_view.sql`
+- `src/components/crm/Calendar/TimelineView.tsx` - dodano debug logging
+- `src/components/crm/Calendar/CalendarMain.tsx` - dodano debug logging i loading state
+
+### Weryfikacja:
+Po zastosowaniu migracji, użytkownicy z uprawnieniem `calendar_view` powinni widzieć:
+- Listę pojazdów z rejestrami
+- Listę pracowników z nazwiskami
+- Listę sprzętu z kategoriami
+- Wydarzenia przypisane do tych zasobów w widoku timeline
 
 ## Wnioski
 
@@ -228,7 +258,9 @@ Wszystkie wymagane funkcjonalności zostały zaimplementowane i przetestowane:
 1. **Widok Timeline** - w pełni funkcjonalny z filtrowaniem zasobów
 2. **System dostępności pojazdów** - funkcje bazodanowe działają
 3. **Fix krytycznego buga** - wydarzenia wyświetlają się poprawnie w standardowych widokach
-4. **Kod zweryfikowany** - ESLint 0 errors, składnia poprawna
+4. **Fix RLS dla zasobów timeline** - użytkownicy z calendar_view mają dostęp do pojazdów, pracowników i sprzętu
+5. **Kod zweryfikowany** - ESLint 0 errors, składnia poprawna
+6. **Dodane debugging** - console.log pokazuje co jest ładowane w timeline
 
 ### ⚠️ OGRANICZENIE ŚRODOWISKA
 
@@ -241,13 +273,18 @@ Production build (`npm run build`) nie może zostać ukończony w tym środowisk
 
 ### 🎯 NASTĘPNE KROKI DLA UŻYTKOWNIKA
 
+**WAŻNE:** Migracja RLS została zastosowana. Timeline powinien teraz pokazywać zasoby.
+
 **1. Przetestuj w trybie deweloperskim:**
 ```bash
 npm run dev
 ```
 Następnie sprawdź:
 - Widoki kalendarza (miesiąc/tydzień/dzień) - czy wydarzenia się wyświetlają
-- Widok Timeline - czy zasoby są widoczne i filtry działają
+- Widok Timeline - kliknij przycisk "Timeline"
+- Sprawdź konsolę przeglądarki (F12) - powinny być logi pokazujące ile zasobów zostało załadowanych
+- Sprawdź czy widać pojazdy, pracowników i sprzęt w timeline
+- Sprawdź czy filtry checkbox działają
 - Kliknięcia w wydarzenia - czy otwierają szczegóły
 
 **2. Deploy na produkcję:**
