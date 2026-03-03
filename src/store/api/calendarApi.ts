@@ -383,6 +383,31 @@ export const calendarApi = createApi({
                 .order('event_date'),
             ]);
 
+          // Log any errors from queries
+          if (vehiclesResult.error) {
+            console.error('Error fetching vehicles for timeline:', vehiclesResult.error);
+          }
+          if (employeesResult.error) {
+            console.error('Error fetching employees for timeline:', employeesResult.error);
+          }
+          if (equipmentResult.error) {
+            console.error('Error fetching equipment for timeline:', equipmentResult.error);
+          }
+          if (eventsWithAssignmentsResult.error) {
+            console.error(
+              'Error fetching events with assignments for timeline:',
+              eventsWithAssignmentsResult.error,
+            );
+          }
+
+          console.log('Timeline resources loaded:', {
+            vehicles: vehiclesResult.data?.length || 0,
+            employees: employeesResult.data?.length || 0,
+            equipment: equipmentResult.data?.length || 0,
+            eventsWithAssignments: eventsWithAssignmentsResult.data?.length || 0,
+            sampleEvent: eventsWithAssignmentsResult.data?.[0],
+          });
+
           return {
             data: {
               vehicles: vehiclesResult.data || [],

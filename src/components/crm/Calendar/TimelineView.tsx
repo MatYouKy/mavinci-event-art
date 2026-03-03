@@ -78,8 +78,15 @@ export default function TimelineView({
     vehiclesData: vehicles.slice(0, 2),
     employeesData: employees.slice(0, 2),
     equipmentData: equipment.slice(0, 2),
-    eventsData: eventsWithAssignments.slice(0, 2),
+    eventsWithAssignmentsData: eventsWithAssignments.slice(0, 2),
+    regularEventsData: events.slice(0, 2),
   });
+
+  // KRYTYCZNE: Jeśli eventsWithAssignments jest puste, Timeline nie zadziała!
+  if (eventsWithAssignments.length === 0) {
+    console.warn('⚠️ WARNING: eventsWithAssignments is empty! Timeline will show no resource assignments.');
+    console.log('Regular events:', events);
+  }
 
   // Generuj zakres dat dla tygodnia
   const weekStart = useMemo(() => {
@@ -102,14 +109,27 @@ export default function TimelineView({
   // Użyj eventsWithAssignments jeśli są dostępne, w przeciwnym razie events
   const timelineEvents = eventsWithAssignments.length > 0 ? eventsWithAssignments : events;
 
+  console.log('Timeline events data:', {
+    timelineEventsCount: timelineEvents.length,
+    weekStart: weekStart.toISOString(),
+    sampleEvent: timelineEvents[0],
+  });
+
   // Przygotuj dane timeline dla pojazdów
   const vehicleTimeline = useMemo(() => {
     if (!resourceFilters.vehicles) return [];
 
     return vehicles.map((vehicle) => {
+      // Filtruj wydarzenia które mają przypisany ten pojazd
       const assignments = timelineEvents.filter((event: any) => {
         const eventVehicles = event.event_vehicles || [];
-        return eventVehicles.some((ev: any) => ev.vehicle_id === vehicle.id);
+        const hasVehicle = eventVehicles.some((ev: any) => ev.vehicle_id === vehicle.id);
+
+        if (hasVehicle) {
+          console.log(`Vehicle ${vehicle.name} assigned to event:`, event.name, event.event_date);
+        }
+
+        return hasVehicle;
       });
 
       return {
@@ -134,7 +154,13 @@ export default function TimelineView({
     return employees.map((employee) => {
       const assignments = timelineEvents.filter((event: any) => {
         const assignedEmployees = event.employee_assignments || [];
-        return assignedEmployees.some((a: any) => a.employee_id === employee.id);
+        const hasEmployee = assignedEmployees.some((a: any) => a.employee_id === employee.id);
+
+        if (hasEmployee) {
+          console.log(`Employee ${employee.name} assigned to event:`, event.name, event.event_date);
+        }
+
+        return hasEmployee;
       });
 
       return {
