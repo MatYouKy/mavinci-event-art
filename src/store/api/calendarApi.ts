@@ -323,99 +323,113 @@ export const calendarApi = createApi({
     >({
       async queryFn() {
         try {
-          const [vehiclesResult, employeesResult, equipmentResult, eventsWithAssignmentsResult] =
-            await Promise.all([
-              supabase
-                .from('vehicles')
-                .select('id, name, brand, model, registration_number, status, vehicle_type')
-                .eq('status', 'active')
-                .order('name'),
+          const now = new Date();
+          const startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          const endDate = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
 
-              supabase
-                .from('employees')
-                .select('id, name, surname, nickname, role')
-                .eq('is_active', true)
-                .order('name'),
+          const { data: timelineData, error: timelineError } = await supabase.rpc(
+            'get_calendar_timeline_resources',
+            {
+              p_start_date: startDate.toISOString(),
+              p_end_date: endDate.toISOString(),
+            },
+          );
 
-              supabase
-                .from('equipment_items')
-                .select(
-                  `
-                id,
-                name,
-                status,
-                category_id
-              `,
-                )
-                .in('status', ['available', 'in_use'])
-                .order('name')
-                .limit(100),
+          if (timelineError) {
+            console.error('Error fetching timeline resources:', timelineError);
+            return {
+              data: {
+                vehicles: [],
+                employees: [],
+                equipment: [],
+                eventsWithAssignments: [],
+              },
+            };
+          }
 
-              supabase
-                .from('events')
-                .select(
-                  `
-                id,
-                name,
-                event_date,
-                event_end_date,
-                status,
-                event_vehicles(
-                  id,
-                  vehicle_id,
-                  status
-                ),
-                event_equipment(
-                  id,
-                  equipment_id,
-                  status
-                ),
-                employee_assignments(
-                  id,
-                  employee_id,
-                  invitation_status
-                )
-              `,
-                )
-                .order('event_date'),
-            ]);
+          const vehicles = new Map();
+          const employees = new Map();
+          const equipment = new Map();
+          const eventsMap = new Map();
 
-          // Log any errors from queries
-          if (vehiclesResult.error) {
-            console.error('Error fetching vehicles for timeline:', vehiclesResult.error);
-          }
-          if (employeesResult.error) {
-            console.error('Error fetching employees for timeline:', employeesResult.error);
-          }
-          if (equipmentResult.error) {
-            console.error('Error fetching equipment for timeline:', equipmentResult.error);
-          }
-          if (eventsWithAssignmentsResult.error) {
-            console.error(
-              'Error fetching events with assignments for timeline:',
-              eventsWithAssignmentsResult.error,
-            );
-          }
+          (timelineData || []).forEach((row: any) => {
+            if (row.resource_type === 'vehicle' && !vehicles.has(row.resource_id)) {
+              vehicles.set(row.resource_id, {
+                id: row.resource_id,
+                name: row.resource_name,
+                registration_number: row.resource_metadata?.registration_number,
+                vehicle_type: row.resource_metadata?.vehicle_type,
+                status: row.resource_metadata?.status,
+              });
+            } else if (row.resource_type === 'employee' && !employees.has(row.resource_id)) {
+              employees.set(row.resource_id, {
+                id: row.resource_id,
+                name: row.resource_name,
+                nickname: row.resource_metadata?.nickname,
+                role: row.resource_metadata?.role,
+              });
+            } else if (row.resource_type === 'equipment' && !equipment.has(row.resource_id)) {
+              equipment.set(row.resource_id, {
+                id: row.resource_id,
+                name: row.resource_name,
+                category_id: row.resource_metadata?.category_id,
+                status: row.resource_metadata?.status,
+              });
+            }
+
+            if (row.event_id && !eventsMap.has(row.event_id)) {
+              eventsMap.set(row.event_id, {
+                id: row.event_id,
+                name: row.event_name,
+                event_date: row.event_start,
+                event_end_date: row.event_end,
+                status: row.event_status,
+                event_vehicles: [],
+                event_equipment: [],
+                employee_assignments: [],
+              });
+            }
+
+            if (row.event_id) {
+              const event = eventsMap.get(row.event_id);
+              if (row.resource_type === 'vehicle') {
+                event.event_vehicles.push({
+                  vehicle_id: row.resource_id,
+                  status: row.assignment_status,
+                });
+              } else if (row.resource_type === 'employee') {
+                event.employee_assignments.push({
+                  employee_id: row.resource_id,
+                  invitation_status: row.assignment_status,
+                });
+              } else if (row.resource_type === 'equipment') {
+                event.event_equipment.push({
+                  equipment_id: row.resource_id,
+                  status: row.assignment_status,
+                });
+              }
+            }
+          });
+
+          const vehiclesArray = Array.from(vehicles.values());
+          const employeesArray = Array.from(employees.values());
+          const equipmentArray = Array.from(equipment.values());
+          const eventsArray = Array.from(eventsMap.values());
 
           console.log('Timeline resources loaded:', {
-            vehicles: vehiclesResult.data?.length || 0,
-            employees: employeesResult.data?.length || 0,
-            equipment: equipmentResult.data?.length || 0,
-            eventsWithAssignments: eventsWithAssignmentsResult.data?.length || 0,
-            sampleEvent: eventsWithAssignmentsResult.data?.[0],
+            vehicles: vehiclesArray.length,
+            employees: employeesArray.length,
+            equipment: equipmentArray.length,
+            eventsWithAssignments: eventsArray.length,
+            sampleEvent: eventsArray[0],
           });
 
           return {
             data: {
-              vehicles: vehiclesResult.data || [],
-              employees: employeesResult.data || [],
-              equipment: (equipmentResult.data || []).map((item: any) => ({
-                id: item.id,
-                name: item.name,
-                status: item.status,
-                category: item.equipment_categories,
-              })),
-              eventsWithAssignments: eventsWithAssignmentsResult.data || [],
+              vehicles: vehiclesArray,
+              employees: employeesArray,
+              equipment: equipmentArray,
+              eventsWithAssignments: eventsArray,
             },
           };
         } catch (error: any) {
