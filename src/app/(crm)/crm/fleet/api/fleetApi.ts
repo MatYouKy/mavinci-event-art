@@ -267,7 +267,8 @@ export const fleetApi = createApi({
               id,
               is_in_use,
               pickup_timestamp,
-              driver:employees!event_vehicles_driver_id_fkey(id, name, surname),
+              driver_id,
+              employees!driver_id(id, name, surname),
               event:events(id, name)
             `,
               )
@@ -299,11 +300,14 @@ export const fleetApi = createApi({
 
           const inUseData = inUseRes.data as any | null;
 
+          // Pobierz dane kierowcy z embedded employees
+          const driverData = inUseData?.employees;
+
           const vehicle = {
             ...(vehicleRes.data as VehicleDB),
             in_use: !!inUseData,
-            in_use_by: inUseData?.driver
-              ? `${inUseData.driver.name} ${inUseData.driver.surname}`
+            in_use_by: driverData
+              ? `${driverData.name} ${driverData.surname}`
               : null,
             in_use_event: inUseData?.event?.name || null,
             in_use_event_id: inUseData?.event?.id || null,
