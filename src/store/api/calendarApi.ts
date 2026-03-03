@@ -362,9 +362,15 @@ export const calendarApi = createApi({
                 status: row.resource_metadata?.status,
               });
             } else if (row.resource_type === 'employee' && !employees.has(row.resource_id)) {
+              const fullName = row.resource_name || '';
+              const nameParts = fullName.split(' ');
+              const surname = nameParts.length > 1 ? nameParts.pop() : '';
+              const firstName = nameParts.join(' ');
+
               employees.set(row.resource_id, {
                 id: row.resource_id,
-                name: row.resource_name,
+                name: firstName || fullName,
+                surname: surname,
                 nickname: row.resource_metadata?.nickname,
                 role: row.resource_metadata?.role,
               });

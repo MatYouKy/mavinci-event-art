@@ -165,7 +165,7 @@ export default function TimelineView({
 
       return {
         id: employee.id,
-        name: `${employee.name} ${employee.surname}`,
+        name: employee.surname ? `${employee.name} ${employee.surname}` : employee.name,
         type: 'employee' as const,
         nickname: employee.nickname,
         assignments: assignments.map((event: any) => ({
