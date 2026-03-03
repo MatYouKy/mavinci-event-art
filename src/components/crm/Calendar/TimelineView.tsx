@@ -11,6 +11,7 @@ interface TimelineViewProps {
   vehicles: any[];
   employees: any[];
   equipment: any[];
+  eventsWithAssignments?: any[];
 }
 
 type ResourceType = 'vehicles' | 'employees' | 'equipment';
@@ -59,6 +60,7 @@ export default function TimelineView({
   vehicles = [],
   employees = [],
   equipment = [],
+  eventsWithAssignments = [],
 }: TimelineViewProps) {
   const [resourceFilters, setResourceFilters] = useState<ResourceFilter>({
     vehicles: true,
@@ -84,13 +86,16 @@ export default function TimelineView({
     });
   }, [weekStart]);
 
+  // Użyj eventsWithAssignments jeśli są dostępne, w przeciwnym razie events
+  const timelineEvents = eventsWithAssignments.length > 0 ? eventsWithAssignments : events;
+
   // Przygotuj dane timeline dla pojazdów
   const vehicleTimeline = useMemo(() => {
     if (!resourceFilters.vehicles) return [];
 
     return vehicles.map((vehicle) => {
-      const assignments = events.filter((event) => {
-        const eventVehicles = (event as any).event_vehicles || [];
+      const assignments = timelineEvents.filter((event: any) => {
+        const eventVehicles = event.event_vehicles || [];
         return eventVehicles.some((ev: any) => ev.vehicle_id === vehicle.id);
       });
 
@@ -99,7 +104,7 @@ export default function TimelineView({
         name: vehicle.name,
         type: 'vehicle' as const,
         registration: vehicle.registration_number,
-        assignments: assignments.map((event) => ({
+        assignments: assignments.map((event: any) => ({
           event,
           startDate: new Date(event.event_date),
           endDate: event.event_end_date ? new Date(event.event_end_date) : new Date(event.event_date),
@@ -107,16 +112,16 @@ export default function TimelineView({
         })),
       };
     });
-  }, [vehicles, events, resourceFilters.vehicles]);
+  }, [vehicles, timelineEvents, resourceFilters.vehicles]);
 
   // Przygotuj dane timeline dla pracowników
   const employeeTimeline = useMemo(() => {
     if (!resourceFilters.employees) return [];
 
     return employees.map((employee) => {
-      const assignments = events.filter((event) => {
-        const assignedEmployees = (event as any).assigned_employees || [];
-        return assignedEmployees.some((emp: any) => emp.id === employee.id);
+      const assignments = timelineEvents.filter((event: any) => {
+        const assignedEmployees = event.employee_assignments || [];
+        return assignedEmployees.some((a: any) => a.employee_id === employee.id);
       });
 
       return {
@@ -124,7 +129,7 @@ export default function TimelineView({
         name: `${employee.name} ${employee.surname}`,
         type: 'employee' as const,
         nickname: employee.nickname,
-        assignments: assignments.map((event) => ({
+        assignments: assignments.map((event: any) => ({
           event,
           startDate: new Date(event.event_date),
           endDate: event.event_end_date ? new Date(event.event_end_date) : new Date(event.event_date),
@@ -132,15 +137,15 @@ export default function TimelineView({
         })),
       };
     });
-  }, [employees, events, resourceFilters.employees]);
+  }, [employees, timelineEvents, resourceFilters.employees]);
 
   // Przygotuj dane timeline dla sprzętu
   const equipmentTimeline = useMemo(() => {
     if (!resourceFilters.equipment) return [];
 
     return equipment.map((item) => {
-      const assignments = events.filter((event) => {
-        const eventEquipment = (event as any).event_equipment || [];
+      const assignments = timelineEvents.filter((event: any) => {
+        const eventEquipment = event.event_equipment || [];
         return eventEquipment.some((eq: any) => eq.equipment_item_id === item.id);
       });
 
@@ -149,7 +154,7 @@ export default function TimelineView({
         name: item.name,
         type: 'equipment' as const,
         category: item.category?.name,
-        assignments: assignments.map((event) => ({
+        assignments: assignments.map((event: any) => ({
           event,
           startDate: new Date(event.event_date),
           endDate: event.event_end_date ? new Date(event.event_end_date) : new Date(event.event_date),
@@ -157,7 +162,7 @@ export default function TimelineView({
         })),
       };
     });
-  }, [equipment, events, resourceFilters.equipment]);
+  }, [equipment, timelineEvents, resourceFilters.equipment]);
 
   const allResources = [...vehicleTimeline, ...employeeTimeline, ...equipmentTimeline];
 
@@ -352,6 +357,16 @@ export default function TimelineView({
                         );
                         const colorClass = STATUS_COLORS[assignment.status as keyof typeof STATUS_COLORS] || STATUS_COLORS.pending;
 
+                        // Przygotuj obiekt CalendarEvent dla kliknięcia
+                        const calendarEvent: CalendarEvent = {
+                          id: assignment.event.id,
+                          name: assignment.event.name,
+                          event_date: assignment.event.event_date,
+                          event_end_date: assignment.event.event_end_date,
+                          status: assignment.event.status,
+                          location: assignment.event.location || '',
+                        };
+
                         return (
                           <div
                             key={`${assignment.event.id}-${idx}`}
@@ -361,7 +376,7 @@ export default function TimelineView({
                               width: position.width,
                               minWidth: '40px',
                             }}
-                            onClick={() => onEventClick(assignment.event)}
+                            onClick={() => onEventClick(calendarEvent)}
                             title={`${assignment.event.name}\n${assignment.startDate.toLocaleDateString('pl-PL')} - ${assignment.endDate.toLocaleDateString('pl-PL')}\n${assignment.event.location || ''}`}
                           >
                             <div className="flex h-full items-center px-2">

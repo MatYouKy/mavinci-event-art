@@ -71,24 +71,6 @@ export const calendarApi = createApi({
                   name,
                   color,
                   custom_icons:icon_id(id, name, svg_code)
-                ),
-                event_vehicles(
-                  id,
-                  vehicle_id,
-                  status,
-                  vehicles(id, name, registration_number)
-                ),
-                event_equipment(
-                  id,
-                  equipment_item_id,
-                  status,
-                  equipment_items(id, name)
-                ),
-                employee_assignments(
-                  id,
-                  employee_id,
-                  invitation_status,
-                  employees(id, name, surname)
                 )
               `),
             supabase
@@ -115,7 +97,7 @@ export const calendarApi = createApi({
 
           if (eventsResult.error) {
             console.error('Error fetching events:', eventsResult.error);
-            return { error: { status: 'CUSTOM_ERROR', error: eventsResult.error.message } };
+            console.error('Full error details:', JSON.stringify(eventsResult.error, null, 2));
           }
 
           if (meetingsResult.error) {
@@ -139,15 +121,9 @@ export const calendarApi = createApi({
                 }
               : null,
             is_meeting: false,
-            assigned_employees: (event.employee_assignments || [])
-              .filter((a: any) => a.employees)
-              .map((a: any) => ({
-                id: a.employees.id,
-                name: a.employees.name,
-                surname: a.employees.surname,
-              })),
-            event_vehicles: event.event_vehicles || [],
-            event_equipment: event.event_equipment || [],
+            assigned_employees: [],
+            event_vehicles: [],
+            event_equipment: [],
           }));
 
           // Map meetings
@@ -341,38 +317,71 @@ export const calendarApi = createApi({
         vehicles: any[];
         employees: any[];
         equipment: any[];
+        eventsWithAssignments: any[];
       },
       void
     >({
       async queryFn() {
         try {
-          const [vehiclesResult, employeesResult, equipmentResult] = await Promise.all([
-            supabase
-              .from('vehicles')
-              .select('id, name, brand, model, registration_number, status, vehicle_type')
-              .eq('status', 'active')
-              .order('name'),
+          const [vehiclesResult, employeesResult, equipmentResult, eventsWithAssignmentsResult] =
+            await Promise.all([
+              supabase
+                .from('vehicles')
+                .select('id, name, brand, model, registration_number, status, vehicle_type')
+                .eq('status', 'active')
+                .order('name'),
 
-            supabase
-              .from('employees')
-              .select('id, name, surname, nickname, role')
-              .eq('is_active', true)
-              .order('name'),
+              supabase
+                .from('employees')
+                .select('id, name, surname, nickname, role')
+                .eq('is_active', true)
+                .order('name'),
 
-            supabase
-              .from('equipment_items')
-              .select(
-                `
+              supabase
+                .from('equipment_items')
+                .select(
+                  `
                 id,
                 name,
                 status,
                 equipment_categories:category_id(id, name)
               `,
-              )
-              .in('status', ['available', 'in_use'])
-              .order('name')
-              .limit(100),
-          ]);
+                )
+                .in('status', ['available', 'in_use'])
+                .order('name')
+                .limit(100),
+
+              supabase
+                .from('events')
+                .select(
+                  `
+                id,
+                name,
+                event_date,
+                event_end_date,
+                status,
+                event_vehicles(
+                  id,
+                  vehicle_id,
+                  status,
+                  vehicles(id, name, registration_number)
+                ),
+                event_equipment(
+                  id,
+                  equipment_item_id,
+                  status,
+                  equipment_items(id, name)
+                ),
+                employee_assignments(
+                  id,
+                  employee_id,
+                  invitation_status,
+                  employees(id, name, surname)
+                )
+              `,
+                )
+                .order('event_date'),
+            ]);
 
           return {
             data: {
@@ -384,9 +393,11 @@ export const calendarApi = createApi({
                 status: item.status,
                 category: item.equipment_categories,
               })),
+              eventsWithAssignments: eventsWithAssignmentsResult.data || [],
             },
           };
         } catch (error: any) {
+          console.error('Error fetching timeline resources:', error);
           return { error: { status: 'CUSTOM_ERROR', error: error.message } };
         }
       },

@@ -761,6 +761,7 @@ export default function CalendarMain({
           vehicles={timelineResources?.vehicles || []}
           employees={timelineResources?.employees || []}
           equipment={timelineResources?.equipment || []}
+          eventsWithAssignments={timelineResources?.eventsWithAssignments || []}
         />
       )}
 
