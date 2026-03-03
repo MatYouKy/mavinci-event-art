@@ -11,6 +11,8 @@ export interface CalendarEvent {
   is_meeting?: boolean;
   meeting_data?: any;
   assigned_employees?: { id: string; name: string; surname: string }[];
+  event_vehicles?: any[];
+  event_equipment?: any[];
 }
 
 export type EventStatus =
@@ -58,7 +60,7 @@ export interface EventTask {
   due_date?: string;
 }
 
-export type CalendarView = 'month' | 'week' | 'day' | 'employee';
+export type CalendarView = 'month' | 'week' | 'day' | 'employee' | 'timeline';
 
 export interface CalendarViewProps {
   currentDate: Date;

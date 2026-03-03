@@ -14,6 +14,8 @@ export interface CalendarEvent {
   is_meeting?: boolean;
   meeting_data?: any;
   assigned_employees?: { id: string; name: string; surname: string }[];
+  event_vehicles?: any[];
+  event_equipment?: any[];
 }
 
 export interface CalendarFilters {
@@ -35,7 +37,7 @@ export interface CalendarFilterOptions {
 export const calendarApi = createApi({
   reducerPath: 'calendarApi',
   baseQuery: fakeBaseQuery(),
-  tagTypes: ['CalendarEvents', 'CalendarFilters', 'Meetings'],
+  tagTypes: ['CalendarEvents', 'CalendarFilters', 'Meetings', 'TimelineResources'],
   keepUnusedDataFor: 30,
   refetchOnMountOrArgChange: 30,
   endpoints: (builder) => ({
@@ -69,6 +71,24 @@ export const calendarApi = createApi({
                   name,
                   color,
                   custom_icons:icon_id(id, name, svg_code)
+                ),
+                event_vehicles(
+                  id,
+                  vehicle_id,
+                  status,
+                  vehicles(id, name, registration_number)
+                ),
+                event_equipment(
+                  id,
+                  equipment_item_id,
+                  status,
+                  equipment_items(id, name)
+                ),
+                employee_assignments(
+                  id,
+                  employee_id,
+                  invitation_status,
+                  employees(id, name, surname)
                 )
               `),
             supabase
@@ -119,7 +139,15 @@ export const calendarApi = createApi({
                 }
               : null,
             is_meeting: false,
-            assigned_employees: [],
+            assigned_employees: (event.employee_assignments || [])
+              .filter((a: any) => a.employees)
+              .map((a: any) => ({
+                id: a.employees.id,
+                name: a.employees.name,
+                surname: a.employees.surname,
+              })),
+            event_vehicles: event.event_vehicles || [],
+            event_equipment: event.event_equipment || [],
           }));
 
           // Map meetings
@@ -307,6 +335,63 @@ export const calendarApi = createApi({
       },
       invalidatesTags: ['CalendarEvents', 'Meetings'],
     }),
+
+    getTimelineResources: builder.query<
+      {
+        vehicles: any[];
+        employees: any[];
+        equipment: any[];
+      },
+      void
+    >({
+      async queryFn() {
+        try {
+          const [vehiclesResult, employeesResult, equipmentResult] = await Promise.all([
+            supabase
+              .from('vehicles')
+              .select('id, name, brand, model, registration_number, status, vehicle_type')
+              .eq('status', 'active')
+              .order('name'),
+
+            supabase
+              .from('employees')
+              .select('id, name, surname, nickname, role')
+              .eq('is_active', true)
+              .order('name'),
+
+            supabase
+              .from('equipment_items')
+              .select(
+                `
+                id,
+                name,
+                status,
+                equipment_categories:category_id(id, name)
+              `,
+              )
+              .in('status', ['available', 'in_use'])
+              .order('name')
+              .limit(100),
+          ]);
+
+          return {
+            data: {
+              vehicles: vehiclesResult.data || [],
+              employees: employeesResult.data || [],
+              equipment: (equipmentResult.data || []).map((item: any) => ({
+                id: item.id,
+                name: item.name,
+                status: item.status,
+                category: item.equipment_categories,
+              })),
+            },
+          };
+        } catch (error: any) {
+          return { error: { status: 'CUSTOM_ERROR', error: error.message } };
+        }
+      },
+      providesTags: ['TimelineResources'],
+    }),
   }),
 });
 
@@ -316,4 +401,5 @@ export const {
   useCreateMeetingMutation,
   useUpdateMeetingMutation,
   useDeleteMeetingMutation,
+  useGetTimelineResourcesQuery,
 } = calendarApi;

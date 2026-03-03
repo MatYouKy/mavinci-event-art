@@ -20,6 +20,7 @@ import MonthView from './MonthView';
 import WeekView from './WeekView';
 import DayView from './DayView';
 import EmployeeView from './EmployeeView';
+import TimelineView from './TimelineView';
 import MobileCalendarView from './MobileCalendarView';
 import EventWizard from '../EventWizard';
 import NewMeetingModal from '../NewMeetingModal';
@@ -27,6 +28,7 @@ import EventTypeSelector from './EventTypeSelector';
 import {
   useGetCalendarEventsQuery,
   useGetCalendarFilterOptionsQuery,
+  useGetTimelineResourcesQuery,
 } from '@/store/api/calendarApi';
 
 export default function CalendarMain({
@@ -78,6 +80,11 @@ export default function CalendarMain({
 
   const { data: filterOptions, isLoading: filterOptionsLoading } =
     useGetCalendarFilterOptionsQuery();
+
+  const { data: timelineResources, isLoading: timelineResourcesLoading } =
+    useGetTimelineResourcesQuery(undefined, {
+      skip: view !== 'timeline',
+    });
 
   useEffect(() => {
     fetchCurrentEmployee();
@@ -516,7 +523,7 @@ export default function CalendarMain({
           </button>
 
           <div className="flex overflow-hidden rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]">
-            {(['month', 'week', 'day', ...(isAdmin() ? ['employee'] : [])] as CalendarView[]).map(
+            {(['month', 'week', 'day', ...(isAdmin() ? ['timeline', 'employee'] : [])] as CalendarView[]).map(
               (v) => (
                 <button
                   key={v}
@@ -533,7 +540,9 @@ export default function CalendarMain({
                       ? 'Tydzień'
                       : v === 'day'
                         ? 'Dzień'
-                        : 'Pracownicy'}
+                        : v === 'timeline'
+                          ? 'Timeline'
+                          : 'Pracownicy'}
                 </button>
               ),
             )}
@@ -741,6 +750,17 @@ export default function CalendarMain({
           onDateClick={handleNewEvent}
           onEventClick={handleEventClick}
           employees={employees}
+        />
+      )}
+
+      {view === 'timeline' && (
+        <TimelineView
+          currentDate={currentDate}
+          events={events}
+          onEventClick={handleEventClick}
+          vehicles={timelineResources?.vehicles || []}
+          employees={timelineResources?.employees || []}
+          equipment={timelineResources?.equipment || []}
         />
       )}
 
