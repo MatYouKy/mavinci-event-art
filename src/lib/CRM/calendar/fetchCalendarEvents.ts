@@ -32,12 +32,14 @@ export async function fetchCalendarEventsServer() {
         id,
         name
       ),
-      category:categories(
+      category:event_categories(
         id,
         name,
         color
       ),
-      assigned_employees:event_employees(
+      assigned_employees:employee_assignments(
+        employee_id,
+        invitation_status,
         employee:employees(
           id,
           name,
