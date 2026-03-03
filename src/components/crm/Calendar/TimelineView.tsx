@@ -185,7 +185,7 @@ export default function TimelineView({
     return equipment.map((item) => {
       const assignments = timelineEvents.filter((event: any) => {
         const eventEquipment = event.event_equipment || [];
-        return eventEquipment.some((eq: any) => eq.equipment_item_id === item.id);
+        return eventEquipment.some((eq: any) => eq.equipment_id === item.id);
       });
 
       return {

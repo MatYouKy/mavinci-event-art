@@ -344,7 +344,7 @@ export const calendarApi = createApi({
                 id,
                 name,
                 status,
-                equipment_categories:category_id(id, name)
+                category_id
               `,
                 )
                 .in('status', ['available', 'in_use'])
@@ -367,7 +367,7 @@ export const calendarApi = createApi({
                 ),
                 event_equipment(
                   id,
-                  equipment_item_id,
+                  equipment_id,
                   status
                 ),
                 employee_assignments(

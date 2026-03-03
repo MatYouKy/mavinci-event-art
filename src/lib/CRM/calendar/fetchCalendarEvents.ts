@@ -40,7 +40,7 @@ export async function fetchCalendarEventsServer() {
       assigned_employees:employee_assignments(
         employee_id,
         invitation_status,
-        employee:employees(
+        employee:employees!employee_assignments_employee_id_fkey(
           id,
           name,
           surname,
