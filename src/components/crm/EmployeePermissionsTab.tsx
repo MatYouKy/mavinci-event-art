@@ -28,6 +28,7 @@ interface PermissionCategory {
 
 const availableEventTabs = [
   { value: 'overview', label: 'Przegląd', description: 'Podstawowe informacje o wydarzeniu' },
+  { value: 'phases', label: 'Timeline', description: 'Zarządzanie fazami wydarzenia' },
   { value: 'offer', label: 'Oferta', description: 'Tworzenie i zarządzanie ofertami' },
   { value: 'finances', label: 'Finanse', description: 'Budżet i koszty wydarzenia' },
   { value: 'contract', label: 'Umowa', description: 'Zarządzanie umowami' },

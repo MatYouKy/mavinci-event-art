@@ -306,7 +306,9 @@ export default function EventDetailPageClient({
         setCanManageTeam(true);
         setAllowedEventTabs([
           'overview',
+          'phases',
           'offer',
+          'agenda',
           'finances',
           'contract',
           'equipment',
@@ -374,6 +376,8 @@ export default function EventDetailPageClient({
         setCanManageTeam(true);
         setAllowedEventTabs([
           'overview',
+          'phases',
+          'agenda',
           'offer',
           'finances',
           'contract',
@@ -389,7 +393,7 @@ export default function EventDetailPageClient({
       }
 
       // Dla pozostałych użytkowników użyj event_tabs z access_level
-      let eventTabs: string[] = ['overview'];
+      let eventTabs: string[] = ['overview', 'phases', 'agenda', 'files', 'tasks'];
       if (employee?.event_tabs && employee.event_tabs.length > 0) {
         eventTabs = employee.event_tabs;
       } else if ((employee?.access_levels as any)?.event_tabs) {
