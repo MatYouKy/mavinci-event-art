@@ -76,6 +76,42 @@ const isoToTimeInput = (value?: string | null): string => {
   return `${hours}:${minutes}`;
 };
 
+const shiftHHMM = (hhmm: string, deltaHours: number): string | null => {
+  if (!/^\d{2}:\d{2}$/.test(hhmm)) return null;
+
+  const [h, m] = hhmm.split(':').map(Number);
+  let total = h * 60 + m + deltaHours * 60;
+
+  // wrap 0..1439
+  total = ((total % 1440) + 1440) % 1440;
+
+  const hh = String(Math.floor(total / 60)).padStart(2, '0');
+  const mm = String(total % 60).padStart(2, '0');
+  return `${hh}:${mm}`;
+};
+
+const getPdfStartEndFromItems = (items: AgendaItem[]) => {
+  const sorted = [...items].sort((a, b) => {
+    const toMin = (t: string) => {
+      const [hh, mm] = t.split(':').map(Number);
+      let minutes = hh * 60 + mm;
+      if (hh < 6) minutes += 24 * 60;
+      return minutes;
+    };
+    if (!a.time) return 1;
+    if (!b.time) return -1;
+    return toMin(a.time) - toMin(b.time);
+  });
+
+  const first = sorted[0]?.time || '';
+  const last = sorted[sorted.length - 1]?.time || '';
+
+  const pdfStart = first || null; // ✅ start -1h
+  const pdfEnd = last || null;                          // ✅ end bez zmian
+
+  return { pdfStart, pdfEnd };
+};
+
 interface EventAgendaTabProps {
   eventId: string;
   eventName: string;
@@ -440,25 +476,36 @@ export default function EventAgendaTab({
       let clientContact = '';
       let contactName = '';
       let contactNumber = '';
-
-      if (event?.client_type === 'individual' && contact) {
-        // Klient indywidualny
-        contactName = contact?.full_name || `${(contact as any)?.first_name || ''} ${(contact as any)?.last_name || ''}`.trim();
-        clientContact = contactName;
-        contactNumber = (contact as any)?.phone || (contact as any)?.mobile || '';
-      } else if (event?.client_type === 'business') {
+      
+      if (organization && contact) {
         // Klient biznesowy
         clientContact = organization?.alias || organization?.name || '';
+        contactName =
+          contact?.full_name ||
+          `${(contact as any)?.first_name || ''} ${(contact as any)?.last_name || ''}`.trim();
+      
+        contactNumber = (contact as any)?.business_phone || (contact as any)?.mobile || '';
+      } else {
+        // Klient indywidualny
+        clientContact =
+          contact?.full_name ||
+          `${(contact as any)?.first_name || ''} ${(contact as any)?.last_name || ''}`.trim();
+      
         contactName = clientContact;
-        contactNumber = (organization as any)?.phone || '';
+      
+        contactNumber = (contact as any)?.business_phone || (contact as any)?.mobile || '';
       }
 
-      // 2. Zbuduj HTML agendy
-      const html = buildAgendaHtml({
+      const { pdfStart, pdfEnd } = getPdfStartEndFromItems(getSortedAgendaItems());
+
+      const pdfStartTime = pdfStart ?? startTimeInput; // fallback jeśli brak itemów
+      const pdfEndTime = pdfEnd ?? endTimeInput;
+
+      const agendaPayload = {
         eventName,
         eventDate: normalizedEventDate, // YYYY-MM-DD
-        startTime: startTimeInput,
-        endTime: endTimeInput,
+        startTime: pdfStartTime,
+        endTime: pdfEndTime,
         clientContact,
         contactName,
         contactNumber,
@@ -467,7 +514,10 @@ export default function EventAgendaTab({
         lastUpdated: new Date().toISOString(),
         authorName: createdByEmployee?.name || '',
         authorNumber: createdByEmployee?.phone_number || '',
-      });
+      };
+
+      // 2. Zbuduj HTML agendy
+      const html = buildAgendaHtml(agendaPayload);
 
       // 3. Dynamiczny import html2pdf.js (działa tylko w przeglądarce)
       const { default: html2pdf } = await import('html2pdf.js');
