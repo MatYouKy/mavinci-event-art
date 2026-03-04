@@ -152,30 +152,51 @@ export default function FleetPage() {
   };
 
   const getStatusBadge = (status: string, inUse: boolean = false) => {
+    // wspólna baza pod overlay na zdjęciu
+    const base =
+      'inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium ' +
+      'shadow-lg shadow-black/30 ring-1 backdrop-blur-md';
+  
     if (inUse) {
       return (
-        <span className="inline-flex w-auto items-center gap-1 whitespace-nowrap rounded border border-[#d3bb73]/30 bg-[#d3bb73]/20 px-2 py-1 text-xs text-[#d3bb73]">
-          <Activity className="h-3 w-3" />W użytkowaniu
+        <span
+          className={
+            base +
+            ' bg-black/55 text-[#f3e7b1] ring-[#d3bb73]/50 border border-[#d3bb73]/40'
+          }
+        >
+          <Activity className="h-3.5 w-3.5" />
+          W użytkowaniu
         </span>
       );
     }
-
+  
     const statusConfig = {
-      active: { label: 'Dostępny', class: 'bg-green-500/20 text-green-400' },
-      inactive: { label: 'Nieaktywny', class: 'bg-gray-500/20 text-gray-400' },
-      in_service: { label: 'W serwisie', class: 'bg-orange-500/20 text-orange-400' },
-      sold: { label: 'Sprzedany', class: 'bg-blue-500/20 text-blue-400' },
-      scrapped: { label: 'Złomowany', class: 'bg-red-500/20 text-red-400' },
+      active: {
+        label: 'Dostępny',
+        class: 'bg-black/55 text-green-300 ring-green-400/40 border border-green-400/30',
+      },
+      inactive: {
+        label: 'Nieaktywny',
+        class: 'bg-black/55 text-gray-200 ring-gray-400/35 border border-gray-400/25',
+      },
+      in_service: {
+        label: 'W serwisie',
+        class: 'bg-black/55 text-orange-300 ring-orange-400/40 border border-orange-400/30',
+      },
+      sold: {
+        label: 'Sprzedany',
+        class: 'bg-black/55 text-blue-300 ring-blue-400/40 border border-blue-400/30',
+      },
+      scrapped: {
+        label: 'Złomowany',
+        class: 'bg-black/55 text-red-300 ring-red-400/40 border border-red-400/30',
+      },
     };
-
+  
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.inactive;
-    return (
-      <span
-        className={`inline-block w-auto whitespace-nowrap rounded px-2 py-1 text-xs ${config.class}`}
-      >
-        {config.label}
-      </span>
-    );
+  
+    return <span className={`${base} ${config.class}`}>{config.label}</span>;
   };
 
   const getCategoryIcon = (category: string) => {

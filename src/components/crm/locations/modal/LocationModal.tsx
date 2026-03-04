@@ -142,7 +142,6 @@ export default function LocationModal({ open, onClose, editingLocation = null, o
         showSnackbar('Lokalizacja dodana', 'success');
       }
 
-      onLocationSaved(payload as ILocation);
       onClose();
     } catch (e) {
       console.error(e);

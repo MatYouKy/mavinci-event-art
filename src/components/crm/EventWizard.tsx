@@ -35,6 +35,8 @@ import { useEventTeam } from '@/app/(crm)/crm/events/hooks/useEventTeam';
 import { useCreateEventMutation, eventsApi } from '@/app/(crm)/crm/events/store/api/eventsApi';
 import { useDispatch } from 'react-redux';
 import { eventStatusLabels } from '@/app/(crm)/crm/events/[id]/components/tabs/EventsDetailsTab/EventDetailsAction';
+import { OrganizationSearchSelect } from './events/wizard/OrganizationSearchSelect';
+import { SearchSelect } from './events/wizard/SearchSelect';
 
 const buildEventEquipmentRows = (selectedEquipment: any[], eventId: string) => {
   const mapped = (selectedEquipment ?? [])
@@ -957,29 +959,17 @@ export default function EventWizard({
               {/* Klient businessowy */}
               {clientType === 'business' && (
                 <>
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-                      Organizacja
-                    </label>
-                    <select
-                      value={eventData.organization_id}
-                      onChange={(e) => {
-                        setEventData({
-                          ...eventData,
-                          organization_id: e.target.value,
-                          contact_person_id: '',
-                        });
-                      }}
-                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
-                    >
-                      <option value="">Wybierz organizację</option>
-                      {organizations.map((org) => (
-                        <option key={org.id} value={org.id}>
-                          {org.alias || org.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  <OrganizationSearchSelect
+                    organizations={organizations}
+                    value={eventData.organization_id}
+                    onChange={(orgId) => {
+                      setEventData({
+                        ...eventData,
+                        organization_id: orgId,
+                        contact_person_id: '',
+                      });
+                    }}
+                  />
 
                   {eventData.organization_id && (
                     <div>
@@ -1036,20 +1026,18 @@ export default function EventWizard({
                       Dodaj nową
                     </button>
                   </div>
-                  <select
+                  <SearchSelect
+                    items={filteredContacts}
                     value={eventData.contact_person_id}
-                    onChange={(e) =>
-                      setEventData({ ...eventData, contact_person_id: e.target.value })
-                    }
+                    onChange={(id) => setEventData({ ...eventData, contact_person_id: id })}
+                    placeholder="Wybierz lub dodaj nową osobę"
+                    emptyText="Brak pasujących kontaktów"
+                    getLabel={(c) => c.full_name}
+                    // jeśli chcesz szukać też po emailu/telefonie, dodaj:
+                    // getSearchText={(c) => `${c.full_name} ${c.email ?? ''} ${c.phone ?? ''}`}
                     className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
-                  >
-                    <option value="">Wybierz lub dodaj nową osobę</option>
-                    {filteredContacts.map((contact) => (
-                      <option key={contact.id} value={contact.id}>
-                        {contact.full_name}
-                      </option>
-                    ))}
-                  </select>
+                    dropdownClassName="absolute z-50 mt-2 max-h-72 w-full overflow-auto rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] shadow-lg"
+                  />
                 </div>
               )}
 

@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   ArrowLeft,
@@ -28,6 +28,8 @@ import {
   StickyNote,
   Receipt,
   Calendar,
+  ChevronDown,
+  Check,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -239,6 +241,51 @@ export default function OrganizationDetailPage() {
   const [showAddLocationModal, setShowAddLocationModal] = useState(false);
   const [primaryContact, setPrimaryContact] = useState<Contact | null>(null);
   const [legalRepresentative, setLegalRepresentative] = useState<Contact | null>(null);
+
+  //blok search
+
+  const [contactQuery, setContactQuery] = useState('');
+const [contactOpen, setContactOpen] = useState(false);
+const contactWrapRef = useRef<HTMLDivElement | null>(null);
+
+const selectedContact = useMemo(() => {
+  return availableContacts.find((c) => c.id === selectedContactId) || null;
+}, [availableContacts, selectedContactId]);
+
+const contactLabel = (contact: any) => {
+  const name = contact.full_name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
+  return `${name || 'Bez nazwy'}${contact.email ? ` (${contact.email})` : ''}`;
+};
+
+const filteredContacts = useMemo(() => {
+  const q = contactQuery.trim().toLowerCase();
+  if (!q) return availableContacts;
+
+  return availableContacts.filter((c) => {
+    const hay = [
+      c.full_name,
+      c.first_name,
+      c.last_name,
+      c.email,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+
+    return hay.includes(q);
+  });
+}, [availableContacts, contactQuery]);
+
+useEffect(() => {
+  const onDocMouseDown = (e: MouseEvent) => {
+    if (!contactWrapRef.current) return;
+    if (!contactWrapRef.current.contains(e.target as Node)) setContactOpen(false);
+  };
+  document.addEventListener('mousedown', onDocMouseDown);
+  return () => document.removeEventListener('mousedown', onDocMouseDown);
+}, []);
+
+//koneic bloku
 
   useEffect(() => {
     if (organizationId) {
@@ -655,7 +702,6 @@ export default function OrganizationDetailPage() {
         .insert({
           first_name: newContact.first_name,
           last_name: newContact.last_name,
-          full_name: fullName,
           email: newContact.email || null,
           phone: newContact.phone || null,
           mobile: newContact.mobile || null,
@@ -1424,10 +1470,14 @@ export default function OrganizationDetailPage() {
                 primaryContact={primaryContact}
                 legalRepresentative={legalRepresentative}
                 editedPrimaryContactId={
-                  (editedData.primary_contact_id as string) ?? organization.primary_contact_id ?? null
+                  (editedData.primary_contact_id as string) ??
+                  organization.primary_contact_id ??
+                  null
                 }
                 editedLegalRepresentativeId={
-                  (editedData.legal_representative_id as string) ?? organization.legal_representative_id ?? null
+                  (editedData.legal_representative_id as string) ??
+                  organization.legal_representative_id ??
+                  null
                 }
                 legalRepresentativeTitle={
                   (editedData.legal_representative_title as string) ||
@@ -1870,23 +1920,92 @@ export default function OrganizationDetailPage() {
 
             {addContactMode === 'select' ? (
               <div className="space-y-4">
-                <div>
+                <div ref={contactWrapRef} className="relative">
                   <label className="mb-2 block text-sm font-medium text-gray-300">
                     Wybierz z listy kontaktów
                   </label>
-                  <select
-                    value={selectedContactId}
-                    onChange={(e) => setSelectedContactId(e.target.value)}
-                    className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setContactOpen(true);
+                      // po otwarciu pokazuj wszystkie, a filtrowanie zacznie działać od wpisu
+                      // (jeśli wolisz: setContactQuery('');)
+                    }}
+                    className="w-full text-left"
                   >
-                    <option value="">-- Wybierz kontakt --</option>
-                    {availableContacts.map((contact) => (
-                      <option key={contact.id} value={contact.id}>
-                        {contact.full_name || `${contact.first_name} ${contact.last_name}`}
-                        {contact.email && ` (${contact.email})`}
-                      </option>
-                    ))}
-                  </select>
+                    <div className="relative">
+                      <input
+                        value={
+                          contactOpen
+                            ? contactQuery
+                            : selectedContact
+                              ? contactLabel(selectedContact)
+                              : contactQuery
+                        }
+                        onChange={(e) => {
+                          setContactQuery(e.target.value);
+                          setContactOpen(true);
+                          // jeśli użytkownik zaczyna pisać od nowa – odznacz kontakt (opcjonalnie)
+                          // setSelectedContactId('');
+                        }}
+                        onFocus={() => setContactOpen(true)}
+                        placeholder="Kliknij i zacznij pisać..."
+                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 pr-10 text-white focus:border-[#d3bb73] focus:outline-none"
+                      />
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    </div>
+                  </button>
+
+                  {contactOpen && (
+                    <div className="absolute z-50 mt-2 max-h-64 w-full overflow-auto rounded-lg border border-gray-700 bg-[#0f1119] shadow-xl">
+                      {filteredContacts.length === 0 ? (
+                        <div className="px-4 py-3 text-sm text-gray-400">Brak wyników</div>
+                      ) : (
+                        <ul className="py-1">
+                          {/* "Wyczyść wybór" */}
+                          <li>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedContactId('');
+                                setContactQuery('');
+                                setContactOpen(false);
+                              }}
+                              className="w-full px-4 py-2 text-left text-sm text-gray-400 hover:bg-white/5"
+                            >
+                              -- Wyczyść wybór --
+                            </button>
+                          </li>
+
+                          {filteredContacts.map((contact) => {
+                            const isSelected = contact.id === selectedContactId;
+                            return (
+                              <li key={contact.id}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedContactId(contact.id);
+                                    setContactQuery(contactLabel(contact)); // opcjonalnie: wypełnij input opisem
+                                    setContactOpen(false);
+                                  }}
+                                  className={[
+                                    'flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm transition-colors',
+                                    isSelected
+                                      ? 'bg-[#d3bb73]/10 text-[#d3bb73]'
+                                      : 'text-white hover:bg-white/5',
+                                  ].join(' ')}
+                                >
+                                  <span className="truncate">{contactLabel(contact)}</span>
+                                  {isSelected && <Check className="h-4 w-4 flex-shrink-0" />}
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="border-t border-gray-700 pt-4">
@@ -1904,6 +2023,8 @@ export default function OrganizationDetailPage() {
                     onClick={() => {
                       setShowAddContactModal(false);
                       setSelectedContactId('');
+                      setContactQuery('');
+                      setContactOpen(false);
                     }}
                     className="flex-1 rounded-lg border border-gray-700 px-4 py-2 text-gray-300 transition-colors hover:bg-[#0f1119]"
                   >

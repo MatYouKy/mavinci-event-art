@@ -279,26 +279,48 @@ export default function VehicleDetailPage() {
     fuelEntries.filter((f) => f.avg_consumption).reduce((sum, f) => sum + f.avg_consumption, 0) /
     Math.max(fuelEntries.filter((f) => f.avg_consumption).length, 1);
 
-  const getStatusBadge = (status: string, inUse: boolean = false) => {
-    if (inUse) {
-      return (
-        <span className="flex items-center gap-2 rounded border border-[#d3bb73]/30 bg-[#d3bb73]/20 px-3 py-1 text-sm text-[#d3bb73]">
-          <Activity className="h-4 w-4" />W użytkowaniu
-        </span>
-      );
-    }
-
-    const config: Record<string, { label: string; class: string }> = {
-      active: { label: 'Dostępny', class: 'bg-green-500/20 text-green-400' },
-      inactive: { label: 'Nieaktywny', class: 'bg-gray-500/20 text-gray-400' },
-      in_service: { label: 'W serwisie', class: 'bg-orange-500/20 text-orange-400' },
-      completed: { label: 'Zakończony', class: 'bg-green-500/20 text-green-400' },
-      scheduled: { label: 'Zaplanowany', class: 'bg-blue-500/20 text-blue-400' },
-      expired: { label: 'Wygasłe', class: 'bg-red-500/20 text-red-400' },
+    const getStatusBadge = (status: string, inUse: boolean = false) => {
+      const base =
+        'inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2.5 py-1 ' +
+        'text-xs font-semibold tracking-wide ' +
+        'bg-black/60 backdrop-blur-md ' +
+        'ring-1 shadow-lg shadow-black/30';
+    
+      if (inUse) {
+        return (
+          <span className={`${base} text-[#f3e7b1] ring-[#d3bb73]/55 border border-[#d3bb73]/40`}>
+            <Activity className="h-3.5 w-3.5" />
+            W użytkowaniu
+          </span>
+        );
+      }
+    
+      const statusConfig = {
+        active: {
+          label: 'Dostępny',
+          class: 'text-green-300 ring-green-400/45 border border-green-400/25',
+        },
+        inactive: {
+          label: 'Nieaktywny',
+          class: 'text-gray-200 ring-gray-400/35 border border-gray-400/20',
+        },
+        in_service: {
+          label: 'W serwisie',
+          class: 'text-orange-300 ring-orange-400/45 border border-orange-400/25',
+        },
+        sold: {
+          label: 'Sprzedany',
+          class: 'text-blue-300 ring-blue-400/45 border border-blue-400/25',
+        },
+        scrapped: {
+          label: 'Złomowany',
+          class: 'text-red-300 ring-red-400/45 border border-red-400/25',
+        },
+      };
+    
+      const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.inactive;
+      return <span className={`${base} ${config.class}`}>{config.label}</span>;
     };
-    const c = config[status] || config.inactive;
-    return <span className={`rounded px-2 py-1 text-xs ${c.class}`}>{c.label}</span>;
-  };
 
   const handleDeleteMaintenanceRecord = async (record: MaintenanceRecord) => {
     const confirmed = await showConfirm(
@@ -339,30 +361,28 @@ export default function VehicleDetailPage() {
   };
 
   const handleEndUsage = async () => {
-    if (!vehicle?.in_use_event_id) return;
-
+    if (!vehicle?.in_use_event_vehicle_id) return;
+  
     const confirmed = await showConfirm(
       'Zakończ użytkowanie pojazdu',
-      'Czy na pewno chcesz zakończyć użytkowanie tego pojazdu? Pojazd zostanie zwolniony z wydarzenia.',
+      'Czy na pewno chcesz zakończyć użytkowanie tego pojazdu?',
     );
     if (!confirmed) return;
-
-    try {
-      const { error } = await supabase
-        .from('event_vehicles')
-        .update({ is_in_use: false })
-        .eq('vehicle_id', vehicleId)
-        .eq('event_id', vehicle.in_use_event_id)
-        .eq('is_in_use', true);
-
-      if (error) throw error;
-
-      showSnackbar('Użytkowanie pojazdu zostało zakończone', 'success');
-      refetch();
-    } catch (error) {
-      console.error('Error ending vehicle usage:', error);
-      showSnackbar('Błąd podczas kończenia użytkowania pojazdu', 'error');
+  
+    const { data, error } = await supabase
+      .from('event_vehicles')
+      .update({ is_in_use: false, return_timestamp: new Date().toISOString() })
+      .eq('id', vehicle.in_use_event_vehicle_id)
+      .select('id');
+  
+    if (error) throw error;
+    if (!data?.length) {
+      showSnackbar('Nie znaleziono aktywnego przypisania do zakończenia', 'error');
+      return;
     }
+  
+    showSnackbar('Użytkowanie pojazdu zostało zakończone', 'success');
+    refetch();
   };
 
   if (isLoading) {

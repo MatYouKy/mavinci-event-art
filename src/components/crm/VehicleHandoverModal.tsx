@@ -119,57 +119,101 @@ export default function VehicleHandoverModal({
       return;
     }
 
+    if (!vehicle?.id) {
+      showSnackbar('Brak identyfikatora przypisania pojazdu do wydarzenia', 'error');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      // Walidacja: sprawdź czy pojazd nie jest w użyciu
-      if (handoverType === 'pickup' && vehicle.vehicle_id) {
-        const { data: eventVehicles } = await supabase
+      const nowIso = new Date().toISOString();
+      const mileage = parseInt(odometerReading, 10);
+
+      // event_vehicles.id (rekord przypisania do eventu)
+      const eventVehicleId = vehicle.id;
+
+      // vehicles.id (flota)
+      const fleetVehicleId = vehicle.vehicle_id;
+
+      // 1) WALIDACJA "pickup"
+      // blokuj pickup, jeśli ten sam pojazd ma JAKIKOLWIEK aktywny rekord is_in_use=true
+      // (poza tym konkretnym rekordem event_vehicles, który właśnie obsługujesz)
+      if (handoverType === 'pickup' && fleetVehicleId) {
+        const { data: activeUses, error: activeErr } = await supabase
           .from('event_vehicles')
-          .select('id')
-          .eq('vehicle_id', vehicle.vehicle_id);
+          .select('id, event_id, pickup_timestamp')
+          .eq('vehicle_id', fleetVehicleId)
+          .eq('is_in_use', true)
+          .neq('id', eventVehicleId)
+          .limit(1);
 
-        const eventVehicleIds = eventVehicles?.map((ev) => ev.id) || [];
+        if (activeErr) throw activeErr;
 
-        if (eventVehicleIds.length > 0) {
-          const { data: lastHandover } = await supabase
-            .from('vehicle_handovers')
-            .select('handover_type, timestamp, driver_id, employees(name, surname)')
-            .in('event_vehicle_id', eventVehicleIds)
-            .order('timestamp', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          if (lastHandover && lastHandover.handover_type === 'pickup') {
-            const driverName = lastHandover.employees
-              ? `${lastHandover.employees.name} ${lastHandover.employees.surname}`
-              : 'Nieznany kierowca';
-            showSnackbar(
-              `Pojazd nie został jeszcze zdany! Ostatni odbiór: ${driverName} (${formatDate(lastHandover.timestamp)})`,
-              'error',
-            );
-            setLoading(false);
-            return;
-          }
+        if (activeUses && activeUses.length > 0) {
+          showSnackbar('Pojazd jest już w użyciu (aktywny rekord w kalendarzu).', 'error');
+          return;
         }
       }
 
-      const { error } = await supabase.from('vehicle_handovers').insert({
-        event_vehicle_id: vehicle.id,
+      // 2) WALIDACJA "return"
+      // nie pozwól "zdawać" jeśli rekord nie jest już oznaczony jako is_in_use=true
+      if (handoverType === 'return') {
+        const { data: evRow, error: evErr } = await supabase
+          .from('event_vehicles')
+          .select('id, is_in_use')
+          .eq('id', eventVehicleId)
+          .maybeSingle();
+
+        if (evErr) throw evErr;
+
+        if (!evRow) {
+          showSnackbar('Nie znaleziono rekordu przypisania pojazdu do wydarzenia', 'error');
+          return;
+        }
+
+        if (!evRow.is_in_use) {
+          showSnackbar('Ten pojazd nie jest oznaczony jako „w użyciu”.', 'error');
+          return;
+        }
+      }
+
+      // 3) INSERT handover (historia)
+      const { error: handoverErr } = await supabase.from('vehicle_handovers').insert({
+        event_vehicle_id: eventVehicleId,
         driver_id: employee.id,
         handover_type: handoverType,
-        odometer_reading: parseInt(odometerReading),
-        timestamp: new Date().toISOString(),
+        odometer_reading: mileage,
+        timestamp: nowIso,
         notes: notes || null,
       });
 
-      if (error) throw error;
+      if (handoverErr) throw handoverErr;
+
+      // 4) UPDATE event_vehicles (stan bieżący)
+      const patch =
+        handoverType === 'pickup'
+          ? { is_in_use: true, pickup_timestamp: nowIso, return_timestamp: null }
+          : { is_in_use: false, return_timestamp: nowIso };
+
+      const { data: updatedRows, error: updateErr } = await supabase
+        .from('event_vehicles')
+        .update(patch)
+        .eq('id', eventVehicleId)
+        .select('id');
+
+      if (updateErr) throw updateErr;
+
+      if (!updatedRows || updatedRows.length === 0) {
+        showSnackbar('Nie udało się zaktualizować statusu pojazdu (0 rekordów).', 'error');
+        return;
+      }
 
       showSnackbar(handoverType === 'pickup' ? 'Pojazd odebrany' : 'Pojazd zdany', 'success');
       onSuccess();
     } catch (error: any) {
       console.error('Error saving handover:', error);
-      showSnackbar(error.message || 'Błąd podczas zapisywania', 'error');
+      showSnackbar(error?.message || 'Błąd podczas zapisywania', 'error');
     } finally {
       setLoading(false);
     }

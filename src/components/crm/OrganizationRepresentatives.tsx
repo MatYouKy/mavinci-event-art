@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { UserCircle, Plus, Trash2, Check, Shield } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { useSnackbar } from '@/contexts/SnackbarContext';
 
 interface Contact {
   id: string;
@@ -52,6 +53,7 @@ export default function OrganizationRepresentatives({
   editedPrimaryContactId,
   editedLegalRepresentativeId,
 }: Props) {
+  const { showSnackbar } = useSnackbar();
   const [showAddModal, setShowAddModal] = useState(false);
   const [newDM, setNewDM] = useState({
     contact_id: '',
@@ -59,22 +61,33 @@ export default function OrganizationRepresentatives({
     can_sign_contracts: false,
   });
 
+  const selectedLegalRep =
+    (editedLegalRepresentativeId
+      ? availableContacts.find((c) => c.id === editedLegalRepresentativeId)
+      : null) || null;
+
+  // ✅ fallback do wyświetlania po zapisaniu / gdy join jeszcze nie przyszedł
+  const displayLegalRepresentative = legalRepresentative || selectedLegalRep;
+
   const handleAddDecisionMaker = async () => {
     if (!newDM.contact_id) return;
 
     try {
-      await supabase.from('organization_decision_makers').insert({
+      const { error } = await supabase.from('organization_decision_makers').insert({
         organization_id: organizationId,
         contact_id: newDM.contact_id,
         title: newDM.title || null,
         can_sign_contracts: newDM.can_sign_contracts,
       });
+      if (error) throw error;
 
+      showSnackbar('Osoba decyzyjna dodana', 'success');
       setShowAddModal(false);
       setNewDM({ contact_id: '', title: '', can_sign_contracts: false });
       onUpdate();
     } catch (error) {
       console.error('Error adding decision maker:', error);
+      showSnackbar('Błąd podczas dodawania osoby decyzyjnej', 'error');
     }
   };
 
@@ -82,10 +95,13 @@ export default function OrganizationRepresentatives({
     if (!confirm('Usunąć osobę decyzyjną?')) return;
 
     try {
-      await supabase.from('organization_decision_makers').delete().eq('id', id);
+      const { error } = await supabase.from('organization_decision_makers').delete().eq('id', id);
+      if (error) throw error;
+      showSnackbar('Osoba decyzyjna usunięta', 'success');
       onUpdate();
     } catch (error) {
       console.error('Error removing decision maker:', error);
+      showSnackbar('Błąd podczas usuwania osoby decyzyjnej', 'error');
     }
   };
 
@@ -163,9 +179,39 @@ export default function OrganizationRepresentatives({
               <div className="space-y-3">
                 <select
                   value={editedLegalRepresentativeId || ''}
-                  onChange={(e) =>
-                    onEditedDataChange('legal_representative_id', e.target.value || null)
-                  }
+                  onChange={(e) => {
+                    const nextId = e.target.value || null;
+
+                    // 1) ustaw ID
+                    onEditedDataChange('legal_representative_id', nextId);
+
+                    // ✅ jak ktoś kliknął "-- Wybierz osobę --" → wyczyść stanowisko
+                    if (!nextId) {
+                      onEditedDataChange('legal_representative_title', null);
+                      return;
+                    }
+
+                    // 3) znajdź kontakt
+                    const selected = availableContacts.find((c) => c.id === nextId);
+                    if (!selected) return;
+
+                    // 4) wyciągnij stanowisko z kontaktu (dopasuj nazwy pól do Twojego modelu)
+                    const pickedTitle =
+                      (selected as any).title ||
+                      (selected as any).position ||
+                      (selected as any).job_title ||
+                      (selected as any).role ||
+                      (selected as any).company_title ||
+                      null;
+
+                    // 5) ustaw stanowisko TYLKO jeśli:
+                    // - kontakt ma stanowisko
+                    // - i nie ma już wpisanego (żeby nie nadpisywać ręcznej edycji)
+                    const currentTitle = (legalRepresentativeTitle || '').trim();
+                    if (pickedTitle && currentTitle.length === 0) {
+                      onEditedDataChange('legal_representative_title', pickedTitle);
+                    }
+                  }}
                   disabled={availableContacts.length === 0}
                   className="w-full rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:cursor-not-allowed disabled:opacity-50"
                 >
@@ -180,6 +226,21 @@ export default function OrganizationRepresentatives({
                     </option>
                   ))}
                 </select>
+
+                {selectedLegalRep ? (
+                  <div className="text-sm text-gray-300">
+                    <div className="font-medium">{selectedLegalRep.full_name}</div>
+                    {selectedLegalRep.email && (
+                      <div className="text-gray-400">{selectedLegalRep.email}</div>
+                    )}
+                    {selectedLegalRep.phone && (
+                      <div className="text-gray-400">{selectedLegalRep.phone}</div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-500">Nie wybrano</div>
+                )}
+
                 <input
                   type="text"
                   value={legalRepresentativeTitle || ''}
@@ -194,14 +255,14 @@ export default function OrganizationRepresentatives({
                   </div>
                 )}
               </div>
-            ) : legalRepresentative ? (
+            ) : displayLegalRepresentative ? (
               <div className="text-sm text-gray-300">
-                <div className="font-medium">{legalRepresentative.full_name}</div>
+                <div className="font-medium">{displayLegalRepresentative.full_name}</div>
                 {legalRepresentativeTitle && (
                   <div className="text-amber-400">{legalRepresentativeTitle}</div>
                 )}
-                {legalRepresentative.email && (
-                  <div className="text-gray-400">{legalRepresentative.email}</div>
+                {displayLegalRepresentative.email && (
+                  <div className="text-gray-400">{displayLegalRepresentative.email}</div>
                 )}
               </div>
             ) : (

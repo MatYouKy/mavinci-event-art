@@ -37,7 +37,7 @@ export const fleetApi = createApi({
     getFleetVehicles: builder.query<IVehicle[], void>({
       async queryFn() {
         const { data, error } = await supabase
-          .from('vehicles')
+          .from('fleet_vehicles_view')
           .select(
             `
             *,
