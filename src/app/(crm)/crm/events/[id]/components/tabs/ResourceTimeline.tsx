@@ -39,6 +39,7 @@ interface Assignment {
   role?: string;
   quantity?: number;
   isFullRange?: boolean;
+  invitation_status?: 'pending' | 'accepted' | 'rejected';
 }
 
 interface ResourceRow {
@@ -224,6 +225,8 @@ const AssignmentBar = memo<AssignmentBarProps>(({
   const isHovered = hoveredAssignment === assignment.id;
   const isFocused = focusedAssignment === assignment.id;
   const isDragging = !!dragMode;
+  const isPending = isEmployee && assignment.invitation_status === 'pending';
+  const isRejected = isEmployee && assignment.invitation_status === 'rejected';
 
   // Jeśli są editedTimes, przelicz pozycję na ich podstawie
   const displayPosition = useMemo(() => {
@@ -283,6 +286,18 @@ const AssignmentBar = memo<AssignmentBarProps>(({
     onFocusChange(assignment.id ?? null);
   }, [onFocusChange, assignment.id]);
 
+  const getStatusText = () => {
+    if (isRejected) return '\n⚠️ Zaproszenie odrzucone';
+    if (isPending) return '\n⏳ Oczekuje na akceptację';
+    return '';
+  };
+
+  const getBorderStyle = () => {
+    if (isRejected) return '2px dashed #ef4444';
+    if (isPending) return '2px dashed #f59e0b';
+    return undefined;
+  };
+
   return (
     <div
       ref={barRef}
@@ -298,12 +313,12 @@ const AssignmentBar = memo<AssignmentBarProps>(({
         transform: isDragging ? 'scale(1.02)' : 'scale(1)',
         zIndex: isDragging ? 100 : isFocused ? 90 : 'auto',
         boxShadow: isDragging ? '0 4px 12px rgba(211, 187, 115, 0.3)' : undefined,
-        outline: isFocused ? `2px solid ${phaseColor}` : undefined,
+        outline: isFocused ? `2px solid ${phaseColor}` : getBorderStyle(),
         outlineOffset: isFocused ? '1px' : undefined,
       }}
       title={`${resource.name}\n${formatTime(displayStartTime)} - ${formatTime(
         displayEndTime,
-      )}${assignment.role ? `\nRola: ${assignment.role}` : ''}${editedTimes ? '\n[EDYCJA]' : ''}`}
+      )}${assignment.role ? `\nRola: ${assignment.role}` : ''}${getStatusText()}${editedTimes ? '\n[EDYCJA]' : ''}`}
       onClick={handleClick}
       onMouseEnter={() => onHoverChange(assignment.id ?? null)}
       onMouseLeave={() => onHoverChange(null)}
@@ -325,6 +340,24 @@ const AssignmentBar = memo<AssignmentBarProps>(({
         <span className="truncate text-xs font-semibold text-[#e5e4e2]">
           {resource.name}
         </span>
+
+        {/* Status badge dla zaproszeń */}
+        {isPending && (
+          <span
+            className="flex items-center gap-1 rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-400 border border-amber-500/30"
+            title="Oczekuje na akceptację zaproszenia"
+          >
+            ⏳
+          </span>
+        )}
+        {isRejected && (
+          <span
+            className="flex items-center gap-1 rounded bg-red-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-red-400 border border-red-500/30"
+            title="Zaproszenie odrzucone"
+          >
+            ⚠️
+          </span>
+        )}
 
         {isEmployee && assignment.role && (
           <span className="truncate text-[10px] text-[#e5e4e2]/60">{assignment.role}</span>
@@ -737,6 +770,7 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
                 end_time: endTime,
                 role: a.role,
                 isFullRange: isFullRangeAssignment(startTime, endTime),
+                invitation_status: a.invitation_status,
               };
             });
         })
