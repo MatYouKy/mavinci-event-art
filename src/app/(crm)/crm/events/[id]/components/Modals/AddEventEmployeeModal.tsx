@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase/browser';
 import { Loader2, X } from 'lucide-react';
 import { useEmployees } from '@/app/(crm)/crm/employees/hooks/useEmployees';
@@ -27,6 +27,8 @@ export function AddEventEmployeeModal({
   const [canEditEquipment, setCanEditEquipment] = useState(false);
   const [canInviteMembers, setCanInviteMembers] = useState(false);
   const [canViewBudget, setCanViewBudget] = useState(false);
+  const [employeesInPhases, setEmployeesInPhases] = useState<any[]>([]);
+  const [loadingPhases, setLoadingPhases] = useState(false);
 
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
@@ -38,8 +40,9 @@ export function AddEventEmployeeModal({
   useEffect(() => {
     if (isOpen) {
       fetchAccessLevels();
+      fetchEmployeesInPhases();
     }
-  }, [isOpen]);
+  }, [isOpen, eventId]);
 
   const fetchAccessLevels = async () => {
     const { data, error } = await supabase.from('access_levels').select('*').order('order_index');
@@ -53,7 +56,76 @@ export function AddEventEmployeeModal({
     }
   };
 
+  const fetchEmployeesInPhases = async () => {
+    setLoadingPhases(true);
+    try {
+      const { data: phaseAssignments, error } = await supabase
+        .from('event_phase_assignments')
+        .select(`
+          employee_id,
+          phase_id,
+          assignment_start,
+          assignment_end,
+          phase_work_start,
+          phase_work_end,
+          event_phases!inner(
+            id,
+            name,
+            start_time,
+            end_time,
+            event_id
+          )
+        `)
+        .eq('event_phases.event_id', eventId);
+
+      if (error) throw error;
+
+      const employeeMap = new Map();
+      phaseAssignments?.forEach((assignment: any) => {
+        const empId = assignment.employee_id;
+        if (!employeeMap.has(empId)) {
+          employeeMap.set(empId, {
+            employee_id: empId,
+            phases: [],
+          });
+        }
+        employeeMap.get(empId).phases.push({
+          phase_id: assignment.phase_id,
+          phase_name: assignment.event_phases.name,
+          assignment_start: assignment.assignment_start,
+          assignment_end: assignment.assignment_end,
+          phase_work_start: assignment.phase_work_start,
+          phase_work_end: assignment.phase_work_end,
+        });
+      });
+
+      setEmployeesInPhases(Array.from(employeeMap.values()));
+    } catch (error) {
+      console.error('Error fetching employees in phases:', error);
+      showSnackbar('Błąd podczas pobierania pracowników z faz', 'error');
+    } finally {
+      setLoadingPhases(false);
+    }
+  };
+
   if (!isOpen) return null;
+
+  const availableEmployees = useMemo(() => {
+    if (!employees) return [];
+
+    const employeesInPhasesIds = new Set(employeesInPhases.map((e) => e.employee_id));
+    const alreadyAssignedIds = new Set(eventEmployees?.map((e: any) => e.employee_id) || []);
+
+    return employees.filter((emp) =>
+      employeesInPhasesIds.has(emp.id) && !alreadyAssignedIds.has(emp.id)
+    );
+  }, [employees, employeesInPhases, eventEmployees]);
+
+  const selectedEmployeePhases = useMemo(() => {
+    if (!selectedEmployee) return [];
+    const employeeData = employeesInPhases.find((e) => e.employee_id === selectedEmployee);
+    return employeeData?.phases || [];
+  }, [selectedEmployee, employeesInPhases]);
 
   const handleSubmit = async () => {
     if (!selectedEmployee) {
@@ -122,20 +194,65 @@ export function AddEventEmployeeModal({
               value={selectedEmployee}
               onChange={(e) => setSelectedEmployee(e.target.value)}
               className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+              disabled={loading || loadingPhases}
             >
-              <option value="">Wybierz pracownika...</option>
+              <option value="">
+                {loading || loadingPhases
+                  ? 'Ładowanie...'
+                  : availableEmployees.length === 0
+                  ? 'Brak pracowników przypisanych do faz'
+                  : 'Wybierz pracownika...'}
+              </option>
 
-              {!loading && employees ? (
-                employees?.map((emp) => (
+              {!loading && !loadingPhases && availableEmployees.length > 0 ? (
+                availableEmployees.map((emp) => (
                   <option key={emp.id} value={emp.id}>
                     {emp.name} {emp.surname} {emp.occupation ? `- ${emp.occupation}` : ''}
                   </option>
                 ))
-              ) : (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              )}
+              ) : loading || loadingPhases ? (
+                <option disabled>Ładowanie...</option>
+              ) : null}
             </select>
+            <p className="mt-1 text-xs text-[#e5e4e2]/40">
+              Widoczni są tylko pracownicy przypisani do faz wydarzenia
+            </p>
           </div>
+
+          {selectedEmployeePhases.length > 0 && (
+            <div className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33]/50 p-3">
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]/80">
+                Przypisane fazy
+              </label>
+              <div className="space-y-2">
+                {selectedEmployeePhases.map((phase: any) => (
+                  <div
+                    key={phase.phase_id}
+                    className="flex items-start justify-between rounded-md bg-[#0f1119] p-2"
+                  >
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-[#d3bb73]">{phase.phase_name}</p>
+                      <p className="mt-1 text-xs text-[#e5e4e2]/60">
+                        Praca: {new Date(phase.phase_work_start).toLocaleString('pl-PL', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}{' '}
+                        -{' '}
+                        {new Date(phase.phase_work_end).toLocaleString('pl-PL', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="mb-2 block text-sm text-[#e5e4e2]/60">Rola w evencie</label>

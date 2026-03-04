@@ -71,6 +71,32 @@ Deno.serve(async (req: Request) => {
       throw new Error("Assignment not found");
     }
 
+    const { data: phaseAssignments, error: phasesError } = await supabase
+      .from("event_phase_assignments")
+      .select(`
+        phase_id,
+        assignment_start,
+        assignment_end,
+        phase_work_start,
+        phase_work_end,
+        event_phases!inner(
+          id,
+          name,
+          start_time,
+          end_time,
+          color,
+          event_id
+        )
+      `)
+      .eq("employee_id", assignment.employee_id)
+      .eq("event_phases.event_id", assignment.event_id);
+
+    if (phasesError) {
+      console.error('[send-event-invitation] Error fetching phases:', phasesError);
+    }
+
+    console.log('[send-event-invitation] Found phase assignments:', phaseAssignments?.length || 0);
+
     console.log('[send-event-invitation] Assignment status:', assignment.status);
 
     if (assignment.status !== "pending") {
@@ -174,6 +200,57 @@ Deno.serve(async (req: Request) => {
       minute: '2-digit'
     });
 
+    const phasesTableHtml = phaseAssignments && phaseAssignments.length > 0 ? `
+      <div style="margin: 30px 0;">
+        <h3 style="margin: 0 0 15px; color: #d3bb73; font-size: 18px; font-weight: 600;">📋 Twoje przypisane fazy</h3>
+        <div style="overflow-x: auto;">
+          <table style="width: 100%; border-collapse: collapse; background: rgba(211, 187, 115, 0.05); border-radius: 8px; overflow: hidden;">
+            <thead>
+              <tr style="background: rgba(211, 187, 115, 0.15);">
+                <th style="padding: 12px; text-align: left; font-size: 13px; font-weight: 600; color: #d3bb73; border-bottom: 1px solid rgba(211, 187, 115, 0.2);">Faza</th>
+                <th style="padding: 12px; text-align: left; font-size: 13px; font-weight: 600; color: #d3bb73; border-bottom: 1px solid rgba(211, 187, 115, 0.2);">Rozpoczęcie pracy</th>
+                <th style="padding: 12px; text-align: left; font-size: 13px; font-weight: 600; color: #d3bb73; border-bottom: 1px solid rgba(211, 187, 115, 0.2);">Zakończenie pracy</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${phaseAssignments.map((phase: any) => {
+                const phaseData = phase.event_phases;
+                const workStart = new Date(phase.phase_work_start).toLocaleString('pl-PL', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                });
+                const workEnd = new Date(phase.phase_work_end).toLocaleString('pl-PL', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                });
+                return `
+                  <tr style="border-bottom: 1px solid rgba(211, 187, 115, 0.1);">
+                    <td style="padding: 12px; font-size: 14px; color: #e5e4e2; font-weight: 500;">
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 8px; height: 8px; border-radius: 50%; background: ${phaseData.color || '#3b82f6'};"></div>
+                        ${phaseData.name}
+                      </div>
+                    </td>
+                    <td style="padding: 12px; font-size: 14px; color: rgba(229, 228, 226, 0.8);">${workStart}</td>
+                    <td style="padding: 12px; font-size: 14px; color: rgba(229, 228, 226, 0.8);">${workEnd}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+        <p style="margin: 10px 0 0; font-size: 12px; color: rgba(229, 228, 226, 0.5); text-align: center;">
+          * Godziny pracy w poszczególnych fazach wydarzenia
+        </p>
+      </div>
+    ` : '';
+
     const emailBody = `
 <!DOCTYPE html>
 <html lang="pl">
@@ -235,7 +312,9 @@ Deno.serve(async (req: Request) => {
           </div>
           ` : ''}
         </div>
-        
+
+        ${phasesTableHtml}
+
         <div style="margin: 40px 0;">
           <p style="margin: 0 0 20px; font-size: 16px; line-height: 1.6; color: #e5e4e2; text-align: center; font-weight: 500;">
             Potwierdź swoją obecność:
