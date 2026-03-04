@@ -55,6 +55,7 @@ import {
   useGetEventByIdQuery,
   useGetEventOffersQuery,
   useUpdateEventMutation,
+  useDeleteEventOfferMutation,
 } from '../store/api/eventsApi';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useEventEquipment, useEventOffers, useEventTeam, useEventAuditLog } from '../hooks';
@@ -174,10 +175,6 @@ export default function EventDetailPageClient({
   const { event: eventData, updateEvent } = useEvent();
   const [teamEmployees, setTeamEmployees] = useState<any[]>([]);
   const [showStatusModal, setShowStatusModal] = useState(false);
-  const [offers, setOffers] = useState<IOffer[]>(initialOffers || []);
-  useEffect(() => {
-    setOffers(initialOffers || []);
-  }, [initialOffers]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ✅ uprawnienia do OFERT / FAKTUR / FINANSÓW (dopasuj nazwy scope do swoich)
   const canViewCommercials =
@@ -200,16 +197,13 @@ export default function EventDetailPageClient({
   });
 
   const [updateEventMutation] = useUpdateEventMutation();
+  const [deleteOfferMutation] = useDeleteEventOfferMutation();
   const { data: creator } = useById(event?.created_by);
 
   useEffect(() => {
     setTeamEmployees(employees || []);
   }, [employees]);
 
-  useEffect(() => {
-    if (!canViewCommercials) return;
-    if (initialOffers) setOffers(initialOffers as IOffer[]);
-  }, [initialOffers, canViewCommercials]);
 
   useEffect(() => {
     const success = searchParams.get('success');
@@ -435,7 +429,6 @@ export default function EventDetailPageClient({
   // ✅ jeśli masz RTK Query do ofert (polecam) – pobieraj tylko dla osób uprawnionych
   const { data: offersData, isFetching: offersFetching } = useGetEventOffersQuery(eventId, {
     skip: !canViewCommercials,
-    refetchOnMountOrArgChange: false,
   });
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -550,26 +543,36 @@ export default function EventDetailPageClient({
         'Tej operacji nie można cofnąć.',
       );
 
-      if (!confirmed) return;
-      setIsConfirmed(false);
-      setOffers(offers.filter((o) => o.id !== offerId));
-      showSnackbar('Oferta została usunięta', 'success');
+      if (!confirmed) {
+        setIsConfirmed(false);
+        return;
+      }
+
+      try {
+        await deleteOfferMutation({ eventId, offerId }).unwrap();
+        showSnackbar('Oferta została usunięta', 'success');
+      } catch (error: any) {
+        console.error('Error deleting offer:', error);
+        showSnackbar(error?.message || 'Błąd podczas usuwania oferty', 'error');
+      } finally {
+        setIsConfirmed(false);
+      }
     },
-    [offers, showConfirm, showSnackbar],
+    [eventId, deleteOfferMutation, showConfirm, showSnackbar],
   );
 
   const [showSendOfferModal, setShowSendOfferModal] = useState(false);
   const [selectedOfferToSend, setSelectedOfferToSend] = useState<any>(null);
 
   const handleSendOffer = useCallback(async () => {
-    const latestOffer = offers.find((o) => o.status === 'draft');
+    const latestOffer = offersData?.find((o) => o.status === 'draft');
     if (!latestOffer) {
       showSnackbar('Brak oferty do wysłania', 'error');
       return;
     }
     setSelectedOfferToSend(latestOffer);
     setShowSendOfferModal(true);
-  }, [offers, showSnackbar]);
+  }, [offersData, showSnackbar]);
 
   const handleOfferSent = useCallback(async () => {
     try {
@@ -619,15 +622,15 @@ export default function EventDetailPageClient({
   }, [setShowEditEventModal, handleDeleteEvent, isAdmin, canManageTeam]);
 
   const latestOffer = useMemo(() => {
-    if (!offers?.length) return null;
+    if (!offersData?.length) return null;
 
     // Najprościej: po updated_at (lub created_at)
-    return [...offers].sort((a, b) => {
+    return [...offersData].sort((a, b) => {
       const ta = new Date(a.updated_at || a.created_at || 0).getTime();
       const tb = new Date(b.updated_at || b.created_at || 0).getTime();
       return tb - ta;
     })[0];
-  }, [offers]);
+  }, [offersData]);
 
   const plannedRevenue = useMemo(() => {
     // ✅ preferuj total_amount z oferty
@@ -1048,7 +1051,7 @@ export default function EventDetailPageClient({
 
       {activeTab === 'offer' && (
         <EventTabOffer
-          offers={offers}
+          offers={offersData || []}
           isConfirmed={isConfirmed}
           eventStatus={event?.status || 'inquiry'}
           setShowCreateOfferModal={setShowCreateOfferModal}
