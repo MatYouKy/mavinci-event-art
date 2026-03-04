@@ -3,30 +3,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
-import {
-  ArrowLeft,
-  ArrowRight,
-  ClipboardList,
-  Building2,
-  DollarSign,
-  CreditCard as Edit,
-  Trash2,
-  Plus,
-  Package,
-  Users,
-  FileText,
-  CheckSquare,
-  Clock,
-  X,
-  User,
-  Tag,
-  Mail,
-  Edit as EditIcon,
-  AlertCircle,
-  History,
-  UserCheck,
-  Truck,
-} from 'lucide-react';
+import { ArrowLeft, ArrowRight, ClipboardList, Building2, DollarSign, CreditCard as Edit, Trash2, Plus, Package, Users, FileText, CheckSquare, Clock, X, User, Tag, Mail, CreditCard as EditIcon, AlertCircle, History, UserCheck, Truck } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 
 import EventTasksBoard from '@/app/(crm)/crm/events/[id]/components/tabs/EventTasksBoard';
