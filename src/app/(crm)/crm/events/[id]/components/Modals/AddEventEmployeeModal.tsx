@@ -29,13 +29,18 @@ export function AddEventEmployeeModal({
   const [canViewBudget, setCanViewBudget] = useState(false);
   const [employeesInPhases, setEmployeesInPhases] = useState<any[]>([]);
   const [loadingPhases, setLoadingPhases] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
 
   const { list: employees, loading } = useEmployees({ activeOnly: true });
 
-  const { employees: eventEmployees, addEmployee } = useEventTeam(eventId);
+  const {
+    employees: eventEmployees,
+    addEmployee,
+    isLoading: isAddingEmployee,
+  } = useEventTeam(eventId);
 
   useEffect(() => {
     if (isOpen) {
@@ -61,7 +66,8 @@ export function AddEventEmployeeModal({
     try {
       const { data: phaseAssignments, error } = await supabase
         .from('event_phase_assignments')
-        .select(`
+        .select(
+          `
           employee_id,
           phase_id,
           assignment_start,
@@ -75,7 +81,8 @@ export function AddEventEmployeeModal({
             end_time,
             event_id
           )
-        `)
+        `,
+        )
         .eq('event_phases.event_id', eventId);
 
       if (error) throw error;
@@ -108,16 +115,14 @@ export function AddEventEmployeeModal({
     }
   };
 
-  if (!isOpen) return null;
-
   const availableEmployees = useMemo(() => {
     if (!employees) return [];
 
     const employeesInPhasesIds = new Set(employeesInPhases.map((e) => e.employee_id));
     const alreadyAssignedIds = new Set(eventEmployees?.map((e: any) => e.employee_id) || []);
 
-    return employees.filter((emp) =>
-      employeesInPhasesIds.has(emp.id) && !alreadyAssignedIds.has(emp.id)
+    return employees.filter(
+      (emp) => employeesInPhasesIds.has(emp.id) && !alreadyAssignedIds.has(emp.id),
     );
   }, [employees, employeesInPhases, eventEmployees]);
 
@@ -128,6 +133,7 @@ export function AddEventEmployeeModal({
   }, [selectedEmployee, employeesInPhases]);
 
   const handleSubmit = async () => {
+    setIsSubmitting(true);
     if (!selectedEmployee) {
       const confirmed = await showConfirm('Wybierz pracownika', 'error');
       if (!confirmed) return;
@@ -165,6 +171,8 @@ export function AddEventEmployeeModal({
     } catch (error) {
       console.error('Error adding employee:', error);
       showSnackbar('Błąd podczas dodawania pracownika', 'error');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -177,12 +185,18 @@ export function AddEventEmployeeModal({
     canInviteMembers ||
     canViewBudget;
 
+  if (!isOpen) return null;
+
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center overflow-y-auto bg-black/50 p-4">
-      <div className="my-8 max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] p-6">
+      <div className="relative my-8 max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] p-6">
         <div className="mb-6 flex items-center justify-between">
           <h2 className="text-xl font-light text-[#e5e4e2]">Dodaj osobę do zespołu</h2>
-          <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
+          <button
+            onClick={onClose}
+            disabled={isSubmitting}
+            className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
+          >
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -200,8 +214,8 @@ export function AddEventEmployeeModal({
                 {loading || loadingPhases
                   ? 'Ładowanie...'
                   : availableEmployees.length === 0
-                  ? 'Brak pracowników przypisanych do faz'
-                  : 'Wybierz pracownika...'}
+                    ? 'Brak pracowników przypisanych do faz'
+                    : 'Wybierz pracownika...'}
               </option>
 
               {!loading && !loadingPhases && availableEmployees.length > 0 ? (
@@ -233,7 +247,8 @@ export function AddEventEmployeeModal({
                     <div className="flex-1">
                       <p className="text-sm font-medium text-[#d3bb73]">{phase.phase_name}</p>
                       <p className="mt-1 text-xs text-[#e5e4e2]/60">
-                        Praca: {new Date(phase.phase_work_start).toLocaleString('pl-PL', {
+                        Praca:{' '}
+                        {new Date(phase.phase_work_start).toLocaleString('pl-PL', {
                           day: '2-digit',
                           month: '2-digit',
                           hour: '2-digit',
@@ -396,12 +411,24 @@ export function AddEventEmployeeModal({
             </button>
             <button
               onClick={onClose}
+              disabled={isSubmitting}
               className="rounded-lg px-4 py-2 text-[#e5e4e2]/60 hover:bg-[#1c1f33]"
             >
               Anuluj
             </button>
           </div>
         </div>
+        {isSubmitting && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center rounded-xl">
+            {/* blur + przyciemnienie */}
+            <div className="absolute inset-0 rounded-xl bg-black/40 backdrop-blur-[1.2px]" />
+
+            {/* loader */}
+            <div className="flex items-center justify-center p-8">
+              <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-[#d3bb73]"></div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
