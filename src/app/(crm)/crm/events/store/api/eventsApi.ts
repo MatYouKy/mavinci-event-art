@@ -269,6 +269,7 @@ export const eventsApi = createApi({
             `,
             )
             .eq('event_id', eventId)
+            .or('removed_from_offer.is.null,removed_from_offer.eq.false')
             .order('created_at', { ascending: true });
 
           if (error) {
