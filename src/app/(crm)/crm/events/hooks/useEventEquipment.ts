@@ -269,7 +269,10 @@ export function useEventEquipment(eventId: string, event?: EventCore) {
         await fetchAvailableEquipment();
         return true;
       } catch (err: any) {
-        showSnackbar(err?.data?.error ?? err?.message ?? 'Nie udało się usunąć', 'error');
+        console.error('[useEventEquipment] removeEquipment error:', err);
+        // RTK Query error structure: err.data contains the error from queryFn
+        const errorMessage = err?.data?.error ?? err?.error ?? err?.message ?? 'Nie udało się usunąć';
+        showSnackbar(errorMessage, 'error');
         return false;
       }
     },

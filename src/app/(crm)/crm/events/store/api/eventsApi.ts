@@ -382,24 +382,52 @@ export const eventsApi = createApi({
     >({
       async queryFn({ id, eventId }) {
         try {
-          const { error } = await supabase.from('event_equipment').delete().eq('id', id);
+          console.log('[removeEventEquipment] Attempting to delete equipment with id:', id);
+
+          // Use .select() to return deleted rows
+          const { data, error } = await supabase
+            .from('event_equipment')
+            .delete()
+            .eq('id', id)
+            .select();
+
+          console.log('[removeEventEquipment] Delete result:', { data, error, deletedCount: data?.length });
 
           if (error) {
+            console.error('[removeEventEquipment] Supabase error:', error);
             return {
               error: {
                 status: 'FETCH_ERROR',
-                error: error.message,
+                data: {
+                  error: error.message,
+                },
               } as unknown as EventsApiError,
             };
           }
 
+          // Check if any rows were actually deleted
+          if (!data || data.length === 0) {
+            console.warn('[removeEventEquipment] No rows deleted - possibly blocked by RLS or item does not exist');
+            return {
+              error: {
+                status: 'CUSTOM_ERROR',
+                data: {
+                  error: 'Nie udało się usunąć sprzętu. Prawdopodobnie brak uprawnień lub wpis nie istnieje.',
+                },
+              } as unknown as EventsApiError,
+            };
+          }
+
+          console.log('[removeEventEquipment] Successfully deleted:', data.length, 'row(s)');
           return { data: { success: true } };
         } catch (error: any) {
           console.error('[removeEventEquipment] exception', error);
           return {
             error: {
               status: 'FETCH_ERROR',
-              error: error.message ?? 'Unknown error',
+              data: {
+                error: error.message ?? 'Unknown error',
+              },
             } as unknown as EventsApiError,
           };
         }
