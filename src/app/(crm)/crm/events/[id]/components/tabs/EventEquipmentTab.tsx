@@ -276,9 +276,6 @@ export const EventEquipmentTab: React.FC<{
     event_end_date: eventEndDate,
   });
 
-  console.log('availabilityByKey-Parent', availabilityByKey);
-  console.log('availableKits-Parent', availableKits);
-  console.log('availableEquipment-Parent', availableEquipment);
 
   useEffect(() => {
     if (!eventId) return;
@@ -293,45 +290,48 @@ export const EventEquipmentTab: React.FC<{
 
     const isAuto = !!row?.auto_added;
 
+    const confirmedRemove = await showConfirm('Usunąć tę pozycję z eventu (pochodzi z oferty)?');
+    if (!confirmedRemove) return;
+
     if (isAuto) {
-      if (!showConfirm('Usunąć tę pozycję z eventu (pochodzi z oferty)?')) return;
 
       console.log('[EventEquipmentTab] Auto-added item, marking as removed');
-      const ok = await updateEquipment(row.id, {
+      const result = await updateEquipment(row.id, {
         removed_from_offer: true,
         is_overridden: true,
         quantity: 0,
       });
 
-      if (ok) {
+      if (result) {
         await refetch();
         await fetchAvailableEquipment();
       }
       return;
     }
 
-    if (!showConfirm('Czy na pewno chcesz usunąć ten sprzęt z eventu?')) return;
-
     console.log('[EventEquipmentTab] Calling removeEquipment with id:', row.id);
-    const ok = await removeEquipment(row.id);
-    console.log('[EventEquipmentTab] removeEquipment result:', ok);
+    const result = await removeEquipment(row.id);
+    console.log('[EventEquipmentTab] removeEquipment result:', result);
 
-    if (ok) {
+    if (result) {
       await refetch();
       await fetchAvailableEquipment();
+    } else {
+      showSnackbar('Nie udało się usunąć pozycji', 'error');
     }
   };
 
   const handleRestoreAutoRow = async (row: any) => {
-    if (!confirm('Przywrócić tę pozycję z oferty do eventu?')) return;
+    const confirmedRestore = await showConfirm('Przywrócić tę pozycję z oferty do eventu?');
+    if (!confirmedRestore) return;
 
-    const ok = await updateEquipment(row.id, {
+    const result = await updateEquipment(row.id, {
       removed_from_offer: false,
       is_overridden: false,
       quantity: Math.max(1, Number(row.offer_quantity ?? row.auto_quantity ?? 1)),
     });
 
-    if (ok) {
+    if (result) {
       await refetch();
       await fetchAvailableEquipment();
     }
