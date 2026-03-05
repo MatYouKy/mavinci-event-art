@@ -196,10 +196,13 @@ export function useEventEquipment(eventId: string, event?: EventCore) {
         .select(
           `
           *,
-          items:equipment_kit_items(
+          equipment_kit_items(
             equipment_id,
+            cable_id,
             quantity,
-            equipment:equipment_items(id, name, category:warehouse_categories(name))
+            is_optional,
+            equipment_items(id, name, brand, model, thumbnail_url, category:warehouse_categories(name)),
+            cables(id, name, length_meters, thumbnail_url)
           )
         `,
         )
@@ -223,7 +226,8 @@ export function useEventEquipment(eventId: string, event?: EventCore) {
           };
         });
 
-        setAvailableKits(kitsWithAvail.filter((k) => Number(k.max_add ?? 0) > 0));
+        // ✅ NIE filtruj kitów - modal sam zadba o wyświetlanie dostępności
+        setAvailableKits(kitsWithAvail);
       }
     } catch (e) {
       console.error('[fetchAvailableEquipment] error', e);
