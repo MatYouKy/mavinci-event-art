@@ -133,9 +133,6 @@ export function AddEquipmentModal({
   const [showKits, setShowKits] = useState(true);
   const [showItems, setShowItems] = useState(true);
 
-  console.log('availabilityByKey', availabilityByKey);
-  console.log('availableKits', availableKits);
-
   const availabilityLoaded = useMemo(() => {
     return availabilityByKey && Object.keys(availabilityByKey).length > 0;
   }, [availabilityByKey]);
