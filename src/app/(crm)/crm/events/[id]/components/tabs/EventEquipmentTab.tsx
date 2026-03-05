@@ -16,7 +16,7 @@ import type { IEvent, SelectedItem } from '../../../type';
 import { EventEquipmentRow } from '../../../UI/RenderRowItem';
 import { buildEquipmentChecklistHtml } from '../../helpers/buildEquipmentChecklistPdf';
 import { supabase } from '@/lib/supabase/browser';
-
+import Image from 'next/image';
 import type {
   UUID,
   EquipmentItemDTO,
@@ -51,9 +51,11 @@ const KitItemRow = ({
         <Popover
           trigger={
             <div className="relative h-10 w-10">
-              <img
-                src={thumb}
+              <Image
+                src={thumb ?? ''}
                 alt={name}
+                width={36}
+                height={36}
                 className="h-9 w-9 rounded border border-[#d3bb73]/20 object-cover"
               />
               {expandInPrint && (
@@ -64,9 +66,11 @@ const KitItemRow = ({
             </div>
           }
           content={
-            <img
+            <Image
               src={thumb}
               alt={name}
+              width={100}
+              height={100}
               className="h-auto cursor-pointer rounded-lg object-contain transition-all"
             />
           }
@@ -271,6 +275,10 @@ export const EventEquipmentTab: React.FC<{
     event_date: eventDate,
     event_end_date: eventEndDate,
   });
+
+  console.log('availabilityByKey-Parent', availabilityByKey);
+  console.log('availableKits-Parent', availableKits);
+  console.log('availableEquipment-Parent', availableEquipment);
 
   useEffect(() => {
     if (!eventId) return;
@@ -650,9 +658,11 @@ export const EventEquipmentTab: React.FC<{
               <Popover
                 trigger={
                   <div className="relative h-10 w-10">
-                    <img
+                    <Image
                       src={kitThumb}
                       alt={kitName}
+                      width={40}
+                      height={40}
                       className="h-10 w-10 cursor-pointer rounded border border-[#d3bb73]/20 object-cover transition-all hover:ring-2 hover:ring-[#d3bb73]"
                     />
                     <div className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#d3bb73] shadow">
@@ -661,9 +671,11 @@ export const EventEquipmentTab: React.FC<{
                   </div>
                 }
                 content={
-                  <img
-                    src={kitThumb}
+                  <Image
+                    src={kitThumb ?? ''}
                     alt={kitName}
+                    width={100}
+                    height={100}
                     className="h-auto cursor-pointer rounded-lg object-contain transition-all"
                   />
                 }

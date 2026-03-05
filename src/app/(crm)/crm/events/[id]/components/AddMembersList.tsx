@@ -45,7 +45,8 @@ export function TeamMembersList({
   } | null>(null);
   const [permissionsForm, setPermissionsForm] = useState({
     can_edit_event: false,
-    can_edit_agenda: false,
+    can_edit_phases: false,
+    can_edit_agenda: false, 
     can_edit_tasks: false,
     can_edit_files: false,
     can_edit_equipment: false,
@@ -60,6 +61,7 @@ export function TeamMembersList({
   const openPermissionsModal = (assignment: any) => {
     setPermissionsForm({
       can_edit_event: assignment.can_edit_event || false,
+      can_edit_phases: assignment.can_edit_phases || false,
       can_edit_agenda: assignment.can_edit_agenda || false,
       can_edit_tasks: assignment.can_edit_tasks || false,
       can_edit_files: assignment.can_edit_files || false,
@@ -311,7 +313,23 @@ export function TeamMembersList({
                 <div>
                   <div className="font-medium text-[#e5e4e2]">Edycja agendy</div>
                   <div className="text-xs text-[#e5e4e2]/60">
-                    Może edytować harmonogram i agendę
+                    Może edytować fazy wydarzenia
+                  </div>
+                </div>
+              </label>
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg bg-[#1c1f33] p-3 transition-colors hover:bg-[#1c1f33]/80">
+                <input
+                  type="checkbox"
+                  checked={permissionsForm.can_edit_phases}
+                  onChange={(e) =>
+                    setPermissionsForm({ ...permissionsForm, can_edit_phases: e.target.checked })
+                  }
+                  className="mt-1 h-4 w-4 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73] focus:ring-offset-[#0f1119]"
+                />
+                <div>
+                  <div className="font-medium text-[#e5e4e2]">Edycja harmonogramu</div>
+                  <div className="text-xs text-[#e5e4e2]/60">
+                    Może edytować harmonogram wydarzenia
                   </div>
                 </div>
               </label>

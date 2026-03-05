@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Package, X } from 'lucide-react';
 import type { AvailabilityUI } from '@/app/(crm)/crm/events/hooks/useEventEquipment';
 import Popover from '@/components/UI/Tooltip';
+import Image from 'next/image';
 
 type ItemType = 'item' | 'kit';
 
@@ -132,6 +133,13 @@ export function AddEquipmentModal({
   const [showKits, setShowKits] = useState(true);
   const [showItems, setShowItems] = useState(true);
 
+  console.log('availabilityByKey', availabilityByKey);
+  console.log('availableKits', availableKits);
+
+  const availabilityLoaded = useMemo(() => {
+    return availabilityByKey && Object.keys(availabilityByKey).length > 0;
+  }, [availabilityByKey]);
+
   // UI: true = ukrywaj niedostępne, false = pokazuj wyszarzone
   const HIDE_UNAVAILABLE = true;
 
@@ -179,9 +187,11 @@ export function AddEquipmentModal({
       .filter((k) => normalize(k?.name).includes(q))
       .filter((k) => {
         const maxAdd = getMaxAdd('kit', k.id);
+        // dopóki availability nie ma, pokazuj wszystko
+        if (!availabilityLoaded) return true;
         return HIDE_UNAVAILABLE ? maxAdd > 0 : true;
       });
-  }, [availableKits, searchTerm, availabilityByKey]); // availabilityByKey -> bo maxAdd
+  }, [availableKits, searchTerm, availabilityLoaded]);
 
   const itemsFiltered = useMemo(() => {
     const q = normalize(searchTerm);
@@ -190,9 +200,11 @@ export function AddEquipmentModal({
       .filter((i) => normalize(i?.name).includes(q) || normalize(i?.category?.name).includes(q))
       .filter((i) => {
         const maxAdd = getMaxAdd('item', i.id);
+        // dopóki availability nie ma, pokazuj wszystko
+        if (!availabilityLoaded) return true;
         return HIDE_UNAVAILABLE ? maxAdd > 0 : true;
       });
-  }, [availableEquipment, searchTerm, availabilityByKey]);
+  }, [availableEquipment, searchTerm, availabilityLoaded]);
 
   const selectedCount = useMemo(
     () => Object.values(selectedItems).filter((it) => it.checked).length,
@@ -369,17 +381,21 @@ export function AddEquipmentModal({
         {url ? (
           <Popover
             trigger={
-              <img
+              <Image
                 src={url}
                 alt={entity?.name}
                 className="h-10 w-10 cursor-pointer rounded border border-[#d3bb73]/20 object-cover transition-all hover:ring-2 hover:ring-[#d3bb73]"
+                width={40}
+                height={40}
               />
             }
             content={
-              <img
+              <Image
                 src={url}
                 alt={entity?.name}
                 className="h-auto max-w-[420px] cursor-pointer rounded-lg object-contain transition-all"
+                width={420}
+                height={420}
               />
             }
             openOn="hover"
