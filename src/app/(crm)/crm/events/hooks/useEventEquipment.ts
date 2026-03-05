@@ -200,7 +200,6 @@ export function useEventEquipment(eventId: string, event?: EventCore) {
             equipment_id,
             cable_id,
             quantity,
-            is_optional,
             equipment_items(id, name, brand, model, thumbnail_url, category:warehouse_categories(name)),
             cables(id, name, length_meters, thumbnail_url)
           )
