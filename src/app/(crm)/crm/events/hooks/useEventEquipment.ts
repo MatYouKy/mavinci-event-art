@@ -11,7 +11,7 @@ import {
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { supabase } from '@/lib/supabase/browser';
 
-type ItemType = 'item' | 'kit';
+type ItemType = 'item' | 'kit' | 'cable';
 type AvailKey = `${ItemType}-${string}`;
 
 type AvailabilityRow = {
@@ -55,6 +55,12 @@ function buildInEventMap(equipmentRows: any[]) {
     const eqId = row?.equipment_id ?? row?.equipment?.id ?? row?.equipment?.equipment_id;
     if (eqId) {
       const k = keyOf('item', eqId);
+      map.set(k, (map.get(k) ?? 0) + qty);
+    }
+
+    const cableId = row?.cable_id ?? row?.cable?.id;
+    if (cableId) {
+      const k = keyOf('cable', cableId);
       map.set(k, (map.get(k) ?? 0) + qty);
     }
 
@@ -155,6 +161,30 @@ export function useEventEquipment(eventId: string, event?: EventCore) {
         };
       }
 
+      // ✅ Dodaj kable do byKey (RPC ich nie zwraca)
+      const { data: cables } = await supabase
+        .from('cables')
+        .select('id, stock_quantity')
+        .eq('is_active', true)
+        .is('deleted_at', null);
+
+      for (const cable of cables || []) {
+        const k = keyOf('cable', cable.id);
+        const used = Number(usedMap.get(k) ?? 0);
+        const available_in_term = Math.max(0, Number(cable.stock_quantity ?? 0));
+        const max_add = Math.max(0, available_in_term - used);
+        const max_set = used + max_add;
+
+        byKey[k] = {
+          total_quantity: Number(cable.stock_quantity ?? 0),
+          reserved_quantity: 0,
+          used_by_this_event: used,
+          available_in_term,
+          max_add,
+          max_set,
+        };
+      }
+
       // ✅ JEŚLI w międzyczasie poszedł nowszy fetch – nie nadpisuj stanu
       if (seq !== fetchSeqRef.current) return;
 
@@ -211,17 +241,43 @@ export function useEventEquipment(eventId: string, event?: EventCore) {
 
       if (!kitsError && kits) {
         const kitsWithAvail = (kits as any[]).map((kit) => {
-          const k = keyOf('kit', kit.id);
-          const a = byKey[k];
+          // Oblicz dostępność kita = MIN(dostępności wszystkich jego itemów)
+          let minAvailable = Infinity;
+          const kitItems = kit.equipment_kit_items || [];
+
+          for (const item of kitItems) {
+            if (item.equipment_id) {
+              const k = keyOf('item', item.equipment_id);
+              const avail = byKey[k];
+              if (avail) {
+                const canAddFromThisItem = Math.floor(avail.max_add / item.quantity);
+                minAvailable = Math.min(minAvailable, canAddFromThisItem);
+              } else {
+                minAvailable = 0;
+              }
+            } else if (item.cable_id) {
+              const k = keyOf('cable', item.cable_id);
+              const avail = byKey[k];
+              if (avail) {
+                const canAddFromThisItem = Math.floor(avail.max_add / item.quantity);
+                minAvailable = Math.min(minAvailable, canAddFromThisItem);
+              } else {
+                minAvailable = 0;
+              }
+            }
+          }
+
+          const maxAddKits = minAvailable === Infinity ? 0 : Math.max(0, minAvailable);
+
           return {
             ...kit,
-            available_count: a?.max_add ?? 0,
-            used_by_this_event: a?.used_by_this_event ?? 0,
-            available_in_term: a?.available_in_term ?? 0,
-            max_add: a?.max_add ?? 0,
-            max_set: a?.max_set ?? 0,
-            reserved_quantity: a?.reserved_quantity ?? 0,
-            total_quantity: a?.total_quantity ?? 0,
+            available_count: maxAddKits,
+            used_by_this_event: 0,
+            available_in_term: maxAddKits,
+            max_add: maxAddKits,
+            max_set: maxAddKits,
+            reserved_quantity: 0,
+            total_quantity: maxAddKits,
           };
         });
 
