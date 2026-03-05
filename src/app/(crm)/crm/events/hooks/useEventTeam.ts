@@ -1,10 +1,11 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import {
   useGetEventEmployeesQuery,
   useAddEventEmployeeMutation,
   useRemoveEventEmployeeMutation,
 } from '@/app/(crm)/crm/events/store/api/eventsApi';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { supabase } from '@/lib/supabase/browser';
 
 export function useEventTeam(eventId: string) {
   const { showSnackbar } = useSnackbar();
@@ -62,6 +63,32 @@ export function useEventTeam(eventId: string) {
     },
     [eventId, removeEmployee, showSnackbar],
   );
+
+  // Realtime subscription - auto-refresh przy zmianach w employee_assignments
+  useEffect(() => {
+    if (!eventId) return;
+
+    const channel = supabase
+      .channel(`event_team_${eventId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'employee_assignments',
+          filter: `event_id=eq.${eventId}`,
+        },
+        (payload) => {
+          console.log('[useEventTeam] Realtime update:', payload);
+          refetch();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [eventId, refetch]);
 
   return {
     employees,

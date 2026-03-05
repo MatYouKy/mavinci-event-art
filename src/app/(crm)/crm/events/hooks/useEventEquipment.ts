@@ -1,6 +1,7 @@
 // useEventEquipment.ts
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  useGetAllEventEquipmentForAvailabilityQuery,
   useGetEventEquipmentQuery,
   useAddEventEquipmentMutation,
   useUpdateEventEquipmentMutation,
@@ -69,12 +70,19 @@ function buildInEventMap(equipmentRows: any[]) {
 export function useEventEquipment(eventId: string, event?: EventCore) {
   const { showSnackbar } = useSnackbar();
 
+  // Pobiera tylko aktywne equipment (do wyświetlania)
   const {
     data: equipment = [],
     isLoading,
     error,
     refetch,
   } = useGetEventEquipmentQuery(eventId, { skip: !eventId });
+
+  // Pobiera WSZYSTKIE equipment (włącznie z usuniętymi) - do liczenia dostępności
+  const {
+    data: allEquipmentForAvailability = [],
+    refetch: refetchAll,
+  } = useGetAllEventEquipmentForAvailabilityQuery(eventId, { skip: !eventId });
 
   const [addMutation, { isLoading: isAdding }] = useAddEventEquipmentMutation();
   const [updateMutation, { isLoading: isUpdating }] = useUpdateEventEquipmentMutation();
@@ -87,8 +95,9 @@ export function useEventEquipment(eventId: string, event?: EventCore) {
 
   const equipmentRef = useRef<any[]>([]);
   useEffect(() => {
-    equipmentRef.current = equipment || [];
-  }, [equipment]);
+    // Używamy WSZYSTKICH equipment (włącznie z usuniętymi) do liczenia dostępności
+    equipmentRef.current = allEquipmentForAvailability || [];
+  }, [allEquipmentForAvailability]);
 
   // ✅ request guard – tylko ostatni fetch ma prawo zapisać state
   const fetchSeqRef = useRef(0);
@@ -230,7 +239,7 @@ export function useEventEquipment(eventId: string, event?: EventCore) {
         await addMutation({ eventId, items }).unwrap();
         showSnackbar('Sprzęt dodany', 'success');
 
-        await refetch();
+        await Promise.all([refetch(), refetchAll()]);
         await fetchAvailableEquipment();
         return true;
       } catch (err: any) {
@@ -239,7 +248,7 @@ export function useEventEquipment(eventId: string, event?: EventCore) {
         return false;
       }
     },
-    [addMutation, eventId, fetchAvailableEquipment, refetch, showSnackbar],
+    [addMutation, eventId, fetchAvailableEquipment, refetch, refetchAll, showSnackbar],
   );
 
   const updateEquipment = useCallback(
@@ -248,7 +257,7 @@ export function useEventEquipment(eventId: string, event?: EventCore) {
         await updateMutation({ id, eventId, data }).unwrap();
         showSnackbar('Zaktualizowano', 'success');
 
-        await refetch();
+        await Promise.all([refetch(), refetchAll()]);
         await fetchAvailableEquipment();
         return true;
       } catch (err: any) {
@@ -256,7 +265,7 @@ export function useEventEquipment(eventId: string, event?: EventCore) {
         return false;
       }
     },
-    [eventId, fetchAvailableEquipment, refetch, showSnackbar, updateMutation],
+    [eventId, fetchAvailableEquipment, refetch, refetchAll, showSnackbar, updateMutation],
   );
 
   const removeEquipment = useCallback(
@@ -265,7 +274,7 @@ export function useEventEquipment(eventId: string, event?: EventCore) {
         await removeMutation({ id, eventId }).unwrap();
         showSnackbar('Usunięto', 'success');
 
-        await refetch();
+        await Promise.all([refetch(), refetchAll()]);
         await fetchAvailableEquipment();
         return true;
       } catch (err: any) {
@@ -276,7 +285,7 @@ export function useEventEquipment(eventId: string, event?: EventCore) {
         return false;
       }
     },
-    [eventId, fetchAvailableEquipment, refetch, removeMutation, showSnackbar],
+    [eventId, fetchAvailableEquipment, refetch, refetchAll, removeMutation, showSnackbar],
   );
 
   return {

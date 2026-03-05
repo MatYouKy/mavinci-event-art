@@ -76,6 +76,35 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
     fetchTimelineData();
   }, [employeeIds, timelineBounds]);
 
+  // Realtime subscription - auto-refresh przy zmianach w employee_assignments
+  useEffect(() => {
+    if (employeeIds.length === 0) return;
+
+    const channel = supabase
+      .channel('employee_timeline_realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'employee_assignments',
+        },
+        (payload) => {
+          console.log('[EmployeesTimelineView] Realtime update:', payload);
+          // Sprawdź czy zmiany dotyczą jednego z filtrowanych pracowników
+          const affectedEmployeeId = (payload.new as any)?.employee_id || (payload.old as any)?.employee_id;
+          if (affectedEmployeeId && employeeIds.includes(affectedEmployeeId)) {
+            fetchTimelineData();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [employeeIds]);
+
   useEffect(() => {
     if (zoomLevel !== prevZoomLevel) {
       adjustTimelineForZoom();

@@ -235,6 +235,38 @@ export const eventsApi = createApi({
     }),
 
     // ============ EQUIPMENT ENDPOINTS ============
+
+    // Pobiera wszystkie equipment (włącznie z removed_from_offer: true) - do liczenia dostępności
+    getAllEventEquipmentForAvailability: builder.query<any[], string>({
+      async queryFn(eventId) {
+        try {
+          const { data, error } = await supabase
+            .from('event_equipment')
+            .select('id, equipment_id, kit_id, quantity, removed_from_offer')
+            .eq('event_id', eventId);
+
+          if (error) {
+            return {
+              error: {
+                status: 'CUSTOM_ERROR',
+                error: error.message,
+              } as unknown as EventsApiError,
+            };
+          }
+
+          return { data: (data || []) as any[] };
+        } catch (error: any) {
+          return {
+            error: {
+              status: 'FETCH_ERROR',
+              error: error.message ?? 'Unknown error',
+            } as unknown as EventsApiError,
+          };
+        }
+      },
+      providesTags: (result, error, eventId) => [{ type: 'EventEquipment', id: eventId }],
+    }),
+
     getEventEquipment: builder.query<any[], string>({
       async queryFn(eventId) {
         try {
@@ -1009,6 +1041,7 @@ export const {
   useCreateEventMutation,
   useUpdateEventMutation,
   useDeleteEventMutation,
+  useGetAllEventEquipmentForAvailabilityQuery,
   useGetEventEquipmentQuery,
   useAddEventEquipmentMutation,
   useUpdateEventEquipmentMutation,
