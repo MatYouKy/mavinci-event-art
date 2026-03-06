@@ -744,21 +744,24 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   // EMPLOYEES
   // =========================
   const employeeRows: ResourceRow[] = useMemo(() => {
-    const getEmployeeMatchId = (emp: any) => emp.auth_user_id ?? emp.user_id ?? emp.id;
+    // ✅ NAPRAWIONE: Używamy emp.id (które jest employees.id w bazie)
+    // Bo event_phase_assignments.employee_id wskazuje na employees.id
+    const getEmployeeMatchId = (emp: any) => emp.id;
 
     return employees.map((emp) => {
       const empMatchId = getEmployeeMatchId(emp);
 
       const assignments = phaseAssignments
         .flatMap(({ phase, assignments }) => {
+          // ✅ NAPRAWIONE: Porównujemy employee_id z emp.id (nie auth_user_id)
           const matches = (assignments ?? []).filter((a: any) => a?.employee_id === empMatchId);
           if (matches.length === 0) return [];
 
           return matches
-            .filter((a: any) => a?.role !== 'coordinator' && a?.role !== 'lead')
+            // ✅ POKAZUJ WSZYSTKIE role, nawet coordinator/lead (bo one też są na timeline)
             .map((a: any) => {
-              const startTime = a.assignment_start || phase.start_time;
-              const endTime = a.assignment_end || phase.end_time;
+              const startTime = a.assignment_start || a.phase_work_start || phase.start_time;
+              const endTime = a.assignment_end || a.phase_work_end || phase.end_time;
 
               return {
                 id: a.id,
