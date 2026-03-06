@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { supabase } from '@/lib/supabase/browser';
 import { X } from 'lucide-react';
 import { EmployeeAvatar } from '@/components/EmployeeAvatar';
-import { EditIcon, Trash2, User, ChevronUp, ChevronDown, AlertCircle } from 'lucide-react';
+import { Bitcoin as EditIcon, Trash2, User, ChevronUp, ChevronDown, AlertCircle } from 'lucide-react';
 import { Employee } from '@/lib/permissions';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import { IEmployee } from '@/app/(crm)/crm/employees/type';
