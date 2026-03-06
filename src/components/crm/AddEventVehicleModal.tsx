@@ -124,6 +124,8 @@ export default function AddEventVehicleModal({
     external_trailer_return_date: '',
     external_trailer_return_location: '',
     external_trailer_notes: '',
+    phase_from_id: '',
+    phase_to_id: '',
   });
 
   useEffect(() => {
@@ -692,17 +694,22 @@ export default function AddEventVehicleModal({
       let availableUntil: string;
       let departureTime: Date;
       
-      // DLA POJAZDU Z FLOTY: zawsze z faz załad/rozład
+      // DLA POJAZDU Z FLOTY: bazuj na wybranych fazach
       if (!isExternal) {
-        const range = calculateSuggestedTimes();
-      
-        if (!range || !range.hasLoadingPhase || !range.hasUnloadingPhase) {
-          throw new Error('Brak faz Załadunek/Rozładunek – nie można poprawnie zarezerwować pojazdu.');
+        if (!formData.phase_from_id || !formData.phase_to_id) {
+          throw new Error('Wybierz fazy odbioru i zwrotu pojazdu.');
         }
-      
-        departureTime = range.availableFrom;
-        availableFrom = range.availableFrom.toISOString();
-        availableUntil = range.availableUntil.toISOString();
+
+        const phaseFrom = eventPhases.find(p => p.id === formData.phase_from_id);
+        const phaseTo = eventPhases.find(p => p.id === formData.phase_to_id);
+
+        if (!phaseFrom || !phaseTo) {
+          throw new Error('Nie znaleziono wybranych faz.');
+        }
+
+        departureTime = new Date(phaseFrom.start_time);
+        availableFrom = phaseFrom.start_time;
+        availableUntil = phaseTo.end_time;
       } else {
         // zewnętrzny – możesz zostawić obecne liczenie (albo też wymusić fazy)
         departureTime = calculateDepartureTime();
@@ -1197,95 +1204,113 @@ export default function AddEventVehicleModal({
             </div>
           )}
 
-          {/* Czasy */}
-          <div className="space-y-4 rounded-lg bg-[#0f1119] p-4">
-            <h4 className="flex items-center gap-2 font-medium text-[#e5e4e2]">
-              <Clock className="h-5 w-5 text-[#d3bb73]" />
-              Planowanie czasu
-            </h4>
+          {/* Czasy - Wybór faz */}
+          {!isExternal && (
+            <div className="space-y-4 rounded-lg bg-[#0f1119] p-4">
+              <h4 className="flex items-center gap-2 font-medium text-[#e5e4e2]">
+                <Clock className="h-5 w-5 text-[#d3bb73]" />
+                Planowanie czasu
+              </h4>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <p className="text-sm text-[#e5e4e2]/60">
+                Wybierz fazę odbioru (np. Załadunek) i fazę zwrotu pojazdu (np. Rozładunek).
+                Pojazd będzie zarezerwowany od początku fazy odbioru do końca fazy zwrotu.
+              </p>
 
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                    Faza odbioru pojazdu *
+                  </label>
+                  <select
+                    required
+                    value={formData.phase_from_id}
+                    onChange={(e) => setFormData({ ...formData, phase_from_id: e.target.value })}
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
+                  >
+                    <option value="">Wybierz fazę...</option>
+                    {eventPhases.map((phase) => (
+                      <option key={phase.id} value={phase.id}>
+                        {phase.name} ({new Date(phase.start_time).toLocaleString('pl-PL', {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-[#e5e4e2]/50">
+                    Pojazd będzie dostępny od początku tej fazy
+                  </p>
+                </div>
 
-              {/* Sugerowane czasy na podstawie faz */}
-              {suggestedTimes && (
-                <div className="col-span-3 rounded-lg border border-blue-500/30 bg-blue-500/10 p-4">
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                    Faza zwrotu pojazdu *
+                  </label>
+                  <select
+                    required
+                    value={formData.phase_to_id}
+                    onChange={(e) => setFormData({ ...formData, phase_to_id: e.target.value })}
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
+                  >
+                    <option value="">Wybierz fazę...</option>
+                    {eventPhases.map((phase) => (
+                      <option key={phase.id} value={phase.id}>
+                        {phase.name} ({new Date(phase.end_time).toLocaleString('pl-PL', {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-[#e5e4e2]/50">
+                    Pojazd będzie dostępny do końca tej fazy
+                  </p>
+                </div>
+              </div>
+
+              {formData.phase_from_id && formData.phase_to_id && (
+                <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-4">
                   <div className="mb-2 flex items-center gap-2">
                     <Clock className="h-5 w-5 text-blue-400" />
                     <span className="text-sm font-semibold text-blue-300">
-                      Sugerowane czasy na podstawie faz wydarzenia
+                      Okres rezerwacji pojazdu
                     </span>
                   </div>
-                  <div className="mb-3 text-xs text-[#e5e4e2]/70">{suggestedTimes.explanation}</div>
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div>
                       <div className="text-xs text-[#e5e4e2]/60">Dostępny od:</div>
                       <div className="font-medium text-blue-300">
-                        {suggestedTimes.availableFrom.toLocaleString('pl-PL', {
-                          dateStyle: 'short',
-                          timeStyle: 'short',
-                        })}
+                        {(() => {
+                          const phaseFrom = eventPhases.find(p => p.id === formData.phase_from_id);
+                          return phaseFrom ? new Date(phaseFrom.start_time).toLocaleString('pl-PL', {
+                            dateStyle: 'short',
+                            timeStyle: 'short',
+                          }) : '-';
+                        })()}
                       </div>
                     </div>
                     <div>
                       <div className="text-xs text-[#e5e4e2]/60">Dostępny do:</div>
                       <div className="font-medium text-blue-300">
-                        {suggestedTimes.availableUntil.toLocaleString('pl-PL', {
-                          dateStyle: 'short',
-                          timeStyle: 'short',
-                        })}
+                        {(() => {
+                          const phaseTo = eventPhases.find(p => p.id === formData.phase_to_id);
+                          return phaseTo ? new Date(phaseTo.end_time).toLocaleString('pl-PL', {
+                            dateStyle: 'short',
+                            timeStyle: 'short',
+                          }) : '-';
+                        })()}
                       </div>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={applySuggestedTimes}
-                    className="mt-3 w-full rounded-lg bg-blue-500/20 px-4 py-2 text-sm font-medium text-blue-300 transition-colors hover:bg-blue-500/30"
-                  >
-                    Użyj sugerowanych czasów
-                  </button>
                 </div>
               )}
-
-              <div>
-                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-                  Czas załadunku (min)
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  value={formData.loading_time_minutes}
-                  onChange={(e) => {
-                    setFormData({
-                      ...formData,
-                      loading_time_minutes: parseInt(e.target.value) || 0,
-                    });
-                    setUseSuggestedTimes(false); // Reset przy ręcznej zmianie
-                  }}
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-                  Czas dojazdu (min)
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  value={formData.travel_time_minutes}
-                  onChange={(e) => {
-                    setFormData({
-                      ...formData,
-                      travel_time_minutes: parseInt(e.target.value) || 0,
-                    });
-                    setUseSuggestedTimes(false); // Reset przy ręcznej zmianie
-                  }}
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
-                />
-              </div>
             </div>
-          </div>
+          )}
 
           {/* Koszty */}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
