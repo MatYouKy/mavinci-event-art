@@ -7,6 +7,7 @@ import {
   useGetPhaseVehiclesQuery,
   useGetPhaseEquipmentQuery,
 } from '@/store/api/eventPhasesApi';
+import { supabase } from '@/lib/supabase/browser';
 
 export interface PhaseAssignmentsData {
   phase: EventPhase;
@@ -61,12 +62,62 @@ const SinglePhaseLoader: React.FC<{
   phase: EventPhase;
   onDataLoaded: (data: PhaseAssignmentsData) => void;
 }> = memo(({ phase, onDataLoaded }) => {
-  const { data: assignments = [] } = useGetPhaseAssignmentsQuery(phase.id);
-  const { data: vehicleAssignments = [] } = useGetPhaseVehiclesQuery(phase.id);
-  const { data: equipmentAssignments = [] } = useGetPhaseEquipmentQuery(phase.id);
+  const { data: assignments = [], refetch: refetchAssignments } = useGetPhaseAssignmentsQuery(phase.id);
+  const { data: vehicleAssignments = [], refetch: refetchVehicles } = useGetPhaseVehiclesQuery(phase.id);
+  const { data: equipmentAssignments = [], refetch: refetchEquipment } = useGetPhaseEquipmentQuery(phase.id);
 
   // 🔒 stabilny klucz zmian dla tej fazy
   const phaseDataKeyRef = useRef<string>('');
+
+  // Realtime subscription for phase data
+  useEffect(() => {
+    if (!phase?.id) return;
+
+    const channel = supabase
+      .channel(`phase_data_${phase.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'event_phase_assignments',
+          filter: `phase_id=eq.${phase.id}`,
+        },
+        () => {
+          console.log('[SinglePhaseLoader] Assignment update for phase:', phase.name);
+          refetchAssignments();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'event_phase_vehicles',
+          filter: `phase_id=eq.${phase.id}`,
+        },
+        () => {
+          refetchVehicles();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'event_phase_equipment',
+          filter: `phase_id=eq.${phase.id}`,
+        },
+        () => {
+          refetchEquipment();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [phase?.id, refetchAssignments, refetchVehicles, refetchEquipment]);
 
   useEffect(() => {
     const empKey = makeListKey(assignments, 'emp');

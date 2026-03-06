@@ -49,6 +49,32 @@ export function AddEventEmployeeModal({
     }
   }, [isOpen, eventId]);
 
+  // Realtime subscription for phase assignments
+  useEffect(() => {
+    if (!isOpen || !eventId) return;
+
+    const channel = supabase
+      .channel(`event_phase_assignments_${eventId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'event_phase_assignments',
+        },
+        (payload) => {
+          console.log('[AddEventEmployeeModal] Phase assignment update:', payload);
+          // Refetch to update available employees list
+          fetchEmployeesInPhases();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [isOpen, eventId]);
+
   const fetchAccessLevels = async () => {
     const { data, error } = await supabase.from('access_levels').select('*').order('order_index');
 

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { X, User, Package, Car, Plus, CheckCircle, XCircle, AlertCircle, Trash2 } from 'lucide-react';
 import {
   EventPhase,
@@ -11,6 +11,7 @@ import {
 } from '@/store/api/eventPhasesApi';
 import { useGetEventEmployeesQuery, useGetEventEquipmentQuery, useGetEventVehiclesQuery } from '../../../store/api/eventsApi';
 import { AddPhaseAssignmentModal } from '../Modals/AddPhaseAssignmentModal';
+import { supabase } from '@/lib/supabase/browser';
 
 interface PhaseResourcesPanelProps {
   phase: EventPhase;
@@ -42,12 +43,38 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
   });
 
   // Get phase-specific assignments
-  const { data: phaseAssignments = [] } = useGetPhaseAssignmentsQuery(phase.id);
+  const { data: phaseAssignments = [], refetch: refetchAssignments } = useGetPhaseAssignmentsQuery(phase.id);
   const { data: phaseEquipment = [] } = useGetPhaseEquipmentQuery(phase.id);
   const { data: phaseVehicles = [] } = useGetPhaseVehiclesQuery(phase.id);
 
   // Mutations
   const [deleteAssignment] = useDeletePhaseAssignmentMutation();
+
+  // Realtime subscription for phase assignments
+  useEffect(() => {
+    if (!phase?.id) return;
+
+    const channel = supabase
+      .channel(`phase_assignments_${phase.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'event_phase_assignments',
+          filter: `phase_id=eq.${phase.id}`,
+        },
+        (payload) => {
+          console.log('[PhaseResourcesPanel] Realtime update:', payload);
+          refetchAssignments();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [phase?.id, refetchAssignments]);
 
   // Handlers
   const handleRemoveEmployee = async (assignmentId: string) => {
