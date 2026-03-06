@@ -122,7 +122,17 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
       });
     }
 
-    return Array.from(employeeMap.values()).filter((emp: any) => emp);
+    const result = Array.from(employeeMap.values()).filter((emp: any) => emp);
+
+    console.log('[PhaseResourcesPanel] filteredEmployees:', result.map(e => `${e.name} ${e.surname} (${e.id})`));
+    console.log('[PhaseResourcesPanel] phaseAssignments:', phaseAssignments.map((a: any) => ({
+      id: a.id,
+      employee_id: a.employee_id,
+      employee_name: a.employee ? `${a.employee.name} ${a.employee.surname}` : 'no employee',
+      status: a.invitation_status
+    })));
+
+    return result;
   }, [eventEmployees, phaseAssignments]);
 
   const filteredVehicles = useMemo(() => {
@@ -266,6 +276,12 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
                   <div className="divide-y divide-[#d3bb73]/10">
                     {filteredEmployees.map((employee) => {
                       const assignment = phaseAssignments.find(a => a.employee_id === employee.id);
+
+                      console.log(`[PhaseResourcesPanel] Matching employee ${employee.name} ${employee.surname} (${employee.id}) with assignments:`, {
+                        found: !!assignment,
+                        assignmentId: assignment?.id,
+                        phaseAssignmentsCount: phaseAssignments.length
+                      });
 
                       return (
                         <div key={employee.id} className="p-4">
