@@ -14,6 +14,7 @@ import {
 import { PhaseAssignmentsData } from './PhaseAssignmentsLoader';
 import { useTimelineDrag } from './useTimelineDrag';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { roleLabels } from '../../helpers/roleLabels';
 
 interface ResourceTimelineProps {
   eventId: string;
@@ -72,11 +73,11 @@ interface ActionButtonsProps {
 }
 
 const ActionButtons = memo<ActionButtonsProps>(({ onSave, onDiscard, isLoading }) => (
-  <div className="absolute top-4 right-4 z-50 flex gap-2 animate-in fade-in slide-in-from-top-2 duration-200">
+  <div className="animate-in fade-in slide-in-from-top-2 absolute right-4 top-4 z-50 flex gap-2 duration-200">
     <button
       onClick={onSave}
       disabled={isLoading}
-      className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-semibold text-[#1a1a1a] shadow-lg transition-all hover:bg-[#e5cd85] hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+      className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-semibold text-[#1a1a1a] shadow-lg transition-all hover:bg-[#e5cd85] hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50"
       title="Zapisz zmiany (Enter)"
     >
       <Save className="h-4 w-4" />
@@ -85,7 +86,7 @@ const ActionButtons = memo<ActionButtonsProps>(({ onSave, onDiscard, isLoading }
     <button
       onClick={onDiscard}
       disabled={isLoading}
-      className="flex items-center gap-2 rounded-lg bg-red-500/90 px-4 py-2 text-sm font-semibold text-white shadow-lg transition-all hover:bg-red-600 hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+      className="flex items-center gap-2 rounded-lg bg-red-500/90 px-4 py-2 text-sm font-semibold text-white shadow-lg transition-all hover:bg-red-600 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50"
       title="Odrzuć zmiany (Esc)"
     >
       <X className="h-4 w-4" />
@@ -122,7 +123,7 @@ const ResizeHandle = memo<{
   onMouseDown: (e: React.MouseEvent) => void;
 }>(({ side, onMouseDown }) => (
   <div
-    className={`${side === 'left' ? 'absolute left-0 top-0 bottom-0' : ''} w-2 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-[#d3bb73]/40 flex items-center justify-center ${side === 'right' ? 'h-full' : ''}`}
+    className={`${side === 'left' ? 'absolute bottom-0 left-0 top-0' : ''} flex w-2 cursor-ew-resize items-center justify-center opacity-0 hover:bg-[#d3bb73]/40 group-hover:opacity-100 ${side === 'right' ? 'h-full' : ''}`}
     onMouseDown={onMouseDown}
   >
     <GripVertical className="h-3 w-3 text-[#d3bb73]" />
@@ -148,237 +149,272 @@ interface AssignmentBarProps {
   onHoverChange: (id: string | null) => void;
   onFocusChange: (id: string | null) => void;
   onDelete: (assignmentId: string, phaseId: string) => void;
-  onTimeUpdate: (assignmentId: string, newStart: Date, newEnd: Date, originalStart: string, originalEnd: string, resourceType: 'employee' | 'vehicle' | 'equipment') => void;
+  onTimeUpdate: (
+    assignmentId: string,
+    newStart: Date,
+    newEnd: Date,
+    originalStart: string,
+    originalEnd: string,
+    resourceType: 'employee' | 'vehicle' | 'equipment',
+  ) => void;
   onContextMenu?: (e: React.MouseEvent, assignment: Assignment, resource: ResourceRow) => void;
   containerRef?: React.RefObject<HTMLDivElement>;
   editedTimes?: { start: Date; end: Date } | null; // Tymczasowe czasy z edycji
   resourceType: 'employee' | 'vehicle' | 'equipment';
 }
 
-const AssignmentBar = memo<AssignmentBarProps>(({
-  assignment,
-  resource,
-  position,
-  phaseColor,
-  heightPx,
-  isEmployee,
-  hoveredAssignment,
-  focusedAssignment,
-  formatTime,
-  timelineBounds,
-  zoomLevel,
-  onHoverChange,
-  onFocusChange,
-  onDelete,
-  onTimeUpdate,
-  onContextMenu,
-  containerRef,
-  editedTimes,
-  resourceType,
-}) => {
-  const barRef = useRef<HTMLDivElement>(null);
-  const [dragPreview, setDragPreview] = useState<{ left: string; width: string } | null>(null);
-
-  // Użyj editedTimes jeśli dostępne, w przeciwnym razie oryginalne czasy
-  const displayStartTime = editedTimes ? editedTimes.start.toISOString() : assignment.start_time;
-  const displayEndTime = editedTimes ? editedTimes.end.toISOString() : assignment.end_time;
-
-  const { dragMode, startDrag } = useTimelineDrag({
+const AssignmentBar = memo<AssignmentBarProps>(
+  ({
+    assignment,
+    resource,
+    position,
+    phaseColor,
+    heightPx,
+    isEmployee,
+    hoveredAssignment,
+    focusedAssignment,
+    formatTime,
     timelineBounds,
     zoomLevel,
-    onDragEnd: (newStart, newEnd) => {
-      if (assignment.id) {
-        onTimeUpdate(assignment.id, newStart, newEnd, assignment.start_time, assignment.end_time, resourceType);
-      }
-      setDragPreview(null);
-    },
-  });
+    onHoverChange,
+    onFocusChange,
+    onDelete,
+    onTimeUpdate,
+    onContextMenu,
+    containerRef,
+    editedTimes,
+    resourceType,
+  }) => {
+    const barRef = useRef<HTMLDivElement>(null);
+    const [dragPreview, setDragPreview] = useState<{ left: string; width: string } | null>(null);
 
-  // Live preview podczas drag - sprawdzaj atrybuty data-* na containerze
-  useEffect(() => {
-    if (!dragMode || !containerRef?.current) return;
+    // Użyj editedTimes jeśli dostępne, w przeciwnym razie oryginalne czasy
+    const displayStartTime = editedTimes ? editedTimes.start.toISOString() : assignment.start_time;
+    const displayEndTime = editedTimes ? editedTimes.end.toISOString() : assignment.end_time;
 
-    const interval = setInterval(() => {
-      const container = containerRef.current;
-      if (!container) return;
-
-      const dragStart = container.getAttribute('data-drag-start');
-      const dragEnd = container.getAttribute('data-drag-end');
-
-      if (dragStart && dragEnd) {
-        const start = new Date(dragStart).getTime();
-        const end = new Date(dragEnd).getTime();
-        const totalDuration = timelineBounds.end.getTime() - timelineBounds.start.getTime();
-        const left = ((start - timelineBounds.start.getTime()) / totalDuration) * 100;
-        const width = ((end - start) / totalDuration) * 100;
-
-        setDragPreview({
-          left: `${Math.max(0, left)}%`,
-          width: `${Math.max(1, width)}%`,
-        });
-      }
-    }, 16); // ~60fps
-
-    return () => clearInterval(interval);
-  }, [dragMode, containerRef, timelineBounds]);
-
-  const isHovered = hoveredAssignment === assignment.id;
-  const isFocused = focusedAssignment === assignment.id;
-  const isDragging = !!dragMode;
-  const isPending = isEmployee && assignment.invitation_status === 'pending';
-  const isRejected = isEmployee && assignment.invitation_status === 'rejected';
-
-  // Jeśli są editedTimes, przelicz pozycję na ich podstawie
-  const displayPosition = useMemo(() => {
-    if (!editedTimes) return position;
-
-    const start = editedTimes.start.getTime();
-    const end = editedTimes.end.getTime();
-    const totalDuration = timelineBounds.end.getTime() - timelineBounds.start.getTime();
-    const left = ((start - timelineBounds.start.getTime()) / totalDuration) * 100;
-    const width = ((end - start) / totalDuration) * 100;
-
-    return {
-      left: `${Math.max(0, left)}%`,
-      width: `${Math.max(1, width)}%`,
-    };
-  }, [editedTimes, position, timelineBounds]);
-
-  const currentPosition = dragPreview || displayPosition;
-
-  // Zwiększona wysokość podczas drag lub edycji (ale nie focusu)
-  const barHeight = (isDragging || editedTimes) ? heightPx * 1.2 : heightPx - 12;
-
-  const handleResizeStart = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (containerRef?.current) {
-      startDrag(
-        'resize-start',
-        e.clientX,
-        new Date(displayStartTime),
-        new Date(displayEndTime),
-        containerRef.current
-      );
-    }
-  }, [startDrag, displayStartTime, displayEndTime, containerRef]);
-
-  const handleResizeEnd = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (containerRef?.current) {
-      startDrag(
-        'resize-end',
-        e.clientX,
-        new Date(displayStartTime),
-        new Date(displayEndTime),
-        containerRef.current
-      );
-    }
-  }, [startDrag, displayStartTime, displayEndTime, containerRef]);
-
-  const handleDelete = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    onDelete(assignment.id!, assignment.phaseId!);
-  }, [onDelete, assignment.id, assignment.phaseId]);
-
-  const handleClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    // Kliknięcie ustawia focus na to przypisanie
-    onFocusChange(assignment.id ?? null);
-  }, [onFocusChange, assignment.id]);
-
-  const getStatusText = () => {
-    if (isRejected) return '\n⚠️ Zaproszenie odrzucone';
-    if (isPending) return '\n⏳ Oczekuje na akceptację';
-    return '';
-  };
-
-  const getBorderStyle = () => {
-    if (isRejected) return '2px dashed #ef4444';
-    if (isPending) return '2px dashed #f59e0b';
-    return undefined;
-  };
-
-  return (
-    <div
-      ref={barRef}
-      className="group absolute flex items-center justify-between rounded border-l-4 px-3 shadow-sm transition-all hover:shadow-lg cursor-pointer"
-      style={{
-        top: `${(heightPx - barHeight) / 2}px`,
-        height: `${barHeight}px`,
-        left: currentPosition.left,
-        width: currentPosition.width,
-        backgroundColor: isDragging ? `${phaseColor}40` : `${phaseColor}25`,
-        borderLeftColor: phaseColor,
-        opacity: isDragging ? 0.9 : 1,
-        transform: isDragging ? 'scale(1.02)' : 'scale(1)',
-        zIndex: isDragging ? 100 : isFocused ? 90 : 'auto',
-        boxShadow: isDragging ? '0 4px 12px rgba(211, 187, 115, 0.3)' : undefined,
-        outline: isFocused ? `2px solid ${phaseColor}` : getBorderStyle(),
-        outlineOffset: isFocused ? '1px' : undefined,
-      }}
-      title={`${resource.name}\n${formatTime(displayStartTime)} - ${formatTime(
-        displayEndTime,
-      )}${assignment.role ? `\nRola: ${assignment.role}` : ''}${getStatusText()}${editedTimes ? '\n[EDYCJA]' : ''}`}
-      onClick={handleClick}
-      onMouseEnter={() => onHoverChange(assignment.id ?? null)}
-      onMouseLeave={() => onHoverChange(null)}
-      onContextMenu={(e) => {
-        if (onContextMenu) {
-          e.preventDefault();
-          onContextMenu(e, assignment, resource);
+    const { dragMode, startDrag } = useTimelineDrag({
+      timelineBounds,
+      zoomLevel,
+      onDragEnd: (newStart, newEnd) => {
+        if (assignment.id) {
+          onTimeUpdate(
+            assignment.id,
+            newStart,
+            newEnd,
+            assignment.start_time,
+            assignment.end_time,
+            resourceType,
+          );
         }
-      }}
-    >
-      {/* Left resize handle - tylko dla pracowników */}
-      {isEmployee && assignment.phaseId && containerRef?.current && (
-        <ResizeHandle side="left" onMouseDown={handleResizeStart} />
-      )}
+        setDragPreview(null);
+      },
+    });
 
-      <div className="flex items-center gap-2 overflow-hidden flex-1">
-        <ResourceAvatar avatar_url={resource.avatar_url} name={resource.name} />
+    // Live preview podczas drag - sprawdzaj atrybuty data-* na containerze
+    useEffect(() => {
+      if (!dragMode || !containerRef?.current) return;
 
-        <span className="truncate text-xs font-semibold text-[#e5e4e2]">
-          {resource.name}
-        </span>
+      const interval = setInterval(() => {
+        const container = containerRef.current;
+        if (!container) return;
 
-        {/* Status badge dla zaproszeń */}
-        {isPending && (
-          <span
-            className="flex items-center gap-1 rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-400 border border-amber-500/30"
-            title="Oczekuje na akceptację zaproszenia"
-          >
-            ⏳
-          </span>
+        const dragStart = container.getAttribute('data-drag-start');
+        const dragEnd = container.getAttribute('data-drag-end');
+
+        if (dragStart && dragEnd) {
+          const start = new Date(dragStart).getTime();
+          const end = new Date(dragEnd).getTime();
+          const totalDuration = timelineBounds.end.getTime() - timelineBounds.start.getTime();
+          const left = ((start - timelineBounds.start.getTime()) / totalDuration) * 100;
+          const width = ((end - start) / totalDuration) * 100;
+
+          setDragPreview({
+            left: `${Math.max(0, left)}%`,
+            width: `${Math.max(1, width)}%`,
+          });
+        }
+      }, 16); // ~60fps
+
+      return () => clearInterval(interval);
+    }, [dragMode, containerRef, timelineBounds]);
+
+    const isHovered = hoveredAssignment === assignment.id;
+    const isFocused = focusedAssignment === assignment.id;
+    const isDragging = !!dragMode;
+    const isPending = isEmployee && assignment.invitation_status === 'pending';
+    const isRejected = isEmployee && assignment.invitation_status === 'rejected';
+
+    console.log('isPending', isPending);
+    console.log('isRejected', isRejected);
+    console.log('assignment', assignment);
+    
+    console.log('assignment.role', assignment.role);
+    console.log('resource', resource);
+
+    // Jeśli są editedTimes, przelicz pozycję na ich podstawie
+    const displayPosition = useMemo(() => {
+      if (!editedTimes) return position;
+
+      const start = editedTimes.start.getTime();
+      const end = editedTimes.end.getTime();
+      const totalDuration = timelineBounds.end.getTime() - timelineBounds.start.getTime();
+      const left = ((start - timelineBounds.start.getTime()) / totalDuration) * 100;
+      const width = ((end - start) / totalDuration) * 100;
+
+      return {
+        left: `${Math.max(0, left)}%`,
+        width: `${Math.max(1, width)}%`,
+      };
+    }, [editedTimes, position, timelineBounds]);
+
+    const currentPosition = dragPreview || displayPosition;
+
+    // Zwiększona wysokość podczas drag lub edycji (ale nie focusu)
+    const barHeight = isDragging || editedTimes ? heightPx * 1.2 : heightPx - 12;
+
+    const handleResizeStart = useCallback(
+      (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (containerRef?.current) {
+          startDrag(
+            'resize-start',
+            e.clientX,
+            new Date(displayStartTime),
+            new Date(displayEndTime),
+            containerRef.current,
+          );
+        }
+      },
+      [startDrag, displayStartTime, displayEndTime, containerRef],
+    );
+
+    const handleResizeEnd = useCallback(
+      (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (containerRef?.current) {
+          startDrag(
+            'resize-end',
+            e.clientX,
+            new Date(displayStartTime),
+            new Date(displayEndTime),
+            containerRef.current,
+          );
+        }
+      },
+      [startDrag, displayStartTime, displayEndTime, containerRef],
+    );
+
+    const handleDelete = useCallback(
+      (e: React.MouseEvent) => {
+        e.stopPropagation();
+        onDelete(assignment.id!, assignment.phaseId!);
+      },
+      [onDelete, assignment.id, assignment.phaseId],
+    );
+
+    const handleClick = useCallback(
+      (e: React.MouseEvent) => {
+        e.stopPropagation();
+        // Kliknięcie ustawia focus na to przypisanie
+        onFocusChange(assignment.id ?? null);
+      },
+      [onFocusChange, assignment.id],
+    );
+
+    const getStatusText = () => {
+      if (isRejected) return '\n⚠️ Zaproszenie odrzucone';
+      if (isPending) return '\n⏳ Oczekuje na akceptację';
+      return '';
+    };
+
+    const getBorderStyle = () => {
+      if (isRejected) return '2px dashed #ef4444';
+      if (isPending) return '2px dashed #f59e0b';
+      return undefined;
+    };
+
+    return (
+      <div
+        ref={barRef}
+        className="group absolute flex cursor-pointer items-center justify-between rounded border-l-4 px-3 shadow-sm transition-all hover:shadow-lg"
+        style={{
+          top: `${(heightPx - barHeight) / 2}px`,
+          height: `${barHeight}px`,
+          left: currentPosition.left,
+          width: currentPosition.width,
+          backgroundColor: isDragging ? `${phaseColor}40` : `${phaseColor}25`,
+          borderLeftColor: phaseColor,
+          opacity: isDragging ? 0.9 : 1,
+          transform: isDragging ? 'scale(1.02)' : 'scale(1)',
+          zIndex: isDragging ? 100 : isFocused ? 90 : 'auto',
+          boxShadow: isDragging ? '0 4px 12px rgba(211, 187, 115, 0.3)' : undefined,
+          outline: isFocused ? `2px solid ${phaseColor}` : getBorderStyle(),
+          outlineOffset: isFocused ? '1px' : undefined,
+        }}
+        title={`${resource.name}\n${formatTime(displayStartTime)} - ${formatTime(
+          displayEndTime,
+        )}${assignment.role ? `\nRola: ${assignment.role}` : ''}${getStatusText()}${editedTimes ? '\n[EDYCJA]' : ''}`}
+        onClick={handleClick}
+        onMouseEnter={() => onHoverChange(assignment.id ?? null)}
+        onMouseLeave={() => onHoverChange(null)}
+        onContextMenu={(e) => {
+          if (onContextMenu) {
+            e.preventDefault();
+            onContextMenu(e, assignment, resource);
+          }
+        }}
+      >
+        {/* Left resize handle - tylko dla pracowników */}
+        {isEmployee && assignment.phaseId && containerRef?.current && (
+          <ResizeHandle side="left" onMouseDown={handleResizeStart} />
         )}
-        {isRejected && (
-          <span
-            className="flex items-center gap-1 rounded bg-red-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-red-400 border border-red-500/30"
-            title="Zaproszenie odrzucone"
-          >
-            ⚠️
-          </span>
-        )}
 
-        {isEmployee && assignment.role && (
-          <span className="truncate text-[10px] text-[#e5e4e2]/60">{assignment.role}</span>
-        )}
+        <div className="flex flex-1 items-center gap-2 overflow-hidden">
+          <ResourceAvatar avatar_url={resource.avatar_url} name={resource.name} />
 
-        {assignment.quantity && assignment.quantity > 1 && (
-          <span className="ml-1 rounded bg-[#d3bb73]/30 px-1.5 py-0.5 text-[10px] font-bold text-[#d3bb73]">
-            x{assignment.quantity}
-          </span>
+          <span className="truncate text-xs font-semibold text-[#e5e4e2]">{resource.name}</span>
+
+          {/* Status badge dla zaproszeń */}
+          {isPending && (
+            <span
+              className="flex items-center gap-1 rounded border border-amber-500/30 bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-400"
+              title="Oczekuje na akceptację zaproszenia"
+            >
+              ⏳
+            </span>
+          )}
+          {isRejected && (
+            <span
+              className="flex items-center gap-1 rounded border border-red-500/30 bg-red-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-red-400"
+              title="Zaproszenie odrzucone"
+            >
+              ⚠️
+            </span>
+          )}
+
+          {isEmployee && assignment.role && (
+            <span className="truncate text-[10px] text-[#e5e4e2]/60">
+              {roleLabels[assignment.role as keyof typeof roleLabels] ?? assignment.role}
+            </span>
+          )}
+
+          {assignment.quantity && assignment.quantity > 1 && (
+            <span className="ml-1 rounded bg-[#d3bb73]/30 px-1.5 py-0.5 text-[10px] font-bold text-[#d3bb73]">
+              x{assignment.quantity}
+            </span>
+          )}
+        </div>
+
+        {/* Right resize handle + Delete button */}
+        {isEmployee && assignment.phaseId && containerRef?.current && (
+          <div className="flex items-center gap-1">
+            <ResizeHandle side="right" onMouseDown={handleResizeEnd} />
+          </div>
         )}
       </div>
-
-      {/* Right resize handle + Delete button */}
-      {isEmployee && assignment.phaseId && containerRef?.current && (
-        <div className="flex items-center gap-1">
-          <ResizeHandle side="right" onMouseDown={handleResizeEnd} />
-        </div>
-      )}
-    </div>
-  );
-});
+    );
+  },
+);
 
 AssignmentBar.displayName = 'AssignmentBar';
 
@@ -450,13 +486,16 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
 
   const heightPx = getRowHeightPx();
 
-  const getAssignmentPosition = useCallback((startTime: string, endTime: string) => {
-    const start = new Date(startTime).getTime();
-    const end = new Date(endTime).getTime();
-    const left = ((start - timelineBounds.start.getTime()) / totalDuration) * 100;
-    const width = ((end - start) / totalDuration) * 100;
-    return { left: `${Math.max(0, left)}%`, width: `${Math.max(1, width)}%` };
-  }, [timelineBounds, totalDuration]);
+  const getAssignmentPosition = useCallback(
+    (startTime: string, endTime: string) => {
+      const start = new Date(startTime).getTime();
+      const end = new Date(endTime).getTime();
+      const left = ((start - timelineBounds.start.getTime()) / totalDuration) * 100;
+      const width = ((end - start) / totalDuration) * 100;
+      return { left: `${Math.max(0, left)}%`, width: `${Math.max(1, width)}%` };
+    },
+    [timelineBounds, totalDuration],
+  );
 
   // Funkcja wykrywająca nakładające się przypisania pracownika
   const detectOverlaps = useCallback((assignments: Assignment[]) => {
@@ -494,36 +533,42 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   }, []);
 
   // Handlers for employee assignments - zmemoizowane
-  const handleDeleteEmployeeAssignment = useCallback(async (assignmentId: string, phaseId: string) => {
-    if (!confirm('Czy na pewno chcesz usunąć tego pracownika z fazy?')) return;
+  const handleDeleteEmployeeAssignment = useCallback(
+    async (assignmentId: string, phaseId: string) => {
+      if (!confirm('Czy na pewno chcesz usunąć tego pracownika z fazy?')) return;
 
-    try {
-      await deleteAssignment({ id: assignmentId, phase_id: phaseId }).unwrap();
-    } catch (error) {
-      console.error('Failed to delete assignment:', error);
-      alert('Nie udało się usunąć przypisania');
-    }
-  }, [deleteAssignment]);
+      try {
+        await deleteAssignment({ id: assignmentId, phase_id: phaseId }).unwrap();
+      } catch (error) {
+        console.error('Failed to delete assignment:', error);
+        alert('Nie udało się usunąć przypisania');
+      }
+    },
+    [deleteAssignment],
+  );
 
   // Callback po drag - ustawia stan edycji
-  const handleTimeUpdate = useCallback((
-    assignmentId: string,
-    newStart: Date,
-    newEnd: Date,
-    originalStart: string,
-    originalEnd: string,
-    resourceType: 'employee' | 'vehicle' | 'equipment'
-  ) => {
-    setEditState({
-      assignmentId,
-      originalStart,
-      originalEnd,
-      newStart,
-      newEnd,
-      resourceType,
-      status: 'dirty',
-    });
-  }, []);
+  const handleTimeUpdate = useCallback(
+    (
+      assignmentId: string,
+      newStart: Date,
+      newEnd: Date,
+      originalStart: string,
+      originalEnd: string,
+      resourceType: 'employee' | 'vehicle' | 'equipment',
+    ) => {
+      setEditState({
+        assignmentId,
+        originalStart,
+        originalEnd,
+        newStart,
+        newEnd,
+        resourceType,
+        status: 'dirty',
+      });
+    },
+    [],
+  );
 
   // Zapisz zmiany
   const handleSaveChanges = useCallback(async () => {
@@ -569,7 +614,8 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
         originalStatus: error?.originalStatus,
       });
 
-      const errorMsg = error?.data?.message || error?.message || 'Nie udało się zaktualizować czasu';
+      const errorMsg =
+        error?.data?.message || error?.message || 'Nie udało się zaktualizować czasu';
       alert(`Błąd: ${errorMsg}`);
 
       showSnackbar('Błąd podczas zapisywania zmian', 'error');
@@ -594,17 +640,17 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
 
   useEffect(() => {
     if (!editState) return;
-  
+
     const currentAssignment = phaseAssignments
-      .flatMap(p => [
+      .flatMap((p) => [
         ...(p.assignments || []),
         ...(p.vehicleAssignments || []),
         ...(p.equipmentAssignments || []),
       ])
       .find((a: any) => a.id === editState.assignmentId);
-  
+
     if (!currentAssignment) return;
-  
+
     const getApiTimes = (a: any) => {
       if (editState.resourceType === 'employee') {
         return {
@@ -618,18 +664,18 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
         end: a.assigned_end ?? a.end_time,
       };
     };
-  
+
     const api = getApiTimes(currentAssignment);
     if (!api.start || !api.end) return;
-  
+
     const apiStart = new Date(api.start).getTime();
     const apiEnd = new Date(api.end).getTime();
-  
+
     const editedStart = editState.newStart.getTime();
     const editedEnd = editState.newEnd.getTime();
-  
+
     const tolerance = 1000;
-  
+
     if (Math.abs(apiStart - editedStart) < tolerance && Math.abs(apiEnd - editedEnd) < tolerance) {
       setEditState(null);
       setFocusedAssignment(null); // Resetuj focus po zapisaniu
@@ -679,66 +725,75 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
     setFocusedAssignment(id);
   }, []);
 
-  const formatTime = useCallback((date: string): string => {
-    const d = new Date(date);
-    if (zoomLevel === 'days') {
-      return d.toLocaleDateString('pl-PL', { day: 'numeric', month: 'short' });
-    }
-    return d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
-  }, [zoomLevel]);
+  const formatTime = useCallback(
+    (date: string): string => {
+      const d = new Date(date);
+      if (zoomLevel === 'days') {
+        return d.toLocaleDateString('pl-PL', { day: 'numeric', month: 'short' });
+      }
+      return d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+    },
+    [zoomLevel],
+  );
 
   // Funkcja wyrównania przypisania do fazy
-  const handleAlignToPhase = useCallback(async (assignment: Assignment) => {
-    if (!assignment.id || !assignment.phase) {
-      showSnackbar('Brak informacji o fazie', 'error');
-      return;
-    }
-
-    const phaseStartTime = assignment.phase.start_time;
-    const phaseEndTime = assignment.phase.end_time;
-
-    // Aktualizuj przypisanie aby wyrównać do fazy
-    try {
-      if (assignment.resourceType === 'employee') {
-        // WAŻNE: Dla pracowników musimy zaktualizować zarówno assignment_* jak i phase_work_*
-        await updateAssignment({
-          id: assignment.id,
-          assignment_start: phaseStartTime,
-          assignment_end: phaseEndTime,
-          phase_work_start: phaseStartTime,
-          phase_work_end: phaseEndTime,
-        }).unwrap();
-      } else if (assignment.resourceType === 'vehicle') {
-        await updateVehicle({
-          id: assignment.id,
-          assigned_start: phaseStartTime,
-          assigned_end: phaseEndTime,
-        }).unwrap();
-      } else if (assignment.resourceType === 'equipment') {
-        await updateEquipment({
-          id: assignment.id,
-          assigned_start: phaseStartTime,
-          assigned_end: phaseEndTime,
-        }).unwrap();
+  const handleAlignToPhase = useCallback(
+    async (assignment: Assignment) => {
+      if (!assignment.id || !assignment.phase) {
+        showSnackbar('Brak informacji o fazie', 'error');
+        return;
       }
 
-      showSnackbar('Przypisanie wyrównane do fazy', 'success');
-    } catch (error: any) {
-      console.error('Failed to align to phase:', error);
-      showSnackbar(error?.message || 'Błąd podczas wyrównywania do fazy', 'error');
-    }
-  }, [updateAssignment, updateVehicle, updateEquipment, showSnackbar]);
+      const phaseStartTime = assignment.phase.start_time;
+      const phaseEndTime = assignment.phase.end_time;
+
+      // Aktualizuj przypisanie aby wyrównać do fazy
+      try {
+        if (assignment.resourceType === 'employee') {
+          // WAŻNE: Dla pracowników musimy zaktualizować zarówno assignment_* jak i phase_work_*
+          await updateAssignment({
+            id: assignment.id,
+            assignment_start: phaseStartTime,
+            assignment_end: phaseEndTime,
+            phase_work_start: phaseStartTime,
+            phase_work_end: phaseEndTime,
+          }).unwrap();
+        } else if (assignment.resourceType === 'vehicle') {
+          await updateVehicle({
+            id: assignment.id,
+            assigned_start: phaseStartTime,
+            assigned_end: phaseEndTime,
+          }).unwrap();
+        } else if (assignment.resourceType === 'equipment') {
+          await updateEquipment({
+            id: assignment.id,
+            assigned_start: phaseStartTime,
+            assigned_end: phaseEndTime,
+          }).unwrap();
+        }
+
+        showSnackbar('Przypisanie wyrównane do fazy', 'success');
+      } catch (error: any) {
+        console.error('Failed to align to phase:', error);
+        showSnackbar(error?.message || 'Błąd podczas wyrównywania do fazy', 'error');
+      }
+    },
+    [updateAssignment, updateVehicle, updateEquipment, showSnackbar],
+  );
 
   // Handler menu kontekstowego
-  const handleContextMenu = useCallback((e: React.MouseEvent, assignment: Assignment, resource: ResourceRow) => {
-    e.preventDefault();
-    setContextMenu({
-      x: e.clientX,
-      y: e.clientY,
-      assignment,
-      resource,
-    });
-  }, []);
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent, assignment: Assignment, resource: ResourceRow) => {
+      e.preventDefault();
+      setContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        assignment,
+        resource,
+      });
+    },
+    [],
+  );
 
   // =========================
   // EMPLOYEES
@@ -757,25 +812,27 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
           const matches = (assignments ?? []).filter((a: any) => a?.employee_id === empMatchId);
           if (matches.length === 0) return [];
 
-          return matches
-            // ✅ POKAZUJ WSZYSTKIE role, nawet coordinator/lead (bo one też są na timeline)
-            .map((a: any) => {
-              const startTime = a.assignment_start || a.phase_work_start || phase.start_time;
-              const endTime = a.assignment_end || a.phase_work_end || phase.end_time;
+          return (
+            matches
+              // ✅ POKAZUJ WSZYSTKIE role, nawet coordinator/lead (bo one też są na timeline)
+              .map((a: any) => {
+                const startTime = a.assignment_start || a.phase_work_start || phase.start_time;
+                const endTime = a.assignment_end || a.phase_work_end || phase.end_time;
 
-              return {
-                id: a.id,
-                phase,
-                phaseId: phase.id,
-                resourceId: empMatchId,
-                resourceType: 'employee' as ResourceType,
-                start_time: startTime,
-                end_time: endTime,
-                role: a.role,
-                isFullRange: isFullRangeAssignment(startTime, endTime),
-                invitation_status: a.invitation_status,
-              };
-            });
+                return {
+                  id: a.id,
+                  phase,
+                  phaseId: phase.id,
+                  resourceId: empMatchId,
+                  resourceType: 'employee' as ResourceType,
+                  start_time: startTime,
+                  end_time: endTime,
+                  role: a.role,
+                  isFullRange: isFullRangeAssignment(startTime, endTime),
+                  invitation_status: a.invitation_status,
+                };
+              })
+          );
         })
         .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
 
@@ -807,7 +864,7 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
 
       phaseAssignments.forEach(({ phase, vehicleAssignments }: any) => {
         const found = (vehicleAssignments ?? []).filter(
-          (v: any) => v?.vehicle_id === fleetVehicleId
+          (v: any) => v?.vehicle_id === fleetVehicleId,
         );
 
         found.forEach((v: any) => {
@@ -826,20 +883,27 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
 
       if (allPhaseAssignments.length > 0) {
         // Znajdź najwcześniejszy start i najpóźniejszy koniec
-        const earliestStart = new Date(Math.min(...allPhaseAssignments.map(a => a.start.getTime())));
-        const latestEnd = new Date(Math.max(...allPhaseAssignments.map(a => a.end.getTime())));
+        const earliestStart = new Date(
+          Math.min(...allPhaseAssignments.map((a) => a.start.getTime())),
+        );
+        const latestEnd = new Date(Math.max(...allPhaseAssignments.map((a) => a.end.getTime())));
 
         // Utwórz JEDNO przypisanie obejmujące cały czas
-        assignments = [{
-          id: `vehicle_continuous_${veh.id}`,
-          phase: allPhaseAssignments[0].phase, // używamy pierwszej fazy jako referencji
-          phaseId: allPhaseAssignments[0].phase.id,
-          resourceId: fleetVehicleId!,
-          resourceType: 'vehicle',
-          start_time: earliestStart.toISOString(),
-          end_time: latestEnd.toISOString(),
-          isFullRange: isFullRangeAssignment(earliestStart.toISOString(), latestEnd.toISOString()),
-        }];
+        assignments = [
+          {
+            id: `vehicle_continuous_${veh.id}`,
+            phase: allPhaseAssignments[0].phase, // używamy pierwszej fazy jako referencji
+            phaseId: allPhaseAssignments[0].phase.id,
+            resourceId: fleetVehicleId!,
+            resourceType: 'vehicle',
+            start_time: earliestStart.toISOString(),
+            end_time: latestEnd.toISOString(),
+            isFullRange: isFullRangeAssignment(
+              earliestStart.toISOString(),
+              latestEnd.toISOString(),
+            ),
+          },
+        ];
       }
 
       if (
@@ -849,25 +913,28 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
         veh.vehicle_available_until &&
         fleetVehicleId
       ) {
-        assignments = [{
-          id: `event_vehicle_${veh.id}`,
-          phase: null as any,
-          phaseId: null as any,
-          resourceId: fleetVehicleId,
-          resourceType: 'vehicle',
-          start_time: veh.vehicle_available_from,
-          end_time: veh.vehicle_available_until,
-          isFullRange: false,
-        }];
+        assignments = [
+          {
+            id: `event_vehicle_${veh.id}`,
+            phase: null as any,
+            phaseId: null as any,
+            resourceId: fleetVehicleId,
+            resourceType: 'vehicle',
+            start_time: veh.vehicle_available_from,
+            end_time: veh.vehicle_available_until,
+            isFullRange: false,
+          },
+        ];
       }
 
       // ✅ Nazwa do UI: najpierw z embed, potem fallback
-      const displayName =
-        vehicleObj?.name
-          ? `${vehicleObj.name}${vehicleObj.registration_number ? ` (${vehicleObj.registration_number})` : ''}`
-          : (veh.external_vehicle_name
-              ? veh.external_vehicle_name
-              : (veh.vehicle_id ? `Pojazd ${veh.vehicle_id.slice(0, 6)}…` : 'Bez nazwy'));
+      const displayName = vehicleObj?.name
+        ? `${vehicleObj.name}${vehicleObj.registration_number ? ` (${vehicleObj.registration_number})` : ''}`
+        : veh.external_vehicle_name
+          ? veh.external_vehicle_name
+          : veh.vehicle_id
+            ? `Pojazd ${veh.vehicle_id.slice(0, 6)}…`
+            : 'Bez nazwy';
 
       return {
         id: fleetVehicleId ?? veh.id, // id wiersza
@@ -883,7 +950,6 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   // EQUIPMENT
   // =========================
   const equipmentRows: ResourceRow[] = useMemo(() => {
-
     const equipmentMap = new Map<string, ResourceRow>();
 
     equipment.forEach((item: any) => {
@@ -939,120 +1005,128 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
   const filteredVehicles = vehicleRows.filter((r) => r.assignments.length > 0);
   const filteredEquipment = equipmentRows.filter((r) => r.assignments.length > 0);
 
-  const renderResourceRow = useCallback((resource: ResourceRow) => {
-    const isEmployee = resource.type === 'employee';
+  const renderResourceRow = useCallback(
+    (resource: ResourceRow) => {
+      const isEmployee = resource.type === 'employee';
 
-    // Wykryj nakładające się przypisania tylko dla pracowników
-    const overlaps = isEmployee ? detectOverlaps(resource.assignments) : [];
+      // Wykryj nakładające się przypisania tylko dla pracowników
+      const overlaps = isEmployee ? detectOverlaps(resource.assignments) : [];
 
-    return (
-      <div key={resource.id} className="relative border-b border-[#d3bb73]/10 overflow-hidden">
-        <div ref={containerRef} className="relative" style={{ height: `${heightPx}px` }}>
-          {/* Renderuj nakładające się obszary (kreskowany wzór) */}
-          {overlaps.map((overlap, idx) => {
-            const position = getAssignmentPosition(
-              overlap.start.toISOString(),
-              overlap.end.toISOString()
-            );
+      return (
+        <div key={resource.id} className="relative overflow-hidden border-b border-[#d3bb73]/10">
+          <div ref={containerRef} className="relative" style={{ height: `${heightPx}px` }}>
+            {/* Renderuj nakładające się obszary (kreskowany wzór) */}
+            {overlaps.map((overlap, idx) => {
+              const position = getAssignmentPosition(
+                overlap.start.toISOString(),
+                overlap.end.toISOString(),
+              );
 
-            return (
-              <div
-                key={`overlap-${idx}`}
-                className="absolute pointer-events-none z-50"
-                style={{
-                  left: position.left,
-                  width: position.width,
-                  top: 0,
-                  height: '100%',
-                  background: 'repeating-linear-gradient(45deg, #ef4444 0px, #ef4444 4px, transparent 4px, transparent 8px)',
-                  opacity: 0.5,
-                  borderLeft: '2px solid #ef4444',
-                  borderRight: '2px solid #ef4444',
-                }}
-                title={`Konflikt: ${overlap.assignments.length} przypisań w tym samym czasie`}
-              />
-            );
-          })}
+              return (
+                <div
+                  key={`overlap-${idx}`}
+                  className="pointer-events-none absolute z-50"
+                  style={{
+                    left: position.left,
+                    width: position.width,
+                    top: 0,
+                    height: '100%',
+                    background:
+                      'repeating-linear-gradient(45deg, #ef4444 0px, #ef4444 4px, transparent 4px, transparent 8px)',
+                    opacity: 0.5,
+                    borderLeft: '2px solid #ef4444',
+                    borderRight: '2px solid #ef4444',
+                  }}
+                  title={`Konflikt: ${overlap.assignments.length} przypisań w tym samym czasie`}
+                />
+              );
+            })}
 
-          {/* Renderuj wszystkie przypisania */}
-          {resource.assignments.map((assignment, idx) => {
-            const position = getAssignmentPosition(assignment.start_time, assignment.end_time);
-            const phaseColor =
-              assignment.phase?.color || assignment.phase?.phase_type?.color || '#3b82f6';
+            {/* Renderuj wszystkie przypisania */}
+            {resource.assignments.map((assignment, idx) => {
+              const position = getAssignmentPosition(assignment.start_time, assignment.end_time);
+              const phaseColor =
+                assignment.phase?.color || assignment.phase?.phase_type?.color || '#3b82f6';
 
-            return (
-              <AssignmentBar
-                key={assignment.id ?? idx}
-                assignment={assignment}
-                resource={resource}
-                position={position}
-                phaseColor={phaseColor}
-                heightPx={heightPx}
-                isEmployee={isEmployee}
-                hoveredAssignment={hoveredAssignment}
-                focusedAssignment={focusedAssignment}
-                formatTime={formatTime}
-                timelineBounds={timelineBounds}
-                zoomLevel={zoomLevel}
-                onHoverChange={handleHoverChange}
-                onFocusChange={handleFocusChange}
-                onDelete={handleDeleteEmployeeAssignment}
-                onTimeUpdate={handleTimeUpdate}
-                onContextMenu={handleContextMenu}
-                containerRef={containerRef}
-                editedTimes={
-                  editState?.assignmentId === assignment.id
-                    ? { start: editState.newStart, end: editState.newEnd }
-                    : null
-                }
-                resourceType={assignment.resourceType || resource.type}
-              />
-            );
-          })}
+              return (
+                <AssignmentBar
+                  key={assignment.id ?? idx}
+                  assignment={assignment}
+                  resource={resource}
+                  position={position}
+                  phaseColor={phaseColor}
+                  heightPx={heightPx}
+                  isEmployee={isEmployee}
+                  hoveredAssignment={hoveredAssignment}
+                  focusedAssignment={focusedAssignment}
+                  formatTime={formatTime}
+                  timelineBounds={timelineBounds}
+                  zoomLevel={zoomLevel}
+                  onHoverChange={handleHoverChange}
+                  onFocusChange={handleFocusChange}
+                  onDelete={handleDeleteEmployeeAssignment}
+                  onTimeUpdate={handleTimeUpdate}
+                  onContextMenu={handleContextMenu}
+                  containerRef={containerRef}
+                  editedTimes={
+                    editState?.assignmentId === assignment.id
+                      ? { start: editState.newStart, end: editState.newEnd }
+                      : null
+                  }
+                  resourceType={assignment.resourceType || resource.type}
+                />
+              );
+            })}
+          </div>
         </div>
-      </div>
-    );
-  }, [
-    heightPx,
-    hoveredAssignment,
-    focusedAssignment,
-    formatTime,
-    timelineBounds,
-    zoomLevel,
-    handleHoverChange,
-    handleFocusChange,
-    handleDeleteEmployeeAssignment,
-    handleTimeUpdate,
-    handleContextMenu,
-    getAssignmentPosition,
-    editState,
-    detectOverlaps,
-  ]);
+      );
+    },
+    [
+      heightPx,
+      hoveredAssignment,
+      focusedAssignment,
+      formatTime,
+      timelineBounds,
+      zoomLevel,
+      handleHoverChange,
+      handleFocusChange,
+      handleDeleteEmployeeAssignment,
+      handleTimeUpdate,
+      handleContextMenu,
+      getAssignmentPosition,
+      editState,
+      detectOverlaps,
+    ],
+  );
 
-  if (filteredEmployees.length === 0 && filteredVehicles.length === 0 && filteredEquipment.length === 0) {
+  if (
+    filteredEmployees.length === 0 &&
+    filteredVehicles.length === 0 &&
+    filteredEquipment.length === 0
+  ) {
     return null;
   }
 
   return (
     <div className="relative">
       <div className="flex items-center gap-2">
-          <span className="text-xs text-[#e5e4e2]/50">Wysokość:</span>
-          <div className="flex gap-1 rounded-lg bg-[#1c1f33] p-1">
-            {(['compact', 'normal', 'expanded'] as const).map((size) => (
-              <button
-                key={size}
-                onClick={() => setRowHeight(size)}
-                className={`rounded px-2 py-1 text-xs ${
-                  rowHeight === size
-                    ? 'bg-[#d3bb73] text-[#1c1f33]'
-                    : 'text-[#e5e4e2]/70 hover:bg-[#d3bb73]/20'
-                }`}
-              >
-                {size === 'compact' ? 'S' : size === 'normal' ? 'M' : 'L'}
-              </button>
-            ))}
-          </div>
+        <span className="text-xs text-[#e5e4e2]/50">Wysokość:</span>
+        <div className="flex gap-1 rounded-lg bg-[#1c1f33] p-1">
+          {(['compact', 'normal', 'expanded'] as const).map((size) => (
+            <button
+              key={size}
+              onClick={() => setRowHeight(size)}
+              className={`rounded px-2 py-1 text-xs ${
+                rowHeight === size
+                  ? 'bg-[#d3bb73] text-[#1c1f33]'
+                  : 'text-[#e5e4e2]/70 hover:bg-[#d3bb73]/20'
+              }`}
+            >
+              {size === 'compact' ? 'S' : size === 'normal' ? 'M' : 'L'}
+            </button>
+          ))}
         </div>
+      </div>
       {/* Przyciski akcji - pokazują się gdy jest editState */}
       {editState?.status === 'dirty' && (
         <ActionButtons
@@ -1062,9 +1136,7 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
         />
       )}
 
-      <div className="mb-3 flex items-center justify-between px-6">
-        
-      </div>
+      <div className="mb-3 flex items-center justify-between px-6"></div>
 
       <div
         className="relative"
@@ -1076,7 +1148,7 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
         }}
       >
         {filteredEmployees.map(renderResourceRow)}
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-[#e5e4e2]/70 mt-2">
+        <h3 className="mt-2 text-sm font-semibold uppercase tracking-wide text-[#e5e4e2]/70">
           Pojazdy
         </h3>
         {filteredVehicles.map(renderResourceRow)}
@@ -1113,16 +1185,19 @@ export const ResourceTimeline: React.FC<ResourceTimelineProps> = ({
             )}
 
             {/* Separator */}
-            {contextMenu.assignment.phase && (
-              <div className="my-1 h-px bg-[#d3bb73]/10" />
-            )}
+            {contextMenu.assignment.phase && <div className="my-1 h-px bg-[#d3bb73]/10" />}
 
             {/* Przycisk usuń */}
             {contextMenu.assignment.id && contextMenu.assignment.phaseId && (
               <button
                 onClick={() => {
-                  if (confirm(`Czy na pewno chcesz usunąć przypisanie: ${contextMenu.resource.name}?`)) {
-                    handleDeleteEmployeeAssignment(contextMenu.assignment.id!, contextMenu.assignment.phaseId!);
+                  if (
+                    confirm(`Czy na pewno chcesz usunąć przypisanie: ${contextMenu.resource.name}?`)
+                  ) {
+                    handleDeleteEmployeeAssignment(
+                      contextMenu.assignment.id!,
+                      contextMenu.assignment.phaseId!,
+                    );
                     setContextMenu(null);
                   }
                 }}

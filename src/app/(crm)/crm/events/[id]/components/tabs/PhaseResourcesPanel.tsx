@@ -12,6 +12,7 @@ import {
 import { useGetEventEmployeesQuery, useGetEventEquipmentQuery, useGetEventVehiclesQuery } from '../../../store/api/eventsApi';
 import { AddPhaseAssignmentModal } from '../Modals/AddPhaseAssignmentModal';
 import { supabase } from '@/lib/supabase/browser';
+import { roleLabels } from '../../helpers/roleLabels';
 
 interface PhaseResourcesPanelProps {
   phase: EventPhase;
@@ -343,7 +344,7 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
                               )}
                               {assignment.role && (
                                 <span className="inline-block rounded bg-[#d3bb73]/20 px-2 py-0.5 text-[#d3bb73]">
-                                  {assignment.role}
+                                  {roleLabels[assignment.role as keyof typeof roleLabels] ?? assignment.role}
                                 </span>
                               )}
                             </div>
