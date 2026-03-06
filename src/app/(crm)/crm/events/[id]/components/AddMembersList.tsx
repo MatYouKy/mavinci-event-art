@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase/browser';
-import { X } from 'lucide-react';
+import { X, Mail, Send } from 'lucide-react';
 import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 import { Bitcoin as EditIcon, Trash2, User, ChevronUp, ChevronDown, AlertCircle } from 'lucide-react';
 import { Employee } from '@/lib/permissions';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import { IEmployee } from '@/app/(crm)/crm/employees/type';
 import { EmployeeAssignment } from '@/components/crm/Calendar';
+import { useSnackbar } from '@/contexts/SnackbarContext';
 
 interface TeamMembersListProps {
   employees: Employee[] | any[];
@@ -34,10 +35,12 @@ export function TeamMembersList({
   currentUserId = null,
   eventCreatorId,
 }: TeamMembersListProps) {
+  const { showSnackbar } = useSnackbar();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editRole, setEditRole] = useState('');
   const [editResponsibilities, setEditResponsibilities] = useState('');
+  const [sendingInvitation, setSendingInvitation] = useState<string | null>(null);
 
   const [permissionsModal, setPermissionsModal] = useState<{
     isOpen: boolean;
@@ -149,7 +152,30 @@ export function TeamMembersList({
     }
   };
 
-  
+  const sendInvitation = async (assignmentId: string) => {
+    setSendingInvitation(assignmentId);
+    try {
+      const result = await supabase.functions.invoke('send-event-invitation', {
+        body: { assignmentId },
+      });
+
+      if (result.error) {
+        console.error('Error sending invitation:', result.error);
+        showSnackbar('Błąd podczas wysyłania zaproszenia', 'error');
+        return;
+      }
+
+      showSnackbar('Zaproszenie zostało wysłane!', 'success');
+      window.location.reload();
+    } catch (error) {
+      console.error('Exception sending invitation:', error);
+      showSnackbar('Błąd podczas wysyłania zaproszenia', 'error');
+    } finally {
+      setSendingInvitation(null);
+    }
+  };
+
+
 
   return (
     <>
@@ -198,6 +224,18 @@ export function TeamMembersList({
                         <ResponsiveActionBar
                           disabledBackground
                           actions={[
+                            {
+                              label: 'Wyślij zaproszenie',
+                              onClick: () => sendInvitation(item.id),
+                              icon: sendingInvitation === item.id ? (
+                                <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#d3bb73] border-t-transparent" />
+                              ) : (
+                                <Send className="h-4 w-4" />
+                              ),
+                              variant: 'default',
+                              show: item.status === 'pending' && !item.invitation_email_sent,
+                              disabled: sendingInvitation === item.id,
+                            },
                             {
                               label: '',
                               onClick: () => startEdit(item),

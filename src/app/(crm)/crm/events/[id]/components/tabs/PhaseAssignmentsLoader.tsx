@@ -48,8 +48,9 @@ const makeListKey = (list: any[], type: 'emp' | 'veh' | 'eq') => {
           '';
 
         const upd = x?.updated_at ?? '';
+        const invStatus = x?.invitation_status ?? '';
 
-        return `${id}|${start}|${end}|${upd}`;
+        return `${id}|${start}|${end}|${upd}|${invStatus}`;
       })
       .join(',')
   );
