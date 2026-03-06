@@ -164,7 +164,7 @@ export function TeamMembersList({
               <div
                 key={item.id}
                 className={`overflow-hidden rounded-lg border bg-[#0f1119] ${
-                  item.status === 'rejected' ? 'border-red-500/30' : 'border-[#d3bb73]/10'
+                  item.invitation_status === 'rejected' ? 'border-red-500/30' : 'border-[#d3bb73]/10'
                 }`}
               >
                 <div
@@ -188,7 +188,7 @@ export function TeamMembersList({
                       <p className="text-sm text-[#d3bb73]">{item.role}</p>
                     )}
                     <div className="mt-1 flex items-center gap-2">
-                      {getStatusBadge(item.status)}
+                      {getStatusBadge(item.invitation_status || 'pending')}
                     </div>
                   </div>
 
