@@ -3,11 +3,22 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
-import { ArrowLeft, Save, Trash2, Calendar, MapPin, Users, FileText, Clock, Pencil } from 'lucide-react';
+import {
+  ArrowLeft,
+  Save,
+  Trash2,
+  Calendar,
+  MapPin,
+  Users,
+  FileText,
+  Clock,
+  Pencil,
+} from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { utcToLocalDatetimeString, localDatetimeStringToUTC } from '@/lib/utils/dateTimeUtils';
 import { useDialog } from '@/contexts/DialogContext';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
+import Link from 'next/link';
 
 interface Meeting {
   event_id: any;
@@ -74,7 +85,6 @@ export default function MeetingDetailPage() {
   });
 
   const [selectedParticipants, setSelectedParticipants] = useState<string[]>([]);
-
 
   useEffect(() => {
     fetchMeeting();
@@ -235,23 +245,30 @@ export default function MeetingDetailPage() {
   return (
     <div className="min-h-screen bg-[#13161f] p-4 text-[#e5e4e2] md:p-8">
       <div className="mx-auto max-w-5xl">
-        <ResponsiveActionBar
-          actions={[
-            {
-              label: 'Edytuj',
-              onClick: () => setIsEditing(true),
-              icon: <Pencil className="h-4 w-4" />,
-            },
-            {
-              label: 'Usuń',
-              onClick: handleDelete,
-              icon: <Trash2 className="h-4 w-4" />,
-              variant: 'danger',
-            },
-          ]}
-        />
-
         <div className="space-y-6 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4 hover:bg-[#1c1f33] rounded-lg p-2 transition-colors cursor-pointer">
+              <Link href="/crm/calendar" className="flex items-center gap-2">
+                <ArrowLeft className="h-5 w-5 text-[#e5e4e2] " />
+                <span className="hidden sm:inline">Powrót</span>
+              </Link>
+            </div>
+            <ResponsiveActionBar
+              actions={[
+                {
+                  label: 'Edytuj',
+                  onClick: () => setIsEditing(true),
+                  icon: <Pencil className="h-4 w-4" />,
+                },
+                {
+                  label: 'Usuń',
+                  onClick: handleDelete,
+                  icon: <Trash2 className="h-4 w-4" />,
+                  variant: 'danger',
+                },
+              ]}
+            />
+          </div>
           <div
             className="h-2 w-full rounded-t-lg"
             style={{ backgroundColor: isEditing ? formData.color : meeting.color }}
