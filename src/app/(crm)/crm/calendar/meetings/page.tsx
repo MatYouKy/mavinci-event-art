@@ -83,6 +83,7 @@ export default function MeetingsListPage() {
       if (error) throw error;
 
       setMeetings(data || []);
+      console.log('meetings', data);
     } catch (error: any) {
       console.error('Error fetching meetings:', error);
       showSnackbar('Błąd podczas pobierania spotkań', 'error');

@@ -11,11 +11,6 @@ export async function fetchCalendarEventsServer() {
 
   if (!user) return [];
 
-  // Dopasuj select do tego, co Twoje UI faktycznie czyta:
-  // - event.organization?.name
-  // - event.category?.name, color
-  // - event.assigned_employees (jeśli używasz)
-  // - meeting_data.meeting_participants (jeśli używasz)
   const { data, error } = await supabase
     .from('events')
     .select(
@@ -27,7 +22,6 @@ export async function fetchCalendarEventsServer() {
       event_date,
       event_end_date,
       created_by,
-      is_meeting,
       organization:organizations(
         id,
         name
@@ -39,7 +33,6 @@ export async function fetchCalendarEventsServer() {
       ),
       assigned_employees:employee_assignments(
         employee_id,
-        invitation_status,
         employee:employees!employee_assignments_employee_id_fkey(
           id,
           name,
