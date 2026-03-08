@@ -335,6 +335,8 @@ export default function AddEventVehicleModal({
         external_trailer_return_date: utcToLocalDatetimeString(data.external_trailer_return_date) || '',
         external_trailer_return_location: data.external_trailer_return_location || '',
         external_trailer_notes: data.external_trailer_notes || '',
+        phase_from_id: '',
+        phase_to_id: '',
       });
     } catch (error) {
       console.error('Error loading vehicle data:', error);
