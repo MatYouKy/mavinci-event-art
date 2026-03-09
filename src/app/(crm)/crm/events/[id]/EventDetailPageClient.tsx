@@ -3,7 +3,8 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
-import { ArrowLeft, ArrowRight, ClipboardList, Building2, DollarSign, CreditCard as Edit, Trash2, Plus, Package, Users, FileText, CheckSquare, Clock, X, User, Tag, Mail, CreditCard as EditIcon, AlertCircle, History, UserCheck, Truck } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ClipboardList, Building2, DollarSign, CreditCard as Edit, Trash2, Plus, Package, Users, FileText, CheckSquare, Clock, X, User, Tag, Mail, CreditCard as EditIcon, AlertCircle, History, UserCheck, Truck, Activity, Calendar as CalendarIcon, List, RefreshCw } from 'lucide-react';
+import * as Icons from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 
 import EventTasksBoard from '@/app/(crm)/crm/events/[id]/components/tabs/EventTasksBoard';
@@ -267,7 +268,17 @@ export default function EventDetailPageClient({
 
   const [hoveredEmployee, setHoveredEmployee] = useState<string | null>(null);
 
-  const { auditLog } = useEventAuditLog(eventId as string);
+  const {
+    auditLog,
+    stats,
+    groupedByDate,
+    filterByAction,
+    isLoading: isLoadingAuditLog,
+    getActionIcon,
+  } = useEventAuditLog(eventId as string);
+
+  const [auditViewMode, setAuditViewMode] = useState<'timeline' | 'byDate'>('timeline');
+  const [auditActionFilter, setAuditActionFilter] = useState<any>('all');
   const [contact, setContact] = useState<ISimpleContact | null>(initialContact || null);
 
   useEffect(() => {
@@ -1085,249 +1096,290 @@ export default function EventDetailPageClient({
 
       {activeTab === 'history' && (
         <div className="space-y-6">
+          {/* Nagłówek z przyciskami widoku */}
           <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-light text-[#e5e4e2]">Historia zmian</h2>
-            <div className="text-sm text-[#e5e4e2]/60">
-              {auditLog.length} {auditLog.length === 1 ? 'wpis' : 'wpisów'}
+            <div>
+              <h2 className="text-2xl font-light text-[#e5e4e2]">Historia zmian</h2>
+              <p className="text-sm text-[#e5e4e2]/60">
+                {stats.totalEntries} zmian • {stats.uniqueUsers} użytkowników
+              </p>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setAuditViewMode('timeline')}
+                className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                  auditViewMode === 'timeline'
+                    ? 'bg-[#d3bb73] text-[#0f1119]'
+                    : 'bg-[#1c1f33] text-[#e5e4e2]/70 hover:bg-[#1c1f33]/80 hover:text-[#e5e4e2]'
+                }`}
+              >
+                <List className="h-4 w-4" />
+                Timeline
+              </button>
+              <button
+                onClick={() => setAuditViewMode('byDate')}
+                className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                  auditViewMode === 'byDate'
+                    ? 'bg-[#d3bb73] text-[#0f1119]'
+                    : 'bg-[#1c1f33] text-[#e5e4e2]/70 hover:bg-[#1c1f33]/80 hover:text-[#e5e4e2]'
+                }`}
+              >
+                <CalendarIcon className="h-4 w-4" />
+                Po dacie
+              </button>
             </div>
           </div>
 
-          {auditLog.length === 0 ? (
+          {/* Filtry akcji */}
+          {auditViewMode === 'timeline' && (
+            <div className="flex flex-wrap gap-2 rounded-lg bg-[#1c1f33] p-4">
+              <button
+                onClick={() => setAuditActionFilter('all')}
+                className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                  auditActionFilter === 'all'
+                    ? 'bg-[#d3bb73] text-[#0f1119]'
+                    : 'bg-[#0f1119] text-[#e5e4e2]/70 hover:bg-[#0f1119]/80 hover:text-[#e5e4e2]'
+                }`}
+              >
+                Wszystkie ({stats.totalEntries})
+              </button>
+
+              {['create', 'update', 'delete', 'status_changed'].map((actionType) => {
+                const count = stats.actionCounts[actionType] || 0;
+                if (count === 0) return null;
+
+                const labels: Record<string, string> = {
+                  create: 'Utworzenia',
+                  update: 'Aktualizacje',
+                  delete: 'Usunięcia',
+                  status_changed: 'Zmiany statusu',
+                };
+
+                return (
+                  <button
+                    key={actionType}
+                    onClick={() => setAuditActionFilter(actionType)}
+                    className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+                      auditActionFilter === actionType
+                        ? 'bg-[#d3bb73] text-[#0f1119]'
+                        : 'bg-[#0f1119] text-[#e5e4e2]/70 hover:bg-[#0f1119]/80 hover:text-[#e5e4e2]'
+                    }`}
+                  >
+                    {labels[actionType]} ({count})
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {isLoadingAuditLog ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <RefreshCw className="mx-auto h-8 w-8 animate-spin text-[#d3bb73]" />
+                <p className="mt-2 text-[#e5e4e2]/60">Ładowanie historii zmian...</p>
+              </div>
+            </div>
+          ) : auditLog.length === 0 ? (
             <div className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-8 text-center">
               <History className="mx-auto mb-3 h-12 w-12 text-[#e5e4e2]/20" />
               <p className="text-[#e5e4e2]/60">Brak historii zmian</p>
             </div>
           ) : (
-            <div className="relative">
-              <div className="absolute bottom-4 left-[27px] top-4 w-0.5 bg-gradient-to-b from-[#d3bb73]/20 via-[#d3bb73]/10 to-transparent"></div>
+            <>
+              {/* Widok Timeline */}
+              {auditViewMode === 'timeline' && (() => {
+                const displayedLogs = auditActionFilter === 'all'
+                  ? auditLog
+                  : filterByAction([auditActionFilter]);
 
-              <div className="space-y-6">
-                {auditLog.map((log, index) => {
-                  const employee = log.employee;
-                  const displayName = employee
-                    ? employee.nickname || `${employee.name} ${employee.surname}`
-                    : 'System';
+                return (
+                  <div className="relative">
+                    <div className="absolute bottom-4 left-[27px] top-4 w-0.5 bg-gradient-to-b from-[#d3bb73]/20 via-[#d3bb73]/10 to-transparent"></div>
 
-                  return (
-                    <div key={log.id} className="relative pl-16">
-                      <div className="absolute left-0 top-0">
-                        <div className="group relative">
-                          {employee ? (
-                            <button
-                              onClick={() => router.push(`/crm/employees/${employee.id}`)}
-                              onMouseEnter={() => setHoveredEmployee(log.id)}
-                              onMouseLeave={() => setHoveredEmployee(null)}
-                              className="relative"
-                            >
-                              <EmployeeAvatar
-                                employee={employee}
-                                size={56}
-                                className="cursor-pointer ring-4 ring-[#0f1119] transition-all hover:ring-[#d3bb73]/30"
-                              />
-                              <div
-                                className={`absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full ring-2 ring-[#0f1119] ${
-                                  log.action === 'create'
-                                    ? 'bg-green-500/90'
-                                    : log.action === 'update'
-                                      ? 'bg-blue-500/90'
-                                      : 'bg-red-500/90'
-                                }`}
-                              >
-                                {log.action === 'create' && <Plus className="h-3 w-3 text-white" />}
-                                {log.action === 'update' && (
-                                  <EditIcon className="h-3 w-3 text-white" />
-                                )}
-                                {log.action === 'delete' && (
-                                  <Trash2 className="h-3 w-3 text-white" />
+                    <div className="space-y-6">
+                      {displayedLogs.map((entry) => {
+                        const IconComponent = (Icons as any)[entry.actionIcon] || Activity;
+                        const employee = entry.employee;
+
+                        const colorClasses: Record<string, { bg: string; text: string; border: string }> = {
+                          green: { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30' },
+                          blue: { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30' },
+                          red: { bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/30' },
+                          purple: { bg: 'bg-purple-500/20', text: 'text-purple-400', border: 'border-purple-500/30' },
+                          orange: { bg: 'bg-orange-500/20', text: 'text-orange-400', border: 'border-orange-500/30' },
+                          cyan: { bg: 'bg-cyan-500/20', text: 'text-cyan-400', border: 'border-cyan-500/30' },
+                          teal: { bg: 'bg-teal-500/20', text: 'text-teal-400', border: 'border-teal-500/30' },
+                          gray: { bg: 'bg-gray-500/20', text: 'text-gray-400', border: 'border-gray-500/30' },
+                        };
+
+                        const colorClass = colorClasses[entry.actionColor] || colorClasses.gray;
+
+                        return (
+                          <div key={entry.id} className="relative pl-16">
+                            <div className="absolute left-0 top-0">
+                              <div className="group relative">
+                                {employee ? (
+                                  <button
+                                    onClick={() => router.push(`/crm/employees/${employee.id}`)}
+                                    onMouseEnter={() => setHoveredEmployee(entry.id)}
+                                    onMouseLeave={() => setHoveredEmployee(null)}
+                                    className="relative"
+                                  >
+                                    <EmployeeAvatar
+                                      employee={employee}
+                                      size={56}
+                                      className="cursor-pointer ring-4 ring-[#0f1119] transition-all hover:ring-[#d3bb73]/30"
+                                    />
+                                    <div className={`absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full ring-2 ring-[#0f1119] ${colorClass.bg}`}>
+                                      <IconComponent className={`h-3 w-3 ${colorClass.text}`} />
+                                    </div>
+
+                                    {hoveredEmployee === entry.id && (
+                                      <div className="animate-in fade-in slide-in-from-left-2 absolute left-full top-0 z-50 ml-4 min-w-[280px] rounded-xl border border-[#d3bb73]/30 bg-[#1c1f33] p-4 shadow-xl">
+                                        <div className="flex items-start gap-3">
+                                          <EmployeeAvatar employee={employee} size={48} />
+                                          <div>
+                                            <p className="font-medium text-[#e5e4e2]">{entry.displayUser}</p>
+                                            {employee.occupation && (
+                                              <p className="text-sm text-[#e5e4e2]/60">{employee.occupation}</p>
+                                            )}
+                                            {employee.email && (
+                                              <div className="mt-2 flex items-center gap-1 text-xs text-[#e5e4e2]/50">
+                                                <Mail className="h-3 w-3" />
+                                                <span>{employee.email}</span>
+                                              </div>
+                                            )}
+                                            <div className="mt-3 border-t border-[#d3bb73]/10 pt-3">
+                                              <p className="text-xs text-[#d3bb73]">Kliknij aby przejść do profilu</p>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </button>
+                                ) : (
+                                  <div className="relative flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-[#d3bb73]/20 to-[#d3bb73]/5 ring-4 ring-[#0f1119]">
+                                    <User className="h-6 w-6 text-[#d3bb73]/60" />
+                                    <div className={`absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full ring-2 ring-[#0f1119] ${colorClass.bg}`}>
+                                      <IconComponent className={`h-3 w-3 ${colorClass.text}`} />
+                                    </div>
+                                  </div>
                                 )}
                               </div>
+                            </div>
 
-                              {hoveredEmployee === log.id && (
-                                <div className="animate-in fade-in slide-in-from-left-2 absolute left-full top-0 z-50 ml-4 min-w-[280px] rounded-xl border border-[#d3bb73]/30 bg-[#1c1f33] p-4 shadow-xl">
-                                  <div className="flex items-start gap-3">
-                                    <EmployeeAvatar employee={employee} size={48} />
-                                    <div>
-                                      <p className="font-medium text-[#e5e4e2]">{displayName}</p>
-                                      {employee.occupation && (
-                                        <p className="text-sm text-[#e5e4e2]/60">
-                                          {employee.occupation}
-                                        </p>
-                                      )}
-                                      {employee.email && (
-                                        <div className="mt-2 flex items-center gap-1 text-xs text-[#e5e4e2]/50">
-                                          <Mail className="h-3 w-3" />
-                                          <span>{employee.email}</span>
-                                        </div>
-                                      )}
-                                      <div className="mt-3 border-t border-[#d3bb73]/10 pt-3">
-                                        <p className="text-xs text-[#d3bb73]">
-                                          Kliknij aby przejść do profilu
-                                        </p>
-                                      </div>
-                                    </div>
+                            <div className={`rounded-xl border ${colorClass.border} bg-[#1c1f33] p-4 transition-all hover:border-[#d3bb73]/40 hover:shadow-lg`}>
+                              <div className="mb-2 flex items-start justify-between gap-4">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className={`font-semibold ${colorClass.text}`}>{entry.actionLabel}</span>
+                                    {entry.entity_type && (
+                                      <span className="rounded-full bg-[#d3bb73]/10 px-2 py-1 text-xs text-[#d3bb73]">
+                                        {entry.entity_type}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <p className="mt-1 text-sm text-[#e5e4e2]/80">{entry.displayDescription}</p>
+
+                                  <div className="mt-2 flex items-center gap-2 text-xs text-[#e5e4e2]/50">
+                                    <User className="h-3 w-3" />
+                                    <span className="font-medium text-[#d3bb73]">{entry.displayUser}</span>
+                                    <span>•</span>
+                                    <Clock className="h-3 w-3" />
+                                    <span>{entry.timeAgo}</span>
                                   </div>
                                 </div>
+
+                                <div className="flex-shrink-0 text-right">
+                                  <div className="text-xs text-[#e5e4e2]/40">{entry.formattedDate}</div>
+                                </div>
+                              </div>
+
+                              {entry.hasChanges && (
+                                <div className="mt-3 space-y-2 border-t border-[#d3bb73]/10 pt-3">
+                                  {entry.old_value !== null && (
+                                    <div className="flex items-start gap-2 text-xs">
+                                      <Icons.Minus className="mt-0.5 h-3 w-3 flex-shrink-0 text-red-400" />
+                                      <div className="flex-1">
+                                        <span className="text-[#e5e4e2]/60">Przed:</span>
+                                        <pre className="mt-1 overflow-x-auto rounded bg-red-500/10 p-2 font-mono text-red-400">
+                                          {typeof entry.old_value === 'object'
+                                            ? JSON.stringify(entry.old_value, null, 2)
+                                            : String(entry.old_value)}
+                                        </pre>
+                                      </div>
+                                    </div>
+                                  )}
+                                  {entry.new_value !== null && (
+                                    <div className="flex items-start gap-2 text-xs">
+                                      <Icons.Plus className="mt-0.5 h-3 w-3 flex-shrink-0 text-green-400" />
+                                      <div className="flex-1">
+                                        <span className="text-[#e5e4e2]/60">Po:</span>
+                                        <pre className="mt-1 overflow-x-auto rounded bg-green-500/10 p-2 font-mono text-green-400">
+                                          {typeof entry.new_value === 'object'
+                                            ? JSON.stringify(entry.new_value, null, 2)
+                                            : String(entry.new_value)}
+                                        </pre>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
                               )}
-                            </button>
-                          ) : (
-                            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-[#d3bb73]/20 to-[#d3bb73]/5 ring-4 ring-[#0f1119]">
-                              <User className="h-6 w-6 text-[#d3bb73]/60" />
-                              <div
-                                className={`absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full ring-2 ring-[#0f1119] ${
-                                  log.action === 'create'
-                                    ? 'bg-green-500/90'
-                                    : log.action === 'update'
-                                      ? 'bg-blue-500/90'
-                                      : 'bg-red-500/90'
-                                }`}
-                              >
-                                {log.action === 'create' && <Plus className="h-3 w-3 text-white" />}
-                                {log.action === 'update' && (
-                                  <EditIcon className="h-3 w-3 text-white" />
-                                )}
-                                {log.action === 'delete' && (
-                                  <Trash2 className="h-3 w-3 text-white" />
-                                )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Widok po dacie */}
+              {auditViewMode === 'byDate' && (
+                <div className="space-y-6">
+                  {Object.entries(groupedByDate).map(([date, entries]) => (
+                    <div key={date}>
+                      <div className="mb-3 flex items-center gap-3">
+                        <h3 className="text-lg font-semibold text-[#e5e4e2]">{date}</h3>
+                        <span className="rounded-full bg-[#d3bb73]/20 px-3 py-1 text-xs font-medium text-[#d3bb73]">
+                          {entries.length} zmian
+                        </span>
+                      </div>
+
+                      <div className="space-y-2">
+                        {entries.map((entry) => {
+                          const IconComponent = (Icons as any)[entry.actionIcon] || Activity;
+
+                          return (
+                            <div
+                              key={entry.id}
+                              className="flex items-start gap-3 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-3 transition-all hover:border-[#d3bb73]/40 hover:shadow-lg"
+                            >
+                              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[#d3bb73]/10">
+                                <IconComponent className="h-4 w-4 text-[#d3bb73]" />
+                              </div>
+
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="font-medium text-[#e5e4e2]">{entry.actionLabel}</span>
+                                  <span className="flex-shrink-0 text-xs text-[#e5e4e2]/40">{entry.timeAgo}</span>
+                                </div>
+
+                                <p className="mt-1 text-sm text-[#e5e4e2]/70">{entry.displayDescription}</p>
+
+                                <p className="mt-1 text-xs text-[#e5e4e2]/50">{entry.displayUser}</p>
                               </div>
                             </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-4 transition-all hover:border-[#d3bb73]/40 hover:shadow-lg">
-                        <div className="mb-2 flex items-start justify-between gap-4">
-                          <div className="flex-1">
-                            <p className="font-medium text-[#e5e4e2]">
-                              <span className="text-[#d3bb73]">{displayName}</span>{' '}
-                              {log.action === 'create' && 'utworzył'}
-                              {log.action === 'update' && 'zaktualizował'}
-                              {log.action === 'delete' && 'usunął'}{' '}
-                              <span className="text-[#e5e4e2]/80">
-                                {log.entity_type === 'events' && 'wydarzenie'}
-                                {log.entity_type === 'event_equipment' && 'sprzęt wydarzenia'}
-                                {log.entity_type === 'employee_assignments' &&
-                                  'przypisanie pracownika'}
-                                {log.entity_type === 'event_vehicles' && 'pojazd wydarzenia'}
-                                {log.entity_type === 'tasks' && 'zadanie'}
-                                {log.entity_type === 'offers' && 'ofertę'}
-                                {log.entity_type === 'contracts' && 'umowę'}
-                                {log.entity_type === 'event_files' && 'plik'}
-                                {log.entity_type === 'event_subcontractors' && 'podwykonawcę'}
-                                {![
-                                  'events',
-                                  'event_equipment',
-                                  'employee_assignments',
-                                  'event_vehicles',
-                                  'tasks',
-                                  'offers',
-                                  'contracts',
-                                  'event_files',
-                                  'event_subcontractors',
-                                ].includes(log.entity_type) && log.entity_type}
-                              </span>
-                            </p>
-                            {log.description && (
-                              <p className="mt-1 text-sm text-[#e5e4e2]/70">{log.description}</p>
-                            )}
-                            {log.field_name && (
-                              <p className="mt-1 text-sm text-[#e5e4e2]/60">
-                                Pole: <span className="text-[#d3bb73]/80">{log.field_name}</span>
-                              </p>
-                            )}
-                          </div>
-                          <div className="flex-shrink-0 text-right">
-                            <div className="flex items-center gap-1.5 text-xs text-[#e5e4e2]/40">
-                              <Clock className="h-3 w-3" />
-                              <span>
-                                {new Date(log.created_at).toLocaleString('pl-PL', {
-                                  day: '2-digit',
-                                  month: '2-digit',
-                                  year: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {log.action === 'update' && (log.old_value || log.new_value) && (
-                          <div className="mt-3 space-y-2 border-t border-[#d3bb73]/10 pt-3">
-                            {(() => {
-                              const oldVal = log.old_value || {};
-                              const newVal = log.new_value || {};
-                              const changedFields = Object.keys(newVal).filter(
-                                (key) =>
-                                  JSON.stringify(oldVal[key]) !== JSON.stringify(newVal[key]),
-                              );
-
-                              if (changedFields.length === 0) return null;
-
-                              return changedFields.map((field) => {
-                                if (['id', 'created_at', 'updated_at'].includes(field)) return null;
-
-                                const fieldLabels: Record<string, string> = {
-                                  name: 'Nazwa',
-                                  description: 'Opis',
-                                  status: 'Status',
-                                  budget: 'Budżet',
-                                  event_date: 'Data wydarzenia',
-                                  location: 'Lokalizacja',
-                                  quantity: 'Ilość',
-                                  notes: 'Notatki',
-                                  organization_id: 'Organizacja',
-                                  contact_person_id: 'Osoba kontaktowa',
-                                  category_id: 'Kategoria',
-                                  expected_revenue: 'Przewidywany przychód',
-                                  estimated_costs: 'Szacowane koszty',
-                                };
-
-                                const formatValue = (val: any) => {
-                                  if (val === null || val === undefined) return 'brak';
-                                  if (typeof val === 'boolean') return val ? 'tak' : 'nie';
-                                  if (typeof val === 'number') return val.toLocaleString('pl-PL');
-                                  if (typeof val === 'string' && val.length > 100)
-                                    return val.substring(0, 100) + '...';
-                                  return String(val);
-                                };
-
-                                return (
-                                  <div key={field} className="text-sm">
-                                    <span className="text-[#e5e4e2]/60">
-                                      {fieldLabels[field] || field}:
-                                    </span>
-                                    <div className="mt-1 flex items-center gap-2">
-                                      <span className="rounded bg-red-500/10 px-2 py-1 text-xs text-red-400">
-                                        {formatValue(oldVal[field])}
-                                      </span>
-                                      <ArrowRight className="h-3 w-3 text-[#e5e4e2]/40" />
-                                      <span className="rounded bg-green-500/10 px-2 py-1 text-xs text-green-400">
-                                        {formatValue(newVal[field])}
-                                      </span>
-                                    </div>
-                                  </div>
-                                );
-                              });
-                            })()}
-                          </div>
-                        )}
-
-                        {log.metadata?.table && (
-                          <div className="mt-3 border-t border-[#d3bb73]/10 pt-3">
-                            <div className="flex items-center gap-2">
-                              <Tag className="h-3 w-3 text-[#e5e4e2]/40" />
-                              <span className="text-xs text-[#e5e4e2]/40">
-                                Tabela: {log.metadata.table}
-                              </span>
-                            </div>
-                          </div>
-                        )}
+                          );
+                        })}
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
