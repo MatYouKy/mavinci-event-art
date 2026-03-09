@@ -258,8 +258,7 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
                             </a>
                           </div>
                         )}
-                        {contact.business_phone ||
-                          (contact.phone && (
+                        {(contact.business_phone || contact.phone) && (
                             <div className="mt-1 flex items-center gap-2 text-sm text-[#e5e4e2]/60">
                               <Phone className="h-3 w-3" />
                               <a
@@ -269,7 +268,7 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
                                 {contact.business_phone || contact.phone}
                               </a>
                             </div>
-                          ))}
+                          )}
                       </div>
                     </div>
                   )}
@@ -300,17 +299,18 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
                             </a>
                           </div>
                         )}
-                        {contact.phone && (
+                        {contact.business_phone ||
+                          (contact.phone && (
                           <div className="mt-1 flex items-center gap-2 text-sm text-[#e5e4e2]/60">
                             <Phone className="h-3 w-3" />
                             <a
-                              href={`tel:${contact.phone}`}
+                              href={`tel:${contact.business_phone || contact.phone}`}
                               className="text-[#e5e4e2] hover:text-[#d3bb73]"
                             >
-                              {contact.phone}
+                              {contact.business_phone || contact.phone}
                             </a>
                           </div>
-                        )}
+                        ))}
                       </>
                     ) : (
                       <p className="text-[#e5e4e2]">Brak klienta</p>

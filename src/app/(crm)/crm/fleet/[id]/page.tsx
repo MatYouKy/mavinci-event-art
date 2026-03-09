@@ -21,6 +21,7 @@ import {
   Image as ImageIcon,
   X,
   TrendingUp,
+  Loader2,
 } from 'lucide-react';
 
 import { useVehicleDetail } from '@/app/(crm)/crm/fleet/hooks/useVehicleDetail';
@@ -238,6 +239,7 @@ export default function VehicleDetailPage() {
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
   const [showInsuranceModal, setShowInsuranceModal] = useState(false);
   const [showFuelModal, setShowFuelModal] = useState(false);
+  const [isEndingUsage, setIsEndingUsage] = useState(false);
 
   const formatDate = (date: string) => {
     if (!date) return '-';
@@ -361,7 +363,11 @@ export default function VehicleDetailPage() {
   };
 
   const handleEndUsage = async () => {
-    if (!vehicle?.in_use_event_vehicle_id) return;
+    console.log('vehicle', vehicle);
+  
+    if (!vehicle?.id || !vehicle?.in_use_event_id) {
+      return showSnackbar('Nie znaleziono aktywnego przypisania pojazdu', 'error');
+    }
   
     const confirmed = await showConfirm(
       'Zakończ użytkowanie pojazdu',
@@ -369,20 +375,50 @@ export default function VehicleDetailPage() {
     );
     if (!confirmed) return;
   
-    const { data, error } = await supabase
-      .from('event_vehicles')
-      .update({ is_in_use: false, return_timestamp: new Date().toISOString() })
-      .eq('id', vehicle.in_use_event_vehicle_id)
-      .select('id');
+    try {
+      setIsEndingUsage(true);
   
-    if (error) throw error;
-    if (!data?.length) {
-      showSnackbar('Nie znaleziono aktywnego przypisania do zakończenia', 'error');
-      return;
+      const nowIso = new Date().toISOString();
+  
+      const { data: activeAssignment, error: findError } = await supabase
+        .from('event_vehicles')
+        .select('id')
+        .eq('vehicle_id', vehicle.id) // vehicles.id
+        .eq('event_id', vehicle.in_use_event_id) // events.id
+        .eq('is_in_use', true)
+        .maybeSingle();
+  
+      if (findError) throw findError;
+  
+      if (!activeAssignment) {
+        showSnackbar('Nie znaleziono aktywnego przypisania do zakończenia', 'error');
+        return;
+      }
+  
+      const { data, error } = await supabase
+        .from('event_vehicles')
+        .update({
+          is_in_use: false,
+          return_timestamp: nowIso,
+        })
+        .eq('id', activeAssignment.id)
+        .select('id');
+  
+      if (error) throw error;
+  
+      if (!data?.length) {
+        showSnackbar('Nie udało się zakończyć użytkowania pojazdu', 'error');
+        return;
+      }
+  
+      showSnackbar('Użytkowanie pojazdu zostało zakończone', 'success');
+      refetch();
+    } catch (error) {
+      console.error('Error ending usage:', error);
+      showSnackbar('Błąd podczas zakończania użytkowania pojazdu', 'error');
+    } finally {
+      setIsEndingUsage(false);
     }
-  
-    showSnackbar('Użytkowanie pojazdu zostało zakończone', 'success');
-    refetch();
   };
 
   if (isLoading) {
@@ -460,7 +496,7 @@ export default function VehicleDetailPage() {
                   title="Zakończ użytkowanie pojazdu"
                 >
                   <X className="h-4 w-4" />
-                  Zakończ użytkowanie
+                  {isEndingUsage ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Zakończ użytkowanie'}
                 </button>
               )}
             </div>

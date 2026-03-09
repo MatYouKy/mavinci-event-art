@@ -137,9 +137,6 @@ export function OfferPage({
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
 
   // Liczniki
-  const [productCount, setProductCount] = useState(0);
-  const [templateCount, setTemplateCount] = useState(0);
-
   // Kreator oferty
   const [showOfferWizard, setShowOfferWizard] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -159,34 +156,6 @@ export function OfferPage({
       setActiveTab(tab);
     }
   }, [searchParams]);
-
-  // useEffect(() => {
-  //   if (employee) {
-  //     fetchCounts();
-  //     if (activeTab === 'offers') {
-  //       fetchOffers();
-  //     } else if (activeTab === 'catalog') {
-  //       fetchCategories();
-  //       fetchProducts();
-  //     } else if (activeTab === 'templates') {
-  //       fetchTemplates();
-  //     }
-  //   }
-  // }, [employee, activeTab]);
-
-  const fetchCounts = async () => {
-    try {
-      const [productsResult, templatesResult] = await Promise.all([
-        supabase.from('offer_products').select('id', { count: 'exact', head: true }),
-        supabase.from('offer_templates').select('id', { count: 'exact', head: true }),
-      ]);
-
-      if (productsResult.count !== null) setProductCount(productsResult.count);
-      if (templatesResult.count !== null) setTemplateCount(templatesResult.count);
-    } catch (err) {
-      console.error('Error fetching counts:', err);
-    }
-  };
 
   useEffect(() => {
     filterOffers();
@@ -395,7 +364,7 @@ export function OfferPage({
             <Package className="h-5 w-5" />
             <span>Katalog produktów</span>
             <span className="ml-2 rounded-full bg-[#1c1f33] px-2 py-0.5 text-xs text-[#e5e4e2]/60">
-              {productCount}
+              {products.length}
             </span>
           </div>
           {activeTab === 'catalog' && (
@@ -413,7 +382,7 @@ export function OfferPage({
             <FileType className="h-5 w-5" />
             <span>Szablony</span>
             <span className="ml-2 rounded-full bg-[#1c1f33] px-2 py-0.5 text-xs text-[#e5e4e2]/60">
-              {templateCount}
+              {templates.length}
             </span>
           </div>
           {activeTab === 'templates' && (
