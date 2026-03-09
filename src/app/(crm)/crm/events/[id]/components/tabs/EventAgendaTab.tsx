@@ -25,6 +25,8 @@ import { useGetContactByIdQuery } from '@/app/(crm)/crm/contacts/store/clientsAp
 import { ContactRow, OrganizationRow } from '@/app/(crm)/crm/contacts/types';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
 import { ISimpleContact } from '../../EventDetailPageClient';
+import { useAppDispatch } from '@/store/hooks';
+import { eventsApi } from '../../../store/api/eventsApi';
 
 // YYYY-MM-DD + HH:MM -> YYYY-MM-DDTHH:MM:00 (local time, no timezone conversion)
 const buildIsoDateTime = (dateOnly: string, timeStr: string): string | null => {
@@ -153,6 +155,7 @@ export default function EventAgendaTab({
 }: EventAgendaTabProps) {
   const { employee } = useCurrentEmployee();
   const { event } = useEvent();
+  const dispatch = useAppDispatch();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -425,6 +428,12 @@ export default function EventAgendaTab({
           if (note.id) notesWithIds.set(note.id, insertedNote.id);
         }
       }
+
+      // Invaliduj cache aby odświeżyć historię zmian
+      dispatch(eventsApi.util.invalidateTags([
+        { type: 'EventAgenda', id: eventId },
+        { type: 'EventAuditLog', id: eventId },
+      ]));
 
       alert('Agenda została zapisana');
       await fetchAgenda();

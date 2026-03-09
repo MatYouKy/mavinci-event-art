@@ -1274,9 +1274,9 @@ export default function EventDetailPageClient({
                                 <div className="flex-1">
                                   <div className="flex items-center gap-2">
                                     <span className={`font-semibold ${colorClass.text}`}>{entry.actionLabel}</span>
-                                    {entry.entity_type && (
+                                    {entry.entityTypeLabel && (
                                       <span className="rounded-full bg-[#d3bb73]/10 px-2 py-1 text-xs text-[#d3bb73]">
-                                        {entry.entity_type}
+                                        {entry.entityTypeLabel}
                                       </span>
                                     )}
                                   </div>

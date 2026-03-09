@@ -50,6 +50,7 @@ export interface ProcessedAuditEntry extends AuditLogEntry {
   actionLabel: string;
   actionColor: string;
   actionIcon: string;
+  entityTypeLabel: string | null;
   displayUser: string;
   displayDescription: string;
   hasChanges: boolean;
@@ -86,6 +87,29 @@ function normalizeActionType(action: string): AuditActionType {
   if (normalized.includes('contract_generated')) return 'contract_generated';
 
   return 'other';
+}
+
+// Funkcja zwracająca czytelną nazwę dla entity_type
+function getEntityTypeLabel(entityType: string | null): string | null {
+  if (!entityType) return null;
+
+  const labels: Record<string, string> = {
+    events: 'Wydarzenie',
+    tasks: 'Zadanie',
+    employee_assignments: 'Przypisanie pracownika',
+    event_vehicles: 'Pojazd',
+    vehicle_handovers: 'Przekazanie pojazdu',
+    event_agendas: 'Agenda',
+    event_agenda_items: 'Pozycja agendy',
+    event_agenda_notes: 'Notatka agendy',
+    event_equipment: 'Sprzęt',
+    event_files: 'Plik',
+    contracts: 'Umowa',
+    offers: 'Oferta',
+    event_phases: 'Faza wydarzenia',
+  };
+
+  return labels[entityType] || entityType;
 }
 
 // Funkcja zwracająca label dla akcji
@@ -232,6 +256,7 @@ export function useEventAuditLog(eventId: string) {
       const actionLabel = getActionLabel(actionType, entry.entity_type);
       const actionColor = getActionColor(actionType);
       const actionIcon = getActionIcon(actionType);
+      const entityTypeLabel = getEntityTypeLabel(entry.entity_type);
 
       // Wyświetlana nazwa użytkownika
       const displayUser = entry.employee
@@ -279,6 +304,7 @@ export function useEventAuditLog(eventId: string) {
         actionLabel,
         actionColor,
         actionIcon,
+        entityTypeLabel,
         displayUser,
         displayDescription,
         hasChanges,

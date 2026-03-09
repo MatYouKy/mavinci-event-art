@@ -894,7 +894,10 @@ export const eventsApi = createApi({
           };
         }
       },
-      invalidatesTags: (result, error, { eventId }) => [{ type: 'EventAgenda', id: eventId }],
+      invalidatesTags: (result, error, { eventId }) => [
+        { type: 'EventAgenda', id: eventId },
+        { type: 'EventAuditLog', id: eventId },
+      ],
     }),
 
     updateAgendaItem: builder.mutation<any, { id: string; eventId: string; data: any }>({
@@ -910,7 +913,10 @@ export const eventsApi = createApi({
           };
         }
       },
-      invalidatesTags: (result, error, { eventId }) => [{ type: 'EventAgenda', id: eventId }],
+      invalidatesTags: (result, error, { eventId }) => [
+        { type: 'EventAgenda', id: eventId },
+        { type: 'EventAuditLog', id: eventId },
+      ],
     }),
 
     deleteAgendaItem: builder.mutation<void, { id: string; eventId: string }>({
@@ -926,7 +932,10 @@ export const eventsApi = createApi({
           };
         }
       },
-      invalidatesTags: (result, error, { eventId }) => [{ type: 'EventAgenda', id: eventId }],
+      invalidatesTags: (result, error, { eventId }) => [
+        { type: 'EventAgenda', id: eventId },
+        { type: 'EventAuditLog', id: eventId },
+      ],
     }),
 
     // ============ CONTRACTS ENDPOINTS ============
