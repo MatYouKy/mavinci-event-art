@@ -3,7 +3,34 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
-import { ArrowLeft, ArrowRight, ClipboardList, Building2, DollarSign, CreditCard as Edit, Trash2, Plus, Package, Users, FileText, CheckSquare, Clock, X, User, Tag, Mail, CreditCard as EditIcon, AlertCircle, History, UserCheck, Truck, Activity, Calendar as CalendarIcon, List, RefreshCw } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  ClipboardList,
+  Building2,
+  DollarSign,
+  CreditCard as Edit,
+  Trash2,
+  Plus,
+  Package,
+  Users,
+  FileText,
+  CheckSquare,
+  Clock,
+  X,
+  User,
+  Tag,
+  Mail,
+  CreditCard as EditIcon,
+  AlertCircle,
+  History,
+  UserCheck,
+  Truck,
+  Activity,
+  Calendar as CalendarIcon,
+  List,
+  RefreshCw,
+} from 'lucide-react';
 import * as Icons from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 
@@ -51,6 +78,8 @@ import { useGetOrganizationByIdQuery } from '../../contacts/store/clientsApi';
 import { AddEventEmployeeModal } from './components/Modals/AddEventEmployeeModal';
 import { useEventAuditLog } from '@/app/(crm)/crm/events/hooks/useEventAuditLog';
 import { IEmployee } from '../../employees/type';
+import { hasScope } from './helpers/hasScope';
+import { EventCategoryRow } from '@/lib/CRM/events/eventsData.server';
 
 interface Equipment {
   kit_id: unknown;
@@ -131,17 +160,24 @@ export interface ISimpleContact {
 }
 
 export default function EventDetailPageClient({
-  initialEvent,
+  categories,
+  initialData,
   initialLocation,
   initialContact,
   initialOffers,
 }: {
-  initialEvent: IEvent;
+  categories: EventCategoryRow[];
+  initialData: IEvent;
   initialLocation: ISimpleLocation;
   initialContact: ISimpleContact;
   initialOffers: IOffer[];
 }) {
-  console.log('WRAPPER', initialEvent);
+  const { organization, creator, currentEmployee } = initialData;
+
+  const isAdmin = currentEmployee.role === 'admin';
+
+  const canEventManage = currentEmployee.permissions?.includes('events_manage') || isAdmin;
+
   const router = useRouter();
   const params = useParams();
   const dispatch = useDispatch();
@@ -149,25 +185,22 @@ export default function EventDetailPageClient({
   const eventId = params.id as string;
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
-  const { hasScope, isAdmin: isUserAdmin } = useCurrentEmployee();
+
   const { equipment } = useEventEquipment(eventId);
 
-  const { employees } = useEventTeam(eventId);
-
-  const { useById } = useEmployees();
-  const { event: eventData, updateEvent } = useEvent();
+  const { event: eventData, updateEvent } = useEvent(initialData);
   const [teamEmployees, setTeamEmployees] = useState<any[]>([]);
   const [showStatusModal, setShowStatusModal] = useState(false);
 
   // ✅ uprawnienia do OFERT / FAKTUR / FINANSÓW (dopasuj nazwy scope do swoich)
   const canViewCommercials =
-    isUserAdmin ||
-    hasScope('finances_manage') ||
-    hasScope('finances_view') ||
-    hasScope('offers_manage') ||
-    hasScope('offers_view') ||
-    hasScope('invoices_manage') ||
-    hasScope('invoices_view');
+    currentEmployee.role === 'admin' ||
+    hasScope('finances_manage', currentEmployee.permissions) ||
+    hasScope('finances_view', currentEmployee.permissions) ||
+    hasScope('offers_manage', currentEmployee.permissions) ||
+    hasScope('offers_view', currentEmployee.permissions) ||
+    hasScope('invoices_manage', currentEmployee.permissions) ||
+    hasScope('invoices_view', currentEmployee.permissions);
 
   // const {
   //   data: eventRTKQuery,
@@ -178,12 +211,10 @@ export default function EventDetailPageClient({
   // } = useGetEventByIdQuery(eventId, {
   //   refetchOnMountOrArgChange: true, // ⬅️ tylko 1 fetch, bez refetch przy każdym wejściu
   // });
-  const [event, setEvent] = useState<IEvent>(initialEvent);
+  const [event, setEvent] = useState<IEvent>(initialData);
 
   const [updateEventMutation] = useUpdateEventMutation();
   const [deleteOfferMutation] = useDeleteEventOfferMutation();
-
-  const { data: creator } = useById(event?.created_by);
 
   useEffect(() => {
     const success = searchParams.get('success');
@@ -233,10 +264,6 @@ export default function EventDetailPageClient({
     };
   }, [event?.location_id, initialLocation]);
 
-  const { data: organization } = useGetOrganizationByIdQuery(event?.organization_id, {
-    skip: !event?.organization_id,
-  });
-
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [activeTab, setActiveTab] = useState<
     | 'overview'
@@ -256,7 +283,7 @@ export default function EventDetailPageClient({
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [canManageTeam, setCanManageTeam] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
+
   const [userAssignmentStatus, setUserAssignmentStatus] = useState<
     'pending' | 'accepted' | 'rejected' | null
   >(null);
@@ -279,19 +306,16 @@ export default function EventDetailPageClient({
     getActionIcon,
     refetch: refetchAuditLog,
   } = useEventAuditLog(eventId as string);
-
-  console.log('auditLog', auditLog);
-
   const [auditViewMode, setAuditViewMode] = useState<'timeline' | 'byDate'>('timeline');
   const [auditActionFilter, setAuditActionFilter] = useState<any>('all');
   const [contact, setContact] = useState<ISimpleContact | null>(initialContact || null);
 
-  useEffect(() => {
-    if (eventId) {
-      checkTeamManagementPermission();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eventId]);
+  // useEffect(() => {
+  //   if (eventId) {
+  //     checkTeamManagementPermission();
+  //   }
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [eventId]);
 
   const checkTeamManagementPermission = async () => {
     try {
@@ -315,7 +339,6 @@ export default function EventDetailPageClient({
 
       const userIsAdmin =
         employee?.role === 'admin' || employee?.permissions?.includes('events_manage');
-      setIsAdmin(userIsAdmin);
 
       // Admin widzi wszystkie zakładki
       if (userIsAdmin) {
@@ -606,7 +629,7 @@ export default function EventDetailPageClient({
         onClick: () => setShowEditEventModal(true),
         icon: <Edit className="h-4 w-4" />,
         variant: 'primary',
-        show: canManageTeam,
+        show: canEventManage,
       },
       {
         label: 'Usuń',
@@ -616,7 +639,7 @@ export default function EventDetailPageClient({
         show: isAdmin,
       },
     ];
-  }, [setShowEditEventModal, handleDeleteEvent, isAdmin, canManageTeam]);
+  }, [setShowEditEventModal, handleDeleteEvent, isAdmin, canEventManage]);
 
   const latestOffer = useMemo(() => {
     if (!offersData?.length) return null;
@@ -772,7 +795,7 @@ export default function EventDetailPageClient({
             }
 
             // Admin widzi wszystko
-            if (isUserAdmin) {
+            if (isAdmin) {
               return true;
             }
 
@@ -889,21 +912,21 @@ export default function EventDetailPageClient({
               </div>
             )}
             <EventsDetailsTab
-              initialEvent={event}
+              initialEvent={initialData}
               location={location}
               organization={organization}
               contact={contact}
               hasLimitedAccess={hasLimitedAccess}
               canManageTeam={canManageTeam}
-              isUserAdmin={isUserAdmin}
+              isAdmin={isAdmin}
+              canEventManage={canEventManage}
             />
           </div>
 
           <div className="space-y-6">
+            <EventDetailsAction event={event} categories={categories} />
             {canViewCommercials && (
               <>
-                <EventDetailsAction event={event} />
-
                 <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
                   <div className="mb-4 flex items-center justify-between">
                     <h2 className="text-lg font-light text-[#e5e4e2]">Budżet</h2>
@@ -1201,153 +1224,211 @@ export default function EventDetailPageClient({
           ) : (
             <>
               {/* Widok Timeline */}
-              {auditViewMode === 'timeline' && (() => {
-                const displayedLogs = auditActionFilter === 'all'
-                  ? auditLog
-                  : filterByAction([auditActionFilter]);
+              {auditViewMode === 'timeline' &&
+                (() => {
+                  const displayedLogs =
+                    auditActionFilter === 'all' ? auditLog : filterByAction([auditActionFilter]);
 
-                return (
-                  <div className="relative">
-                    <div className="absolute bottom-4 left-[27px] top-4 w-0.5 bg-gradient-to-b from-[#d3bb73]/20 via-[#d3bb73]/10 to-transparent"></div>
+                  return (
+                    <div className="relative">
+                      <div className="absolute bottom-4 left-[27px] top-4 w-0.5 bg-gradient-to-b from-[#d3bb73]/20 via-[#d3bb73]/10 to-transparent"></div>
 
-                    <div className="space-y-6">
-                      {displayedLogs.map((entry) => {
-                        const IconComponent = (Icons as any)[entry.actionIcon] || Activity;
-                        const employee = entry.employee;
+                      <div className="space-y-6">
+                        {displayedLogs.map((entry) => {
+                          const IconComponent = (Icons as any)[entry.actionIcon] || Activity;
+                          const employee = entry.employee;
 
-                        const colorClasses: Record<string, { bg: string; text: string; border: string }> = {
-                          green: { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30' },
-                          blue: { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30' },
-                          red: { bg: 'bg-red-500/20', text: 'text-red-400', border: 'border-red-500/30' },
-                          purple: { bg: 'bg-purple-500/20', text: 'text-purple-400', border: 'border-purple-500/30' },
-                          orange: { bg: 'bg-orange-500/20', text: 'text-orange-400', border: 'border-orange-500/30' },
-                          cyan: { bg: 'bg-cyan-500/20', text: 'text-cyan-400', border: 'border-cyan-500/30' },
-                          teal: { bg: 'bg-teal-500/20', text: 'text-teal-400', border: 'border-teal-500/30' },
-                          gray: { bg: 'bg-gray-500/20', text: 'text-gray-400', border: 'border-gray-500/30' },
-                        };
+                          const colorClasses: Record<
+                            string,
+                            { bg: string; text: string; border: string }
+                          > = {
+                            green: {
+                              bg: 'bg-green-500/20',
+                              text: 'text-green-400',
+                              border: 'border-green-500/30',
+                            },
+                            blue: {
+                              bg: 'bg-blue-500/20',
+                              text: 'text-blue-400',
+                              border: 'border-blue-500/30',
+                            },
+                            red: {
+                              bg: 'bg-red-500/20',
+                              text: 'text-red-400',
+                              border: 'border-red-500/30',
+                            },
+                            purple: {
+                              bg: 'bg-purple-500/20',
+                              text: 'text-purple-400',
+                              border: 'border-purple-500/30',
+                            },
+                            orange: {
+                              bg: 'bg-orange-500/20',
+                              text: 'text-orange-400',
+                              border: 'border-orange-500/30',
+                            },
+                            cyan: {
+                              bg: 'bg-cyan-500/20',
+                              text: 'text-cyan-400',
+                              border: 'border-cyan-500/30',
+                            },
+                            teal: {
+                              bg: 'bg-teal-500/20',
+                              text: 'text-teal-400',
+                              border: 'border-teal-500/30',
+                            },
+                            gray: {
+                              bg: 'bg-gray-500/20',
+                              text: 'text-gray-400',
+                              border: 'border-gray-500/30',
+                            },
+                          };
 
-                        const colorClass = colorClasses[entry.actionColor] || colorClasses.gray;
+                          const colorClass = colorClasses[entry.actionColor] || colorClasses.gray;
 
-                        return (
-                          <div key={entry.id} className="relative pl-16">
-                            <div className="absolute left-0 top-0">
-                              <div className="group relative">
-                                {employee ? (
-                                  <button
-                                    onClick={() => router.push(`/crm/employees/${employee.id}`)}
-                                    onMouseEnter={() => setHoveredEmployee(entry.id)}
-                                    onMouseLeave={() => setHoveredEmployee(null)}
-                                    className="relative"
-                                  >
-                                    <EmployeeAvatar
-                                      employee={employee as IEmployee}
-                                      size={56}
-                                      className="cursor-pointer ring-4 ring-[#0f1119] transition-all hover:ring-[#d3bb73]/30"
-                                    />
-                                    <div className={`absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full ring-2 ring-[#0f1119] ${colorClass.bg}`}>
-                                      <IconComponent className={`h-3 w-3 ${colorClass.text}`} />
-                                    </div>
+                          return (
+                            <div key={entry.id} className="relative pl-16">
+                              <div className="absolute left-0 top-0">
+                                <div className="group relative">
+                                  {employee ? (
+                                    <button
+                                      onClick={() => router.push(`/crm/employees/${employee.id}`)}
+                                      onMouseEnter={() => setHoveredEmployee(entry.id)}
+                                      onMouseLeave={() => setHoveredEmployee(null)}
+                                      className="relative"
+                                    >
+                                      <EmployeeAvatar
+                                        employee={employee as IEmployee}
+                                        size={56}
+                                        className="cursor-pointer ring-4 ring-[#0f1119] transition-all hover:ring-[#d3bb73]/30"
+                                      />
+                                      <div
+                                        className={`absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full ring-2 ring-[#0f1119] ${colorClass.bg}`}
+                                      >
+                                        <IconComponent className={`h-3 w-3 ${colorClass.text}`} />
+                                      </div>
 
-                                    {hoveredEmployee === entry.id && (
-                                      <div className="animate-in fade-in slide-in-from-left-2 absolute left-full top-0 z-50 ml-4 min-w-[280px] rounded-xl border border-[#d3bb73]/30 bg-[#1c1f33] p-4 shadow-xl">
-                                        <div className="flex items-start gap-3">
-                                          <EmployeeAvatar employee={employee as IEmployee} size={48} />
-                                          <div>
-                                            <p className="font-medium text-[#e5e4e2]">{entry.displayUser}</p>
-                                            {employee.occupation && (
-                                              <p className="text-sm text-[#e5e4e2]/60">{employee.occupation}</p>
-                                            )}
-                                            {employee.email && (
-                                              <div className="mt-2 flex items-center gap-1 text-xs text-[#e5e4e2]/50">
-                                                <Mail className="h-3 w-3" />
-                                                <span>{employee.email}</span>
+                                      {hoveredEmployee === entry.id && (
+                                        <div className="animate-in fade-in slide-in-from-left-2 absolute left-full top-0 z-50 ml-4 min-w-[280px] rounded-xl border border-[#d3bb73]/30 bg-[#1c1f33] p-4 shadow-xl">
+                                          <div className="flex items-start gap-3">
+                                            <EmployeeAvatar
+                                              employee={employee as IEmployee}
+                                              size={48}
+                                            />
+                                            <div>
+                                              <p className="font-medium text-[#e5e4e2]">
+                                                {entry.displayUser}
+                                              </p>
+                                              {employee.occupation && (
+                                                <p className="text-sm text-[#e5e4e2]/60">
+                                                  {employee.occupation}
+                                                </p>
+                                              )}
+                                              {employee.email && (
+                                                <div className="mt-2 flex items-center gap-1 text-xs text-[#e5e4e2]/50">
+                                                  <Mail className="h-3 w-3" />
+                                                  <span>{employee.email}</span>
+                                                </div>
+                                              )}
+                                              <div className="mt-3 border-t border-[#d3bb73]/10 pt-3">
+                                                <p className="text-xs text-[#d3bb73]">
+                                                  Kliknij aby przejść do profilu
+                                                </p>
                                               </div>
-                                            )}
-                                            <div className="mt-3 border-t border-[#d3bb73]/10 pt-3">
-                                              <p className="text-xs text-[#d3bb73]">Kliknij aby przejść do profilu</p>
                                             </div>
                                           </div>
                                         </div>
+                                      )}
+                                    </button>
+                                  ) : (
+                                    <div className="relative flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-[#d3bb73]/20 to-[#d3bb73]/5 ring-4 ring-[#0f1119]">
+                                      <User className="h-6 w-6 text-[#d3bb73]/60" />
+                                      <div
+                                        className={`absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full ring-2 ring-[#0f1119] ${colorClass.bg}`}
+                                      >
+                                        <IconComponent className={`h-3 w-3 ${colorClass.text}`} />
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div
+                                className={`rounded-xl border ${colorClass.border} bg-[#1c1f33] p-4 transition-all hover:border-[#d3bb73]/40 hover:shadow-lg`}
+                              >
+                                <div className="mb-2 flex items-start justify-between gap-4">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2">
+                                      <span className={`font-semibold ${colorClass.text}`}>
+                                        {entry.actionLabel}
+                                      </span>
+                                      {entry.entityTypeLabel && (
+                                        <span className="rounded-full bg-[#d3bb73]/10 px-2 py-1 text-xs text-[#d3bb73]">
+                                          {entry.entityTypeLabel}
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <p className="mt-1 text-sm text-[#e5e4e2]/80">
+                                      {entry.displayDescription}
+                                    </p>
+
+                                    <div className="mt-2 flex items-center gap-2 text-xs text-[#e5e4e2]/50">
+                                      <User className="h-3 w-3" />
+                                      <span className="font-medium text-[#d3bb73]">
+                                        {entry.displayUser}
+                                      </span>
+                                      <span>•</span>
+                                      <Clock className="h-3 w-3" />
+                                      <span>{entry.timeAgo}</span>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex-shrink-0 text-right">
+                                    <div className="text-xs text-[#e5e4e2]/40">
+                                      {entry.formattedDate}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {entry.hasChanges && (
+                                  <div className="mt-3 space-y-2 border-t border-[#d3bb73]/10 pt-3">
+                                    {entry.old_value !== null && (
+                                      <div className="flex items-start gap-2 text-xs">
+                                        <Icons.Minus className="mt-0.5 h-3 w-3 flex-shrink-0 text-red-400" />
+                                        <div className="flex-1">
+                                          <span className="text-[#e5e4e2]/60">Przed:</span>
+                                          <pre className="mt-1 overflow-x-auto rounded bg-red-500/10 p-2 font-mono text-red-400">
+                                            {typeof entry.old_value === 'object'
+                                              ? JSON.stringify(entry.old_value, null, 2)
+                                              : String(entry.old_value)}
+                                          </pre>
+                                        </div>
                                       </div>
                                     )}
-                                  </button>
-                                ) : (
-                                  <div className="relative flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-[#d3bb73]/20 to-[#d3bb73]/5 ring-4 ring-[#0f1119]">
-                                    <User className="h-6 w-6 text-[#d3bb73]/60" />
-                                    <div className={`absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full ring-2 ring-[#0f1119] ${colorClass.bg}`}>
-                                      <IconComponent className={`h-3 w-3 ${colorClass.text}`} />
-                                    </div>
+                                    {entry.new_value !== null && (
+                                      <div className="flex items-start gap-2 text-xs">
+                                        <Icons.Plus className="mt-0.5 h-3 w-3 flex-shrink-0 text-green-400" />
+                                        <div className="flex-1">
+                                          <span className="text-[#e5e4e2]/60">Po:</span>
+                                          <pre className="mt-1 overflow-x-auto rounded bg-green-500/10 p-2 font-mono text-green-400">
+                                            {typeof entry.new_value === 'object'
+                                              ? JSON.stringify(entry.new_value, null, 2)
+                                              : String(entry.new_value)}
+                                          </pre>
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                               </div>
                             </div>
-
-                            <div className={`rounded-xl border ${colorClass.border} bg-[#1c1f33] p-4 transition-all hover:border-[#d3bb73]/40 hover:shadow-lg`}>
-                              <div className="mb-2 flex items-start justify-between gap-4">
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2">
-                                    <span className={`font-semibold ${colorClass.text}`}>{entry.actionLabel}</span>
-                                    {entry.entityTypeLabel && (
-                                      <span className="rounded-full bg-[#d3bb73]/10 px-2 py-1 text-xs text-[#d3bb73]">
-                                        {entry.entityTypeLabel}
-                                      </span>
-                                    )}
-                                  </div>
-
-                                  <p className="mt-1 text-sm text-[#e5e4e2]/80">{entry.displayDescription}</p>
-
-                                  <div className="mt-2 flex items-center gap-2 text-xs text-[#e5e4e2]/50">
-                                    <User className="h-3 w-3" />
-                                    <span className="font-medium text-[#d3bb73]">{entry.displayUser}</span>
-                                    <span>•</span>
-                                    <Clock className="h-3 w-3" />
-                                    <span>{entry.timeAgo}</span>
-                                  </div>
-                                </div>
-
-                                <div className="flex-shrink-0 text-right">
-                                  <div className="text-xs text-[#e5e4e2]/40">{entry.formattedDate}</div>
-                                </div>
-                              </div>
-
-                              {entry.hasChanges && (
-                                <div className="mt-3 space-y-2 border-t border-[#d3bb73]/10 pt-3">
-                                  {entry.old_value !== null && (
-                                    <div className="flex items-start gap-2 text-xs">
-                                      <Icons.Minus className="mt-0.5 h-3 w-3 flex-shrink-0 text-red-400" />
-                                      <div className="flex-1">
-                                        <span className="text-[#e5e4e2]/60">Przed:</span>
-                                        <pre className="mt-1 overflow-x-auto rounded bg-red-500/10 p-2 font-mono text-red-400">
-                                          {typeof entry.old_value === 'object'
-                                            ? JSON.stringify(entry.old_value, null, 2)
-                                            : String(entry.old_value)}
-                                        </pre>
-                                      </div>
-                                    </div>
-                                  )}
-                                  {entry.new_value !== null && (
-                                    <div className="flex items-start gap-2 text-xs">
-                                      <Icons.Plus className="mt-0.5 h-3 w-3 flex-shrink-0 text-green-400" />
-                                      <div className="flex-1">
-                                        <span className="text-[#e5e4e2]/60">Po:</span>
-                                        <pre className="mt-1 overflow-x-auto rounded bg-green-500/10 p-2 font-mono text-green-400">
-                                          {typeof entry.new_value === 'object'
-                                            ? JSON.stringify(entry.new_value, null, 2)
-                                            : String(entry.new_value)}
-                                        </pre>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                );
-              })()}
+                  );
+                })()}
 
               {/* Widok po dacie */}
               {auditViewMode === 'byDate' && (
@@ -1374,15 +1455,23 @@ export default function EventDetailPageClient({
                                 <IconComponent className="h-4 w-4 text-[#d3bb73]" />
                               </div>
 
-                              <div className="flex-1 min-w-0">
+                              <div className="min-w-0 flex-1">
                                 <div className="flex items-center justify-between gap-2">
-                                  <span className="font-medium text-[#e5e4e2]">{entry.actionLabel}</span>
-                                  <span className="flex-shrink-0 text-xs text-[#e5e4e2]/40">{entry.timeAgo}</span>
+                                  <span className="font-medium text-[#e5e4e2]">
+                                    {entry.actionLabel}
+                                  </span>
+                                  <span className="flex-shrink-0 text-xs text-[#e5e4e2]/40">
+                                    {entry.timeAgo}
+                                  </span>
                                 </div>
 
-                                <p className="mt-1 text-sm text-[#e5e4e2]/70">{entry.displayDescription}</p>
+                                <p className="mt-1 text-sm text-[#e5e4e2]/70">
+                                  {entry.displayDescription}
+                                </p>
 
-                                <p className="mt-1 text-xs text-[#e5e4e2]/50">{entry.displayUser}</p>
+                                <p className="mt-1 text-xs text-[#e5e4e2]/50">
+                                  {entry.displayUser}
+                                </p>
                               </div>
                             </div>
                           );

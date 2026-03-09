@@ -23,12 +23,12 @@ import { useEvent } from '@/app/(crm)/crm/events/hooks/useEvent';
 import { ContactRow, OrganizationRow } from '@/app/(crm)/crm/contacts/types';
 import { ISimpleContact, ISimpleLocation } from '../../../EventDetailPageClient';
 import { IEvent } from '../../../../type';
-import { IEventCategory } from '@/app/(crm)/crm/event-categories/types';
 
 interface EventsDetailsTabProps {
   hasLimitedAccess: boolean;
   canManageTeam: boolean;
-  isUserAdmin: boolean;
+  isAdmin: boolean;
+  canEventManage: boolean;
   contact: ISimpleContact | null;
   organization: OrganizationRow | null;  
   location: ISimpleLocation | null;
@@ -41,14 +41,12 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
   organization,
   location,
   initialEvent,
+  isAdmin,
+  canEventManage,
 }) => {
   const { updateEvent, refetch } = useEvent();
 
   const [event, setEvent] = useState<IEvent>(initialEvent);
-
-  console.log('event-> Details-Tab', event);
-  console.log('initialEvent-> Details-Tab', initialEvent);
-
 
   const [showEditClientModal, setShowEditClientModal] = useState(false);
   const router = useRouter();
@@ -211,7 +209,7 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
           )}  */}
 
           {/* Ukryj klienta dla użytkowników z ograniczonym dostępem */}
-          {!hasLimitedAccess && (
+          {!hasLimitedAccess && isAdmin && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-medium text-[#e5e4e2]">Informacje o kliencie</h3>

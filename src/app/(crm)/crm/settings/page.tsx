@@ -233,8 +233,6 @@ export default function SettingsPage() {
     }
   };
 
-  console.log('preferences', preferences);
-console.log('employee', employee);
   if (employeeLoading || loading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">

@@ -184,7 +184,6 @@ export function TeamMembersList({
           employees.map((item) => {
             const isEditing = editingId === item.id;
             const isExpanded = expandedId === item.id;
-            console.log(item);
             {!item.employee && <div>Brak danych pracownika (RLS / relacja)</div>}
             return item.employee && (
               <div

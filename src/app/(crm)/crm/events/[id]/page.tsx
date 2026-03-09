@@ -7,13 +7,13 @@ import { getContactById } from '@/lib/CRM/client/getContactById';
 import { UUID } from '../../contacts/types';
 import { fetchEventOffersServer } from '@/lib/CRM/Offers/fetchEventOffers.server';
 import { getCurrentEmployeeServerLite } from '@/lib/CRM/auth/getCurrentEmployeeServerLite';
+import { fetchEventCategoriesServer } from '@/lib/CRM/events/eventsData.server';
 
 export default async function EventPage({ params }: { params: { id: string } }) {
   const event = await fetchEventByIdServer(params.id);
-  console.log('event', event);
   const location = await getLocationById(event.location_id);
   const contact = await getContactById(event.contact_person_id as UUID);
-
+  const categories = await fetchEventCategoriesServer();
   const offers = await fetchEventOffersServer(params.id);
 
   const updateEventsByOffers = {
@@ -23,7 +23,8 @@ export default async function EventPage({ params }: { params: { id: string } }) 
 
   return (
     <EventDetailPageClient
-      initialEvent={updateEventsByOffers as unknown as IEvent}
+      categories={categories}
+      initialData={updateEventsByOffers as unknown as IEvent}
       initialLocation={{
         id: location?.id,
         name: location?.name,

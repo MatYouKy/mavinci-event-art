@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 import type { CookieStoreLike } from '@/lib/supabase/server.app';
 import { ViewMode } from '@/app/(crm)/crm/settings/page';
+import { ICustomIcon } from '@/app/(crm)/crm/event-categories/types';
 
 function getCookieStore(): CookieStoreLike {
   const store = cookies();
@@ -37,7 +38,7 @@ export type EventRow = {
   } | null;
 };
 
-export type EventCategoryRow = { id: string; name: string; color: string | null };
+export type EventCategoryRow = { id: string; name: string; color: string | null, icon: ICustomIcon };
 
 export async function fetchEventsInitialServer(): Promise<{events: EventRow[], categories: EventCategoryRow[], viewMode: ViewMode | null}> {
   const supabase = createSupabaseServerClient(getCookieStore());
@@ -77,7 +78,7 @@ if (viewModeError) throw viewModeError;
 
   const { data: categories, error: categoriesError } = await supabase
   .from('event_categories')
-  .select('id, name, color')
+  .select('id, name, color, icon:custom_icons(id, name, svg_code, preview_color)')
   .order('name', { ascending: true });
 
 
@@ -91,9 +92,9 @@ export async function fetchEventCategoriesServer(): Promise<EventCategoryRow[]> 
 
   const { data, error } = await supabase
     .from('event_categories')
-    .select('id, name, color')
+    .select('id, name, color, icon:custom_icons(id, name, svg_code, preview_color)  ')
     .order('name', { ascending: true });
 
   if (error) throw error;
-  return ( data ?? []) as EventCategoryRow[];
+  return ( data ?? []) as unknown as EventCategoryRow[];
 }

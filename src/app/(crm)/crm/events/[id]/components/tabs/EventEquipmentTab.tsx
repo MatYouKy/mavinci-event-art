@@ -283,10 +283,7 @@ export const EventEquipmentTab: React.FC<{
   }, [eventId, eventDate, event?.event_end_date, fetchAvailableEquipment]);
 
   const handleRemoveEquipment = async (row: any) => {
-    console.log('[EventEquipmentTab] handleRemoveEquipment called with row:', row);
-    console.log('[EventEquipmentTab] row.id:', row.id);
-    console.log('[EventEquipmentTab] row.kit_id:', row.kit_id);
-    console.log('[EventEquipmentTab] row.equipment_id:', row.equipment_id);
+
 
     const isAuto = !!row?.auto_added;
 
@@ -294,8 +291,6 @@ export const EventEquipmentTab: React.FC<{
     if (!confirmedRemove) return;
 
     if (isAuto) {
-
-      console.log('[EventEquipmentTab] Auto-added item, marking as removed');
       const result = await updateEquipment(row.id, {
         removed_from_offer: true,
         is_overridden: true,
@@ -309,9 +304,7 @@ export const EventEquipmentTab: React.FC<{
       return;
     }
 
-    console.log('[EventEquipmentTab] Calling removeEquipment with id:', row.id);
     const result = await removeEquipment(row.id);
-    console.log('[EventEquipmentTab] removeEquipment result:', result);
 
     if (result) {
       await refetch();

@@ -415,16 +415,11 @@ export const eventsApi = createApi({
     >({
       async queryFn({ id, eventId }) {
         try {
-          console.log('[removeEventEquipment] Attempting to delete equipment with id:', id);
-
-          // Use .select() to return deleted rows
           const { data, error } = await supabase
             .from('event_equipment')
             .delete()
             .eq('id', id)
             .select();
-
-          console.log('[removeEventEquipment] Delete result:', { data, error, deletedCount: data?.length });
 
           if (error) {
             console.error('[removeEventEquipment] Supabase error:', error);
@@ -438,7 +433,6 @@ export const eventsApi = createApi({
             };
           }
 
-          // Check if any rows were actually deleted
           if (!data || data.length === 0) {
             console.warn('[removeEventEquipment] No rows deleted - possibly blocked by RLS or item does not exist');
             return {
@@ -451,7 +445,6 @@ export const eventsApi = createApi({
             };
           }
 
-          console.log('[removeEventEquipment] Successfully deleted:', data.length, 'row(s)');
           return { data: { success: true } };
         } catch (error: any) {
           console.error('[removeEventEquipment] exception', error);
@@ -701,8 +694,7 @@ export const eventsApi = createApi({
         try {
           const { data, error } = await supabase
             .from('event_audit_log')
-            .select(
-              `
+            .select(`
               *,
               employee:employees!event_audit_log_employee_id_fkey(
                 id,
@@ -714,8 +706,7 @@ export const eventsApi = createApi({
                 occupation,
                 email
               )
-            `,
-            )
+            `)
             .eq('event_id', eventId)
             .order('created_at', { ascending: false })
             .limit(100);

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Plus, Trash2, Package, Search, X, Upload, Image as ImageIcon } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { uploadImage } from '@/lib/storage';
+import Image from 'next/image';
 
 interface EquipmentItem {
   id: string;
@@ -218,7 +219,6 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
     setUploadingThumb(true);
     try {
       const url = await uploadImage(file, 'equipment-images');
-      console.log('ComponentsTab - Thumbnail uploaded successfully:', url);
       setNewComponent((prev) => ({ ...prev, thumbnail_url: url }));
     } catch (error) {
       console.error('ComponentsTab - Error uploading thumbnail:', error);
@@ -283,7 +283,6 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
           : null,
     };
 
-    console.log('ComponentsTab - Adding component with payload:', payload);
     await onAdd(payload);
     setNewComponent({
       component_equipment_id: '',
@@ -541,15 +540,6 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
               const thumbnailUrl = c.thumbnail_url || c.equipment_items?.thumbnail_url;
               const hasDetails = c.technical_specs && Object.keys(c.technical_specs).length > 0;
 
-              console.log('ComponentsTab - Rendering component:', {
-                id: c.id,
-                name: c.component_name,
-                thumbnail_url: c.thumbnail_url,
-                equipment_items_thumbnail: c.equipment_items?.thumbnail_url,
-                finalThumbnailUrl: thumbnailUrl,
-                technical_specs: c.technical_specs,
-              });
-
               return (
                 <div key={c.id} className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
                   <div className="flex items-start gap-4">
@@ -561,10 +551,12 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                       className="flex-shrink-0 transition-opacity hover:opacity-80"
                     >
                       {thumbnailUrl ? (
-                        <img
+                        <Image
+                          width={80}
+                          height={80}
                           src={thumbnailUrl}
                           alt={c.component_name}
-                          className="h-20 w-20 rounded-lg border border-[#d3bb73]/20 object-cover"
+                          className="rounded-lg border border-[#d3bb73]/20 object-cover"
                         />
                       ) : (
                         <div className="flex h-20 w-20 items-center justify-center rounded-lg border border-[#d3bb73]/20 bg-[#0f1119]">

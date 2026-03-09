@@ -121,7 +121,6 @@ export default function TimeTrackingPage() {
           table: 'time_entries',
         },
         (payload) => {
-          console.log('Time entry changed:', payload);
           // Odśwież dane po każdej zmianie
           fetchData();
         },
@@ -260,7 +259,7 @@ export default function TimeTrackingPage() {
         .limit(50);
 
       if (error) throw error;
-      setTasks(data || []);
+      setTasks(data as unknown as Task[]);
     } catch (error) {
       console.error('Error fetching tasks:', error);
     }
@@ -275,7 +274,7 @@ export default function TimeTrackingPage() {
         .order('name', { ascending: true });
 
       if (error) throw error;
-      setAllEmployees(data || []);
+      setAllEmployees(data as any[]);
     } catch (error) {
       console.error('Error fetching employees:', error);
     }

@@ -43,7 +43,6 @@ export default function DatabaseDetailPage() {
   const { canManageModule, canViewModule, isAdmin } = useCurrentEmployee();
   const canManage = canManageModule('databases');
   const canView = canViewModule('databases');
-  console.log('canView', canView);
 
   const { data: database, isLoading: isLoadingDatabase } = useGetDatabaseByIdQuery(databaseId);
   const { data: columns = [], isLoading: isLoadingColumns } = useGetDatabaseColumnsQuery(databaseId);

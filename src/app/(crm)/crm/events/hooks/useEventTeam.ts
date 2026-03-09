@@ -79,7 +79,6 @@ export function useEventTeam(eventId: string) {
           filter: `event_id=eq.${eventId}`,
         },
         (payload) => {
-          console.log('[useEventTeam] Realtime update:', payload);
           refetch();
         }
       )

@@ -244,12 +244,6 @@ const AssignmentBar = memo<AssignmentBarProps>(
     const isPending = isEmployee && assignment.invitation_status === 'pending';
     const isRejected = isEmployee && assignment.invitation_status === 'rejected';
 
-    console.log('isPending', isPending);
-    console.log('isRejected', isRejected);
-    console.log('assignment', assignment);
-    
-    console.log('assignment.role', assignment.role);
-    console.log('resource', resource);
 
     // Jeśli są editedTimes, przelicz pozycję na ich podstawie
     const displayPosition = useMemo(() => {

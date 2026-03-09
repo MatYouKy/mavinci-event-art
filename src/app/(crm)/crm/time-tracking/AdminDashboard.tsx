@@ -121,7 +121,6 @@ export default function AdminDashboard() {
           table: 'time_entries',
         },
         (payload) => {
-          console.log('Admin: Time entry changed:', payload);
           // Odśwież dane po każdej zmianie
           fetchData();
         },

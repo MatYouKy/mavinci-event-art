@@ -22,6 +22,7 @@ import { EventStatus } from '@/components/crm/Calendar/types';
 import { useEventCategories } from '@/app/(crm)/crm/event-categories/hook/useEventCategories';
 import { IEventCategory } from '@/app/(crm)/crm/event-categories/types';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { EventCategoryRow } from '@/lib/CRM/events/eventsData.server';
 
 export const eventStatusLabels: Record<EventStatus, string> = {
   inquiry: 'Zapytanie',
@@ -78,15 +79,17 @@ const statusIcon = (s: EventStatus) => {
 interface EventDetailsActionProps {
   event: IEvent;
   canEditStatus?: boolean;
+  categories: EventCategoryRow[];
 }
 
 export default function EventDetailsAction({
   event,
+  categories,
   canEditStatus = true,
 }: EventDetailsActionProps) {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
-  const { getCategoryById, categories } = useEventCategories(); 
+  const { getCategoryById } = useEventCategories(); 
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [currentStatus, setCurrentStatus] = useState<EventStatus>(event?.status as EventStatus);
   const [isEditingCategory, setIsEditingCategory] = useState(false);
@@ -95,13 +98,9 @@ export default function EventDetailsAction({
   const [agenda, setAgenda] = useState<any | null>(null);
   const [equipmentChecklist, setEquipmentChecklist] = useState<any | null>(null);
   //Category
-  const [category, setCategory] = useState<IEventCategory | null>(event?.category ?? null);
+  const [category, setCategory] = useState<EventCategoryRow | undefined>(categories.find((c) => c.id === event?.category_id) ?? undefined);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(event?.category_id ?? '');
   const [savingCategory, setSavingCategory] = useState(false);
-  //Status
-  const searchParams = useSearchParams();
-
-  console.log('event-> Details-Action', event);
 
   useEffect(() => {
     setSelectedCategoryId(event?.category_id ?? '');
@@ -202,8 +201,8 @@ export default function EventDetailsAction({
   
       // odśwież lokalny "category" (żeby od razu pokazało label/kolor)
       if (newCategoryId) {
-        const next = await getCategoryById(newCategoryId);
-        setCategory(next);
+        const next = categories.find((c) => c.id === newCategoryId);
+        setCategory(next ?? null);
       } else {
         setCategory(null);
       }
@@ -350,7 +349,7 @@ export default function EventDetailsAction({
         >
           <option value="">Brak kategorii</option>
 
-          {(categories || []).map((c: IEventCategory) => (
+          {(categories || []).map((c: EventCategoryRow) => (
             <option key={c.id} value={c.id}>
               {c.name}
             </option>

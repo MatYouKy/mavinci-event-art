@@ -4,6 +4,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 import type { CookieStoreLike } from '@/lib/supabase/server.app';
 import type { IEmployee } from '@/app/(crm)/crm/employees/type';
 import { ViewMode, ViewModePreference } from '@/app/(crm)/crm/settings/page';
+import { OrganizationRow } from '@/app/(crm)/crm/contacts/types';
 
 export function getCookieStore(): CookieStoreLike {
   const store = cookies();
@@ -48,8 +49,6 @@ export type EventCategoryRow = { id: string; name: string; color: string | null 
 export async function fetchEventByIdServer(eventId: string): Promise<EventRow> {
   const supabase = createSupabaseServerClient(getCookieStore());
 
-
-
   const { data: auth, error: authError } = await supabase.auth.getUser();
 
   // ✅ brak sesji to normalna sytuacja — nie logujemy jako "error"
@@ -62,27 +61,39 @@ export async function fetchEventByIdServer(eventId: string): Promise<EventRow> {
   const email = auth.user?.email;
   if (!email) return null;
 
-  const { data, error } = await supabase
+  const { data: event, error: eventError } = await supabase
       .from('events')
     .select('*')
     .eq('id', eventId)
     .single();
 
-  if (error) throw error;
+  if (eventError) throw eventError;
 
-  const { data: eventCategory, error: eventCategoryError } = await supabase.from('event_categories').select('*').eq('id', data?.category_id).maybeSingle();
+  const { data: eventCategory, error: eventCategoryError } = await supabase.from('event_categories').select('*').eq('id', event?.category_id).maybeSingle();
 
   const { data: creator, error: creatorError } = await supabase
   .from("employees")
   .select("id, name, surname, nickname, avatar_url, avatar_metadata, role, occupation, qualifications, is_active")
-  .eq("id", data?.created_by)
+  .eq("id", event?.created_by)
   .single();
 
 
+  const { data: organization, error: organizationError } = await supabase
+  .from('organizations')
+  .select('id, name, alias, business_type, primary_contact_id, legal_form, nip, address, city, postal_code, country, email, phone, website, status, notes')
+  .eq('id', event?.organization_id)
+  .single();
+
+  const { data: currentEmployee, error: currentEmployeeError } = await supabase.from('employees').select('id, name, surname, nickname, avatar_url, avatar_metadata, role, occupation, is_active, permissions, event_tabs').eq('id', event?.created_by).single();
+
+  if (currentEmployeeError) throw currentEmployeeError;
+
   if (eventCategoryError) throw eventCategoryError;
   return {
-    ...data,
+    ...event,
     category: eventCategory,
     creator: creator,
-  } as unknown as EventRow & { category: EventCategoryRow };
+    organization,
+    currentEmployee: currentEmployee,
+  } as unknown as EventRow & { category: EventCategoryRow; organization: OrganizationRow; currentEmployee: IEmployee };
 }

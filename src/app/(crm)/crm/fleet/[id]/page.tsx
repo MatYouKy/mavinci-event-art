@@ -363,7 +363,6 @@ export default function VehicleDetailPage() {
   };
 
   const handleEndUsage = async () => {
-    console.log('vehicle', vehicle);
   
     if (!vehicle?.id || !vehicle?.in_use_event_id) {
       return showSnackbar('Nie znaleziono aktywnego przypisania pojazdu', 'error');

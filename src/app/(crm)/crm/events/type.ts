@@ -3,6 +3,7 @@ import { IEventCategory } from '../event-categories/types';
 import { ILocation } from '../locations/type';
 import { IEmployee } from '../employees/type';
 import { IOfferItem } from '../offers/types';
+import { OrganizationRow } from '../contacts/types';
 
 export type SelectedItem = { id: string; quantity: number; notes: string; type: 'item' | 'kit' };
 
@@ -62,11 +63,7 @@ export interface IEvent {
   client_type: ClientType;
   equipment?: SelectedItem[];
   creator?: IEmployee;
-  organization?: {
-    id: string;
-    name: string;
-    alias?: string | null;
-  } | null;
+  organization?: OrganizationRow | null;
   contact_person?: {
     phone: any;
     email: any;
@@ -83,6 +80,7 @@ export interface IEvent {
   equipment_checklist_pdf_path?: string | null;
   equipment_checklist_pdf_at?: string | null;
   equipment_checklist_modified?: boolean;
+  currentEmployee?: IEmployee;
 }
 
 export interface IEventAttachment {

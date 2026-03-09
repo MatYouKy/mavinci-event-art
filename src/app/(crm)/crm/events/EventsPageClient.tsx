@@ -30,6 +30,7 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { ViewMode } from '../settings/page';
 import { EventCategoryRow, EventRow } from '@/lib/CRM/events/eventsData.server';
 import { IEmployee } from '../employees/type';
+import { hasScope } from './[id]/helpers/hasScope';
 
 const moveKey = (arr: EventsTableColKey[], from: EventsTableColKey, to: EventsTableColKey) => {
   const a = [...arr];
@@ -241,11 +242,6 @@ function ResizableTh({
     </th>
   );
 }
-
-const hasScope = (scope: string, employee: IEmployee): boolean => {
-  if (!employee) return false;
-  return employee.permissions?.includes(scope) || false;
-};
 
 export default function EventsPageClient({
   initialData,
