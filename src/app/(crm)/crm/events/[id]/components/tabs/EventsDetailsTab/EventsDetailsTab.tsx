@@ -23,6 +23,7 @@ import { useEvent } from '@/app/(crm)/crm/events/hooks/useEvent';
 import { ContactRow, OrganizationRow } from '@/app/(crm)/crm/contacts/types';
 import { ISimpleContact, ISimpleLocation } from '../../../EventDetailPageClient';
 import { IEvent } from '../../../../type';
+import { IEventCategory } from '@/app/(crm)/crm/event-categories/types';
 
 interface EventsDetailsTabProps {
   hasLimitedAccess: boolean;
@@ -45,10 +46,9 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
 
   const [event, setEvent] = useState<IEvent>(initialEvent);
 
-  // gdy zmieni się initialEvent (np. po nawigacji), zsynchronizuj
-  useEffect(() => {
-    setEvent(initialEvent);
-  }, [initialEvent]);
+  console.log('event-> Details-Tab', event);
+  console.log('initialEvent-> Details-Tab', initialEvent);
+
 
   const [showEditClientModal, setShowEditClientModal] = useState(false);
   const router = useRouter();

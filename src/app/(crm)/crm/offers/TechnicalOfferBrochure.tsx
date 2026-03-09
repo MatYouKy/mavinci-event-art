@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import Image from 'next/image';
 import { uploadImage } from '@/lib/storage';
 
 interface BrochureContent {
@@ -500,10 +501,12 @@ const TechnicalOfferBrochure = ({
     if (editMode && editingImage?.id === image.id) {
       return (
         <div className={`${className} relative`}>
-          <img
+          <Image
             src={editingImage.image_url}
             alt={editingImage.alt_text}
             className={className}
+            width={100}
+            height={100}
             style={{
               objectFit: editingImage.object_fit as any,
               objectPosition: `${editingImage.position_x}% ${editingImage.position_y}%`,
@@ -520,10 +523,12 @@ const TechnicalOfferBrochure = ({
 
     return (
       <div className="group relative">
-        <img
+        <Image
           src={image.image_url}
           alt={image.alt_text || alt}
           className={className}
+          width={100}
+          height={100}
           style={{
             objectFit: image.object_fit as any,
             objectPosition: `${image.position_x}% ${image.position_y}%`,
@@ -1075,10 +1080,12 @@ const TechnicalOfferBrochure = ({
                   {employee ? (
                     <div className="space-y-6 rounded-2xl border border-[#d3bb73]/30 bg-[#1c1f33]/80 p-8 text-center backdrop-blur">
                       {employee.avatar_url && (
-                        <img
+                        <Image
                           src={employee.avatar_url}
                           alt={`${employee.name} ${employee.surname}`}
                           className="mx-auto h-48 w-48 rounded-full border-4 border-[#d3bb73]/40 object-cover shadow-2xl"
+                          width={100}
+                          height={100}
                         />
                       )}
                       <div>
@@ -1148,7 +1155,7 @@ const TechnicalOfferBrochure = ({
 
               <div className="mt-12 space-y-4 border-t border-[#d3bb73]/20 pt-8 text-center">
                 <div className="flex items-center justify-center gap-4">
-                  <img src="/logo mavinci-simple.svg" alt="Mavinci Logo" className="h-12 w-12" />
+                  <Image src="/logo mavinci-simple.svg" width={48} height={48} alt="Mavinci Logo" />
                 </div>
                 <p className="text-[#e5e4e2]/60">www.mavinci.pl</p>
               </div>
@@ -1190,8 +1197,10 @@ const TechnicalOfferBrochure = ({
                     <div className="h-2 w-2 animate-pulse rounded-full bg-blue-500"></div>
                     <span className="text-sm font-semibold text-blue-400">Tryb edycji</span>
                   </div>
-                  <img
+                  <Image
                     src={editingImage.image_url}
+                    width={100}
+                    height={100}
                     alt={editingImage.alt_text}
                     className="mb-3 h-40 w-full rounded-lg object-cover"
                     style={{
@@ -1361,10 +1370,12 @@ const TechnicalOfferBrochure = ({
                               key={img.id}
                               className="group relative overflow-hidden rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] transition-colors hover:border-[#d3bb73]/30"
                             >
-                              <img
+                              <Image
                                 src={img.image_url}
                                 alt={img.alt_text}
                                 className="h-32 w-full object-cover"
+                                width={100}
+                                height={100}
                                 style={{
                                   objectFit: img.object_fit as any,
                                   objectPosition: `${img.position_x}% ${img.position_y}%`,

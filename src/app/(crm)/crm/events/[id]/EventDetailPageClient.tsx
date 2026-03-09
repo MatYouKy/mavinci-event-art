@@ -36,7 +36,7 @@ import {
   useDeleteEventOfferMutation,
 } from '../store/api/eventsApi';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import { useEventEquipment, useEventOffers, useEventTeam, useEventAuditLog } from '../hooks';
+import { useEventEquipment, useEventOffers, useEventTeam } from '../hooks';
 import { useLocations } from '../../locations/useLocations';
 import { useEmployees } from '../../employees/hooks/useEmployees';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
@@ -49,6 +49,8 @@ import { IEvent, IOffer } from '../type';
 import { UnknownAction } from '@reduxjs/toolkit';
 import { useGetOrganizationByIdQuery } from '../../contacts/store/clientsApi';
 import { AddEventEmployeeModal } from './components/Modals/AddEventEmployeeModal';
+import { useEventAuditLog } from '@/app/(crm)/crm/events/hooks/useEventAuditLog';
+import { IEmployee } from '../../employees/type';
 
 interface Equipment {
   kit_id: unknown;
@@ -139,6 +141,7 @@ export default function EventDetailPageClient({
   initialContact: ISimpleContact;
   initialOffers: IOffer[];
 }) {
+  console.log('WRAPPER', initialEvent);
   const router = useRouter();
   const params = useParams();
   const dispatch = useDispatch();
@@ -148,7 +151,9 @@ export default function EventDetailPageClient({
   const { showConfirm } = useDialog();
   const { hasScope, isAdmin: isUserAdmin } = useCurrentEmployee();
   const { equipment } = useEventEquipment(eventId);
+
   const { employees } = useEventTeam(eventId);
+
   const { useById } = useEmployees();
   const { event: eventData, updateEvent } = useEvent();
   const [teamEmployees, setTeamEmployees] = useState<any[]>([]);
@@ -164,24 +169,21 @@ export default function EventDetailPageClient({
     hasScope('invoices_manage') ||
     hasScope('invoices_view');
 
-  const {
-    data: event = initialEvent,
-    status: eventStatus,
-    isLoading,
-    error,
-    refetch: refetchEvent,
-  } = useGetEventByIdQuery(eventId, {
-    refetchOnMountOrArgChange: true, // ⬅️ tylko 1 fetch, bez refetch przy każdym wejściu
-  });
+  // const {
+  //   data: eventRTKQuery,
+  //   status: eventStatus,
+  //   isLoading,
+  //   error,
+  //   refetch: refetchEvent,
+  // } = useGetEventByIdQuery(eventId, {
+  //   refetchOnMountOrArgChange: true, // ⬅️ tylko 1 fetch, bez refetch przy każdym wejściu
+  // });
+  const [event, setEvent] = useState<IEvent>(initialEvent);
 
   const [updateEventMutation] = useUpdateEventMutation();
   const [deleteOfferMutation] = useDeleteEventOfferMutation();
+
   const { data: creator } = useById(event?.created_by);
-
-  useEffect(() => {
-    setTeamEmployees(employees || []);
-  }, [employees]);
-
 
   useEffect(() => {
     const success = searchParams.get('success');
@@ -277,6 +279,8 @@ export default function EventDetailPageClient({
     getActionIcon,
     refetch: refetchAuditLog,
   } = useEventAuditLog(eventId as string);
+
+  console.log('auditLog', auditLog);
 
   const [auditViewMode, setAuditViewMode] = useState<'timeline' | 'byDate'>('timeline');
   const [auditActionFilter, setAuditActionFilter] = useState<any>('all');
@@ -639,38 +643,38 @@ export default function EventDetailPageClient({
     return 0;
   }, [event?.actual_revenue]);
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-[#d3bb73]"></div>
-      </div>
-    );
-  }
+  // if (isLoading) {
+  //   return (
+  //     <div className="flex items-center justify-center p-8">
+  //       <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-[#d3bb73]"></div>
+  //     </div>
+  //   );
+  // }
 
-  {
-    error && <div className="p-4 text-sm text-red-400">{error.message}</div>;
-  }
+  // {
+  //   error && <div className="p-4 text-sm text-red-400">{error.message}</div>;
+  // }
 
-  if (!event) {
-    return (
-      <div className="flex h-screen flex-col items-center justify-center space-y-4">
-        <div className="text-lg font-medium text-red-400">
-          {error.message || 'Event nie został znaleziony'}
-        </div>
-        {error.message && (
-          <div className="max-w-md text-center text-sm text-[#e5e4e2]/60">
-            Sprawdź konsolę przeglądarki (F12), aby zobaczyć więcej szczegółów.
-          </div>
-        )}
-        <button
-          onClick={() => router.back()}
-          className="rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
-        >
-          Wróć
-        </button>
-      </div>
-    );
-  }
+  // if (!event) {
+  //   return (
+  //     <div className="flex h-screen flex-col items-center justify-center space-y-4">
+  //       <div className="text-lg font-medium text-red-400">
+  //         {error.message || 'Event nie został znaleziony'}
+  //       </div>
+  //       {error.message && (
+  //         <div className="max-w-md text-center text-sm text-[#e5e4e2]/60">
+  //           Sprawdź konsolę przeglądarki (F12), aby zobaczyć więcej szczegółów.
+  //         </div>
+  //       )}
+  //       <button
+  //         onClick={() => router.back()}
+  //         className="rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+  //       >
+  //         Wróć
+  //       </button>
+  //     </div>
+  //   );
+  // }
 
   return (
     <div className="space-y-6">
@@ -1236,7 +1240,7 @@ export default function EventDetailPageClient({
                                     className="relative"
                                   >
                                     <EmployeeAvatar
-                                      employee={employee}
+                                      employee={employee as IEmployee}
                                       size={56}
                                       className="cursor-pointer ring-4 ring-[#0f1119] transition-all hover:ring-[#d3bb73]/30"
                                     />
@@ -1247,7 +1251,7 @@ export default function EventDetailPageClient({
                                     {hoveredEmployee === entry.id && (
                                       <div className="animate-in fade-in slide-in-from-left-2 absolute left-full top-0 z-50 ml-4 min-w-[280px] rounded-xl border border-[#d3bb73]/30 bg-[#1c1f33] p-4 shadow-xl">
                                         <div className="flex items-start gap-3">
-                                          <EmployeeAvatar employee={employee} size={48} />
+                                          <EmployeeAvatar employee={employee as IEmployee} size={48} />
                                           <div>
                                             <p className="font-medium text-[#e5e4e2]">{entry.displayUser}</p>
                                             {employee.occupation && (

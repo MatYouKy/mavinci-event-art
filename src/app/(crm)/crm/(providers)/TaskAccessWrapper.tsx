@@ -2,10 +2,45 @@
 
 import { canView, Employee, isAdmin } from '@/lib/permissions';
 import { supabase } from '@/lib/supabase/browser';
-
 import { AppRouterInstance } from 'next/dist/shared/lib/app-router-context.shared-runtime';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { allNavigation } from '../mock/navigation';
+
+type AccessState = 'granted' | 'denied' | 'checking';
+
+function getSyncAccess(pathname: string, employee: Employee | null): AccessState {
+  if (!employee) return 'checking';
+
+  if (pathname === '/crm') return 'granted';
+
+  if (isAdmin(employee)) return 'granted';
+
+  const currentNav = allNavigation.find(
+    (nav) => pathname.startsWith(nav.href) && nav.href !== '/crm',
+  );
+
+  if (!currentNav?.module) return 'granted';
+
+  const employeeIdMatch = pathname.match(/^\/crm\/employees\/([a-f0-9-]+)$/);
+  if (employeeIdMatch && employeeIdMatch[1] === employee.id) {
+    return 'granted';
+  }
+
+  // Jeśli user ma zwykłe uprawnienie modułowe, wpuszczamy od razu
+  if (canView(employee, currentNav.module)) {
+    return 'granted';
+  }
+
+  // Task detail / event detail mogą wymagać dopiero dopytania bazy
+  const isTaskDetails = /^\/crm\/tasks\/([a-f0-9-]+)$/.test(pathname);
+  const isEventDetails = /^\/crm\/events\/([a-f0-9-]+)$/.test(pathname);
+
+  if (isTaskDetails || isEventDetails) {
+    return 'checking';
+  }
+
+  return 'denied';
+}
 
 export function TaskAccessWrapper({
   pathname,
@@ -18,70 +53,60 @@ export function TaskAccessWrapper({
   router: AppRouterInstance;
   children: React.ReactNode;
 }) {
-  const [loading, setLoading] = useState(true);
-  const [hasAccess, setHasAccess] = useState(false);
+  const syncAccess = useMemo(() => getSyncAccess(pathname, employee), [pathname, employee]);
+  const [accessState, setAccessState] = useState<AccessState>(syncAccess);
 
   useEffect(() => {
+    setAccessState(syncAccess);
+  }, [syncAccess]);
+
+  useEffect(() => {
+    if (!employee?.id) return;
+    if (syncAccess !== 'checking') return;
+
+    let cancelled = false;
+
     const checkAccess = async () => {
-      if (pathname === '/crm') {
-        setHasAccess(true);
-        setLoading(false);
-        return;
-      }
+      try {
+        const taskIdMatch = pathname.match(/^\/crm\/tasks\/([a-f0-9-]+)$/);
+        if (taskIdMatch) {
+          const taskId = taskIdMatch[1];
 
-      const currentNav = allNavigation.find(
-        (nav) => pathname.startsWith(nav.href) && nav.href !== '/crm',
-      );
-
-      if (!currentNav?.module) {
-        setHasAccess(true);
-        setLoading(false);
-        return;
-      }
-
-      const taskIdMatch = pathname.match(/^\/crm\/tasks\/([a-f0-9-]+)$/);
-      if (taskIdMatch && employee?.id) {
-        const taskId = taskIdMatch[1];
-
-        const { data: task } = await supabase
-          .from('tasks')
-          .select('id, is_private, owner_id')
-          .eq('id', taskId)
-          .maybeSingle();
-
-        if (task) {
-          if (task.is_private && task.owner_id === employee.id) {
-            setHasAccess(true);
-            setLoading(false);
-            return;
-          }
-
-          const { data: assignee } = await supabase
-            .from('task_assignees')
-            .select('employee_id')
-            .eq('task_id', taskId)
-            .eq('employee_id', employee.id)
+          const { data: task } = await supabase
+            .from('tasks')
+            .select('id, is_private, owner_id')
+            .eq('id', taskId)
             .maybeSingle();
 
-          if (assignee) {
-            setHasAccess(true);
-            setLoading(false);
+          if (cancelled) return;
+
+          if (task) {
+            if (task.is_private && task.owner_id === employee.id) {
+              setAccessState('granted');
+              return;
+            }
+
+            const { data: assignee } = await supabase
+              .from('task_assignees')
+              .select('employee_id')
+              .eq('task_id', taskId)
+              .eq('employee_id', employee.id)
+              .maybeSingle();
+
+            if (cancelled) return;
+
+            setAccessState(assignee ? 'granted' : 'denied');
             return;
           }
-        }
-      }
 
-      const eventIdMatch = pathname.match(/^\/crm\/events\/([a-f0-9-]+)$/);
-      if (eventIdMatch && employee?.id) {
-        const eventId = eventIdMatch[1];
-
-        if (isAdmin(employee) || employee.permissions?.includes('events_manage')) {
-          setHasAccess(true);
-          setLoading(false);
+          setAccessState('denied');
           return;
         }
 
-        if (employee.permissions?.includes('events_view')) {
+        const eventIdMatch = pathname.match(/^\/crm\/events\/([a-f0-9-]+)$/);
+        if (eventIdMatch) {
+          const eventId = eventIdMatch[1];
+
           const { data: assignment } = await supabase
             .from('employee_assignments')
             .select('employee_id')
@@ -90,34 +115,26 @@ export function TaskAccessWrapper({
             .eq('status', 'accepted')
             .maybeSingle();
 
-          if (assignment) {
-            setHasAccess(true);
-            setLoading(false);
-            return;
-          }
-        }
-      }
+          if (cancelled) return;
 
-      const employeeIdMatch = pathname.match(/^\/crm\/employees\/([a-f0-9-]+)$/);
-      if (employeeIdMatch && employee?.id) {
-        const profileEmployeeId = employeeIdMatch[1];
-        if (profileEmployeeId === employee.id) {
-          setHasAccess(true);
-          setLoading(false);
+          setAccessState(assignment ? 'granted' : 'denied');
           return;
         }
+
+        setAccessState('denied');
+      } catch {
+        if (!cancelled) setAccessState('denied');
       }
-
-      const hasPermission = employee && (isAdmin(employee) || canView(employee, currentNav.module));
-
-      setHasAccess(hasPermission);
-      setLoading(false);
     };
 
     checkAccess();
-  }, [pathname, employee?.id]);
 
-  if (loading) {
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname, employee?.id, syncAccess]);
+
+  if (accessState === 'checking') {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <div className="text-lg text-[#d3bb73]">Sprawdzanie uprawnień...</div>
@@ -125,7 +142,7 @@ export function TaskAccessWrapper({
     );
   }
 
-  if (!hasAccess) {
+  if (accessState === 'denied') {
     return (
       <div className="flex min-h-[400px] flex-col items-center justify-center px-6">
         <div className="mb-4 text-6xl">🔒</div>

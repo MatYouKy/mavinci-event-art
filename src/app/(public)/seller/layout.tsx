@@ -15,6 +15,7 @@ import {
   CircleUser,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import Image from 'next/image';
 
 const navigation = [
   { name: 'Dashboard', href: '/seller', icon: LayoutDashboard },
@@ -90,8 +91,10 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
           <div className="flex h-full flex-col">
             <div className="flex items-center justify-between border-b border-[#d3bb73]/10 px-6 py-6">
               <Link href="/seller" className="flex items-center gap-3">
-                <img src="/logo mavinci-simple.svg" alt="Mavinci" className="h-8 w-auto" />
-                <span className="text-sm text-[#e5e4e2]">Sprzedawca</span>
+                <Image src="/logo mavinci-simple.svg" alt="Mavinci" priority className="h-8 w-auto"
+                width={160}
+                height={60}
+                />
               </Link>
               <button onClick={() => setSidebarOpen(false)} className="text-[#e5e4e2] lg:hidden">
                 <X className="h-6 w-6" />

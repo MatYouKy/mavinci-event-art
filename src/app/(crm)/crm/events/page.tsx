@@ -5,12 +5,7 @@ import { getCurrentEmployeeServerCached } from '@/lib/CRM/auth/getCurrentEmploye
 
 
 export default async function EventsPage() {
-  const [initialEvents, initialCategories, initialPreferences] = await Promise.all([
-    fetchEventsInitialServer(),
-    fetchEventCategoriesServer(),
-    getCurrentEmployeeServerCached().then((employee) => getEmployeePreferences(employee?.id)),
-  ]);
-
-
-  return <EventsPageClient initialEvents={initialEvents} initialCategories={initialCategories} initialViewMode={initialPreferences?.events?.viewMode || 'list'} />;
+  const initialEvents = await fetchEventsInitialServer();
+  const currentEmployee = await getCurrentEmployeeServerCached();
+  return <EventsPageClient initialData={initialEvents} currentEmployee={currentEmployee} />;
 }

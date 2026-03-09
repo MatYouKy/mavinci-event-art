@@ -8,15 +8,19 @@ interface FormInputProps {
   placeholder?: string;
   multiline?: boolean;
   rows?: number;
+  style?: React.CSSProperties;
+  required?: boolean;
 }
 
 export const FormInput: React.FC<FormInputProps> = ({
   name,
   label,
+  style,
   type = 'text',
   placeholder,
   multiline = false,
   rows = 3,
+  required = false,
 }) => {
   const [field, meta] = useField(name);
   const hasError = meta.touched && meta.error;
@@ -27,7 +31,7 @@ export const FormInput: React.FC<FormInputProps> = ({
 
   if (type === 'checkbox') {
     return (
-      <div className="mb-4 flex items-center gap-3">
+      <div className="mb-4 flex items-center gap-3" style={style}>
         <input
           {...field}
           type="checkbox"
@@ -70,6 +74,9 @@ export const FormInput: React.FC<FormInputProps> = ({
       )}
       {hasError && (
         <p className="text-red-500 text-sm mt-1">{meta.error}</p>
+      )}
+      {required && (
+        <p className="text-[#e5e4e2]/40 text-sm mt-1">* wymagane</p>
       )}
     </div>
   );

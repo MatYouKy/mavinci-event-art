@@ -2,6 +2,7 @@ import 'server-only';
 import { cookies } from 'next/headers';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 import type { CookieStoreLike } from '@/lib/supabase/server.app';
+import { ViewMode } from '@/app/(crm)/crm/settings/page';
 
 function getCookieStore(): CookieStoreLike {
   const store = cookies();
@@ -38,13 +39,21 @@ export type EventRow = {
 
 export type EventCategoryRow = { id: string; name: string; color: string | null };
 
-export async function fetchEventsInitialServer(): Promise<EventRow[]> {
+export async function fetchEventsInitialServer(): Promise<{events: EventRow[], categories: EventCategoryRow[], viewMode: ViewMode | null}> {
   const supabase = createSupabaseServerClient(getCookieStore());
 
   // auth z cookies (jeśli brak sesji → pusta lista)
   const { data: auth } = await supabase.auth.getUser();
   const userId = auth?.user?.id;
-  if (!userId) return [];
+  if (!userId) return {events: [] as EventRow[], categories: [] as EventCategoryRow[], viewMode: null as ViewMode | null};
+
+  const { data: viewMode, error: viewModeError } = await supabase
+  .from('employees')
+  .select('preferences:preferences->events->>viewMode')
+  .eq('id', userId)
+  .maybeSingle();
+
+if (viewModeError) throw viewModeError;
 
   // Uwaga: Ty masz RLS i polityki na events/tasks/employees.
   // To oznacza: jeśli user nie ma uprawnień, select i tak wróci pusty.
@@ -65,7 +74,16 @@ export async function fetchEventsInitialServer(): Promise<EventRow[]> {
     .order('event_date', { ascending: true });
 
   if (error) throw error;
-  return (data ?? []) as unknown as EventRow[];
+
+  const { data: categories, error: categoriesError } = await supabase
+  .from('event_categories')
+  .select('id, name, color')
+  .order('name', { ascending: true });
+
+
+  if (categoriesError) throw categoriesError;
+
+  return {events: data ?? [], categories: categories ?? [], viewMode: viewMode?.preferences as ViewMode | null} as unknown as {events: EventRow[], categories: EventCategoryRow[], viewMode: ViewMode | null};
 }
 
 export async function fetchEventCategoriesServer(): Promise<EventCategoryRow[]> {
@@ -77,5 +95,5 @@ export async function fetchEventCategoriesServer(): Promise<EventCategoryRow[]> 
     .order('name', { ascending: true });
 
   if (error) throw error;
-  return (data ?? []) as EventCategoryRow[];
+  return ( data ?? []) as EventCategoryRow[];
 }

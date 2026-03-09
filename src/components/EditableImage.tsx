@@ -10,7 +10,7 @@ import { Save, X, Upload, RotateCcw } from 'lucide-react';
 import { uploadImage } from '@/lib/storage';
 import { supabase } from '@/lib/supabase/browser';
 import { ThreeDotMenu } from './UI/ThreeDotMenu/ThreeDotMenu';
-
+import Image from 'next/image';
 interface EditableImageProps {
   section: string;
   defaultImage: string;
@@ -478,10 +478,12 @@ export function EditableImage({
   return (
     <div className={`relative ${className}`}>
       <div className="h-full w-full overflow-hidden">
-        <img
+        <Image
           src={imageUrl}
           alt={siteImage?.alt_text || alt}
           className={imageClassName}
+          width={100}
+          height={100}
           style={{
             minWidth: '100%',
             minHeight: '100%',

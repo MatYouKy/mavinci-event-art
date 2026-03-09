@@ -2,8 +2,10 @@ import 'server-only';
 import { cookies } from 'next/headers';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 import type { CookieStoreLike } from '@/lib/supabase/server.app';
+import type { IEmployee } from '@/app/(crm)/crm/employees/type';
+import { ViewMode, ViewModePreference } from '@/app/(crm)/crm/settings/page';
 
-function getCookieStore(): CookieStoreLike {
+export function getCookieStore(): CookieStoreLike {
   const store = cookies();
   return {
     getAll: () => store.getAll().map((c) => ({ name: c.name, value: c.value })),
@@ -36,6 +38,9 @@ export type EventRow = {
   } | null;
   location_id: string | null;
   contact_person_id: string | null;
+  category: EventCategoryRow | null;
+  viewMode: ViewMode | null;
+  creator: IEmployee | null;
 };
 
 export type EventCategoryRow = { id: string; name: string; color: string | null };
@@ -43,14 +48,19 @@ export type EventCategoryRow = { id: string; name: string; color: string | null 
 export async function fetchEventByIdServer(eventId: string): Promise<EventRow> {
   const supabase = createSupabaseServerClient(getCookieStore());
 
-  // auth z cookies (jeśli brak sesji → pusta lista)
-  const { data: auth } = await supabase.auth.getUser();
-  const userId = auth?.user?.id;
-  if (!userId) return {} as EventRow;
 
-  // Uwaga: Ty masz RLS i polityki na events/tasks/employees.
-  // To oznacza: jeśli user nie ma uprawnień, select i tak wróci pusty.
-  // Nie musimy ręcznie robić "admin vs assigned" w JS — RLS to ogarnie.
+
+  const { data: auth, error: authError } = await supabase.auth.getUser();
+
+  // ✅ brak sesji to normalna sytuacja — nie logujemy jako "error"
+  if (authError) {
+    if (authError.name === 'AuthSessionMissingError') return null;
+    console.error('[fetchEventByIdServer] auth.getUser error:', authError);
+    return null;
+  }
+
+  const email = auth.user?.email;
+  if (!email) return null;
 
   const { data, error } = await supabase
       .from('events')
@@ -59,5 +69,20 @@ export async function fetchEventByIdServer(eventId: string): Promise<EventRow> {
     .single();
 
   if (error) throw error;
-  return (data ?? {} as EventRow);
+
+  const { data: eventCategory, error: eventCategoryError } = await supabase.from('event_categories').select('*').eq('id', data?.category_id).maybeSingle();
+
+  const { data: creator, error: creatorError } = await supabase
+  .from("employees")
+  .select("id, name, surname, nickname, avatar_url, avatar_metadata, role, occupation, qualifications, is_active")
+  .eq("id", data?.created_by)
+  .single();
+
+
+  if (eventCategoryError) throw eventCategoryError;
+  return {
+    ...data,
+    category: eventCategory,
+    creator: creator,
+  } as unknown as EventRow & { category: EventCategoryRow };
 }

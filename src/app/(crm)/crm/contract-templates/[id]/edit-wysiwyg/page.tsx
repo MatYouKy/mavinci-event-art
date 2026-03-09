@@ -20,7 +20,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-
+import Image from 'next/image';
 export default function EditTemplateWYSIWYGPage() {
   const params = useParams();
   const router = useRouter();
@@ -1326,12 +1326,13 @@ export default function EditTemplateWYSIWYGPage() {
                       marginTop: `${logoPositionY}mm`,
                     }}
                   >
-                    <img
+                    <Image
                       src={selectedLogo}
                       alt="Logo"
+                      width={100}
+                      height={100}
                       style={{
                         maxWidth: `${logoScale}%`,
-                        height: 'auto',
                       }}
                     />
                   </div>
@@ -1374,10 +1375,12 @@ export default function EditTemplateWYSIWYGPage() {
                 <div className="contract-footer">
                   {selectedFooter === 'default' && (
                     <div className="footer-logo">
-                      <img
+                      <Image
                         src={footerContent.logoUrl}
                         alt="Logo"
-                        style={{ maxWidth: `${footerLogoScale}%`, height: 'auto' }}
+                        style={{ maxWidth: `${footerLogoScale}%` }}
+                        width={100}
+                        height={100}
                       />
                     </div>
                   )}

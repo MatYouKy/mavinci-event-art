@@ -7,7 +7,7 @@ import Link from 'next/link';
 import React, { useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useMobile } from '@/hooks/useMobile';
-
+import Image from 'next/image';
 interface HeroPosition {
   posX: number;
   posY: number;
@@ -85,8 +85,10 @@ export default function EditableHeroSectionClient({
       <div className="relative overflow-hidden">
         {/* Background Image with Position and Opacity */}
         <div className="absolute inset-0">
-          <img
+          <Image
             src={initialImageUrl}
+            width={100}
+            height={100}
             alt="Hero background"
             className="h-full w-full object-cover"
             style={{
@@ -207,10 +209,12 @@ export default function EditableHeroSectionClient({
                 <div className="relative">
                   <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-[#d3bb73]/20 to-[#800020]/20 blur-3xl" />
                   <div className="relative overflow-hidden rounded-3xl border border-[#d3bb73]/20">
-                    <img
+                    <Image
                       src={initialImageUrl}
                       alt={title || 'Hero image'}
                       className="h-full w-full object-cover"
+                      width={100}
+                      height={100}
                     />
                   </div>
                 </div>

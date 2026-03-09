@@ -89,15 +89,19 @@ export default function EventDetailsAction({
   const { getCategoryById, categories } = useEventCategories(); 
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [currentStatus, setCurrentStatus] = useState<EventStatus>(event?.status as EventStatus);
-  const [category, setCategory] = useState<IEventCategory | null>(null);
   const [isEditingCategory, setIsEditingCategory] = useState(false);
   const [statusEditActive, setStatusEditActive] = useState(false);
   const { employee } = useCurrentEmployee();
   const [agenda, setAgenda] = useState<any | null>(null);
   const [equipmentChecklist, setEquipmentChecklist] = useState<any | null>(null);
+  //Category
+  const [category, setCategory] = useState<IEventCategory | null>(event?.category ?? null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(event?.category_id ?? '');
-const [savingCategory, setSavingCategory] = useState(false);
+  const [savingCategory, setSavingCategory] = useState(false);
+  //Status
   const searchParams = useSearchParams();
+
+  console.log('event-> Details-Action', event);
 
   useEffect(() => {
     setSelectedCategoryId(event?.category_id ?? '');
@@ -145,22 +149,10 @@ const [savingCategory, setSavingCategory] = useState(false);
   };
 
   useEffect(() => {
-    if (event?.category_id) {
-      fetchCategory();
-    } else {
-      setCategory(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [event?.category_id]);
-
-  useEffect(() => {
     if (event?.status) setCurrentStatus(event.status as EventStatus);
   }, [event?.status]);
 
-  const fetchCategory = async () => {
-    const category = await getCategoryById(event?.category_id ?? '');
-    setCategory(category);
-  };
+
 
   const handleShowChecklistPdf = async () => {
     try {

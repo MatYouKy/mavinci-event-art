@@ -28,6 +28,8 @@ import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBa
 import { EventStatusBadge } from './UI/EventStatusBadge';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { ViewMode } from '../settings/page';
+import { EventCategoryRow, EventRow } from '@/lib/CRM/events/eventsData.server';
+import { IEmployee } from '../employees/type';
 
 const moveKey = (arr: EventsTableColKey[], from: EventsTableColKey, to: EventsTableColKey) => {
   const a = [...arr];
@@ -240,23 +242,28 @@ function ResizableTh({
   );
 }
 
+const hasScope = (scope: string, employee: IEmployee): boolean => {
+  if (!employee) return false;
+  return employee.permissions?.includes(scope) || false;
+};
+
 export default function EventsPageClient({
-  initialEvents,
-  initialCategories,
-  initialViewMode,
+  initialData,
+  currentEmployee,
 }: {
-  initialEvents: any[];
-  initialCategories: any[];
-  initialViewMode: ViewMode;
+  initialData: { events: EventRow[]; viewMode: ViewMode; categories: EventCategoryRow[] };
+  currentEmployee: IEmployee;
 }) {
+  const isUserAdmin = currentEmployee.role === 'admin' || currentEmployee.permissions?.includes('events_manage');
+
+  const { events: initialEvents, categories, viewMode: initialViewMode } = initialData;
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { hasScope, isAdmin: isUserAdmin } = useCurrentEmployee();
   const { showSnackbar } = useSnackbar();
   const { setViewMode, getModulePrefs, setModulePrefs } = useUserPreferences() as any;
   const [events, setEvents] = useState<any[]>(initialEvents);
   const [filteredEvents, setFilteredEvents] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>(initialCategories);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -266,9 +273,9 @@ export default function EventsPageClient({
   const [showPastEvents, setShowPastEvents] = useState<boolean>(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [eventToDelete, setEventToDelete] = useState<any>(null);
-  
-  const [viewMode, setLocalViewMode] = useState<ViewMode>(initialViewMode);
-  
+
+  const [viewMode, setLocalViewMode] = useState<ViewMode>(initialViewMode as ViewMode);
+
   const modulePrefs = (getModulePrefs?.('events') ?? {}) as any;
   const [colOrder, setColOrder] = useState<EventsTableColKey[]>(() => {
     const prefOrder = modulePrefs?.table?.colOrder as EventsTableColKey[] | undefined;
@@ -279,7 +286,6 @@ export default function EventsPageClient({
   });
 
   // ---- Table widths from prefs (fallback to defaults)
-
 
   const [colWidths, setColWidths] = useState<Record<EventsTableColKey, number>>(() => ({
     ...DEFAULT_EVENTS_COL_WIDTHS,
@@ -314,12 +320,12 @@ export default function EventsPageClient({
 
   const canViewCommercials =
     isUserAdmin ||
-    hasScope('finances_manage') ||
-    hasScope('finances_view') ||
-    hasScope('offers_manage') ||
-    hasScope('offers_view') ||
-    hasScope('invoices_manage') ||
-    hasScope('invoices_view');
+    hasScope('finances_manage', currentEmployee) ||
+    hasScope('finances_view', currentEmployee) ||
+    hasScope('offers_manage', currentEmployee) ||
+    hasScope('offers_view', currentEmployee) ||
+    hasScope('invoices_manage', currentEmployee) ||
+    hasScope('invoices_view', currentEmployee);
 
   const handleViewModeChange = async (mode: ViewMode) => {
     setLocalViewMode(mode);
@@ -603,70 +609,63 @@ export default function EventsPageClient({
 
   const renderCell: Record<EventsTableColKey, (event: any) => React.ReactNode> = {
     name: (event) => (
-      <td className="px-3 py-3">
+      <>
         <div className="truncate font-medium">{event.name}</div>
         <div className="mt-0.5 truncate text-xs text-[#e5e4e2]/40">
           {event.created_at
             ? `Utworzono: ${new Date(event.created_at).toLocaleDateString('pl-PL')}`
             : 'Utworzono: —'}
         </div>
-      </td>
+      </>
     ),
+
     client: (event) => {
       const clientLabel = getOrgLabel(event.organizations, event.contacts);
       const isContactClient = !event.organizations && !!getContactLabel(event.contacts);
+
       return (
-        <td className="px-3 py-3 text-[#e5e4e2]/80">
-          <div className="flex min-w-0 items-center gap-2">
-            {isContactClient ? (
-              <User className="h-4 w-4 flex-shrink-0 text-[#e5e4e2]/50" />
-            ) : (
-              <Building2 className="h-4 w-4 flex-shrink-0 text-[#e5e4e2]/50" />
-            )}
-            <span className="truncate">{clientLabel}</span>
-          </div>
-        </td>
+        <div className="flex min-w-0 items-center gap-2">
+          {isContactClient ? (
+            <User className="h-4 w-4 flex-shrink-0 text-[#e5e4e2]/50" />
+          ) : (
+            <Building2 className="h-4 w-4 flex-shrink-0 text-[#e5e4e2]/50" />
+          )}
+          <span className="truncate">{clientLabel}</span>
+        </div>
       );
     },
-    date: (event) => (
-      <td className="px-3 py-3 text-[#e5e4e2]/80">
-        {event.event_date ? new Date(event.event_date).toLocaleDateString('pl-PL') : '—'}
-      </td>
-    ),
+
+    date: (event) =>
+      event.event_date ? new Date(event.event_date).toLocaleDateString('pl-PL') : '—',
+
     location: (event) => (
-      <td className="px-3 py-3">
-        <a
-          href={getMapsHref(event.locations, event.location) ?? undefined}
-          target="_blank"
-          rel="noreferrer"
-          onClick={stop}
-          className="block truncate text-[#e5e4e2]/70 hover:text-[#d3bb73]"
-          title="Otwórz w mapach"
-        >
-          {getLocationLabelDesktop(event.locations, event.location)}
-        </a>
-      </td>
+      <a
+        href={getMapsHref(event.locations, event.location) ?? undefined}
+        target="_blank"
+        rel="noreferrer"
+        onClick={stop}
+        className="block truncate text-[#e5e4e2]/70 hover:text-[#d3bb73]"
+        title="Otwórz w mapach"
+      >
+        {getLocationLabelDesktop(event.locations, event.location)}
+      </a>
     ),
-    status: (event) => (
-      <td className="px-3 py-3">
-        <EventStatusBadge status={event.status} />
-      </td>
-    ),
+
+    status: (event) => <EventStatusBadge status={event.status} />,
+
     category: (event) => (
-      <td className="px-3 py-3 text-[#e5e4e2]/80">
-        <span className="block truncate">{event.event_categories?.name ?? '—'}</span>
-      </td>
+      <span className="block truncate">{event.event_categories?.name ?? '—'}</span>
     ),
+
     budget: (event) => (
-      <td className="px-3 py-3 text-right text-[#e5e4e2]/80">
-        <span className="font-medium text-[#d3bb73]">
-          {event.expected_revenue ? event.expected_revenue.toLocaleString() : '0'} zł
-        </span>
-      </td>
+      <span className="font-medium text-[#d3bb73]">
+        {event.expected_revenue ? event.expected_revenue.toLocaleString() : '0'} zł
+      </span>
     ),
-    actions: (event) => (
-      <td className="px-3 py-3 text-right" onClick={stop}>
-        {canViewCommercials && (<ResponsiveActionBar
+
+    actions: (event) =>
+      canViewCommercials ? (
+        <ResponsiveActionBar
           disabledBackground
           mobileBreakpoint={2000}
           actions={[
@@ -677,9 +676,8 @@ export default function EventsPageClient({
               variant: 'danger',
             },
           ]}
-        />)}
-      </td>
-    ),
+        />
+      ) : null,
   };
 
   const actions = useMemo<Action[]>(() => {
@@ -1057,7 +1055,7 @@ export default function EventsPageClient({
             <table className="w-full table-fixed text-sm">
               <thead>
                 <tr>
-                  {colOrder.map((key) => {
+                  {colOrder.map((key, index) => {
                     // pomiń budget jeśli brak uprawnień (gdyby kiedyś prefs to zawierały)
                     if (key === 'budget' && !canViewCommercials) return null;
 
@@ -1088,7 +1086,7 @@ export default function EventsPageClient({
 
                     return (
                       <ResizableTh
-                        key={key}
+                        key={`${key}-${index}`}
                         label={labelMap[key]}
                         width={colWidths[key]}
                         min={minMap[key] ?? 120}
@@ -1124,7 +1122,27 @@ export default function EventsPageClient({
                   >
                     {colOrder.map((key) => {
                       if (key === 'budget' && !canViewCommercials) return null;
-                      return renderCell[key](event);
+
+                      const cellClassMap: Record<EventsTableColKey, string> = {
+                        name: 'px-3 py-3',
+                        client: 'px-3 py-3 text-[#e5e4e2]/80',
+                        date: 'px-3 py-3 text-[#e5e4e2]/80',
+                        location: 'px-3 py-3',
+                        status: 'px-3 py-3',
+                        category: 'px-3 py-3 text-[#e5e4e2]/80',
+                        budget: 'px-3 py-3 text-right text-[#e5e4e2]/80',
+                        actions: 'px-3 py-3 text-right',
+                      };
+
+                      return (
+                        <td
+                          key={key}
+                          className={cellClassMap[key]}
+                          onClick={key === 'actions' ? stop : undefined}
+                        >
+                          {renderCell[key](event)}
+                        </td>
+                      );
                     })}
                   </tr>
                 ))}
@@ -1169,7 +1187,7 @@ export default function EventsPageClient({
               : 'grid gap-4'
           }
         >
-          {filteredEvents.map((event) => {
+          {filteredEvents.map((event, index) => {
             const eventDate = new Date(event.event_date);
             const today = new Date();
             today.setHours(0, 0, 0, 0);
@@ -1182,7 +1200,7 @@ export default function EventsPageClient({
             if (viewMode === 'grid') {
               return (
                 <div
-                  key={event.id}
+                  key={`${event.id}-grid-${index}`}
                   onClick={() => router.push(`/crm/events/${event.id}`)}
                   className={`relative flex cursor-pointer flex-col rounded-xl border bg-[#1c1f33] p-4 transition-all hover:border-[#d3bb73]/30 md:p-6 ${
                     isPast ? 'border-[#e5e4e2]/5 opacity-70' : 'border-[#d3bb73]/10'
@@ -1198,30 +1216,32 @@ export default function EventsPageClient({
                       <div className="hidden md:block">
                         {canViewCommercials && (
                           <button
-                          onClick={(e) => {
-                            stop(e);
-                            handleDeleteClick(e, event);
-                          }}
-                          className="flex-shrink-0 rounded-lg bg-red-500/10 p-2 text-red-500 transition-colors hover:bg-red-500/20"
-                          title="Usuń event"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                            onClick={(e) => {
+                              stop(e);
+                              handleDeleteClick(e, event);
+                            }}
+                            className="flex-shrink-0 rounded-lg bg-red-500/10 p-2 text-red-500 transition-colors hover:bg-red-500/20"
+                            title="Usuń event"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
                         )}
                       </div>
 
                       <div className="md:hidden">
-                        {canViewCommercials && (<ResponsiveActionBar
-                          actions={[
-                            {
-                              label: 'Usuń',
-                              onClick: () => handleDeleteClick(null, event),
-                              icon: <Trash2 className="h-4 w-4" />,
-                              variant: 'danger',
-                            },
-                          ]}
-                          disabledBackground
-                        />)}
+                        {canViewCommercials && (
+                          <ResponsiveActionBar
+                            actions={[
+                              {
+                                label: 'Usuń',
+                                onClick: () => handleDeleteClick(null, event),
+                                icon: <Trash2 className="h-4 w-4" />,
+                                variant: 'danger',
+                              },
+                            ]}
+                            disabledBackground
+                          />
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1285,7 +1305,7 @@ export default function EventsPageClient({
             // LIST
             return (
               <div
-                key={event.id}
+                key={`${event.id}-list-${index}`}
                 className={`relative cursor-pointer rounded-xl border bg-[#1c1f33] p-2 transition-all hover:border-[#d3bb73]/30 sm:p-4 md:p-6 ${
                   isPast ? 'border-[#e5e4e2]/5 opacity-70' : 'border-[#d3bb73]/10'
                 }`}
@@ -1363,30 +1383,32 @@ export default function EventsPageClient({
                     <div className="hidden md:block">
                       {canViewCommercials && (
                         <button
-                        onClick={(e) => {
-                          stop(e);
-                          handleDeleteClick(e, event);
-                        }}
-                        className="rounded-lg bg-red-500/10 p-2 text-red-500 transition-colors hover:bg-red-500/20"
-                        title="Usuń event"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                          onClick={(e) => {
+                            stop(e);
+                            handleDeleteClick(e, event);
+                          }}
+                          className="rounded-lg bg-red-500/10 p-2 text-red-500 transition-colors hover:bg-red-500/20"
+                          title="Usuń event"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       )}
                     </div>
 
                     <div className="md:hidden" onClick={stop}>
-                      {canViewCommercials && (<ResponsiveActionBar
-                        actions={[
-                          {
-                            label: 'Usuń',
-                            onClick: () => handleDeleteClick(null, event),
-                            icon: <Trash2 className="h-4 w-4" />,
-                            variant: 'danger',
-                          },
-                        ]}
-                        disabledBackground
-                      />)}
+                      {canViewCommercials && (
+                        <ResponsiveActionBar
+                          actions={[
+                            {
+                              label: 'Usuń',
+                              onClick: () => handleDeleteClick(null, event),
+                              icon: <Trash2 className="h-4 w-4" />,
+                              variant: 'danger',
+                            },
+                          ]}
+                          disabledBackground
+                        />
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1409,16 +1431,17 @@ export default function EventsPageClient({
                   )}
                 </div>
 
-                {canViewCommercials && (<div className="mt-4 flex items-center justify-between border-t border-[#d3bb73]/10 pt-4">
-                  <div className="text-sm text-[#e5e4e2]/70">
-                    Budżet:{' '}
-                    <span className="font-medium text-[#d3bb73]">
-                      {event.expected_revenue ? event.expected_revenue.toLocaleString() : '0'} zł
-                    </span>
-                  </div>
+                {canViewCommercials && (
+                  <div className="mt-4 flex items-center justify-between border-t border-[#d3bb73]/10 pt-4">
+                    <div className="text-sm text-[#e5e4e2]/70">
+                      Budżet:{' '}
+                      <span className="font-medium text-[#d3bb73]">
+                        {event.expected_revenue ? event.expected_revenue.toLocaleString() : '0'} zł
+                      </span>
+                    </div>
 
-                  <div className="text-xs text-[#e5e4e2]/40 md:hidden">Szczegóły →</div>
-                </div>
+                    <div className="text-xs text-[#e5e4e2]/40 md:hidden">Szczegóły →</div>
+                  </div>
                 )}
               </div>
             );

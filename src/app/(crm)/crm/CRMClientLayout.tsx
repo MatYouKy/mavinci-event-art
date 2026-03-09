@@ -145,6 +145,7 @@ export default function CRMClientLayout({
               <Image
                 src="/logo mavinci-simple.svg"
                 alt="Mavinci"
+                priority
                 width={160}
                 height={60}
                 className="h-auto w-40"

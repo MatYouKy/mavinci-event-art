@@ -7,6 +7,7 @@ import { SliderX, SliderY, SliderScale, SliderOpacity } from './UI/Slider/Slider
 import { Save, X } from 'lucide-react';
 import { ThreeDotMenu } from './UI/ThreeDotMenu/ThreeDotMenu';
 import { useHeroImage } from './PageImage/hooks/useHeroImage';
+import Image from 'next/image';
 
 export interface PageHeroImageProps {
   section: string;
@@ -173,9 +174,11 @@ export function PageHeroImage({
             opacity: isEditingOpacity ? displayOpacity : finalOpacity,
           }}
         >
-          <img
+          <Image
             src={stableSrc}
             alt={section}
+            width={100}
+            height={100}
             className="absolute"
             style={{
               minWidth: '100%',
