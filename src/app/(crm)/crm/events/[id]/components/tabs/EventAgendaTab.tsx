@@ -3,21 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase/browser';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import {
-  Clock,
-  Plus,
-  Trash2,
-  Save,
-  FileDown,
-  Printer,
-  ChevronRight,
-  List,
-  Eye,
-  Download,
-  Edit3,
-  Check,
-  X,
-} from 'lucide-react';
+import { Clock, Plus, Trash2, Save, FileDown, Printer, ChevronRight, List, Eye, Download, CreditCard as Edit3, Check, X } from 'lucide-react';
 import { buildAgendaHtml } from '@/app/(crm)/crm/events/[id]/helpers/buildAgendaPdf';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { useEvent } from '../../../hooks/useEvent';
