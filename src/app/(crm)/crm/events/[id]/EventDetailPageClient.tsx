@@ -275,6 +275,7 @@ export default function EventDetailPageClient({
     filterByAction,
     isLoading: isLoadingAuditLog,
     getActionIcon,
+    refetch: refetchAuditLog,
   } = useEventAuditLog(eventId as string);
 
   const [auditViewMode, setAuditViewMode] = useState<'timeline' | 'byDate'>('timeline');
@@ -1106,6 +1107,14 @@ export default function EventDetailPageClient({
             </div>
 
             <div className="flex gap-2">
+              <button
+                onClick={() => refetchAuditLog()}
+                className="flex items-center gap-2 rounded-lg bg-[#1c1f33] px-4 py-2 text-sm font-medium text-[#e5e4e2]/70 transition-colors hover:bg-[#1c1f33]/80 hover:text-[#e5e4e2]"
+                title="Odśwież historię"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Odśwież
+              </button>
               <button
                 onClick={() => setAuditViewMode('timeline')}
                 className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
