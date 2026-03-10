@@ -1,4 +1,4 @@
-import { History, Plus, Edit2, Trash2 } from 'lucide-react';
+import { History, Plus, CreditCard as Edit2, Trash2 } from 'lucide-react';
 
 interface HistoryEntry {
   id: string;
