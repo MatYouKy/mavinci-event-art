@@ -242,9 +242,24 @@ export const eventsApi = createApi({
         try {
           const { data, error } = await supabase
             .from('event_equipment')
-            .select('id, equipment_id, kit_id, quantity, removed_from_offer')
+            .select(`
+              id,
+              equipment_id,
+              cable_id,
+              kit_id,
+              quantity,
+              removed_from_offer,
+              kit:equipment_kits(
+                id,
+                equipment_kit_items(
+                  equipment_id,
+                  cable_id,
+                  quantity
+                )
+              )
+            `)
             .eq('event_id', eventId);
-
+    
           if (error) {
             return {
               error: {
@@ -253,7 +268,7 @@ export const eventsApi = createApi({
               } as unknown as EventsApiError,
             };
           }
-
+    
           return { data: (data || []) as any[] };
         } catch (error: any) {
           return {

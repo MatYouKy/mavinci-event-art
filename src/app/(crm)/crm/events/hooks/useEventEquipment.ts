@@ -49,27 +49,44 @@ const keyOf = (type: ItemType, id: string) => `${type}-${id}` as AvailKey;
 
 function buildInEventMap(equipmentRows: any[]) {
   const map = new Map<string, number>();
+
+  const addToMap = (type: ItemType, id: string, qty: number) => {
+    const k = keyOf(type, id);
+    map.set(k, (map.get(k) ?? 0) + qty);
+  };
+
   for (const row of equipmentRows || []) {
-    const qty = Number(row?.quantity ?? 0);
+    const rowQty = Number(row?.quantity ?? 0);
 
     const eqId = row?.equipment_id ?? row?.equipment?.id ?? row?.equipment?.equipment_id;
     if (eqId) {
-      const k = keyOf('item', eqId);
-      map.set(k, (map.get(k) ?? 0) + qty);
+      addToMap('item', eqId, rowQty);
     }
 
     const cableId = row?.cable_id ?? row?.cable?.id;
     if (cableId) {
-      const k = keyOf('cable', cableId);
-      map.set(k, (map.get(k) ?? 0) + qty);
+      addToMap('cable', cableId, rowQty);
     }
 
     const kitId = row?.kit_id ?? row?.kit?.id ?? row?.kit?.kit_id;
     if (kitId) {
-      const k = keyOf('kit', kitId);
-      map.set(k, (map.get(k) ?? 0) + qty);
+      addToMap('kit', kitId, rowQty);
+
+      const kitItems = row?.kit?.equipment_kit_items || [];
+      for (const kitItem of kitItems) {
+        const componentQty = Number(kitItem?.quantity ?? 0) * rowQty;
+
+        if (kitItem?.equipment_id) {
+          addToMap('item', kitItem.equipment_id, componentQty);
+        }
+
+        if (kitItem?.cable_id) {
+          addToMap('cable', kitItem.cable_id, componentQty);
+        }
+      }
     }
   }
+
   return map;
 }
 
@@ -241,16 +258,20 @@ export function useEventEquipment(eventId: string, event?: EventCore) {
 
       if (!kitsError && kits) {
         const kitsWithAvail = (kits as any[]).map((kit) => {
-          // Oblicz dostępność kita = MIN(dostępności wszystkich jego itemów)
           let minAvailable = Infinity;
           const kitItems = kit.equipment_kit_items || [];
-
+      
           for (const item of kitItems) {
+            const itemQty = Number(item.quantity ?? 0);
+      
+            if (itemQty <= 0) continue;
+      
             if (item.equipment_id) {
               const k = keyOf('item', item.equipment_id);
               const avail = byKey[k];
+      
               if (avail) {
-                const canAddFromThisItem = Math.floor(avail.max_add / item.quantity);
+                const canAddFromThisItem = Math.floor(avail.max_add / itemQty);
                 minAvailable = Math.min(minAvailable, canAddFromThisItem);
               } else {
                 minAvailable = 0;
@@ -258,30 +279,43 @@ export function useEventEquipment(eventId: string, event?: EventCore) {
             } else if (item.cable_id) {
               const k = keyOf('cable', item.cable_id);
               const avail = byKey[k];
+      
               if (avail) {
-                const canAddFromThisItem = Math.floor(avail.max_add / item.quantity);
+                const canAddFromThisItem = Math.floor(avail.max_add / itemQty);
                 minAvailable = Math.min(minAvailable, canAddFromThisItem);
               } else {
                 minAvailable = 0;
               }
             }
           }
-
+      
           const maxAddKits = minAvailable === Infinity ? 0 : Math.max(0, minAvailable);
-
+          const kitKey = keyOf('kit', kit.id);
+          const usedByThisEvent = Number(usedMap.get(kitKey) ?? 0);
+          const maxSetKits = usedByThisEvent + maxAddKits;
+      
+          // ✅ KLUCZOWE: dopisz availability kita do wspólnej mapy
+          byKey[kitKey] = {
+            total_quantity: maxSetKits,
+            reserved_quantity: 0,
+            used_by_this_event: usedByThisEvent,
+            available_in_term: maxAddKits,
+            max_add: maxAddKits,
+            max_set: maxSetKits,
+          };
+      
           return {
             ...kit,
             available_count: maxAddKits,
-            used_by_this_event: 0,
+            used_by_this_event: usedByThisEvent,
             available_in_term: maxAddKits,
             max_add: maxAddKits,
-            max_set: maxAddKits,
+            max_set: maxSetKits,
             reserved_quantity: 0,
-            total_quantity: maxAddKits,
+            total_quantity: maxSetKits,
           };
         });
-
-        // ✅ NIE filtruj kitów - modal sam zadba o wyświetlanie dostępności
+      
         setAvailableKits(kitsWithAvail);
       }
     } catch (e) {
