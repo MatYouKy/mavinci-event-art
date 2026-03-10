@@ -40,6 +40,7 @@ interface Invoice {
   created_at: string;
   event?: {
     title: string;
+    name: string | null;
   };
   organization?: {
     name: string;
