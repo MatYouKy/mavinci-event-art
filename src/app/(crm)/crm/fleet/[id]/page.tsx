@@ -144,6 +144,9 @@ export default function VehicleDetailPage() {
 
   const vehicleDetail = useVehicleDetail(vehicleId);
 
+  console.log('data: ', data?.vehicle);
+  // console.log('vehicleDetail: ', vehicleDetail);
+
   const vehicle = (data as any)?.vehicle?.data ?? (data as any)?.vehicle ?? null;
 
   const fuelEntries = (data as any)?.fuelEntries?.data ?? (data as any)?.fuelEntries ?? [];
@@ -386,6 +389,8 @@ export default function VehicleDetailPage() {
         .eq('event_id', vehicle.in_use_event_id) // events.id
         .eq('is_in_use', true)
         .maybeSingle();
+
+
   
       if (findError) throw findError;
   
@@ -402,9 +407,22 @@ export default function VehicleDetailPage() {
         })
         .eq('id', activeAssignment.id)
         .select('id');
+
+        const { data: data2, error: error2 } = await supabase
+        .from('fleet_vehicles_view')
+        .update({
+          is_in_use: false,
+          return_timestamp: nowIso,
+        })
+        .eq('id', activeAssignment.id)
+        .select('id');
+        if (error2) throw error2;
   
       if (error) throw error;
-  
+      if (!data2?.length) {
+        showSnackbar('Nie udało się zakończyć użytkowania pojazdu', 'error');
+        return;
+      }
       if (!data?.length) {
         showSnackbar('Nie udało się zakończyć użytkowania pojazdu', 'error');
         return;
