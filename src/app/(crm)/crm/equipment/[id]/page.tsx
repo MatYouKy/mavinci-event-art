@@ -93,6 +93,15 @@ export default function EquipmentDetailPage() {
     refetchOnMountOrArgChange: true,
   });
 
+  const {
+    data: editHistory = [],
+    isFetching: historyLoading,
+  } = useGetEquipmentEditHistoryQuery(equipmentId, {
+    skip: !equipmentId,
+    refetchOnMountOrArgChange: true,
+    pollingInterval: 5000,
+  });
+
   // RTK Query mutations
   const [updateEquipmentMutation] = useUpdateEquipmentItemMutation();
   const [deleteEquipmentMutation] = useDeleteEquipmentMutation();
@@ -468,7 +477,9 @@ export default function EquipmentDetailPage() {
       )}
 
       {/* HISTORY */}
-      {activeTab === 'history' && <HistoryTab history={equipment?.unit_events ?? []} />}
+      {activeTab === 'history' && (
+        <HistoryTab history={editHistory} loading={historyLoading} />
+      )}
     </div>
   );
 }

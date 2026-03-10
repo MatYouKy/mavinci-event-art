@@ -665,6 +665,31 @@ export const equipmentApi = createApi({
       },
       invalidatesTags: ['Categories'],
     }),
+
+    getEquipmentEditHistory: builder.query<any[], string>({
+      async queryFn(equipmentId) {
+        const { data, error } = await supabase
+          .from('equipment_edit_history')
+          .select(`
+            id,
+            field_name,
+            old_value,
+            new_value,
+            change_type,
+            changed_at,
+            employee_id,
+            employees:employees(name, surname)
+          `)
+          .eq('equipment_id', equipmentId)
+          .order('changed_at', { ascending: false });
+
+        if (error) return { error: error as any };
+        return { data: data ?? [] };
+      },
+      providesTags: (result, error, equipmentId) => [
+        { type: 'Equipment', id: equipmentId },
+      ],
+    }),
   }),
 });
 
@@ -692,4 +717,5 @@ export const {
   useGetEquipmentFeedQuery,
   useLazyGetEquipmentFeedQuery,
   useUpdateCableQuantityMutation,
+  useGetEquipmentEditHistoryQuery,
 } = equipmentApi;
