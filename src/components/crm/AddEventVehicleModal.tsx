@@ -132,6 +132,40 @@ export default function AddEventVehicleModal({
       if (error) throw error;
       if (!data) return;
 
+      // Załaduj przypisania pojazdów do faz dla tego pojazdu i wydarzenia
+      const { data: eventPhasesData } = await supabase
+        .from('event_phases')
+        .select('id, sequence_order, name')
+        .eq('event_id', data.event_id)
+        .order('sequence_order', { ascending: true });
+
+      // Załaduj przypisania tego pojazdu do faz
+      const { data: phaseVehicles, error: phaseError } = await supabase
+        .from('event_phase_vehicles')
+        .select('phase_id, vehicle_id, driver_id, assigned_start, assigned_end')
+        .eq('vehicle_id', data.vehicle_id)
+        .order('assigned_start', { ascending: true });
+
+      if (phaseError) {
+        console.error('Error loading phase vehicles:', phaseError);
+      }
+
+      // Znajdź pierwszą i ostatnią fazę z przypisanym pojazdem
+      let phaseFromId = '';
+      let phaseToId = '';
+
+      if (phaseVehicles && phaseVehicles.length > 0 && eventPhasesData && eventPhasesData.length > 0) {
+        // Znajdź które fazy mają przypisany ten pojazd
+        const assignedPhaseIds = new Set(phaseVehicles.map(pv => pv.phase_id));
+        const assignedPhases = eventPhasesData.filter(p => assignedPhaseIds.has(p.id));
+
+        if (assignedPhases.length > 0) {
+          // Pierwsza i ostatnia przypisana faza według sequence_order
+          phaseFromId = assignedPhases[0].id;
+          phaseToId = assignedPhases[assignedPhases.length - 1].id;
+        }
+      }
+
       setIsExternal(data.is_external);
       setFormData({
         vehicle_id: data.vehicle_id || '',
@@ -158,8 +192,8 @@ export default function AddEventVehicleModal({
           utcToLocalDatetimeString(data.external_trailer_return_date) || '',
         external_trailer_return_location: data.external_trailer_return_location || '',
         external_trailer_notes: data.external_trailer_notes || '',
-        phase_from_id: '',
-        phase_to_id: '',
+        phase_from_id: phaseFromId,
+        phase_to_id: phaseToId,
       });
     } catch (error) {
       console.error('Error loading vehicle data:', error);
@@ -766,16 +800,36 @@ export default function AddEventVehicleModal({
 
         if (error) throw error;
 
-        // Invaliduj cache pojazdów i logistyki
-        dispatch(
-          eventsApi.util.invalidateTags([
-            { type: 'EventVehicles', id: eventId },
-            { type: 'EventLogistics', id: eventId },
-          ]),
-        );
-
-        // Invaliduj cache dla faz logistycznych
+        // Usuń stare przypisania pojazdu do faz i utwórz nowe
         if (!isExternal && formData.vehicle_id) {
+          // Usuń wszystkie przypisania tego pojazdu dla tego wydarzenia
+          const { data: phasesToClean } = await supabase
+            .from('event_phases')
+            .select('id')
+            .eq('event_id', eventId);
+
+          if (phasesToClean && phasesToClean.length > 0) {
+            const phaseIds = phasesToClean.map(p => p.id);
+            await supabase
+              .from('event_phase_vehicles')
+              .delete()
+              .in('phase_id', phaseIds)
+              .eq('vehicle_id', formData.vehicle_id);
+          }
+
+          // Przypisz pojazd do faz ponownie z nowymi parametrami
+          await assignVehicleToLogisticPhases(
+            eventId,
+            formData.vehicle_id,
+            departureTime,
+            eventDateTime,
+            formData.driver_id,
+            formData.loading_time_minutes,
+            formData.preparation_time_minutes,
+            formData.travel_time_minutes,
+          );
+
+          // Invaliduj cache dla faz logistycznych
           const { data: logisticPhases } = await supabase
             .from('event_phases')
             .select('id')
@@ -790,6 +844,14 @@ export default function AddEventVehicleModal({
             );
           }
         }
+
+        // Invaliduj cache pojazdów i logistyki
+        dispatch(
+          eventsApi.util.invalidateTags([
+            { type: 'EventVehicles', id: eventId },
+            { type: 'EventLogistics', id: eventId },
+          ]),
+        );
 
         showSnackbar('Pojazd został zaktualizowany', 'success');
       } else {
