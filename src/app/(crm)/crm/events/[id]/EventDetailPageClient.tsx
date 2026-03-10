@@ -1447,7 +1447,9 @@ export default function EventDetailPageClient({
                                           <Icons.Minus className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-400" />
                                           <div className="flex-1">
                                             <span className="text-[#e5e4e2]/60">Przed: </span>
-                                            <span className="text-red-400">{formatAuditValue(entry.old_value)}</span>
+                                            <span className="text-red-400">
+                                              {formatAuditValue(entry.old_value)}
+                                            </span>
                                           </div>
                                         </div>
                                       )}
@@ -1456,7 +1458,9 @@ export default function EventDetailPageClient({
                                           <Icons.Plus className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-400" />
                                           <div className="flex-1">
                                             <span className="text-[#e5e4e2]/60">Po: </span>
-                                            <span className="text-green-400">{formatAuditValue(entry.new_value)}</span>
+                                            <span className="text-green-400">
+                                              {formatAuditValue(entry.new_value)}
+                                            </span>
                                           </div>
                                         </div>
                                       )}
