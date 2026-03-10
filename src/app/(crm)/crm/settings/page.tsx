@@ -61,6 +61,7 @@ export interface Preferences {
 const modules = [
   { key: 'clients', label: 'Klienci' },
   { key: 'equipment', label: 'Sprzęt' },
+  { key: 'kits', label: 'Zestawy Sprzętu' },
   { key: 'events', label: 'Wydarzenia' },
   { key: 'tasks', label: 'Zadania' },
   { key: 'offers', label: 'Oferty' },

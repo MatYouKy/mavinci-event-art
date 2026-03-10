@@ -24,6 +24,7 @@ interface NotificationPreferences {
 interface Preferences {
   clients?: ViewModePreference;
   equipment?: ViewModePreference;
+  kits?: ViewModePreference;
   events?: ViewModePreference;
   tasks?: ViewModePreference;
   offers?: ViewModePreference;
@@ -68,6 +69,7 @@ export function useUserPreferences() {
     const viewModeModules: Array<keyof Preferences> = [
       'clients',
       'equipment',
+      'kits',
       'events',
       'tasks',
       'offers',
@@ -87,6 +89,7 @@ export function useUserPreferences() {
     const viewModeModules: Array<keyof Preferences> = [
       'clients',
       'equipment',
+      'kits',
       'events',
       'tasks',
       'offers',

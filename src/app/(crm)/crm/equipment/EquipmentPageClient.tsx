@@ -674,7 +674,7 @@ export default function EquipmentPageClient({ viewMode: initialViewMode }: { vie
                         <span className="ml-2 text-xs text-[#d3bb73]">ZESTAW</span>
                       )}
                       {(item as any).is_active === false && (
-                        <span className="ml-2 text-xs text-red-400">NIEAKTYWNY</span>
+                        <span className="ml-2 text-xs text-red-400">NIEAKTYWNYss</span>
                       )}
                     </h3>
 

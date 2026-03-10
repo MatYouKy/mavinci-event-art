@@ -4,6 +4,7 @@ import { ILocation } from '../locations/type';
 import { IEmployee } from '../employees/type';
 import { IOfferItem } from '../offers/types';
 import { OrganizationRow } from '../contacts/types';
+import { EventPermissionContext } from '@/lib/CRM/events/eventsIdData.server';
 
 export type SelectedItem = { id: string; quantity: number; notes: string; type: 'item' | 'kit' };
 
@@ -40,6 +41,7 @@ export interface IOffer {
 }
 
 export interface IEvent {
+  permissionContext: EventPermissionContext;
   location_id: any;
   id: string;
   name: string;

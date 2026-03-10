@@ -62,10 +62,8 @@ import {
   useUpdateEventMutation,
   useDeleteEventOfferMutation,
 } from '../store/api/eventsApi';
-import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useEventEquipment, useEventOffers, useEventTeam } from '../hooks';
 import { useLocations } from '../../locations/useLocations';
-import { useEmployees } from '../../employees/hooks/useEmployees';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
 import { useEvent } from '../hooks/useEvent';
 import EventStatusSelectModal from '@/components/crm/EventStatusEditor';
@@ -74,12 +72,44 @@ import EventDetailsAction from './components/tabs/EventsDetailsTab/EventDetailsA
 import { useDispatch } from 'react-redux';
 import { IEvent, IOffer } from '../type';
 import { UnknownAction } from '@reduxjs/toolkit';
-import { useGetOrganizationByIdQuery } from '../../contacts/store/clientsApi';
 import { AddEventEmployeeModal } from './components/Modals/AddEventEmployeeModal';
 import { useEventAuditLog } from '@/app/(crm)/crm/events/hooks/useEventAuditLog';
 import { IEmployee } from '../../employees/type';
 import { hasScope } from './helpers/hasScope';
 import { EventCategoryRow } from '@/lib/CRM/events/eventsData.server';
+
+
+export const ADMIN_EVENT_TABS = [
+  'overview',
+  'phases',
+  'offer',
+  'agenda',
+  'finances',
+  'contract',
+  'equipment',
+  'team',
+  'logistics',
+  'subcontractors',
+  'files',
+  'tasks',
+  'history',
+];
+
+export const CREATOR_EVENT_TABS = [
+  'overview',
+  'phases',
+  'agenda',
+  'offer',
+  'finances',
+  'contract',
+  'equipment',
+  'team',
+  'logistics',
+  'subcontractors',
+  'files',
+  'tasks',
+  'history',
+];
 
 interface Equipment {
   kit_id: unknown;
@@ -219,9 +249,9 @@ export default function EventDetailPageClient({
   initialContact: ISimpleContact;
   initialOffers: IOffer[];
 }) {
-  const { organization, creator, currentEmployee } = initialData;
+  const { organization, creator, currentEmployee, permissionContext, employees } = initialData;
 
-  const isAdmin = currentEmployee.role === 'admin';
+  const { canManageTeam, allowedEventTabs, userAssignmentStatus, hasLimitedAccess, isAdmin, isCreator, currentUserId } = permissionContext;
 
   const canEventManage = currentEmployee.permissions?.includes('events_manage') || isAdmin;
 
@@ -239,6 +269,10 @@ export default function EventDetailPageClient({
   const [teamEmployees, setTeamEmployees] = useState<any[]>([]);
   const [showStatusModal, setShowStatusModal] = useState(false);
 
+  useEffect(() => {
+    setTeamEmployees(employees);
+  }, [employees]);
+
   // ✅ uprawnienia do OFERT / FAKTUR / FINANSÓW (dopasuj nazwy scope do swoich)
   const canViewCommercials =
     currentEmployee.role === 'admin' ||
@@ -249,15 +283,6 @@ export default function EventDetailPageClient({
     hasScope('invoices_manage', currentEmployee.permissions) ||
     hasScope('invoices_view', currentEmployee.permissions);
 
-  // const {
-  //   data: eventRTKQuery,
-  //   status: eventStatus,
-  //   isLoading,
-  //   error,
-  //   refetch: refetchEvent,
-  // } = useGetEventByIdQuery(eventId, {
-  //   refetchOnMountOrArgChange: true, // ⬅️ tylko 1 fetch, bez refetch przy każdym wejściu
-  // });
   const [event, setEvent] = useState<IEvent>(initialData);
 
   const [updateEventMutation] = useUpdateEventMutation();
@@ -328,15 +353,6 @@ export default function EventDetailPageClient({
     | 'history'
   >('overview');
 
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [canManageTeam, setCanManageTeam] = useState(false);
-
-  const [userAssignmentStatus, setUserAssignmentStatus] = useState<
-    'pending' | 'accepted' | 'rejected' | null
-  >(null);
-  const [hasLimitedAccess, setHasLimitedAccess] = useState(false);
-  const [allowedEventTabs, setAllowedEventTabs] = useState<string[]>([]);
-  const [hasSubcontractors, setHasSubcontractors] = useState(false);
 
   const [showAddChecklistModal, setShowAddChecklistModal] = useState(false);
   const [showEditEventModal, setShowEditEventModal] = useState(false);
@@ -364,134 +380,6 @@ export default function EventDetailPageClient({
   //   // eslint-disable-next-line react-hooks/exhaustive-deps
   // }, [eventId]);
 
-  const checkTeamManagementPermission = async () => {
-    try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session?.user?.id) {
-        setCanManageTeam(false);
-        setAllowedEventTabs([]);
-        return;
-      }
-
-      setCurrentUserId(session.user.id);
-
-      // Sprawdź czy użytkownik jest adminem oraz pobierz access_level i indywidualne event_tabs
-      const { data: employee } = await supabase
-        .from('employees')
-        .select('permissions, role, access_level_id, event_tabs, access_levels(event_tabs)')
-        .eq('id', session.user.id)
-        .single();
-
-      const userIsAdmin =
-        employee?.role === 'admin' || employee?.permissions?.includes('events_manage');
-
-      // Admin widzi wszystkie zakładki
-      if (userIsAdmin) {
-        setCanManageTeam(true);
-        setAllowedEventTabs([
-          'overview',
-          'phases',
-          'offer',
-          'agenda',
-          'finances',
-          'contract',
-          'equipment',
-          'team',
-          'logistics',
-          'subcontractors',
-          'files',
-          'tasks',
-          'history',
-        ]);
-        return;
-      }
-
-      // Sprawdź czy użytkownik jest przypisany do wydarzenia
-      const { data: assignment } = await supabase
-        .from('employee_assignments')
-        .select('can_invite_members, status')
-        .eq('event_id', eventId)
-        .eq('employee_id', session.user.id)
-        .maybeSingle();
-
-      // Jeśli jest przypisany i zaakceptował zaproszenie, użyj jego uprawnień z access_level lub indywidualnych
-      if (assignment?.status === 'accepted') {
-        setUserAssignmentStatus('accepted');
-        setHasLimitedAccess(false);
-
-        // Sprawdź indywidualne uprawnienia pracownika lub użyj event_tabs z access_level
-        let eventTabs: string[] = ['overview', 'team', 'agenda', 'files', 'tasks'];
-
-        if (employee?.event_tabs && employee.event_tabs.length > 0) {
-          eventTabs = employee.event_tabs;
-        } else if (
-          (employee?.access_levels as any)?.event_tabs &&
-          (employee?.access_levels as any).event_tabs.length > 0
-        ) {
-          eventTabs = (employee?.access_levels as any).event_tabs;
-        }
-
-        setAllowedEventTabs(eventTabs);
-
-        if (assignment.can_invite_members) {
-          setCanManageTeam(true);
-        }
-        return;
-      } else if (assignment?.status === 'pending') {
-        setUserAssignmentStatus('pending');
-        setHasLimitedAccess(true);
-        setAllowedEventTabs(['overview']);
-        return;
-      } else if (assignment?.status === 'rejected') {
-        setUserAssignmentStatus('rejected');
-        setHasLimitedAccess(true);
-        setAllowedEventTabs(['overview']);
-        return;
-      }
-
-      // Sprawdź czy jest creatorem
-      const { data: eventData } = await supabase
-        .from('events')
-        .select('created_by')
-        .eq('id', eventId)
-        .single();
-
-      if (eventData?.created_by === session.user.id) {
-        setCanManageTeam(true);
-        setAllowedEventTabs([
-          'overview',
-          'phases',
-          'agenda',
-          'offer',
-          'finances',
-          'contract',
-          'equipment',
-          'team',
-          'logistics',
-          'subcontractors',
-          'files',
-          'tasks',
-          'history',
-        ]);
-        return;
-      }
-
-      // Dla pozostałych użytkowników użyj event_tabs z access_level
-      let eventTabs: string[] = ['overview', 'phases', 'agenda', 'files', 'tasks'];
-      if (employee?.event_tabs && employee.event_tabs.length > 0) {
-        eventTabs = employee.event_tabs;
-      } else if ((employee?.access_levels as any)?.event_tabs) {
-        eventTabs = (employee.access_levels as any).event_tabs;
-      }
-      setAllowedEventTabs(eventTabs);
-      setCanManageTeam(false);
-    } catch (err) {
-      console.error('Error checking team management permission:', err);
-      setCanManageTeam(false);
-    }
-  };
 
   // ✅ jeśli masz RTK Query do ofert (polecam) – pobieraj tylko dla osób uprawnionych
   const { data: offersData, isFetching: offersFetching } = useGetEventOffersQuery(eventId, {
@@ -834,22 +722,6 @@ export default function EventDetailPageClient({
             // Jeśli użytkownik ma ograniczony dostęp, pokaż tylko przegląd
             if (hasLimitedAccess) {
               return tab.id === 'overview';
-            }
-
-            // Zakładka "Podwykonawcy" pokazuje się tylko gdy jest wskazane zapotrzebowanie
-            if (tab.id === 'subcontractors' && !hasSubcontractors) {
-              return false;
-            }
-
-            // Admin widzi wszystko
-            if (isAdmin) {
-              return true;
-            }
-
-            // Autor eventu widzi wszystko
-            const isAuthor = event?.created_by === currentUserId;
-            if (isAuthor) {
-              return true;
             }
 
             // Dla pozostałych użytkowników sprawdź uprawnienia z access_level

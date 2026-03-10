@@ -4,9 +4,6 @@ import React, { createContext, useContext, useMemo, useState, useTransition } fr
 import { updateEmployeePreferences } from '@/app/(crm)/crm/actions/preferences.actions';
 import { Preferences, ViewMode } from './settings/page';
 
-
-
-
 interface NotificationPreferences {
   email: boolean;
   push: boolean;

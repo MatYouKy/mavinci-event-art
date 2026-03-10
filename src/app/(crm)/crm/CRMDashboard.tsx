@@ -71,6 +71,9 @@ export default function CRMDashboard({
     instagram_url: '',
     facebook_url: '',
     order_index: 0,
+    employee_skills: [],
+    years_experience: 0,
+    position: undefined
   };
 
   const getTimeAgo = (dateString: string): string => {

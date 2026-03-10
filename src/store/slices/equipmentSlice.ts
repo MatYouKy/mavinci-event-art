@@ -301,15 +301,12 @@ export const addEquipmentComponent = createAsyncThunk(
       technical_specs: component.technical_specs ?? null,
     };
 
-    console.log('equipmentSlice - Inserting component to DB:', insertData);
-
     const { error } = await supabase.from('equipment_components').insert(insertData);
     if (error) {
       console.error('equipmentSlice - Error inserting component:', error);
       throw error;
     }
 
-    console.log('equipmentSlice - Component inserted successfully');
     return true;
   },
 );

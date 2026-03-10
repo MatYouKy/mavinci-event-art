@@ -32,11 +32,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     redirect('/login');
   }
 
-  const preferences = await getEmployeePreferences(employee.id);
+  const preferences = await getEmployeePreferences();
   const cookieStore = cookies(); // ✅ w request scope
   const { notifications, unreadCount } = await fetchNotificationsServer(cookieStore, 100);
 
-  const { navigation, employeeId } = await getNavigationForUserServer();
+  const { navigation } = await getNavigationForUserServer();
 
   return (
     <html lang="pl">

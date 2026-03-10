@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase/browser';
 import { uploadImage } from '@/lib/storage';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useGetStorageLocationsQuery } from '../store/equipmentApi';
+import Image from 'next/image';
 
 interface Category {
   id: string;
@@ -62,6 +63,7 @@ export default function NewEquipmentPage() {
     purchase_date: '',
     purchase_price: '',
     current_value: '',
+    rental_price: '',
     warranty_until: '',
     serial_number: '',
     barcode: '',
@@ -390,7 +392,9 @@ export default function NewEquipmentPage() {
               <label className="mb-2 block text-sm text-[#e5e4e2]/60">Miniaturka</label>
               {formData.thumbnail_url ? (
                 <div className="flex items-center gap-4">
-                  <img
+                  <Image
+                    width={96}
+                    height={96}
                     src={formData.thumbnail_url}
                     alt="Miniaturka"
                     className="h-24 w-24 rounded-lg object-cover"
@@ -555,12 +559,12 @@ export default function NewEquipmentPage() {
             </div>
 
             <div>
-              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Obecna wartość (zł)</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Rentalna cena (zł)</label>
               <input
                 type="number"
                 step="0.01"
-                name="current_value"
-                value={formData.current_value}
+                name="rental_price"
+                value={formData.rental_price}
                 onChange={handleInputChange}
                 className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                 placeholder="0.00"
@@ -633,7 +637,7 @@ export default function NewEquipmentPage() {
 
           {components.length === 0 ? (
             <p className="py-4 text-center text-sm text-[#e5e4e2]/40">
-              Brak komponentów. Kliknij "Dodaj komponent" aby dodać elementy wchodzące w skład
+              Brak komponentów. Kliknij &quot;Dodaj komponent&quot; aby dodać elementy wchodzące w skład
               zestawu.
             </p>
           ) : (
