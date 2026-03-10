@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, CreditCard as Edit, Save, X, Trash2, Package } from 'lucide-react';
 
@@ -8,6 +8,7 @@ import { uploadImage } from '@/lib/storage';
 import { useDialog } from '@/contexts/DialogContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { supabase } from '@/lib/supabase/browser';
 
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import EquipmentGallery from '@/components/crm/EquipmentGallery';
@@ -20,6 +21,7 @@ import {
   useGetEquipmentCategoriesQuery,
   useUpdateEquipmentItemMutation,
   useDeleteEquipmentMutation,
+  useGetEquipmentEditHistoryQuery,
 } from '../store/equipmentApi';
 
 import {
@@ -35,6 +37,7 @@ import {
 } from '@/store/slices/equipmentSlice';
 
 import { useAppDispatch } from '@/store/hooks';
+import { equipmentApi } from '../store/equipmentApi';
 import { TabCarousel } from '../components/tabs/TabCarousel';
 import { EquipmentTabsCarouselType } from '../types/equipment.types';
 import { ComponentsTab } from '../components/tabs/ComponentsTab';
@@ -105,6 +108,33 @@ export default function EquipmentDetailPage() {
   // RTK Query mutations
   const [updateEquipmentMutation] = useUpdateEquipmentItemMutation();
   const [deleteEquipmentMutation] = useDeleteEquipmentMutation();
+
+  // Realtime subscription for edit history
+  useEffect(() => {
+    if (!equipmentId) return;
+
+    const channel = supabase
+      .channel(`equipment_history_${equipmentId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'equipment_edit_history',
+          filter: `equipment_id=eq.${equipmentId}`,
+        },
+        () => {
+          dispatch(
+            equipmentApi.util.invalidateTags([{ type: 'Equipment', id: equipmentId }])
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [equipmentId, dispatch]);
 
   const loading = eqLoading || unitsLoading;
 
