@@ -159,6 +159,53 @@ export interface ISimpleContact {
   phone?: string;
 }
 
+// Funkcja formatująca wartości w timeline
+function formatAuditValue(value: any): string {
+  if (value === null || value === undefined) return '-';
+  if (typeof value === 'boolean') return value ? 'Tak' : 'Nie';
+
+  if (typeof value === 'object') {
+    // Wyciągnij tylko sensowne wartości z obiektu
+    if (value.content) return value.content;
+    if (value.title) return value.title;
+    if (value.name) return value.name;
+    if (value.text) return value.text;
+
+    // Formatuj daty
+    if (value.event_date || value.event_end_date) {
+      const start = value.event_date
+        ? new Date(value.event_date).toLocaleDateString('pl-PL', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+          })
+        : '';
+      const startTime = value.event_date
+        ? new Date(value.event_date).toLocaleTimeString('pl-PL', {
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+        : '';
+      const endTime = value.event_end_date
+        ? new Date(value.event_end_date).toLocaleTimeString('pl-PL', {
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+        : '';
+
+      if (startTime && endTime) {
+        return `${start} godz. ${startTime} - ${endTime}`;
+      }
+      return start;
+    }
+
+    // Dla innych obiektów zwróć myślnik (ukryj szczegóły)
+    return '-';
+  }
+
+  return String(value);
+}
+
 export default function EventDetailPageClient({
   categories,
   initialData,
@@ -1369,11 +1416,11 @@ export default function EventDetailPageClient({
                                       )}
                                     </div>
 
-                                    <p className="mt-1 text-sm text-[#e5e4e2]/80">
+                                    <p className="mt-1.5 text-base text-[#e5e4e2]">
                                       {entry.displayDescription}
                                     </p>
 
-                                    <div className="mt-2 flex items-center gap-2 text-xs text-[#e5e4e2]/50">
+                                    <div className="mt-2.5 flex items-center gap-2 text-xs text-[#e5e4e2]/50">
                                       <User className="h-3 w-3" />
                                       <span className="font-medium text-[#d3bb73]">
                                         {entry.displayUser}
@@ -1391,36 +1438,30 @@ export default function EventDetailPageClient({
                                   </div>
                                 </div>
 
-                                {entry.hasChanges && (
-                                  <div className="mt-3 space-y-2 border-t border-[#d3bb73]/10 pt-3">
-                                    {entry.old_value !== null && (
-                                      <div className="flex items-start gap-2 text-xs">
-                                        <Icons.Minus className="mt-0.5 h-3 w-3 flex-shrink-0 text-red-400" />
-                                        <div className="flex-1">
-                                          <span className="text-[#e5e4e2]/60">Przed:</span>
-                                          <pre className="mt-1 overflow-x-auto rounded bg-red-500/10 p-2 font-mono text-red-400">
-                                            {typeof entry.old_value === 'object'
-                                              ? JSON.stringify(entry.old_value, null, 2)
-                                              : String(entry.old_value)}
-                                          </pre>
+                                {entry.hasChanges &&
+                                  entry.action !== 'created' &&
+                                  entry.action !== 'deleted' && (
+                                    <div className="mt-3 space-y-2 border-t border-[#d3bb73]/10 pt-3">
+                                      {entry.old_value !== null && (
+                                        <div className="flex items-start gap-2 text-sm">
+                                          <Icons.Minus className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-400" />
+                                          <div className="flex-1">
+                                            <span className="text-[#e5e4e2]/60">Przed: </span>
+                                            <span className="text-red-400">{formatAuditValue(entry.old_value)}</span>
+                                          </div>
                                         </div>
-                                      </div>
-                                    )}
-                                    {entry.new_value !== null && (
-                                      <div className="flex items-start gap-2 text-xs">
-                                        <Icons.Plus className="mt-0.5 h-3 w-3 flex-shrink-0 text-green-400" />
-                                        <div className="flex-1">
-                                          <span className="text-[#e5e4e2]/60">Po:</span>
-                                          <pre className="mt-1 overflow-x-auto rounded bg-green-500/10 p-2 font-mono text-green-400">
-                                            {typeof entry.new_value === 'object'
-                                              ? JSON.stringify(entry.new_value, null, 2)
-                                              : String(entry.new_value)}
-                                          </pre>
+                                      )}
+                                      {entry.new_value !== null && (
+                                        <div className="flex items-start gap-2 text-sm">
+                                          <Icons.Plus className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-400" />
+                                          <div className="flex-1">
+                                            <span className="text-[#e5e4e2]/60">Po: </span>
+                                            <span className="text-green-400">{formatAuditValue(entry.new_value)}</span>
+                                          </div>
                                         </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
+                                      )}
+                                    </div>
+                                  )}
                               </div>
                             </div>
                           );
