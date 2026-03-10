@@ -36,7 +36,6 @@ export default function FleetPage() {
     refetchOnFocus: false,
     refetchOnReconnect: true,
   });
-  console.log('vehicles: ', vehicles);
 
   const [deleteVehicle] = useDeleteVehicleMutation();
 
@@ -438,7 +437,6 @@ export default function FleetPage() {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {filteredVehicles.map((vehicle) => {
             const isRowDeleting = deletingVehicleId === vehicle.id;
-            console.log(vehicle);
             return (
               <div
                 key={vehicle.id}

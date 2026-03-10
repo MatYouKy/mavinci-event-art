@@ -1134,7 +1134,7 @@ export default function EventDetailPageClient({
           eventId={event.id}
           eventLocation={event.location.name}
           eventDate={event.event_date}
-          canManage={canManageTeam}
+          canManage={canEventManage}
         />
       )}
 

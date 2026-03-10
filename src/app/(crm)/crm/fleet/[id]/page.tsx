@@ -37,6 +37,7 @@ import VehicleGallery from '@/components/crm/VehicleGallery';
 import VehicleAttributesPanel from '@/components/crm/VehicleAttributesPanel';
 import VehicleLicenseRequirementsPanel from '@/components/crm/VehicleLicenseRequirementsPanel';
 import VehicleSingleTimeline from '@/components/crm/VehicleSingleTimeline';
+import VehicleHandoverModal from '@/components/crm/VehicleHandoverModal';
 
 interface Vehicle {
   id: string;
@@ -142,10 +143,7 @@ export default function VehicleDetailPage() {
   const vehicleId = params.id as string;
   const { data, isLoading, refetch } = useVehicleDetail(vehicleId);
 
-  const vehicleDetail = useVehicleDetail(vehicleId);
-
-  console.log('data: ', data?.vehicle);
-  // console.log('vehicleDetail: ', vehicleDetail);
+  const [handoverModalOpen, setHandoverModalOpen] = useState(false);
 
   const vehicle = (data as any)?.vehicle?.data ?? (data as any)?.vehicle ?? null;
 
@@ -242,7 +240,6 @@ export default function VehicleDetailPage() {
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
   const [showInsuranceModal, setShowInsuranceModal] = useState(false);
   const [showFuelModal, setShowFuelModal] = useState(false);
-  const [isEndingUsage, setIsEndingUsage] = useState(false);
 
   const formatDate = (date: string) => {
     if (!date) return '-';
@@ -284,48 +281,47 @@ export default function VehicleDetailPage() {
     fuelEntries.filter((f) => f.avg_consumption).reduce((sum, f) => sum + f.avg_consumption, 0) /
     Math.max(fuelEntries.filter((f) => f.avg_consumption).length, 1);
 
-    const getStatusBadge = (status: string, inUse: boolean = false) => {
-      const base =
-        'inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2.5 py-1 ' +
-        'text-xs font-semibold tracking-wide ' +
-        'bg-black/60 backdrop-blur-md ' +
-        'ring-1 shadow-lg shadow-black/30';
-    
-      if (inUse) {
-        return (
-          <span className={`${base} text-[#f3e7b1] ring-[#d3bb73]/55 border border-[#d3bb73]/40`}>
-            <Activity className="h-3.5 w-3.5" />
-            W użytkowaniu
-          </span>
-        );
-      }
-    
-      const statusConfig = {
-        active: {
-          label: 'Dostępny',
-          class: 'text-green-300 ring-green-400/45 border border-green-400/25',
-        },
-        inactive: {
-          label: 'Nieaktywny',
-          class: 'text-gray-200 ring-gray-400/35 border border-gray-400/20',
-        },
-        in_service: {
-          label: 'W serwisie',
-          class: 'text-orange-300 ring-orange-400/45 border border-orange-400/25',
-        },
-        sold: {
-          label: 'Sprzedany',
-          class: 'text-blue-300 ring-blue-400/45 border border-blue-400/25',
-        },
-        scrapped: {
-          label: 'Złomowany',
-          class: 'text-red-300 ring-red-400/45 border border-red-400/25',
-        },
-      };
-    
-      const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.inactive;
-      return <span className={`${base} ${config.class}`}>{config.label}</span>;
+  const getStatusBadge = (status: string, inUse: boolean = false) => {
+    const base =
+      'inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2.5 py-1 ' +
+      'text-xs font-semibold tracking-wide ' +
+      'bg-black/60 backdrop-blur-md ' +
+      'ring-1 shadow-lg shadow-black/30';
+
+    if (inUse) {
+      return (
+        <span className={`${base} border border-[#d3bb73]/40 text-[#f3e7b1] ring-[#d3bb73]/55`}>
+          <Activity className="h-3.5 w-3.5" />W użytkowaniu
+        </span>
+      );
+    }
+
+    const statusConfig = {
+      active: {
+        label: 'Dostępny',
+        class: 'text-green-300 ring-green-400/45 border border-green-400/25',
+      },
+      inactive: {
+        label: 'Nieaktywny',
+        class: 'text-gray-200 ring-gray-400/35 border border-gray-400/20',
+      },
+      in_service: {
+        label: 'W serwisie',
+        class: 'text-orange-300 ring-orange-400/45 border border-orange-400/25',
+      },
+      sold: {
+        label: 'Sprzedany',
+        class: 'text-blue-300 ring-blue-400/45 border border-blue-400/25',
+      },
+      scrapped: {
+        label: 'Złomowany',
+        class: 'text-red-300 ring-red-400/45 border border-red-400/25',
+      },
     };
+
+    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.inactive;
+    return <span className={`${base} ${config.class}`}>{config.label}</span>;
+  };
 
   const handleDeleteMaintenanceRecord = async (record: MaintenanceRecord) => {
     const confirmed = await showConfirm(
@@ -366,76 +362,10 @@ export default function VehicleDetailPage() {
   };
 
   const handleEndUsage = async () => {
-  
-    if (!vehicle?.id || !vehicle?.in_use_event_id) {
+    if (!vehicle?.in_use_event_vehicle_id || !vehicle?.in_use_driver_id) {
       return showSnackbar('Nie znaleziono aktywnego przypisania pojazdu', 'error');
     }
-  
-    const confirmed = await showConfirm(
-      'Zakończ użytkowanie pojazdu',
-      'Czy na pewno chcesz zakończyć użytkowanie tego pojazdu?',
-    );
-    if (!confirmed) return;
-  
-    try {
-      setIsEndingUsage(true);
-  
-      const nowIso = new Date().toISOString();
-  
-      const { data: activeAssignment, error: findError } = await supabase
-        .from('event_vehicles')
-        .select('id')
-        .eq('vehicle_id', vehicle.id) // vehicles.id
-        .eq('event_id', vehicle.in_use_event_id) // events.id
-        .eq('is_in_use', true)
-        .maybeSingle();
-
-
-  
-      if (findError) throw findError;
-  
-      if (!activeAssignment) {
-        showSnackbar('Nie znaleziono aktywnego przypisania do zakończenia', 'error');
-        return;
-      }
-  
-      const { data, error } = await supabase
-        .from('event_vehicles')
-        .update({
-          is_in_use: false,
-          return_timestamp: nowIso,
-        })
-        .eq('id', activeAssignment.id)
-        .select('id');
-
-        const { data: data2, error: error2 } = await supabase
-        .from('fleet_vehicles_view')
-        .update({
-          is_in_use: false,
-          return_timestamp: nowIso,
-        })
-        .eq('id', activeAssignment.id)
-        .select('id');
-        if (error2) throw error2;
-  
-      if (error) throw error;
-      if (!data2?.length) {
-        showSnackbar('Nie udało się zakończyć użytkowania pojazdu', 'error');
-        return;
-      }
-      if (!data?.length) {
-        showSnackbar('Nie udało się zakończyć użytkowania pojazdu', 'error');
-        return;
-      }
-  
-      showSnackbar('Użytkowanie pojazdu zostało zakończone', 'success');
-      refetch();
-    } catch (error) {
-      console.error('Error ending usage:', error);
-      showSnackbar('Błąd podczas zakończania użytkowania pojazdu', 'error');
-    } finally {
-      setIsEndingUsage(false);
-    }
+    setHandoverModalOpen(true);
   };
 
   if (isLoading) {
@@ -513,7 +443,7 @@ export default function VehicleDetailPage() {
                   title="Zakończ użytkowanie pojazdu"
                 >
                   <X className="h-4 w-4" />
-                  {isEndingUsage ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Zakończ użytkowanie'}
+                  Zakończ użytkowanie
                 </button>
               )}
             </div>
@@ -1177,6 +1107,27 @@ export default function VehicleDetailPage() {
           vehicleName={vehicle.name}
           onClose={() => setShowInsuranceModal(false)}
           onSuccess={refetch}
+        />
+      )}
+
+      {handoverModalOpen && (
+        <VehicleHandoverModal
+          vehicle={{
+            id: vehicle.in_use_event_vehicle_id, // ← event_vehicles.id
+            vehicle_id: vehicle.id, // ← vehicles.id
+            is_in_use: vehicle.in_use,
+            pickup_timestamp: vehicle.pickup_timestamp,
+            return_timestamp: null,
+            vehicles: {
+              name: vehicle.name,
+              registration_number: vehicle.registration_number,
+            },
+          }}
+          onClose={() => setHandoverModalOpen(false)}
+          onSuccess={() => {
+            setHandoverModalOpen(false);
+            refetch(); // odśwież detail
+          }}
         />
       )}
     </div>

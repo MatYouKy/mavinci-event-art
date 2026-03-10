@@ -191,6 +191,7 @@ export default function VehicleHandoverModal({
       if (handoverErr) throw handoverErr;
 
       // 4) UPDATE event_vehicles (stan bieżący)
+      // 4) UPDATE event_vehicles
       const patch =
         handoverType === 'pickup'
           ? { is_in_use: true, pickup_timestamp: nowIso, return_timestamp: null }
@@ -207,6 +208,19 @@ export default function VehicleHandoverModal({
       if (!updatedRows || updatedRows.length === 0) {
         showSnackbar('Nie udało się zaktualizować statusu pojazdu (0 rekordów).', 'error');
         return;
+      }
+
+      // 5) UPDATE vehicles
+      if (fleetVehicleId) {
+        const { error: vehicleUpdateErr } = await supabase
+          .from('vehicles')
+          .update({
+            current_mileage: mileage,
+            updated_at: nowIso,
+          })
+          .eq('id', fleetVehicleId);
+
+        if (vehicleUpdateErr) throw vehicleUpdateErr;
       }
 
       showSnackbar(handoverType === 'pickup' ? 'Pojazd odebrany' : 'Pojazd zdany', 'success');

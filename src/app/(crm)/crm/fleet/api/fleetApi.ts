@@ -261,20 +261,23 @@ export const fleetApi = createApi({
               .order('timestamp', { ascending: false }),
 
             supabase
-              .from('event_vehicles')
-              .select(
-                `
+            .from('event_vehicles')
+            .select(`
               id,
-              is_in_use,
-              pickup_timestamp,
               driver_id,
-              employees!driver_id(id, name, surname),
-              event:events(id, name)
-            `,
+              pickup_timestamp,
+              event:events (
+                id,
+                name
+              ),
+              employees (
+                name,
+                surname
               )
-              .eq('vehicle_id', vehicleId)
-              .eq('is_in_use', true)
-              .maybeSingle(),
+            `)
+            .eq('vehicle_id', vehicleId)
+            .eq('is_in_use', true)
+            .maybeSingle(),
           ]);
 
           // obsługa błędów supabase
@@ -306,9 +309,14 @@ export const fleetApi = createApi({
           const vehicle = {
             ...(vehicleRes.data as VehicleDB),
             in_use: !!inUseData,
+          
             in_use_by: driverData
               ? `${driverData.name} ${driverData.surname}`
               : null,
+          
+            in_use_driver_id: inUseData?.driver_id || null,
+            in_use_event_vehicle_id: inUseData?.id || null,
+          
             in_use_event: inUseData?.event?.name || null,
             in_use_event_id: inUseData?.event?.id || null,
             pickup_timestamp: inUseData?.pickup_timestamp || null,
@@ -361,24 +369,40 @@ export const fleetApi = createApi({
       providesTags: (_res, _err, id) => [{ type: 'Vehicle', id }],
     }),
 
-    endVehicleUsage: builder.mutation<void, { vehicleId: string; eventId: string }>({
-      invalidatesTags: (_r, _e, arg) => [
-        { type: 'Fleet', id: 'LIST' },
-        { type: 'VehicleDetail', id: arg.vehicleId },
-      ],
-      queryFn: async (arg, _api, _extra, baseQuery) => {
-        const r = await baseQuery((sb) =>
-          sb
-            .from('event_vehicles')
-            .update({ is_in_use: false })
-            .eq('vehicle_id', arg.vehicleId)
-            .eq('event_id', arg.eventId)
-            .eq('is_in_use', true),
-        );
-        if ('error' in r) return r as any;
+    endVehicleUsage: builder.mutation<
+    void,
+    { eventVehicleId: string; driverId: string }
+  >({
+    invalidatesTags: (_r, _e, arg) => [
+      { type: 'Fleet', id: 'LIST' },
+      { type: 'VehicleDetail', id: arg.eventVehicleId },
+    ],
+  
+    async queryFn({ eventVehicleId, driverId }) {
+      try {
+        const { error } = await supabase
+          .from('vehicle_handovers')
+          .insert({
+            event_vehicle_id: eventVehicleId,
+            driver_id: driverId,
+            handover_type: 'return',
+            timestamp: new Date().toISOString(),
+          });
+  
+        if (error) {
+          return {
+            error: { status: 'FETCH_ERROR', message: error.message },
+          } as any;
+        }
+  
         return { data: undefined };
-      },
-    }),
+      } catch (e: any) {
+        return {
+          error: { status: 'CUSTOM_ERROR', message: e?.message ?? 'Unknown error' },
+        } as any;
+      }
+    },
+  }),
 
     deleteInsurancePolicy: builder.mutation<void, { vehicleId: string; policyId: string }>({
       invalidatesTags: (_r, _e, arg) => [

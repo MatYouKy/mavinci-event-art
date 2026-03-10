@@ -34,6 +34,7 @@ import { useEventLogisticsLazy } from '../../../hooks/useEventVehicles';
 import { useAppDispatch } from '@/store/hooks';
 import { eventsApi } from '../../../store/api/eventsApi';
 import { eventPhasesApi } from '@/store/api/eventPhasesApi';
+import Image from 'next/image';
 
 interface EventLogisticsProps {
   eventId: string;
@@ -151,8 +152,6 @@ export default function EventLogisticsPanel({
 
   const [showVehicleModal, setShowVehicleModal] = useState(false);
   const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
-  const [showTimelineModal, setShowTimelineModal] = useState(false);
-  const [showLoadingModal, setShowLoadingModal] = useState(false);
   const [showHandoverModal, setShowHandoverModal] = useState(false);
   const [selectedVehicleForHandover, setSelectedVehicleForHandover] = useState<EventVehicle | null>(
     null,
@@ -183,7 +182,6 @@ export default function EventLogisticsPanel({
         'postgres_changes',
         { event: '*', schema: 'public', table: 'event_vehicles', filter: `event_id=eq.${eventId}` },
         () => {
-          console.log('event_vehicles changed - refreshing logistics');
           fetchLogisticsRef.current(args);
         },
       )
@@ -191,7 +189,6 @@ export default function EventLogisticsPanel({
         'postgres_changes',
         { event: '*', schema: 'public', table: 'event_phases', filter: `event_id=eq.${eventId}` },
         () => {
-          console.log('event_phases changed - refreshing logistics');
           fetchLogisticsRef.current(args);
         },
       )
@@ -223,10 +220,12 @@ export default function EventLogisticsPanel({
       if (error) throw error;
 
       // Invaliduj cache dla pojazdów i logistyki
-      dispatch(eventsApi.util.invalidateTags([
-        { type: 'EventVehicles', id: eventId },
-        { type: 'EventLogistics', id: eventId },
-      ]));
+      dispatch(
+        eventsApi.util.invalidateTags([
+          { type: 'EventVehicles', id: eventId },
+          { type: 'EventLogistics', id: eventId },
+        ]),
+      );
 
       // Invaliduj cache dla faz logistycznych (jeśli pojazd był przypisany do faz)
       if (vehicleData?.vehicle_id) {
@@ -410,7 +409,9 @@ export default function EventLogisticsPanel({
                           {imageUrl ? (
                             <Popover
                               trigger={
-                                <img
+                                <Image
+                                  width={40}
+                                  height={40}
                                   src={imageUrl}
                                   alt={vehicleName ?? 'Pojazd'}
                                   className="h-10 w-10 rounded border border-[#d3bb73]/20 object-cover"
@@ -418,7 +419,9 @@ export default function EventLogisticsPanel({
                                 />
                               }
                               content={
-                                <img
+                                <Image
+                                  width={40}
+                                  height={40}
                                   src={imageUrl}
                                   alt={vehicleName ?? 'Pojazd'}
                                   className="h-auto cursor-pointer rounded-lg object-contain transition-all"
@@ -632,7 +635,6 @@ export default function EventLogisticsPanel({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  setShowTimelineModal(true);
                 }}
                 className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-3 py-1.5 text-sm text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
               >
@@ -730,8 +732,10 @@ export default function EventLogisticsPanel({
             setEditingVehicleId(null);
           }}
           onSuccess={() => {
-            fetchLogistics({ eventId, canManage, employeeId: employee?.id ?? null });
+            setShowVehicleModal(false); // ← KLUCZOWE
             setEditingVehicleId(null);
+
+            fetchLogistics({ eventId, canManage, employeeId: employee?.id ?? null });
           }}
         />
       )}

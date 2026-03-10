@@ -5,11 +5,7 @@ import {
   X,
   Truck,
   AlertTriangle,
-  Calendar,
   Clock,
-  MapPin,
-  DollarSign,
-  User,
   ExternalLink,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
@@ -212,18 +208,16 @@ export default function AddEventVehicleModal({
         `,
         )
         .eq('event_id', eventId)
-        .order('sequence_order', { ascending: true });
+        .order('start_time', { ascending: true });
 
       if (error) throw error;
 
-      console.log('[fetchEventPhases] data:', data);
       setEventPhases((data as any) || []);
     } catch (error) {
       console.error('Error fetching event phases:', error);
       setEventPhases([]);
     }
   };
-  console.log('eventPhases', eventPhases);
 
   const calculateSuggestedTimes = useCallback((): SuggestedTimes | null => {
     if (!eventPhases.length) return null;

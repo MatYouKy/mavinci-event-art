@@ -90,7 +90,6 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
           table: 'employee_assignments',
         },
         (payload) => {
-          console.log('[EmployeesTimelineView] Realtime update:', payload);
           // Sprawdź czy zmiany dotyczą jednego z filtrowanych pracowników
           const affectedEmployeeId = (payload.new as any)?.employee_id || (payload.old as any)?.employee_id;
           if (affectedEmployeeId && employeeIds.includes(affectedEmployeeId)) {
