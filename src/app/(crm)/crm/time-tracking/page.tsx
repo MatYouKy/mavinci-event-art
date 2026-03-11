@@ -884,6 +884,22 @@ function StartTimerModal({
   );
 }
 
+const pad = (value: number) => String(value).padStart(2, '0');
+
+const toLocalDateInputValue = (value: string | null | undefined) => {
+  if (!value) return '';
+  const date = new Date(value);
+
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};
+
+const toLocalTimeInputValue = (value: string | null | undefined) => {
+  if (!value) return '';
+  const date = new Date(value);
+
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+
 function EditEntryModal({
   entry,
   onClose,
@@ -895,26 +911,45 @@ function EditEntryModal({
 }) {
   const [title, setTitle] = useState(entry.title || '');
   const [description, setDescription] = useState(entry.description || '');
-  const [startDate, setStartDate] = useState(new Date(entry.start_time).toISOString().slice(0, 10));
-  const [startTime, setStartTime] = useState(
-    new Date(entry.start_time).toISOString().slice(11, 16),
-  );
-  const [endDate, setEndDate] = useState(
-    entry.end_time ? new Date(entry.end_time).toISOString().slice(0, 10) : '',
-  );
-  const [endTime, setEndTime] = useState(
-    entry.end_time ? new Date(entry.end_time).toISOString().slice(11, 16) : '',
-  );
+  const [startDate, setStartDate] = useState(toLocalDateInputValue(entry.start_time));
+  const [startTime, setStartTime] = useState(toLocalTimeInputValue(entry.start_time));
+  const [endDate, setEndDate] = useState(toLocalDateInputValue(entry.end_time));
+  const [endTime, setEndTime] = useState(toLocalTimeInputValue(entry.end_time));
 
   const handleSave = () => {
     if (!title.trim()) {
       alert('Podaj tytuł');
       return;
     }
-
-    const start = new Date(`${startDate}T${startTime}:00`).toISOString();
-    const end = endDate && endTime ? new Date(`${endDate}T${endTime}:00`).toISOString() : null;
-
+  
+    const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+    const [startHour, startMinute] = startTime.split(':').map(Number);
+  
+    const start = new Date(
+      startYear,
+      startMonth - 1,
+      startDay,
+      startHour,
+      startMinute,
+      0,
+    ).toISOString();
+  
+    let end: string | null = null;
+  
+    if (endDate && endTime) {
+      const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
+      const [endHour, endMinute] = endTime.split(':').map(Number);
+  
+      end = new Date(
+        endYear,
+        endMonth - 1,
+        endDay,
+        endHour,
+        endMinute,
+        0,
+      ).toISOString();
+    }
+  
     onSave({
       ...entry,
       title,
@@ -926,7 +961,7 @@ function EditEntryModal({
 
   const calculateDuration = () => {
     if (!endDate || !endTime) return '---';
-    const start = new Date(`${startDate}T${startTime}:00`);
+    const start = new Date(`${startDate}T${startTime}:00`,);
     const end = new Date(`${endDate}T${endTime}:00`);
     const minutes = Math.floor((end.getTime() - start.getTime()) / 60000);
     const h = Math.floor(minutes / 60);
