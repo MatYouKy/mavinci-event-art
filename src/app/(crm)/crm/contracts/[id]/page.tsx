@@ -16,7 +16,7 @@ import {
   Printer,
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import { ContractA4Page, ContractA4Container } from '@/components/crm/ContractA4Page';
+import '@/styles/contractA4.css';
 
 export default function ContractDetailsPage() {
   const params = useParams();
@@ -241,21 +241,181 @@ export default function ContractDetailsPage() {
           </div>
         </div>
 
-        <ContractA4Container>
-          <ContractA4Page
-            showHeaderLogo={contract.show_header_logo}
-            headerLogoUrl={contract.header_logo_url}
-            headerLogoHeight={contract.header_logo_height}
-            headerLogoAlign={contract.header_logo_align}
-            showCenterLogo={contract.show_center_logo}
-            centerLogoUrl={contract.center_logo_url}
-            centerLogoHeight={contract.center_logo_height}
-            showFooter={contract.show_footer}
-            footerContent={contract.footer_content}
-          >
-            <div dangerouslySetInnerHTML={{ __html: contract.content }} />
-          </ContractA4Page>
-        </ContractA4Container>
+        <div className="contract-a4-container">
+          {(() => {
+            try {
+              const parsed = JSON.parse(contract.content);
+              const pages = parsed.pages || (Array.isArray(parsed) ? parsed : null);
+              const settings = parsed.settings || {
+                logoScale: 80,
+                logoPositionX: 50,
+                logoPositionY: 0,
+                lineHeight: 1.6,
+                selectedLogo: '/erulers_logo_vect.png',
+                selectedFooter: 'default',
+                footerContent: {
+                  companyName: 'EVENT RULERS',
+                  tagline: 'Więcej niż Wodzireje!',
+                  website: 'www.eventrulers.pl',
+                  email: 'biuro@eventrulers.pl',
+                  phone: '698-212-279',
+                  logoUrl: '/erulers_logo_vect.png',
+                },
+                footerLogoScale: 80,
+              };
+
+              if (pages && Array.isArray(pages)) {
+                return pages.map((pageContent: string, pageIndex: number) => (
+                  <div key={pageIndex} className="contract-a4-page">
+                    {pageIndex === 0 && (
+                      <>
+                        <div
+                          className={`contract-header-logo ${
+                            settings.logoPositionX <= 33
+                              ? 'justify-start'
+                              : settings.logoPositionX >= 67
+                                ? 'justify-end'
+                                : 'justify-center'
+                          }`}
+                          style={{
+                            marginTop: `${settings.logoPositionY}mm`,
+                          }}
+                        >
+                          <img
+                            src={
+                              settings.selectedLogo?.startsWith('http')
+                                ? settings.selectedLogo
+                                : `https://mavinci.pl${settings.selectedLogo || '/erulers_logo_vect.png'}`
+                            }
+                            alt="Logo"
+                            style={{
+                              maxWidth: `${settings.logoScale}%`,
+                              height: 'auto',
+                            }}
+                          />
+                        </div>
+
+                        <div className="contract-current-date">
+                          Olsztyn,{' '}
+                          {new Date().toLocaleDateString('pl-PL', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric',
+                          })}
+                        </div>
+                      </>
+                    )}
+
+                    <div
+                      className="contract-content"
+                      style={{
+                        lineHeight: String(settings.lineHeight),
+                        fontFamily: settings.selectedFont || 'Georgia, serif',
+                        minHeight: pageIndex === 0 ? '160mm' : '250mm',
+                      }}
+                      dangerouslySetInnerHTML={{ __html: pageContent }}
+                    />
+
+                    {settings.selectedFooter !== 'none' && (
+                      <div className="contract-footer">
+                        {settings.selectedFooter === 'default' && (
+                          <div className="footer-logo">
+                            <img
+                              src={
+                                (
+                                  settings.footerContent?.logoUrl || settings.selectedLogo
+                                )?.startsWith('http')
+                                  ? settings.footerContent?.logoUrl || settings.selectedLogo
+                                  : `https://mavinci.pl${settings.footerContent?.logoUrl || settings.selectedLogo || '/erulers_logo_vect.png'}`
+                              }
+                              alt="Logo"
+                              style={{
+                                maxWidth: `${settings.footerLogoScale || 80}%`,
+                                height: 'auto',
+                              }}
+                            />
+                          </div>
+                        )}
+                        <div className="footer-info">
+                          <p>
+                            <span className="font-bold">
+                              {settings.footerContent?.companyName || 'EVENT RULERS'}
+                            </span>
+                            {settings.footerContent?.tagline && (
+                              <>
+                                {' '}
+                                – <span className="italic">{settings.footerContent.tagline}</span>
+                              </>
+                            )}
+                          </p>
+                          <p>
+                            {settings.footerContent?.website || 'www.eventrulers.pl'} |{' '}
+                            {settings.footerContent?.email || 'biuro@eventrulers.pl'}
+                          </p>
+                          <p>tel: {settings.footerContent?.phone || '698-212-279'}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {pages.length > 1 && (
+                      <div className="absolute bottom-4 mx-auto w-[calc(100%-50mm)] text-center text-xs text-[#000]/50">
+                        {pageIndex + 1} z {pages.length}
+                      </div>
+                    )}
+                  </div>
+                ));
+              }
+            } catch (e) {
+              // Fallback dla starych szablonów
+              let fallbackLogoUrl = 'https://mavinci.pl/erulers_logo_vect.png';
+              try {
+                const parsed = JSON.parse(contract.content);
+                const logoUrl = parsed?.settings?.selectedLogo || parsed?.selectedLogo;
+                if (logoUrl?.startsWith('http')) {
+                  fallbackLogoUrl = logoUrl;
+                }
+              } catch {
+                // Użyj domyślnego URL
+              }
+
+              return (
+                <div className="contract-a4-page">
+                  <div className="contract-header-logo">
+                    <img src={fallbackLogoUrl} alt="EVENT RULERS" />
+                  </div>
+
+                  <div className="contract-current-date">
+                    Olsztyn,{' '}
+                    {new Date().toLocaleDateString('pl-PL', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                    })}
+                  </div>
+
+                  <div
+                    className="contract-content"
+                    dangerouslySetInnerHTML={{ __html: contract.content }}
+                  />
+
+                  <div className="contract-footer">
+                    <div className="footer-logo">
+                      <img src={fallbackLogoUrl} alt="Logo" />
+                    </div>
+                    <div className="footer-info">
+                      <p>
+                        <span className="font-bold">EVENT RULERS</span> –{' '}
+                        <span className="italic">Więcej niż Wodzireje!</span>
+                      </p>
+                      <p>www.eventrulers.pl | biuro@eventrulers.pl</p>
+                      <p>tel: 698-212-279</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+          })()}
+        </div>
 
         {contract.notes && (
           <div className="no-print rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
