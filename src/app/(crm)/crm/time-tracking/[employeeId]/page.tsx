@@ -82,6 +82,19 @@ interface TaskStats {
   last_worked: string;
 }
 
+const FIELD_LABELS: Record<string, string> = {
+  title: 'Tytuł',
+  description: 'Opis',
+  start_time: 'Czas rozpoczęcia',
+  end_time: 'Czas zakończenia',
+  duration_minutes: 'Czas trwania (minuty)',
+  is_billable: 'Płatne',
+  hourly_rate: 'Stawka godzinowa',
+  tags: 'Tagi',
+  task_id: 'Zadanie',
+  event_id: 'Wydarzenie',
+};
+
 export default function EmployeeTimeTrackingPage() {
   const router = useRouter();
   const params = useParams();
@@ -120,6 +133,43 @@ export default function EmployeeTimeTrackingPage() {
       fetchData();
     }
   }, [employeeId, dateFrom, dateTo]);
+
+  // Realtime subscription for time entries and history
+  useEffect(() => {
+    if (!employeeId) return;
+
+    const channel = supabase
+      .channel(`time_tracking_${employeeId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'time_entries',
+          filter: `employee_id=eq.${employeeId}`,
+        },
+        () => {
+          fetchData();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'time_entries_history',
+          filter: `employee_id=eq.${employeeId}`,
+        },
+        () => {
+          fetchData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [employeeId]);
 
   useEffect(() => {
     const active = entries.find((e) => !e.end_time);
@@ -197,16 +247,18 @@ export default function EmployeeTimeTrackingPage() {
 
       calculateTaskStats(entriesData || []);
 
-      if (isAdmin) {
-        const { data: historyData, error: historyError } = await supabase
-          .from('admin_time_entries_history_view')
-          .select('*')
-          .eq('employee_id', employeeId)
-          .gte('changed_at', dateFrom)
-          .lte('changed_at', dateTo + 'T23:59:59')
-          .order('changed_at', { ascending: false });
+      // Load history - admins see all, employees see their own
+      const { data: historyData, error: historyError } = await supabase
+        .from('admin_time_entries_history_view')
+        .select('*')
+        .eq('employee_id', employeeId)
+        .gte('changed_at', dateFrom)
+        .lte('changed_at', dateTo + 'T23:59:59')
+        .order('changed_at', { ascending: false });
 
-        if (historyError) throw historyError;
+      if (historyError) {
+        console.error('Error loading history:', historyError);
+      } else {
         setHistory(historyData || []);
       }
     } catch (error) {
@@ -754,24 +806,28 @@ export default function EmployeeTimeTrackingPage() {
           )}
         </div>
 
-        {isAdmin && (
+        {history.length > 0 && (
           <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="flex items-center gap-2 text-lg font-medium text-[#e5e4e2]">
                 <History className="h-5 w-5 text-[#d3bb73]" />
                 Historia zmian i usunięć
-                <span className="text-sm font-normal text-[#e5e4e2]/60">(tylko dla adminów)</span>
+                {isAdmin && (
+                  <span className="text-sm font-normal text-[#e5e4e2]/60">(widok administratora)</span>
+                )}
               </h3>
               <div className="flex items-center gap-4">
-                <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/60">
-                  <input
-                    type="checkbox"
-                    checked={showDeletedOnly}
-                    onChange={(e) => setShowDeletedOnly(e.target.checked)}
-                    className="rounded border-[#d3bb73]/20"
-                  />
-                  Tylko usunięte
-                </label>
+                {isAdmin && (
+                  <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/60">
+                    <input
+                      type="checkbox"
+                      checked={showDeletedOnly}
+                      onChange={(e) => setShowDeletedOnly(e.target.checked)}
+                      className="rounded border-[#d3bb73]/20"
+                    />
+                    Tylko usunięte
+                  </label>
+                )}
                 <button
                   onClick={() => setShowHistory(!showHistory)}
                   className="flex items-center gap-2 text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
@@ -799,7 +855,7 @@ export default function EmployeeTimeTrackingPage() {
                     className="rounded-lg border border-[#d3bb73]/5 bg-[#0f1119] p-4"
                   >
                     <div className="mb-3 flex items-start justify-between">
-                      <div>
+                      <div className="flex items-center gap-3">
                         <span
                           className={`inline-block rounded-full px-3 py-1 text-xs font-medium ${
                             item.action === 'created'
@@ -816,7 +872,7 @@ export default function EmployeeTimeTrackingPage() {
                               : 'Usunięto'}
                         </span>
                         {item.action === 'deleted' && (
-                          <span className="ml-2 flex items-center gap-1 text-xs text-red-400">
+                          <span className="flex items-center gap-1 text-xs text-red-400">
                             <AlertTriangle className="h-3 w-3" />
                             Wpis nieodwracalnie usunięty
                           </span>
@@ -825,38 +881,69 @@ export default function EmployeeTimeTrackingPage() {
                       <div className="text-right">
                         <div className="text-sm text-[#e5e4e2]">
                           {item.employee_name} {item.employee_surname}
+                          {!isAdmin && item.employee_id === currentEmployee?.id && (
+                            <span className="ml-2 text-xs text-[#e5e4e2]/40">(Ty)</span>
+                          )}
                         </div>
                         <div className="text-xs text-[#e5e4e2]/60">
-                          {new Date(item.changed_at).toLocaleString('pl-PL')}
+                          {new Date(item.changed_at).toLocaleString('pl-PL', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
                         </div>
                       </div>
                     </div>
 
                     {item.action === 'updated' && item.changed_fields && (
                       <div className="mt-3 space-y-2">
-                        {item.changed_fields.map((field: string) => (
-                          <div
-                            key={field}
-                            className="flex items-start gap-4 border-t border-[#d3bb73]/5 pt-2 text-sm"
-                          >
-                            <div className="min-w-[120px] font-medium text-[#e5e4e2]/60">
-                              {field}:
-                            </div>
-                            <div className="flex flex-1 items-center gap-3">
-                              <div className="flex-1">
-                                <div className="text-red-400 line-through">
-                                  {String(item.old_values?.[field] || 'brak')}
+                        {item.changed_fields.map((field: string) => {
+                          const fieldLabel = FIELD_LABELS[field] || field;
+                          let oldValue = item.old_values?.[field];
+                          let newValue = item.new_values?.[field];
+
+                          // Format dates
+                          if (field.includes('time') && oldValue) {
+                            oldValue = new Date(oldValue).toLocaleString('pl-PL');
+                          }
+                          if (field.includes('time') && newValue) {
+                            newValue = new Date(newValue).toLocaleString('pl-PL');
+                          }
+
+                          // Format booleans
+                          if (typeof oldValue === 'boolean') {
+                            oldValue = oldValue ? 'Tak' : 'Nie';
+                          }
+                          if (typeof newValue === 'boolean') {
+                            newValue = newValue ? 'Tak' : 'Nie';
+                          }
+
+                          return (
+                            <div
+                              key={field}
+                              className="flex items-start gap-4 border-t border-[#d3bb73]/5 pt-2 text-sm"
+                            >
+                              <div className="min-w-[140px] font-medium text-[#e5e4e2]/60">
+                                {fieldLabel}:
+                              </div>
+                              <div className="flex flex-1 items-center gap-3">
+                                <div className="flex-1">
+                                  <div className="text-red-400/80 line-through">
+                                    {String(oldValue || '(puste)')}
+                                  </div>
+                                </div>
+                                <div className="text-[#e5e4e2]/40">→</div>
+                                <div className="flex-1">
+                                  <div className="text-green-400/80">
+                                    {String(newValue || '(puste)')}
+                                  </div>
                                 </div>
                               </div>
-                              <div className="text-[#e5e4e2]/40">→</div>
-                              <div className="flex-1">
-                                <div className="text-green-400">
-                                  {String(item.new_values?.[field] || 'brak')}
-                                </div>
-                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
