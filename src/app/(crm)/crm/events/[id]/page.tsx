@@ -6,7 +6,6 @@ import { getLocationById } from '@/lib/CRM/locations/getLocationById';
 import { getContactById } from '@/lib/CRM/client/getContactById';
 import { UUID } from '../../contacts/types';
 import { fetchEventOffersServer } from '@/lib/CRM/Offers/fetchEventOffers.server';
-import { getCurrentEmployeeServerLite } from '@/lib/CRM/auth/getCurrentEmployeeServerLite';
 import { fetchEventCategoriesServer } from '@/lib/CRM/events/eventsData.server';
 
 export default async function EventPage({ params }: { params: { id: string } }) {

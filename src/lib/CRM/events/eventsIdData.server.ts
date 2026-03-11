@@ -53,7 +53,6 @@ export type EventPermissionContext = {
   isAdmin: boolean;
   isCreator: boolean;
   currentUserId: string | null;
-
 };
 
 export type EventRow = {
@@ -69,6 +68,7 @@ export type EventRow = {
   created_at: string;
   location_id: string | null;
   contact_person_id: string | null;
+  organization_id: string | null;
 
   organizations: { name: string | null; alias: string | null } | null;
   contacts: { first_name: string | null; last_name: string | null } | null;
@@ -95,9 +95,24 @@ export type EventByIdServerResult = EventRow & {
   employees: EventEmployeeAssignmentRow[];
 };
 
-
 const ACCEPTED_FALLBACK_TABS = ['overview', 'team', 'agenda', 'files', 'tasks'];
 const DEFAULT_FALLBACK_TABS = ['overview', 'phases', 'agenda', 'files', 'tasks'];
+
+function normalizeUuid(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+
+  const trimmed = value.trim();
+
+  if (
+    !trimmed ||
+    trimmed.toLowerCase() === 'null' ||
+    trimmed.toLowerCase() === 'undefined'
+  ) {
+    return null;
+  }
+
+  return trimmed;
+}
 
 function normalizeTabs(value: unknown, fallback: string[]): string[] {
   if (Array.isArray(value) && value.length > 0) {
@@ -106,10 +121,19 @@ function normalizeTabs(value: unknown, fallback: string[]): string[] {
   return fallback;
 }
 
+type QueryResult<T> = { data: T; error: null } | { data: null; error: null };
+
+function emptyResult<T>(data: T = null as T): QueryResult<T> {
+  return { data, error: null };
+}
+
 export async function fetchEventByIdServer(
   eventId: string,
 ): Promise<EventByIdServerResult | null> {
   const supabase = createSupabaseServerClient(getCookieStore());
+
+  const normalizedEventId = normalizeUuid(eventId);
+  if (!normalizedEventId) return null;
 
   const { data: auth, error: authError } = await supabase.auth.getUser();
 
@@ -119,17 +143,21 @@ export async function fetchEventByIdServer(
     return null;
   }
 
-  const currentUserId = auth.user?.id ?? null;
+  const currentUserId = normalizeUuid(auth.user?.id);
   if (!currentUserId) return null;
 
   const { data: event, error: eventError } = await supabase
     .from('events')
     .select('*')
-    .eq('id', eventId)
+    .eq('id', normalizedEventId)
     .single();
 
   if (eventError) throw eventError;
   if (!event) return null;
+
+  const categoryId = normalizeUuid((event as any).category_id);
+  const creatorId = normalizeUuid((event as any).created_by);
+  const organizationId = normalizeUuid((event as any).organization_id);
 
   const [
     { data: eventCategory, error: eventCategoryError },
@@ -139,24 +167,30 @@ export async function fetchEventByIdServer(
     { data: assignment, error: assignmentError },
     { data: eventEmployees, error: eventEmployeesError },
   ] = await Promise.all([
-    supabase.from('event_categories').select('*').eq('id', event.category_id).maybeSingle(),
-  
-    supabase
-      .from('employees')
-      .select(
-        'id, name, surname, nickname, avatar_url, avatar_metadata, role, occupation, qualifications, is_active',
-      )
-      .eq('id', event.created_by)
-      .maybeSingle(),
-  
-    supabase
-      .from('organizations')
-      .select(
-        'id, name, alias, business_type, primary_contact_id, legal_form, nip, address, city, postal_code, country, email, phone, website, status, notes',
-      )
-      .eq('id', event.organization_id)
-      .maybeSingle(),
-  
+    categoryId
+      ? supabase.from('event_categories').select('*').eq('id', categoryId).maybeSingle()
+      : Promise.resolve(emptyResult<EventCategoryRow | null>(null)),
+
+    creatorId
+      ? supabase
+          .from('employees')
+          .select(
+            'id, name, surname, nickname, avatar_url, avatar_metadata, role, occupation, qualifications, is_active',
+          )
+          .eq('id', creatorId)
+          .maybeSingle()
+      : Promise.resolve(emptyResult<IEmployee | null>(null)),
+
+    organizationId
+      ? supabase
+          .from('organizations')
+          .select(
+            'id, name, alias, business_type, primary_contact_id, legal_form, nip, address, city, postal_code, country, email, phone, website, status, notes',
+          )
+          .eq('id', organizationId)
+          .maybeSingle()
+      : Promise.resolve(emptyResult<OrganizationRow | null>(null)),
+
     supabase
       .from('employees')
       .select(
@@ -178,14 +212,14 @@ export async function fetchEventByIdServer(
       )
       .eq('id', currentUserId)
       .maybeSingle(),
-  
+
     supabase
       .from('employee_assignments')
       .select('can_invite_members, status')
-      .eq('event_id', eventId)
+      .eq('event_id', normalizedEventId)
       .eq('employee_id', currentUserId)
       .maybeSingle(),
-  
+
     supabase
       .from('employee_assignments')
       .select(
@@ -200,7 +234,7 @@ export async function fetchEventByIdServer(
         )
       `,
       )
-      .eq('event_id', eventId)
+      .eq('event_id', normalizedEventId)
       .order('created_at', { ascending: true }),
   ]);
 
@@ -210,12 +244,13 @@ export async function fetchEventByIdServer(
   if (currentEmployeeError) throw currentEmployeeError;
   if (assignmentError) throw assignmentError;
   if (eventEmployeesError) throw eventEmployeesError;
+
   const isAdmin =
     currentEmployee?.role === 'admin' ||
     (Array.isArray((currentEmployee as any)?.permissions) &&
       (currentEmployee as any).permissions.includes('events_manage'));
 
-  const isCreator = event.created_by === currentUserId;
+  const isCreator = creatorId === currentUserId;
 
   let permissionContext: EventPermissionContext = {
     canManageTeam: false,
@@ -305,10 +340,10 @@ export async function fetchEventByIdServer(
   return {
     ...event,
     category: eventCategory ?? null,
-    creator: (creator as IEmployee) ?? null,
-    organization: (organization as unknown as OrganizationRow) ?? null,
+    creator: (creator as unknown as IEmployee) ?? null,
+    organization: (organization as OrganizationRow) ?? null,
     currentEmployee: (currentEmployee as unknown as IEmployee) ?? null,
     permissionContext,
-    employees: eventEmployees ?? [],
+    employees: (eventEmployees as EventEmployeeAssignmentRow[]) ?? [],
   } as EventByIdServerResult;
 }
