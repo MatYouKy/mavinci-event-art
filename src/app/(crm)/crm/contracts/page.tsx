@@ -3,7 +3,18 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
-import { FileText, Plus, Search, Eye, Download, Trash2, FileType, Grid, List } from 'lucide-react';
+import {
+  FileText,
+  Plus,
+  Search,
+  Eye,
+  Download,
+  Trash2,
+  FileType,
+  Grid,
+  List,
+  Table2,
+} from 'lucide-react';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
 
 interface Contract {
@@ -34,11 +45,11 @@ export default function ContractsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [viewMode, setLocalViewMode] = useState<'list' | 'grid'>(
+  const [viewMode, setLocalViewMode] = useState<'list' | 'grid' | 'table'>(
     getViewMode('contracts') === 'grid' ? 'grid' : 'list',
   );
 
-  const handleViewModeChange = async (mode: 'list' | 'grid') => {
+  const handleViewModeChange = async (mode: 'list' | 'grid' | 'table') => {
     setLocalViewMode(mode);
     await setViewMode('contracts', mode);
   };
@@ -212,6 +223,17 @@ export default function ContractsPage() {
               >
                 <Grid className="h-5 w-5" />
               </button>
+              <button
+                onClick={() => handleViewModeChange('table')}
+                className={`rounded-lg p-2 transition-colors ${
+                  viewMode === 'table'
+                    ? 'bg-[#d3bb73] text-[#1c1f33]'
+                    : 'bg-[#0f1119] text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+                }`}
+                title="Widok tabeli"
+              >
+                <Table2 className="h-5 w-5" />
+              </button>
             </div>
           </div>
         </div>
@@ -311,7 +333,7 @@ export default function ContractsPage() {
               </div>
             ))}
           </div>
-        ) : (
+        ) : viewMode === 'list' ? (
           <div className="grid grid-cols-1 gap-4">
             {filteredContracts.map((contract) => (
               <div
@@ -383,6 +405,116 @@ export default function ContractsPage() {
                 </div>
               </div>
             ))}
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
+            <div className="overflow-x-auto">
+              <table className="min-w-full">
+                <thead className="bg-[#0f1119]">
+                  <tr className="border-b border-[#d3bb73]/10">
+                    <th className="px-4 py-3 text-left text-sm font-medium text-[#e5e4e2]/60">
+                      Numer
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-[#e5e4e2]/60">
+                      Tytuł
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-[#e5e4e2]/60">
+                      Klient
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-[#e5e4e2]/60">
+                      Event
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-[#e5e4e2]/60">
+                      Status
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-[#e5e4e2]/60">
+                      Ważna od
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-[#e5e4e2]/60">
+                      Ważna do
+                    </th>
+                    <th className="px-4 py-3 text-right text-sm font-medium text-[#e5e4e2]/60">
+                      Akcje
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredContracts.map((contract) => (
+                    <tr
+                      key={contract.id}
+                      className="cursor-pointer border-b border-[#d3bb73]/5 transition-colors hover:bg-[#0f1119]"
+                      onClick={() => router.push(`/crm/contracts/${contract.id}`)}
+                    >
+                      <td className="px-4 py-4 text-sm font-medium text-[#e5e4e2]">
+                        {contract.contract_number}
+                      </td>
+                      <td className="px-4 py-4 text-sm text-[#e5e4e2]/90">
+                        <div className="max-w-[280px] truncate">{contract.title}</div>
+                      </td>
+                      <td className="px-4 py-4 text-sm text-[#e5e4e2]/70">
+                        <div className="max-w-[220px] truncate">{getClientName(contract)}</div>
+                      </td>
+                      <td className="px-4 py-4 text-sm text-[#e5e4e2]/70">
+                        <div className="max-w-[220px] truncate">{contract.event?.name || '—'}</div>
+                      </td>
+                      <td className="px-4 py-4">
+                        <span
+                          className={`rounded px-2 py-1 text-xs ${statusColors[contract.status]}`}
+                        >
+                          {statusLabels[contract.status]}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 text-sm text-[#e5e4e2]/70">
+                        {contract.valid_from
+                          ? new Date(contract.valid_from).toLocaleDateString('pl-PL')
+                          : '—'}
+                      </td>
+                      <td className="px-4 py-4 text-sm text-[#e5e4e2]/70">
+                        {contract.valid_until
+                          ? new Date(contract.valid_until).toLocaleDateString('pl-PL')
+                          : 'bezterminowo'}
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              router.push(`/crm/contracts/${contract.id}`);
+                            }}
+                            className="rounded-lg p-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
+                            title="Szczegóły"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </button>
+                          {contract.pdf_url && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                window.open(contract.pdf_url, '_blank');
+                              }}
+                              className="rounded-lg p-2 text-blue-400 transition-colors hover:bg-blue-400/10"
+                              title="Pobierz PDF"
+                            >
+                              <Download className="h-4 w-4" />
+                            </button>
+                          )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(contract.id);
+                            }}
+                            className="rounded-lg p-2 text-red-400 transition-colors hover:bg-red-400/10"
+                            title="Usuń"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>
