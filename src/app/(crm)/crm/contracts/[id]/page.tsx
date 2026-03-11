@@ -16,7 +16,7 @@ import {
   Printer,
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import '@/styles/contractA4.css';
+import { ContractA4Page, ContractA4Container } from '@/components/crm/ContractA4Page';
 
 export default function ContractDetailsPage() {
   const params = useParams();
@@ -241,45 +241,21 @@ export default function ContractDetailsPage() {
           </div>
         </div>
 
-        <div className="contract-a4-container">
-          <div className="contract-a4-page">
-            {contract.show_header_logo && contract.header_logo_url && (
-              <div
-                className={`contract-header-logo justify-${contract.header_logo_align || 'start'}`}
-              >
-                <img
-                  src={contract.header_logo_url}
-                  alt="Logo"
-                  style={{ height: `${contract.header_logo_height || 50}px` }}
-                  className="object-contain"
-                />
-              </div>
-            )}
-
-            {contract.show_center_logo && contract.center_logo_url && (
-              <div className="contract-center-logo">
-                <img
-                  src={contract.center_logo_url}
-                  alt="Logo"
-                  style={{ height: `${contract.center_logo_height || 100}px` }}
-                  className="mx-auto object-contain"
-                />
-              </div>
-            )}
-
-            <div
-              className="contract-content"
-              dangerouslySetInnerHTML={{ __html: contract.content }}
-            />
-
-            {contract.show_footer && contract.footer_content && (
-              <div
-                className="contract-footer"
-                dangerouslySetInnerHTML={{ __html: contract.footer_content }}
-              />
-            )}
-          </div>
-        </div>
+        <ContractA4Container>
+          <ContractA4Page
+            showHeaderLogo={contract.show_header_logo}
+            headerLogoUrl={contract.header_logo_url}
+            headerLogoHeight={contract.header_logo_height}
+            headerLogoAlign={contract.header_logo_align}
+            showCenterLogo={contract.show_center_logo}
+            centerLogoUrl={contract.center_logo_url}
+            centerLogoHeight={contract.center_logo_height}
+            showFooter={contract.show_footer}
+            footerContent={contract.footer_content}
+          >
+            <div dangerouslySetInnerHTML={{ __html: contract.content }} />
+          </ContractA4Page>
+        </ContractA4Container>
 
         {contract.notes && (
           <div className="no-print rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
