@@ -41,6 +41,7 @@ export default function EditVehiclePage() {
     status: 'active',
     ownership_type: 'owned',
     category: 'van',
+    has_tow_hitch: false,
     purchase_price: '',
     purchase_date: '',
     current_value: '',
@@ -74,7 +75,8 @@ export default function EditVehiclePage() {
       if (error) throw error;
 
       if (data) {
-        setFormData({
+        setFormData((prev) => ({
+          ...prev,
           vehicle_type: data.vehicle_type || 'car',
           name: data.name || '',
           brand: data.brand || '',
@@ -114,7 +116,8 @@ export default function EditVehiclePage() {
           garage_location: data.garage_location || '',
           description: data.description || '',
           notes: data.notes || '',
-        });
+          has_tow_hitch: data.has_tow_hitch || false,
+        }));
       }
     } catch (error: any) {
       console.error('Error fetching vehicle:', error);
@@ -129,15 +132,24 @@ export default function EditVehiclePage() {
   ) => {
     const { name, value } = e.target;
 
+    if (name === 'has_tow_hitch') {
+      setFormData((prev) => ({
+        ...prev,
+        has_tow_hitch: value === 'true',
+      }));
+      return;
+    }
+
     if (name === 'vehicle_type') {
       setFormData((prev) => ({
         ...prev,
         [name]: value,
         category: value === 'trailer' ? 'plandeka' : 'van',
       }));
-    } else {
-      setFormData((prev) => ({ ...prev, [name]: value }));
+      return;
     }
+
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -524,6 +536,18 @@ export default function EditVehiclePage() {
                   placeholder="np. 1500"
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
                 />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Posiada Hak</label>
+                <select
+                  name="has_tow_hitch"
+                  value={String(formData.has_tow_hitch)}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
+                >
+                  <option value="true">Tak</option>
+                  <option value="false">Nie</option>
+                </select>
               </div>
             </div>
           </div>

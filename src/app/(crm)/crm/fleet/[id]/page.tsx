@@ -67,6 +67,7 @@ interface Vehicle {
   in_use_event?: string | null;
   in_use_event_id?: string | null;
   pickup_timestamp?: string | null;
+  has_tow_hitch?: boolean;
 }
 
 interface FuelEntry {
@@ -657,6 +658,10 @@ export default function VehicleDetailPage() {
                 <div>
                   <span className="text-sm text-[#e5e4e2]/60">Data zakupu</span>
                   <p className="font-medium text-[#e5e4e2]">{formatDate(vehicle.purchase_date)}</p>
+                </div>
+                <div>
+                  <span className="text-sm text-[#e5e4e2]/60">Posiada Hak</span>
+                  <p className="font-medium text-[#e5e4e2]">{vehicle.has_tow_hitch ? 'Tak' : 'Nie'}</p>
                 </div>
               </div>
             </div>

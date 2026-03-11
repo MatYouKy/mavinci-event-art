@@ -61,6 +61,7 @@ export default function NewVehiclePage() {
     garage_location: '',
     description: '',
     notes: '',
+    has_tow_hitch: false,
   });
 
   const handleChange = (
@@ -68,15 +69,24 @@ export default function NewVehiclePage() {
   ) => {
     const { name, value } = e.target;
 
+    if (name === 'has_tow_hitch') {
+      setFormData((prev) => ({
+        ...prev,
+        has_tow_hitch: value === 'true',
+      }));
+      return;
+    }
+
     if (name === 'vehicle_type') {
       setFormData((prev) => ({
         ...prev,
         [name]: value,
         category: value === 'trailer' ? 'plandeka' : 'van',
       }));
-    } else {
-      setFormData((prev) => ({ ...prev, [name]: value }));
+      return;
     }
+
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -129,6 +139,7 @@ export default function NewVehiclePage() {
       showSnackbar(e?.message || 'Błąd podczas dodawania pojazdu', 'error');
     }
   };
+
 
   return (
     <div className="mx-auto max-w-5xl p-6">
@@ -321,6 +332,18 @@ export default function NewVehiclePage() {
                 <option value="rented">Wynajem</option>
               </select>
             </div>
+          </div>
+          <div className="mt-4">
+            <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Hak samochodu</label>
+            <select
+              name="has_tow_hitch"
+              value={String(formData.has_tow_hitch)}
+              onChange={handleChange}
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
+            >
+              <option value="true">Tak</option>
+              <option value="false">Nie</option>
+            </select>
           </div>
         </div>
 

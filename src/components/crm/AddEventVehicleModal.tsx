@@ -27,6 +27,9 @@ interface Vehicle {
   model: string;
   fuel_type: string;
   max_load_kg: number;
+  category?: string | null;
+  vehicle_type?: 'car' | 'trailer' | string | null;
+  has_tow_hitch?: boolean;
 }
 
 interface Employee {
@@ -118,6 +121,8 @@ export default function AddEventVehicleModal({
     phase_to_id: '',
   });
 
+
+
   // Funkcja ładująca dane pojazdu do edycji
   const loadVehicleData = useCallback(async () => {
     if (!editingVehicleId) return;
@@ -154,10 +159,15 @@ export default function AddEventVehicleModal({
       let phaseFromId = '';
       let phaseToId = '';
 
-      if (phaseVehicles && phaseVehicles.length > 0 && eventPhasesData && eventPhasesData.length > 0) {
+      if (
+        phaseVehicles &&
+        phaseVehicles.length > 0 &&
+        eventPhasesData &&
+        eventPhasesData.length > 0
+      ) {
         // Znajdź które fazy mają przypisany ten pojazd
-        const assignedPhaseIds = new Set(phaseVehicles.map(pv => pv.phase_id));
-        const assignedPhases = eventPhasesData.filter(p => assignedPhaseIds.has(p.id));
+        const assignedPhaseIds = new Set(phaseVehicles.map((pv) => pv.phase_id));
+        const assignedPhases = eventPhasesData.filter((p) => assignedPhaseIds.has(p.id));
 
         if (assignedPhases.length > 0) {
           // Pierwsza i ostatnia przypisana faza według sequence_order
@@ -238,14 +248,15 @@ export default function AddEventVehicleModal({
     try {
       const { data, error } = await supabase
         .from('vehicles')
-        .select('id, name, registration_number, brand, model, fuel_type, max_load_kg')
+        .select(
+          'id, name, registration_number, brand, model, fuel_type, max_load_kg, category, vehicle_type, has_tow_hitch',
+        )
         .eq('status', 'active')
-        .neq('category', 'trailer')
+        .eq('vehicle_type', 'car')
         .order('name');
 
       if (error) throw error;
 
-      // Filtruj pojazdy już dodane do wydarzenia
       const availableVehicles = (data || []).filter((v) => !existingVehicleIds.includes(v.id));
       setVehicles(availableVehicles);
     } catch (error) {
@@ -257,9 +268,11 @@ export default function AddEventVehicleModal({
     try {
       const { data, error } = await supabase
         .from('vehicles')
-        .select('id, name, registration_number, brand, model, fuel_type, max_load_kg')
+        .select(
+          'id, name, registration_number, brand, model, fuel_type, max_load_kg, category, vehicle_type',
+        )
         .eq('status', 'active')
-        .eq('category', 'trailer')
+        .eq('vehicle_type', 'trailer')
         .order('name');
 
       if (error) throw error;
@@ -809,7 +822,7 @@ export default function AddEventVehicleModal({
             .eq('event_id', eventId);
 
           if (phasesToClean && phasesToClean.length > 0) {
-            const phaseIds = phasesToClean.map(p => p.id);
+            const phaseIds = phasesToClean.map((p) => p.id);
             await supabase
               .from('event_phase_vehicles')
               .delete()
@@ -914,6 +927,28 @@ export default function AddEventVehicleModal({
     }
   };
 
+  const selectedVehicle = vehicles.find((v) => v.id === formData.vehicle_id) || null;
+  const selectedVehicleHasTowHitch = !!selectedVehicle?.has_tow_hitch;
+
+  useEffect(() => {
+    if (isExternal) return;
+
+    if (!selectedVehicleHasTowHitch) {
+      setFormData((prev) => ({
+        ...prev,
+        has_trailer: false,
+        trailer_vehicle_id: '',
+        is_trailer_external: false,
+        external_trailer_name: '',
+        external_trailer_company: '',
+        external_trailer_rental_cost: '',
+        external_trailer_return_date: '',
+        external_trailer_return_location: '',
+        external_trailer_notes: '',
+      }));
+    }
+  }, [selectedVehicleHasTowHitch, isExternal]);
+
   const departureTime = calculateDepartureTime();
 
   return (
@@ -970,11 +1005,13 @@ export default function AddEventVehicleModal({
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
               >
                 <option value="">Wybierz pojazd...</option>
-                {vehicles.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.name} ({v.registration_number}) - {v.brand} {v.model}
-                  </option>
-                ))}
+                {vehicles
+                  .filter((v) => v.vehicle_type === 'car')
+                  .map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.name} ({v.registration_number}) - {v.brand} {v.model}
+                    </option>
+                  ))}
               </select>
             </div>
           ) : (
@@ -1121,7 +1158,7 @@ export default function AddEventVehicleModal({
           </div>
 
           {/* Przyczepka */}
-          {!isExternal && (
+          {!isExternal && selectedVehicleHasTowHitch && (
             <div className="space-y-4 rounded-lg bg-[#0f1119] p-4">
               <div className="flex items-center gap-3">
                 <input
@@ -1165,11 +1202,13 @@ export default function AddEventVehicleModal({
                         className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2]"
                       >
                         <option value="">Wybierz przyczepkę...</option>
-                        {trailers.map((t) => (
-                          <option key={t.id} value={t.id}>
-                            {t.name} {t.registration_number && `(${t.registration_number})`}
-                          </option>
-                        ))}
+                        {trailers
+                          .filter((t) => t.vehicle_type === 'trailer')
+                          .map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.name} {t.registration_number && `(${t.registration_number})`}
+                            </option>
+                          ))}
                       </select>
                     </div>
                   )}
