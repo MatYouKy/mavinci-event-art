@@ -41,7 +41,14 @@ export default function EditContractPage() {
         .select(
           `
           *,
-          client:clients!client_id(company_name, first_name, last_name),
+          client:contacts!client_id(
+            id,
+            full_name,
+            first_name,
+            last_name,
+            email,
+            phone
+          ),
           event:events!event_id(name, event_date),
           template:contract_templates!template_id(*)
         `,
@@ -121,7 +128,10 @@ export default function EditContractPage() {
   }
 
   const clientName =
-    contract.client?.company_name || `${contract.client?.first_name} ${contract.client?.last_name}`;
+    contract.client?.full_name ||
+    (contract.client?.first_name && contract.client?.last_name
+      ? `${contract.client?.first_name} ${contract.client?.last_name}`
+      : 'Brak klienta');
 
   return (
     <div className="space-y-6">
