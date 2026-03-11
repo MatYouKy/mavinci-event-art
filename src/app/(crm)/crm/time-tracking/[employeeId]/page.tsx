@@ -2,23 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import {
-  Clock,
-  ArrowLeft,
-  Calendar,
-  Tag,
-  DollarSign,
-  TrendingUp,
-  User,
-  History,
-  Trash2,
-  Edit3,
-  ChevronDown,
-  ChevronUp,
-  AlertTriangle,
-  List,
-  TableIcon,
-} from 'lucide-react';
+import { Clock, ArrowLeft, Calendar, Tag, DollarSign, TrendingUp, User, History, Trash2, CreditCard as Edit3, ChevronDown, ChevronUp, AlertTriangle, List, Table as TableIcon } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
