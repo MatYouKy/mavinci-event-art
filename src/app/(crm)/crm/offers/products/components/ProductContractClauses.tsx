@@ -90,6 +90,7 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
   const [clauses, setClauses] = useState(initialClauses || '');
   const [isSaving, setIsSaving] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<string>('');
+  const [cursorPosition, setCursorPosition] = useState<number | null>(null);
   const quillRef = useRef<any>(null);
 
   useEffect(() => {
@@ -116,21 +117,58 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
   };
 
   const insertPlaceholder = (placeholder: string) => {
-    const quill = quillRef.current?.getEditor();
-    if (quill) {
-      const range = quill.getSelection();
-      const position = range ? range.index : quill.getLength();
+    console.log('insertPlaceholder called with:', placeholder);
 
-      // Insert with bold formatting
+    // Small delay to ensure React has updated the DOM
+    setTimeout(() => {
+      // Get the Quill instance
+      const quill = quillRef.current?.getEditor?.();
+
+      if (!quill) {
+        console.error('Quill editor not available');
+        // Fallback: append to end of content
+        setClauses(prev => {
+          const withSpace = prev.trim() ? prev + ' ' : prev;
+          return withSpace + `<strong>${placeholder}</strong>`;
+        });
+        setSelectedGroup('');
+        return;
+      }
+
+      // Ensure editor has focus
+      quill.focus();
+
+      try {
+      // Get current selection or cursor position
+      const selection = quill.getSelection();
+      let position: number;
+
+      if (selection) {
+        position = selection.index;
+      } else if (cursorPosition !== null) {
+        position = cursorPosition;
+      } else {
+        position = quill.getLength() - 1;
+      }
+
+      console.log('Inserting at position:', position, 'from selection:', selection, 'stored:', cursorPosition);
+
+      // Insert the placeholder text with bold formatting
       quill.insertText(position, placeholder, { bold: true });
 
-      // Move cursor after inserted text
-      quill.setSelection(position + placeholder.length);
+        // Move cursor to after the inserted text
+        const newPosition = position + placeholder.length;
+        quill.setSelection(newPosition, 0);
 
-      // Focus back on editor
-      quill.focus();
-    }
-    setSelectedGroup('');
+        console.log('Successfully inserted placeholder');
+      } catch (error) {
+        console.error('Error inserting placeholder:', error);
+        // Fallback
+        setClauses(prev => prev + `<strong>${placeholder}</strong>`);
+      }
+
+      setSelectedGroup('');
+    }, 50); // Small delay for React state update
   };
 
   return (
@@ -278,41 +316,54 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
               }
             `}</style>
 
-            <div className="mb-3 flex items-center gap-3 rounded-lg border border-gray-700 bg-gray-800 p-3">
-              <div className="flex items-center gap-2 text-sm text-gray-300">
-                <Plus className="h-4 w-4 text-gray-400" />
-                <span className="font-medium">Wstaw zmienną:</span>
-              </div>
-              <select
-                value={selectedGroup}
-                onChange={(e) => setSelectedGroup(e.target.value)}
-                className="rounded-md border border-gray-600 bg-gray-700 px-3 py-1.5 text-sm text-gray-200 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              >
-                <option value="">Wybierz kategorię...</option>
-                {PLACEHOLDERS.map((group) => (
-                  <option key={group.group} value={group.group}>
-                    {group.group}
-                  </option>
-                ))}
-              </select>
-
-              {selectedGroup && (
+            <div className="mb-3 space-y-2">
+              <div className="flex flex-wrap items-center gap-3 rounded-lg border border-gray-700 bg-gray-800 p-3">
+                <div className="flex items-center gap-2 text-sm text-gray-300">
+                  <Plus className="h-4 w-4 text-blue-400" />
+                  <span className="font-medium">Wstaw zmienną:</span>
+                </div>
                 <select
-                  value=""
-                  onChange={(e) => {
-                    if (e.target.value) {
-                      insertPlaceholder(e.target.value);
-                    }
-                  }}
-                  className="flex-1 rounded-md border border-gray-600 bg-gray-700 px-3 py-1.5 text-sm text-gray-200 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  value={selectedGroup}
+                  onChange={(e) => setSelectedGroup(e.target.value)}
+                  className="rounded-md border border-gray-600 bg-gray-700 px-3 py-1.5 text-sm text-gray-200 hover:bg-gray-600 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 >
-                  <option value="">Wybierz zmienną...</option>
-                  {PLACEHOLDERS.find((g) => g.group === selectedGroup)?.items.map((item) => (
-                    <option key={item.value} value={item.value}>
-                      {item.label} - {item.description}
+                  <option value="">Wybierz kategorię...</option>
+                  {PLACEHOLDERS.map((group) => (
+                    <option key={group.group} value={group.group}>
+                      {group.group}
                     </option>
                   ))}
                 </select>
+
+                {selectedGroup && (
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      console.log('Select onChange triggered:', e.target.value);
+                      const value = e.target.value;
+                      if (value) {
+                        console.log('Calling insertPlaceholder with:', value);
+                        insertPlaceholder(value);
+                      } else {
+                        console.log('Empty value, skipping insert');
+                      }
+                    }}
+                    className="flex-1 min-w-[300px] rounded-md border border-gray-600 bg-gray-700 px-3 py-1.5 text-sm text-gray-200 hover:bg-gray-600 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="">Wybierz zmienną...</option>
+                    {PLACEHOLDERS.find((g) => g.group === selectedGroup)?.items.map((item) => (
+                      <option key={item.value} value={item.value}>
+                        {item.label} - {item.description}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {selectedGroup && (
+                <div className="text-xs text-gray-400 px-3">
+                  💡 Wybierz zmienną z listy - zostanie wstawiona w miejscu kursora w edytorze
+                </div>
               )}
             </div>
 
@@ -320,7 +371,23 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
               ref={quillRef}
               theme="snow"
               value={clauses}
-              onChange={setClauses}
+              onChange={(content, delta, source, editor) => {
+                setClauses(content);
+                // Track cursor position
+                try {
+                  const selection = editor.getSelection();
+                  if (selection) {
+                    setCursorPosition(selection.index);
+                  }
+                } catch (e) {
+                  // Ignore errors
+                }
+              }}
+              onChangeSelection={(range) => {
+                if (range) {
+                  setCursorPosition(range.index);
+                }
+              }}
               modules={{ toolbar: toolbarOptions }}
               formats={formats}
               placeholder="Wpisz rekomendowane klauzule umowy..."
@@ -328,7 +395,7 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
             <div className="mt-4 space-y-3 rounded-lg border border-blue-500/30 bg-blue-500/10 p-4">
               <p className="text-sm text-blue-300">
                 <strong className="text-blue-200">Wskazówka:</strong> Te klauzule będą automatycznie dodawane do umów,
-                które zawierają ten produkt. Użyj dropdownów "Wstaw zmienną\" powyżej, aby dodać dynamiczne pola.
+                które zawierają ten produkt. Użyj dropdownów &quot;Wstaw zmienną&quot; powyżej, aby dodać dynamiczne pola.
               </p>
               <p className="text-xs text-gray-400">
                 Zmienne są automatycznie wypełniane danymi z wydarzenia, klienta i organizacji podczas generowania umowy.
