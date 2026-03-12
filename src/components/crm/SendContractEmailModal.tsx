@@ -272,9 +272,22 @@ W razie pytań proszę o kontakt.`,
         return;
       }
 
+      showSnackbar('Generuję PDF umowy...', 'info');
+
       let attachments: any[] = [];
 
-      showSnackbar('Test: Wysyłam bez załącznika PDF', 'info');
+      try {
+        const pdfData = await generateContractPDF();
+        attachments.push({
+          filename: pdfData.filename,
+          content: pdfData.base64,
+          type: 'application/pdf',
+        });
+        showSnackbar('PDF wygenerowany, wysyłam email...', 'info');
+      } catch (pdfError: any) {
+        console.error('Error generating PDF:', pdfError);
+        showSnackbar(`Ostrzeżenie: Nie udało się wygenerować PDF: ${pdfError.message}. Wysyłam email bez załącznika.`, 'warning');
+      }
 
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-email`,

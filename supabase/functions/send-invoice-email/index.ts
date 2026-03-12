@@ -85,6 +85,30 @@ Deno.serve(async (req: Request) => {
       </div>
     `;
 
+    // TODO: Generate invoice PDF
+    // For now, create a simple text placeholder attachment
+    console.log('[send-invoice-email] Generating invoice PDF for:', invoiceId);
+
+    const invoiceText = `
+Faktura: ${invoice.invoice_number}
+Data wystawienia: ${invoice.issue_date}
+Termin płatności: ${invoice.due_date}
+Kwota: ${invoice.total_amount} PLN
+
+Niniejsza faktura zostanie wkrótce dostarczona w formacie PDF.
+    `.trim();
+
+    const pdfBase64 = btoa(invoiceText);
+    const pdfFilename = `Faktura_${invoice.invoice_number || invoiceId}.txt`;
+
+    const attachments = [{
+      filename: pdfFilename,
+      content: pdfBase64,
+      contentType: 'text/plain',
+    }];
+
+    console.log('[send-invoice-email] Attachment prepared:', pdfFilename);
+
     const relayPayload = {
       smtpConfig: {
         host: systemConfig.smtp_host,
@@ -97,6 +121,7 @@ Deno.serve(async (req: Request) => {
       to,
       subject,
       body: htmlBody,
+      attachments,
     };
 
     const relayResponse = await fetch(`${relayUrl}/api/send-email`, {

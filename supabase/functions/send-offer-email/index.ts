@@ -108,6 +108,45 @@ Deno.serve(async (req: Request) => {
       </div>
     `;
 
+    // Generate PDF attachment
+    console.log('[send-offer-email] Generating PDF for offer:', offerId);
+    let pdfBase64 = null;
+    let pdfFilename = `Oferta_${offer.offer_number || offerId}.pdf`;
+
+    try {
+      const pdfResponse = await fetch(`${supabaseUrl}/functions/v1/generate-offer-pdf`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': authHeader,
+        },
+        body: JSON.stringify({
+          offerId: offerId,
+          employeeId: user.id,
+        }),
+      });
+
+      if (pdfResponse.ok) {
+        const pdfBlob = await pdfResponse.arrayBuffer();
+        pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfBlob)));
+        console.log('[send-offer-email] PDF generated successfully, size:', pdfBase64.length);
+      } else {
+        const errorText = await pdfResponse.text();
+        console.error('[send-offer-email] PDF generation failed:', errorText);
+      }
+    } catch (pdfError) {
+      console.error('[send-offer-email] Error generating PDF:', pdfError);
+    }
+
+    const attachments = [];
+    if (pdfBase64) {
+      attachments.push({
+        filename: pdfFilename,
+        content: pdfBase64,
+        contentType: 'application/pdf',
+      });
+    }
+
     const relayPayload = {
       smtpConfig: {
         host: emailAccount.smtp_host,
@@ -120,6 +159,7 @@ Deno.serve(async (req: Request) => {
       to,
       subject,
       body: htmlBody,
+      attachments,
     };
 
     const relayResponse = await fetch(`${relayUrl}/api/send-email`, {
