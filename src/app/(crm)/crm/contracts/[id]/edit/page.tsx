@@ -96,23 +96,41 @@ export default function EditContractPage() {
         setContract(data);
 
         let content = data.content;
-        if (!content && data.template?.content) {
+
+        if (content) {
+          try {
+            const parsed = typeof content === 'string' ? JSON.parse(content) : content;
+            if (parsed.pages && Array.isArray(parsed.pages)) {
+              content = parsed.pages
+                .map((page: string) =>
+                  page
+                    .replace(/\\n/g, '<br/>')
+                    .replace(/\n/g, '<br/>')
+                )
+                .join('<p style="page-break-after: always;"></p>');
+
+              content = `<div>${content}</div>`;
+            }
+          } catch (e) {
+            console.log('Content is not JSON, using as-is');
+          }
+        } else if (data.template?.content) {
           content = fillPlaceholders(data.template.content, data);
         }
 
         setEditorContent(content || '');
         setTotalAmount(data.total_amount?.toString() || '');
 
-        if (data.template) {
-          setLogoSettings({
-            header_logo_url: data.template.header_logo_url || '',
-            header_logo_height: data.template.header_logo_height || 50,
-            center_logo_url: data.template.center_logo_url || '',
-            center_logo_height: data.template.center_logo_height || 100,
-            show_header_logo: data.template.show_header_logo || false,
-            show_center_logo: data.template.show_center_logo || false,
-          });
-        }
+        const logos = {
+          header_logo_url: data.header_logo_url || data.template?.header_logo_url || '',
+          header_logo_height: data.header_logo_height || data.template?.header_logo_height || 50,
+          center_logo_url: data.center_logo_url || data.template?.center_logo_url || '',
+          center_logo_height: data.center_logo_height || data.template?.center_logo_height || 100,
+          show_header_logo: data.show_header_logo ?? data.template?.show_header_logo ?? false,
+          show_center_logo: data.show_center_logo ?? data.template?.show_center_logo ?? false,
+        };
+
+        setLogoSettings(logos);
       }
     } catch (err) {
       console.error('Error fetching contract:', err);
@@ -288,18 +306,51 @@ export default function EditContractPage() {
                 </div>
               </div>
             ) : (
+              <>
+                <div
+                  className="a4-page-logos mx-auto"
+                  style={{
+                    width: '210mm',
+                    maxWidth: '100%',
+                    background: 'white',
+                    padding: '48px 48px 0 48px',
+                    borderTopLeftRadius: '8px',
+                    borderTopRightRadius: '8px',
+                  }}
+                >
+                  {logoSettings.show_header_logo && logoSettings.header_logo_url && (
+                    <div className="mb-8">
+                      <img
+                        src={logoSettings.header_logo_url}
+                        alt="Logo nagłówka"
+                        style={{ height: `${logoSettings.header_logo_height}px` }}
+                        className="object-contain"
+                      />
+                    </div>
+                  )}
+
+                  {logoSettings.show_center_logo && logoSettings.center_logo_url && (
+                    <div className="mb-12 text-center">
+                      <img
+                        src={logoSettings.center_logo_url}
+                        alt="Logo"
+                        style={{ height: `${logoSettings.center_logo_height}px` }}
+                        className="mx-auto object-contain"
+                      />
+                    </div>
+                  )}
+                </div>
               <div
-                className="a4-page-editor mx-auto rounded-lg shadow-2xl"
+                className="a4-page-editor mx-auto shadow-2xl"
                 style={{
                   width: '210mm',
                   maxWidth: '100%',
+                  marginTop: '-1px',
                 }}
               >
                 <style jsx global>{`
                   .a4-page-editor .ql-toolbar {
                     background: #f8f9fa;
-                    border-top-left-radius: 8px;
-                    border-top-right-radius: 8px;
                     border: 1px solid #e5e7eb;
                     border-bottom: none;
                   }
@@ -313,11 +364,11 @@ export default function EditContractPage() {
                   }
 
                   .a4-page-editor .ql-editor {
-                    min-height: 297mm;
-                    padding: 48px;
+                    min-height: calc(297mm - 96px);
+                    padding: 0 48px 48px 48px;
                     color: #000000;
                     font-size: 14px;
-                    line-height: 1.6;
+                    line-height: 1.8;
                   }
 
                   .a4-page-editor .ql-editor strong {
@@ -326,28 +377,43 @@ export default function EditContractPage() {
                   }
 
                   .a4-page-editor .ql-editor p {
-                    margin-bottom: 12px;
+                    margin-bottom: 1em;
                     color: #000000;
+                    text-align: left;
                   }
 
                   .a4-page-editor .ql-editor h1,
                   .a4-page-editor .ql-editor h2,
                   .a4-page-editor .ql-editor h3 {
                     font-weight: bold;
-                    margin-top: 16px;
-                    margin-bottom: 12px;
+                    margin-top: 1.2em;
+                    margin-bottom: 0.8em;
                     color: #000000;
+                  }
+
+                  .a4-page-editor .ql-editor h1 {
+                    font-size: 20px;
+                    text-align: center;
+                  }
+
+                  .a4-page-editor .ql-editor h2 {
+                    font-size: 18px;
+                  }
+
+                  .a4-page-editor .ql-editor h3 {
+                    font-size: 16px;
                   }
 
                   .a4-page-editor .ql-editor ul,
                   .a4-page-editor .ql-editor ol {
                     padding-left: 24px;
-                    margin-bottom: 12px;
+                    margin-bottom: 1em;
                     color: #000000;
                   }
 
                   .a4-page-editor .ql-editor li {
                     color: #000000;
+                    margin-bottom: 0.5em;
                   }
 
                   .a4-page-editor .ql-editor.ql-blank::before {
@@ -355,14 +421,22 @@ export default function EditContractPage() {
                     font-style: italic;
                   }
 
+                  .a4-page-editor .ql-editor .ql-align-center {
+                    text-align: center;
+                  }
+
+                  .a4-page-editor .ql-editor .ql-align-right {
+                    text-align: right;
+                  }
+
                   .contract-preview {
                     font-family: 'Arial', sans-serif;
                     font-size: 14px;
-                    line-height: 1.6;
+                    line-height: 1.8;
                   }
 
                   .contract-preview p {
-                    margin-bottom: 12px;
+                    margin-bottom: 1em;
                   }
 
                   .contract-preview strong {
@@ -373,14 +447,41 @@ export default function EditContractPage() {
                   .contract-preview h2,
                   .contract-preview h3 {
                     font-weight: bold;
-                    margin-top: 16px;
-                    margin-bottom: 12px;
+                    margin-top: 1.2em;
+                    margin-bottom: 0.8em;
+                  }
+
+                  .contract-preview h1 {
+                    font-size: 20px;
+                    text-align: center;
+                  }
+
+                  .contract-preview h2 {
+                    font-size: 18px;
+                  }
+
+                  .contract-preview h3 {
+                    font-size: 16px;
                   }
 
                   .contract-preview ul,
                   .contract-preview ol {
                     padding-left: 24px;
-                    margin-bottom: 12px;
+                    margin-bottom: 1em;
+                  }
+
+                  .contract-preview li {
+                    margin-bottom: 0.5em;
+                  }
+
+                  .contract-preview .ql-align-center,
+                  .contract-preview p[style*="text-align: center"] {
+                    text-align: center;
+                  }
+
+                  .contract-preview .ql-align-right,
+                  .contract-preview p[style*="text-align: right"] {
+                    text-align: right;
                   }
 
                   @media print {
@@ -399,6 +500,7 @@ export default function EditContractPage() {
                   placeholder="Wpisz treść umowy..."
                 />
               </div>
+              </>
             )}
           </div>
         </div>
