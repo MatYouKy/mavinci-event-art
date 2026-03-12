@@ -41,10 +41,9 @@ const rows = await conflicts.checkCartConflicts(items.offerItems);
 let hasEquipmentShortage = false;
 
 if (rows.length > 0) {
-  const confirmed = await showDialog({
+  const confirmed = await showConfirm({
     title: 'Wykryto konflikty sprzętowe',
     message: `Brakuje ${rows.length} pozycji sprzętu.\n\nCzy chcesz utworzyć ofertę mimo to?\n\nEvent zostanie oznaczony jako mający braki sprzętowe.`,
-    type: 'warning',
     confirmText: 'Utwórz mimo to',
     cancelText: 'Anuluj',
   });
@@ -53,6 +52,8 @@ if (rows.length > 0) {
   hasEquipmentShortage = true;
 }
 ```
+
+**UWAGA:** Używamy `showConfirm` zamiast `showDialog` - `showConfirm` zwraca Promise<boolean>.
 
 ### 3. Aktualizacja Flagi w Evencie
 

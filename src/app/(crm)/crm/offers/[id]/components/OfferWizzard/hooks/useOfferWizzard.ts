@@ -22,7 +22,7 @@ export function useOfferWizardLogic(opts: {
   onSuccess: () => void;
   onClose: () => void;
 }) {
-  const { showDialog } = useDialog();
+  const { showDialog, showConfirm } = useDialog();
   const dispatch = useDispatch();
 
   const hasOrganization =
@@ -169,10 +169,9 @@ export function useOfferWizardLogic(opts: {
     let hasEquipmentShortage = false;
 
     if (rows.length > 0) {
-      const confirmed = await showDialog({
+      const confirmed = await showConfirm({
         title: 'Wykryto konflikty sprzętowe',
         message: `Brakuje ${rows.length} pozycji sprzętu w terminie eventu.\n\nCzy chcesz utworzyć ofertę mimo to?\n\nEvent zostanie oznaczony jako mający braki sprzętowe.`,
-        type: 'warning',
         confirmText: 'Utwórz mimo to',
         cancelText: 'Anuluj',
       });
