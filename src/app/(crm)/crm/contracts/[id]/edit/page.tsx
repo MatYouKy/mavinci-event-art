@@ -40,7 +40,6 @@ export default function EditContractPage() {
 
     let filledContent = content;
 
-    // Dane klienta
     const clientName = contractData.client?.full_name ||
       (contractData.client?.first_name && contractData.client?.last_name
         ? `${contractData.client?.first_name} ${contractData.client?.last_name}`
@@ -50,7 +49,6 @@ export default function EditContractPage() {
     filledContent = filledContent.replace(/\{\{client_email\}\}/g, contractData.client?.email || '[Email klienta]');
     filledContent = filledContent.replace(/\{\{client_phone\}\}/g, contractData.client?.phone || '[Telefon klienta]');
 
-    // Dane eventu
     filledContent = filledContent.replace(/\{\{event_name\}\}/g, contractData.event?.name || '[Nazwa eventu]');
     filledContent = filledContent.replace(/\{\{event_date\}\}/g,
       contractData.event?.event_date
@@ -58,7 +56,6 @@ export default function EditContractPage() {
         : '[Data eventu]'
     );
 
-    // Dane umowy
     filledContent = filledContent.replace(/\{\{contract_number\}\}/g, contractData.contract_number || '[Numer umowy]');
     filledContent = filledContent.replace(/\{\{total_amount\}\}/g,
       contractData.total_amount
@@ -98,8 +95,6 @@ export default function EditContractPage() {
       if (data) {
         setContract(data);
 
-        // Jeśli umowa już ma treść, użyj jej (edytowana wersja)
-        // W przeciwnym razie wypełnij placeholdery z szablonu
         let content = data.content;
         if (!content && data.template?.content) {
           content = fillPlaceholders(data.template.content, data);
@@ -160,6 +155,7 @@ export default function EditContractPage() {
         [{ header: [1, 2, 3, false] }],
         ['bold', 'italic', 'underline', 'strike'],
         [{ list: 'ordered' }, { list: 'bullet' }],
+        [{ indent: '-1' }, { indent: '+1' }],
         [{ align: [] }],
         [{ color: [] }, { background: [] }],
         ['link'],
@@ -177,6 +173,7 @@ export default function EditContractPage() {
     'strike',
     'list',
     'bullet',
+    'indent',
     'align',
     'color',
     'background',
@@ -206,7 +203,7 @@ export default function EditContractPage() {
       : 'Brak klienta');
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-12">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <button
@@ -246,64 +243,151 @@ export default function EditContractPage() {
         <div className="lg:col-span-3">
           <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
             <div className="mb-4 flex items-center justify-between">
-              <label className="text-sm font-medium text-[#e5e4e2]">
-                Treść umowy
-              </label>
+              <label className="text-sm font-medium text-[#e5e4e2]">Treść umowy</label>
               <div className="text-xs text-[#e5e4e2]/40">
-                Edytujesz dokument z wypełnionymi danymi
+                {showPreview ? 'Podgląd dokumentu' : 'Edycja dokumentu'}
               </div>
             </div>
 
             {showPreview ? (
-              <div className="min-h-[700px] rounded-lg bg-white p-12">
-                {logoSettings.show_header_logo && logoSettings.header_logo_url && (
-                  <div className="mb-8">
-                    <img
-                      src={logoSettings.header_logo_url}
-                      alt="Logo nagłówka"
-                      style={{ height: `${logoSettings.header_logo_height}px` }}
-                      className="object-contain"
-                    />
-                  </div>
-                )}
-
-                {logoSettings.show_center_logo && logoSettings.center_logo_url && (
-                  <div className="mb-12 text-center">
-                    <img
-                      src={logoSettings.center_logo_url}
-                      alt="Logo"
-                      style={{ height: `${logoSettings.center_logo_height}px` }}
-                      className="mx-auto object-contain"
-                    />
-                  </div>
-                )}
-
+              <div className="space-y-8">
                 <div
-                  className="prose prose-sm max-w-none text-black"
-                  dangerouslySetInnerHTML={{ __html: editorContent || 'Brak treści' }}
-                />
+                  className="a4-page mx-auto rounded-lg bg-white p-12 shadow-2xl"
+                  style={{
+                    width: '210mm',
+                    minHeight: '297mm',
+                    maxWidth: '100%',
+                  }}
+                >
+                  {logoSettings.show_header_logo && logoSettings.header_logo_url && (
+                    <div className="mb-8">
+                      <img
+                        src={logoSettings.header_logo_url}
+                        alt="Logo nagłówka"
+                        style={{ height: `${logoSettings.header_logo_height}px` }}
+                        className="object-contain"
+                      />
+                    </div>
+                  )}
+
+                  {logoSettings.show_center_logo && logoSettings.center_logo_url && (
+                    <div className="mb-12 text-center">
+                      <img
+                        src={logoSettings.center_logo_url}
+                        alt="Logo"
+                        style={{ height: `${logoSettings.center_logo_height}px` }}
+                        className="mx-auto object-contain"
+                      />
+                    </div>
+                  )}
+
+                  <div
+                    className="contract-preview text-black"
+                    dangerouslySetInnerHTML={{ __html: editorContent || 'Brak treści' }}
+                  />
+                </div>
               </div>
             ) : (
-              <div className="contract-editor rounded-lg bg-white">
+              <div
+                className="a4-page-editor mx-auto rounded-lg shadow-2xl"
+                style={{
+                  width: '210mm',
+                  maxWidth: '100%',
+                }}
+              >
                 <style jsx global>{`
-                  .contract-editor .ql-container {
-                    min-height: 700px;
-                    font-size: 14px;
-                  }
-                  .contract-editor .ql-editor {
-                    min-height: 700px;
-                    padding: 48px;
-                  }
-                  .contract-editor .ql-toolbar {
+                  .a4-page-editor .ql-toolbar {
                     background: #f8f9fa;
                     border-top-left-radius: 8px;
                     border-top-right-radius: 8px;
-                    border-color: #e5e7eb;
+                    border: 1px solid #e5e7eb;
+                    border-bottom: none;
                   }
-                  .contract-editor .ql-container {
+
+                  .a4-page-editor .ql-container {
+                    background: white;
+                    border: 1px solid #e5e7eb;
                     border-bottom-left-radius: 8px;
                     border-bottom-right-radius: 8px;
-                    border-color: #e5e7eb;
+                    font-family: 'Arial', sans-serif;
+                  }
+
+                  .a4-page-editor .ql-editor {
+                    min-height: 297mm;
+                    padding: 48px;
+                    color: #000000;
+                    font-size: 14px;
+                    line-height: 1.6;
+                  }
+
+                  .a4-page-editor .ql-editor strong {
+                    font-weight: bold;
+                    color: #000000;
+                  }
+
+                  .a4-page-editor .ql-editor p {
+                    margin-bottom: 12px;
+                    color: #000000;
+                  }
+
+                  .a4-page-editor .ql-editor h1,
+                  .a4-page-editor .ql-editor h2,
+                  .a4-page-editor .ql-editor h3 {
+                    font-weight: bold;
+                    margin-top: 16px;
+                    margin-bottom: 12px;
+                    color: #000000;
+                  }
+
+                  .a4-page-editor .ql-editor ul,
+                  .a4-page-editor .ql-editor ol {
+                    padding-left: 24px;
+                    margin-bottom: 12px;
+                    color: #000000;
+                  }
+
+                  .a4-page-editor .ql-editor li {
+                    color: #000000;
+                  }
+
+                  .a4-page-editor .ql-editor.ql-blank::before {
+                    color: #9ca3af;
+                    font-style: italic;
+                  }
+
+                  .contract-preview {
+                    font-family: 'Arial', sans-serif;
+                    font-size: 14px;
+                    line-height: 1.6;
+                  }
+
+                  .contract-preview p {
+                    margin-bottom: 12px;
+                  }
+
+                  .contract-preview strong {
+                    font-weight: bold;
+                  }
+
+                  .contract-preview h1,
+                  .contract-preview h2,
+                  .contract-preview h3 {
+                    font-weight: bold;
+                    margin-top: 16px;
+                    margin-bottom: 12px;
+                  }
+
+                  .contract-preview ul,
+                  .contract-preview ol {
+                    padding-left: 24px;
+                    margin-bottom: 12px;
+                  }
+
+                  @media print {
+                    .a4-page {
+                      page-break-after: always;
+                      box-shadow: none;
+                    }
                   }
                 `}</style>
                 <ReactQuill
@@ -366,10 +450,11 @@ export default function EditContractPage() {
           <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
             <h3 className="mb-3 text-sm font-medium text-[#e5e4e2]">Pomoc</h3>
             <div className="space-y-2 text-xs text-[#e5e4e2]/60">
-              <p>• Edytujesz konkretny dokument z wypełnionymi danymi</p>
-              <p>• Możesz formatować tekst jak w Wordzie</p>
+              <p>• Edytor wygląda jak strona A4</p>
+              <p>• Tekst jest czarny, widoczne formatowanie</p>
+              <p>• Możesz formatować jak w Wordzie</p>
+              <p>• Podgląd pokazuje jak będzie wyglądać dokument</p>
               <p>• Zmiany zapisują się tylko w tej umowie</p>
-              <p>• Użyj podglądu by zobaczyć jak będzie wyglądać PDF</p>
             </div>
           </div>
 
