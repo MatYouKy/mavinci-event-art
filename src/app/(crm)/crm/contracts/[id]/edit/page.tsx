@@ -1,10 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import { Save, ArrowLeft, Eye } from 'lucide-react';
+import { Save, ArrowLeft, Eye, FileText } from 'lucide-react';
+import dynamic from 'next/dynamic';
+import 'react-quill/dist/quill.snow.css';
+
+const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
 
 export default function EditContractPage() {
   const params = useParams();
@@ -16,10 +20,8 @@ export default function EditContractPage() {
   const [saving, setSaving] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [contract, setContract] = useState<any>(null);
-  const [formData, setFormData] = useState({
-    content: '',
-    total_amount: '',
-  });
+  const [editorContent, setEditorContent] = useState('');
+  const [totalAmount, setTotalAmount] = useState('');
   const [logoSettings, setLogoSettings] = useState({
     header_logo_url: '',
     header_logo_height: 50,
@@ -32,6 +34,41 @@ export default function EditContractPage() {
   useEffect(() => {
     fetchContract();
   }, [contractId]);
+
+  const fillPlaceholders = (content: string, contractData: any) => {
+    if (!content) return '';
+
+    let filledContent = content;
+
+    // Dane klienta
+    const clientName = contractData.client?.full_name ||
+      (contractData.client?.first_name && contractData.client?.last_name
+        ? `${contractData.client?.first_name} ${contractData.client?.last_name}`
+        : '');
+
+    filledContent = filledContent.replace(/\{\{client_name\}\}/g, clientName || '[Imię i nazwisko klienta]');
+    filledContent = filledContent.replace(/\{\{client_email\}\}/g, contractData.client?.email || '[Email klienta]');
+    filledContent = filledContent.replace(/\{\{client_phone\}\}/g, contractData.client?.phone || '[Telefon klienta]');
+
+    // Dane eventu
+    filledContent = filledContent.replace(/\{\{event_name\}\}/g, contractData.event?.name || '[Nazwa eventu]');
+    filledContent = filledContent.replace(/\{\{event_date\}\}/g,
+      contractData.event?.event_date
+        ? new Date(contractData.event.event_date).toLocaleDateString('pl-PL')
+        : '[Data eventu]'
+    );
+
+    // Dane umowy
+    filledContent = filledContent.replace(/\{\{contract_number\}\}/g, contractData.contract_number || '[Numer umowy]');
+    filledContent = filledContent.replace(/\{\{total_amount\}\}/g,
+      contractData.total_amount
+        ? `${contractData.total_amount.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} PLN`
+        : '[Kwota]'
+    );
+    filledContent = filledContent.replace(/\{\{date\}\}/g, new Date().toLocaleDateString('pl-PL'));
+
+    return filledContent;
+  };
 
   const fetchContract = async () => {
     try {
@@ -60,10 +97,16 @@ export default function EditContractPage() {
 
       if (data) {
         setContract(data);
-        setFormData({
-          content: data.content || data.template?.content || '',
-          total_amount: data.total_amount?.toString() || '',
-        });
+
+        // Jeśli umowa już ma treść, użyj jej (edytowana wersja)
+        // W przeciwnym razie wypełnij placeholdery z szablonu
+        let content = data.content;
+        if (!content && data.template?.content) {
+          content = fillPlaceholders(data.template.content, data);
+        }
+
+        setEditorContent(content || '');
+        setTotalAmount(data.total_amount?.toString() || '');
 
         if (data.template) {
           setLogoSettings({
@@ -89,12 +132,12 @@ export default function EditContractPage() {
       setSaving(true);
 
       const updates: any = {
-        content: formData.content,
+        content: editorContent,
         updated_at: new Date().toISOString(),
       };
 
-      if (formData.total_amount) {
-        updates.total_amount = parseFloat(formData.total_amount);
+      if (totalAmount) {
+        updates.total_amount = parseFloat(totalAmount);
       }
 
       const { error } = await supabase.from('contracts').update(updates).eq('id', contractId);
@@ -110,6 +153,35 @@ export default function EditContractPage() {
       setSaving(false);
     }
   };
+
+  const modules = useMemo(
+    () => ({
+      toolbar: [
+        [{ header: [1, 2, 3, false] }],
+        ['bold', 'italic', 'underline', 'strike'],
+        [{ list: 'ordered' }, { list: 'bullet' }],
+        [{ align: [] }],
+        [{ color: [] }, { background: [] }],
+        ['link'],
+        ['clean'],
+      ],
+    }),
+    []
+  );
+
+  const formats = [
+    'header',
+    'bold',
+    'italic',
+    'underline',
+    'strike',
+    'list',
+    'bullet',
+    'align',
+    'color',
+    'background',
+    'link',
+  ];
 
   if (loading) {
     return (
@@ -156,7 +228,7 @@ export default function EditContractPage() {
             onClick={() => setShowPreview(!showPreview)}
             className="flex items-center gap-2 rounded-lg bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#1c1f33]/80"
           >
-            <Eye className="h-5 w-5" />
+            {showPreview ? <FileText className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
             {showPreview ? 'Edycja' : 'Podgląd'}
           </button>
           <button
@@ -170,13 +242,20 @@ export default function EditContractPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
+        <div className="lg:col-span-3">
           <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-            <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Treść umowy</label>
+            <div className="mb-4 flex items-center justify-between">
+              <label className="text-sm font-medium text-[#e5e4e2]">
+                Treść umowy
+              </label>
+              <div className="text-xs text-[#e5e4e2]/40">
+                Edytujesz dokument z wypełnionymi danymi
+              </div>
+            </div>
 
             {showPreview ? (
-              <div className="min-h-[600px] rounded-lg bg-white p-12 text-black">
+              <div className="min-h-[700px] rounded-lg bg-white p-12">
                 {logoSettings.show_header_logo && logoSettings.header_logo_url && (
                   <div className="mb-8">
                     <img
@@ -200,20 +279,42 @@ export default function EditContractPage() {
                 )}
 
                 <div
-                  className="whitespace-pre-wrap font-mono text-sm"
-                  style={{ whiteSpace: 'pre-wrap' }}
-                >
-                  {formData.content || 'Brak treści'}
-                </div>
+                  className="prose prose-sm max-w-none text-black"
+                  dangerouslySetInnerHTML={{ __html: editorContent || 'Brak treści' }}
+                />
               </div>
             ) : (
-              <textarea
-                value={formData.content}
-                onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                className="w-full resize-none rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 font-mono text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-                rows={25}
-                placeholder="Treść umowy..."
-              />
+              <div className="contract-editor rounded-lg bg-white">
+                <style jsx global>{`
+                  .contract-editor .ql-container {
+                    min-height: 700px;
+                    font-size: 14px;
+                  }
+                  .contract-editor .ql-editor {
+                    min-height: 700px;
+                    padding: 48px;
+                  }
+                  .contract-editor .ql-toolbar {
+                    background: #f8f9fa;
+                    border-top-left-radius: 8px;
+                    border-top-right-radius: 8px;
+                    border-color: #e5e7eb;
+                  }
+                  .contract-editor .ql-container {
+                    border-bottom-left-radius: 8px;
+                    border-bottom-right-radius: 8px;
+                    border-color: #e5e7eb;
+                  }
+                `}</style>
+                <ReactQuill
+                  theme="snow"
+                  value={editorContent}
+                  onChange={setEditorContent}
+                  modules={modules}
+                  formats={formats}
+                  placeholder="Wpisz treść umowy..."
+                />
+              </div>
             )}
           </div>
         </div>
@@ -242,8 +343,8 @@ export default function EditContractPage() {
                 <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wartość (PLN)</label>
                 <input
                   type="number"
-                  value={formData.total_amount}
-                  onChange={(e) => setFormData({ ...formData, total_amount: e.target.value })}
+                  value={totalAmount}
+                  onChange={(e) => setTotalAmount(e.target.value)}
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                   placeholder="0.00"
                   step="0.01"
@@ -259,6 +360,16 @@ export default function EditContractPage() {
                   {contract.status === 'cancelled' && 'Anulowana'}
                 </div>
               </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+            <h3 className="mb-3 text-sm font-medium text-[#e5e4e2]">Pomoc</h3>
+            <div className="space-y-2 text-xs text-[#e5e4e2]/60">
+              <p>• Edytujesz konkretny dokument z wypełnionymi danymi</p>
+              <p>• Możesz formatować tekst jak w Wordzie</p>
+              <p>• Zmiany zapisują się tylko w tej umowie</p>
+              <p>• Użyj podglądu by zobaczyć jak będzie wyglądać PDF</p>
             </div>
           </div>
 
