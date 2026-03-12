@@ -843,7 +843,12 @@ export default function EventDetailPageClient({
           </div>
 
           <div className="space-y-6">
-            <EventDetailsAction event={event} categories={categories} />
+            <EventDetailsAction
+              event={event}
+              categories={categories}
+              hasOffers={!!offersData && offersData.length > 0}
+              offersCount={offersData?.length || 0}
+            />
             {canViewCommercials && (
               <>
                 <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">

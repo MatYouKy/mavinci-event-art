@@ -166,14 +166,19 @@ export function useOfferWizardLogic(opts: {
     }
 
     const rows = await conflicts.checkCartConflicts(items.offerItems);
+    let hasEquipmentShortage = false;
+
     if (rows.length > 0) {
-      showDialog({
-        title: 'Nie możesz utworzyć oferty – brakuje sprzętu w terminie eventu. Sprawdź konflikty.',
-        message:
-          'Nie możesz utworzyć oferty – brakuje sprzętu w terminie eventu. Sprawdź konflikty.',
+      const confirmed = await showDialog({
+        title: 'Wykryto konflikty sprzętowe',
+        message: `Brakuje ${rows.length} pozycji sprzętu w terminie eventu.\n\nCzy chcesz utworzyć ofertę mimo to?\n\nEvent zostanie oznaczony jako mający braki sprzętowe.`,
         type: 'warning',
+        confirmText: 'Utwórz mimo to',
+        cancelText: 'Anuluj',
       });
-      return;
+
+      if (!confirmed) return;
+      hasEquipmentShortage = true;
     }
 
     if (!opts.employeeId) {
@@ -215,6 +220,7 @@ export function useOfferWizardLogic(opts: {
         selectedAlt: conflicts.selectedAlt,
         conflicts: conflicts.conflicts,
         equipmentSubstitutions: conflicts.equipmentSubstitutions,
+        hasEquipmentShortage,
       });
 
       // Invaliduj cache RTK Query aby automatycznie odświeżyć sprzęt i oferty eventu

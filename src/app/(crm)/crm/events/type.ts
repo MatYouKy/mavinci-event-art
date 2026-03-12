@@ -82,6 +82,7 @@ export interface IEvent {
   equipment_checklist_pdf_path?: string | null;
   equipment_checklist_pdf_at?: string | null;
   equipment_checklist_modified?: boolean;
+  has_equipment_shortage?: boolean;
   currentEmployee?: IEmployee;
 }
 

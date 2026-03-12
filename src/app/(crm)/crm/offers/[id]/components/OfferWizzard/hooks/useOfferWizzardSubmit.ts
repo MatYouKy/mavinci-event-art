@@ -19,6 +19,7 @@ export async function submitOfferWizard(params: {
   selectedAlt: SelectedAltMap;
   conflicts: EquipmentConflictRow[];
   equipmentSubstitutions?: Record<string, any>;
+  hasEquipmentShortage?: boolean;
 }) {
   const totalAmount = calcTotal(params.offerItems);
 
@@ -95,6 +96,19 @@ export async function submitOfferWizard(params: {
       .insert(substitutionsPayload);
 
     if (subsError) throw subsError;
+  }
+
+  // Jeśli oferta ma braki sprzętowe, oznacz event
+  if (params.hasEquipmentShortage) {
+    const { error: eventError } = await supabase
+      .from('events')
+      .update({ has_equipment_shortage: true })
+      .eq('id', params.eventId);
+
+    if (eventError) {
+      console.error('Error updating event equipment shortage flag:', eventError);
+      // Nie rzucamy błędu - oferta została utworzona, to tylko flaga
+    }
   }
 
   return offerResult as { id: string; offer_number: string };

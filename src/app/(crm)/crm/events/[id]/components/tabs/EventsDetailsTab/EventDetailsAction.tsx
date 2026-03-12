@@ -13,6 +13,7 @@ import {
   Tag,
   Play,
   Printer,
+  AlertTriangle,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -80,12 +81,16 @@ interface EventDetailsActionProps {
   event: IEvent;
   canEditStatus?: boolean;
   categories: EventCategoryRow[];
+  hasOffers?: boolean;
+  offersCount?: number;
 }
 
 export default function EventDetailsAction({
   event,
   categories,
   canEditStatus = true,
+  hasOffers = false,
+  offersCount = 0,
 }: EventDetailsActionProps) {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
@@ -367,6 +372,29 @@ export default function EventDetailsAction({
     </div>
   )}
 </div>
+
+        <div>
+          <label className="mb-2 block text-sm text-[#e5e4e2]/60">Oferty</label>
+          <div
+            className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
+              hasOffers
+                ? 'border-green-500/20 bg-green-500/10 text-green-300'
+                : 'border-orange-500/20 bg-orange-500/10 text-orange-300'
+            }`}
+          >
+            <FileText className="h-4 w-4" />
+            <span className="font-medium">
+              {hasOffers ? `${offersCount} ofert${offersCount === 1 ? 'a' : offersCount < 5 ? 'y' : ''}` : 'Brak oferty'}
+            </span>
+          </div>
+
+          {event?.has_equipment_shortage && (
+            <div className="mt-2 flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <span>Event ma braki sprzętowe w terminie. Sprawdź konflikty w zakładce Sprzęt.</span>
+            </div>
+          )}
+        </div>
 
         <div>
           <label className="mb-2 block text-sm text-[#e5e4e2]/60">Status eventu</label>
