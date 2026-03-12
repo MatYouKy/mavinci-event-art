@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { FileText, Save, Eye, CreditCard as Edit3 } from 'lucide-react';
+import { FileText, Save, Eye, CreditCard as Edit3, ChevronDown, Plus } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
 const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
@@ -34,14 +34,81 @@ const formats = [
   'align',
 ];
 
+const PLACEHOLDERS = [
+  { group: 'Klient', items: [
+    { value: '{{contact_first_name}}', label: 'Imię kontaktu', description: 'Jan' },
+    { value: '{{contact_last_name}}', label: 'Nazwisko kontaktu', description: 'Kowalski' },
+    { value: '{{contact_full_name}}', label: 'Pełne imię i nazwisko', description: 'Jan Kowalski' },
+    { value: '{{contact_email}}', label: 'Email kontaktu', description: 'jan@example.com' },
+    { value: '{{contact_phone}}', label: 'Telefon kontaktu', description: '+48 123 456 789' },
+    { value: '{{contact_address}}', label: 'Adres kontaktu', description: 'ul. Przykładowa 1' },
+    { value: '{{contact_city}}', label: 'Miasto kontaktu', description: 'Warszawa' },
+    { value: '{{contact_postal_code}}', label: 'Kod pocztowy', description: '00-001' },
+    { value: '{{contact_pesel}}', label: 'PESEL', description: '12345678901' },
+  ]},
+  { group: 'Organizacja', items: [
+    { value: '{{organization_name}}', label: 'Nazwa firmy', description: 'ABC Sp. z o.o.' },
+    { value: '{{organization_legal_form}}', label: 'Forma prawna', description: 'Spółka z o.o.' },
+    { value: '{{organization_nip}}', label: 'NIP', description: '1234567890' },
+    { value: '{{organization_regon}}', label: 'REGON', description: '123456789' },
+    { value: '{{organization_krs}}', label: 'KRS', description: '0000123456' },
+    { value: '{{legal_representative_full_name}}', label: 'Przedstawiciel prawny', description: 'Jan Kowalski' },
+    { value: '{{legal_representative_title}}', label: 'Stanowisko przedstawiciela', description: 'Prezes' },
+    { value: '{{decision_makers_list}}', label: 'Lista decydentów', description: 'Lista osób decyzyjnych' },
+    { value: '{{primary_contact_full_name}}', label: 'Główny kontakt', description: 'Jan Kowalski' },
+    { value: '{{primary_contact_email}}', label: 'Email głównego kontaktu', description: 'kontakt@firma.pl' },
+    { value: '{{primary_contact_phone}}', label: 'Telefon głównego kontaktu', description: '+48 123 456 789' },
+    { value: '{{primary_contact_position}}', label: 'Stanowisko głównego kontaktu', description: 'Kierownik' },
+  ]},
+  { group: 'Wydarzenie', items: [
+    { value: '{{event_name}}', label: 'Nazwa wydarzenia', description: 'Konferencja 2024' },
+    { value: '{{event_date}}', label: 'Data wydarzenia (pełna)', description: '15 marca 2024 r., 10:00' },
+    { value: '{{event_date_only}}', label: 'Data wydarzenia (tylko data)', description: '15 marca 2024 r.' },
+    { value: '{{event_end_date}}', label: 'Data zakończenia (pełna)', description: '15 marca 2024 r., 18:00' },
+    { value: '{{event_end_date_only}}', label: 'Data zakończenia (tylko data)', description: '15 marca 2024 r.' },
+    { value: '{{event_time_start}}', label: 'Godzina rozpoczęcia', description: '10:00' },
+    { value: '{{event_time_end}}', label: 'Godzina zakończenia', description: '18:00' },
+  ]},
+  { group: 'Lokalizacja', items: [
+    { value: '{{location_name}}', label: 'Nazwa lokalizacji', description: 'Centrum Konferencyjne' },
+    { value: '{{location_full}}', label: 'Pełny adres lokalizacji', description: 'Centrum Konferencyjne, ul. Przykładowa 1, 00-001 Warszawa' },
+    { value: '{{location_address}}', label: 'Adres lokalizacji', description: 'ul. Przykładowa 1' },
+    { value: '{{location_city}}', label: 'Miasto lokalizacji', description: 'Warszawa' },
+    { value: '{{location_postal_code}}', label: 'Kod pocztowy lokalizacji', description: '00-001' },
+  ]},
+  { group: 'Finanse', items: [
+    { value: '{{budget}}', label: 'Wartość umowy (liczba)', description: '10000.00 PLN' },
+    { value: '{{budget_words}}', label: 'Wartość umowy (słownie)', description: 'dziesięć tysięcy złotych' },
+    { value: '{{deposit_amount}}', label: 'Zaliczka (liczba)', description: '3000.00 PLN' },
+    { value: '{{deposit_words}}', label: 'Zaliczka (słownie)', description: 'trzy tysiące złotych' },
+  ]},
+  { group: 'Oferta', items: [
+    { value: '{{offer_items}}', label: 'Tabela pozycji oferty', description: 'Tabela z pozycjami oferty' },
+  ]},
+];
+
 export function ProductContractClauses({ productId, initialClauses, canEdit, onSave }: Props) {
   const [isEditing, setIsEditing] = useState(false);
   const [clauses, setClauses] = useState(initialClauses || '');
   const [isSaving, setIsSaving] = useState(false);
+  const [showPlaceholderMenu, setShowPlaceholderMenu] = useState(false);
+  const quillRef = useRef<any>(null);
 
   useEffect(() => {
     setClauses(initialClauses || '');
   }, [initialClauses]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (showPlaceholderMenu && !target.closest('.placeholder-menu-container')) {
+        setShowPlaceholderMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showPlaceholderMenu]);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -59,6 +126,17 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
   const handleCancel = () => {
     setClauses(initialClauses || '');
     setIsEditing(false);
+  };
+
+  const insertPlaceholder = (placeholder: string) => {
+    const quill = quillRef.current?.getEditor();
+    if (quill) {
+      const range = quill.getSelection();
+      const position = range ? range.index : quill.getLength();
+      quill.insertText(position, placeholder, 'bold', true);
+      quill.setSelection(position + placeholder.length);
+    }
+    setShowPlaceholderMenu(false);
   };
 
   return (
@@ -206,6 +284,7 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
               }
             `}</style>
             <ReactQuill
+              ref={quillRef}
               theme="snow"
               value={clauses}
               onChange={setClauses}
@@ -213,19 +292,79 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
               formats={formats}
               placeholder="Wpisz rekomendowane klauzule umowy..."
             />
-            <div className="mt-4 space-y-3 rounded-lg bg-blue-50 p-4">
-              <p className="text-sm text-blue-800">
-                <strong>Wskazówka:</strong> Te klauzule będą automatycznie dodawane do umów,
-                które zawierają ten produkt. Możesz użyć zmiennych takich jak{' '}
-                <code className="rounded bg-blue-100 px-1 py-0.5">{'{{nazwa_produktu}}'}</code>,{' '}
-                <code className="rounded bg-blue-100 px-1 py-0.5">{'{{klient}}'}</code>, itp.
+
+            <div className="placeholder-menu-container relative mt-3">
+              <button
+                type="button"
+                onClick={() => setShowPlaceholderMenu(!showPlaceholderMenu)}
+                className="flex items-center gap-2 rounded-lg border border-gray-600 bg-gray-700 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-600"
+              >
+                <Plus className="h-4 w-4" />
+                Wstaw zmienną
+                <ChevronDown className={`h-4 w-4 transition-transform ${showPlaceholderMenu ? 'rotate-180' : ''}`} />
+              </button>
+
+              {showPlaceholderMenu && (
+                <div className="absolute left-0 top-full z-50 mt-2 w-[600px] rounded-lg border border-gray-600 bg-gray-800 shadow-xl">
+                  <div className="max-h-[500px] overflow-y-auto p-2">
+                    {PLACEHOLDERS.map((group) => (
+                      <div key={group.group} className="mb-4 last:mb-0">
+                        <div className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
+                          {group.group}
+                        </div>
+                        <div className="space-y-1">
+                          {group.items.map((item) => (
+                            <button
+                              key={item.value}
+                              type="button"
+                              onClick={() => insertPlaceholder(item.value)}
+                              className="w-full rounded-md px-3 py-2 text-left hover:bg-gray-700"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex-1">
+                                  <div className="text-sm font-medium text-gray-200">
+                                    {item.label}
+                                  </div>
+                                  <div className="mt-0.5 text-xs text-gray-500">
+                                    Przykład: {item.description}
+                                  </div>
+                                </div>
+                                <code className="mt-0.5 shrink-0 rounded bg-gray-900 px-2 py-1 text-xs text-blue-400">
+                                  {item.value}
+                                </code>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="border-t border-gray-700 bg-gray-900 p-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowPlaceholderMenu(false)}
+                      className="w-full rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-600"
+                    >
+                      Zamknij
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="mt-4 space-y-3 rounded-lg border border-blue-500/30 bg-blue-500/10 p-4">
+              <p className="text-sm text-blue-300">
+                <strong className="text-blue-200">Wskazówka:</strong> Te klauzule będą automatycznie dodawane do umów,
+                które zawierają ten produkt. Użyj przycisku "Wstaw zmienną" powyżej, aby dodać dynamiczne pola.
+              </p>
+              <p className="text-xs text-gray-400">
+                Zmienne są automatycznie wypełniane danymi z wydarzenia, klienta i organizacji podczas generowania umowy.
               </p>
               <details className="mt-2">
-                <summary className="cursor-pointer text-sm font-medium text-blue-900 hover:text-blue-700">
+                <summary className="cursor-pointer text-sm font-medium text-blue-300 hover:text-blue-200">
                   Przykład klauzul dla streamingu →
                 </summary>
-                <div className="mt-2 rounded bg-white p-3 text-xs text-gray-700">
-                  <p className="font-semibold">§X. POSTANOWIENIA DOTYCZĄCE TRANSMISJI ONLINE</p>
+                <div className="mt-2 rounded-lg border border-gray-700 bg-gray-800 p-3 text-xs text-gray-300">
+                  <p className="font-semibold text-gray-100">§X. POSTANOWIENIA DOTYCZĄCE TRANSMISJI ONLINE</p>
                   <p className="mt-2">
                     1. Zleceniodawca zobowiązany jest do zapewnienia stabilnego łącza internetowego
                     o przepustowości minimum 50 Mb/s upload.
