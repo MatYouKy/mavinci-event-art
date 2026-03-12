@@ -328,7 +328,7 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
             <div className="mt-4 space-y-3 rounded-lg border border-blue-500/30 bg-blue-500/10 p-4">
               <p className="text-sm text-blue-300">
                 <strong className="text-blue-200">Wskazówka:</strong> Te klauzule będą automatycznie dodawane do umów,
-                które zawierają ten produkt. Użyj dropdownów "Wstaw zmienną" powyżej, aby dodać dynamiczne pola.
+                które zawierają ten produkt. Użyj dropdownów "Wstaw zmienną\" powyżej, aby dodać dynamiczne pola.
               </p>
               <p className="text-xs text-gray-400">
                 Zmienne są automatycznie wypełniane danymi z wydarzenia, klienta i organizacji podczas generowania umowy.
