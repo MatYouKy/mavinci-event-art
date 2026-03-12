@@ -46,8 +46,11 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await onSave(clauses);
+      const trimmedClauses = clauses.trim();
+      await onSave(trimmedClauses);
       setIsEditing(false);
+    } catch (error) {
+      console.error('Error saving clauses:', error);
     } finally {
       setIsSaving(false);
     }
@@ -59,18 +62,18 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
   };
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
-      <div className="border-b border-gray-200 bg-gray-50 px-6 py-4">
+    <div className="rounded-lg border border-gray-700 bg-gray-900 shadow-sm">
+      <div className="border-b border-gray-700 bg-gray-800 px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-blue-100 p-2">
-              <FileText className="h-5 w-5 text-blue-600" />
+            <div className="rounded-lg bg-blue-500/10 p-2">
+              <FileText className="h-5 w-5 text-blue-400" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">
+              <h3 className="text-lg font-semibold text-gray-100">
                 Rekomendowane klauzule umowy
               </h3>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-gray-400">
                 Dodatkowe paragrafy automatycznie wstawiane do umów zawierających ten produkt
               </p>
             </div>
@@ -82,7 +85,7 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
                 <>
                   <button
                     onClick={handleCancel}
-                    className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    className="rounded-lg border border-gray-600 bg-gray-700 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-600"
                   >
                     Anuluj
                   </button>
@@ -98,7 +101,7 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
               ) : (
                 <button
                   onClick={() => setIsEditing(true)}
-                  className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  className="flex items-center gap-2 rounded-lg border border-gray-600 bg-gray-700 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-600"
                 >
                   <Edit3 className="h-4 w-4" />
                   Edytuj
@@ -110,13 +113,13 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
       </div>
 
       <div className="p-6">
-        {!clauses && !isEditing ? (
-          <div className="rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-8 text-center">
-            <FileText className="mx-auto h-12 w-12 text-gray-400" />
-            <p className="mt-2 text-sm font-medium text-gray-900">
+        {(!clauses || clauses.trim() === '' || clauses === '<p><br></p>') && !isEditing ? (
+          <div className="rounded-lg border-2 border-dashed border-gray-700 bg-gray-800 p-8 text-center">
+            <FileText className="mx-auto h-12 w-12 text-gray-600" />
+            <p className="mt-2 text-sm font-medium text-gray-200">
               Brak rekomendowanych klauzul
             </p>
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="mt-1 text-sm text-gray-400">
               Ten produkt nie ma zdefiniowanych dodatkowych postanowień umowy
             </p>
             {canEdit && (
@@ -176,6 +179,31 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
               .contract-clauses-editor .ql-editor li {
                 margin-bottom: 0.5em;
               }
+
+              /* Dark theme for prose */
+              .prose-invert p {
+                color: #e5e7eb;
+              }
+
+              .prose-invert strong {
+                color: #f3f4f6;
+                font-weight: 600;
+              }
+
+              .prose-invert h1,
+              .prose-invert h2,
+              .prose-invert h3 {
+                color: #f9fafb;
+              }
+
+              .prose-invert li {
+                color: #e5e7eb;
+              }
+
+              .prose-invert ol,
+              .prose-invert ul {
+                color: #e5e7eb;
+              }
             `}</style>
             <ReactQuill
               theme="snow"
@@ -215,11 +243,40 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
             </div>
           </div>
         ) : (
-          <div className="rounded-lg border border-gray-200 bg-gray-50 p-6">
-            <div
-              className="prose prose-sm max-w-none"
-              dangerouslySetInnerHTML={{ __html: clauses }}
-            />
+          <div className="rounded-lg border border-gray-700 bg-gray-800 p-6">
+            <style jsx>{`
+              div :global(p) {
+                color: #e5e7eb;
+                margin-bottom: 1em;
+                line-height: 1.7;
+              }
+              div :global(strong) {
+                color: #f3f4f6;
+                font-weight: 600;
+              }
+              div :global(em) {
+                color: #d1d5db;
+              }
+              div :global(h1),
+              div :global(h2),
+              div :global(h3) {
+                color: #f9fafb;
+                font-weight: bold;
+                margin-top: 1.5em;
+                margin-bottom: 0.8em;
+              }
+              div :global(ul),
+              div :global(ol) {
+                color: #e5e7eb;
+                padding-left: 1.5em;
+                margin-bottom: 1em;
+              }
+              div :global(li) {
+                color: #e5e7eb;
+                margin-bottom: 0.5em;
+              }
+            `}</style>
+            <div dangerouslySetInnerHTML={{ __html: clauses }} />
           </div>
         )}
       </div>
