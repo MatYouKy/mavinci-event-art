@@ -350,6 +350,7 @@ export default function OfferDetailPage() {
             currentUser={currentUser}
             showSendEmailModal={showSendEmailModal}
             setShowSendEmailModal={setShowSendEmailModal}
+            onOfferUpdated={refetch}
           />
         </div>
       </div>

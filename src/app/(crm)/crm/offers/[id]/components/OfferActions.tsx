@@ -14,6 +14,7 @@ interface OfferActionsProps {
   currentUser: IUser;
   showSendEmailModal: boolean;
   setShowSendEmailModal: Dispatch<SetStateAction<boolean>>;
+  onOfferUpdated?: () => void;
 }
 
 export default function OfferActions({
@@ -21,6 +22,7 @@ export default function OfferActions({
   currentUser,
   setShowSendEmailModal,
   showSendEmailModal,
+  onOfferUpdated,
 }: OfferActionsProps) {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
@@ -137,6 +139,8 @@ export default function OfferActions({
           window.URL.revokeObjectURL(blobUrl);
         }, 100);
       }
+
+      onOfferUpdated?.();
     } catch (err: any) {
       console.error('Error generating PDF:', err);
       showSnackbar(err.message || 'Błąd podczas generowania PDF', 'error');
@@ -254,17 +258,18 @@ export default function OfferActions({
               title="Pokaż PDF"
             >
               <Eye className="h-4 w-4" />
-              Pokaż PDF
+              Podgląd PDF
             </button>
             <button
               onClick={handleDownloadPdf}
-              className="flex w-full items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"
+              disabled={downloadingPdf}
+              className="flex w-full items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20 disabled:opacity-50"
               title="Pobierz wygenerowany PDF"
             >
               {downloadingPdf ? (
                 <>
                   <RefreshCw className="h-4 w-4 animate-spin" />
-                  Pobieranie PDF...
+                  Pobieranie...
                 </>
               ) : (
                 <>
@@ -273,14 +278,32 @@ export default function OfferActions({
                 </>
               )}
             </button>
+            <button
+              disabled={generatingPdf}
+              onClick={handleGeneratePdf}
+              className="flex w-full items-center gap-2 rounded-lg border border-blue-500/20 bg-blue-500/10 px-4 py-2 text-sm text-blue-400 transition-colors hover:bg-blue-500/20 disabled:opacity-50"
+              title="Wygeneruj ponownie PDF"
+            >
+              {generatingPdf ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  Generowanie...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-4 w-4" />
+                  Regeneruj PDF
+                </>
+              )}
+            </button>
             {canSendEmail && (
               <button
                 onClick={() => setShowSendEmailModal(true)}
-                className="flex w-full items-center gap-2 rounded-lg border border-blue-500/20 bg-blue-500/10 px-4 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-blue-500/20"
-                title="Prześlij ofertę e-mailem"
+                className="flex w-full items-center gap-2 rounded-lg border border-green-500/20 bg-green-500/10 px-4 py-2 text-sm text-green-400 transition-colors hover:bg-green-500/20"
+                title="Wyślij ofertę e-mailem"
               >
                 <Send className="h-4 w-4" />
-                Prześlij ofertę e-mailem
+                Wyślij ofertę
               </button>
             )}
           </>
