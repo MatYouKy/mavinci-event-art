@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Package, Plus, Printer } from 'lucide-react';
+import { Package, Plus, Printer, AlertTriangle } from 'lucide-react';
 import { AddEquipmentModal } from '../Modals/AddEquipmentModal';
 import { ChevronDown, Package as PackageIcon, Trash2 } from 'lucide-react';
 import { useEventEquipment } from '../../../hooks';
@@ -984,6 +984,29 @@ export const EventEquipmentTab: React.FC<{
           <ResponsiveActionBar actions={actions} />
         </div>
       </div>
+
+      {event?.has_equipment_shortage && (
+        <div className="mb-6 flex items-start justify-between gap-4 rounded-lg border border-red-500/20 bg-red-500/10 p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-400" />
+            <div>
+              <h3 className="mb-1 font-medium text-red-300">Braki sprzętowe</h3>
+              <p className="text-sm text-red-300/80">
+                Event ma braki sprzętowe w terminie. Część sprzętu z oferty nie została dodana do eventu, ponieważ nie jest dostępna.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              // TODO: Otworzyć wizard oferty do rozwiązania konfliktów
+              showSnackbar('Funkcja w budowie', 'info');
+            }}
+            className="flex-shrink-0 rounded-lg bg-red-500/20 px-4 py-2 text-sm font-medium text-red-300 transition-colors hover:bg-red-500/30"
+          >
+            Rozwiąż konflikty
+          </button>
+        </div>
+      )}
 
       {(equipment || []).length === 0 ? (
         <div className="py-12 text-center">
