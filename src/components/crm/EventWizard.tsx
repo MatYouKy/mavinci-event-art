@@ -212,9 +212,9 @@ export default function EventWizard({
     { id: 1, name: 'Szczegóły', icon: Calendar, required: true },
     { id: 2, name: 'Oferta', icon: FileText, required: false },
     { id: 3, name: 'Sprzęt', icon: Package, required: false },
-    { id: 4, name: 'Zespół', icon: Users, required: false },
-    { id: 5, name: 'Logistyka', icon: Truck, required: false },
-    { id: 6, name: 'Podwykonawcy', icon: Wrench, required: false },
+    // { id: 4, name: 'Zespół', icon: Users, required: false },
+    // { id: 5, name: 'Logistyka', icon: Truck, required: false },
+    // { id: 6, name: 'Podwykonawcy', icon: Wrench, required: false },
   ];
 
   useEffect(() => {
@@ -539,16 +539,16 @@ export default function EventWizard({
       case 3:
         if (!equipmentList.length) fetchEquipment();
         break;
-      case 4:
-        if (!employeesList.length) {
-        }
-        break;
-      case 5:
-        if (!vehiclesList.length) fetchVehicles();
-        break;
-      case 6:
-        if (!subcontractorsList.length) fetchSubcontractors();
-        break;
+      // case 4:
+      //   if (!employeesList.length) {
+      //   }
+      //   break;
+      // case 5:
+      //   if (!vehiclesList.length) fetchVehicles();
+      //   break;
+      // case 6:
+      //   if (!subcontractorsList.length) fetchSubcontractors();
+      //   break;
     }
   };
 
@@ -1302,7 +1302,7 @@ export default function EventWizard({
           )}
 
           {/* Step 4: Zespół */}
-          {currentStep === 4 && (
+          {/* {currentStep === 4 && (
             <div>
               <TeamStep
                 assignTeam={assignTeam}
@@ -1313,17 +1313,17 @@ export default function EventWizard({
                 eventId={createdEventId}
               />
             </div>
-          )}
+          )} */}
 
           {/* Steps 5-6 - proste wersje */}
-          {currentStep > 4 && (
+          {/* {currentStep > 4 && (
             <div className="py-12 text-center text-[#e5e4e2]/50">
               <p className="mb-4">
                 Krok {currentStep}: {currentStepInfo.name}
               </p>
               <p className="text-sm">Te szczegóły możesz dodać później ze strony eventu</p>
             </div>
-          )}
+          )} */}
         </div>
 
         {/* Footer */}
