@@ -2,26 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import {
-  Plus,
-  FileText,
-  Search,
-  DollarSign,
-  Calendar,
-  Building2,
-  User,
-  Package,
-  FileType,
-  Edit,
-  Trash2,
-  Eye,
-  Grid3x3,
-  List,
-  Settings,
-  X,
-  Upload,
-  BookOpen,
-} from 'lucide-react';
+import { Plus, FileText, Search, DollarSign, Calendar, Building2, User, Package, FileType, CreditCard as Edit, Trash2, Eye, Grid3x3, List, Settings, X, Upload, BookOpen } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useSnackbar } from '@/contexts/SnackbarContext';
