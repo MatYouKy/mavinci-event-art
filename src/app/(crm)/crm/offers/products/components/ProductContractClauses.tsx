@@ -14,15 +14,13 @@ interface Props {
   onSave: (clauses: string) => Promise<void>;
 }
 
-const modules = {
-  toolbar: [
-    [{ header: [1, 2, 3, false] }],
-    ['bold', 'italic', 'underline'],
-    [{ list: 'ordered' }, { list: 'bullet' }],
-    [{ align: [] }],
-    ['clean'],
-  ],
-};
+const toolbarOptions = [
+  [{ header: [1, 2, 3, false] }],
+  ['bold', 'italic', 'underline'],
+  [{ list: 'ordered' }, { list: 'bullet' }],
+  [{ align: [] }],
+  ['clean'],
+];
 
 const formats = [
   'header',
@@ -91,24 +89,13 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
   const [isEditing, setIsEditing] = useState(false);
   const [clauses, setClauses] = useState(initialClauses || '');
   const [isSaving, setIsSaving] = useState(false);
-  const [showPlaceholderMenu, setShowPlaceholderMenu] = useState(false);
+  const [selectedGroup, setSelectedGroup] = useState<string>('');
   const quillRef = useRef<any>(null);
 
   useEffect(() => {
     setClauses(initialClauses || '');
   }, [initialClauses]);
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (showPlaceholderMenu && !target.closest('.placeholder-menu-container')) {
-        setShowPlaceholderMenu(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showPlaceholderMenu]);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -133,10 +120,17 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
     if (quill) {
       const range = quill.getSelection();
       const position = range ? range.index : quill.getLength();
-      quill.insertText(position, placeholder, 'bold', true);
+
+      // Insert with bold formatting
+      quill.insertText(position, placeholder, { bold: true });
+
+      // Move cursor after inserted text
       quill.setSelection(position + placeholder.length);
+
+      // Focus back on editor
+      quill.focus();
     }
-    setShowPlaceholderMenu(false);
+    setSelectedGroup('');
   };
 
   return (
@@ -283,78 +277,58 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
                 color: #e5e7eb;
               }
             `}</style>
+
+            <div className="mb-3 flex items-center gap-3 rounded-lg border border-gray-700 bg-gray-800 p-3">
+              <div className="flex items-center gap-2 text-sm text-gray-300">
+                <Plus className="h-4 w-4 text-gray-400" />
+                <span className="font-medium">Wstaw zmienną:</span>
+              </div>
+              <select
+                value={selectedGroup}
+                onChange={(e) => setSelectedGroup(e.target.value)}
+                className="rounded-md border border-gray-600 bg-gray-700 px-3 py-1.5 text-sm text-gray-200 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="">Wybierz kategorię...</option>
+                {PLACEHOLDERS.map((group) => (
+                  <option key={group.group} value={group.group}>
+                    {group.group}
+                  </option>
+                ))}
+              </select>
+
+              {selectedGroup && (
+                <select
+                  value=""
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      insertPlaceholder(e.target.value);
+                    }
+                  }}
+                  className="flex-1 rounded-md border border-gray-600 bg-gray-700 px-3 py-1.5 text-sm text-gray-200 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="">Wybierz zmienną...</option>
+                  {PLACEHOLDERS.find((g) => g.group === selectedGroup)?.items.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {item.label} - {item.description}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+
             <ReactQuill
               ref={quillRef}
               theme="snow"
               value={clauses}
               onChange={setClauses}
-              modules={modules}
+              modules={{ toolbar: toolbarOptions }}
               formats={formats}
               placeholder="Wpisz rekomendowane klauzule umowy..."
             />
-
-            <div className="placeholder-menu-container relative mt-3">
-              <button
-                type="button"
-                onClick={() => setShowPlaceholderMenu(!showPlaceholderMenu)}
-                className="flex items-center gap-2 rounded-lg border border-gray-600 bg-gray-700 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-600"
-              >
-                <Plus className="h-4 w-4" />
-                Wstaw zmienną
-                <ChevronDown className={`h-4 w-4 transition-transform ${showPlaceholderMenu ? 'rotate-180' : ''}`} />
-              </button>
-
-              {showPlaceholderMenu && (
-                <div className="absolute left-0 top-full z-50 mt-2 w-[600px] rounded-lg border border-gray-600 bg-gray-800 shadow-xl">
-                  <div className="max-h-[500px] overflow-y-auto p-2">
-                    {PLACEHOLDERS.map((group) => (
-                      <div key={group.group} className="mb-4 last:mb-0">
-                        <div className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
-                          {group.group}
-                        </div>
-                        <div className="space-y-1">
-                          {group.items.map((item) => (
-                            <button
-                              key={item.value}
-                              type="button"
-                              onClick={() => insertPlaceholder(item.value)}
-                              className="w-full rounded-md px-3 py-2 text-left hover:bg-gray-700"
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="flex-1">
-                                  <div className="text-sm font-medium text-gray-200">
-                                    {item.label}
-                                  </div>
-                                  <div className="mt-0.5 text-xs text-gray-500">
-                                    Przykład: {item.description}
-                                  </div>
-                                </div>
-                                <code className="mt-0.5 shrink-0 rounded bg-gray-900 px-2 py-1 text-xs text-blue-400">
-                                  {item.value}
-                                </code>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="border-t border-gray-700 bg-gray-900 p-3">
-                    <button
-                      type="button"
-                      onClick={() => setShowPlaceholderMenu(false)}
-                      className="w-full rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-600"
-                    >
-                      Zamknij
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
             <div className="mt-4 space-y-3 rounded-lg border border-blue-500/30 bg-blue-500/10 p-4">
               <p className="text-sm text-blue-300">
                 <strong className="text-blue-200">Wskazówka:</strong> Te klauzule będą automatycznie dodawane do umów,
-                które zawierają ten produkt. Użyj przycisku "Wstaw zmienną\" powyżej, aby dodać dynamiczne pola.
+                które zawierają ten produkt. Użyj dropdownów "Wstaw zmienną" powyżej, aby dodać dynamiczne pola.
               </p>
               <p className="text-xs text-gray-400">
                 Zmienne są automatycznie wypełniane danymi z wydarzenia, klienta i organizacji podczas generowania umowy.
