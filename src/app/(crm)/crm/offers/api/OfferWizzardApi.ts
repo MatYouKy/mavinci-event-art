@@ -410,14 +410,7 @@ export const offerWizardApi = createApi({
       ],
       queryFn: async ({ offerId }) => {
         try {
-          // jeśli masz FK z offer_items i nie masz ON DELETE CASCADE,
-          // to najpierw usuń offer_items:
-          const { error: itemsErr } = await supabase
-            .from('offer_items')
-            .delete()
-            .eq('offer_id', offerId);
-          if (itemsErr) return { error: toRtkError(itemsErr) };
-
+          // ON DELETE CASCADE automatycznie usuwa offer_items i event_equipment (auto_added)
           const { error } = await supabase.from('offers').delete().eq('id', offerId);
           if (error) return { error: toRtkError(error) };
 

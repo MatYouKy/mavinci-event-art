@@ -227,7 +227,12 @@ export function OfferPage({
   };
 
   const handleDeleteOffer = async (offerId: string) => {
-    if (!confirm('Czy na pewno chcesz usunąć tę ofertę? Tej operacji nie można cofnąć.')) {
+    const offer = offers.find((o) => o.id === offerId);
+    const confirmMessage = offer?.event_id
+      ? 'Czy na pewno chcesz usunąć tę ofertę?\n\nSprzęt automatycznie dodany z tej oferty zostanie usunięty z eventu.\n\nTej operacji nie można cofnąć.'
+      : 'Czy na pewno chcesz usunąć tę ofertę? Tej operacji nie można cofnąć.';
+
+    if (!confirm(confirmMessage)) {
       return;
     }
 
@@ -236,7 +241,7 @@ export function OfferPage({
 
       if (error) throw error;
 
-      showSnackbar('Oferta została usunięta', 'success');
+      showSnackbar('Oferta została usunięta pomyślnie', 'success');
     } catch (err: any) {
       showSnackbar(err.message || 'Błąd podczas usuwania oferty', 'error');
     }

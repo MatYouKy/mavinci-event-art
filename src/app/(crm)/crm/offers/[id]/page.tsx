@@ -101,32 +101,24 @@ export default function OfferDetailPage() {
   const handleDeleteOffer = useCallback(async () => {
     if (!offer) return;
 
-    const confirmed = await showConfirm(
-      'Czy na pewno chcesz usunąć tę ofertę?',
-      'Tej operacji nie można cofnąć.',
-    );
+    const confirmMessage = offer.event_id
+      ? 'Czy na pewno chcesz usunąć tę ofertę?\n\nSprzęt automatycznie dodany z tej oferty zostanie usunięty z eventu.'
+      : 'Czy na pewno chcesz usunąć tę ofertę?';
+
+    const confirmed = await showConfirm(confirmMessage, 'Tej operacji nie można cofnąć.');
 
     if (!confirmed) return;
 
     try {
-      const { error: offerError } = await supabase.from('offers').delete().eq('id', offerId);
-      const { error: cleanupError } = await supabase.rpc('delete_offer_with_cleanup', {
-        p_offer_id: offerId,
-      });
+      const { error } = await supabase.from('offers').delete().eq('id', offerId);
 
-      if (offerError) {
-        console.error('Error deleting offer:', offerError);
+      if (error) {
+        console.error('Error deleting offer:', error);
         showSnackbar('Błąd podczas usuwania oferty', 'error');
         return;
       }
 
-      if (cleanupError) {
-        console.error('Error deleting offer:', cleanupError);
-        showSnackbar('Błąd podczas usuwania oferty', 'error');
-        return;
-      }
-
-      showSnackbar('Oferta usunięta', 'success');
+      showSnackbar('Oferta usunięta pomyślnie', 'success');
 
       if (offer.event_id) {
         router.push(`/crm/events/${offer.event_id}`);
