@@ -27,6 +27,7 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { IEventCategory } from '@/app/(crm)/crm/event-categories/types';
 import { ProductEquipment } from '../components/ProductEquipment';
 import { ProductStaffSection } from '../components/ProductStuffSection';
+import { ProductContractClauses } from '../components/ProductContractClauses';
 import { AddEquipmentModal } from '../modal/AddEquipmentModal';
 import { useManageProduct } from '../hooks/useManageProduct';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
@@ -67,6 +68,7 @@ interface IProduct {
   display_order: number;
   pdf_page_url?: string | null;
   pdf_thumbnail_url?: string | null;
+  recommended_contract_clauses?: string | null;
   category?: IEventCategory;
 }
 
@@ -1184,6 +1186,38 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
           canEdit={canEdit}
           draftStaff={draftStaff}
           setDraftStaff={setDraftStaff}
+        />
+      )}
+
+      {/* Contract Clauses */}
+      {productId !== 'new' && product && (
+        <ProductContractClauses
+          productId={productId}
+          initialClauses={product.recommended_contract_clauses || null}
+          canEdit={canEdit}
+          onSave={async (clauses) => {
+            try {
+              const { error } = await supabase
+                .from('offer_products')
+                .update({ recommended_contract_clauses: clauses })
+                .eq('id', productId);
+
+              if (error) throw error;
+
+              setProduct((prev) =>
+                prev ? { ...prev, recommended_contract_clauses: clauses } : prev
+              );
+
+              showSnackbar('Zapisano klauzule umowy', 'success');
+            } catch (err: any) {
+              console.error('Error saving contract clauses:', err);
+              showSnackbar(
+                err?.message || 'Błąd podczas zapisywania klauzul',
+                'error'
+              );
+              throw err;
+            }
+          }}
         />
       )}
 
