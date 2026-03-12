@@ -95,21 +95,25 @@ if (params.hasEquipmentShortage) {
 
 **Lokalizacja:** Zakładka "Sprzęt" (NIE w "Szczegółach")
 
-### 5. Automatyczne Czyszczenie Flagi
+### 5. Automatyczne Czyszczenie Flagi i Reset Statusu
 
-**Plik migracji:** `auto_clear_equipment_shortage_on_offer_delete`
+**Plik migracji:** `auto_reset_event_status_when_offers_deleted`
 
 **Trigger:** `trigger_clear_equipment_shortage_on_offer_delete`
 
 ```sql
 -- Gdy oferta jest usuwana
 -- Jeśli nie ma już żadnych ofert dla eventu
--- Ustaw has_equipment_shortage = false
+UPDATE events SET
+  has_equipment_shortage = false,
+  status = 'offer_to_send'
+WHERE id = event_id;
 ```
 
 **Efekt:**
 - Usunięcie ostatniej oferty → flaga znika
 - Alert przestaje się wyświetlać
+- **Status eventu wraca do "Oferta do wysłania"**
 
 ## Scenariusze
 
@@ -138,12 +142,14 @@ if (params.hasEquipmentShortage) {
 ### Scenariusz 3: Usunięcie Oferty
 
 1. Event ma ofertę z konfliktami
-2. `has_equipment_shortage = true`
+2. `has_equipment_shortage = true`, `status = 'offer_sent'`
 3. Alert widoczny w zakładce "Sprzęt"
 4. Użytkownik usuwa ofertę
 5. **Trigger:** `trigger_clear_equipment_shortage_on_offer_delete`
 6. `has_equipment_shortage = false` ✅
-7. **Alert:** Znika ✅
+7. `status = 'offer_to_send'` ✅
+8. **Alert:** Znika ✅
+9. **Status:** Zmieniony na "Oferta do wysłania" ✅
 
 ## Pliki Zmodyfikowane
 
@@ -172,8 +178,9 @@ if (params.hasEquipmentShortage) {
    - Funkcja `get_offer_equipment_final()` - NIE dodaje sprzętu z nierozwiązanymi konfliktami
    - Tylko sprzęt z substytucjami lub bez konfliktów jest synchronizowany
 
-2. **`auto_clear_equipment_shortage_on_offer_delete.sql`**
+2. **`auto_reset_event_status_when_offers_deleted.sql`**
    - Trigger automatycznie czyszczący flagę gdy ostatnia oferta jest usunięta
+   - Resetuje status eventu do `offer_to_send` (Oferta do wysłania)
 
 ## Walidacja
 
