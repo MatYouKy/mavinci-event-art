@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { FileText, Save, Eye, Edit3 } from 'lucide-react';
+import { FileText, Save, Eye, CreditCard as Edit3 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
 const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
