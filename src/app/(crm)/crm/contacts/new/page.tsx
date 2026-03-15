@@ -311,15 +311,15 @@ export default function NewContactPage() {
         const orgData: any = {
           organization_type: contactType === 'subcontractor' ? 'subcontractor' : 'client',
           business_type: formData.businessType,
-          name: formData.name,
-          alias: formData.alias || null,
+          name: formData.name.trim(),
+          alias: formData.alias?.trim() || null,
           nip: formData.nip || null,
-          address: formData.address || null,
+          address: formData.address?.trim() || null,
           city: formData.city || null,
-          postal_code: formData.postalCode || null,
-          email: formData.email || null,
-          phone: formData.phone || null,
-          website: formData.website || null,
+          postal_code: formData.postalCode?.trim() || null,
+          email: formData.email?.trim() || null,
+          phone: formData.phone?.trim() || null,
+          website: formData.website?.trim() || null,
 
           // ✅ NOWE: wybór lokalizacji z bazy (z pickera)
           location_id: formData.location_id ? formData.location_id : null,

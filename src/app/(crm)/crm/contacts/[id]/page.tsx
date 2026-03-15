@@ -700,11 +700,11 @@ useEffect(() => {
       const { data: newContactData, error: contactError } = await supabase
         .from('contacts')
         .insert({
-          first_name: newContact.first_name,
-          last_name: newContact.last_name,
-          email: newContact.email || null,
-          phone: newContact.phone || null,
-          mobile: newContact.mobile || null,
+          first_name: newContact.first_name.trim(),
+          last_name: newContact.last_name.trim(),
+          email: newContact.email?.trim() || null,
+          phone: newContact.phone?.trim() || null,
+          mobile: newContact.mobile?.trim() || null,
           contact_type: 'contact',
           status: 'active',
           created_by: currentEmployee?.id || null,
@@ -717,7 +717,7 @@ useEffect(() => {
       const { error: relationError } = await supabase.from('contact_organizations').insert({
         contact_id: newContactData.id,
         organization_id: organizationId,
-        position: newContact.position || null,
+        position: newContact.position?.trim() || null,
         is_primary: newContact.is_primary,
         is_current: true,
       });
