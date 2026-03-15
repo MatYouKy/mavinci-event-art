@@ -78,18 +78,46 @@ export default function AdminDashboard() {
   const [dailyStats, setDailyStats] = useState<DailyStats[]>([]);
   const [activeEntries, setActiveEntries] = useState<Map<string, TimeEntry>>(new Map());
 
-  const [dateFrom, setDateFrom] = useState(() => {
-    const date = new Date();
-    date.setDate(date.getDate() - 7);
-    return date.toISOString().split('T')[0];
-  });
+  // Helper functions for billing periods
+  const getCurrentWeekRange = () => {
+    const today = new Date();
+    const dayOfWeek = today.getDay();
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    return {
+      from: monday.toISOString().split('T')[0],
+      to: sunday.toISOString().split('T')[0],
+    };
+  };
 
-  const [dateTo, setDateTo] = useState(() => {
-    return new Date().toISOString().split('T')[0];
-  });
+  const getCurrentMonthRange = () => {
+    const today = new Date();
+    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    return {
+      from: firstDay.toISOString().split('T')[0],
+      to: lastDay.toISOString().split('T')[0],
+    };
+  };
 
+  const getCurrentYearRange = () => {
+    const today = new Date();
+    const firstDay = new Date(today.getFullYear(), 0, 1);
+    const lastDay = new Date(today.getFullYear(), 11, 31);
+    return {
+      from: firstDay.toISOString().split('T')[0],
+      to: lastDay.toISOString().split('T')[0],
+    };
+  };
+
+  const [dateFrom, setDateFrom] = useState(() => getCurrentWeekRange().from);
+  const [dateTo, setDateTo] = useState(() => getCurrentWeekRange().to);
   const [selectedEmployee, setSelectedEmployee] = useState<string>('all');
-  const [selectedPeriod, setSelectedPeriod] = useState<'week' | 'month' | 'custom'>('week');
+  const [selectedPeriod, setSelectedPeriod] = useState<'week' | 'month' | 'year' | 'custom'>(
+    'week',
+  );
 
   useEffect(() => {
     fetchData();
@@ -97,15 +125,17 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     if (selectedPeriod === 'week') {
-      const date = new Date();
-      date.setDate(date.getDate() - 7);
-      setDateFrom(date.toISOString().split('T')[0]);
-      setDateTo(new Date().toISOString().split('T')[0]);
+      const range = getCurrentWeekRange();
+      setDateFrom(range.from);
+      setDateTo(range.to);
     } else if (selectedPeriod === 'month') {
-      const date = new Date();
-      date.setDate(date.getDate() - 30);
-      setDateFrom(date.toISOString().split('T')[0]);
-      setDateTo(new Date().toISOString().split('T')[0]);
+      const range = getCurrentMonthRange();
+      setDateFrom(range.from);
+      setDateTo(range.to);
+    } else if (selectedPeriod === 'year') {
+      const range = getCurrentYearRange();
+      setDateFrom(range.from);
+      setDateTo(range.to);
     }
   }, [selectedPeriod]);
 
@@ -368,10 +398,10 @@ export default function AdminDashboard() {
         <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
           <div>
             <label className="mb-2 block text-sm text-[#e5e4e2]/60">Okres</label>
-            <div className="flex gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => setSelectedPeriod('week')}
-                className={`flex-1 rounded-lg px-3 py-2 text-sm transition-colors ${
+                className={`rounded-lg px-3 py-2 text-sm transition-colors ${
                   selectedPeriod === 'week'
                     ? 'bg-[#d3bb73] text-[#1c1f33]'
                     : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#0f1119]/80'
@@ -381,7 +411,7 @@ export default function AdminDashboard() {
               </button>
               <button
                 onClick={() => setSelectedPeriod('month')}
-                className={`flex-1 rounded-lg px-3 py-2 text-sm transition-colors ${
+                className={`rounded-lg px-3 py-2 text-sm transition-colors ${
                   selectedPeriod === 'month'
                     ? 'bg-[#d3bb73] text-[#1c1f33]'
                     : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#0f1119]/80'
@@ -390,8 +420,18 @@ export default function AdminDashboard() {
                 Miesiąc
               </button>
               <button
+                onClick={() => setSelectedPeriod('year')}
+                className={`rounded-lg px-3 py-2 text-sm transition-colors ${
+                  selectedPeriod === 'year'
+                    ? 'bg-[#d3bb73] text-[#1c1f33]'
+                    : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#0f1119]/80'
+                }`}
+              >
+                Rok
+              </button>
+              <button
                 onClick={() => setSelectedPeriod('custom')}
-                className={`flex-1 rounded-lg px-3 py-2 text-sm transition-colors ${
+                className={`rounded-lg px-3 py-2 text-sm transition-colors ${
                   selectedPeriod === 'custom'
                     ? 'bg-[#d3bb73] text-[#1c1f33]'
                     : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#0f1119]/80'

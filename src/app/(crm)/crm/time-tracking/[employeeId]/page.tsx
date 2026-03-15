@@ -102,21 +102,65 @@ export default function EmployeeTimeTrackingPage() {
   const [activeEntry, setActiveEntry] = useState<TimeEntry | null>(null);
   const [liveTime, setLiveTime] = useState<string>('00:00:00');
 
-  const [dateFrom, setDateFrom] = useState(() => {
-    const date = new Date();
-    date.setDate(date.getDate() - 30);
-    return date.toISOString().split('T')[0];
-  });
+  // Helper functions for billing periods
+  const getCurrentWeekRange = () => {
+    const today = new Date();
+    const dayOfWeek = today.getDay();
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    return {
+      from: monday.toISOString().split('T')[0],
+      to: sunday.toISOString().split('T')[0],
+    };
+  };
 
-  const [dateTo, setDateTo] = useState(() => {
-    return new Date().toISOString().split('T')[0];
-  });
+  const getCurrentMonthRange = () => {
+    const today = new Date();
+    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    return {
+      from: firstDay.toISOString().split('T')[0],
+      to: lastDay.toISOString().split('T')[0],
+    };
+  };
+
+  const getCurrentYearRange = () => {
+    const today = new Date();
+    const firstDay = new Date(today.getFullYear(), 0, 1);
+    const lastDay = new Date(today.getFullYear(), 11, 31);
+    return {
+      from: firstDay.toISOString().split('T')[0],
+      to: lastDay.toISOString().split('T')[0],
+    };
+  };
+
+  const [dateFrom, setDateFrom] = useState(() => getCurrentWeekRange().from);
+  const [dateTo, setDateTo] = useState(() => getCurrentWeekRange().to);
+  const [selectedPeriod, setSelectedPeriod] = useState<'week' | 'month' | 'year' | 'custom'>('week');
 
   useEffect(() => {
     if (employeeId) {
       fetchData();
     }
   }, [employeeId, dateFrom, dateTo]);
+
+  useEffect(() => {
+    if (selectedPeriod === 'week') {
+      const range = getCurrentWeekRange();
+      setDateFrom(range.from);
+      setDateTo(range.to);
+    } else if (selectedPeriod === 'month') {
+      const range = getCurrentMonthRange();
+      setDateFrom(range.from);
+      setDateTo(range.to);
+    } else if (selectedPeriod === 'year') {
+      const range = getCurrentYearRange();
+      setDateFrom(range.from);
+      setDateTo(range.to);
+    }
+  }, [selectedPeriod]);
 
   // Realtime subscription for time entries and history
   useEffect(() => {
@@ -433,14 +477,62 @@ export default function EmployeeTimeTrackingPage() {
         )}
 
         <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-          <div className="mb-6 flex items-center gap-4">
+          <div className="mb-6 space-y-4">
+            <div>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Okres rozliczeniowy</label>
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                <button
+                  onClick={() => setSelectedPeriod('week')}
+                  className={`rounded-lg px-3 py-2 text-sm transition-colors ${
+                    selectedPeriod === 'week'
+                      ? 'bg-[#d3bb73] text-[#1c1f33]'
+                      : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#0f1119]/80'
+                  }`}
+                >
+                  Tydzień
+                </button>
+                <button
+                  onClick={() => setSelectedPeriod('month')}
+                  className={`rounded-lg px-3 py-2 text-sm transition-colors ${
+                    selectedPeriod === 'month'
+                      ? 'bg-[#d3bb73] text-[#1c1f33]'
+                      : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#0f1119]/80'
+                  }`}
+                >
+                  Miesiąc
+                </button>
+                <button
+                  onClick={() => setSelectedPeriod('year')}
+                  className={`rounded-lg px-3 py-2 text-sm transition-colors ${
+                    selectedPeriod === 'year'
+                      ? 'bg-[#d3bb73] text-[#1c1f33]'
+                      : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#0f1119]/80'
+                  }`}
+                >
+                  Rok
+                </button>
+                <button
+                  onClick={() => setSelectedPeriod('custom')}
+                  className={`rounded-lg px-3 py-2 text-sm transition-colors ${
+                    selectedPeriod === 'custom'
+                      ? 'bg-[#d3bb73] text-[#1c1f33]'
+                      : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#0f1119]/80'
+                  }`}
+                >
+                  Własny zakres
+                </button>
+              </div>
+            </div>
             <div className="grid flex-1 grid-cols-2 gap-4">
               <div>
                 <label className="mb-2 block text-sm text-[#e5e4e2]/60">Od</label>
                 <input
                   type="date"
                   value={dateFrom}
-                  onChange={(e) => setDateFrom(e.target.value)}
+                  onChange={(e) => {
+                    setDateFrom(e.target.value);
+                    setSelectedPeriod('custom');
+                  }}
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 />
               </div>
@@ -449,7 +541,10 @@ export default function EmployeeTimeTrackingPage() {
                 <input
                   type="date"
                   value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
+                  onChange={(e) => {
+                    setDateTo(e.target.value);
+                    setSelectedPeriod('custom');
+                  }}
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 />
               </div>
