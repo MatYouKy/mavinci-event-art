@@ -78,6 +78,14 @@ export default function AdminDashboard() {
   const [dailyStats, setDailyStats] = useState<DailyStats[]>([]);
   const [activeEntries, setActiveEntries] = useState<Map<string, TimeEntry>>(new Map());
 
+  // Helper function to format date without UTC conversion
+  const formatLocalDate = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   // Helper functions for billing periods
   const getCurrentWeekRange = () => {
     const today = new Date();
@@ -87,8 +95,8 @@ export default function AdminDashboard() {
     const sunday = new Date(monday);
     sunday.setDate(monday.getDate() + 6);
     return {
-      from: monday.toISOString().split('T')[0],
-      to: sunday.toISOString().split('T')[0],
+      from: formatLocalDate(monday),
+      to: formatLocalDate(sunday),
     };
   };
 
@@ -97,8 +105,8 @@ export default function AdminDashboard() {
     const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
     const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
     return {
-      from: firstDay.toISOString().split('T')[0],
-      to: lastDay.toISOString().split('T')[0],
+      from: formatLocalDate(firstDay),
+      to: formatLocalDate(lastDay),
     };
   };
 
@@ -107,8 +115,8 @@ export default function AdminDashboard() {
     const firstDay = new Date(today.getFullYear(), 0, 1);
     const lastDay = new Date(today.getFullYear(), 11, 31);
     return {
-      from: firstDay.toISOString().split('T')[0],
-      to: lastDay.toISOString().split('T')[0],
+      from: formatLocalDate(firstDay),
+      to: formatLocalDate(lastDay),
     };
   };
 
