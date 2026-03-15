@@ -124,12 +124,24 @@ export default function AdminDashboard() {
   const [dateTo, setDateTo] = useState(() => getCurrentWeekRange().to);
   const [selectedEmployee, setSelectedEmployee] = useState<string>('all');
   const [selectedPeriod, setSelectedPeriod] = useState<'week' | 'month' | 'year' | 'custom'>(
-    'week',
+    () => {
+      if (typeof window !== 'undefined') {
+        return (localStorage.getItem('time-tracking-period') as 'week' | 'month' | 'year' | 'custom') || 'week';
+      }
+      return 'week';
+    }
   );
+
+  const handlePeriodChange = (period: 'week' | 'month' | 'year' | 'custom') => {
+    setSelectedPeriod(period);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('time-tracking-period', period);
+    }
+  };
 
   useEffect(() => {
     fetchData();
-  }, [dateFrom, dateTo, selectedEmployee]);
+  }, [dateFrom, dateTo, selectedEmployee, selectedPeriod]);
 
   useEffect(() => {
     if (selectedPeriod === 'week') {
@@ -408,7 +420,7 @@ export default function AdminDashboard() {
             <label className="mb-2 block text-sm text-[#e5e4e2]/60">Okres</label>
             <div className="grid grid-cols-2 gap-2">
               <button
-                onClick={() => setSelectedPeriod('week')}
+                onClick={() => handlePeriodChange('week')}
                 className={`rounded-lg px-3 py-2 text-sm transition-colors ${
                   selectedPeriod === 'week'
                     ? 'bg-[#d3bb73] text-[#1c1f33]'
@@ -418,7 +430,7 @@ export default function AdminDashboard() {
                 Tydzień
               </button>
               <button
-                onClick={() => setSelectedPeriod('month')}
+                onClick={() => handlePeriodChange('month')}
                 className={`rounded-lg px-3 py-2 text-sm transition-colors ${
                   selectedPeriod === 'month'
                     ? 'bg-[#d3bb73] text-[#1c1f33]'
@@ -428,7 +440,7 @@ export default function AdminDashboard() {
                 Miesiąc
               </button>
               <button
-                onClick={() => setSelectedPeriod('year')}
+                onClick={() => handlePeriodChange('year')}
                 className={`rounded-lg px-3 py-2 text-sm transition-colors ${
                   selectedPeriod === 'year'
                     ? 'bg-[#d3bb73] text-[#1c1f33]'
@@ -438,7 +450,7 @@ export default function AdminDashboard() {
                 Rok
               </button>
               <button
-                onClick={() => setSelectedPeriod('custom')}
+                onClick={() => handlePeriodChange('custom')}
                 className={`rounded-lg px-3 py-2 text-sm transition-colors ${
                   selectedPeriod === 'custom'
                     ? 'bg-[#d3bb73] text-[#1c1f33]'
@@ -457,7 +469,7 @@ export default function AdminDashboard() {
               value={dateFrom}
               onChange={(e) => {
                 setDateFrom(e.target.value);
-                setSelectedPeriod('custom');
+                handlePeriodChange('custom');
               }}
               className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
             />
@@ -470,7 +482,7 @@ export default function AdminDashboard() {
               value={dateTo}
               onChange={(e) => {
                 setDateTo(e.target.value);
-                setSelectedPeriod('custom');
+                handlePeriodChange('custom');
               }}
               className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
             />
