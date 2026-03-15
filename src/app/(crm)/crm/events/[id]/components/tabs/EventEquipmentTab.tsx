@@ -8,6 +8,7 @@ import { useEventEquipment } from '../../../hooks';
 import { useEvent } from '../../../hooks/useEvent';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { useRouter } from 'next/navigation';
 import type { AvailabilityUI } from '@/app/(crm)/crm/events/hooks/useEventEquipment';
 import { getKeyForEventRow, keyOf } from '../../helpers/getKeyForEventRow';
 import { buildExistingMap } from '../../helpers/buildExistingMap';
@@ -254,6 +255,7 @@ export const EventEquipmentTab: React.FC<{
   const { event, refetch: refetchEvent } = useEvent(initialEvent);
   const { employee } = useCurrentEmployee();
   const { showConfirm } = useDialog();
+  const router = useRouter();
 
   // Tracking PDF checklisty
   const checklistPdfPath = event?.equipment_checklist_pdf_path || null;
@@ -997,9 +999,28 @@ export const EventEquipmentTab: React.FC<{
             </div>
           </div>
           <button
-            onClick={() => {
-              // TODO: Otworzyć wizard oferty do rozwiązania konfliktów
-              showSnackbar('Funkcja w budowie', 'info');
+            onClick={async () => {
+              try {
+                // Znajdź pierwszą ofertę z konfliktem
+                const { data: offers, error } = await supabase
+                  .from('offers')
+                  .select('id')
+                  .eq('event_id', eventId)
+                  .order('created_at', { ascending: false })
+                  .limit(1);
+
+                if (error) throw error;
+
+                if (offers && offers.length > 0) {
+                  // Przekieruj do oferty
+                  router.push(`/crm/offers/${offers[0].id}`);
+                } else {
+                  showSnackbar('Brak ofert dla tego eventu', 'error');
+                }
+              } catch (err: any) {
+                console.error('Error finding offer:', err);
+                showSnackbar(err.message || 'Błąd podczas szukania oferty', 'error');
+              }
             }}
             className="flex-shrink-0 rounded-lg bg-red-500/20 px-4 py-2 text-sm font-medium text-red-300 transition-colors hover:bg-red-500/30"
           >
