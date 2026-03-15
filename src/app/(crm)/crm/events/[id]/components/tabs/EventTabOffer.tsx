@@ -1,7 +1,8 @@
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
-import { DollarSign, Loader2, Plus, Send, Trash2 } from 'lucide-react';
+import { DollarSign, Loader2, Plus, Send, Trash2, Lock } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import React, { Dispatch, SetStateAction, useState } from 'react';
+import ReserveEquipmentModal from '@/components/crm/ReserveEquipmentModal';
 
 interface EventTabOfferProps {
   offers: any[];
@@ -23,6 +24,7 @@ export default function EventTabOffer({
   const router = useRouter();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [sendingOffer, setSendingOffer] = useState(false);
+  const [reserveModalOfferId, setReserveModalOfferId] = useState<string | null>(null);
 
   const handleDeleteOfferLocal = async (
     e: React.MouseEvent<HTMLButtonElement>,
@@ -177,7 +179,22 @@ export default function EventTabOffer({
                         </>
                       )}
 
-                      <div className="ml-auto flex flex-col gap-2">
+                      <div className="ml-auto flex gap-2">
+                        {/* Przycisk Zarezerwuj Sprzęt - tylko dla draft/sent */}
+                        {(offer.status === 'draft' || offer.status === 'sent') && (
+                          <button
+                            onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                              e.stopPropagation();
+                              setReserveModalOfferId(offer.id);
+                            }}
+                            className="rounded-lg bg-green-500/20 p-2 text-green-400 transition-colors hover:bg-green-500/30"
+                            title="Zarezerwuj sprzęt"
+                            disabled={isDeletingThis}
+                          >
+                            <Lock className="h-4 w-4" />
+                          </button>
+                        )}
+
                         <button
                           onClick={(e: React.MouseEvent<HTMLButtonElement>) =>
                             handleDeleteOfferLocal(e, offer.id)
@@ -212,6 +229,20 @@ export default function EventTabOffer({
           </div>
         )}
       </div>
+
+      {/* Modal rezerwacji sprzętu */}
+      {reserveModalOfferId && (
+        <ReserveEquipmentModal
+          offerId={reserveModalOfferId}
+          open={!!reserveModalOfferId}
+          onClose={() => setReserveModalOfferId(null)}
+          onSuccess={() => {
+            setReserveModalOfferId(null);
+            // Odśwież stronę aby załadować zaktualizowane dane
+            router.refresh();
+          }}
+        />
+      )}
     </div>
   );
 }

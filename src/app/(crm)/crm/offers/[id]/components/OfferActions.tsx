@@ -1,13 +1,14 @@
 'use client';
 
 import { Dispatch, SetStateAction, useEffect, useState } from 'react';
-import { Pencil, X, Check, Calendar, FileText, Download, RefreshCw, Send, Eye } from 'lucide-react';
+import { Pencil, X, Check, Calendar, FileText, Download, RefreshCw, Send, Eye, Lock, Trash2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useRouter } from 'next/navigation';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { IUser } from '@/types/auth.types';
 import { OfferStatus, offerStatusLabels } from '../../helpers/statusColors';
+import ReserveEquipmentModal from '@/components/crm/ReserveEquipmentModal';
 
 interface OfferActionsProps {
   offer: any;
@@ -32,6 +33,8 @@ export default function OfferActions({
   const [canSendEmail, setCanSendEmail] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [currentStatus, setCurrentStatus] = useState<OfferStatus>(offer?.status || 'draft');
+  const [showReserveModal, setShowReserveModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (offer?.status) {
@@ -59,6 +62,16 @@ export default function OfferActions({
       return;
     }
 
+    // Jeśli zmiana na 'accepted' i poprzedni status to draft/sent, pokaż modal
+    if (
+      newStatus === 'accepted' &&
+      currentStatus !== 'accepted' &&
+      (currentStatus === 'draft' || currentStatus === 'sent')
+    ) {
+      setShowReserveModal(true);
+      return;
+    }
+
     try {
       setUpdatingStatus(true);
 
@@ -71,12 +84,46 @@ export default function OfferActions({
 
       setCurrentStatus(newStatus);
       showSnackbar(`Status oferty zmieniony na: ${offerStatusLabels[newStatus]}`, 'success');
-      router.refresh();
+
+      if (onOfferUpdated) {
+        onOfferUpdated();
+      } else {
+        router.refresh();
+      }
     } catch (err: any) {
       console.error('Error updating status:', err);
       showSnackbar(err.message || 'Błąd podczas zmiany statusu', 'error');
     } finally {
       setUpdatingStatus(false);
+    }
+  };
+
+  const handleDeleteOffer = async () => {
+    if (!offer?.id) return;
+
+    if (!confirm('Czy na pewno chcesz usunąć tę ofertę? Ta operacja jest nieodwracalna.')) {
+      return;
+    }
+
+    try {
+      setDeleting(true);
+      const { error } = await supabase.from('offers').delete().eq('id', offer.id);
+
+      if (error) throw error;
+
+      showSnackbar('Oferta została usunięta', 'success');
+
+      // Przekieruj do eventu lub listy ofert
+      if (offer.event_id) {
+        router.push(`/crm/events/${offer.event_id}`);
+      } else {
+        router.push('/crm/offers');
+      }
+    } catch (err: any) {
+      console.error('Error deleting offer:', err);
+      showSnackbar(err.message || 'Błąd podczas usuwania oferty', 'error');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -188,37 +235,49 @@ export default function OfferActions({
   };
 
   return (
-    <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-      <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Akcje</h2>
-      <div className="space-y-2">
-        <div className="mb-4">
-          <label className="mb-2 block text-sm text-[#e5e4e2]/60">Status oferty</label>
-          <select
-            value={currentStatus}
-            onChange={(e) => handleStatusChange(e.target.value as OfferStatus)}
-            disabled={updatingStatus}
-            className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-2 text-sm text-[#e5e4e2] transition-colors focus:border-[#d3bb73] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {Object.entries(offerStatusLabels).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </div>
+    <>
+      <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+        <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Akcje</h2>
+        <div className="space-y-2">
+          <div className="mb-4">
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Status oferty</label>
+            <select
+              value={currentStatus}
+              onChange={(e) => handleStatusChange(e.target.value as OfferStatus)}
+              disabled={updatingStatus}
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-2 text-sm text-[#e5e4e2] transition-colors focus:border-[#d3bb73] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {Object.entries(offerStatusLabels).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
 
-        <button
-          onClick={() => {
-            if (offer.event_id) {
-              router.push(`/crm/events/${offer.event_id}`);
-            }
-          }}
-          disabled={!offer.event_id}
-          className="flex w-full items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <Calendar className="h-4 w-4" />
-          Przejdź do eventu
-        </button>
+          {/* Przycisk Zarezerwuj Sprzęt - tylko dla draft/sent */}
+          {(currentStatus === 'draft' || currentStatus === 'sent') && (
+            <button
+              onClick={() => setShowReserveModal(true)}
+              className="flex w-full items-center gap-2 rounded-lg bg-green-500/10 px-4 py-2 text-sm text-green-400 transition-colors hover:bg-green-500/20"
+            >
+              <Lock className="h-4 w-4" />
+              Zarezerwuj Sprzęt
+            </button>
+          )}
+
+          <button
+            onClick={() => {
+              if (offer.event_id) {
+                router.push(`/crm/events/${offer.event_id}`);
+              }
+            }}
+            disabled={!offer.event_id}
+            className="flex w-full items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Calendar className="h-4 w-4" />
+            Przejdź do eventu
+          </button>
 
         {!offer.generated_pdf_url || offer.modified_after_generation ? (
           <button
@@ -308,7 +367,42 @@ export default function OfferActions({
             )}
           </>
         )}
+
+        {/* Przycisk usuwania */}
+        <button
+          onClick={handleDeleteOffer}
+          disabled={deleting}
+          className="flex w-full items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-2 text-sm text-red-400 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {deleting ? (
+            <>
+              <RefreshCw className="h-4 w-4 animate-spin" />
+              Usuwanie...
+            </>
+          ) : (
+            <>
+              <Trash2 className="h-4 w-4" />
+              Usuń ofertę
+            </>
+          )}
+        </button>
       </div>
     </div>
+
+      {/* Modal rezerwacji sprzętu */}
+      <ReserveEquipmentModal
+        offerId={offer?.id}
+        open={showReserveModal}
+        onClose={() => setShowReserveModal(false)}
+        onSuccess={() => {
+          setCurrentStatus('accepted');
+          if (onOfferUpdated) {
+            onOfferUpdated();
+          } else {
+            router.refresh();
+          }
+        }}
+      />
+    </>
   );
 }
