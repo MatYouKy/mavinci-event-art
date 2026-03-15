@@ -5,7 +5,6 @@ import { X, ChevronRight, ChevronLeft } from 'lucide-react';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { IEventCategory } from '@/app/(crm)/crm/event-categories/types';
 import EquipmentConflictsSummary from './EquipmentConflictsSummary';
-import EquipmentConflictsModal from './EquipmentConflictsModal';
 import OfferStep2 from './Steps/OfferStep2';
 import OfferStep4, { CustomItem } from './Steps/OfferStep4';
 import AddClientModal from './components/AddClientModal';
@@ -313,17 +312,7 @@ export default function OfferWizard({
         setContacts={setContacts}
         setSelectedContactId={setSelectedContactId}
       />
-      <EquipmentConflictsModal
-        open={showConflictsModal}
-        onClose={() => setShowConflictsModal(false)}
-        conflicts={conflicts}
-        offerItems={offerItems}
-        selectedAlt={selectedAlt}
-        setSelectedAlt={setSelectedAlt}
-        equipmentSubstitutions={equipmentSubstitutions}
-        setEquipmentSubstitutions={setEquipmentSubstitutions}
-        checkCartConflicts={checkCartConflicts}
-      />
+      {/* Modal został usunięty - konflikty pokazują się w EquipmentConflictsSummary */}
     </div>
   );
 }

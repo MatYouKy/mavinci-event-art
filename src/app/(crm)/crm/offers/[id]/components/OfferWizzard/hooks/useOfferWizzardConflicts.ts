@@ -54,7 +54,8 @@ export function useOfferWizardConflicts(opts: { eventId: string }) {
 
         const rows = Array.isArray(data) ? (data as EquipmentConflictRow[]) : [];
         setConflicts(rows);
-        if (rows.length > 0) setShowConflictsModal(true);
+        // Modal został usunięty - konflikty pokazują się w EquipmentConflictsSummary
+        // if (rows.length > 0) setShowConflictsModal(true);
         return rows;
       } catch (e) {
         console.error(e);

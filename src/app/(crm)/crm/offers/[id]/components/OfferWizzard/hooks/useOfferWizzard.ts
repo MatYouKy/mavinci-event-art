@@ -262,7 +262,8 @@ export function useOfferWizardLogic(opts: {
           alternatives: [],
         } as any,
       ]);
-      conflicts.setShowConflictsModal(true);
+      // Modal został usunięty - konflikty pokazują się w EquipmentConflictsSummary
+      // conflicts.setShowConflictsModal(true);
     } finally {
       setLoading(false);
     }
