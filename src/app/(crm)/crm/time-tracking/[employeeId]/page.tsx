@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { EmployeeAvatar } from '@/components/EmployeeAvatar';
+import { IEmployee } from '../../employees/type';
 
 interface TimeEntry {
   id: string;
@@ -50,6 +51,7 @@ interface HistoryEntry {
   action: 'created' | 'updated' | 'deleted';
   changed_at: string;
   changed_by: string;
+  employee: IEmployee;
   employee_name: string;
   employee_surname: string;
   changed_fields?: string[];
@@ -412,7 +414,7 @@ export default function EmployeeTimeTrackingPage() {
 
         <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
           <div className="flex items-center gap-6">
-            <EmployeeAvatar employee={employee} size={80} className="flex-shrink-0" />
+            <EmployeeAvatar employee={employee as IEmployee} size={80} className="flex-shrink-0" />
             <div className="flex-1">
               <div className="mb-2 flex items-center gap-3">
                 <h1 className="text-3xl font-light text-[#e5e4e2]">
@@ -960,7 +962,7 @@ export default function EmployeeTimeTrackingPage() {
                       <div className="text-right">
                         <div className="text-sm text-[#e5e4e2]">
                           {item.employee_name} {item.employee_surname}
-                          {!isAdmin && item.employee_id === currentEmployee?.id && (
+                          {!isAdmin && item.employee?.id === currentEmployee?.id && (
                             <span className="ml-2 text-xs text-[#e5e4e2]/40">(Ty)</span>
                           )}
                         </div>
