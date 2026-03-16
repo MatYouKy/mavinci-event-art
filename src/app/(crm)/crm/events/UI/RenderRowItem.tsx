@@ -94,7 +94,9 @@ export function EventEquipmentRow({
             onClick={() => onToggleExpand?.(row.id)}
             className="text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
           >
-            <ChevronDown className={`h-4 w-4 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+            <ChevronDown
+              className={`h-4 w-4 transition-transform ${expanded ? 'rotate-180' : ''}`}
+            />
           </button>
         )}
 
@@ -102,20 +104,19 @@ export function EventEquipmentRow({
           {isKit ? (
             <span className="text-base">🎁</span>
           ) : row?.equipment?.thumbnail_url ? (
-
             <Popover
               trigger={
                 <img
-                src={row.equipment.thumbnail_url}
-                alt={row.equipment.name}
-                className="h-10 w-10 rounded border border-[#d3bb73]/20 object-cover"
-              />
+                  src={row.equipment.thumbnail_url}
+                  alt={row.equipment.name}
+                  className="h-10 w-10 rounded border border-[#d3bb73]/20 object-cover"
+                />
               }
               content={
                 <img
                   src={row.equipment.thumbnail_url}
                   alt={row.equipment.name}
-                  className="h-auto rounded-lg object-contain cursor-pointer transition-all"
+                  className="h-auto cursor-pointer rounded-lg object-contain transition-all"
                 />
               }
               openOn="hover"
@@ -132,7 +133,9 @@ export function EventEquipmentRow({
                 {row?.kit ? row.kit.name : row?.equipment?.name || 'Nieznany'}
               </span>
 
-              <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] uppercase ${badge.cls}`}>
+              <span
+                className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] uppercase ${badge.cls}`}
+              >
                 {badge.label}
               </span>
 
@@ -164,7 +167,9 @@ export function EventEquipmentRow({
         )}
 
         <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/60">
-          {!isKit && row?.equipment?.category && <span className="hidden md:inline">{row.equipment.category.name}</span>}
+          {!isKit && row?.equipment?.category && (
+            <span className="hidden md:inline">{row.equipment.category.name}</span>
+          )}
 
           {aKey && (
             <div className="hidden flex-col items-end text-xs lg:flex">
@@ -246,6 +251,8 @@ export function EventEquipmentRow({
         {/* akcje */}
         {(isConflict || isShortage) && editable ? (
           <ResponsiveActionBar
+            disabledBackground
+            mobileBreakpoint={2000}
             actions={[
               {
                 label: 'Usuń',
@@ -254,7 +261,7 @@ export function EventEquipmentRow({
                 variant: 'danger',
               },
               {
-                label: 'Zaznacz jako rental',
+                label: 'Rental',
                 icon: <Package className="h-4 w-4" />,
                 onClick: () => onMarkAsRental?.(row),
                 variant: 'default',
@@ -262,7 +269,7 @@ export function EventEquipmentRow({
               ...(onSuggestAlternative
                 ? [
                     {
-                      label: 'Zamień na inny',
+                      label: 'Zamień',
                       icon: <Package className="h-4 w-4" />,
                       onClick: () => onSuggestAlternative(row),
                       variant: 'primary' as const,
@@ -299,7 +306,9 @@ export function EventEquipmentRow({
             >
               <div className="flex min-w-0 flex-1 flex-col">
                 <span className="text-[#e5e4e2]/80">{kitItem?.equipment?.name}</span>
-                <span className="text-xs text-[#e5e4e2]/45">{kitItem?.equipment?.category?.name}</span>
+                <span className="text-xs text-[#e5e4e2]/45">
+                  {kitItem?.equipment?.category?.name}
+                </span>
               </div>
 
               <span className="font-medium text-[#e5e4e2]/60">
