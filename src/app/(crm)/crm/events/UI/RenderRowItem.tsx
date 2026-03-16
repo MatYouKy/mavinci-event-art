@@ -1,8 +1,9 @@
 'use client';
 
-import React from 'react';
-import { ChevronDown, Package, Trash2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { ChevronDown, Package, Trash2, MoreVertical } from 'lucide-react';
 import Popover from '@/components/UI/Tooltip';
+import ResponsiveActionBar, { type Action } from '@/components/crm/ResponsiveActionBar';
 
 type StatusBadge = { label: string; cls: string };
 
@@ -32,6 +33,9 @@ type Props = {
   // rental
   onMarkAsRental?: (row: any) => void;
 
+  // suggest alternative
+  onSuggestAlternative?: (row: any) => void;
+
   // kit expand in checklist
   onToggleExpandInChecklist?: (rowId: string, expand: boolean) => void;
 };
@@ -57,6 +61,7 @@ export function EventEquipmentRow({
   onRemove,
   onRestore,
   onMarkAsRental,
+  onSuggestAlternative,
 
   onToggleExpandInChecklist,
 }: Props) {
@@ -233,22 +238,32 @@ export function EventEquipmentRow({
 
         {/* akcje */}
         {isConflict && editable ? (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => onRemove(row)}
-              className="rounded bg-red-500/20 px-3 py-1 text-xs text-red-300 transition-colors hover:bg-red-500/30"
-              title="Usuń z eventu"
-            >
-              Usuń
-            </button>
-            <button
-              onClick={() => onMarkAsRental?.(row)}
-              className="rounded border border-[#d3bb73]/30 px-3 py-1 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
-              title="Zaznacz jako wynajem zewnętrzny"
-            >
-              Rental
-            </button>
-          </div>
+          <ResponsiveActionBar
+            actions={[
+              {
+                label: 'Usuń',
+                icon: <Trash2 className="h-4 w-4" />,
+                onClick: () => onRemove(row),
+                variant: 'danger',
+              },
+              {
+                label: 'Zaznacz jako rental',
+                icon: <Package className="h-4 w-4" />,
+                onClick: () => onMarkAsRental?.(row),
+                variant: 'default',
+              },
+              ...(onSuggestAlternative
+                ? [
+                    {
+                      label: 'Zasugeruj alternatywę',
+                      icon: <Package className="h-4 w-4" />,
+                      onClick: () => onSuggestAlternative(row),
+                      variant: 'primary' as const,
+                    },
+                  ]
+                : []),
+            ]}
+          />
         ) : !isRemovedFromOffer ? (
           <button
             onClick={() => onRemove(row)}

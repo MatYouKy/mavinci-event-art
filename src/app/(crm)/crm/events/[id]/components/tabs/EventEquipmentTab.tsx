@@ -925,6 +925,39 @@ export const EventEquipmentTab: React.FC<{
     }
   };
 
+  const handleSuggestAlternative = async (row: any) => {
+    try {
+      // Pobierz kategorię sprzętu
+      const categoryId = row?.equipment?.category?.id;
+      if (!categoryId) {
+        showSnackbar('Nie można znaleźć kategorii sprzętu', 'error');
+        return;
+      }
+
+      // Pobierz dostępny sprzęt z tej samej kategorii
+      const { data: alternatives, error } = await supabase
+        .from('equipment_items')
+        .select('id, name, brand, model, thumbnail_url')
+        .eq('category_id', categoryId)
+        .neq('id', row?.equipment?.id || '')
+        .limit(10);
+
+      if (error) throw error;
+
+      if (!alternatives || alternatives.length === 0) {
+        showSnackbar('Brak dostępnych alternatyw w tej kategorii', 'info');
+        return;
+      }
+
+      // TODO: Pokaż modal z alternatywami
+      showSnackbar(`Znaleziono ${alternatives.length} alternatyw`, 'info');
+      console.log('Alternatives:', alternatives);
+    } catch (err: any) {
+      console.error('Error suggesting alternatives:', err);
+      showSnackbar(err.message || 'Błąd podczas szukania alternatyw', 'error');
+    }
+  };
+
   const renderRow = (row: any, editable: boolean) => {
     // Sprawdź czy sprzęt ma konflikt (niedostępny)
     const aKey = getKeyForEventRow(row);
@@ -956,6 +989,7 @@ export const EventEquipmentTab: React.FC<{
         onRemove={handleRemoveEquipment}
         onRestore={handleRestoreAutoRow}
         onMarkAsRental={handleMarkAsRental}
+        onSuggestAlternative={handleSuggestAlternative}
         onToggleExpandInChecklist={handleToggleExpandInChecklist}
       />
     );
