@@ -599,12 +599,35 @@ export const eventsApi = createApi({
     }),
 
     deleteEventOffer: builder.mutation<{ success: true }, { eventId: string; offerId: string }>({
-      async queryFn({ offerId }) {
+      async queryFn({ offerId, eventId }) {
         try {
-          const { error } = await supabase.from('offers').delete().eq('id', offerId);
-          if (error) throw error;
+          console.log('[DELETE OFFER] Attempting to delete offer:', offerId);
+
+          const { data, error, count } = await supabase
+            .from('offers')
+            .delete()
+            .eq('id', offerId)
+            .select();
+
+          console.log('[DELETE OFFER] Response:', { data, error, count });
+
+          if (error) {
+            console.error('[DELETE OFFER] Supabase error:', error);
+            throw error;
+          }
+
+          // RLS może blokować DELETE bez zwracania błędu - sprawdzamy czy coś usunięto
+          if (!data || data.length === 0) {
+            console.warn('[DELETE OFFER] No rows deleted - RLS likely blocked the operation');
+            throw new Error(
+              'Nie można usunąć tej oferty. Sprawdź uprawnienia (admin lub offers_manage) lub status oferty (tylko draft/sent).',
+            );
+          }
+
+          console.log('[DELETE OFFER] Successfully deleted offer:', data[0]);
           return { data: { success: true } };
         } catch (error: any) {
+          console.error('[DELETE OFFER] Final error:', error);
           return {
             error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError,
           };

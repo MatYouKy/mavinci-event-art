@@ -112,7 +112,48 @@ Oferta Rejected:  [🗑️ Szary przycisk] - nieaktywny, tooltip: "Nie można us
 - ✅ UI zaktualizowane
 - ✅ Walidacja w handlerze dodana
 - ✅ Dokumentacja zaktualizowana
-- ✅ Testy manualne zalecane
+- ✅ Logowanie w API dodane
+- ✅ Obsługa błędu RLS (data.length === 0)
+- ⚠️ Wymaga testów użytkownika
+
+## 🐛 Problem: "Success" ale oferta nie znika?
+
+### Sprawdź w konsoli przeglądarki:
+
+Gdy klikniesz "Usuń ofertę", w konsoli zobaczysz:
+
+```
+[DELETE OFFER] Attempting to delete offer: xxx-xxx-xxx
+[DELETE OFFER] Response: { data: [], error: null, count: 0 }
+[DELETE OFFER] No rows deleted - RLS likely blocked the operation
+```
+
+**To znaczy:** RLS zablokował DELETE!
+
+### Możliwe przyczyny:
+
+1. **Nie masz uprawnień** (admin lub offers_manage)
+2. **Status oferty to accepted/rejected** (tylko draft/sent można usunąć)
+
+### Rozwiązanie:
+
+```sql
+-- Sprawdź swoje uprawnienia
+SELECT role, permissions FROM employees WHERE id = auth.uid();
+
+-- Jeśli nie masz offers_manage:
+UPDATE employees
+SET permissions = array_append(permissions, 'offers_manage')
+WHERE id = auth.uid();
+
+-- Sprawdź status oferty
+SELECT id, status FROM offers WHERE event_id = 'TWOJE_EVENT_ID';
+
+-- Jeśli status to accepted/rejected - zmień na draft:
+UPDATE offers SET status = 'draft' WHERE id = 'OFFER_ID';
+```
+
+Zobacz też: **OFFER_DELETE_DEBUG.md** - pełny przewodnik debugowania
 
 ## 📚 Zobacz Też
 
