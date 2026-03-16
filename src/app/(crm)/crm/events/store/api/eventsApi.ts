@@ -601,35 +601,75 @@ export const eventsApi = createApi({
     deleteEventOffer: builder.mutation<{ success: true }, { eventId: string; offerId: string }>({
       async queryFn({ offerId, eventId }) {
         try {
-          console.log('[DELETE OFFER] Attempting to delete offer:', offerId);
-
-          const { data, error, count } = await supabase
+          console.log('[DELETE OFFER] Attempting to delete offer:', offerId, 'for event:', eventId);
+    
+          const {
+            data: { user },
+            error: userError,
+          } = await supabase.auth.getUser();
+    
+          console.log('[DELETE OFFER] auth user:', user);
+          console.log('[DELETE OFFER] auth user error:', userError);
+    
+          const { data: employeeMatch, error: employeeMatchError } = await supabase
+            .from('employees')
+            .select('id, auth_user_id, role, permissions')
+            .eq('auth_user_id', user?.id)
+            .maybeSingle();
+    
+          console.log('[DELETE OFFER] employee by auth_user_id:', employeeMatch);
+          console.log('[DELETE OFFER] employee by auth_user_id error:', employeeMatchError);
+    
+          const { data: offerBefore, error: offerBeforeError } = await supabase
             .from('offers')
-            .delete()
+            .select('id, status, created_by')
             .eq('id', offerId)
-            .select();
-
-          console.log('[DELETE OFFER] Response:', { data, error, count });
-
+            .maybeSingle();
+    
+          console.log('[DELETE OFFER] offer before delete:', offerBefore);
+          console.log('[DELETE OFFER] offer before delete error:', offerBeforeError);
+    
+          const { error } = await supabase.from('offers').delete().eq('id', offerId);
+    
+          console.log('[DELETE OFFER] delete error:', error);
+    
           if (error) {
-            console.error('[DELETE OFFER] Supabase error:', error);
+            console.error('[DELETE OFFER] Supabase delete error:', error);
             throw error;
           }
-
-          // RLS może blokować DELETE bez zwracania błędu - sprawdzamy czy coś usunięto
-          if (!data || data.length === 0) {
-            console.warn('[DELETE OFFER] No rows deleted - RLS likely blocked the operation');
-            throw new Error(
-              'Nie można usunąć tej oferty. Sprawdź uprawnienia (admin lub offers_manage) lub status oferty (tylko draft/sent).',
-            );
+    
+          const { data: existing, error: existingError } = await supabase
+            .from('offers')
+            .select('id')
+            .eq('id', offerId)
+            .maybeSingle();
+    
+          console.log('[DELETE OFFER] existing after delete:', existing);
+          console.log('[DELETE OFFER] existing after delete error:', existingError);
+    
+          if (existingError) {
+            console.error('[DELETE OFFER] Verification error:', existingError);
+            throw existingError;
           }
-
-          console.log('[DELETE OFFER] Successfully deleted offer:', data[0]);
+    
+          if (existing) {
+            throw new Error('Oferta nie została usunięta. Najpewniej blokuje to policy RLS albo trigger bazy danych.');
+          }
+    
+          console.log('[DELETE OFFER] Successfully deleted offer:', offerId);
           return { data: { success: true } };
         } catch (error: any) {
           console.error('[DELETE OFFER] Final error:', error);
+    
           return {
-            error: { status: 'FETCH_ERROR', error: error.message } as unknown as EventsApiError,
+            error: {
+              status: 'FETCH_ERROR',
+              error:
+                error?.message ||
+                error?.error ||
+                error?.details ||
+                'Błąd podczas usuwania oferty',
+            } as unknown as EventsApiError,
           };
         }
       },

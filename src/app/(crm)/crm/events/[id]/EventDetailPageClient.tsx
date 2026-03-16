@@ -78,7 +78,6 @@ import { IEmployee } from '../../employees/type';
 import { hasScope } from './helpers/hasScope';
 import { EventCategoryRow } from '@/lib/CRM/events/eventsData.server';
 
-
 export const ADMIN_EVENT_TABS = [
   'overview',
   'phases',
@@ -251,7 +250,15 @@ export default function EventDetailPageClient({
 }) {
   const { organization, creator, currentEmployee, permissionContext, employees } = initialData;
 
-  const { canManageTeam, allowedEventTabs, userAssignmentStatus, hasLimitedAccess, isAdmin, isCreator, currentUserId } = permissionContext;
+  const {
+    canManageTeam,
+    allowedEventTabs,
+    userAssignmentStatus,
+    hasLimitedAccess,
+    isAdmin,
+    isCreator,
+    currentUserId,
+  } = permissionContext;
 
   const canEventManage = currentEmployee.permissions?.includes('events_manage') || isAdmin;
 
@@ -353,7 +360,6 @@ export default function EventDetailPageClient({
     | 'history'
   >('overview');
 
-
   const [showAddChecklistModal, setShowAddChecklistModal] = useState(false);
   const [showEditEventModal, setShowEditEventModal] = useState(false);
   const [showCreateOfferModal, setShowCreateOfferModal] = useState(false);
@@ -379,7 +385,6 @@ export default function EventDetailPageClient({
   //   }
   //   // eslint-disable-next-line react-hooks/exhaustive-deps
   // }, [eventId]);
-
 
   // ✅ jeśli masz RTK Query do ofert (polecam) – pobieraj tylko dla osób uprawnionych
   const { data: offersData, isFetching: offersFetching } = useGetEventOffersQuery(eventId, {
@@ -494,13 +499,8 @@ export default function EventDetailPageClient({
     async (offerId: string) => {
       const offer = offersData?.find((o: any) => o.id === offerId);
 
-      if (offer?.status === 'accepted') {
-        showSnackbar('Nie można usunąć zaakceptowanej oferty', 'error');
-        return;
-      }
-
-      if (offer?.status === 'rejected') {
-        showSnackbar('Nie można usunąć odrzuconej oferty', 'error');
+      if (!offer || !['draft', 'sent', 'rejected'].includes(offer.status)) {
+        showSnackbar('Nie można usunąć tej oferty w tym statusie.', 'error');
         return;
       }
 
@@ -516,16 +516,27 @@ export default function EventDetailPageClient({
       }
 
       try {
-        await deleteOfferMutation({ eventId, offerId }).unwrap();
+        const result = await deleteOfferMutation({ eventId, offerId }).unwrap();
+        console.log('deleteOfferMutation result:', result);
         showSnackbar('Oferta została usunięta', 'success');
       } catch (error: any) {
-        console.error('Error deleting offer:', error);
-        const errorMessage = error?.message || 'Błąd podczas usuwania oferty';
+        console.error('Error deleting offer FULL:', error);
 
-        if (errorMessage.includes('policy')) {
+        const errorMessage =
+          error?.data?.message || error?.error || error?.message || 'Błąd podczas usuwania oferty';
+
+        if (errorMessage.includes('policy') || errorMessage.includes('uprawnienia')) {
           showSnackbar('Nie masz uprawnień do usunięcia tej oferty', 'error');
-        } else if (errorMessage.includes('status')) {
-          showSnackbar('Nie można usunąć oferty w tym statusie', 'error');
+        } else if (
+          errorMessage.includes('status') ||
+          errorMessage.includes('draft/sent') ||
+          errorMessage.includes('tylko draft') ||
+          errorMessage.includes('Nie można usunąć tej oferty')
+        ) {
+          showSnackbar(
+            'Nie można usunąć tej oferty. Usuwać można tylko oferty w statusie draft lub sent.',
+            'error',
+          );
         } else {
           showSnackbar(errorMessage, 'error');
         }

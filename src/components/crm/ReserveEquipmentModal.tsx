@@ -8,6 +8,7 @@ import { useDispatch } from 'react-redux';
 import { eventsApi } from '@/app/(crm)/crm/events/store/api/eventsApi';
 
 interface EquipmentItem {
+  warehouse_category_id: any;
   item_type: 'item' | 'kit';
   item_id: string;
   item_name: string;
@@ -34,6 +35,16 @@ interface SubstitutionItem {
   brand?: string;
   model?: string;
 }
+
+const buildItemKey = (itemType: 'item' | 'kit', itemId: string) => `${itemType}-${itemId}`;
+
+const parseItemKey = (key: string) => {
+  const separatorIndex = key.indexOf('-');
+  return {
+    item_type: key.slice(0, separatorIndex) as 'item' | 'kit',
+    item_id: key.slice(separatorIndex + 1),
+  };
+};
 
 // Mini dropdown component for actions
 function ActionsDropdown({
@@ -154,54 +165,55 @@ export default function ReserveEquipmentModal({
   const loadSubstitutions = async (item: EquipmentItem) => {
     try {
       setLoadingSubstitutions(true);
-
-      // Pobierz kategorię sprzętu
-      let categoryId = item.category_id;
-      if (!categoryId && item.item_type === 'item') {
-        const { data: itemData } = await supabase
+  
+      let warehouseCategoryId = item.warehouse_category_id;
+  
+      if (!warehouseCategoryId && item.item_type === 'item') {
+        const { data: itemData, error: itemError } = await supabase
           .from('equipment_items')
-          .select('category_id')
+          .select('warehouse_category_id')
           .eq('id', item.item_id)
           .single();
-        categoryId = itemData?.category_id;
+  
+        if (itemError) throw itemError;
+        warehouseCategoryId = itemData?.warehouse_category_id;
       }
-
-      if (!categoryId) {
+  
+      if (!warehouseCategoryId) {
         setSubstitutions([]);
         return;
       }
-
-      // Pobierz alternatywny sprzęt z tej samej kategorii
+  
       const { data, error } = await supabase
         .from('equipment_items')
-        .select('id, name, brand, model')
-        .eq('category_id', categoryId)
+        .select('id, name, brand, model, warehouse_category_id')
+        .eq('warehouse_category_id', warehouseCategoryId)
         .neq('id', item.item_id)
         .limit(10);
-
+  
       if (error) throw error;
-
-      // Dla każdego, sprawdź dostępność
+  
       const itemsWithAvailability = await Promise.all(
         (data || []).map(async (substitute) => {
-          const { count } = await supabase
+          const { count, error: countError } = await supabase
             .from('equipment_units')
             .select('*', { count: 'exact', head: true })
-            .eq('item_id', substitute.id)
+            .eq('equipment_id', substitute.id)
             .eq('status', 'available');
-
+  
+          if (countError) throw countError;
+  
           return {
             ...substitute,
             available_qty: count || 0,
           };
         })
       );
-
-      // Filtruj tylko te z dostępnością >= wymaganej ilości
+  
       const available = itemsWithAvailability.filter(
         (sub) => sub.available_qty >= item.required_qty
       );
-
+  
       setSubstitutions(available);
     } catch (err: any) {
       console.error('Error loading substitutions:', err);
@@ -210,7 +222,6 @@ export default function ReserveEquipmentModal({
       setLoadingSubstitutions(false);
     }
   };
-
   const handleToggleItem = (itemKey: string) => {
     const newSelected = new Set(selectedItems);
     if (newSelected.has(itemKey)) {
@@ -236,24 +247,31 @@ export default function ReserveEquipmentModal({
 
   const handleSelectSubstitution = async (substitutionId: string) => {
     if (!currentConflictItem) return;
-
+  
     try {
-      // Zaktualizuj substytucję w offer_product_equipment_substitutions
+      const { error: deleteError } = await supabase
+        .from('offer_equipment_substitutions')
+        .delete()
+        .eq('offer_id', offerId)
+        .eq('from_item_id', currentConflictItem.item_id);
+  
+      if (deleteError) throw deleteError;
+  
       const { error } = await supabase
-        .from('offer_product_equipment_substitutions')
+        .from('offer_equipment_substitutions')
         .insert({
           offer_id: offerId,
-          original_item_id: currentConflictItem.item_id,
-          substitute_item_id: substitutionId,
-          reason: 'Brak dostępności oryginalnego sprzętu',
+          from_item_id: currentConflictItem.item_id,
+          to_item_id: substitutionId,
+          qty: currentConflictItem.required_qty,
         });
-
+  
       if (error) throw error;
-
+  
       showSnackbar('Substytucja została zapisana', 'success');
       setShowSubstitutionModal(false);
       setCurrentConflictItem(null);
-      await loadEquipment(); // Przeładuj listę
+      await loadEquipment();
     } catch (err: any) {
       console.error('Error saving substitution:', err);
       showSnackbar(err.message || 'Błąd podczas zapisywania substytucji', 'error');
@@ -291,11 +309,12 @@ export default function ReserveEquipmentModal({
 
       // Zapisz zaakceptowane braki
       const acceptedShortageItems = Array.from(acceptedShortages).map((key) => {
-        const [type, id] = key.split('-');
-        const item = equipment.find((e) => `${e.item_type}-${e.item_id}` === key);
+        const { item_type, item_id } = parseItemKey(key);
+        const item = equipment.find((e) => buildItemKey(e.item_type, e.item_id) === key);
+      
         return {
-          item_type: type as 'item' | 'kit',
-          item_id: id,
+          item_type,
+          item_id,
           shortage_qty: item?.shortage_qty || 0,
         };
       });

@@ -3,6 +3,7 @@ import { DollarSign, Loader2, Plus, Send, Trash2, Lock } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import React, { Dispatch, SetStateAction, useState } from 'react';
 import ReserveEquipmentModal from '@/components/crm/ReserveEquipmentModal';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface EventTabOfferProps {
   offers: any[];
@@ -25,6 +26,8 @@ export default function EventTabOffer({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [sendingOffer, setSendingOffer] = useState(false);
   const [reserveModalOfferId, setReserveModalOfferId] = useState<string | null>(null);
+
+  const { isAdmin } = useCurrentEmployee();
 
   const handleDeleteOfferLocal = async (
     e: React.MouseEvent<HTMLButtonElement>,
@@ -106,7 +109,7 @@ export default function EventTabOffer({
           <div className="space-y-4">
             {offers.map((offer) => {
               const isDeletingThis = deletingId === offer.id;
-              const canDelete = offer.status === 'draft' || offer.status === 'sent';
+              const canDelete = offer.status === 'draft' || offer.status === 'sent' || isAdmin;
 
               return (
                 <div
