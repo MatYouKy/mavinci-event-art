@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from 'react';
 import { Lock, AlertTriangle, CheckCircle, Package, X, Loader2, MoreVertical } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useDispatch } from 'react-redux';
+import { eventsApi } from '@/app/(crm)/crm/events/store/api/eventsApi';
 
 interface EquipmentItem {
   item_type: 'item' | 'kit';
@@ -117,6 +119,7 @@ export default function ReserveEquipmentModal({
   const [substitutions, setSubstitutions] = useState<SubstitutionItem[]>([]);
   const [loadingSubstitutions, setLoadingSubstitutions] = useState(false);
   const { showSnackbar } = useSnackbar();
+  const dispatch = useDispatch();
 
   useEffect(() => {
     if (open && offerId) {
@@ -261,6 +264,19 @@ export default function ReserveEquipmentModal({
     try {
       setConfirming(true);
 
+      // Pobierz event_id z oferty
+      const { data: offer } = await supabase
+        .from('offers')
+        .select('event_id')
+        .eq('id', offerId)
+        .single();
+
+      if (!offer?.event_id) {
+        throw new Error('Nie znaleziono eventu dla tej oferty');
+      }
+
+      const eventId = offer.event_id;
+
       // Rezerwuj tylko zaznaczone
       const itemsToReserve = equipment
         .filter((item) => {
@@ -284,8 +300,8 @@ export default function ReserveEquipmentModal({
         };
       });
 
-      // Wywołaj funkcję rezerwacji
-      const { error } = await supabase.rpc('reserve_selected_equipment', {
+      // Wywołaj funkcję rezerwacji (automatycznie odrzuci inne oferty i ustawi flagę braków)
+      const { data, error } = await supabase.rpc('reserve_selected_equipment', {
         p_offer_id: offerId,
         p_items: itemsToReserve,
         p_accepted_shortages: acceptedShortageItems,
@@ -293,23 +309,25 @@ export default function ReserveEquipmentModal({
 
       if (error) throw error;
 
-      // Jeśli są zaakceptowane braki, ustaw flagę na evencie
-      if (acceptedShortages.size > 0) {
-        const { data: offer } = await supabase
-          .from('offers')
-          .select('event_id')
-          .eq('id', offerId)
-          .single();
+      // Invaliduj cache RTK Query
+      dispatch(eventsApi.util.invalidateTags([
+        { type: 'EventEquipment', id: eventId },
+        { type: 'EventOffers', id: `${eventId}_LIST` },
+        { type: 'EventDetails', id: eventId },
+        { type: 'Events', id: eventId },
+      ]));
 
-        if (offer?.event_id) {
-          await supabase
-            .from('events')
-            .update({ has_equipment_shortage: true })
-            .eq('id', offer.event_id);
-        }
+      const result = data as { success: boolean; reserved_count: number; shortage_count: number; rejected_offers_count: number };
+
+      if (result.rejected_offers_count > 0) {
+        showSnackbar(
+          `Sprzęt zarezerwowany pomyślnie. Odrzucono ${result.rejected_offers_count} pozostałych ofert.`,
+          'success'
+        );
+      } else {
+        showSnackbar('Sprzęt został zarezerwowany pomyślnie', 'success');
       }
 
-      showSnackbar('Sprzęt został zarezerwowany pomyślnie', 'success');
       onSuccess();
       onClose();
     } catch (err: any) {
