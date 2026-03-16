@@ -669,6 +669,7 @@ export const eventsApi = createApi({
         { type: 'EventDetails', id: eventId },
         { type: 'Events', id: eventId },
         { type: 'Events', id: 'LIST' },
+        { type: 'EventEquipment', id: eventId },
       ],
     }),
 
