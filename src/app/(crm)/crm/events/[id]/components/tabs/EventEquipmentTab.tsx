@@ -956,17 +956,32 @@ export const EventEquipmentTab: React.FC<{
     try {
       if (!currentItemForReplacement) return;
 
-      const { error } = await supabase
+      const oldName = currentItemForReplacement?.equipment?.name || 'Nieznany';
+
+      // Pobierz szczegóły alternatywnego sprzętu
+      const { data: newEquipment, error: fetchError } = await supabase
+        .from('equipment_items')
+        .select('name')
+        .eq('id', alternativeId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // Zaktualizuj sprzęt: zmień ID, ustaw status confirmed, usuń is_optional, dodaj notatkę
+      const { error: updateError } = await supabase
         .from('event_equipment')
         .update({
           equipment_item_id: alternativeId,
-          notes: `Zamieniono z: ${currentItemForReplacement?.equipment?.name || 'Nieznany'}`
+          status: 'confirmed',
+          is_optional: false,
+          auto_added: false,
+          notes: `Zamieniono z: ${oldName} → ${newEquipment?.name || alternativeId}`
         })
         .eq('id', currentItemForReplacement.id);
 
-      if (error) throw error;
+      if (updateError) throw updateError;
 
-      showSnackbar('Sprzęt został zamieniony pomyślnie', 'success');
+      showSnackbar(`Sprzęt zamieniony: ${oldName} → ${newEquipment?.name}`, 'success');
       setShowAlternativesModal(false);
       setAlternatives([]);
       setCurrentItemForReplacement(null);
