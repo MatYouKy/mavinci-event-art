@@ -146,7 +146,15 @@ function normalizeStatus(s?: string) {
     .trim();
 }
 
-function getStatusBadge(statusRaw?: string) {
+function getStatusBadge(statusRaw?: string, hasConflict?: boolean) {
+  // Jeśli sprzęt ma konflikt (niedostępny)
+  if (hasConflict) {
+    return {
+      label: 'NIEDOSTĘPNY',
+      cls: 'bg-red-500/15 text-red-400 border-red-500/30',
+    };
+  }
+
   const status = normalizeStatus(statusRaw);
 
   if (status === 'draft') {
@@ -256,6 +264,47 @@ export const EventEquipmentTab: React.FC<{
   const { employee } = useCurrentEmployee();
   const { showConfirm } = useDialog();
   const router = useRouter();
+
+  // Sprawdzenie czy są nierozwiązane konflikty
+  const [hasUnresolvedConflicts, setHasUnresolvedConflicts] = useState(false);
+
+  useEffect(() => {
+    const checkConflicts = async () => {
+      if (!eventId) return;
+
+      try {
+        // Najpierw pobierz oferty dla eventu
+        const { data: offers, error: offersError } = await supabase
+          .from('offers')
+          .select('id')
+          .eq('event_id', eventId);
+
+        if (offersError) throw offersError;
+
+        if (!offers || offers.length === 0) {
+          setHasUnresolvedConflicts(false);
+          return;
+        }
+
+        const offerIds = offers.map((o) => o.id);
+
+        // Sprawdź czy są nierozwiązane konflikty
+        const { data: conflicts, error: conflictsError } = await supabase
+          .from('offer_equipment_conflicts')
+          .select('id')
+          .eq('status', 'unresolved')
+          .in('offer_id', offerIds)
+          .limit(1);
+
+        if (conflictsError) throw conflictsError;
+        setHasUnresolvedConflicts((conflicts?.length || 0) > 0);
+      } catch (err) {
+        console.error('Error checking conflicts:', err);
+      }
+    };
+
+    checkConflicts();
+  }, [eventId]);
 
   // Tracking PDF checklisty
   const checklistPdfPath = event?.equipment_checklist_pdf_path || null;
@@ -622,9 +671,11 @@ export const EventEquipmentTab: React.FC<{
     const kitThumb = row?.kit?.thumbnail_url || row?.equipment_kits?.thumbnail_url || '';
 
     const key = getKeyForEventRow(row); // "kit-<id>"
-    const limits = getUiLimits((availabilityByKey as any)?.[key]);
+    const avail = (availabilityByKey as any)?.[key];
+    const limits = getUiLimits(avail);
     const qty = Number(row?.quantity || 1);
-    const badge = getStatusBadge(row?.status);
+    const hasConflict = avail && avail.max_add < 0;
+    const badge = getStatusBadge(row?.status, hasConflict);
 
     const expandInPrint = !!row?.expand_kit_in_checklist;
 
@@ -857,7 +908,29 @@ export const EventEquipmentTab: React.FC<{
     );
   };
 
+  const handleMarkAsRental = async (row: any) => {
+    try {
+      const { error } = await supabase
+        .from('event_equipment')
+        .update({ use_external_rental: true })
+        .eq('id', row.id);
+
+      if (error) throw error;
+
+      showSnackbar('Sprzęt oznaczony jako wynajem zewnętrzny', 'success');
+      refetch();
+    } catch (err: any) {
+      console.error('Error marking as rental:', err);
+      showSnackbar(err.message || 'Błąd podczas oznaczania jako rental', 'error');
+    }
+  };
+
   const renderRow = (row: any, editable: boolean) => {
+    // Sprawdź czy sprzęt ma konflikt (niedostępny)
+    const aKey = getKeyForEventRow(row);
+    const avail = aKey ? availabilityByKey?.[aKey] : undefined;
+    const hasConflict = avail && avail.max_add < 0;
+
     return (
       <EventEquipmentRow
         key={row.id}
@@ -874,7 +947,7 @@ export const EventEquipmentTab: React.FC<{
         availabilityByKey={availabilityByKey}
         getKeyForEventRow={getKeyForEventRow}
         getUiLimits={getUiLimits}
-        getStatusBadge={getStatusBadge}
+        getStatusBadge={(status) => getStatusBadge(status, hasConflict)}
         editingQuantityId={editingQuantityId}
         draftQuantity={draftQuantity}
         setEditingQuantityId={setEditingQuantityId}
@@ -882,6 +955,7 @@ export const EventEquipmentTab: React.FC<{
         onUpdateQuantity={handleUpdateQuantity}
         onRemove={handleRemoveEquipment}
         onRestore={handleRestoreAutoRow}
+        onMarkAsRental={handleMarkAsRental}
         onToggleExpandInChecklist={handleToggleExpandInChecklist}
       />
     );
@@ -987,7 +1061,7 @@ export const EventEquipmentTab: React.FC<{
         </div>
       </div>
 
-      {event?.has_equipment_shortage && (
+      {event?.has_equipment_shortage && hasUnresolvedConflicts && (
         <div className="mb-6 flex items-start justify-between gap-4 rounded-lg border border-red-500/20 bg-red-500/10 p-4">
           <div className="flex items-start gap-3">
             <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-400" />

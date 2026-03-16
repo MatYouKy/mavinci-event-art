@@ -29,6 +29,9 @@ type Props = {
   onRemove: (row: any) => void;
   onRestore: (row: any) => void;
 
+  // rental
+  onMarkAsRental?: (row: any) => void;
+
   // kit expand in checklist
   onToggleExpandInChecklist?: (rowId: string, expand: boolean) => void;
 };
@@ -53,6 +56,7 @@ export function EventEquipmentRow({
 
   onRemove,
   onRestore,
+  onMarkAsRental,
 
   onToggleExpandInChecklist,
 }: Props) {
@@ -66,11 +70,16 @@ export function EventEquipmentRow({
 
   const isAuto = !!row?.auto_added;
   const isRemovedFromOffer = !!row?.removed_from_offer;
+  const isConflict = badge.label === 'NIEDOSTĘPNY';
 
   return (
     <div>
       <div
-        className={`flex items-center gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2.5 transition-colors hover:border-[#d3bb73]/20 ${
+        className={`flex items-center gap-3 rounded-lg border ${
+          isConflict
+            ? 'border-red-500/20 bg-red-500/5'
+            : 'border-[#d3bb73]/10 bg-[#0f1119]'
+        } px-4 py-2.5 transition-colors hover:border-[#d3bb73]/20 ${
           isRemovedFromOffer ? 'opacity-50' : ''
         }`}
       >
@@ -223,7 +232,24 @@ export function EventEquipmentRow({
         )}
 
         {/* akcje */}
-        {!isRemovedFromOffer ? (
+        {isConflict && editable ? (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => onRemove(row)}
+              className="rounded bg-red-500/20 px-3 py-1 text-xs text-red-300 transition-colors hover:bg-red-500/30"
+              title="Usuń z eventu"
+            >
+              Usuń
+            </button>
+            <button
+              onClick={() => onMarkAsRental?.(row)}
+              className="rounded border border-[#d3bb73]/30 px-3 py-1 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
+              title="Zaznacz jako wynajem zewnętrzny"
+            >
+              Rental
+            </button>
+          </div>
+        ) : !isRemovedFromOffer ? (
           <button
             onClick={() => onRemove(row)}
             className="text-red-400/60 transition-colors hover:text-red-400"
