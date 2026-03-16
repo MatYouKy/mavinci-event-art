@@ -76,12 +76,13 @@ export function EventEquipmentRow({
   const isAuto = !!row?.auto_added;
   const isRemovedFromOffer = !!row?.removed_from_offer;
   const isConflict = badge.label === 'NIEDOSTĘPNY';
+  const isShortage = !!row?.is_optional;
 
   return (
     <div>
       <div
         className={`flex items-center gap-3 rounded-lg border ${
-          isConflict
+          isConflict || isShortage
             ? 'border-red-500/20 bg-red-500/5'
             : 'border-[#d3bb73]/10 bg-[#0f1119]'
         } px-4 py-2.5 transition-colors hover:border-[#d3bb73]/20 ${
@@ -134,6 +135,12 @@ export function EventEquipmentRow({
               <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] uppercase ${badge.cls}`}>
                 {badge.label}
               </span>
+
+              {isShortage && (
+                <span className="shrink-0 rounded-full border border-orange-500/30 bg-orange-500/10 px-2 py-0.5 text-[10px] font-medium uppercase text-orange-400">
+                  BRAK
+                </span>
+              )}
             </div>
 
             {!isKit && row?.equipment && (
@@ -237,7 +244,7 @@ export function EventEquipmentRow({
         )}
 
         {/* akcje */}
-        {isConflict && editable ? (
+        {(isConflict || isShortage) && editable ? (
           <ResponsiveActionBar
             actions={[
               {
@@ -255,7 +262,7 @@ export function EventEquipmentRow({
               ...(onSuggestAlternative
                 ? [
                     {
-                      label: 'Zasugeruj alternatywę',
+                      label: 'Zamień na inny',
                       icon: <Package className="h-4 w-4" />,
                       onClick: () => onSuggestAlternative(row),
                       variant: 'primary' as const,

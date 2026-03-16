@@ -910,14 +910,38 @@ export const EventEquipmentTab: React.FC<{
 
   const handleMarkAsRental = async (row: any) => {
     try {
+      const equipmentName = row?.equipment?.name || row?.kit?.name || 'Nieznany sprzęt';
+
       const { error } = await supabase
         .from('event_equipment')
-        .update({ use_external_rental: true })
+        .update({
+          use_external_rental: true,
+          notes: `Wynajem zewnętrzny - ${equipmentName}`
+        })
         .eq('id', row.id);
 
       if (error) throw error;
 
-      showSnackbar('Sprzęt oznaczony jako wynajem zewnętrzny', 'success');
+      // Dodaj notatkę/alert w zakładce Podwykonawcy
+      // Utwórz sugestię zadania dla podwykonawcy
+      if (eventId) {
+        const { error: noteError } = await supabase
+          .from('subcontractor_tasks')
+          .insert({
+            event_id: eventId,
+            task_name: `Wynajem: ${equipmentName}`,
+            description: `Potrzebny wynajem zewnętrzny - ${equipmentName} (${row.quantity} szt.)`,
+            status: 'planned',
+            payment_type: 'fixed',
+            notes: 'Utworzone automatycznie z zakładki Sprzęt',
+          });
+
+        if (noteError) {
+          console.warn('Nie udało się utworzyć zadania dla podwykonawcy:', noteError);
+        }
+      }
+
+      showSnackbar('Sprzęt oznaczony jako wynajem zewnętrzny. Dodano zadanie w zakładce Podwykonawcy.', 'success');
       refetch();
     } catch (err: any) {
       console.error('Error marking as rental:', err);
@@ -934,24 +958,79 @@ export const EventEquipmentTab: React.FC<{
         return;
       }
 
-      // Pobierz dostępny sprzęt z tej samej kategorii
-      const { data: alternatives, error } = await supabase
+      // Pobierz informacje o kategorii
+      const { data: category, error: categoryError } = await supabase
+        .from('warehouse_categories')
+        .select('id, name, parent_id, level')
+        .eq('id', categoryId)
+        .single();
+
+      if (categoryError) throw categoryError;
+
+      // Szukaj w tej samej kategorii
+      let { data: alternatives, error } = await supabase
         .from('equipment_items')
-        .select('id, name, brand, model, thumbnail_url')
+        .select('id, name, brand, model, thumbnail_url, category_id, warehouse_categories!inner(name, parent_id)')
         .eq('category_id', categoryId)
         .neq('id', row?.equipment?.id || '')
-        .limit(10);
+        .limit(20);
 
       if (error) throw error;
 
+      let searchLevel = 'subcategory';
+      let parentCategoryName = '';
+
+      // Jeśli nie znaleziono alternatyw w podkategorii, szukaj w głównej kategorii
+      if ((!alternatives || alternatives.length === 0) && category.parent_id) {
+        searchLevel = 'main_category';
+
+        // Pobierz nazwę głównej kategorii
+        const { data: parentCategory } = await supabase
+          .from('warehouse_categories')
+          .select('id, name')
+          .eq('id', category.parent_id)
+          .single();
+
+        if (parentCategory) {
+          parentCategoryName = parentCategory.name;
+
+          // Pobierz wszystkie podkategorie z tej głównej kategorii
+          const { data: subcategories } = await supabase
+            .from('warehouse_categories')
+            .select('id')
+            .eq('parent_id', category.parent_id);
+
+          if (subcategories && subcategories.length > 0) {
+            const subcategoryIds = subcategories.map(s => s.id);
+
+            // Szukaj w całej głównej kategorii
+            const { data: mainCategoryAlternatives, error: mainError } = await supabase
+              .from('equipment_items')
+              .select('id, name, brand, model, thumbnail_url, category_id, warehouse_categories!inner(name, parent_id)')
+              .in('category_id', subcategoryIds)
+              .neq('id', row?.equipment?.id || '')
+              .limit(20);
+
+            if (!mainError && mainCategoryAlternatives) {
+              alternatives = mainCategoryAlternatives;
+            }
+          }
+        }
+      }
+
       if (!alternatives || alternatives.length === 0) {
-        showSnackbar('Brak dostępnych alternatyw w tej kategorii', 'info');
+        showSnackbar('Brak dostępnych alternatyw', 'info');
         return;
       }
 
-      // TODO: Pokaż modal z alternatywami
-      showSnackbar(`Znaleziono ${alternatives.length} alternatyw`, 'info');
+      const message = searchLevel === 'main_category'
+        ? `Znaleziono ${alternatives.length} alternatyw z kategorii: ${parentCategoryName}`
+        : `Znaleziono ${alternatives.length} alternatyw`;
+
+      showSnackbar(message, 'info');
       console.log('Alternatives:', alternatives);
+
+      // TODO: Pokaż modal z alternatywami do wyboru
     } catch (err: any) {
       console.error('Error suggesting alternatives:', err);
       showSnackbar(err.message || 'Błąd podczas szukania alternatyw', 'error');
