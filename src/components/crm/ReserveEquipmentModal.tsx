@@ -52,14 +52,21 @@ function ActionsDropdown({
   item,
   onAcceptShortage,
   onResolveConflict,
+  index,
+  totalItems,
 }: {
   itemKey: string;
   item: EquipmentItem;
   onAcceptShortage: (key: string) => void;
   onResolveConflict: (item: EquipmentItem) => void;
+  index: number;
+  totalItems: number;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Otwórz w górę dla ostatnich 2 itemów
+  const openUpwards = totalItems - index <= 2;
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -87,7 +94,11 @@ function ActionsDropdown({
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 z-10 mt-1 w-48 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl">
+        <div
+          className={`absolute right-0 z-50 w-48 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl ${
+            openUpwards ? 'bottom-full mb-1' : 'top-full mt-1'
+          }`}
+        >
           <button
             onClick={() => {
               onAcceptShortage(itemKey);
@@ -503,6 +514,8 @@ export default function ReserveEquipmentModal({
                                       item={item}
                                       onAcceptShortage={handleAcceptShortage}
                                       onResolveConflict={handleResolveConflict}
+                                      index={index}
+                                      totalItems={equipment.length}
                                     />
                                   )}
                                 </td>
