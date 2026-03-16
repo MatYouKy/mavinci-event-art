@@ -25,7 +25,9 @@ export default function ResponsiveActionBar({
 }: ResponsiveActionBarProps) {
   const [isMobile, setIsMobile] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [openUpward, setOpenUpward] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const checkMobile = () => {
@@ -47,6 +49,15 @@ export default function ResponsiveActionBar({
 
     if (showMenu) {
       document.addEventListener('mousedown', handleClickOutside);
+
+      // Sprawdź czy menu powinno otworzyć się do góry
+      if (buttonRef.current) {
+        const buttonRect = buttonRef.current.getBoundingClientRect();
+        const spaceBelow = window.innerHeight - buttonRect.bottom;
+        const menuHeight = 200; // Szacowana wysokość menu
+
+        setOpenUpward(spaceBelow < menuHeight && buttonRect.top > menuHeight);
+      }
     }
 
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -88,6 +99,7 @@ export default function ResponsiveActionBar({
     return (
       <div className="relative" ref={menuRef}>
         <button
+          ref={buttonRef}
           onClick={() => setShowMenu(!showMenu)}
           className={
             disabledBackground
@@ -100,7 +112,9 @@ export default function ResponsiveActionBar({
         </button>
 
         {showMenu && (
-          <div className="absolute right-0 top-full mt-2 w-56 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl shadow-xl z-50 overflow-hidden">
+          <div className={`absolute right-0 w-56 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl shadow-xl z-50 overflow-hidden ${
+            openUpward ? 'bottom-full mb-2' : 'top-full mt-2'
+          }`}>
             {filteredActions.map((action, index) => (
               <button
                 key={index}

@@ -257,6 +257,9 @@ export const EventEquipmentTab: React.FC<{
   const [showAddEquipmentModal, setShowAddEquipmentModal] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [editingQuantityId, setEditingQuantityId] = useState<string | null>(null);
+  const [showAlternativesModal, setShowAlternativesModal] = useState(false);
+  const [alternatives, setAlternatives] = useState<any[]>([]);
+  const [currentItemForReplacement, setCurrentItemForReplacement] = useState<any>(null);
   const [draftQuantity, setDraftQuantity] = useState<number>(1);
 
   const { showSnackbar } = useSnackbar();
@@ -949,6 +952,31 @@ export const EventEquipmentTab: React.FC<{
     }
   };
 
+  const handleReplaceEquipment = async (alternativeId: string) => {
+    try {
+      if (!currentItemForReplacement) return;
+
+      const { error } = await supabase
+        .from('event_equipment')
+        .update({
+          equipment_item_id: alternativeId,
+          notes: `Zamieniono z: ${currentItemForReplacement?.equipment?.name || 'Nieznany'}`
+        })
+        .eq('id', currentItemForReplacement.id);
+
+      if (error) throw error;
+
+      showSnackbar('Sprzęt został zamieniony pomyślnie', 'success');
+      setShowAlternativesModal(false);
+      setAlternatives([]);
+      setCurrentItemForReplacement(null);
+      refetch();
+    } catch (err: any) {
+      console.error('Error replacing equipment:', err);
+      showSnackbar(err.message || 'Błąd podczas zamiany sprzętu', 'error');
+    }
+  };
+
   const handleSuggestAlternative = async (row: any) => {
     try {
       // Pobierz kategorię sprzętu
@@ -1028,9 +1056,11 @@ export const EventEquipmentTab: React.FC<{
         : `Znaleziono ${alternatives.length} alternatyw`;
 
       showSnackbar(message, 'info');
-      console.log('Alternatives:', alternatives);
 
-      // TODO: Pokaż modal z alternatywami do wyboru
+      // Pokaż modal z alternatywami do wyboru
+      setAlternatives(alternatives);
+      setCurrentItemForReplacement(row);
+      setShowAlternativesModal(true);
     } catch (err: any) {
       console.error('Error suggesting alternatives:', err);
       showSnackbar(err.message || 'Błąd podczas szukania alternatyw', 'error');
@@ -1277,6 +1307,88 @@ export const EventEquipmentTab: React.FC<{
           availableKits={availableKits}
           availabilityByKey={availabilityByKey}
         />
+      )}
+
+      {showAlternativesModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-3xl rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-medium text-[#e5e4e2]">
+                Wybierz alternatywny sprzęt
+              </h3>
+              <button
+                onClick={() => {
+                  setShowAlternativesModal(false);
+                  setAlternatives([]);
+                  setCurrentItemForReplacement(null);
+                }}
+                className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
+              >
+                ✕
+              </button>
+            </div>
+
+            {currentItemForReplacement && (
+              <div className="mb-4 rounded-lg border border-red-500/20 bg-red-500/5 p-3">
+                <div className="text-sm text-[#e5e4e2]/70">
+                  <span className="text-[#e5e4e2]/50">Zastępujesz: </span>
+                  <span className="font-medium text-[#e5e4e2]">
+                    {currentItemForReplacement?.equipment?.name || 'Nieznany'}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div className="max-h-[60vh] space-y-2 overflow-y-auto">
+              {alternatives.map((alt) => (
+                <div
+                  key={alt.id}
+                  className="flex items-center justify-between rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4 transition-colors hover:border-[#d3bb73]/30"
+                >
+                  <div className="flex items-center gap-3">
+                    {alt.thumbnail_url ? (
+                      <img
+                        src={alt.thumbnail_url}
+                        alt={alt.name}
+                        className="h-12 w-12 rounded border border-[#d3bb73]/20 object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-12 w-12 items-center justify-center rounded border border-[#d3bb73]/20 bg-[#1c1f33]">
+                        <Package className="h-6 w-6 text-[#e5e4e2]/30" />
+                      </div>
+                    )}
+
+                    <div>
+                      <div className="font-medium text-[#e5e4e2]">{alt.name}</div>
+                      <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/50">
+                        {alt.brand && <span>{alt.brand}</span>}
+                        {alt.model && (
+                          <>
+                            {alt.brand && <span>•</span>}
+                            <span>{alt.model}</span>
+                          </>
+                        )}
+                        {alt.warehouse_categories && (
+                          <>
+                            <span>•</span>
+                            <span>{alt.warehouse_categories.name}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => handleReplaceEquipment(alt.id)}
+                    className="rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+                  >
+                    Wybierz
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
