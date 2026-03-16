@@ -492,6 +492,18 @@ export default function EventDetailPageClient({
 
   const handleDeleteOffer = useCallback(
     async (offerId: string) => {
+      const offer = offersData?.find((o: any) => o.id === offerId);
+
+      if (offer?.status === 'accepted') {
+        showSnackbar('Nie można usunąć zaakceptowanej oferty', 'error');
+        return;
+      }
+
+      if (offer?.status === 'rejected') {
+        showSnackbar('Nie można usunąć odrzuconej oferty', 'error');
+        return;
+      }
+
       setIsConfirmed(true);
       const confirmed = await showConfirm(
         'Czy na pewno chcesz usunąć tę ofertę?',
@@ -508,12 +520,20 @@ export default function EventDetailPageClient({
         showSnackbar('Oferta została usunięta', 'success');
       } catch (error: any) {
         console.error('Error deleting offer:', error);
-        showSnackbar(error?.message || 'Błąd podczas usuwania oferty', 'error');
+        const errorMessage = error?.message || 'Błąd podczas usuwania oferty';
+
+        if (errorMessage.includes('policy')) {
+          showSnackbar('Nie masz uprawnień do usunięcia tej oferty', 'error');
+        } else if (errorMessage.includes('status')) {
+          showSnackbar('Nie można usunąć oferty w tym statusie', 'error');
+        } else {
+          showSnackbar(errorMessage, 'error');
+        }
       } finally {
         setIsConfirmed(false);
       }
     },
-    [eventId, deleteOfferMutation, showConfirm, showSnackbar],
+    [eventId, offersData, deleteOfferMutation, showConfirm, showSnackbar],
   );
 
   const [showSendOfferModal, setShowSendOfferModal] = useState(false);

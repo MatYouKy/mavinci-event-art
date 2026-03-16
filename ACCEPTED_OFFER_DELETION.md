@@ -143,15 +143,55 @@ Event Equipment: 0 pozycji (wszystko usunięte)
 
 ## 🛡️ Bezpieczeństwo
 
+### RLS Policy - Ochrona Przed Usunięciem
+
+**Policy:** `Admins can delete draft and sent offers`
+
+```sql
+CREATE POLICY "Admins can delete draft and sent offers"
+  ON offers FOR DELETE
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM employees
+      WHERE employees.id = auth.uid()
+      AND employees.role = 'admin'
+    )
+    AND status IN ('draft', 'sent')
+  );
+```
+
+**Blokada usuwania:**
+- ❌ Oferty `accepted` - CHRONIONE
+- ❌ Oferty `rejected` - CHRONIONE
+- ✅ Oferty `draft` - mogą być usunięte (tylko przez adminów)
+- ✅ Oferty `sent` - mogą być usunięte (tylko przez adminów)
+
+### Triggery
+
 - ✅ Używa `SECURITY DEFINER` - trigger działa z uprawnieniami właściciela
 - ✅ `SET search_path = public` - zapobiega SQL injection
 - ✅ Sprawdza tylko oferty o statusie `accepted`
 - ✅ Nie dotyka innych ofert ani eventów
 
+### UI - Walidacja Frontendowa
+
+**EventTabOffer.tsx:**
+- ✅ Przycisk usuwania widoczny tylko dla statusów `draft` i `sent`
+- ✅ Szary, nieaktywny przycisk dla statusów `accepted` i `rejected`
+- ✅ Tooltip wyjaśniający dlaczego nie można usunąć
+
+**EventDetailPageClient.tsx:**
+- ✅ Walidacja statusu przed wywołaniem API
+- ✅ Komunikat błędu: "Nie można usunąć zaakceptowanej oferty"
+- ✅ Komunikat błędu: "Nie można usunąć odrzuconej oferty"
+- ✅ Lepsze obsługa błędów z API (policy, status)
+
 ## 📝 Migracje
 
 1. `handle_accepted_offer_deletion` - trigger DELETE
 2. `handle_offer_status_change_from_accepted` - trigger UPDATE
+3. `restrict_offer_deletion_by_status` - RLS policy DELETE z walidacją statusu
 
 ## ✅ Co Jest Automatyczne
 
@@ -170,7 +210,25 @@ Event Equipment: 0 pozycji (wszystko usunięte)
 
 ## 🔍 Debugging
 
-Jeśli sprzęt nie znika po usunięciu oferty:
+### Problem: Nie mogę usunąć oferty
+
+**Sprawdź status oferty:**
+- ❌ Oferty `accepted` i `rejected` są chronione przed usunięciem
+- ✅ Tylko oferty `draft` i `sent` mogą być usunięte
+
+**Komunikaty błędów:**
+- "Nie można usunąć zaakceptowanej oferty" → Oferta ma status `accepted`
+- "Nie można usunąć odrzuconej oferty" → Oferta ma status `rejected`
+- "Nie masz uprawnień do usunięcia tej oferty" → Nie jesteś adminem
+- "new row violates row-level security policy" → RLS blokuje DELETE
+
+**Rozwiązanie:**
+- Jeśli chcesz usunąć zaakceptowaną ofertę:
+  1. Najpierw zmień status na `draft` lub `sent`
+  2. Sprzęt zostanie automatycznie usunięty (trigger)
+  3. Następnie usuń ofertę
+
+### Problem: Sprzęt nie znika po usunięciu oferty
 
 1. Sprawdź logi Supabase
 2. Zweryfikuj czy trigger jest aktywny:
@@ -180,3 +238,9 @@ Jeśli sprzęt nie znika po usunięciu oferty:
    ```
 3. Sprawdź czy oferta miała status `accepted` przed usunięciem
 4. Zweryfikuj cache RTK Query w Redux DevTools
+
+### Problem: Przycisk usuwania jest nieaktywny
+
+- To prawidłowe zachowanie dla ofert `accepted` i `rejected`
+- Najedź kursorem na przycisk aby zobaczyć tooltip z wyjaśnieniem
+- Jeśli chcesz usunąć - najpierw zmień status oferty

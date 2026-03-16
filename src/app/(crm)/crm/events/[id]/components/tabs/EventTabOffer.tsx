@@ -106,6 +106,7 @@ export default function EventTabOffer({
           <div className="space-y-4">
             {offers.map((offer) => {
               const isDeletingThis = deletingId === offer.id;
+              const canDelete = offer.status === 'draft' || offer.status === 'sent';
 
               return (
                 <div
@@ -195,16 +196,30 @@ export default function EventTabOffer({
                           </button>
                         )}
 
-                        <button
-                          onClick={(e: React.MouseEvent<HTMLButtonElement>) =>
-                            handleDeleteOfferLocal(e, offer.id)
-                          }
-                          className="rounded-lg bg-red-500/20 p-2 text-red-400 transition-colors hover:bg-red-500/30"
-                          title="Usuń ofertę"
-                          disabled={isDeletingThis}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        {/* Przycisk Usuń - tylko dla draft/sent */}
+                        {canDelete ? (
+                          <button
+                            onClick={(e: React.MouseEvent<HTMLButtonElement>) =>
+                              handleDeleteOfferLocal(e, offer.id)
+                            }
+                            className="rounded-lg bg-red-500/20 p-2 text-red-400 transition-colors hover:bg-red-500/30"
+                            title="Usuń ofertę"
+                            disabled={isDeletingThis}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        ) : (
+                          <div
+                            className="rounded-lg bg-gray-500/10 p-2 text-gray-500/50"
+                            title={
+                              offer.status === 'accepted'
+                                ? 'Nie można usunąć zaakceptowanej oferty'
+                                : 'Nie można usunąć odrzuconej oferty'
+                            }
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </div>
+                        )}
                       </div>
                     </div>
 
