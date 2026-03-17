@@ -32,9 +32,10 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
   const [showEquipmentModal, setShowEquipmentModal] = useState(false);
   const [availableEquipment, setAvailableEquipment] = useState<EquipmentItem[]>([]);
   const [availableKits, setAvailableKits] = useState<EquipmentItem[]>([]);
+  const [availableCables, setAvailableCables] = useState<EquipmentItem[]>([]);
   const [filteredEquipment, setFilteredEquipment] = useState<EquipmentItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [itemTypeFilter, setItemTypeFilter] = useState<'all' | 'equipment' | 'kit'>('all');
+  const [itemTypeFilter, setItemTypeFilter] = useState<'all' | 'equipment' | 'kit' | 'cable'>('all');
   const [componentType, setComponentType] = useState<'from_warehouse' | 'custom'>('from_warehouse');
   const [newComponent, setNewComponent] = useState({
     component_equipment_id: '',
@@ -114,8 +115,8 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
   };
 
   useEffect(() => {
-    // Połącz equipment i kity
-    const allItems = [...availableEquipment, ...availableKits];
+    // Połącz equipment, kity i przewody
+    const allItems = [...availableEquipment, ...availableKits, ...availableCables];
 
     // Filtruj po typie
     let itemsToFilter = allItems;
@@ -123,6 +124,8 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
       itemsToFilter = availableEquipment;
     } else if (itemTypeFilter === 'kit') {
       itemsToFilter = availableKits;
+    } else if (itemTypeFilter === 'cable') {
+      itemsToFilter = availableCables;
     }
 
     // Filtruj po wyszukiwaniu
@@ -154,7 +157,7 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
         }),
       );
     }
-  }, [searchQuery, availableEquipment, availableKits, itemTypeFilter]);
+  }, [searchQuery, availableEquipment, availableKits, availableCables, itemTypeFilter]);
 
   const fetchAvailableEquipment = async () => {
     // Pobierz equipment
@@ -204,7 +207,28 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
       console.error('Error fetching kits:', kitsError);
     }
 
-    // Połącz equipment i kity w jedną listę z oznaczeniem typu
+    // Pobierz przewody
+    const { data: cablesData, error: cablesError } = await supabase
+      .from('cables')
+      .select(
+        `
+        id,
+        name,
+        description,
+        thumbnail_url,
+        stock_quantity,
+        length_meters,
+        warehouse_categories(name)
+      `,
+      )
+      .is('deleted_at', null)
+      .order('name');
+
+    if (cablesError) {
+      console.error('Error fetching cables:', cablesError);
+    }
+
+    // Połącz equipment, kity i przewody w jedną listę z oznaczeniem typu
     const equipmentWithType = (equipmentData || []).map((item) => ({
       ...item,
       item_type: 'equipment' as const,
@@ -228,10 +252,22 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
       item_type: 'kit' as const,
     }));
 
-    const allItems = [...equipmentWithType, ...kitsWithType];
+    const cablesWithType = (cablesData || []).map((cable: any) => ({
+      ...cable,
+      // Normalize cable shape to match EquipmentItem interface
+      model: cable.length_meters ? `${cable.length_meters}m` : null,
+      brand: null,
+      cable_stock_quantity: cable.stock_quantity || 0,
+      equipment_units: [],
+      equipment_kit_items: [],
+      item_type: 'cable' as const,
+    }));
+
+    const allItems = [...equipmentWithType, ...kitsWithType, ...cablesWithType];
 
     setAvailableEquipment(equipmentWithType);
     setAvailableKits(kitsWithType);
+    setAvailableCables(cablesWithType);
     setFilteredEquipment(allItems);
   };
 
@@ -266,6 +302,15 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
               model
             )
           )
+        ),
+        compatible_cable:compatible_cable_id(
+          id,
+          name,
+          description,
+          thumbnail_url,
+          stock_quantity,
+          length_meters,
+          warehouse_categories(name)
         )
       `,
       )
@@ -282,7 +327,7 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
     }
   };
 
-  const handleAddCompatible = async (itemId: string, itemType: 'equipment' | 'kit') => {
+  const handleAddCompatible = async (itemId: string, itemType: 'equipment' | 'kit' | 'cable') => {
     try {
       const insertData: any = {
         equipment_id: equipment.id,
@@ -295,9 +340,15 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
       if (itemType === 'equipment') {
         insertData.compatible_equipment_id = itemId;
         insertData.compatible_kit_id = null;
-      } else {
+        insertData.compatible_cable_id = null;
+      } else if (itemType === 'kit') {
         insertData.compatible_kit_id = itemId;
         insertData.compatible_equipment_id = null;
+        insertData.compatible_cable_id = null;
+      } else if (itemType === 'cable') {
+        insertData.compatible_cable_id = itemId;
+        insertData.compatible_equipment_id = null;
+        insertData.compatible_kit_id = null;
       }
 
       const { error } = await supabase.from('equipment_compatible_items').insert(insertData);
@@ -1268,6 +1319,17 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                       }`}
                     >
                       Zestawy
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setItemTypeFilter('cable')}
+                      className={`flex-1 rounded-lg px-4 py-2 text-sm transition-colors ${
+                        itemTypeFilter === 'cable'
+                          ? 'bg-[#d3bb73] text-[#1c1f33]'
+                          : 'bg-[#1c1f33] text-[#e5e4e2]/60 hover:bg-[#e5e4e2]/10'
+                      }`}
+                    >
+                      Przewody
                     </button>
                   </div>
                 </div>

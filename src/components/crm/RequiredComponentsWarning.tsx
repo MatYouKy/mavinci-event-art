@@ -9,6 +9,7 @@ interface RequiredComponent {
   id: string;
   compatible_equipment_id: string | null;
   compatible_kit_id: string | null;
+  compatible_cable_id: string | null;
   compatibility_type: string;
   compatibility_group: string | null;
   compatible_equipment?: {
@@ -21,6 +22,12 @@ interface RequiredComponent {
     id: string;
     name: string;
     description?: string;
+  };
+  compatible_cable?: {
+    id: string;
+    name: string;
+    description?: string;
+    length_meters?: number;
   };
 }
 
@@ -64,10 +71,12 @@ export function RequiredComponentsWarning({
           id,
           compatible_equipment_id,
           compatible_kit_id,
+          compatible_cable_id,
           compatibility_type,
           compatibility_group,
           compatible_equipment:equipment_items!compatible_equipment_id(id, name, model, brand),
-          compatible_kit:equipment_kits!compatible_kit_id(id, name, description)
+          compatible_kit:equipment_kits!compatible_kit_id(id, name, description),
+          compatible_cable:cables!compatible_cable_id(id, name, description, length_meters)
         `)
         .eq('equipment_id', equipmentId)
         .eq('compatibility_type', 'required');
@@ -82,6 +91,9 @@ export function RequiredComponentsWarning({
         compatible_kit: Array.isArray(item.compatible_kit)
           ? item.compatible_kit[0]
           : item.compatible_kit,
+        compatible_cable: Array.isArray(item.compatible_cable)
+          ? item.compatible_cable[0]
+          : item.compatible_cable,
       })) as RequiredComponent[];
 
       if (mapped.length > 0) {
@@ -89,6 +101,7 @@ export function RequiredComponentsWarning({
           .filter((c) => c.compatible_equipment_id)
           .map((c) => c.compatible_equipment_id!);
         const allKitIds = mapped.filter((c) => c.compatible_kit_id).map((c) => c.compatible_kit_id!);
+        const allCableIds = mapped.filter((c) => c.compatible_cable_id).map((c) => c.compatible_cable_id!);
 
         const { data: existingEquipment } =
           allEquipmentIds.length > 0
@@ -103,15 +116,25 @@ export function RequiredComponentsWarning({
           allKitIds.length > 0
             ? await supabase
                 .from('event_equipment')
-                .select('equipment_id, kit_id')
+                .select('equipment_id, kit_id, cable_id')
                 .eq('event_id', eventId)
                 .in('kit_id', allKitIds)
+            : { data: [] };
+
+        const { data: existingCables } =
+          allCableIds.length > 0
+            ? await supabase
+                .from('event_equipment')
+                .select('equipment_id, kit_id, cable_id')
+                .eq('event_id', eventId)
+                .in('cable_id', allCableIds)
             : { data: [] };
 
         const existingEquipmentIds = new Set(
           (existingEquipment || []).map((e) => e.equipment_id).filter(Boolean)
         );
         const existingKitIds = new Set((existingKits || []).map((e) => e.kit_id).filter(Boolean));
+        const existingCableIds = new Set((existingCables || []).map((e) => e.cable_id).filter(Boolean));
 
         // Group by compatibility_group
         const groupedComponents: Record<string, RequiredComponent[]> = {};
@@ -139,6 +162,9 @@ export function RequiredComponentsWarning({
               if (comp.compatible_kit_id) {
                 return existingKitIds.has(comp.compatible_kit_id);
               }
+              if (comp.compatible_cable_id) {
+                return existingCableIds.has(comp.compatible_cable_id);
+              }
               return false;
             });
 
@@ -156,7 +182,9 @@ export function RequiredComponentsWarning({
               ? existingEquipmentIds.has(comp.compatible_equipment_id)
               : comp.compatible_kit_id
                 ? existingKitIds.has(comp.compatible_kit_id)
-                : false;
+                : comp.compatible_cable_id
+                  ? existingCableIds.has(comp.compatible_cable_id)
+                  : false;
 
             if (!isAdded) {
               unsatisfiedGroups.push({
@@ -205,7 +233,8 @@ export function RequiredComponentsWarning({
           const selectedComponent = group.components.find(
             (c) =>
               (c.compatible_equipment_id && c.compatible_equipment_id === selectedId) ||
-              (c.compatible_kit_id && c.compatible_kit_id === selectedId)
+              (c.compatible_kit_id && c.compatible_kit_id === selectedId) ||
+              (c.compatible_cable_id && c.compatible_cable_id === selectedId)
           );
 
           if (selectedComponent) {
@@ -221,6 +250,14 @@ export function RequiredComponentsWarning({
               await supabase.from('event_equipment').insert({
                 event_id: eventId,
                 kit_id: selectedComponent.compatible_kit_id,
+                quantity: 1,
+                status: 'reserved',
+                offer_id: offerId || null,
+              });
+            } else if (selectedComponent.compatible_cable_id) {
+              await supabase.from('event_equipment').insert({
+                event_id: eventId,
+                cable_id: selectedComponent.compatible_cable_id,
                 quantity: 1,
                 status: 'reserved',
                 offer_id: offerId || null,
@@ -242,6 +279,14 @@ export function RequiredComponentsWarning({
             await supabase.from('event_equipment').insert({
               event_id: eventId,
               kit_id: component.compatible_kit_id,
+              quantity: 1,
+              status: 'reserved',
+              offer_id: offerId || null,
+            });
+          } else if (component.compatible_cable_id) {
+            await supabase.from('event_equipment').insert({
+              event_id: eventId,
+              cable_id: component.compatible_cable_id,
               quantity: 1,
               status: 'reserved',
               offer_id: offerId || null,
@@ -346,9 +391,10 @@ export function RequiredComponentsWarning({
 
                         <div className="ml-7 space-y-2">
                           {group.components.map((component) => {
-                            const item = component.compatible_equipment || component.compatible_kit;
+                            const item = component.compatible_equipment || component.compatible_kit || component.compatible_cable;
                             const isKit = !!component.compatible_kit;
-                            const itemId = component.compatible_equipment_id || component.compatible_kit_id;
+                            const isCable = !!component.compatible_cable;
+                            const itemId = component.compatible_equipment_id || component.compatible_kit_id || component.compatible_cable_id;
 
                             if (!item || !itemId) return null;
 
@@ -386,8 +432,13 @@ export function RequiredComponentsWarning({
                                         ZESTAW
                                       </span>
                                     )}
+                                    {isCable && (
+                                      <span className="rounded bg-purple-500/20 px-2 py-0.5 text-xs text-purple-400">
+                                        PRZEWÓD
+                                      </span>
+                                    )}
                                   </div>
-                                  {!isKit && component.compatible_equipment && (
+                                  {!isKit && !isCable && component.compatible_equipment && (
                                     <div className="mt-1 text-xs text-[#e5e4e2]/50">
                                       {component.compatible_equipment.brand}{' '}
                                       {component.compatible_equipment.model}
@@ -396,6 +447,12 @@ export function RequiredComponentsWarning({
                                   {isKit && component.compatible_kit?.description && (
                                     <div className="mt-1 text-xs text-[#e5e4e2]/50">
                                       {component.compatible_kit.description}
+                                    </div>
+                                  )}
+                                  {isCable && component.compatible_cable && (
+                                    <div className="mt-1 text-xs text-[#e5e4e2]/50">
+                                      {component.compatible_cable.length_meters && `${component.compatible_cable.length_meters}m`}
+                                      {component.compatible_cable.description && ` - ${component.compatible_cable.description}`}
                                     </div>
                                   )}
                                 </div>
@@ -408,8 +465,9 @@ export function RequiredComponentsWarning({
                   } else {
                     // Single required component - automatically added, no user selection needed
                     const component = group.components[0];
-                    const item = component.compatible_equipment || component.compatible_kit;
+                    const item = component.compatible_equipment || component.compatible_kit || component.compatible_cable;
                     const isKit = !!component.compatible_kit;
+                    const isCable = !!component.compatible_cable;
 
                     if (!item) return null;
 
@@ -430,11 +488,16 @@ export function RequiredComponentsWarning({
                                   ZESTAW
                                 </span>
                               )}
+                              {isCable && (
+                                <span className="rounded bg-purple-500/20 px-2 py-0.5 text-xs text-purple-400">
+                                  PRZEWÓD
+                                </span>
+                              )}
                               <span className="rounded bg-green-500/20 px-2 py-0.5 text-xs text-green-400">
                                 ZOSTANIE DODANY
                               </span>
                             </div>
-                            {!isKit && component.compatible_equipment && (
+                            {!isKit && !isCable && component.compatible_equipment && (
                               <div className="mt-1 text-xs text-[#e5e4e2]/50">
                                 {component.compatible_equipment.brand}{' '}
                                 {component.compatible_equipment.model}
@@ -443,6 +506,12 @@ export function RequiredComponentsWarning({
                             {isKit && component.compatible_kit?.description && (
                               <div className="mt-1 text-xs text-[#e5e4e2]/50">
                                 {component.compatible_kit.description}
+                              </div>
+                            )}
+                            {isCable && component.compatible_cable && (
+                              <div className="mt-1 text-xs text-[#e5e4e2]/50">
+                                {component.compatible_cable.length_meters && `${component.compatible_cable.length_meters}m`}
+                                {component.compatible_cable.description && ` - ${component.compatible_cable.description}`}
                               </div>
                             )}
                             <div className="mt-2 text-xs text-green-400/80">
