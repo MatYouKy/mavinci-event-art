@@ -28,6 +28,7 @@ import { extractKitItemsFromRow, isKitRow } from '../../helpers/extractKitItemsF
 import Popover from '@/components/UI/Tooltip';
 import { useDialog } from '@/contexts/DialogContext';
 import { ISimpleContact } from '../../EventDetailPageClient';
+import SelectRentalEquipmentModal from '@/components/crm/SelectRentalEquipmentModal';
 
 const KitItemRow = ({
   thumb,
@@ -273,6 +274,8 @@ export const EventEquipmentTab: React.FC<{
   const [alternatives, setAlternatives] = useState<any[]>([]);
   const [currentItemForReplacement, setCurrentItemForReplacement] = useState<any>(null);
   const [draftQuantity, setDraftQuantity] = useState<number>(1);
+  const [showRentalModal, setShowRentalModal] = useState(false);
+  const [currentRowForRental, setCurrentRowForRental] = useState<any>(null);
 
   const { showSnackbar } = useSnackbar();
   const { event, refetch: refetchEvent } = useEvent(initialEvent);
@@ -924,15 +927,22 @@ export const EventEquipmentTab: React.FC<{
   };
 
   const handleMarkAsRental = async (row: any) => {
-    try {
-      const equipmentName =
-        row?.equipment?.name ||
-        row?.equipment_items?.name ||
-        row?.kit?.name ||
-        row?.item_name ||
-        'Nieznany sprzęt';
+    setCurrentRowForRental(row);
+    setShowRentalModal(true);
+  };
 
-      // Update event_equipment
+  const handleSelectRentalEquipment = async (
+    subcontractorId: string,
+    equipmentId: string,
+    equipmentName: string,
+    subcontractorName: string
+  ) => {
+    if (!currentRowForRental) return;
+
+    try {
+      const row = currentRowForRental;
+
+      // Update event_equipment with rental info
       const { error: eventEqError } = await supabase
         .from('event_equipment')
         .update({
@@ -940,6 +950,9 @@ export const EventEquipmentTab: React.FC<{
           status: 'rental',
           is_optional: false,
           auto_added: false,
+          rental_subcontractor_id: subcontractorId,
+          rental_equipment_id: equipmentId,
+          notes: `Wynajem od: ${subcontractorName} - ${equipmentName}`,
         })
         .eq('id', row.id);
 
@@ -960,30 +973,30 @@ export const EventEquipmentTab: React.FC<{
         }
       }
 
-      // Create subcontractor task
+      // Create subcontractor task with catalog reference
       if (eventId) {
-        const { data: taskData, error: noteError } = await supabase
+        const { error: taskError } = await supabase
           .from('subcontractor_tasks')
           .insert({
             event_id: eventId,
+            subcontractor_id: subcontractorId,
             event_equipment_id: row.id,
+            equipment_catalog_id: equipmentId,
             task_type: 'equipment_rental',
             task_name: `Wynajem: ${equipmentName}`,
-            description: `Wynajem zewnętrzny - ${equipmentName} (${row.quantity || row.required_qty || 1} szt.)`,
+            description: `Wynajem od ${subcontractorName} - ${equipmentName} (${row.quantity || row.required_qty || 1} szt.)`,
             status: 'planned',
             payment_type: 'fixed',
             fixed_price: 0,
             notes: 'Utworzone automatycznie z zakładki Sprzęt',
-          })
-          .select()
-          .single();
+          });
 
-        if (noteError) {
-          console.warn('Nie udało się utworzyć zadania dla podwykonawcy:', noteError);
+        if (taskError) {
+          console.warn('Nie udało się utworzyć zadania dla podwykonawcy:', taskError);
         }
       }
 
-      showSnackbar('Sprzęt oznaczony jako wynajem zewnętrzny. Dodano zadanie w zakładce Podwykonawcy.', 'success');
+      showSnackbar(`Sprzęt oznaczony jako wynajem od ${subcontractorName}`, 'success');
       await refetch();
     } catch (err: any) {
       console.error('Error marking as rental:', err);
@@ -1516,6 +1529,22 @@ export const EventEquipmentTab: React.FC<{
           </div>
         </div>
       )}
+
+      {/* Modal wyboru rentalu */}
+      <SelectRentalEquipmentModal
+        isOpen={showRentalModal}
+        onClose={() => {
+          setShowRentalModal(false);
+          setCurrentRowForRental(null);
+        }}
+        onSelect={handleSelectRentalEquipment}
+        currentEquipmentName={
+          currentRowForRental?.equipment?.name ||
+          currentRowForRental?.equipment_items?.name ||
+          currentRowForRental?.kit?.name ||
+          currentRowForRental?.item_name
+        }
+      />
     </div>
   );
 };

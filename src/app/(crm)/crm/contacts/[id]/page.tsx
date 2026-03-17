@@ -3,34 +3,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import {
-  ArrowLeft,
-  Building2,
-  Mail,
-  Phone,
-  MapPin,
-  Star,
-  DollarSign,
-  FileText,
-  Plus,
-  Edit,
-  Save,
-  X,
-  User,
-  UserCircle,
-  History,
-  Users,
-  Globe,
-  CreditCard,
-  Loader2,
-  ExternalLink,
-  Trash2,
-  StickyNote,
-  Receipt,
-  Calendar,
-  ChevronDown,
-  Check,
-} from 'lucide-react';
+import { ArrowLeft, Building2, Mail, Phone, MapPin, Star, DollarSign, FileText, Plus, CreditCard as Edit, Save, X, User, CircleUser as UserCircle, History, Users, Globe, CreditCard, Loader2, ExternalLink, Trash2, StickyNote, Receipt, Calendar, ChevronDown, Check, Wrench } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { parseGoogleMapsUrl } from '@/lib/gus';
@@ -38,6 +11,7 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import OrganizationLocationPicker from '@/components/crm/OrganizationLocationPicker';
 import OrganizationRepresentatives from '@/components/crm/OrganizationRepresentatives';
 import AddLocationModal from '@/components/crm/AddLocationModal';
+import SubcontractorServicesPanel from '@/components/crm/SubcontractorServicesPanel';
 
 interface Organization {
   id: string;
@@ -149,7 +123,7 @@ interface ContactHistory {
   next_action: string | null;
 }
 
-type TabType = 'details' | 'contacts' | 'notes' | 'history' | 'invoices' | 'events';
+type TabType = 'details' | 'contacts' | 'notes' | 'history' | 'invoices' | 'events' | 'services';
 
 const businessTypeLabels = {
   company: 'Firma',
@@ -314,7 +288,7 @@ useEffect(() => {
 
     if (userIsAdmin) {
       setAllowedContactTabs(['details', 'notes', 'history']);
-      setAllowedOrganizationTabs(['details', 'contacts', 'invoices', 'events', 'notes', 'history']);
+      setAllowedOrganizationTabs(['details', 'contacts', 'invoices', 'events', 'notes', 'history', 'services']);
       return;
     }
 
@@ -1209,6 +1183,7 @@ useEffect(() => {
               icon: StickyNote,
             },
             { key: 'history' as TabType, label: 'Historia', icon: History },
+            ...(organization?.organization_type === 'subcontractor' ? [{ key: 'services' as TabType, label: 'Usługi', icon: Wrench }] : []),
           ]
             .filter(({ key }) => allowedOrganizationTabs.includes(key))
             .map(({ key, label, icon: Icon }) => (
@@ -1872,6 +1847,12 @@ useEffect(() => {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {activeTab === 'services' && organization?.organization_type === 'subcontractor' && (
+          <div className="rounded-lg border border-gray-700 bg-[#1a1d2e] p-6">
+            <SubcontractorServicesPanel subcontractorId={organizationId} />
           </div>
         )}
 
