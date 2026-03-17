@@ -25,6 +25,7 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 import { IEventCategory } from '@/app/(crm)/crm/event-categories/types';
+import { Building2, ExternalLink } from 'lucide-react';
 import { ProductEquipment } from '../components/ProductEquipment';
 import { ProductStaffSection } from '../components/ProductStuffSection';
 import { ProductContractClauses } from '../components/ProductContractClauses';
@@ -70,6 +71,9 @@ interface IProduct {
   pdf_thumbnail_url?: string | null;
   recommended_contract_clauses?: string | null;
   category?: IEventCategory;
+  is_subcontractor_service?: boolean;
+  subcontractor_id?: string | null;
+  subcontractor_service_catalog_id?: string | null;
 }
 
 type Props = {
@@ -107,6 +111,13 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
   const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
 
+  // Subcontractors
+  const [subcontractors, setSubcontractors] = useState<any[]>([]);
+  const [subcontractorServices, setSubcontractorServices] = useState<any[]>([]);
+  const [selectedSubcontractor, setSelectedSubcontractor] = useState<string>('');
+  const [selectedService, setSelectedService] = useState<string>('');
+  const [loadingSubcontractors, setLoadingSubcontractors] = useState(false);
+
   // -----------------------------
   // TAGS
   // -----------------------------
@@ -120,6 +131,84 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
     // gdy produkt się zmieni (np. initial -> refresh), zsynchronizuj pole tekstowe
     setTagsInput((product?.tags ?? []).join(', '));
   }, [product?.id]);
+
+  // Fetch subcontractors
+  useEffect(() => {
+    if (productId === 'new') {
+      fetchSubcontractors();
+    }
+  }, [productId]);
+
+  // Fetch services when subcontractor changes
+  useEffect(() => {
+    if (selectedSubcontractor) {
+      fetchSubcontractorServices(selectedSubcontractor);
+    } else {
+      setSubcontractorServices([]);
+      setSelectedService('');
+    }
+  }, [selectedSubcontractor]);
+
+  const fetchSubcontractors = async () => {
+    try {
+      setLoadingSubcontractors(true);
+      const { data, error } = await supabase
+        .from('subcontractors')
+        .select('id, company_name, status')
+        .eq('status', 'active')
+        .order('company_name');
+
+      if (error) throw error;
+      setSubcontractors(data || []);
+    } catch (err: any) {
+      showSnackbar(err.message || 'Błąd pobierania podwykonawców', 'error');
+    } finally {
+      setLoadingSubcontractors(false);
+    }
+  };
+
+  const fetchSubcontractorServices = async (subcontractorId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('subcontractor_service_catalog')
+        .select('*')
+        .eq('subcontractor_id', subcontractorId)
+        .eq('is_active', true)
+        .order('name');
+
+      if (error) throw error;
+      setSubcontractorServices(data || []);
+    } catch (err: any) {
+      showSnackbar(err.message || 'Błąd pobierania usług podwykonawcy', 'error');
+    }
+  };
+
+  const handleImportServiceFromSubcontractor = async () => {
+    if (!selectedService) return;
+
+    const service = subcontractorServices.find((s) => s.id === selectedService);
+    const subcontractor = subcontractors.find((s) => s.id === selectedSubcontractor);
+
+    if (!service || !subcontractor) return;
+
+    // Wypełnij formularz danymi z usługi podwykonawcy
+    setProduct({
+      ...product!,
+      name: `${service.name} (${subcontractor.company_name})`,
+      description: service.description || '',
+      price_net: service.unit_price || 0,
+      price_gross: (service.unit_price || 0) * 1.23,
+      cost_net: service.unit_price || 0,
+      cost_gross: (service.unit_price || 0) * 1.23,
+      unit: service.unit || 'szt',
+      is_subcontractor_service: true,
+      subcontractor_id: selectedSubcontractor,
+      subcontractor_service_catalog_id: selectedService,
+      tags: [...(product?.tags || []), 'podwykonawca', subcontractor.company_name],
+    });
+
+    showSnackbar('Zaimportowano usługę od podwykonawcy', 'success');
+  };
 
   // -----------------------------
   // INITIALIZATION (NO UNNECESSARY FETCH)
@@ -199,7 +288,11 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
       setLoading(true);
       const { data, error } = await supabase
         .from('offer_products')
-        .select(`*, category:event_categories(id, name)`)
+        .select(`
+          *,
+          category:event_categories(id, name),
+          subcontractor:subcontractors(id, company_name)
+        `)
         .eq('id', productId)
         .single();
 
@@ -484,6 +577,9 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
         tags: product.tags,
         is_active: product.is_active,
         display_order: product.display_order,
+        is_subcontractor_service: product.is_subcontractor_service || false,
+        subcontractor_id: product.subcontractor_id || null,
+        subcontractor_service_catalog_id: product.subcontractor_service_catalog_id || null,
       };
 
       if (productId === 'new') {
@@ -705,6 +801,102 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Subcontractor Import (tylko w trybie NEW) */}
+        {productId === 'new' && (
+          <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+            <div className="mb-4 flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-[#d3bb73]" />
+              <h2 className="text-lg font-medium text-[#e5e4e2]">Import usługi od podwykonawcy</h2>
+            </div>
+
+            <div className="space-y-4">
+              <p className="text-sm text-[#e5e4e2]/60">
+                Zaznacz poniżej, jeśli chcesz stworzyć produkt bazujący na usłudze podwykonawcy
+              </p>
+
+              <div>
+                <label className="mb-2 flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={product?.is_subcontractor_service || false}
+                    onChange={(e) => {
+                      setProduct({ ...product!, is_subcontractor_service: e.target.checked });
+                      if (!e.target.checked) {
+                        setSelectedSubcontractor('');
+                        setSelectedService('');
+                      }
+                    }}
+                    disabled={!canEdit}
+                    className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73]"
+                  />
+                  <span className="text-sm text-[#e5e4e2]">To jest usługa od podwykonawcy</span>
+                </label>
+              </div>
+
+              {product?.is_subcontractor_service && (
+                <>
+                  <div>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wybierz podwykonawcę</label>
+                    <select
+                      value={selectedSubcontractor}
+                      onChange={(e) => setSelectedSubcontractor(e.target.value)}
+                      disabled={!canEdit || loadingSubcontractors}
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                    >
+                      <option value="">-- Wybierz podwykonawcę --</option>
+                      {subcontractors.map((sub) => (
+                        <option key={sub.id} value={sub.id}>
+                          {sub.company_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {selectedSubcontractor && (
+                    <div>
+                      <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wybierz usługę</label>
+                      <select
+                        value={selectedService}
+                        onChange={(e) => setSelectedService(e.target.value)}
+                        disabled={!canEdit}
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
+                      >
+                        <option value="">-- Wybierz usługę --</option>
+                        {subcontractorServices.map((service) => (
+                          <option key={service.id} value={service.id}>
+                            {service.name} - {service.unit_price?.toLocaleString('pl-PL') || '0'} zł
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {selectedService && (
+                    <button
+                      onClick={handleImportServiceFromSubcontractor}
+                      className="w-full rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+                    >
+                      Importuj usługę
+                    </button>
+                  )}
+
+                  {selectedSubcontractor && (
+                    <a
+                      href={`/crm/subcontractors/${selectedSubcontractor}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 text-sm text-[#d3bb73] transition-colors hover:text-[#d3bb73]/80"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      Otwórz kartę podwykonawcy
+                    </a>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Basic Info */}
         <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
           <div className="mb-4 flex items-center gap-2">
@@ -1170,9 +1362,43 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
             </div>
           )}
         </div>
-
-
       </div>
+
+      {/* Subcontractor Info (w trybie edycji) */}
+      {productId !== 'new' && product?.is_subcontractor_service && (
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <div className="mb-4 flex items-center gap-2">
+            <Building2 className="h-5 w-5 text-[#d3bb73]" />
+            <h2 className="text-lg font-medium text-[#e5e4e2]">Informacje o podwykonawcy</h2>
+          </div>
+
+          <div className="space-y-4">
+            <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4">
+              <div className="mb-2 flex items-center gap-2">
+                <Building2 className="h-5 w-5 text-[#d3bb73]" />
+                <span className="text-sm font-medium text-[#e5e4e2]">
+                  Usługa od podwykonawcy
+                </span>
+              </div>
+              <p className="text-sm text-[#e5e4e2]/60">
+                Ten produkt jest powiązany z usługą świadczoną przez podwykonawcę
+              </p>
+            </div>
+
+            {product.subcontractor_id && (
+              <a
+                href={`/crm/subcontractors/${product.subcontractor_id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 text-sm text-[#d3bb73] transition-colors hover:text-[#d3bb73]/80"
+              >
+                <ExternalLink className="h-4 w-4" />
+                Otwórz kartę podwykonawcy
+              </a>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Equipment */}
       {productId !== 'new' && (
