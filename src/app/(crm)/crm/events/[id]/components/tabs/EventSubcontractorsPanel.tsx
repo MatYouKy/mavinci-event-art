@@ -1,22 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import {
-  Plus,
-  UserCheck,
-  Mail,
-  Phone,
-  Star,
-  DollarSign,
-  Clock,
-  CheckCircle,
-  AlertCircle,
-  FileText,
-  Edit,
-  Trash2,
-  Calendar,
-  X,
-} from 'lucide-react';
+import { Plus, UserCheck, Mail, Phone, Star, DollarSign, Clock, CheckCircle, AlertCircle, FileText, CreditCard as Edit, Trash2, Calendar, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
@@ -48,7 +33,19 @@ interface SubcontractorTask {
   invoice_number: string | null;
   payment_status: string;
   payment_date: string | null;
+  task_type?: 'service' | 'equipment_rental' | 'other';
+  event_equipment_id?: string;
   subcontractors?: Subcontractor;
+  event_equipment?: {
+    id: string;
+    quantity: number;
+    equipment_id?: string;
+    kit_id?: string;
+    cable_id?: string;
+    equipment_items?: { name: string; thumbnail_url?: string };
+    equipment_kits?: { name: string; thumbnail_url?: string };
+    cables?: { name: string };
+  };
 }
 
 interface Contract {
@@ -98,6 +95,16 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
             hourly_rate,
             rating,
             specialization
+          ),
+          event_equipment (
+            id,
+            quantity,
+            equipment_id,
+            kit_id,
+            cable_id,
+            equipment_items (name, thumbnail_url),
+            equipment_kits (name, thumbnail_url),
+            cables (name)
           )
         `,
         )
@@ -264,6 +271,69 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
         </div>
       </div>
 
+      {tasks.filter((t) => t.task_type === 'equipment_rental' && !t.subcontractor_id).length > 0 && (
+        <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-6">
+          <div className="mb-4 flex items-center gap-3">
+            <AlertCircle className="h-5 w-5 text-yellow-400" />
+            <h3 className="text-lg font-semibold text-[#e5e4e2]">
+              Sprzęt do wynajęcia (bez podwykonawcy)
+            </h3>
+          </div>
+          <div className="space-y-3">
+            {tasks
+              .filter((t) => t.task_type === 'equipment_rental' && !t.subcontractor_id)
+              .map((task) => (
+                <div
+                  key={task.id}
+                  className="flex items-center gap-4 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4"
+                >
+                  {(task.event_equipment?.equipment_items?.thumbnail_url ||
+                    task.event_equipment?.equipment_kits?.thumbnail_url) && (
+                    <img
+                      src={
+                        task.event_equipment.equipment_items?.thumbnail_url ||
+                        task.event_equipment.equipment_kits?.thumbnail_url
+                      }
+                      alt="Sprzęt"
+                      className="h-14 w-14 rounded object-cover"
+                    />
+                  )}
+                  <div className="flex-1">
+                    <div className="mb-1 flex items-center gap-2">
+                      <h4 className="font-medium text-[#e5e4e2]">{task.task_name}</h4>
+                      <span className="rounded bg-purple-500/20 px-2 py-0.5 text-xs text-purple-400">
+                        WYNAJEM
+                      </span>
+                    </div>
+                    {task.event_equipment && (
+                      <p className="text-sm text-[#e5e4e2]/60">
+                        {task.event_equipment.equipment_items?.name ||
+                          task.event_equipment.equipment_kits?.name ||
+                          task.event_equipment.cables?.name}{' '}
+                        - {task.event_equipment.quantity} szt.
+                      </p>
+                    )}
+                    {task.description && (
+                      <p className="mt-1 text-xs text-[#e5e4e2]/40">{task.description}</p>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <div className="mb-1 text-xs text-[#e5e4e2]/40">Status</div>
+                    <span
+                      className={`inline-block rounded px-2 py-1 text-xs ${getStatusColor(task.status)}`}
+                    >
+                      {getStatusLabel(task.status)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+          </div>
+          <p className="mt-4 text-sm text-[#e5e4e2]/60">
+            Wybierz podwykonawcę dla tych zadań aby móc dodać szczegóły wynajmu
+          </p>
+        </div>
+      )}
+
       {uniqueSubcontractorIds.size === 0 ? (
         <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-12 text-center">
           <UserCheck className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
@@ -349,10 +419,43 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
                           className="rounded-lg border border-[#d3bb73]/5 bg-[#0f1119] p-4"
                         >
                           <div className="mb-2 flex items-start justify-between">
-                            <div>
-                              <h5 className="mb-1 font-medium text-[#e5e4e2]">{task.task_name}</h5>
+                            <div className="flex-1">
+                              <div className="mb-1 flex items-center gap-2">
+                                <h5 className="font-medium text-[#e5e4e2]">{task.task_name}</h5>
+                                {task.task_type === 'equipment_rental' && (
+                                  <span className="rounded bg-purple-500/20 px-2 py-0.5 text-xs text-purple-400">
+                                    WYNAJEM SPRZĘTU
+                                  </span>
+                                )}
+                              </div>
                               {task.description && (
                                 <p className="text-sm text-[#e5e4e2]/60">{task.description}</p>
+                              )}
+                              {task.event_equipment && (
+                                <div className="mt-2 flex items-center gap-2 rounded border border-[#d3bb73]/10 bg-[#1c1f33] p-2">
+                                  {(task.event_equipment.equipment_items?.thumbnail_url ||
+                                    task.event_equipment.equipment_kits?.thumbnail_url) && (
+                                    <img
+                                      src={
+                                        task.event_equipment.equipment_items?.thumbnail_url ||
+                                        task.event_equipment.equipment_kits?.thumbnail_url
+                                      }
+                                      alt="Sprzęt"
+                                      className="h-10 w-10 rounded object-cover"
+                                    />
+                                  )}
+                                  <div className="flex-1">
+                                    <div className="text-sm font-medium text-[#e5e4e2]">
+                                      {task.event_equipment.equipment_items?.name ||
+                                        task.event_equipment.equipment_kits?.name ||
+                                        task.event_equipment.cables?.name ||
+                                        'Sprzęt'}
+                                    </div>
+                                    <div className="text-xs text-[#e5e4e2]/60">
+                                      Ilość: {task.event_equipment.quantity} szt.
+                                    </div>
+                                  </div>
+                                </div>
                               )}
                             </div>
                             <div className="flex items-center gap-2">

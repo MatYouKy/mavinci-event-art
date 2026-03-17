@@ -940,7 +940,6 @@ export const EventEquipmentTab: React.FC<{
           status: 'rental',
           is_optional: false,
           auto_added: false,
-          notes: `Wynajem zewnętrzny - ${equipmentName}`
         })
         .eq('id', row.id);
 
@@ -963,16 +962,21 @@ export const EventEquipmentTab: React.FC<{
 
       // Create subcontractor task
       if (eventId) {
-        const { error: noteError } = await supabase
+        const { data: taskData, error: noteError } = await supabase
           .from('subcontractor_tasks')
           .insert({
             event_id: eventId,
+            event_equipment_id: row.id,
+            task_type: 'equipment_rental',
             task_name: `Wynajem: ${equipmentName}`,
-            description: `Potrzebny wynajem zewnętrzny - ${equipmentName} (${row.quantity || row.required_qty || 1} szt.)`,
+            description: `Wynajem zewnętrzny - ${equipmentName} (${row.quantity || row.required_qty || 1} szt.)`,
             status: 'planned',
             payment_type: 'fixed',
+            fixed_price: 0,
             notes: 'Utworzone automatycznie z zakładki Sprzęt',
-          });
+          })
+          .select()
+          .single();
 
         if (noteError) {
           console.warn('Nie udało się utworzyć zadania dla podwykonawcy:', noteError);
