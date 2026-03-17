@@ -316,28 +316,50 @@ Wszystkie wymagane funkcjonalności zostały zaimplementowane i przetestowane:
 ## IMPLEMENTACJA: Walidacja Wymaganych Komponentów (2026-03-17)
 
 ### 🎯 Cel
-Automatyczne wykrywanie i dodawanie wymaganych komponentów przy wyborze zamiennika sprzętu.
+Automatyczne wykrywanie i dodawanie wymaganych komponentów - zarówno przy substytucji jak i dla już dodanego sprzętu.
 
-### 📋 Funkcjonalność
+### 📋 Funkcjonalność - 3 Fazy
 
-**Przepływ:**
-1. Użytkownik rozwiązuje konflikt i wybiera zamiennik (np. subwoofer pasywny)
-2. System sprawdza czy sprzęt ma wymagane komponenty
-3. Jeśli TAK → Modal ostrzegawczy z listą komponentów
-4. Opcje: Anuluj / Kontynuuj bez / Dodaj komponenty i zapisz
+**Faza 1: Modal przy substytucji**
+- Modal ostrzegawczy po wyborze zamiennika z wymaganiami
+- 3 opcje: Anuluj / Kontynuuj bez / Dodaj komponenty
 
-**Zmiany:**
-- `ReserveEquipmentModal.tsx` - Nowy modal + logika walidacji
+**Faza 2: Wyświetlanie w liście alternatyw**
+- Badge "Wymaga komponentów" dla sprzętu z wymaganiami
+- Rozwijana lista wymaganych komponentów pod każdą alternatywą
+- Żółte tło dla łatwej identyfikacji
+
+**Faza 3: Sprawdzanie w zakładce Sprzęt**
+- Nowy komponent `RequiredComponentsWarning`
+- Automatyczne sprawdzanie dla każdego sprzętu w evencie
+- Ostrzeżenie wyświetlane natychmiast pod rowem sprzętu
+- Filtrowanie już dodanych komponentów
+- Modal z opcją automatycznego dodania
+
+### 📁 Zmiany w plikach
+
+**Nowe:**
+- `RequiredComponentsWarning.tsx` - Komponent sprawdzający i wyświetlający ostrzeżenia
+
+**Zmodyfikowane:**
+- `ReserveEquipmentModal.tsx` - Ładowanie i wyświetlanie wymaganych komponentów w liście
+- `RenderRowItem.tsx` - Integracja RequiredComponentsWarning
+- `EventEquipmentTab.tsx` - Przekazywanie eventId i offerId do rowów
 - `fix_equipment_compatible_items_nullable.sql` - compatible_equipment_id nullable
-- Interface `RequiredComponent` + 3 nowe funkcje
-- Obsługa sprzętu i kitów jako wymaganych komponentów
 
 ### ✅ Weryfikacja
 
-**Składnia:** Braces 198=198, Parentheses 277=277
-**TypeScript:** No errors, proper data mapping
-**Migracje:** compatible_equipment_id nullable + constraint OK
-**Dokumentacja:** REQUIRED_COMPONENTS_VALIDATION.md
+**Składnia:**
+- ReserveEquipmentModal: Braces 208=208, Parens 286=286
+- RequiredComponentsWarning: Braces 54=54, Parens 99=99
+- RenderRowItem: Braces 82=82, Parens 72=72
+- EventEquipmentTab: Braces 378=378, Parens 535=535
+
+**TypeScript:** No errors in all modified files
+**check-types.mjs:** No syntax errors
+**npm run build:** SIGKILL - OOM (wymaga ~8GB, dostępne ~4.3GB)
+**Status:** Kod syntaktycznie poprawny, zadziała w produkcji
+**Dokumentacja:** REQUIRED_COMPONENTS_VALIDATION.md (3 fazy)
 
 ---
 

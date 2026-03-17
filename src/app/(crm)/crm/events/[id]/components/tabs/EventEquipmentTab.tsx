@@ -1210,6 +1210,12 @@ export const EventEquipmentTab: React.FC<{
         onMarkAsRental={handleMarkAsRental}
         onSuggestAlternative={handleSuggestAlternative}
         onToggleExpandInChecklist={handleToggleExpandInChecklist}
+        eventId={eventId}
+        offerId={row?.offer_id}
+        onComponentsAdded={() => {
+          refetch();
+          refetchEvent();
+        }}
       />
     );
   };

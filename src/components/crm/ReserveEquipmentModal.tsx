@@ -34,6 +34,7 @@ interface SubstitutionItem {
   available_qty: number;
   brand?: string;
   model?: string;
+  required_components?: RequiredComponent[];
 }
 
 interface RequiredComponent {
@@ -233,20 +234,23 @@ export default function ReserveEquipmentModal({
             .select('*', { count: 'exact', head: true })
             .eq('equipment_id', substitute.id)
             .eq('status', 'available');
-  
+
           if (countError) throw countError;
-  
+
+          const requiredComponents = await checkRequiredComponents(substitute.id);
+
           return {
             ...substitute,
             available_qty: count || 0,
+            required_components: requiredComponents,
           };
         })
       );
-  
+
       const available = itemsWithAvailability.filter(
         (sub) => sub.available_qty >= item.required_qty
       );
-  
+
       setSubstitutions(available);
     } catch (err: any) {
       console.error('Error loading substitutions:', err);
@@ -735,27 +739,77 @@ export default function ReserveEquipmentModal({
                   <p className="mb-4 text-sm text-[#e5e4e2]/60">
                     Wybierz alternatywny sprzęt z tej samej kategorii:
                   </p>
-                  {substitutions.map((sub) => (
-                    <button
-                      key={sub.id}
-                      onClick={() => handleSelectSubstitution(sub.id)}
-                      className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1117] p-4 text-left transition-colors hover:border-[#d3bb73]/30 hover:bg-[#0f1117]/80"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="font-medium text-[#e5e4e2]">{sub.name}</div>
-                          {(sub.brand || sub.model) && (
-                            <div className="mt-1 text-xs text-[#e5e4e2]/50">
-                              {sub.brand} {sub.model}
+                  {substitutions.map((sub) => {
+                    const hasRequiredComponents =
+                      sub.required_components && sub.required_components.length > 0;
+
+                    return (
+                      <div
+                        key={sub.id}
+                        className={`rounded-lg border ${
+                          hasRequiredComponents
+                            ? 'border-yellow-500/20 bg-yellow-500/5'
+                            : 'border-[#d3bb73]/10 bg-[#0f1117]'
+                        }`}
+                      >
+                        <button
+                          onClick={() => handleSelectSubstitution(sub.id)}
+                          className="w-full p-4 text-left transition-colors hover:bg-[#e5e4e2]/5"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <div className="font-medium text-[#e5e4e2]">{sub.name}</div>
+                                {hasRequiredComponents && (
+                                  <span className="rounded bg-yellow-500/20 px-2 py-0.5 text-[10px] font-medium uppercase text-yellow-400">
+                                    Wymaga komponentów
+                                  </span>
+                                )}
+                              </div>
+                              {(sub.brand || sub.model) && (
+                                <div className="mt-1 text-xs text-[#e5e4e2]/50">
+                                  {sub.brand} {sub.model}
+                                </div>
+                              )}
                             </div>
-                          )}
-                        </div>
-                        <div className="text-sm text-green-400">
-                          Dostępne: {sub.available_qty}
-                        </div>
+                            <div className="text-sm text-green-400">Dostępne: {sub.available_qty}</div>
+                          </div>
+                        </button>
+
+                        {hasRequiredComponents && (
+                          <div className="border-t border-yellow-500/20 bg-yellow-500/5 px-4 py-3">
+                            <div className="mb-2 text-xs font-medium uppercase text-yellow-400">
+                              Wymagane komponenty:
+                            </div>
+                            <div className="space-y-1.5">
+                              {sub.required_components!.map((comp) => {
+                                const item = comp.compatible_equipment || comp.compatible_kit;
+                                const isKit = !!comp.compatible_kit;
+                                if (!item) return null;
+
+                                return (
+                                  <div
+                                    key={comp.id}
+                                    className="flex items-center gap-2 text-xs text-[#e5e4e2]/70"
+                                  >
+                                    <Package className="h-3 w-3 text-yellow-400" />
+                                    <span>
+                                      {item.name}
+                                      {isKit && (
+                                        <span className="ml-1 text-[10px] text-yellow-400">
+                                          (ZESTAW)
+                                        </span>
+                                      )}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    </button>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

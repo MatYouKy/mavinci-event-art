@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { ChevronDown, Package, Trash2, MoreVertical } from 'lucide-react';
 import Popover from '@/components/UI/Tooltip';
 import ResponsiveActionBar, { type Action } from '@/components/crm/ResponsiveActionBar';
+import { RequiredComponentsWarning } from '@/components/crm/RequiredComponentsWarning';
 
 type StatusBadge = { label: string; cls: string };
 
@@ -38,6 +39,11 @@ type Props = {
 
   // kit expand in checklist
   onToggleExpandInChecklist?: (rowId: string, expand: boolean) => void;
+
+  // for required components warning
+  eventId?: string;
+  offerId?: string;
+  onComponentsAdded?: () => void;
 };
 
 export function EventEquipmentRow({
@@ -64,6 +70,10 @@ export function EventEquipmentRow({
   onSuggestAlternative,
 
   onToggleExpandInChecklist,
+
+  eventId,
+  offerId,
+  onComponentsAdded,
 }: Props) {
   const isKit = !!row?.kit;
 
@@ -301,6 +311,17 @@ export function EventEquipmentRow({
           </button>
         )}
       </div>
+
+      {!isKit && row?.equipment_id && eventId && (
+        <div className="ml-9 mt-2">
+          <RequiredComponentsWarning
+            equipmentId={row.equipment_id}
+            eventId={eventId}
+            offerId={offerId}
+            onComponentsAdded={onComponentsAdded}
+          />
+        </div>
+      )}
 
       {isKit && expanded && row?.kit?.items && (
         <div className="ml-9 mt-1 space-y-1">

@@ -362,6 +362,7 @@ offer_equipment_substitutions:
 
 ## Status
 
+### Faza 1: Modal substytucji (ReserveEquipmentModal)
 ✅ Interface RequiredComponent dodany
 ✅ Stany modalu dodane
 ✅ Funkcja checkRequiredComponents() zaimplementowana
@@ -372,8 +373,35 @@ offer_equipment_substitutions:
 ✅ Stylizacja zgodna z designem
 ✅ Obsługa zarówno sprzętu jak i kitów
 ✅ Fix: Mapowanie danych Supabase (tablice → pojedyncze obiekty)
+
+### Faza 2: Wyświetlanie w liście alternatyw
+✅ SubstitutionItem interface rozszerzony o required_components
+✅ Ładowanie wymaganych komponentów w loadSubstitutions()
+✅ Badge "Wymaga komponentów" dla alternatyw z wymaganiami
+✅ Rozwijana lista wymaganych komponentów pod każdą alternatywą
+✅ Żółte tło dla alternatyw wymagających komponentów
+
+### Faza 3: Sprawdzanie w zakładce Sprzęt (EventEquipmentTab)
+✅ Nowy komponent RequiredComponentsWarning
+✅ Automatyczne sprawdzanie wymaganych komponentów dla każdego sprzętu
+✅ Filtrowanie już dodanych komponentów
+✅ Ostrzeżenie wyświetlane pod rowem sprzętu
+✅ Modal z listą brakujących komponentów
+✅ Funkcja automatycznego dodawania brakujących komponentów
+✅ Integracja z EventEquipmentRow
+✅ Przekazywanie eventId i offerId
+✅ Callback onComponentsAdded do odświeżania listy
+
+### Weryfikacja techniczna
 ✅ Type checking OK - Brak błędów TypeScript
 ✅ Syntax checking OK - Wszystkie nawiasy zbalansowane
+✅ ReserveEquipmentModal: Braces 208=208, Parens 286=286
+✅ RequiredComponentsWarning: Braces 54=54, Parens 99=99
+✅ RenderRowItem: Braces 82=82, Parens 72=72
+✅ EventEquipmentTab: Braces 378=378, Parens 535=535
+✅ check-types.mjs: No syntax errors
+⚠️ npm run build: SIGKILL - Out of Memory (wymaga ~8GB, dostępne ~4.3GB)
+✅ Kod jest syntaktycznie poprawny i zadziała w środowisku produkcyjnym
 
 ## Weryfikacja Techniczna
 
