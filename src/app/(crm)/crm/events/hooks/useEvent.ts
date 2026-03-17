@@ -96,7 +96,7 @@ export function useEvent(initialEvent?: IEvent) {
         .from('events')
         .select('*')
         .eq('id', eventId)
-        .single();
+        .maybeSingle();
 
       if (fetchError) throw fetchError;
       setEvent(data as IEvent);

@@ -807,7 +807,7 @@ export default function EventDetailPageClient({
                             .select('id')
                             .eq('event_id', eventId)
                             .eq('employee_id', session.user.id)
-                            .single();
+                            .maybeSingle();
 
                           if (assignment) {
                             await supabase
@@ -838,7 +838,7 @@ export default function EventDetailPageClient({
                             .select('id')
                             .eq('event_id', eventId)
                             .eq('employee_id', session.user.id)
-                            .single();
+                            .maybeSingle();
 
                           if (assignment) {
                             await supabase
