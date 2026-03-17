@@ -132,12 +132,25 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
     setTagsInput((product?.tags ?? []).join(', '));
   }, [product?.id]);
 
-  // Fetch subcontractors
+  // Fetch subcontractors always
   useEffect(() => {
-    if (productId === 'new') {
-      fetchSubcontractors();
+    fetchSubcontractors();
+  }, []);
+
+  // Initialize from existing product data
+  useEffect(() => {
+    if (product && product.is_subcontractor_service) {
+      if (product.subcontractor_id && product.subcontractor_id !== selectedSubcontractor) {
+        setSelectedSubcontractor(product.subcontractor_id);
+      }
+      if (
+        product.subcontractor_service_catalog_id &&
+        product.subcontractor_service_catalog_id !== selectedService
+      ) {
+        setSelectedService(product.subcontractor_service_catalog_id);
+      }
     }
-  }, [productId]);
+  }, [product?.id, product?.is_subcontractor_service]);
 
   // Fetch services when subcontractor changes
   useEffect(() => {
@@ -1000,6 +1013,89 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* Sekcja Podwykonawcy */}
+            <div className="space-y-3 rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={product?.is_subcontractor_service || false}
+                  onChange={(e) => {
+                    const isChecked = e.target.checked;
+                    setProduct({
+                      ...product,
+                      is_subcontractor_service: isChecked,
+                      subcontractor_id: isChecked ? product.subcontractor_id : null,
+                      subcontractor_service_catalog_id: isChecked
+                        ? product.subcontractor_service_catalog_id
+                        : null,
+                    });
+                    if (!isChecked) {
+                      setSelectedSubcontractor('');
+                      setSelectedService('');
+                    }
+                  }}
+                  disabled={!canEdit}
+                  className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0f1119] text-[#d3bb73]"
+                />
+                <span className="text-sm font-medium text-[#e5e4e2]">Usługa od podwykonawcy</span>
+              </label>
+
+              {product?.is_subcontractor_service && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="mb-1 block text-xs text-[#e5e4e2]/60">Podwykonawca</label>
+                    <select
+                      value={selectedSubcontractor}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSelectedSubcontractor(val);
+                        setProduct({ ...product, subcontractor_id: val || null });
+                      }}
+                      disabled={!canEdit || loadingSubcontractors}
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2]"
+                    >
+                      <option value="">-- Wybierz podwykonawcę --</option>
+                      {subcontractors.map((org) => (
+                        <option key={org.id} value={org.id}>
+                          {org.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {selectedSubcontractor && (
+                    <div>
+                      <label className="mb-1 block text-xs text-[#e5e4e2]/60">Usługa</label>
+                      <select
+                        value={selectedService}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setSelectedService(val);
+                          setProduct({ ...product, subcontractor_service_catalog_id: val || null });
+                        }}
+                        disabled={!canEdit}
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2]"
+                      >
+                        <option value="">-- Wybierz usługę --</option>
+                        {subcontractorServices.map((item) => {
+                          const isEquip = (item as any)._type === 'equipment';
+                          const price = isEquip ? (item as any).daily_rental_price : (item as any).unit_price;
+                          const unit = isEquip ? 'dzień' : (item as any).unit || 'szt';
+                          const badge = isEquip ? '[WYNAJEM] ' : '[USŁUGA] ';
+                          return (
+                            <option key={item.id} value={item.id}>
+                              {badge}
+                              {item.name} - {price?.toLocaleString('pl-PL') || '0'} zł / {unit}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div>
