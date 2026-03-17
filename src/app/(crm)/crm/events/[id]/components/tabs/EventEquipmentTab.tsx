@@ -984,37 +984,40 @@ export const EventEquipmentTab: React.FC<{
   const handleReplaceEquipment = async (alternativeId: string) => {
     try {
       if (!currentItemForReplacement) return;
-
-      const oldName = currentItemForReplacement?.equipment?.name || 'Nieznany';
-
-      // Pobierz szczegóły alternatywnego sprzętu
+  
+      const oldName =
+        currentItemForReplacement?.equipment?.name ||
+        currentItemForReplacement?.equipment_items?.name ||
+        currentItemForReplacement?.item_name ||
+        'Nieznany';
+  
       const { data: newEquipment, error: fetchError } = await supabase
         .from('equipment_items')
         .select('name')
         .eq('id', alternativeId)
         .single();
-
+  
       if (fetchError) throw fetchError;
-
-      // Zaktualizuj sprzęt: zmień ID, ustaw status confirmed, usuń is_optional, dodaj notatkę
+  
       const { error: updateError } = await supabase
         .from('event_equipment')
         .update({
-          equipment_item_id: alternativeId,
-          status: 'confirmed',
+          equipment_id: alternativeId,
+          kit_id: null,
+          status: 'reserved',
           is_optional: false,
           auto_added: false,
-          notes: `Zamieniono z: ${oldName} → ${newEquipment?.name || alternativeId}`
+          notes: `Zamieniono z: ${oldName} → ${newEquipment?.name || alternativeId}`,
         })
         .eq('id', currentItemForReplacement.id);
-
+  
       if (updateError) throw updateError;
-
+  
       showSnackbar(`Sprzęt zamieniony: ${oldName} → ${newEquipment?.name}`, 'success');
       setShowAlternativesModal(false);
       setAlternatives([]);
       setCurrentItemForReplacement(null);
-      refetch();
+      await refetch();
     } catch (err: any) {
       console.error('Error replacing equipment:', err);
       showSnackbar(err.message || 'Błąd podczas zamiany sprzętu', 'error');
@@ -1024,91 +1027,148 @@ export const EventEquipmentTab: React.FC<{
   const handleSuggestAlternative = async (row: any) => {
     try {
       console.log('[handleSuggestAlternative] row:', row);
-      console.log('[handleSuggestAlternative] row.equipment:', row?.equipment);
-      console.log('[handleSuggestAlternative] row.equipment.category:', row?.equipment?.category);
-
-      // Pobierz kategorię sprzętu
-      const categoryId = row?.equipment?.category?.id;
-      console.log('[handleSuggestAlternative] categoryId:', categoryId);
-
-      if (!categoryId) {
+  
+      let currentEquipmentId =
+        row?.equipment?.id ||
+        row?.equipment_id ||
+        row?.item_id ||
+        null;
+  
+      let warehouseCategoryId =
+        row?.equipment?.warehouse_category_id ||
+        row?.warehouse_category_id ||
+        null;
+  
+      // Jeśli to kit, na razie nie obsługujemy alternatyw
+      const rowItemType =
+        row?.item_type ||
+        (row?.kit_id ? 'kit' : 'item');
+  
+      if (rowItemType === 'kit') {
+        showSnackbar('Alternatywy dla zestawów nie są jeszcze obsługiwane', 'info');
+        return;
+      }
+  
+      // Dociągnij kategorię z equipment_items, jeśli nie przyszła w row
+      if (!warehouseCategoryId && currentEquipmentId) {
+        const { data: equipmentItem, error: equipmentError } = await supabase
+          .from('equipment_items')
+          .select('id, name, warehouse_category_id')
+          .eq('id', currentEquipmentId)
+          .single();
+  
+        if (equipmentError) throw equipmentError;
+  
+        warehouseCategoryId = equipmentItem?.warehouse_category_id ?? null;
+        currentEquipmentId = equipmentItem?.id ?? currentEquipmentId;
+      }
+  
+      console.log('[handleSuggestAlternative] currentEquipmentId:', currentEquipmentId);
+      console.log('[handleSuggestAlternative] warehouseCategoryId:', warehouseCategoryId);
+  
+      if (!warehouseCategoryId) {
         showSnackbar('Nie można znaleźć kategorii sprzętu', 'error');
         return;
       }
-
+  
       // Pobierz informacje o kategorii
       const { data: category, error: categoryError } = await supabase
         .from('warehouse_categories')
         .select('id, name, parent_id, level')
-        .eq('id', categoryId)
+        .eq('id', warehouseCategoryId)
         .single();
-
+  
       if (categoryError) throw categoryError;
-
+  
       // Szukaj w tej samej kategorii
       let { data: alternatives, error } = await supabase
         .from('equipment_items')
-        .select('id, name, brand, model, thumbnail_url, category_id, warehouse_categories!inner(name, parent_id)')
-        .eq('category_id', categoryId)
-        .neq('id', row?.equipment?.id || '')
+        .select('id, name, brand, model, thumbnail_url, warehouse_category_id')
+        .eq('warehouse_category_id', warehouseCategoryId)
+        .neq('id', currentEquipmentId || '')
         .limit(20);
-
+  
       if (error) throw error;
-
+  
       let searchLevel = 'subcategory';
       let parentCategoryName = '';
-
+  
       // Jeśli nie znaleziono alternatyw w podkategorii, szukaj w głównej kategorii
       if ((!alternatives || alternatives.length === 0) && category.parent_id) {
         searchLevel = 'main_category';
-
-        // Pobierz nazwę głównej kategorii
+  
         const { data: parentCategory } = await supabase
           .from('warehouse_categories')
           .select('id, name')
           .eq('id', category.parent_id)
           .single();
-
+  
         if (parentCategory) {
           parentCategoryName = parentCategory.name;
-
-          // Pobierz wszystkie podkategorie z tej głównej kategorii
+  
           const { data: subcategories } = await supabase
             .from('warehouse_categories')
             .select('id')
             .eq('parent_id', category.parent_id);
-
+  
           if (subcategories && subcategories.length > 0) {
-            const subcategoryIds = subcategories.map(s => s.id);
-
-            // Szukaj w całej głównej kategorii
+            const subcategoryIds = subcategories.map((s) => s.id);
+  
             const { data: mainCategoryAlternatives, error: mainError } = await supabase
               .from('equipment_items')
-              .select('id, name, brand, model, thumbnail_url, category_id, warehouse_categories!inner(name, parent_id)')
-              .in('category_id', subcategoryIds)
-              .neq('id', row?.equipment?.id || '')
+              .select('id, name, brand, model, thumbnail_url, warehouse_category_id')
+              .in('warehouse_category_id', subcategoryIds)
+              .neq('id', currentEquipmentId || '')
               .limit(20);
-
-            if (!mainError && mainCategoryAlternatives) {
+  
+            if (mainError) throw mainError;
+  
+            if (mainCategoryAlternatives) {
               alternatives = mainCategoryAlternatives;
             }
           }
         }
       }
-
+  
       if (!alternatives || alternatives.length === 0) {
         showSnackbar('Brak dostępnych alternatyw', 'info');
         return;
       }
-
-      const message = searchLevel === 'main_category'
-        ? `Znaleziono ${alternatives.length} alternatyw z kategorii: ${parentCategoryName}`
-        : `Znaleziono ${alternatives.length} alternatyw`;
-
+  
+      const enrichedAlternatives = await Promise.all(
+        alternatives.map(async (alt) => {
+          const { count: totalQty, error: totalError } = await supabase
+            .from('equipment_units')
+            .select('*', { count: 'exact', head: true })
+            .eq('equipment_id', alt.id);
+  
+          if (totalError) throw totalError;
+  
+          const { count: availableQty, error: availableError } = await supabase
+            .from('equipment_units')
+            .select('*', { count: 'exact', head: true })
+            .eq('equipment_id', alt.id)
+            .eq('status', 'available');
+  
+          if (availableError) throw availableError;
+  
+          return {
+            ...alt,
+            total_qty: totalQty || 0,
+            available_qty: availableQty || 0,
+            reserved_qty: Math.max((totalQty || 0) - (availableQty || 0), 0),
+          };
+        })
+      );
+  
+      const message =
+        searchLevel === 'main_category'
+          ? `Znaleziono ${enrichedAlternatives.length} alternatyw z kategorii: ${parentCategoryName}`
+          : `Znaleziono ${enrichedAlternatives.length} alternatyw`;
+  
       showSnackbar(message, 'info');
-
-      // Pokaż modal z alternatywami do wyboru
-      setAlternatives(alternatives);
+  
+      setAlternatives(enrichedAlternatives);
       setCurrentItemForReplacement(row);
       setShowAlternativesModal(true);
     } catch (err: any) {
