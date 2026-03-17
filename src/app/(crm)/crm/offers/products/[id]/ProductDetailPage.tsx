@@ -171,56 +171,98 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
   const fetchSubcontractorServices = async (organizationId: string) => {
     try {
       // Najpierw pobierz subcontractor_id dla tej organizacji
-      const { data: orgData } = await supabase
+      const { data: orgData, error: orgError } = await supabase
         .from('organizations')
         .select('subcontractor_id')
         .eq('id', organizationId)
-        .single();
+        .maybeSingle();
+
+      if (orgError) {
+        console.error('Error fetching organization:', orgError);
+        setSubcontractorServices([]);
+        return;
+      }
 
       if (!orgData?.subcontractor_id) {
         setSubcontractorServices([]);
         return;
       }
 
-      const { data, error } = await supabase
+      // Pobierz usługi z service_catalog
+      const { data: services, error: servicesError } = await supabase
         .from('subcontractor_service_catalog')
         .select('*')
         .eq('subcontractor_id', orgData.subcontractor_id)
         .eq('is_active', true)
         .order('name');
 
-      if (error) throw error;
-      setSubcontractorServices(data || []);
+      if (servicesError) {
+        console.error('Error fetching services:', servicesError);
+      }
+
+      // Pobierz sprzęt z rental_equipment
+      const { data: equipment, error: equipmentError } = await supabase
+        .from('subcontractor_rental_equipment')
+        .select('*')
+        .eq('subcontractor_id', orgData.subcontractor_id)
+        .eq('is_active', true)
+        .order('name');
+
+      if (equipmentError) {
+        console.error('Error fetching equipment:', equipmentError);
+      }
+
+      // Połącz obie listy, dodając pole type dla rozróżnienia
+      const servicesWithType = (services || []).map(s => ({ ...s, _type: 'service' }));
+      const equipmentWithType = (equipment || []).map(e => ({ ...e, _type: 'equipment' }));
+
+      const allItems = [...servicesWithType, ...equipmentWithType];
+
+      console.log('Fetched items for subcontractor:', orgData.subcontractor_id,
+        'services:', services?.length || 0, 'equipment:', equipment?.length || 0);
+
+      setSubcontractorServices(allItems);
     } catch (err: any) {
       showSnackbar(err.message || 'Błąd pobierania usług podwykonawcy', 'error');
+      setSubcontractorServices([]);
     }
   };
 
   const handleImportServiceFromSubcontractor = async () => {
     if (!selectedService) return;
 
-    const service = subcontractorServices.find((s) => s.id === selectedService);
+    const item = subcontractorServices.find((s) => s.id === selectedService);
     const organization = subcontractors.find((s) => s.id === selectedSubcontractor);
 
-    if (!service || !organization) return;
+    if (!item || !organization) return;
 
-    // Wypełnij formularz danymi z usługi podwykonawcy
+    const isEquipment = (item as any)._type === 'equipment';
+
+    // Wybierz cenę w zależności od typu
+    const price = isEquipment
+      ? (item as any).daily_rental_price || 0
+      : (item as any).unit_price || 0;
+
+    const unit = isEquipment ? 'dzień' : (item as any).unit || 'szt';
+    const typeLabel = isEquipment ? 'Wynajem' : 'Usługa';
+
+    // Wypełnij formularz danymi z usługi/sprzętu podwykonawcy
     setProduct({
       ...product!,
-      name: `${service.name} (${organization.name})`,
-      description: service.description || '',
-      price_net: service.unit_price || 0,
-      price_gross: (service.unit_price || 0) * 1.23,
-      cost_net: service.unit_price || 0,
-      cost_gross: (service.unit_price || 0) * 1.23,
-      unit: service.unit || 'szt',
+      name: `${item.name} (${organization.name})`,
+      description: item.description || '',
+      price_net: price,
+      price_gross: price * 1.23,
+      cost_net: price,
+      cost_gross: price * 1.23,
+      unit: unit,
       is_subcontractor_service: true,
       subcontractor_id: selectedSubcontractor,
       subcontractor_service_catalog_id: selectedService,
-      tags: [...(product?.tags || []), 'podwykonawca', organization.name],
+      tags: [...(product?.tags || []), 'podwykonawca', organization.name, typeLabel],
     });
 
-    showSnackbar('Zaimportowano usługę od podwykonawcy', 'success');
+    showSnackbar(`Zaimportowano ${typeLabel.toLowerCase()} od podwykonawcy`, 'success');
   };
 
   // -----------------------------
@@ -307,7 +349,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
           subcontractor:subcontractors(id, company_name)
         `)
         .eq('id', productId)
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
       if (data) setProduct(data);
@@ -875,11 +917,20 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                         className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
                       >
                         <option value="">-- Wybierz usługę --</option>
-                        {subcontractorServices.map((service) => (
-                          <option key={service.id} value={service.id}>
-                            {service.name} - {service.unit_price?.toLocaleString('pl-PL') || '0'} zł
-                          </option>
-                        ))}
+                        {subcontractorServices.map((item) => {
+                          const isEquipment = (item as any)._type === 'equipment';
+                          const price = isEquipment
+                            ? (item as any).daily_rental_price
+                            : (item as any).unit_price;
+                          const unit = isEquipment ? 'dzień' : (item as any).unit || 'szt';
+                          const badge = isEquipment ? '[WYNAJEM] ' : '[USŁUGA] ';
+
+                          return (
+                            <option key={item.id} value={item.id}>
+                              {badge}{item.name} - {price?.toLocaleString('pl-PL') || '0'} zł / {unit}
+                            </option>
+                          );
+                        })}
                       </select>
                     </div>
                   )}
