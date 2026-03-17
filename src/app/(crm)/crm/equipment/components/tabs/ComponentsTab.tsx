@@ -182,13 +182,21 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
       item_type: 'equipment' as const,
     }));
 
-    const kitsWithType = (kitsData || []).map((kit) => ({
+    const kitsWithType = (kitsData || []).map((kit: any) => ({
       ...kit,
+      // Normalize kit shape to match EquipmentItem interface
       model: null,
       brand: null,
       cable_stock_quantity: null,
       equipment_units: [],
       warehouse_categories: null,
+      equipment_kit_items: (kit.equipment_kit_items || []).map((kitItem: any) => ({
+        quantity: kitItem.quantity ?? 0,
+        equipment: {
+          name: kitItem.equipment?.[0]?.name ?? '',
+          model: kitItem.equipment?.[0]?.model ?? null,
+        },
+      })),
       item_type: 'kit' as const,
     }));
 
