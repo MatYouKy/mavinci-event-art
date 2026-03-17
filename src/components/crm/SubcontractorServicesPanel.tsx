@@ -583,7 +583,7 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                     <input
                       type="number"
                       value={newItemPrice}
-                      onChange={(e) => setNewItemPrice(parseFloat(e.target.value) || 0)}
+                      onChange={(e) => setNewItemPrice(parseFloat(e.target.value))}
                       className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
                       step="0.01"
                     />
