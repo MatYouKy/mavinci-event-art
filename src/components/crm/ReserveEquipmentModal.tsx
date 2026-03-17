@@ -42,7 +42,6 @@ interface RequiredComponent {
   compatible_equipment_id: string | null;
   compatible_kit_id: string | null;
   compatibility_type: 'required' | 'recommended' | 'optional';
-  is_optional: boolean;
   compatible_equipment?: {
     id: string;
     name: string;
@@ -291,13 +290,11 @@ export default function ReserveEquipmentModal({
           compatible_equipment_id,
           compatible_kit_id,
           compatibility_type,
-          is_optional,
           compatible_equipment:equipment_items!compatible_equipment_id(id, name, model, brand),
           compatible_kit:equipment_kits!compatible_kit_id(id, name, description)
         `)
         .eq('equipment_id', equipmentId)
-        .eq('compatibility_type', 'required')
-        .eq('is_optional', false);
+        .eq('compatibility_type', 'required');
 
       if (error) throw error;
 
