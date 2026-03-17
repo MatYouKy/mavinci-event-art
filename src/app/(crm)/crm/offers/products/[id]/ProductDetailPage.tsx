@@ -153,10 +153,11 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
     try {
       setLoadingSubcontractors(true);
       const { data, error } = await supabase
-        .from('subcontractors')
-        .select('id, company_name, status')
+        .from('organizations')
+        .select('id, name, status, subcontractor_id')
+        .eq('organization_type', 'subcontractor')
         .eq('status', 'active')
-        .order('company_name');
+        .order('name');
 
       if (error) throw error;
       setSubcontractors(data || []);
@@ -167,12 +168,24 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
     }
   };
 
-  const fetchSubcontractorServices = async (subcontractorId: string) => {
+  const fetchSubcontractorServices = async (organizationId: string) => {
     try {
+      // Najpierw pobierz subcontractor_id dla tej organizacji
+      const { data: orgData } = await supabase
+        .from('organizations')
+        .select('subcontractor_id')
+        .eq('id', organizationId)
+        .single();
+
+      if (!orgData?.subcontractor_id) {
+        setSubcontractorServices([]);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('subcontractor_service_catalog')
         .select('*')
-        .eq('subcontractor_id', subcontractorId)
+        .eq('subcontractor_id', orgData.subcontractor_id)
         .eq('is_active', true)
         .order('name');
 
@@ -187,14 +200,14 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
     if (!selectedService) return;
 
     const service = subcontractorServices.find((s) => s.id === selectedService);
-    const subcontractor = subcontractors.find((s) => s.id === selectedSubcontractor);
+    const organization = subcontractors.find((s) => s.id === selectedSubcontractor);
 
-    if (!service || !subcontractor) return;
+    if (!service || !organization) return;
 
     // Wypełnij formularz danymi z usługi podwykonawcy
     setProduct({
       ...product!,
-      name: `${service.name} (${subcontractor.company_name})`,
+      name: `${service.name} (${organization.name})`,
       description: service.description || '',
       price_net: service.unit_price || 0,
       price_gross: (service.unit_price || 0) * 1.23,
@@ -204,7 +217,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
       is_subcontractor_service: true,
       subcontractor_id: selectedSubcontractor,
       subcontractor_service_catalog_id: selectedService,
-      tags: [...(product?.tags || []), 'podwykonawca', subcontractor.company_name],
+      tags: [...(product?.tags || []), 'podwykonawca', organization.name],
     });
 
     showSnackbar('Zaimportowano usługę od podwykonawcy', 'success');
@@ -844,9 +857,9 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                       className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
                     >
                       <option value="">-- Wybierz podwykonawcę --</option>
-                      {subcontractors.map((sub) => (
-                        <option key={sub.id} value={sub.id}>
-                          {sub.company_name}
+                      {subcontractors.map((org) => (
+                        <option key={org.id} value={org.id}>
+                          {org.name}
                         </option>
                       ))}
                     </select>
@@ -882,7 +895,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
 
                   {selectedSubcontractor && (
                     <a
-                      href={`/crm/subcontractors/${selectedSubcontractor}`}
+                      href={`/crm/contacts/${selectedSubcontractor}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex items-center gap-2 text-sm text-[#d3bb73] transition-colors hover:text-[#d3bb73]/80"
@@ -1387,7 +1400,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
 
             {product.subcontractor_id && (
               <a
-                href={`/crm/subcontractors/${product.subcontractor_id}`}
+                href={`/crm/contacts/${product.subcontractor_id}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 text-sm text-[#d3bb73] transition-colors hover:text-[#d3bb73]/80"
