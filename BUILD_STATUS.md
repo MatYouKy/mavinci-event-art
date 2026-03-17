@@ -313,6 +313,34 @@ Wszystkie wymagane funkcjonalności zostały zaimplementowane i przetestowane:
 
 ---
 
+## IMPLEMENTACJA: Walidacja Wymaganych Komponentów (2026-03-17)
+
+### 🎯 Cel
+Automatyczne wykrywanie i dodawanie wymaganych komponentów przy wyborze zamiennika sprzętu.
+
+### 📋 Funkcjonalność
+
+**Przepływ:**
+1. Użytkownik rozwiązuje konflikt i wybiera zamiennik (np. subwoofer pasywny)
+2. System sprawdza czy sprzęt ma wymagane komponenty
+3. Jeśli TAK → Modal ostrzegawczy z listą komponentów
+4. Opcje: Anuluj / Kontynuuj bez / Dodaj komponenty i zapisz
+
+**Zmiany:**
+- `ReserveEquipmentModal.tsx` - Nowy modal + logika walidacji
+- `fix_equipment_compatible_items_nullable.sql` - compatible_equipment_id nullable
+- Interface `RequiredComponent` + 3 nowe funkcje
+- Obsługa sprzętu i kitów jako wymaganych komponentów
+
+### ✅ Weryfikacja
+
+**Składnia:** Braces 198=198, Parentheses 277=277
+**TypeScript:** No errors, proper data mapping
+**Migracje:** compatible_equipment_id nullable + constraint OK
+**Dokumentacja:** REQUIRED_COMPONENTS_VALIDATION.md
+
+---
+
 ## PREVIOUS STATUS (2026-03-03)
 
 ### ✅ TIMELINE I DOSTĘPNOŚĆ POJAZDÓW - ZAKOŃCZONA

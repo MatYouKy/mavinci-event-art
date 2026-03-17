@@ -278,8 +278,33 @@ const handleAddCompatible = async (itemId: string, itemType: 'equipment' | 'kit'
 ✅ Lista kompatybilnych z kitami
 ✅ Weryfikacja składni - OK
 ✅ Fix: Ukryto wyświetlanie "0 szt." dla kitów (tylko dla sprzętu)
+✅ Walidacja wymaganych komponentów przy substytucji
+
+## Walidacja przy Substytucji
+
+✅ **Automatyczne wykrywanie wymaganych komponentów**
+
+Gdy użytkownik rozwiązuje konflikt i wybiera zamiennik (np. subwoofer pasywny zamiast aktywnego), system:
+
+1. Sprawdza czy wybrany sprzęt ma wymagane komponenty (`compatibility_type='required'` + `is_optional=false`)
+2. Jeśli TAK → Wyświetla modal ostrzegawczy z listą wymaganych komponentów
+3. Użytkownik ma 3 opcje:
+   - **Anuluj** - Wróć do wyboru
+   - **Kontynuuj bez komponentów** - Zapisz substytucję bez dodawania
+   - **Dodaj komponenty i zapisz** - Automatycznie dodaj komponenty do event_equipment
+
+**Szczegóły implementacji:** Zobacz `REQUIRED_COMPONENTS_VALIDATION.md`
+
+**Plik:** `src/components/crm/ReserveEquipmentModal.tsx`
+
+**Funkcje:**
+- `checkRequiredComponents()` - Sprawdza wymagane komponenty
+- `handleSelectSubstitution()` - Waliduje przed zapisaniem
+- `saveSubstitution()` - Zapisuje substytucję
+- `handleAddRequiredComponents()` - Dodaje komponenty do eventu
 
 ## Następne Kroki
 - Przetestować w przeglądarce
 - Sprawdzić czy kity pojawiają się w podpowiedziach przy rezerwacji
-- Opcjonalnie: dodać tooltips z pełną zawartością kitu
+- Przetestować modal wymaganych komponentów
+- Sprawdzić dodawanie komponentów do event_equipment

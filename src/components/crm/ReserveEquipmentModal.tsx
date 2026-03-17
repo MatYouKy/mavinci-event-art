@@ -36,6 +36,25 @@ interface SubstitutionItem {
   model?: string;
 }
 
+interface RequiredComponent {
+  id: string;
+  compatible_equipment_id: string | null;
+  compatible_kit_id: string | null;
+  compatibility_type: 'required' | 'recommended' | 'optional';
+  is_optional: boolean;
+  compatible_equipment?: {
+    id: string;
+    name: string;
+    model?: string;
+    brand?: string;
+  };
+  compatible_kit?: {
+    id: string;
+    name: string;
+    description?: string;
+  };
+}
+
 const buildItemKey = (itemType: 'item' | 'kit', itemId: string) => `${itemType}-${itemId}`;
 
 const parseItemKey = (key: string) => {
@@ -140,6 +159,9 @@ export default function ReserveEquipmentModal({
   const [currentConflictItem, setCurrentConflictItem] = useState<EquipmentItem | null>(null);
   const [substitutions, setSubstitutions] = useState<SubstitutionItem[]>([]);
   const [loadingSubstitutions, setLoadingSubstitutions] = useState(false);
+  const [showRequiredComponentsModal, setShowRequiredComponentsModal] = useState(false);
+  const [requiredComponents, setRequiredComponents] = useState<RequiredComponent[]>([]);
+  const [selectedSubstitutionId, setSelectedSubstitutionId] = useState<string | null>(null);
   const { showSnackbar } = useSnackbar();
   const dispatch = useDispatch();
 
@@ -256,18 +278,67 @@ export default function ReserveEquipmentModal({
     await loadSubstitutions(item);
   };
 
+  const checkRequiredComponents = async (equipmentId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('equipment_compatible_items')
+        .select(`
+          id,
+          compatible_equipment_id,
+          compatible_kit_id,
+          compatibility_type,
+          is_optional,
+          compatible_equipment:equipment_items!compatible_equipment_id(id, name, model, brand),
+          compatible_kit:equipment_kits!compatible_kit_id(id, name, description)
+        `)
+        .eq('equipment_id', equipmentId)
+        .eq('compatibility_type', 'required')
+        .eq('is_optional', false);
+
+      if (error) throw error;
+
+      return (data || []).map((item: any) => ({
+        ...item,
+        compatible_equipment: Array.isArray(item.compatible_equipment)
+          ? item.compatible_equipment[0]
+          : item.compatible_equipment,
+        compatible_kit: Array.isArray(item.compatible_kit)
+          ? item.compatible_kit[0]
+          : item.compatible_kit,
+      })) as RequiredComponent[];
+    } catch (err: any) {
+      console.error('Error checking required components:', err);
+      return [];
+    }
+  };
+
   const handleSelectSubstitution = async (substitutionId: string) => {
     if (!currentConflictItem) return;
-  
+
+    const required = await checkRequiredComponents(substitutionId);
+
+    if (required.length > 0) {
+      setSelectedSubstitutionId(substitutionId);
+      setRequiredComponents(required);
+      setShowRequiredComponentsModal(true);
+      return;
+    }
+
+    await saveSubstitution(substitutionId);
+  };
+
+  const saveSubstitution = async (substitutionId: string) => {
+    if (!currentConflictItem) return;
+
     try {
       const { error: deleteError } = await supabase
         .from('offer_equipment_substitutions')
         .delete()
         .eq('offer_id', offerId)
         .eq('from_item_id', currentConflictItem.item_id);
-  
+
       if (deleteError) throw deleteError;
-  
+
       const { error } = await supabase
         .from('offer_equipment_substitutions')
         .insert({
@@ -276,16 +347,61 @@ export default function ReserveEquipmentModal({
           to_item_id: substitutionId,
           qty: currentConflictItem.required_qty,
         });
-  
+
       if (error) throw error;
-  
+
       showSnackbar('Substytucja została zapisana', 'success');
       setShowSubstitutionModal(false);
+      setShowRequiredComponentsModal(false);
       setCurrentConflictItem(null);
+      setSelectedSubstitutionId(null);
+      setRequiredComponents([]);
       await loadEquipment();
     } catch (err: any) {
       console.error('Error saving substitution:', err);
       showSnackbar(err.message || 'Błąd podczas zapisywania substytucji', 'error');
+    }
+  };
+
+  const handleAddRequiredComponents = async () => {
+    if (!selectedSubstitutionId || !offerId) return;
+
+    try {
+      const { data: offer } = await supabase
+        .from('offers')
+        .select('event_id')
+        .eq('id', offerId)
+        .single();
+
+      if (!offer?.event_id) {
+        throw new Error('Nie znaleziono eventu dla tej oferty');
+      }
+
+      for (const component of requiredComponents) {
+        if (component.compatible_equipment_id) {
+          await supabase.from('event_equipment').insert({
+            event_id: offer.event_id,
+            equipment_id: component.compatible_equipment_id,
+            quantity: 1,
+            status: 'reserved',
+            offer_id: offerId,
+          });
+        } else if (component.compatible_kit_id) {
+          await supabase.from('event_equipment').insert({
+            event_id: offer.event_id,
+            kit_id: component.compatible_kit_id,
+            quantity: 1,
+            status: 'reserved',
+            offer_id: offerId,
+          });
+        }
+      }
+
+      await saveSubstitution(selectedSubstitutionId);
+      showSnackbar('Dodano wymagane komponenty', 'success');
+    } catch (err: any) {
+      console.error('Error adding required components:', err);
+      showSnackbar(err.message || 'Błąd podczas dodawania komponentów', 'error');
     }
   };
 
@@ -655,6 +771,119 @@ export default function ReserveEquipmentModal({
               >
                 Powrót
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showRequiredComponentsModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
+          <div className="relative w-full max-w-2xl rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl">
+            <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-6">
+              <div>
+                <h2 className="text-xl font-semibold text-[#e5e4e2]">Wymagane komponenty</h2>
+                <p className="mt-1 text-sm text-[#e5e4e2]/60">
+                  Ten sprzęt wymaga następujących komponentów do prawidłowego działania
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowRequiredComponentsModal(false);
+                  setRequiredComponents([]);
+                  setSelectedSubstitutionId(null);
+                }}
+                className="rounded-lg p-2 text-[#e5e4e2]/60 transition-colors hover:bg-[#e5e4e2]/10 hover:text-[#e5e4e2]"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="max-h-[60vh] overflow-y-auto p-6">
+              <div className="mb-6 rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-4">
+                <div className="flex gap-3">
+                  <AlertTriangle className="h-5 w-5 flex-shrink-0 text-yellow-400" />
+                  <div className="text-sm text-yellow-400">
+                    Wybrany sprzęt nie będzie działać bez poniższych komponentów. Zalecamy ich dodanie.
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {requiredComponents.map((component) => {
+                  const item = component.compatible_equipment || component.compatible_kit;
+                  const isKit = !!component.compatible_kit;
+
+                  if (!item) return null;
+
+                  return (
+                    <div
+                      key={component.id}
+                      className="rounded-lg border border-red-500/20 bg-red-500/5 p-4"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="flex-shrink-0 rounded-full bg-red-500/20 p-2">
+                          <Package className="h-5 w-5 text-red-400" />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <div className="font-medium text-[#e5e4e2]">{item.name}</div>
+                            {isKit && (
+                              <span className="rounded bg-[#d3bb73]/20 px-2 py-0.5 text-xs text-[#d3bb73]">
+                                ZESTAW
+                              </span>
+                            )}
+                            <span className="rounded bg-red-500/20 px-2 py-0.5 text-xs text-red-400">
+                              WYMAGANY
+                            </span>
+                          </div>
+                          {!isKit && component.compatible_equipment && (
+                            <div className="mt-1 text-xs text-[#e5e4e2]/50">
+                              {component.compatible_equipment.brand} {component.compatible_equipment.model}
+                            </div>
+                          )}
+                          {isKit && component.compatible_kit?.description && (
+                            <div className="mt-1 text-xs text-[#e5e4e2]/50">
+                              {component.compatible_kit.description}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between border-t border-[#d3bb73]/10 p-6">
+              <button
+                onClick={() => {
+                  setShowRequiredComponentsModal(false);
+                  setRequiredComponents([]);
+                  setSelectedSubstitutionId(null);
+                }}
+                className="rounded-lg px-4 py-2 text-sm text-[#e5e4e2]/60 transition-colors hover:bg-[#e5e4e2]/10 hover:text-[#e5e4e2]"
+              >
+                Anuluj
+              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    if (selectedSubstitutionId) {
+                      await saveSubstitution(selectedSubstitutionId);
+                    }
+                  }}
+                  className="rounded-lg border border-[#e5e4e2]/20 px-4 py-2 text-sm text-[#e5e4e2] transition-colors hover:bg-[#e5e4e2]/10"
+                >
+                  Kontynuuj bez komponentów
+                </button>
+                <button
+                  onClick={handleAddRequiredComponents}
+                  className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#0f1119] transition-colors hover:bg-[#c4ac64]"
+                >
+                  <CheckCircle className="h-4 w-4" />
+                  Dodaj komponenty i zapisz
+                </button>
+              </div>
             </div>
           </div>
         </div>
