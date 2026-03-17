@@ -17,14 +17,24 @@ interface EquipmentItem {
         name: string;
       }
     | Array<{ name: string }>;
+  item_type?: 'equipment' | 'kit';
+  equipment_kit_items?: Array<{
+    quantity: number;
+    equipment: {
+      name: string;
+      model: string | null;
+    };
+  }>;
 }
 
 export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
   const [isAdding, setIsAdding] = useState(false);
   const [showEquipmentModal, setShowEquipmentModal] = useState(false);
   const [availableEquipment, setAvailableEquipment] = useState<EquipmentItem[]>([]);
+  const [availableKits, setAvailableKits] = useState<EquipmentItem[]>([]);
   const [filteredEquipment, setFilteredEquipment] = useState<EquipmentItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [itemTypeFilter, setItemTypeFilter] = useState<'all' | 'equipment' | 'kit'>('all');
   const [componentType, setComponentType] = useState<'from_warehouse' | 'custom'>('from_warehouse');
   const [newComponent, setNewComponent] = useState({
     component_equipment_id: '',
@@ -76,15 +86,37 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
   }, [equipment?.id]);
 
   useEffect(() => {
+    // Połącz equipment i kity
+    const allItems = [...availableEquipment, ...availableKits];
+
+    // Filtruj po typie
+    let itemsToFilter = allItems;
+    if (itemTypeFilter === 'equipment') {
+      itemsToFilter = availableEquipment;
+    } else if (itemTypeFilter === 'kit') {
+      itemsToFilter = availableKits;
+    }
+
+    // Filtruj po wyszukiwaniu
     if (!searchQuery.trim()) {
-      setFilteredEquipment(availableEquipment);
+      setFilteredEquipment(itemsToFilter);
     } else {
       const query = searchQuery.toLowerCase();
       setFilteredEquipment(
-        availableEquipment.filter((item) => {
+        itemsToFilter.filter((item) => {
           const categoryName = Array.isArray(item.warehouse_categories)
             ? item.warehouse_categories[0]?.name
             : item.warehouse_categories?.name;
+
+          // Dla kitów, sprawdź też zawartość
+          if (item.item_type === 'kit' && item.equipment_kit_items) {
+            const kitContents = item.equipment_kit_items
+              .map((ki) => `${ki.equipment.name} ${ki.equipment.model || ''}`)
+              .join(' ')
+              .toLowerCase();
+            if (kitContents.includes(query)) return true;
+          }
+
           return (
             item.name.toLowerCase().includes(query) ||
             item.model?.toLowerCase().includes(query) ||
@@ -94,10 +126,11 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
         }),
       );
     }
-  }, [searchQuery, availableEquipment]);
+  }, [searchQuery, availableEquipment, availableKits, itemTypeFilter]);
 
   const fetchAvailableEquipment = async () => {
-    const { data, error } = await supabase
+    // Pobierz equipment
+    const { data: equipmentData, error: equipmentError } = await supabase
       .from('equipment_items')
       .select(
         `
@@ -115,15 +148,55 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
       .neq('id', equipment.id)
       .order('name');
 
-    if (error) {
-      console.error('Error fetching equipment:', error);
-      return;
+    if (equipmentError) {
+      console.error('Error fetching equipment:', equipmentError);
     }
 
-    if (data) {
-      setAvailableEquipment(data);
-      setFilteredEquipment(data);
+    // Pobierz kity
+    const { data: kitsData, error: kitsError } = await supabase
+      .from('equipment_kits')
+      .select(
+        `
+        id,
+        name,
+        thumbnail_url,
+        equipment_kit_items(
+          quantity,
+          equipment:equipment_items(
+            name,
+            model
+          )
+        )
+      `,
+      )
+      .is('deleted_at', null)
+      .order('name');
+
+    if (kitsError) {
+      console.error('Error fetching kits:', kitsError);
     }
+
+    // Połącz equipment i kity w jedną listę z oznaczeniem typu
+    const equipmentWithType = (equipmentData || []).map((item) => ({
+      ...item,
+      item_type: 'equipment' as const,
+    }));
+
+    const kitsWithType = (kitsData || []).map((kit) => ({
+      ...kit,
+      model: null,
+      brand: null,
+      cable_stock_quantity: null,
+      equipment_units: [],
+      warehouse_categories: null,
+      item_type: 'kit' as const,
+    }));
+
+    const allItems = [...equipmentWithType, ...kitsWithType];
+
+    setAvailableEquipment(equipmentWithType);
+    setAvailableKits(kitsWithType);
+    setFilteredEquipment(allItems);
   };
 
   const fetchCompatibleItems = async () => {
@@ -144,6 +217,18 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
           cable_stock_quantity,
           warehouse_categories(name),
           equipment_units(id, status)
+        ),
+        compatible_kit:compatible_kit_id(
+          id,
+          name,
+          thumbnail_url,
+          equipment_kit_items(
+            quantity,
+            equipment:equipment_items(
+              name,
+              model
+            )
+          )
         )
       `,
       )
@@ -160,15 +245,24 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
     }
   };
 
-  const handleAddCompatible = async (compatibleEquipmentId: string) => {
+  const handleAddCompatible = async (itemId: string, itemType: 'equipment' | 'kit') => {
     try {
-      const { error } = await supabase.from('equipment_compatible_items').insert({
+      const insertData: any = {
         equipment_id: equipment.id,
-        compatible_equipment_id: compatibleEquipmentId,
         compatibility_type: compatibilityType,
         notes: compatibilityNotes || null,
         display_order: compatibleItems.length,
-      });
+      };
+
+      if (itemType === 'equipment') {
+        insertData.compatible_equipment_id = itemId;
+        insertData.compatible_kit_id = null;
+      } else {
+        insertData.compatible_kit_id = itemId;
+        insertData.compatible_equipment_id = null;
+      }
+
+      const { error } = await supabase.from('equipment_compatible_items').insert(insertData);
 
       if (error) throw error;
       await fetchCompatibleItems();
@@ -176,6 +270,7 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
       setCompatibilityNotes('');
       setCompatibilityType('optional');
       setSearchQuery('');
+      setItemTypeFilter('all');
     } catch (error) {
       console.error('Error adding compatible item:', error);
       alert('Błąd podczas dodawania kompatybilnego produktu');
@@ -744,7 +839,13 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
               })}
             {compatibleItems.map((item: any) => {
               const compatEquip = item.compatible_equipment;
-              const availableQty = getAvailableQuantity(compatEquip);
+              const compatKit = item.compatible_kit;
+              const isKit = !!compatKit;
+              const displayItem = isKit ? compatKit : compatEquip;
+
+              if (!displayItem) return null;
+
+              const availableQty = isKit ? 0 : getAvailableQuantity(compatEquip);
               const typeColors = {
                 required: 'bg-red-500/20 text-red-400',
                 recommended: 'bg-blue-500/20 text-blue-400',
@@ -762,37 +863,71 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                   className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4"
                 >
                   <div className="flex items-start gap-4">
-                    {compatEquip.thumbnail_url ? (
-                      <img
-                        src={compatEquip.thumbnail_url}
-                        alt={compatEquip.name}
-                        className="h-20 w-20 rounded-lg border border-[#d3bb73]/20 object-cover"
-                      />
+                    {displayItem.thumbnail_url ? (
+                      <div className="relative">
+                        <img
+                          src={displayItem.thumbnail_url}
+                          alt={displayItem.name}
+                          className="h-20 w-20 rounded-lg border border-[#d3bb73]/20 object-cover"
+                        />
+                        {isKit && (
+                          <div className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-[#d3bb73] shadow">
+                            <Package className="h-3 w-3 text-[#1c1f33]" />
+                          </div>
+                        )}
+                      </div>
                     ) : (
-                      <div className="flex h-20 w-20 items-center justify-center rounded-lg border border-[#d3bb73]/20 bg-[#0f1119]">
+                      <div className="relative flex h-20 w-20 items-center justify-center rounded-lg border border-[#d3bb73]/20 bg-[#0f1119]">
                         <Package className="h-8 w-8 text-[#e5e4e2]/20" />
+                        {isKit && (
+                          <div className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-[#d3bb73] shadow">
+                            <Package className="h-3 w-3 text-[#1c1f33]" />
+                          </div>
+                        )}
                       </div>
                     )}
                     <div className="flex-1">
-                      <div className="mb-1 flex items-center gap-2">
-                        <div className="font-medium text-[#e5e4e2]">{compatEquip.name}</div>
+                      <div className="mb-1 flex flex-wrap items-center gap-2">
+                        <div className="font-medium text-[#e5e4e2]">{displayItem.name}</div>
+                        {isKit && (
+                          <span className="rounded bg-[#d3bb73]/20 px-2 py-0.5 text-xs text-[#d3bb73]">
+                            ZESTAW
+                          </span>
+                        )}
                         <span
                           className={`rounded px-2 py-0.5 text-xs ${typeColors[item.compatibility_type as keyof typeof typeColors]}`}
                         >
                           {typeLabels[item.compatibility_type as keyof typeof typeLabels]}
                         </span>
-                        <span
-                          className={`rounded px-2 py-1 text-xs ${
-                            availableQty > 0
-                              ? 'bg-green-500/20 text-green-400'
-                              : 'bg-red-500/20 text-red-400'
-                          }`}
-                        >
-                          {availableQty} szt. dostępne
-                        </span>
+                        {!isKit && (
+                          <span
+                            className={`rounded px-2 py-1 text-xs ${
+                              availableQty > 0
+                                ? 'bg-green-500/20 text-green-400'
+                                : 'bg-red-500/20 text-red-400'
+                            }`}
+                          >
+                            {availableQty} szt. dostępne
+                          </span>
+                        )}
                       </div>
-                      {compatEquip.model && (
+                      {compatEquip?.model && (
                         <div className="text-sm text-[#e5e4e2]/60">{compatEquip.model}</div>
+                      )}
+                      {isKit && compatKit.equipment_kit_items && compatKit.equipment_kit_items.length > 0 && (
+                        <div className="mt-1 space-y-0.5">
+                          {compatKit.equipment_kit_items.slice(0, 3).map((kitItem: any, idx: number) => (
+                            <p key={idx} className="text-xs text-[#e5e4e2]/50">
+                              • {kitItem.quantity}x {kitItem.equipment.name}
+                              {kitItem.equipment.model ? ` ${kitItem.equipment.model}` : ''}
+                            </p>
+                          ))}
+                          {compatKit.equipment_kit_items.length > 3 && (
+                            <p className="text-xs text-[#e5e4e2]/40">
+                              +{compatKit.equipment_kit_items.length - 3} więcej...
+                            </p>
+                          )}
+                        </div>
                       )}
                       {item.notes && (
                         <div className="mt-1 text-sm italic text-[#e5e4e2]/60">{item.notes}</div>
@@ -836,6 +971,7 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                     setSearchQuery('');
                     setCompatibilityNotes('');
                     setCompatibilityType('optional');
+                    setItemTypeFilter('all');
                   }}
                   className="rounded-lg p-2 hover:bg-[#e5e4e2]/10"
                 >
@@ -872,6 +1008,45 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                   />
                 </div>
 
+                <div>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Typ produktu</label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setItemTypeFilter('all')}
+                      className={`flex-1 rounded-lg px-4 py-2 text-sm transition-colors ${
+                        itemTypeFilter === 'all'
+                          ? 'bg-[#d3bb73] text-[#1c1f33]'
+                          : 'bg-[#1c1f33] text-[#e5e4e2]/60 hover:bg-[#e5e4e2]/10'
+                      }`}
+                    >
+                      Wszystko
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setItemTypeFilter('equipment')}
+                      className={`flex-1 rounded-lg px-4 py-2 text-sm transition-colors ${
+                        itemTypeFilter === 'equipment'
+                          ? 'bg-[#d3bb73] text-[#1c1f33]'
+                          : 'bg-[#1c1f33] text-[#e5e4e2]/60 hover:bg-[#e5e4e2]/10'
+                      }`}
+                    >
+                      Sprzęt
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setItemTypeFilter('kit')}
+                      className={`flex-1 rounded-lg px-4 py-2 text-sm transition-colors ${
+                        itemTypeFilter === 'kit'
+                          ? 'bg-[#d3bb73] text-[#1c1f33]'
+                          : 'bg-[#1c1f33] text-[#e5e4e2]/60 hover:bg-[#e5e4e2]/10'
+                      }`}
+                    >
+                      Zestawy
+                    </button>
+                  </div>
+                </div>
+
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#e5e4e2]/40" />
                   <input
@@ -895,15 +1070,20 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
               ) : (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   {filteredEquipment.map((item) => {
+                    const isKit = item.item_type === 'kit';
                     const availableQty = getAvailableQuantity(item);
-                    const alreadyAdded = compatibleItems.some(
-                      (ci: any) => ci.compatible_equipment?.id === item.id,
-                    );
+                    const alreadyAdded = compatibleItems.some((ci: any) => {
+                      if (isKit) {
+                        return ci.compatible_kit?.id === item.id;
+                      } else {
+                        return ci.compatible_equipment?.id === item.id;
+                      }
+                    });
 
                     return (
                       <button
                         key={item.id}
-                        onClick={() => handleAddCompatible(item.id)}
+                        onClick={() => handleAddCompatible(item.id, isKit ? 'kit' : 'equipment')}
                         disabled={alreadyAdded}
                         className={`rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4 text-left transition-colors hover:border-[#d3bb73]/30 ${
                           alreadyAdded ? 'cursor-not-allowed opacity-50' : ''
@@ -911,19 +1091,38 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                       >
                         <div className="flex gap-4">
                           {item.thumbnail_url ? (
-                            <img
-                              src={item.thumbnail_url}
-                              alt={item.name}
-                              className="h-20 w-20 rounded-lg object-cover"
-                            />
+                            <div className="relative">
+                              <img
+                                src={item.thumbnail_url}
+                                alt={item.name}
+                                className="h-20 w-20 rounded-lg object-cover"
+                              />
+                              {isKit && (
+                                <div className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-[#d3bb73] shadow">
+                                  <Package className="h-3 w-3 text-[#1c1f33]" />
+                                </div>
+                              )}
+                            </div>
                           ) : (
-                            <div className="flex h-20 w-20 items-center justify-center rounded-lg bg-[#0f1119]">
+                            <div className="relative flex h-20 w-20 items-center justify-center rounded-lg bg-[#0f1119]">
                               <Package className="h-8 w-8 text-[#e5e4e2]/20" />
+                              {isKit && (
+                                <div className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-[#d3bb73] shadow">
+                                  <Package className="h-3 w-3 text-[#1c1f33]" />
+                                </div>
+                              )}
                             </div>
                           )}
                           <div className="flex-1">
                             <div className="flex items-start justify-between gap-2">
-                              <h4 className="font-medium text-[#e5e4e2]">{item.name}</h4>
+                              <div>
+                                <h4 className="font-medium text-[#e5e4e2]">{item.name}</h4>
+                                {isKit && (
+                                  <span className="mt-1 inline-block rounded bg-[#d3bb73]/20 px-2 py-0.5 text-xs text-[#d3bb73]">
+                                    ZESTAW
+                                  </span>
+                                )}
+                              </div>
                               <span
                                 className={`rounded px-2 py-1 text-xs ${
                                   availableQty > 0
@@ -936,6 +1135,21 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                             </div>
                             {item.model && (
                               <p className="mt-0.5 text-sm text-[#e5e4e2]/60">{item.model}</p>
+                            )}
+                            {isKit && item.equipment_kit_items && item.equipment_kit_items.length > 0 && (
+                              <div className="mt-2 space-y-1">
+                                {item.equipment_kit_items.slice(0, 3).map((kitItem, idx) => (
+                                  <p key={idx} className="text-xs text-[#e5e4e2]/50">
+                                    • {kitItem.quantity}x {kitItem.equipment.name}
+                                    {kitItem.equipment.model ? ` ${kitItem.equipment.model}` : ''}
+                                  </p>
+                                ))}
+                                {item.equipment_kit_items.length > 3 && (
+                                  <p className="text-xs text-[#e5e4e2]/40">
+                                    +{item.equipment_kit_items.length - 3} więcej...
+                                  </p>
+                                )}
+                              </div>
                             )}
                             {alreadyAdded && (
                               <span className="mt-2 inline-block rounded bg-yellow-500/20 px-2 py-1 text-xs text-yellow-400">
