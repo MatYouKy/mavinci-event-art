@@ -296,7 +296,7 @@ export const eventsApi = createApi({
                 model,
                 cable_specs,
                 thumbnail_url,
-                category:warehouse_categories(name)
+                category:warehouse_categories(id, name, parent_id)
               ),
               kit:equipment_kits(
                 name,
@@ -309,7 +309,7 @@ export const eventsApi = createApi({
                     model,
                     cable_specs,
                     thumbnail_url,
-                    category:warehouse_categories(name)
+                    category:warehouse_categories(id, name, parent_id)
                   )
                 )
               )

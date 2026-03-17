@@ -77,6 +77,7 @@ export function EventEquipmentRow({
   const isRemovedFromOffer = !!row?.removed_from_offer;
   const isConflict = badge.label === 'NIEDOSTĘPNY';
   const isShortage = !!row?.is_optional;
+  const isRental = row?.status === 'rental' || !!row?.use_external_rental;
 
   return (
     <div>
@@ -249,7 +250,7 @@ export function EventEquipmentRow({
         )}
 
         {/* akcje */}
-        {(isConflict || isShortage) && editable ? (
+        {(isConflict || isShortage || isRental) && editable ? (
           <ResponsiveActionBar
             disabledBackground
             mobileBreakpoint={2000}
@@ -260,12 +261,16 @@ export function EventEquipmentRow({
                 onClick: () => onRemove(row),
                 variant: 'danger',
               },
-              {
-                label: 'Rental',
-                icon: <Package className="h-4 w-4" />,
-                onClick: () => onMarkAsRental?.(row),
-                variant: 'default',
-              },
+              ...(!isRental
+                ? [
+                    {
+                      label: 'Rental',
+                      icon: <Package className="h-4 w-4" />,
+                      onClick: () => onMarkAsRental?.(row),
+                      variant: 'default' as const,
+                    },
+                  ]
+                : []),
               ...(onSuggestAlternative
                 ? [
                     {

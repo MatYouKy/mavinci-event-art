@@ -163,6 +163,12 @@ function getStatusBadge(statusRaw?: string, hasConflict?: boolean) {
       cls: 'bg-[#d3bb73]/15 text-[#d3bb73] border-[#d3bb73]/30',
     };
   }
+  if (status === 'rental') {
+    return {
+      label: 'RENTAL',
+      cls: 'bg-purple-500/15 text-purple-300 border-purple-500/30',
+    };
+  }
   if (status === 'reserved') {
     return {
       label: 'ZAREZERWOWANE',
@@ -913,29 +919,43 @@ export const EventEquipmentTab: React.FC<{
 
   const handleMarkAsRental = async (row: any) => {
     try {
-      const conflictId = row?.conflict_id || row?.id;
-  
-      if (!conflictId) {
-        showSnackbar('Nie znaleziono ID konfliktu', 'error');
-        return;
-      }
-  
       const equipmentName =
         row?.equipment?.name ||
         row?.equipment_items?.name ||
         row?.kit?.name ||
         row?.item_name ||
         'Nieznany sprzęt';
-  
-      const { error } = await supabase
-        .from('offer_equipment_conflicts')
+
+      // Update event_equipment
+      const { error: eventEqError } = await supabase
+        .from('event_equipment')
         .update({
           use_external_rental: true,
+          status: 'rental',
+          is_optional: false,
+          auto_added: false,
+          notes: `Wynajem zewnętrzny - ${equipmentName}`
         })
-        .eq('id', conflictId);
-  
-      if (error) throw error;
-  
+        .eq('id', row.id);
+
+      if (eventEqError) throw eventEqError;
+
+      // If there's a conflict ID, also update the conflict
+      const conflictId = row?.conflict_id;
+      if (conflictId) {
+        const { error: conflictError } = await supabase
+          .from('offer_equipment_conflicts')
+          .update({
+            use_external_rental: true,
+          })
+          .eq('id', conflictId);
+
+        if (conflictError) {
+          console.warn('Could not update conflict:', conflictError);
+        }
+      }
+
+      // Create subcontractor task
       if (eventId) {
         const { error: noteError } = await supabase
           .from('subcontractor_tasks')
@@ -947,13 +967,13 @@ export const EventEquipmentTab: React.FC<{
             payment_type: 'fixed',
             notes: 'Utworzone automatycznie z zakładki Sprzęt',
           });
-  
+
         if (noteError) {
           console.warn('Nie udało się utworzyć zadania dla podwykonawcy:', noteError);
         }
       }
-  
-      showSnackbar('Sprzęt oznaczony jako wynajem zewnętrzny', 'success');
+
+      showSnackbar('Sprzęt oznaczony jako wynajem zewnętrzny. Dodano zadanie w zakładce Podwykonawcy.', 'success');
       await refetch();
     } catch (err: any) {
       console.error('Error marking as rental:', err);
@@ -1003,8 +1023,14 @@ export const EventEquipmentTab: React.FC<{
 
   const handleSuggestAlternative = async (row: any) => {
     try {
+      console.log('[handleSuggestAlternative] row:', row);
+      console.log('[handleSuggestAlternative] row.equipment:', row?.equipment);
+      console.log('[handleSuggestAlternative] row.equipment.category:', row?.equipment?.category);
+
       // Pobierz kategorię sprzętu
       const categoryId = row?.equipment?.category?.id;
+      console.log('[handleSuggestAlternative] categoryId:', categoryId);
+
       if (!categoryId) {
         showSnackbar('Nie można znaleźć kategorii sprzętu', 'error');
         return;
