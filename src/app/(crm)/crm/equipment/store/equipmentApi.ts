@@ -300,12 +300,17 @@ export const equipmentApi = createApi({
           )
           .eq('id', id)
           .is('deleted_at', null)
-          .single();
+          .maybeSingle();
 
         if (error) {
           console.error('getEquipmentDetails - error:', error);
           return { error: error as any };
         }
+
+        if (!data) {
+          return { error: { message: 'Equipment not found' } as any };
+        }
+
         return { data };
       },
       providesTags: (_res, _err, id) => [{ type: 'Equipment', id }],
