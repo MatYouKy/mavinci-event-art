@@ -162,6 +162,34 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
     }
   }, [selectedSubcontractor]);
 
+  // Auto-update pricing when service is selected
+  useEffect(() => {
+    if (selectedService && subcontractorServices.length > 0) {
+      const service = subcontractorServices.find((s) => s.id === selectedService);
+      if (service) {
+        const isEquipment = (service as any)._type === 'equipment';
+        const priceGross = isEquipment
+          ? (service as any).daily_price_gross || (service as any).daily_rental_price
+          : (service as any).price_gross || (service as any).unit_price;
+        const priceNet = isEquipment
+          ? (service as any).daily_price_net
+          : (service as any).price_net;
+        const vatRate = (service as any).vat_rate || 23;
+        const calculatedNet = priceNet || (priceGross ? priceGross / (1 + vatRate / 100) : 0);
+
+        setProduct({
+          ...product,
+          base_price: priceGross || 0,
+          price_gross: priceGross || 0,
+          price_net: calculatedNet,
+          cost_gross: priceGross || 0,
+          cost_net: calculatedNet,
+          vat_rate: vatRate,
+        });
+      }
+    }
+  }, [selectedService, subcontractorServices]);
+
   const fetchSubcontractors = async () => {
     try {
       setLoadingSubcontractors(true);

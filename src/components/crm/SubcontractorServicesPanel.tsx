@@ -31,6 +31,15 @@ interface ServiceCatalogItem {
   quantity_available?: number;
   thumbnail_url: string | null;
   is_active: boolean;
+  vat_rate?: number;
+  price_net?: number;
+  price_gross?: number;
+  daily_price_net?: number;
+  daily_price_gross?: number;
+  weekly_price_net?: number;
+  weekly_price_gross?: number;
+  monthly_price_net?: number;
+  monthly_price_gross?: number;
 }
 
 const serviceTypeConfig = {
@@ -68,6 +77,9 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
   const [newItemWeeklyPrice, setNewItemWeeklyPrice] = useState<number>(0);
   const [newItemMonthlyPrice, setNewItemMonthlyPrice] = useState<number>(0);
   const [newItemRequiredSkills, setNewItemRequiredSkills] = useState<string>('');
+  const [newItemVatRate, setNewItemVatRate] = useState<number>(23);
+  const [newItemPriceNet, setNewItemPriceNet] = useState<number>(0);
+  const [newItemPriceGross, setNewItemPriceGross] = useState<number>(0);
 
   const [services, setServices] = useState<SubcontractorService[]>([]);
   const [loading, setLoading] = useState(true);
@@ -255,6 +267,9 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
           insertData.unit_price = newItemPrice;
           insertData.unit = newItemUnit;
           insertData.category = newItemCategory || null;
+          insertData.vat_rate = newItemVatRate;
+          insertData.price_net = newItemPriceNet;
+          insertData.price_gross = newItemPriceGross;
           break;
         case 'rental':
           tableName = 'subcontractor_rental_equipment';
@@ -263,6 +278,9 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
           insertData.monthly_rental_price = newItemMonthlyPrice || null;
           insertData.quantity_available = newItemQuantity;
           insertData.category = newItemCategory || null;
+          insertData.vat_rate = newItemVatRate;
+          insertData.daily_price_net = newItemPriceNet;
+          insertData.daily_price_gross = newItemPriceGross;
           insertData.required_skills = newItemRequiredSkills
             ? newItemRequiredSkills.split(',').map(s => s.trim()).filter(Boolean)
             : [];
@@ -291,6 +309,9 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
       setNewItemWeeklyPrice(0);
       setNewItemMonthlyPrice(0);
       setNewItemRequiredSkills('');
+      setNewItemVatRate(23);
+      setNewItemPriceNet(0);
+      setNewItemPriceGross(0);
 
       // Odśwież katalog
       fetchCatalog(activeTab);
@@ -578,16 +599,60 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                       placeholder="np. Catering, Animacje, Dekoracje"
                     />
                   </div>
+
                   <div>
-                    <label className="mb-2 block text-sm text-gray-400">Cena jednostkowa (PLN)</label>
-                    <input
-                      type="number"
-                      value={newItemPrice}
-                      onChange={(e) => setNewItemPrice(parseFloat(e.target.value))}
+                    <label className="mb-2 block text-sm text-gray-400">Stawka VAT (%)</label>
+                    <select
+                      value={newItemVatRate}
+                      onChange={(e) => {
+                        const vat = parseFloat(e.target.value);
+                        setNewItemVatRate(vat);
+                        if (newItemPriceNet > 0) {
+                          setNewItemPriceGross(Number((newItemPriceNet * (1 + vat / 100)).toFixed(2)));
+                        }
+                      }}
                       className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
-                      step="0.01"
-                    />
+                    >
+                      <option value="0">0% (zwolniony)</option>
+                      <option value="5">5%</option>
+                      <option value="8">8%</option>
+                      <option value="23">23%</option>
+                    </select>
                   </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-2 block text-sm text-gray-400">Cena netto (PLN)</label>
+                      <input
+                        type="number"
+                        value={newItemPriceNet}
+                        onChange={(e) => {
+                          const net = parseFloat(e.target.value) || 0;
+                          setNewItemPriceNet(net);
+                          setNewItemPriceGross(Number((net * (1 + newItemVatRate / 100)).toFixed(2)));
+                          setNewItemPrice(Number((net * (1 + newItemVatRate / 100)).toFixed(2)));
+                        }}
+                        className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
+                        step="0.01"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm text-gray-400">Cena brutto (PLN)</label>
+                      <input
+                        type="number"
+                        value={newItemPriceGross}
+                        onChange={(e) => {
+                          const gross = parseFloat(e.target.value) || 0;
+                          setNewItemPriceGross(gross);
+                          setNewItemPriceNet(Number((gross / (1 + newItemVatRate / 100)).toFixed(2)));
+                          setNewItemPrice(gross);
+                        }}
+                        className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
+                        step="0.01"
+                      />
+                    </div>
+                  </div>
+
                   <div>
                     <label className="mb-2 block text-sm text-gray-400">Jednostka</label>
                     <input
@@ -614,33 +679,55 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                     />
                   </div>
 
-                  <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="mb-2 block text-sm text-gray-400">Stawka VAT (%)</label>
+                    <select
+                      value={newItemVatRate}
+                      onChange={(e) => {
+                        const vat = parseFloat(e.target.value);
+                        setNewItemVatRate(vat);
+                        if (newItemPriceNet > 0) {
+                          setNewItemPriceGross(Number((newItemPriceNet * (1 + vat / 100)).toFixed(2)));
+                        }
+                      }}
+                      className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
+                    >
+                      <option value="0">0% (zwolniony)</option>
+                      <option value="5">5%</option>
+                      <option value="8">8%</option>
+                      <option value="23">23%</option>
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="mb-2 block text-sm text-gray-400">Cena dzienna (PLN)</label>
+                      <label className="mb-2 block text-sm text-gray-400">Cena dzienna netto (PLN)</label>
                       <input
                         type="number"
-                        value={newItemPrice}
-                        onChange={(e) => setNewItemPrice(parseFloat(e.target.value) || 0)}
+                        value={newItemPriceNet}
+                        onChange={(e) => {
+                          const net = parseFloat(e.target.value) || 0;
+                          setNewItemPriceNet(net);
+                          const gross = Number((net * (1 + newItemVatRate / 100)).toFixed(2));
+                          setNewItemPriceGross(gross);
+                          setNewItemPrice(gross);
+                        }}
                         className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
                         step="0.01"
                       />
                     </div>
                     <div>
-                      <label className="mb-2 block text-sm text-gray-400">Tygodniowa (PLN)</label>
+                      <label className="mb-2 block text-sm text-gray-400">Cena dzienna brutto (PLN)</label>
                       <input
                         type="number"
-                        value={newItemWeeklyPrice}
-                        onChange={(e) => setNewItemWeeklyPrice(parseFloat(e.target.value) || 0)}
-                        className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
-                        step="0.01"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-2 block text-sm text-gray-400">Miesięczna (PLN)</label>
-                      <input
-                        type="number"
-                        value={newItemMonthlyPrice}
-                        onChange={(e) => setNewItemMonthlyPrice(parseFloat(e.target.value) || 0)}
+                        value={newItemPriceGross}
+                        onChange={(e) => {
+                          const gross = parseFloat(e.target.value) || 0;
+                          setNewItemPriceGross(gross);
+                          const net = Number((gross / (1 + newItemVatRate / 100)).toFixed(2));
+                          setNewItemPriceNet(net);
+                          setNewItemPrice(gross);
+                        }}
                         className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
                         step="0.01"
                       />
@@ -693,6 +780,9 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                   setNewItemWeeklyPrice(0);
                   setNewItemMonthlyPrice(0);
                   setNewItemRequiredSkills('');
+                  setNewItemVatRate(23);
+                  setNewItemPriceNet(0);
+                  setNewItemPriceGross(0);
                 }}
                 className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-white hover:bg-gray-600"
               >
