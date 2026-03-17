@@ -130,13 +130,19 @@ function getUiLimits(avail?: AvailabilityUI | null) {
   const maxAdd = num((avail as any).max_add, Math.max(0, availableInTerm - used));
   const maxSet = num((avail as any).max_set, used + maxAdd);
 
+  // reserved_quantity to rezerwacje z INNYCH eventów
+  // used_by_this_event to rezerwacje w BIEŻĄCYM evencie
+  // SUMA = łączna liczba zarezerwowanych jednostek
+  const reservedFromOtherEvents = num((avail as any).reserved_quantity, 0);
+  const totalReserved = reservedFromOtherEvents + used;
+
   return {
     used,
     availableInTerm,
     maxAdd,
     maxSet,
     total: num((avail as any).total_quantity, 0),
-    reserved: num((avail as any).reserved_quantity, 0),
+    reserved: totalReserved,
   };
 }
 
