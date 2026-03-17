@@ -1853,7 +1853,10 @@ useEffect(() => {
 
         {activeTab === 'services' && organization?.organization_type === 'subcontractor' && organization?.subcontractor_id && (
           <div className="rounded-lg border border-gray-700 bg-[#1a1d2e] p-6">
-            <SubcontractorServicesPanel subcontractorId={organization.subcontractor_id} />
+            <SubcontractorServicesPanel
+              subcontractorId={organization.subcontractor_id}
+              organizationId={organization.id}
+            />
           </div>
         )}
 

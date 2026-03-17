@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation';
 
 interface SubcontractorServicesPanelProps {
   subcontractorId: string;
+  organizationId?: string;
 }
 
 type ServiceType = 'transport' | 'services' | 'rental';
@@ -53,9 +54,15 @@ const serviceTypeConfig = {
   },
 };
 
-export default function SubcontractorServicesPanel({ subcontractorId }: SubcontractorServicesPanelProps) {
+export default function SubcontractorServicesPanel({ subcontractorId, organizationId }: SubcontractorServicesPanelProps) {
   const { showSnackbar } = useSnackbar();
   const router = useRouter();
+
+  const [showAddItemModal, setShowAddItemModal] = useState(false);
+  const [newItemName, setNewItemName] = useState('');
+  const [newItemDescription, setNewItemDescription] = useState('');
+  const [newItemPrice, setNewItemPrice] = useState<number>(0);
+  const [newItemUnit, setNewItemUnit] = useState('szt');
 
   const [services, setServices] = useState<SubcontractorService[]>([]);
   const [loading, setLoading] = useState(true);
@@ -222,6 +229,58 @@ export default function SubcontractorServicesPanel({ subcontractorId }: Subcontr
       router.push(`/crm/offers/products/${item.id}`);
     } else if (activeTab === 'rental') {
       router.push(`/crm/equipment/${item.id}`);
+    }
+  };
+
+  const handleAddNewItem = async () => {
+    if (!activeTab || !newItemName.trim()) return;
+
+    try {
+      let tableName = '';
+      let insertData: any = {
+        subcontractor_id: subcontractorId,
+        name: newItemName,
+        description: newItemDescription || null,
+        is_active: true,
+      };
+
+      switch (activeTab) {
+        case 'services':
+          tableName = 'subcontractor_service_catalog';
+          insertData.unit_price = newItemPrice;
+          insertData.unit = newItemUnit;
+          insertData.category = null;
+          break;
+        case 'rental':
+          tableName = 'subcontractor_equipment_catalog';
+          insertData.daily_rental_price = newItemPrice;
+          insertData.quantity_available = 1;
+          break;
+        case 'transport':
+          tableName = 'subcontractor_transport_catalog';
+          break;
+      }
+
+      const { data, error } = await supabase
+        .from(tableName)
+        .insert(insertData)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      showSnackbar('Dodano pozycję do katalogu', 'success');
+      setShowAddItemModal(false);
+      setNewItemName('');
+      setNewItemDescription('');
+      setNewItemPrice(0);
+      setNewItemUnit('szt');
+
+      // Odśwież katalog
+      fetchCatalog(activeTab);
+    } catch (error: any) {
+      console.error('Error adding catalog item:', error);
+      showSnackbar(error.message || 'Błąd podczas dodawania pozycji', 'error');
     }
   };
 
@@ -402,15 +461,21 @@ export default function SubcontractorServicesPanel({ subcontractorId }: Subcontr
               </div>
 
               {/* Lista produktów w katalogu */}
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {getCatalogItems().length === 0 ? (
-                  <div className="col-span-full rounded-lg border border-gray-700 bg-[#1a1d2e] p-8 text-center">
-                    <p className="text-gray-400">Brak pozycji w katalogu</p>
-                    <button className="mt-3 text-sm text-[#d3bb73] hover:text-[#c4a859]">
-                      Dodaj pierwszą pozycję
-                    </button>
-                  </div>
-                ) : (
+              <div className="space-y-4">
+                <button
+                  onClick={() => setShowAddItemModal(true)}
+                  className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#0f1119] hover:bg-[#c4a859]"
+                >
+                  <Plus className="h-4 w-4" />
+                  Dodaj pozycję do katalogu
+                </button>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {getCatalogItems().length === 0 ? (
+                    <div className="col-span-full rounded-lg border border-gray-700 bg-[#1a1d2e] p-8 text-center">
+                      <p className="text-gray-400">Brak pozycji w katalogu</p>
+                    </div>
+                  ) : (
                   getCatalogItems().map((item) => (
                     <div
                       key={item.id}
@@ -446,11 +511,109 @@ export default function SubcontractorServicesPanel({ subcontractorId }: Subcontr
                       </div>
                     </div>
                   ))
-                )}
+                  )}
+                </div>
               </div>
             </div>
           )}
         </>
+      )}
+
+      {/* Modal dodawania pozycji do katalogu */}
+      {showAddItemModal && activeTab && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-md rounded-lg bg-[#1a1d2e] p-6">
+            <h3 className="mb-4 text-lg font-semibold text-white">
+              Dodaj pozycję do katalogu: {serviceTypeConfig[activeTab].label}
+            </h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="mb-2 block text-sm text-gray-400">Nazwa *</label>
+                <input
+                  type="text"
+                  value={newItemName}
+                  onChange={(e) => setNewItemName(e.target.value)}
+                  className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
+                  placeholder="Nazwa usługi / sprzętu"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm text-gray-400">Opis</label>
+                <textarea
+                  value={newItemDescription}
+                  onChange={(e) => setNewItemDescription(e.target.value)}
+                  className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
+                  rows={3}
+                  placeholder="Opcjonalny opis..."
+                />
+              </div>
+
+              {activeTab === 'services' && (
+                <>
+                  <div>
+                    <label className="mb-2 block text-sm text-gray-400">Cena jednostkowa (PLN)</label>
+                    <input
+                      type="number"
+                      value={newItemPrice}
+                      onChange={(e) => setNewItemPrice(parseFloat(e.target.value) || 0)}
+                      className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
+                      step="0.01"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm text-gray-400">Jednostka</label>
+                    <input
+                      type="text"
+                      value={newItemUnit}
+                      onChange={(e) => setNewItemUnit(e.target.value)}
+                      className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
+                      placeholder="szt, godz, usługa"
+                    />
+                  </div>
+                </>
+              )}
+
+              {activeTab === 'rental' && (
+                <div>
+                  <label className="mb-2 block text-sm text-gray-400">Cena wynajmu dziennego (PLN)</label>
+                  <input
+                    type="number"
+                    value={newItemPrice}
+                    onChange={(e) => setNewItemPrice(parseFloat(e.target.value) || 0)}
+                    className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
+                    step="0.01"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={handleAddNewItem}
+                disabled={!newItemName.trim()}
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#0f1119] hover:bg-[#c4a859] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Save className="h-4 w-4" />
+                Dodaj
+              </button>
+              <button
+                onClick={() => {
+                  setShowAddItemModal(false);
+                  setNewItemName('');
+                  setNewItemDescription('');
+                  setNewItemPrice(0);
+                  setNewItemUnit('szt');
+                }}
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-white hover:bg-gray-600"
+              >
+                <X className="h-4 w-4" />
+                Anuluj
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
