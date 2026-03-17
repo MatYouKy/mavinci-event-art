@@ -233,7 +233,7 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
     if (activeTab === 'services') {
       router.push(`/crm/offers/products/${item.id}`);
     } else if (activeTab === 'rental') {
-      router.push(`/crm/equipment/${item.id}`);
+      router.push(`/crm/subcontractors/rental/${item.id}`);
     }
   };
 

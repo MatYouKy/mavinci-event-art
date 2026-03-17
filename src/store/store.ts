@@ -14,6 +14,7 @@ import { employeesApi } from '@/app/(crm)/crm/employees/store/employeeApi';
 import { fleetApi } from '@/app/(crm)/crm/fleet/api/fleetApi';
 import { databasesApi } from '@/app/(crm)/crm/databases/api/databasesApi';
 import { eventPhasesApi } from './api/eventPhasesApi';
+import { rentalApi } from '@/app/(crm)/crm/subcontractors/api/rentalApi';
 
 import authReducer from './slices/authSlice';
 import contactsReducer from './slices/contactsSlice';
@@ -42,6 +43,7 @@ export const rootReducer = combineReducers({
   [fleetApi.reducerPath]: fleetApi.reducer,
   [databasesApi.reducerPath]: databasesApi.reducer,
   [eventPhasesApi.reducerPath]: eventPhasesApi.reducer,
+  [rentalApi.reducerPath]: rentalApi.reducer,
 });
 
 export type RootState = ReturnType<typeof rootReducer>;
@@ -65,7 +67,8 @@ export const makeStore = (preloadedState?: Partial<RootState>) =>
         .concat(calendarApi.middleware)
         .concat(fleetApi.middleware)
         .concat(databasesApi.middleware)
-        .concat(eventPhasesApi.middleware),
+        .concat(eventPhasesApi.middleware)
+        .concat(rentalApi.middleware),
   });
 
 export type AppStore = ReturnType<typeof makeStore>;
