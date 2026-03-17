@@ -10,6 +10,7 @@ interface RequiredComponent {
   compatible_equipment_id: string | null;
   compatible_kit_id: string | null;
   compatibility_type: string;
+  compatibility_group: string | null;
   compatible_equipment?: {
     id: string;
     name: string;
@@ -21,6 +22,12 @@ interface RequiredComponent {
     name: string;
     description?: string;
   };
+}
+
+interface ComponentGroup {
+  groupName: string | null;
+  components: RequiredComponent[];
+  isGroupSatisfied: boolean;
 }
 
 interface RequiredComponentsWarningProps {
@@ -36,7 +43,8 @@ export function RequiredComponentsWarning({
   offerId,
   onComponentsAdded,
 }: RequiredComponentsWarningProps) {
-  const [requiredComponents, setRequiredComponents] = useState<RequiredComponent[]>([]);
+  const [componentGroups, setComponentGroups] = useState<ComponentGroup[]>([]);
+  const [selectedAlternatives, setSelectedAlternatives] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -57,6 +65,7 @@ export function RequiredComponentsWarning({
           compatible_equipment_id,
           compatible_kit_id,
           compatibility_type,
+          compatibility_group,
           compatible_equipment:equipment_items!compatible_equipment_id(id, name, model, brand),
           compatible_kit:equipment_kits!compatible_kit_id(id, name, description)
         `)
@@ -76,44 +85,92 @@ export function RequiredComponentsWarning({
       })) as RequiredComponent[];
 
       if (mapped.length > 0) {
-        const { data: existingEquipment } = await supabase
-          .from('event_equipment')
-          .select('equipment_id, kit_id')
-          .eq('event_id', eventId)
-          .in(
-            'equipment_id',
-            mapped
-              .filter((c) => c.compatible_equipment_id)
-              .map((c) => c.compatible_equipment_id!)
-          );
+        const allEquipmentIds = mapped
+          .filter((c) => c.compatible_equipment_id)
+          .map((c) => c.compatible_equipment_id!);
+        const allKitIds = mapped.filter((c) => c.compatible_kit_id).map((c) => c.compatible_kit_id!);
 
-        const { data: existingKits } = await supabase
-          .from('event_equipment')
-          .select('equipment_id, kit_id')
-          .eq('event_id', eventId)
-          .in(
-            'kit_id',
-            mapped.filter((c) => c.compatible_kit_id).map((c) => c.compatible_kit_id!)
-          );
+        const { data: existingEquipment } =
+          allEquipmentIds.length > 0
+            ? await supabase
+                .from('event_equipment')
+                .select('equipment_id, kit_id')
+                .eq('event_id', eventId)
+                .in('equipment_id', allEquipmentIds)
+            : { data: [] };
+
+        const { data: existingKits } =
+          allKitIds.length > 0
+            ? await supabase
+                .from('event_equipment')
+                .select('equipment_id, kit_id')
+                .eq('event_id', eventId)
+                .in('kit_id', allKitIds)
+            : { data: [] };
 
         const existingEquipmentIds = new Set(
           (existingEquipment || []).map((e) => e.equipment_id).filter(Boolean)
         );
         const existingKitIds = new Set((existingKits || []).map((e) => e.kit_id).filter(Boolean));
 
-        const missing = mapped.filter((comp) => {
-          if (comp.compatible_equipment_id) {
-            return !existingEquipmentIds.has(comp.compatible_equipment_id);
+        // Group by compatibility_group
+        const groupedComponents: Record<string, RequiredComponent[]> = {};
+
+        mapped.forEach((comp) => {
+          const groupKey = comp.compatibility_group || `single_${comp.id}`;
+          if (!groupedComponents[groupKey]) {
+            groupedComponents[groupKey] = [];
           }
-          if (comp.compatible_kit_id) {
-            return !existingKitIds.has(comp.compatible_kit_id);
-          }
-          return false;
+          groupedComponents[groupKey].push(comp);
         });
 
-        setRequiredComponents(missing);
+        // Check which groups are not satisfied
+        const unsatisfiedGroups: ComponentGroup[] = [];
+
+        Object.entries(groupedComponents).forEach(([groupKey, components]) => {
+          const hasGroup = !!components[0].compatibility_group;
+
+          if (hasGroup) {
+            // For groups: check if AT LEAST ONE component from the group is added
+            const isGroupSatisfied = components.some((comp) => {
+              if (comp.compatible_equipment_id) {
+                return existingEquipmentIds.has(comp.compatible_equipment_id);
+              }
+              if (comp.compatible_kit_id) {
+                return existingKitIds.has(comp.compatible_kit_id);
+              }
+              return false;
+            });
+
+            if (!isGroupSatisfied) {
+              unsatisfiedGroups.push({
+                groupName: components[0].compatibility_group,
+                components,
+                isGroupSatisfied: false,
+              });
+            }
+          } else {
+            // For single components: must be added
+            const comp = components[0];
+            const isAdded = comp.compatible_equipment_id
+              ? existingEquipmentIds.has(comp.compatible_equipment_id)
+              : comp.compatible_kit_id
+                ? existingKitIds.has(comp.compatible_kit_id)
+                : false;
+
+            if (!isAdded) {
+              unsatisfiedGroups.push({
+                groupName: null,
+                components: [comp],
+                isGroupSatisfied: false,
+              });
+            }
+          }
+        });
+
+        setComponentGroups(unsatisfiedGroups);
       } else {
-        setRequiredComponents([]);
+        setComponentGroups([]);
       }
     } catch (err: any) {
       console.error('Error checking required components:', err);
@@ -126,29 +183,77 @@ export function RequiredComponentsWarning({
     try {
       setAdding(true);
 
-      for (const component of requiredComponents) {
-        if (component.compatible_equipment_id) {
-          await supabase.from('event_equipment').insert({
-            event_id: eventId,
-            equipment_id: component.compatible_equipment_id,
-            quantity: 1,
-            status: 'reserved',
-            offer_id: offerId || null,
-          });
-        } else if (component.compatible_kit_id) {
-          await supabase.from('event_equipment').insert({
-            event_id: eventId,
-            kit_id: component.compatible_kit_id,
-            quantity: 1,
-            status: 'reserved',
-            offer_id: offerId || null,
-          });
+      // Validate that all groups have a selection
+      for (const group of componentGroups) {
+        if (group.groupName) {
+          const selected = selectedAlternatives[group.groupName];
+          if (!selected) {
+            showSnackbar(
+              `Proszę wybrać jeden komponent z grupy "${group.groupName}"`,
+              'warning'
+            );
+            return;
+          }
+        }
+      }
+
+      // Add selected components
+      for (const group of componentGroups) {
+        if (group.groupName) {
+          // Add selected alternative from group
+          const selectedId = selectedAlternatives[group.groupName];
+          const selectedComponent = group.components.find(
+            (c) =>
+              (c.compatible_equipment_id && c.compatible_equipment_id === selectedId) ||
+              (c.compatible_kit_id && c.compatible_kit_id === selectedId)
+          );
+
+          if (selectedComponent) {
+            if (selectedComponent.compatible_equipment_id) {
+              await supabase.from('event_equipment').insert({
+                event_id: eventId,
+                equipment_id: selectedComponent.compatible_equipment_id,
+                quantity: 1,
+                status: 'reserved',
+                offer_id: offerId || null,
+              });
+            } else if (selectedComponent.compatible_kit_id) {
+              await supabase.from('event_equipment').insert({
+                event_id: eventId,
+                kit_id: selectedComponent.compatible_kit_id,
+                quantity: 1,
+                status: 'reserved',
+                offer_id: offerId || null,
+              });
+            }
+          }
+        } else {
+          // Add single required component
+          const component = group.components[0];
+          if (component.compatible_equipment_id) {
+            await supabase.from('event_equipment').insert({
+              event_id: eventId,
+              equipment_id: component.compatible_equipment_id,
+              quantity: 1,
+              status: 'reserved',
+              offer_id: offerId || null,
+            });
+          } else if (component.compatible_kit_id) {
+            await supabase.from('event_equipment').insert({
+              event_id: eventId,
+              kit_id: component.compatible_kit_id,
+              quantity: 1,
+              status: 'reserved',
+              offer_id: offerId || null,
+            });
+          }
         }
       }
 
       showSnackbar('Dodano wymagane komponenty', 'success');
       setShowModal(false);
-      setRequiredComponents([]);
+      setComponentGroups([]);
+      setSelectedAlternatives({});
       onComponentsAdded?.();
     } catch (err: any) {
       console.error('Error adding components:', err);
@@ -158,9 +263,11 @@ export function RequiredComponentsWarning({
     }
   };
 
-  if (loading || requiredComponents.length === 0) {
+  if (loading || componentGroups.length === 0) {
     return null;
   }
+
+  const totalMissing = componentGroups.reduce((sum, group) => sum + (group.groupName ? 1 : group.components.length), 0);
 
   return (
     <>
@@ -172,7 +279,7 @@ export function RequiredComponentsWarning({
               Ten sprzęt wymaga dodatkowych komponentów
             </div>
             <div className="mt-1 text-xs text-yellow-400/80">
-              {requiredComponents.length} wymaganych komponentów nie zostało dodanych
+              {totalMissing} wymaganych {totalMissing === 1 ? 'komponent' : 'komponentów'} nie zostało dodanych
             </div>
             <button
               onClick={() => setShowModal(true)}
@@ -213,49 +320,136 @@ export function RequiredComponentsWarning({
                 </div>
               </div>
 
-              <div className="space-y-3">
-                {requiredComponents.map((component) => {
-                  const item = component.compatible_equipment || component.compatible_kit;
-                  const isKit = !!component.compatible_kit;
-
-                  if (!item) return null;
-
-                  return (
-                    <div
-                      key={component.id}
-                      className="rounded-lg border border-red-500/20 bg-red-500/5 p-4"
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="flex-shrink-0 rounded-full bg-red-500/20 p-2">
-                          <Package className="h-5 w-5 text-red-400" />
-                        </div>
-                        <div className="flex-1">
+              <div className="space-y-4">
+                {componentGroups.map((group, groupIdx) => {
+                  if (group.groupName) {
+                    // Alternative group - user must select ONE
+                    return (
+                      <div
+                        key={group.groupName}
+                        className="rounded-lg border-2 border-blue-500/30 bg-blue-500/5 p-4"
+                      >
+                        <div className="mb-3">
                           <div className="flex items-center gap-2">
-                            <div className="font-medium text-[#e5e4e2]">{item.name}</div>
-                            {isKit && (
-                              <span className="rounded bg-[#d3bb73]/20 px-2 py-0.5 text-xs text-[#d3bb73]">
-                                ZESTAW
-                              </span>
-                            )}
-                            <span className="rounded bg-red-500/20 px-2 py-0.5 text-xs text-red-400">
-                              WYMAGANY
+                            <AlertTriangle className="h-5 w-5 text-blue-400" />
+                            <h4 className="font-medium text-[#e5e4e2]">
+                              {group.groupName}
+                            </h4>
+                            <span className="rounded bg-blue-500/20 px-2 py-0.5 text-xs text-blue-400">
+                              Wybierz JEDEN
                             </span>
                           </div>
-                          {!isKit && component.compatible_equipment && (
-                            <div className="mt-1 text-xs text-[#e5e4e2]/50">
-                              {component.compatible_equipment.brand}{' '}
-                              {component.compatible_equipment.model}
-                            </div>
-                          )}
-                          {isKit && component.compatible_kit?.description && (
-                            <div className="mt-1 text-xs text-[#e5e4e2]/50">
-                              {component.compatible_kit.description}
-                            </div>
-                          )}
+                          <p className="ml-7 mt-1 text-xs text-[#e5e4e2]/60">
+                            Musisz wybrać jeden z poniższych komponentów alternatywnych
+                          </p>
+                        </div>
+
+                        <div className="ml-7 space-y-2">
+                          {group.components.map((component) => {
+                            const item = component.compatible_equipment || component.compatible_kit;
+                            const isKit = !!component.compatible_kit;
+                            const itemId = component.compatible_equipment_id || component.compatible_kit_id;
+
+                            if (!item || !itemId) return null;
+
+                            const isSelected = selectedAlternatives[group.groupName!] === itemId;
+
+                            return (
+                              <label
+                                key={component.id}
+                                className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-all ${
+                                  isSelected
+                                    ? 'border-[#d3bb73] bg-[#d3bb73]/10'
+                                    : 'border-[#d3bb73]/10 bg-[#1c1f33] hover:border-[#d3bb73]/30'
+                                }`}
+                              >
+                                <input
+                                  type="radio"
+                                  name={`group_${group.groupName}`}
+                                  checked={isSelected}
+                                  onChange={() =>
+                                    setSelectedAlternatives((prev) => ({
+                                      ...prev,
+                                      [group.groupName!]: itemId,
+                                    }))
+                                  }
+                                  className="mt-0.5 h-4 w-4 text-[#d3bb73] focus:ring-[#d3bb73]"
+                                />
+                                <div className="flex-shrink-0 rounded-full bg-blue-500/20 p-2">
+                                  <Package className="h-4 w-4 text-blue-400" />
+                                </div>
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <div className="font-medium text-[#e5e4e2]">{item.name}</div>
+                                    {isKit && (
+                                      <span className="rounded bg-[#d3bb73]/20 px-2 py-0.5 text-xs text-[#d3bb73]">
+                                        ZESTAW
+                                      </span>
+                                    )}
+                                  </div>
+                                  {!isKit && component.compatible_equipment && (
+                                    <div className="mt-1 text-xs text-[#e5e4e2]/50">
+                                      {component.compatible_equipment.brand}{' '}
+                                      {component.compatible_equipment.model}
+                                    </div>
+                                  )}
+                                  {isKit && component.compatible_kit?.description && (
+                                    <div className="mt-1 text-xs text-[#e5e4e2]/50">
+                                      {component.compatible_kit.description}
+                                    </div>
+                                  )}
+                                </div>
+                              </label>
+                            );
+                          })}
                         </div>
                       </div>
-                    </div>
-                  );
+                    );
+                  } else {
+                    // Single required component
+                    const component = group.components[0];
+                    const item = component.compatible_equipment || component.compatible_kit;
+                    const isKit = !!component.compatible_kit;
+
+                    if (!item) return null;
+
+                    return (
+                      <div
+                        key={component.id}
+                        className="rounded-lg border border-red-500/20 bg-red-500/5 p-4"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="flex-shrink-0 rounded-full bg-red-500/20 p-2">
+                            <Package className="h-5 w-5 text-red-400" />
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <div className="font-medium text-[#e5e4e2]">{item.name}</div>
+                              {isKit && (
+                                <span className="rounded bg-[#d3bb73]/20 px-2 py-0.5 text-xs text-[#d3bb73]">
+                                  ZESTAW
+                                </span>
+                              )}
+                              <span className="rounded bg-red-500/20 px-2 py-0.5 text-xs text-red-400">
+                                WYMAGANY
+                              </span>
+                            </div>
+                            {!isKit && component.compatible_equipment && (
+                              <div className="mt-1 text-xs text-[#e5e4e2]/50">
+                                {component.compatible_equipment.brand}{' '}
+                                {component.compatible_equipment.model}
+                              </div>
+                            )}
+                            {isKit && component.compatible_kit?.description && (
+                              <div className="mt-1 text-xs text-[#e5e4e2]/50">
+                                {component.compatible_kit.description}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
                 })}
               </div>
             </div>
@@ -277,7 +471,7 @@ export function RequiredComponentsWarning({
                 ) : (
                   <>
                     <CheckCircle className="h-4 w-4" />
-                    Dodaj wszystkie komponenty
+                    Dodaj wybrane komponenty
                   </>
                 )}
               </button>

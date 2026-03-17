@@ -261,6 +261,21 @@ export const resolveEquipmentType = (row: { is_kit?: boolean }): EquipmentEntity
   row.is_kit ? 'kit' : 'item';
 
 /** =========================
+ *  Equipment Compatible Items (with alternative groups)
+ *  ========================= */
+export interface EquipmentCompatibleItemRow {
+  id: UUID;
+  equipment_id: UUID;
+  compatible_equipment_id: UUID | null;
+  compatible_kit_id: UUID | null;
+  compatibility_type: 'required' | 'recommended' | 'optional';
+  compatibility_group: string | null; // NULL = single required, "wzmacniacz" = choose ONE from group
+  notes: string | null;
+  display_order: number | null;
+  created_at: ISODateTime;
+}
+
+/** =========================
  *  Osobny byt: Stock/Availability (nie mieszamy z Equipment)
  *  ========================= */
 export interface EquipmentStockSummary {

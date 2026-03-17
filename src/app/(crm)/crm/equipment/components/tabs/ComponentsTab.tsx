@@ -56,6 +56,7 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
     'required' | 'recommended' | 'optional'
   >('optional');
   const [compatibilityNotes, setCompatibilityNotes] = useState('');
+  const [compatibilityGroup, setCompatibilityGroup] = useState('');
   const [showComponentDetailModal, setShowComponentDetailModal] = useState(false);
   const [selectedComponent, setSelectedComponent] = useState<any>(null);
 
@@ -214,6 +215,7 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
         `
         id,
         compatibility_type,
+        compatibility_group,
         notes,
         display_order,
         compatible_equipment:compatible_equipment_id(
@@ -258,6 +260,7 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
       const insertData: any = {
         equipment_id: equipment.id,
         compatibility_type: compatibilityType,
+        compatibility_group: compatibilityGroup.trim() || null,
         notes: compatibilityNotes || null,
         display_order: compatibleItems.length,
       };
@@ -277,6 +280,7 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
       setShowCompatibleModal(false);
       setCompatibilityNotes('');
       setCompatibilityType('optional');
+      setCompatibilityGroup('');
       setSearchQuery('');
       setItemTypeFilter('all');
     } catch (error) {
@@ -845,114 +849,239 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                   </div>
                 );
               })}
-            {compatibleItems.map((item: any) => {
-              const compatEquip = item.compatible_equipment;
-              const compatKit = item.compatible_kit;
-              const isKit = !!compatKit;
-              const displayItem = isKit ? compatKit : compatEquip;
+            {(() => {
+              // Group items by compatibility_group
+              const groupedItems = compatibleItems.reduce((acc: any, item: any) => {
+                const groupKey = item.compatibility_group || `single_${item.id}`;
+                if (!acc[groupKey]) {
+                  acc[groupKey] = {
+                    groupName: item.compatibility_group,
+                    items: [],
+                  };
+                }
+                acc[groupKey].items.push(item);
+                return acc;
+              }, {});
 
-              if (!displayItem) return null;
+              return Object.entries(groupedItems).map(([groupKey, group]: [string, any]) => {
+                const hasGroup = !!group.groupName;
+                const isRequiredGroup = hasGroup && group.items[0]?.compatibility_type === 'required';
 
-              const availableQty = isKit ? 0 : getAvailableQuantity(compatEquip);
-              const typeColors = {
-                required: 'bg-red-500/20 text-red-400',
-                recommended: 'bg-blue-500/20 text-blue-400',
-                optional: 'bg-green-500/20 text-green-400',
-              };
-              const typeLabels = {
-                required: 'Wymagany',
-                recommended: 'Zalecany',
-                optional: 'Opcjonalny',
-              };
+                if (hasGroup && isRequiredGroup) {
+                  // Show as alternative group
+                  return (
+                    <div
+                      key={groupKey}
+                      className="rounded-xl border-2 border-blue-500/30 bg-blue-500/5 p-4"
+                    >
+                      <div className="mb-3 flex items-center justify-between">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-medium text-[#e5e4e2]">
+                              Grupa: {group.groupName}
+                            </h4>
+                            <span className="rounded bg-blue-500/20 px-2 py-0.5 text-xs text-blue-400">
+                              Wybierz JEDEN
+                            </span>
+                          </div>
+                          <p className="mt-1 text-xs text-[#e5e4e2]/60">
+                            Użytkownik musi wybrać jeden z poniższych komponentów alternatywnych
+                          </p>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        {group.items.map((item: any) => {
+                          const compatEquip = item.compatible_equipment;
+                          const compatKit = item.compatible_kit;
+                          const isKit = !!compatKit;
+                          const displayItem = isKit ? compatKit : compatEquip;
 
-              return (
-                <div
-                  key={item.id}
-                  className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4"
-                >
-                  <div className="flex items-start gap-4">
-                    {displayItem.thumbnail_url ? (
-                      <div className="relative">
-                        <img
-                          src={displayItem.thumbnail_url}
-                          alt={displayItem.name}
-                          className="h-20 w-20 rounded-lg border border-[#d3bb73]/20 object-cover"
-                        />
-                        {isKit && (
-                          <div className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-[#d3bb73] shadow">
-                            <Package className="h-3 w-3 text-[#1c1f33]" />
+                          if (!displayItem) return null;
+
+                          const availableQty = isKit ? 0 : getAvailableQuantity(compatEquip);
+
+                          return (
+                            <div
+                              key={item.id}
+                              className="flex items-start gap-4 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-3"
+                            >
+                              {displayItem.thumbnail_url ? (
+                                <div className="relative">
+                                  <img
+                                    src={displayItem.thumbnail_url}
+                                    alt={displayItem.name}
+                                    className="h-16 w-16 rounded-lg border border-[#d3bb73]/20 object-cover"
+                                  />
+                                  {isKit && (
+                                    <div className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#d3bb73] shadow">
+                                      <Package className="h-3 w-3 text-[#1c1f33]" />
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="relative flex h-16 w-16 items-center justify-center rounded-lg border border-[#d3bb73]/20 bg-[#0f1119]">
+                                  <Package className="h-6 w-6 text-[#e5e4e2]/20" />
+                                  {isKit && (
+                                    <div className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#d3bb73] shadow">
+                                      <Package className="h-3 w-3 text-[#1c1f33]" />
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              <div className="flex-1">
+                                <div className="mb-1 flex flex-wrap items-center gap-2">
+                                  <div className="font-medium text-[#e5e4e2]">{displayItem.name}</div>
+                                  {isKit && (
+                                    <span className="rounded bg-[#d3bb73]/20 px-2 py-0.5 text-xs text-[#d3bb73]">
+                                      ZESTAW
+                                    </span>
+                                  )}
+                                  {!isKit && (
+                                    <span
+                                      className={`rounded px-2 py-1 text-xs ${
+                                        availableQty > 0
+                                          ? 'bg-green-500/20 text-green-400'
+                                          : 'bg-red-500/20 text-red-400'
+                                      }`}
+                                    >
+                                      {availableQty} szt. dostępne
+                                    </span>
+                                  )}
+                                </div>
+                                {compatEquip?.model && (
+                                  <div className="text-sm text-[#e5e4e2]/60">{compatEquip.model}</div>
+                                )}
+                                {item.notes && (
+                                  <div className="mt-1 text-xs italic text-[#e5e4e2]/60">{item.notes}</div>
+                                )}
+                              </div>
+                              {isEditing && (
+                                <button
+                                  onClick={() => handleDeleteCompatible(item.id)}
+                                  className="p-2 text-red-400 hover:text-red-300"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Show as individual items (not grouped or non-required)
+                return group.items.map((item: any) => {
+                  const compatEquip = item.compatible_equipment;
+                  const compatKit = item.compatible_kit;
+                  const isKit = !!compatKit;
+                  const displayItem = isKit ? compatKit : compatEquip;
+
+                  if (!displayItem) return null;
+
+                  const availableQty = isKit ? 0 : getAvailableQuantity(compatEquip);
+                  const typeColors = {
+                    required: 'bg-red-500/20 text-red-400',
+                    recommended: 'bg-blue-500/20 text-blue-400',
+                    optional: 'bg-green-500/20 text-green-400',
+                  };
+                  const typeLabels = {
+                    required: 'Wymagany',
+                    recommended: 'Zalecany',
+                    optional: 'Opcjonalny',
+                  };
+
+                  return (
+                    <div
+                      key={item.id}
+                      className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4"
+                    >
+                      <div className="flex items-start gap-4">
+                        {displayItem.thumbnail_url ? (
+                          <div className="relative">
+                            <img
+                              src={displayItem.thumbnail_url}
+                              alt={displayItem.name}
+                              className="h-20 w-20 rounded-lg border border-[#d3bb73]/20 object-cover"
+                            />
+                            {isKit && (
+                              <div className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-[#d3bb73] shadow">
+                                <Package className="h-3 w-3 text-[#1c1f33]" />
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="relative flex h-20 w-20 items-center justify-center rounded-lg border border-[#d3bb73]/20 bg-[#0f1119]">
+                            <Package className="h-8 w-8 text-[#e5e4e2]/20" />
+                            {isKit && (
+                              <div className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-[#d3bb73] shadow">
+                                <Package className="h-3 w-3 text-[#1c1f33]" />
+                              </div>
+                            )}
                           </div>
                         )}
-                      </div>
-                    ) : (
-                      <div className="relative flex h-20 w-20 items-center justify-center rounded-lg border border-[#d3bb73]/20 bg-[#0f1119]">
-                        <Package className="h-8 w-8 text-[#e5e4e2]/20" />
-                        {isKit && (
-                          <div className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-[#d3bb73] shadow">
-                            <Package className="h-3 w-3 text-[#1c1f33]" />
+                        <div className="flex-1">
+                          <div className="mb-1 flex flex-wrap items-center gap-2">
+                            <div className="font-medium text-[#e5e4e2]">{displayItem.name}</div>
+                            {isKit && (
+                              <span className="rounded bg-[#d3bb73]/20 px-2 py-0.5 text-xs text-[#d3bb73]">
+                                ZESTAW
+                              </span>
+                            )}
+                            <span
+                              className={`rounded px-2 py-0.5 text-xs ${typeColors[item.compatibility_type as keyof typeof typeColors]}`}
+                            >
+                              {typeLabels[item.compatibility_type as keyof typeof typeLabels]}
+                            </span>
+                            {!isKit && (
+                              <span
+                                className={`rounded px-2 py-1 text-xs ${
+                                  availableQty > 0
+                                    ? 'bg-green-500/20 text-green-400'
+                                    : 'bg-red-500/20 text-red-400'
+                                }`}
+                              >
+                                {availableQty} szt. dostępne
+                              </span>
+                            )}
                           </div>
-                        )}
-                      </div>
-                    )}
-                    <div className="flex-1">
-                      <div className="mb-1 flex flex-wrap items-center gap-2">
-                        <div className="font-medium text-[#e5e4e2]">{displayItem.name}</div>
-                        {isKit && (
-                          <span className="rounded bg-[#d3bb73]/20 px-2 py-0.5 text-xs text-[#d3bb73]">
-                            ZESTAW
-                          </span>
-                        )}
-                        <span
-                          className={`rounded px-2 py-0.5 text-xs ${typeColors[item.compatibility_type as keyof typeof typeColors]}`}
-                        >
-                          {typeLabels[item.compatibility_type as keyof typeof typeLabels]}
-                        </span>
-                        {!isKit && (
-                          <span
-                            className={`rounded px-2 py-1 text-xs ${
-                              availableQty > 0
-                                ? 'bg-green-500/20 text-green-400'
-                                : 'bg-red-500/20 text-red-400'
-                            }`}
-                          >
-                            {availableQty} szt. dostępne
-                          </span>
-                        )}
-                      </div>
-                      {compatEquip?.model && (
-                        <div className="text-sm text-[#e5e4e2]/60">{compatEquip.model}</div>
-                      )}
-                      {isKit && compatKit.equipment_kit_items && compatKit.equipment_kit_items.length > 0 && (
-                        <div className="mt-1 space-y-0.5">
-                          {compatKit.equipment_kit_items.slice(0, 3).map((kitItem: any, idx: number) => (
-                            <p key={idx} className="text-xs text-[#e5e4e2]/50">
-                              • {kitItem.quantity}x {kitItem.equipment.name}
-                              {kitItem.equipment.model ? ` ${kitItem.equipment.model}` : ''}
-                            </p>
-                          ))}
-                          {compatKit.equipment_kit_items.length > 3 && (
-                            <p className="text-xs text-[#e5e4e2]/40">
-                              +{compatKit.equipment_kit_items.length - 3} więcej...
-                            </p>
+                          {compatEquip?.model && (
+                            <div className="text-sm text-[#e5e4e2]/60">{compatEquip.model}</div>
+                          )}
+                          {isKit && compatKit.equipment_kit_items && compatKit.equipment_kit_items.length > 0 && (
+                            <div className="mt-1 space-y-0.5">
+                              {compatKit.equipment_kit_items.slice(0, 3).map((kitItem: any, idx: number) => (
+                                <p key={idx} className="text-xs text-[#e5e4e2]/50">
+                                  • {kitItem.quantity}x {kitItem.equipment.name}
+                                  {kitItem.equipment.model ? ` ${kitItem.equipment.model}` : ''}
+                                </p>
+                              ))}
+                              {compatKit.equipment_kit_items.length > 3 && (
+                                <p className="text-xs text-[#e5e4e2]/40">
+                                  +{compatKit.equipment_kit_items.length - 3} więcej...
+                                </p>
+                              )}
+                            </div>
+                          )}
+                          {item.notes && (
+                            <div className="mt-1 text-sm italic text-[#e5e4e2]/60">{item.notes}</div>
                           )}
                         </div>
-                      )}
-                      {item.notes && (
-                        <div className="mt-1 text-sm italic text-[#e5e4e2]/60">{item.notes}</div>
-                      )}
+                        {isEditing && (
+                          <button
+                            onClick={() => handleDeleteCompatible(item.id)}
+                            className="p-2 text-red-400 hover:text-red-300"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    {isEditing && (
-                      <button
-                        onClick={() => handleDeleteCompatible(item.id)}
-                        className="p-2 text-red-400 hover:text-red-300"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+                  );
+                });
+              });
+            })()}
           </div>
         ) : (
           <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] py-12 text-center">
@@ -1002,6 +1131,27 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                     <option value="required">Wymagany</option>
                   </select>
                 </div>
+
+                {compatibilityType === 'required' && (
+                  <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-4">
+                    <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                      Grupa alternatywnych komponentów
+                    </label>
+                    <p className="mb-3 text-xs text-[#e5e4e2]/60">
+                      Jeśli ten komponent jest JEDNYM Z alternatyw (np. jeden z kilku wzmacniaczy), podaj nazwę grupy. Komponenty z tą samą nazwą grupy będą alternatywami - użytkownik wybierze JEDEN z nich.
+                    </p>
+                    <input
+                      type="text"
+                      value={compatibilityGroup}
+                      onChange={(e) => setCompatibilityGroup(e.target.value)}
+                      placeholder="np. wzmacniacz, kable, głośniki (opcjonalne)"
+                      className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
+                    />
+                    <p className="mt-2 text-xs italic text-[#e5e4e2]/50">
+                      Puste = komponent zawsze wymagany. Podana wartość = użytkownik wybierze jeden z grupy.
+                    </p>
+                  </div>
+                )}
 
                 <div>
                   <label className="mb-2 block text-sm text-[#e5e4e2]/60">
