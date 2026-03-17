@@ -277,6 +277,7 @@ const handleAddCompatible = async (itemId: string, itemType: 'equipment' | 'kit'
 ✅ Zapisywanie do bazy
 ✅ Lista kompatybilnych z kitami
 ✅ Weryfikacja składni - OK
+✅ Fix: Ukryto wyświetlanie "0 szt." dla kitów (tylko dla sprzętu)
 
 ## Następne Kroki
 - Przetestować w przeglądarce

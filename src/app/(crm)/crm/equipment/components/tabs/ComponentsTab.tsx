@@ -1131,15 +1131,17 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                                   </span>
                                 )}
                               </div>
-                              <span
-                                className={`rounded px-2 py-1 text-xs ${
-                                  availableQty > 0
-                                    ? 'bg-green-500/20 text-green-400'
-                                    : 'bg-red-500/20 text-red-400'
-                                }`}
-                              >
-                                {availableQty} szt.
-                              </span>
+                              {!isKit && (
+                                <span
+                                  className={`rounded px-2 py-1 text-xs ${
+                                    availableQty > 0
+                                      ? 'bg-green-500/20 text-green-400'
+                                      : 'bg-red-500/20 text-red-400'
+                                  }`}
+                                >
+                                  {availableQty} szt.
+                                </span>
+                              )}
                             </div>
                             {item.model && (
                               <p className="mt-0.5 text-sm text-[#e5e4e2]/60">{item.model}</p>
