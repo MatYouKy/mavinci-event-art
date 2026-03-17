@@ -47,6 +47,7 @@ interface Organization {
   legal_representative_id: string | null;
   legal_representative_title: string | null;
   contact_is_representative: boolean;
+  subcontractor_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -1850,9 +1851,9 @@ useEffect(() => {
           </div>
         )}
 
-        {activeTab === 'services' && organization?.organization_type === 'subcontractor' && (
+        {activeTab === 'services' && organization?.organization_type === 'subcontractor' && organization?.subcontractor_id && (
           <div className="rounded-lg border border-gray-700 bg-[#1a1d2e] p-6">
-            <SubcontractorServicesPanel subcontractorId={organizationId} />
+            <SubcontractorServicesPanel subcontractorId={organization.subcontractor_id} />
           </div>
         )}
 
