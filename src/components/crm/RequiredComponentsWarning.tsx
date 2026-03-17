@@ -406,7 +406,7 @@ export function RequiredComponentsWarning({
                       </div>
                     );
                   } else {
-                    // Single required component
+                    // Single required component - automatically added, no user selection needed
                     const component = group.components[0];
                     const item = component.compatible_equipment || component.compatible_kit;
                     const isKit = !!component.compatible_kit;
@@ -416,11 +416,11 @@ export function RequiredComponentsWarning({
                     return (
                       <div
                         key={component.id}
-                        className="rounded-lg border border-red-500/20 bg-red-500/5 p-4"
+                        className="rounded-lg border border-green-500/20 bg-green-500/5 p-4"
                       >
                         <div className="flex items-start gap-3">
-                          <div className="flex-shrink-0 rounded-full bg-red-500/20 p-2">
-                            <Package className="h-5 w-5 text-red-400" />
+                          <div className="flex-shrink-0 rounded-full bg-green-500/20 p-2">
+                            <CheckCircle className="h-5 w-5 text-green-400" />
                           </div>
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
@@ -430,8 +430,8 @@ export function RequiredComponentsWarning({
                                   ZESTAW
                                 </span>
                               )}
-                              <span className="rounded bg-red-500/20 px-2 py-0.5 text-xs text-red-400">
-                                WYMAGANY
+                              <span className="rounded bg-green-500/20 px-2 py-0.5 text-xs text-green-400">
+                                ZOSTANIE DODANY
                               </span>
                             </div>
                             {!isKit && component.compatible_equipment && (
@@ -445,6 +445,9 @@ export function RequiredComponentsWarning({
                                 {component.compatible_kit.description}
                               </div>
                             )}
+                            <div className="mt-2 text-xs text-green-400/80">
+                              Ten komponent zostanie automatycznie dodany po kliknięciu "Dodaj wybrane komponenty"
+                            </div>
                           </div>
                         </div>
                       </div>

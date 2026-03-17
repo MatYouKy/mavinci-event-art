@@ -57,6 +57,8 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
   >('optional');
   const [compatibilityNotes, setCompatibilityNotes] = useState('');
   const [compatibilityGroup, setCompatibilityGroup] = useState('');
+  const [existingGroups, setExistingGroups] = useState<string[]>([]);
+  const [showGroupSuggestions, setShowGroupSuggestions] = useState(false);
   const [showComponentDetailModal, setShowComponentDetailModal] = useState(false);
   const [selectedComponent, setSelectedComponent] = useState<any>(null);
 
@@ -85,6 +87,31 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
       fetchCompatibleItems();
     }
   }, [equipment?.id]);
+
+  useEffect(() => {
+    if (showCompatibleModal) {
+      fetchExistingGroups();
+    }
+  }, [showCompatibleModal]);
+
+  const fetchExistingGroups = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('equipment_compatible_items')
+        .select('compatibility_group')
+        .not('compatibility_group', 'is', null);
+
+      if (error) throw error;
+
+      const uniqueGroups = Array.from(
+        new Set(data?.map((item) => item.compatibility_group).filter(Boolean))
+      ) as string[];
+
+      setExistingGroups(uniqueGroups.sort());
+    } catch (error) {
+      console.error('Error fetching existing groups:', error);
+    }
+  };
 
   useEffect(() => {
     // Połącz equipment i kity
@@ -1108,6 +1135,8 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                     setSearchQuery('');
                     setCompatibilityNotes('');
                     setCompatibilityType('optional');
+                    setCompatibilityGroup('');
+                    setShowGroupSuggestions(false);
                     setItemTypeFilter('all');
                   }}
                   className="rounded-lg p-2 hover:bg-[#e5e4e2]/10"
@@ -1140,13 +1169,51 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                     <p className="mb-3 text-xs text-[#e5e4e2]/60">
                       Jeśli ten komponent jest JEDNYM Z alternatyw (np. jeden z kilku wzmacniaczy), podaj nazwę grupy. Komponenty z tą samą nazwą grupy będą alternatywami - użytkownik wybierze JEDEN z nich.
                     </p>
-                    <input
-                      type="text"
-                      value={compatibilityGroup}
-                      onChange={(e) => setCompatibilityGroup(e.target.value)}
-                      placeholder="np. wzmacniacz, kable, głośniki (opcjonalne)"
-                      className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
-                    />
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={compatibilityGroup}
+                        onChange={(e) => {
+                          setCompatibilityGroup(e.target.value);
+                          setShowGroupSuggestions(e.target.value.length > 0 && existingGroups.length > 0);
+                        }}
+                        onFocus={() => setShowGroupSuggestions(compatibilityGroup.length > 0 && existingGroups.length > 0)}
+                        onBlur={() => setTimeout(() => setShowGroupSuggestions(false), 200)}
+                        placeholder="np. wzmacniacz, kable, głośniki (opcjonalne)"
+                        className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
+                      />
+                      {showGroupSuggestions && (
+                        <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] shadow-lg">
+                          <div className="p-2 text-xs text-[#e5e4e2]/50">
+                            Istniejące grupy (kliknij aby użyć):
+                          </div>
+                          {existingGroups
+                            .filter((group) =>
+                              group.toLowerCase().includes(compatibilityGroup.toLowerCase())
+                            )
+                            .map((group) => (
+                              <button
+                                key={group}
+                                type="button"
+                                onClick={() => {
+                                  setCompatibilityGroup(group);
+                                  setShowGroupSuggestions(false);
+                                }}
+                                className="w-full px-4 py-2 text-left text-sm text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10"
+                              >
+                                {group}
+                              </button>
+                            ))}
+                          {existingGroups.filter((group) =>
+                            group.toLowerCase().includes(compatibilityGroup.toLowerCase())
+                          ).length === 0 && (
+                            <div className="px-4 py-2 text-sm text-[#e5e4e2]/50">
+                              Brak pasujących grup
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                     <p className="mt-2 text-xs italic text-[#e5e4e2]/50">
                       Puste = komponent zawsze wymagany. Podana wartość = użytkownik wybierze jeden z grupy.
                     </p>
