@@ -913,39 +913,48 @@ export const EventEquipmentTab: React.FC<{
 
   const handleMarkAsRental = async (row: any) => {
     try {
-      const equipmentName = row?.equipment?.name || row?.kit?.name || 'Nieznany sprzęt';
-
+      const conflictId = row?.conflict_id || row?.id;
+  
+      if (!conflictId) {
+        showSnackbar('Nie znaleziono ID konfliktu', 'error');
+        return;
+      }
+  
+      const equipmentName =
+        row?.equipment?.name ||
+        row?.equipment_items?.name ||
+        row?.kit?.name ||
+        row?.item_name ||
+        'Nieznany sprzęt';
+  
       const { error } = await supabase
-        .from('event_equipment')
+        .from('offer_equipment_conflicts')
         .update({
           use_external_rental: true,
-          notes: `Wynajem zewnętrzny - ${equipmentName}`
         })
-        .eq('id', row.id);
-
+        .eq('id', conflictId);
+  
       if (error) throw error;
-
-      // Dodaj notatkę/alert w zakładce Podwykonawcy
-      // Utwórz sugestię zadania dla podwykonawcy
+  
       if (eventId) {
         const { error: noteError } = await supabase
           .from('subcontractor_tasks')
           .insert({
             event_id: eventId,
             task_name: `Wynajem: ${equipmentName}`,
-            description: `Potrzebny wynajem zewnętrzny - ${equipmentName} (${row.quantity} szt.)`,
+            description: `Potrzebny wynajem zewnętrzny - ${equipmentName} (${row.quantity || row.required_qty || 1} szt.)`,
             status: 'planned',
             payment_type: 'fixed',
             notes: 'Utworzone automatycznie z zakładki Sprzęt',
           });
-
+  
         if (noteError) {
           console.warn('Nie udało się utworzyć zadania dla podwykonawcy:', noteError);
         }
       }
-
-      showSnackbar('Sprzęt oznaczony jako wynajem zewnętrzny. Dodano zadanie w zakładce Podwykonawcy.', 'success');
-      refetch();
+  
+      showSnackbar('Sprzęt oznaczony jako wynajem zewnętrzny', 'success');
+      await refetch();
     } catch (err: any) {
       console.error('Error marking as rental:', err);
       showSnackbar(err.message || 'Błąd podczas oznaczania jako rental', 'error');
