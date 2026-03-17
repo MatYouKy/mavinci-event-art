@@ -63,6 +63,11 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
   const [newItemDescription, setNewItemDescription] = useState('');
   const [newItemPrice, setNewItemPrice] = useState<number>(0);
   const [newItemUnit, setNewItemUnit] = useState('szt');
+  const [newItemCategory, setNewItemCategory] = useState('');
+  const [newItemQuantity, setNewItemQuantity] = useState<number>(1);
+  const [newItemWeeklyPrice, setNewItemWeeklyPrice] = useState<number>(0);
+  const [newItemMonthlyPrice, setNewItemMonthlyPrice] = useState<number>(0);
+  const [newItemRequiredSkills, setNewItemRequiredSkills] = useState<string>('');
 
   const [services, setServices] = useState<SubcontractorService[]>([]);
   const [loading, setLoading] = useState(true);
@@ -123,7 +128,7 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
           setter = setServiceCatalog;
           break;
         case 'rental':
-          tableName = 'subcontractor_equipment_catalog';
+          tableName = 'subcontractor_rental_equipment';
           setter = setEquipmentCatalog;
           break;
         case 'transport':
@@ -249,12 +254,18 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
           tableName = 'subcontractor_service_catalog';
           insertData.unit_price = newItemPrice;
           insertData.unit = newItemUnit;
-          insertData.category = null;
+          insertData.category = newItemCategory || null;
           break;
         case 'rental':
-          tableName = 'subcontractor_equipment_catalog';
+          tableName = 'subcontractor_rental_equipment';
           insertData.daily_rental_price = newItemPrice;
-          insertData.quantity_available = 1;
+          insertData.weekly_rental_price = newItemWeeklyPrice || null;
+          insertData.monthly_rental_price = newItemMonthlyPrice || null;
+          insertData.quantity_available = newItemQuantity;
+          insertData.category = newItemCategory || null;
+          insertData.required_skills = newItemRequiredSkills
+            ? newItemRequiredSkills.split(',').map(s => s.trim()).filter(Boolean)
+            : [];
           break;
         case 'transport':
           tableName = 'subcontractor_transport_catalog';
@@ -275,6 +286,11 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
       setNewItemDescription('');
       setNewItemPrice(0);
       setNewItemUnit('szt');
+      setNewItemCategory('');
+      setNewItemQuantity(1);
+      setNewItemWeeklyPrice(0);
+      setNewItemMonthlyPrice(0);
+      setNewItemRequiredSkills('');
 
       // Odśwież katalog
       fetchCatalog(activeTab);
@@ -553,6 +569,16 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
               {activeTab === 'services' && (
                 <>
                   <div>
+                    <label className="mb-2 block text-sm text-gray-400">Kategoria</label>
+                    <input
+                      type="text"
+                      value={newItemCategory}
+                      onChange={(e) => setNewItemCategory(e.target.value)}
+                      className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
+                      placeholder="np. Catering, Animacje, Dekoracje"
+                    />
+                  </div>
+                  <div>
                     <label className="mb-2 block text-sm text-gray-400">Cena jednostkowa (PLN)</label>
                     <input
                       type="number"
@@ -576,16 +602,73 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
               )}
 
               {activeTab === 'rental' && (
-                <div>
-                  <label className="mb-2 block text-sm text-gray-400">Cena wynajmu dziennego (PLN)</label>
-                  <input
-                    type="number"
-                    value={newItemPrice}
-                    onChange={(e) => setNewItemPrice(parseFloat(e.target.value) || 0)}
-                    className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
-                    step="0.01"
-                  />
-                </div>
+                <>
+                  <div>
+                    <label className="mb-2 block text-sm text-gray-400">Kategoria</label>
+                    <input
+                      type="text"
+                      value={newItemCategory}
+                      onChange={(e) => setNewItemCategory(e.target.value)}
+                      className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
+                      placeholder="np. Nagłośnienie, Oświetlenie"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="mb-2 block text-sm text-gray-400">Cena dzienna (PLN)</label>
+                      <input
+                        type="number"
+                        value={newItemPrice}
+                        onChange={(e) => setNewItemPrice(parseFloat(e.target.value) || 0)}
+                        className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
+                        step="0.01"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm text-gray-400">Tygodniowa (PLN)</label>
+                      <input
+                        type="number"
+                        value={newItemWeeklyPrice}
+                        onChange={(e) => setNewItemWeeklyPrice(parseFloat(e.target.value) || 0)}
+                        className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
+                        step="0.01"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm text-gray-400">Miesięczna (PLN)</label>
+                      <input
+                        type="number"
+                        value={newItemMonthlyPrice}
+                        onChange={(e) => setNewItemMonthlyPrice(parseFloat(e.target.value) || 0)}
+                        className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
+                        step="0.01"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm text-gray-400">Dostępna ilość</label>
+                    <input
+                      type="number"
+                      value={newItemQuantity}
+                      onChange={(e) => setNewItemQuantity(parseInt(e.target.value) || 1)}
+                      className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
+                      min="1"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm text-gray-400">Wymagane umiejętności</label>
+                    <input
+                      type="text"
+                      value={newItemRequiredSkills}
+                      onChange={(e) => setNewItemRequiredSkills(e.target.value)}
+                      className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
+                      placeholder="np. Operator dźwięku, Technik oświetlenia (oddziel przecinkami)"
+                    />
+                  </div>
+                </>
               )}
             </div>
 
@@ -605,6 +688,11 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                   setNewItemDescription('');
                   setNewItemPrice(0);
                   setNewItemUnit('szt');
+                  setNewItemCategory('');
+                  setNewItemQuantity(1);
+                  setNewItemWeeklyPrice(0);
+                  setNewItemMonthlyPrice(0);
+                  setNewItemRequiredSkills('');
                 }}
                 className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-white hover:bg-gray-600"
               >
