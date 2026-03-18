@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { Calendar, Users, Clock, CheckCircle } from 'lucide-react';
-import { canView, isAdmin, type Employee } from '@/lib/permissions';
+import { canView, canCreate, isAdmin, type Employee } from '@/lib/permissions';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { RecentActivityDTO } from '@/lib/CRM/dashboard/dashboardData';
 import { IEmployee } from './employees/type';
@@ -34,47 +34,7 @@ export default function CRMDashboard({
   stats: DashboardStats;
   recentActivity: RecentActivityDTO[];
 }) {
-  const employee: IEmployee = {
-    id: '1',
-    name: 'John',
-    surname: 'Doe',
-    email: 'john.doe@example.com',
-    nickname: 'john.doe',
-    personal_email: 'john.doe@example.com',
-    notification_email_preference: 'work',
-    phone_number: '1234567890',
-    phone_private: '1234567890',
-    avatar_url: 'https://example.com/avatar.jpg',
-    avatar_metadata: null,
-    background_image_url: null,
-    background_metadata: null,
-    role: 'admin',
-    access_level: 'admin',
-    access_level_id: '1',
-    occupation: 'admin',
-    region: 'admin',
-    address_street: 'admin',
-    address_city: 'admin',
-    address_postal_code: 'admin',
-    nip: 'admin',
-    company_name: 'admin',
-    skills: ['admin'],
-    qualifications: ['admin'],
-    is_active: true,
-    notes: 'admin',
-    created_at: new Date().toISOString(),
-    last_active_at: new Date().toISOString(),
-    permissions: undefined,
-    show_on_website: false,
-    website_bio: '',
-    linkedin_url: '',
-    instagram_url: '',
-    facebook_url: '',
-    order_index: 0,
-    employee_skills: [],
-    years_experience: 0,
-    position: undefined
-  };
+  const { employee, loading } = useCurrentEmployee();
 
   const getTimeAgo = (dateString: string): string => {
     const date = new Date(dateString);
@@ -139,17 +99,104 @@ export default function CRMDashboard({
   ];
 
   const statCards = allStatCards.filter((card) => {
-    if (!employee || !card.module) return true;
-    return isAdmin(employee) || canView(employee, card.module);
+    if (!employee || !card.module) return false;
+    return canView(employee, card.module);
   });
 
-  // if (loading) {
-  //   return (
-  //     <div className="flex items-center justify-center p-8">
-  //       <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-[#d3bb73]"></div>
-  //     </div>
-  //   );
-  // }
+  // Mapowanie modułów aktywności na uprawnienia
+  const activityModuleMap: Record<string, string> = {
+    event: 'events',
+    client: 'clients',
+    task: 'tasks',
+    offer: 'offers',
+    contract: 'contracts',
+    employee: 'employees',
+    equipment: 'equipment',
+    message: 'messages',
+  };
+
+  // Filtrowanie aktywności na podstawie uprawnień
+  const filteredActivity = recentActivity.filter((activity) => {
+    const module = activityModuleMap[activity.type];
+    if (!module || !employee) return false;
+    return canView(employee, module);
+  });
+
+  // Definicja szybkich akcji z wymaganymi uprawnieniami
+  const quickActions = [
+    {
+      href: '/crm/events',
+      label: '+ Nowy event',
+      module: 'events',
+    },
+    {
+      href: '/crm/contacts',
+      label: '+ Nowy klient',
+      module: 'clients',
+    },
+    {
+      href: '/crm/employees',
+      label: '+ Nowy pracownik',
+      module: 'employees',
+    },
+    {
+      href: '/crm/tasks',
+      label: '+ Nowe zadanie',
+      module: 'tasks',
+    },
+  ].filter((action) => {
+    if (!employee) return false;
+    return canCreate(employee, action.module);
+  });
+
+  // Filtrowanie sekcji podsumowania
+  const summaryItems = [
+    {
+      label: 'Wszystkie eventy',
+      value: stats.totalEvents,
+      module: 'events',
+    },
+    {
+      label: 'Aktywni pracownicy',
+      value: stats.activeEmployees,
+      module: 'employees',
+    },
+    {
+      label: 'Baza klientów',
+      value: stats.totalClients,
+      module: 'clients',
+    },
+  ].filter((item) => {
+    if (!employee) return false;
+    return canView(employee, item.module);
+  });
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-[#d3bb73]"></div>
+      </div>
+    );
+  }
+
+  // Sprawdź czy użytkownik ma jakiekolwiek uprawnienia
+  const hasAnyPermissions = statCards.length > 0 || quickActions.length > 0;
+
+  if (!hasAnyPermissions && !loading) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="text-center">
+          <div className="mb-4 text-6xl">🔒</div>
+          <h2 className="mb-2 text-xl font-light text-[#e5e4e2]">Brak uprawnień</h2>
+          <p className="text-sm text-[#e5e4e2]/60">
+            Nie masz przypisanych żadnych uprawnień do systemu CRM.
+            <br />
+            Skontaktuj się z administratorem w celu nadania dostępu.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -160,53 +207,59 @@ export default function CRMDashboard({
             Przegląd działalności agencji eventowej Mavinci
           </p>
         </div>
-        <Link
-          href="/crm/calendar"
-          className="rounded-lg bg-[#d3bb73] px-6 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
-        >
-          Otwórz kalendarz
-        </Link>
+        {canView(employee, 'calendar') && (
+          <Link
+            href="/crm/calendar"
+            className="rounded-lg bg-[#d3bb73] px-6 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+          >
+            Otwórz kalendarz
+          </Link>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
-        {statCards.map((stat) => (
-          <Link
-            key={stat.name}
-            href={stat.href}
-            className="group rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6 transition-all duration-200 hover:border-[#d3bb73]/30"
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <div className={`${stat.bgColor} rounded-lg p-3`}>
-                <stat.icon className={`h-6 w-6 ${stat.color}`} />
+      {statCards.length > 0 && (
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+          {statCards.map((stat) => (
+            <Link
+              key={stat.name}
+              href={stat.href}
+              className="group rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6 transition-all duration-200 hover:border-[#d3bb73]/30"
+            >
+              <div className="mb-4 flex items-center justify-between">
+                <div className={`${stat.bgColor} rounded-lg p-3`}>
+                  <stat.icon className={`h-6 w-6 ${stat.color}`} />
+                </div>
               </div>
-            </div>
-            <div className="space-y-2">
-              <p className="text-sm font-light text-[#e5e4e2]/60">{stat.name}</p>
-              <div className="flex items-baseline gap-2">
-                <p className="text-3xl font-light text-[#e5e4e2]">{stat.value}</p>
-                {stat.total && <span className="text-sm text-[#e5e4e2]/40">/ {stat.total}</span>}
+              <div className="space-y-2">
+                <p className="text-sm font-light text-[#e5e4e2]/60">{stat.name}</p>
+                <div className="flex items-baseline gap-2">
+                  <p className="text-3xl font-light text-[#e5e4e2]">{stat.value}</p>
+                  {stat.total && <span className="text-sm text-[#e5e4e2]/40">/ {stat.total}</span>}
+                </div>
               </div>
-            </div>
-          </Link>
-        ))}
-      </div>
+            </Link>
+          ))}
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6 lg:col-span-2">
           <div className="mb-6 flex items-center justify-between">
             <h3 className="text-lg font-light text-[#e5e4e2]">Ostatnia aktywność</h3>
-            <Link
-              href="/crm/events"
-              className="text-sm text-[#d3bb73] transition-colors hover:text-[#d3bb73]/80"
-            >
-              Zobacz wszystkie
-            </Link>
+            {canView(employee, 'events') && (
+              <Link
+                href="/crm/events"
+                className="text-sm text-[#d3bb73] transition-colors hover:text-[#d3bb73]/80"
+              >
+                Zobacz wszystkie
+              </Link>
+            )}
           </div>
-          {recentActivity.length === 0 ? (
+          {filteredActivity.length === 0 ? (
             <div className="py-8 text-center text-[#e5e4e2]/40">Brak aktywności</div>
           ) : (
             <div className="space-y-4">
-              {recentActivity.map((activity) => (
+              {filteredActivity.map((activity) => (
                 <div
                   key={activity.id}
                   className="flex items-start gap-4 rounded-lg bg-[#0f1119] p-4 transition-colors hover:bg-[#0f1119]/50"
@@ -226,53 +279,40 @@ export default function CRMDashboard({
 
         <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
           <h3 className="mb-6 text-lg font-light text-[#e5e4e2]">Szybkie akcje</h3>
-          <div className="space-y-3">
-            <Link
-              href="/crm/events"
-              className="block w-full rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-4 py-3 text-sm font-light text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/20"
-            >
-              + Nowy event
-            </Link>
-            <Link
-              href="/crm/clients"
-              className="block w-full rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-4 py-3 text-sm font-light text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/20"
-            >
-              + Nowy klient
-            </Link>
-            <Link
-              href="/crm/employees"
-              className="block w-full rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-4 py-3 text-sm font-light text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/20"
-            >
-              + Nowy pracownik
-            </Link>
-            <Link
-              href="/crm/tasks"
-              className="block w-full rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-4 py-3 text-sm font-light text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/20"
-            >
-              + Nowe zadanie
-            </Link>
-          </div>
+          {quickActions.length === 0 ? (
+            <div className="py-8 text-center text-sm text-[#e5e4e2]/40">
+              Brak dostępnych akcji
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {quickActions.map((action) => (
+                <Link
+                  key={action.href}
+                  href={action.href}
+                  className="block w-full rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-4 py-3 text-sm font-light text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/20"
+                >
+                  {action.label}
+                </Link>
+              ))}
+            </div>
+          )}
 
-          <div className="mt-8 border-t border-[#d3bb73]/10 pt-6">
-            <div className="mb-4 flex items-center gap-3">
-              <CheckCircle className="h-5 w-5 text-[#d3bb73]" />
-              <h4 className="text-sm font-light text-[#e5e4e2]">Podsumowanie</h4>
-            </div>
-            <div className="space-y-3 text-sm">
-              <div className="flex justify-between">
-                <span className="text-[#e5e4e2]/60">Wszystkie eventy</span>
-                <span className="text-[#e5e4e2]">{stats.totalEvents}</span>
+          {summaryItems.length > 0 && (
+            <div className="mt-8 border-t border-[#d3bb73]/10 pt-6">
+              <div className="mb-4 flex items-center gap-3">
+                <CheckCircle className="h-5 w-5 text-[#d3bb73]" />
+                <h4 className="text-sm font-light text-[#e5e4e2]">Podsumowanie</h4>
               </div>
-              <div className="flex justify-between">
-                <span className="text-[#e5e4e2]/60">Aktywni pracownicy</span>
-                <span className="text-[#e5e4e2]">{stats.activeEmployees}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[#e5e4e2]/60">Baza klientów</span>
-                <span className="text-[#e5e4e2]">{stats.totalClients}</span>
+              <div className="space-y-3 text-sm">
+                {summaryItems.map((item) => (
+                  <div key={item.label} className="flex justify-between">
+                    <span className="text-[#e5e4e2]/60">{item.label}</span>
+                    <span className="text-[#e5e4e2]">{item.value}</span>
+                  </div>
+                ))}
               </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>
