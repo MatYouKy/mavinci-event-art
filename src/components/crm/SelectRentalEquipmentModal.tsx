@@ -60,27 +60,39 @@ export default function SelectRentalEquipmentModal({
     try {
       setLoading(true);
       // Pobierz podwykonawców którzy mają usługę rental
-      const { data, error } = await supabase
+      const { data: services, error: servicesError } = await supabase
         .from('subcontractor_services')
-        .select(
-          `
-          subcontractor_id,
-          subcontractors (
-            id,
-            company_name,
-            alias
-          )
-        `,
-        )
+        .select('subcontractor_id')
         .eq('service_type', 'rental')
         .eq('is_active', true);
 
-      if (error) throw error;
+      if (servicesError) throw servicesError;
 
-      const uniqueSubcontractors =
-        data?.map((item: any) => item.subcontractors).filter((sub: any) => sub !== null) || [];
+      if (!services || services.length === 0) {
+        setSubcontractors([]);
+        return;
+      }
 
-      setSubcontractors(uniqueSubcontractors);
+      const subcontractorIds = services.map((s) => s.subcontractor_id);
+
+      // Pobierz organizacje powiązane z podwykonawcami
+      const { data: organizations, error: orgError } = await supabase
+        .from('organizations')
+        .select('id, name, alias, subcontractor_id')
+        .in('subcontractor_id', subcontractorIds)
+        .not('subcontractor_id', 'is', null);
+
+      if (orgError) throw orgError;
+
+      // Zmapuj na format z company_name
+      const mappedSubcontractors =
+        organizations?.map((org) => ({
+          id: org.subcontractor_id,
+          company_name: org.name,
+          alias: org.alias,
+        })) || [];
+
+      setSubcontractors(mappedSubcontractors);
     } catch (error: any) {
       console.error('Error fetching subcontractors:', error);
       showSnackbar('Błąd podczas ładowania podwykonawców', 'error');
