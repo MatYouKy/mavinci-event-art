@@ -734,7 +734,23 @@ export const offerWizardApi = createApi({
         try {
           const { data, error } = await supabase
             .from('offer_product_equipment')
-            .select('*')
+            .select(`
+              *,
+              rental_equipment:subcontractor_rental_equipment(
+                id,
+                name,
+                description,
+                thumbnail_url,
+                daily_rental_price,
+                quantity_available,
+                warehouse_category_id,
+                warehouse_categories(name)
+              ),
+              subcontractor:subcontractors(
+                id,
+                organization:organizations(name, alias)
+              )
+            `)
             .eq('product_id', productId)
             .order('created_at', { ascending: true });
 

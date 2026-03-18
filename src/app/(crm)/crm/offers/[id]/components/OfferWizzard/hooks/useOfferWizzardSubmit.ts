@@ -1,7 +1,7 @@
 'use client';
 
 import { supabase } from '@/lib/supabase/browser';
-import { buildSubstitutionsForInsert, calcTotal } from '../utils';
+import { buildSubstitutionsForInsert, calcTotal, getRentalEquipmentFromSelectedAlt } from '../utils';
 import { EquipmentConflictRow, SelectedAltMap } from '../types';
 import { IOfferItem } from '@/app/(crm)/crm/offers/types';
 
@@ -96,6 +96,48 @@ export async function submitOfferWizard(params: {
       .insert(substitutionsPayload);
 
     if (subsError) throw subsError;
+  }
+
+  // Zapisz rental equipment bezpośrednio w offer_product_equipment dla każdego produktu
+  const rentalEquipment = getRentalEquipmentFromSelectedAlt(combinedSubstitutions);
+
+  if (rentalEquipment.length > 0) {
+    // Dla każdego produktu w ofercie, dodaj rental equipment
+    const rentalEquipmentRecords = [];
+
+    for (const rental of rentalEquipment) {
+      // Znajdź wszystkie produkty w tej ofercie
+      const { data: offerItemsWithProducts } = await supabase
+        .from('offer_items')
+        .select('id, product_id')
+        .eq('offer_id', offerResult.id)
+        .not('product_id', 'is', null);
+
+      if (offerItemsWithProducts) {
+        for (const offerItem of offerItemsWithProducts) {
+          // Dla każdego produktu, dodaj rental equipment
+          rentalEquipmentRecords.push({
+            product_id: offerItem.product_id,
+            rental_equipment_id: rental.rentalEquipmentId,
+            subcontractor_id: rental.subcontractorId,
+            quantity: rental.quantity,
+            is_rental: true,
+            is_optional: false,
+          });
+        }
+      }
+    }
+
+    if (rentalEquipmentRecords.length > 0) {
+      const { error: rentalError } = await supabase
+        .from('offer_product_equipment')
+        .insert(rentalEquipmentRecords);
+
+      if (rentalError) {
+        console.error('Error inserting rental equipment:', rentalError);
+        // Nie rzucamy błędu - oferta została utworzona
+      }
+    }
   }
 
   // Jeśli oferta ma braki sprzętowe, oznacz event

@@ -94,9 +94,28 @@ export function useManageProduct({
     return map;
   }, [catalog.items, cablesCatalog.items, includeCablesInPicker]);
 
-  // 3) “widok” linków z dołączonymi danymi z katalogu
+  // 3) "widok" linków z dołączonymi danymi z katalogu
   const items: ProductEquipmentViewRow[] = useMemo(() => {
     return linked.map((row) => {
+      // Jeśli to rental equipment, używamy danych z rental_equipment
+      if (row.is_rental && (row as any).rental_equipment) {
+        const rentalData = (row as any).rental_equipment;
+        return {
+          ...row,
+          mode: 'rental' as ProductEquipmentMode,
+          item: {
+            id: rentalData.id,
+            name: rentalData.name,
+            thumbnail_url: rentalData.thumbnail_url,
+            brand: null,
+            model: null,
+            warehouse_category_id: rentalData.warehouse_category_id,
+            warehouse_categories: rentalData.warehouse_categories,
+            available_quantity: rentalData.quantity_available,
+          } as EquipmentCatalogItem,
+        };
+      }
+
       const mode: ProductEquipmentMode = row.equipment_kit_id ? 'kit' : 'item';
       const idToFind = row.equipment_kit_id || row.equipment_item_id || '';
       return {

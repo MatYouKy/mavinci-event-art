@@ -262,6 +262,19 @@ export default function OfferWizard({
               conflicts={conflicts ?? []}
               selectedAlt={selectedAlt}
               checkingConflicts={checkingConflicts}
+              onRentalSelect={(conflictKey, rentalEquipmentId, subcontractorId, quantity) => {
+                // Zapisujemy wybór rental equipment jako zamiennik
+                setSelectedAlt((prev) => ({
+                  ...prev,
+                  [conflictKey]: {
+                    item_id: rentalEquipmentId,
+                    qty: quantity,
+                    is_rental: true,
+                    rental_equipment_id: rentalEquipmentId,
+                    subcontractor_id: subcontractorId,
+                  },
+                }));
+              }}
             />
           )}
         </div>

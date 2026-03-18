@@ -66,7 +66,7 @@ export type ProductStaffRow = {
   payment_type: StaffPaymentType;
 };
 
-export type ProductEquipmentMode = 'item' | 'kit';
+export type ProductEquipmentMode = 'item' | 'kit' | 'rental';
 
 export interface ProductEquipment {
   id: string;
@@ -94,6 +94,9 @@ export type OfferProductEquipmentRow = {
   product_id: string | null;
   equipment_item_id: string | null;
   equipment_kit_id: string | null;
+  rental_equipment_id: string | null;
+  subcontractor_id: string | null;
+  is_rental: boolean | null;
   quantity: number | null;
   is_optional: boolean | null;
   notes: string | null;

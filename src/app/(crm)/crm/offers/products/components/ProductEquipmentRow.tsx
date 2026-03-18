@@ -1,4 +1,4 @@
-import { ChevronDown, Loader2, Package, Trash2 } from 'lucide-react';
+import { ChevronDown, Loader2, Package, Trash2, Building2 } from 'lucide-react';
 import { ProductEquipmentViewRow } from '../hooks/useManageProduct';
 import { useEffect, useState } from 'react';
 import Popover from '@/components/UI/Tooltip';
@@ -19,6 +19,7 @@ export const ProductEquipmentRow = ({
   handleDeleteEquipment: (equipmentId: string) => Promise<void>;
 }) => {
   const isKit = item.mode === 'kit';
+  const isRental = item.mode === 'rental';
   const [quantity, setQuantity] = useState(item.quantity);
   const [isEditing, setIsEditing] = useState(false);
   const [isExpanded, setIsExpanded] = useState<Record<string, boolean>>({});
@@ -145,7 +146,7 @@ export const ProductEquipmentRow = ({
               </span>
             </div>
 
-            {!isKit && item.item && (
+            {!isKit && !isRental && item.item && (
               <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/50">
                 {item.item.brand && <span>{item.item.brand}</span>}
                 {item.item.model && (
@@ -156,11 +157,17 @@ export const ProductEquipmentRow = ({
                 )}
               </div>
             )}
+            {isRental && (
+              <div className="flex items-center gap-1 text-xs text-green-400/80">
+                <Building2 className="h-3 w-3" />
+                <span>Sprzęt rental</span>
+              </div>
+            )}
           </div>
         </div>
 
         <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/40">
-          {!isKit && item.item?.available_quantity && (
+          {!isKit && !isRental && item.item?.available_quantity && (
             <span className="hidden md:inline">
               dostępne {item.item.available_quantity} szt. w magazynie
             </span>
@@ -172,7 +179,7 @@ export const ProductEquipmentRow = ({
               <Loader2 className="h-4 w-4 animate-spin text-[#d3bb73]" />
             </div>
           )}
-          {canEdit && !isKit ? (
+          {canEdit && !isKit && !isRental ? (
             isEditing ? (
               <span className="inline-flex items-center gap-2">
                 <button
@@ -218,7 +225,7 @@ export const ProductEquipmentRow = ({
             </span>
           )}
         </div>
-        {canEdit && (
+        {canEdit && !isRental && (
           <div className="flex items-center gap-2 rounded-lg p-2 pt-2 text-red-400/60 transition-colors hover:bg-red-400/10 hover:text-red-400">
             <button onClick={handleQuantityDelete}>
               <Trash2 className="h-4 w-4" />
@@ -235,6 +242,9 @@ export const ProductEquipmentRow = ({
               product_id: item.product_id,
               equipment_item_id: kitItem.equipment_id,
               equipment_kit_id: item.item.id,
+              rental_equipment_id: null,
+              subcontractor_id: null,
+              is_rental: null,
               is_optional: kitItem.is_optional,
               notes: kitItem.notes,
               created_at: new Date().toISOString(),

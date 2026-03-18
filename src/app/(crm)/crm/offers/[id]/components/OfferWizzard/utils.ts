@@ -38,7 +38,33 @@ export const buildSubstitutionsForInsert = ({
   conflicts: EquipmentConflictRow[];
 }) => {
   const rows = buildSubstitutionsForRpc({ selectedAlt, conflicts });
-  return rows.map((r) => ({ ...r, offer_id: offerId }));
+  // Filtrujemy tylko te zamiany, które NIE są rental equipment
+  // Rental equipment będzie zapisany bezpośrednio w offer_product_equipment
+  return rows
+    .filter((r) => {
+      const key = Object.keys(selectedAlt).find((k) => {
+        const sel = selectedAlt[k];
+        return sel.item_id === r.to_item_id;
+      });
+      const alt = key ? selectedAlt[key] : null;
+      return !alt?.is_rental;
+    })
+    .map((r) => ({ ...r, offer_id: offerId }));
+};
+
+export const getRentalEquipmentFromSelectedAlt = (selectedAlt: SelectedAltMap) => {
+  return Object.entries(selectedAlt)
+    .filter(([_, sel]) => sel.is_rental)
+    .map(([key, sel]) => {
+      const [itemType, itemId] = key.split('|');
+      return {
+        originalItemType: itemType,
+        originalItemId: itemId,
+        rentalEquipmentId: sel.rental_equipment_id,
+        subcontractorId: sel.subcontractor_id,
+        quantity: sel.qty,
+      };
+    });
 };
 
 export const buildConflictPayloadItems = (items: IOfferItem[]) =>
