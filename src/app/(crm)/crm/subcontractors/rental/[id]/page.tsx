@@ -64,9 +64,13 @@ export default function RentalEquipmentDetailPage() {
           description: editForm.description,
           category: editForm.category,
           warehouse_category_id: editForm.warehouse_category_id || null,
-          daily_rental_price: editForm.daily_rental_price,
-          weekly_rental_price: editForm.weekly_rental_price,
-          monthly_rental_price: editForm.monthly_rental_price,
+          vat_rate: editForm.vat_rate,
+          daily_price_net: editForm.daily_price_net,
+          daily_price_gross: editForm.daily_price_gross,
+          weekly_price_net: editForm.weekly_price_net,
+          weekly_price_gross: editForm.weekly_price_gross,
+          monthly_price_net: editForm.monthly_price_net,
+          monthly_price_gross: editForm.monthly_price_gross,
           quantity_available: editForm.quantity_available,
           required_skills: editForm.required_skills,
           specifications: editForm.specifications,
@@ -101,7 +105,9 @@ export default function RentalEquipmentDetailPage() {
   };
 
   const handleDelete = async () => {
-    if (!confirm(`Czy na pewno chcesz usunąć "${equipment.name}"? Ta operacja jest nieodwracalna.`)) {
+    if (
+      !confirm(`Czy na pewno chcesz usunąć "${equipment.name}"? Ta operacja jest nieodwracalna.`)
+    ) {
       return;
     }
 
@@ -127,10 +133,7 @@ export default function RentalEquipmentDetailPage() {
       <div className="py-12 text-center">
         <Package className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
         <p className="text-[#e5e4e2]/60">Nie znaleziono sprzętu wynajmu</p>
-        <button
-          onClick={() => router.back()}
-          className="mt-4 text-[#d3bb73] hover:underline"
-        >
+        <button onClick={() => router.back()} className="mt-4 text-[#d3bb73] hover:underline">
           Powrót
         </button>
       </div>
@@ -275,26 +278,32 @@ export default function RentalEquipmentDetailPage() {
                   <select
                     value={editForm.warehouse_category_id || ''}
                     onChange={(e) => handleChange('warehouse_category_id', e.target.value)}
-                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                   >
                     <option value="">Brak</option>
-                    {warehouseCategories?.filter((c: any) => c.level === 1).map((cat: any) => (
-                      <optgroup key={cat.id} label={cat.name}>
-                        <option value={cat.id}>{cat.name}</option>
-                        {warehouseCategories?.filter((sub: any) => sub.parent_id === cat.id).map((sub: any) => (
-                          <option key={sub.id} value={sub.id}>
-                            &nbsp;&nbsp;└─ {sub.name}
-                          </option>
-                        ))}
-                      </optgroup>
-                    ))}
+                    {warehouseCategories
+                      ?.filter((c: any) => c.level === 1)
+                      .map((cat: any) => (
+                        <optgroup key={cat.id} label={cat.name}>
+                          <option value={cat.id}>{cat.name}</option>
+                          {warehouseCategories
+                            ?.filter((sub: any) => sub.parent_id === cat.id)
+                            .map((sub: any) => (
+                              <option key={sub.id} value={sub.id}>
+                                &nbsp;&nbsp;└─ {sub.name}
+                              </option>
+                            ))}
+                        </optgroup>
+                      ))}
                   </select>
                 ) : displayData.warehouse_categories ? (
-                  <div className="inline-block px-3 py-1 rounded bg-blue-500/20 text-blue-400">
+                  <div className="inline-block rounded bg-blue-500/20 px-3 py-1 text-blue-400">
                     {(() => {
                       const cat = displayData.warehouse_categories;
                       if (cat.level === 2 && cat.parent_id) {
-                        const parent = warehouseCategories?.find((c: any) => c.id === cat.parent_id);
+                        const parent = warehouseCategories?.find(
+                          (c: any) => c.id === cat.parent_id,
+                        );
                         return parent ? `${parent.name} / ${cat.name}` : cat.name;
                       }
                       return cat.name;
@@ -310,59 +319,172 @@ export default function RentalEquipmentDetailPage() {
           {/* Ceny */}
           <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] p-6">
             <h2 className="mb-4 text-lg font-semibold text-[#e5e4e2]">Cennik wynajmu</h2>
-            <div className="grid gap-4 md:grid-cols-3">
-              <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Cena dzienna</label>
-                {isEditing ? (
-                  <input
-                    type="number"
-                    value={editForm.daily_rental_price || ''}
-                    onChange={(e) => handleChange('daily_rental_price', parseFloat(e.target.value))}
-                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
-                  />
-                ) : (
-                  <div className="text-[#e5e4e2]">
-                    {displayData.daily_rental_price
-                      ? `${displayData.daily_rental_price.toLocaleString('pl-PL')} zł`
-                      : '-'}
-                  </div>
-                )}
+
+            {/* Stawka VAT */}
+            <div className="mb-6">
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Stawka VAT</label>
+              {isEditing ? (
+                <select
+                  value={editForm.vat_rate || 23}
+                  onChange={(e) => handleChange('vat_rate', parseFloat(e.target.value))}
+                  className="w-full max-w-xs rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
+                >
+                  <option value={0}>0% (zwolniony z VAT)</option>
+                  <option value={5}>5%</option>
+                  <option value={8}>8%</option>
+                  <option value={23}>23%</option>
+                </select>
+              ) : (
+                <div className="text-[#e5e4e2]">
+                  {displayData.vat_rate === 0 ? (
+                    <span>0% (zwolniony z VAT)</span>
+                  ) : (
+                    <span>{displayData.vat_rate || 23}%</span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="grid gap-6 md:grid-cols-3">
+              {/* Cena dzienna */}
+              <div className="space-y-3">
+                <div className="text-sm font-medium text-[#d3bb73]">Cena dzienna</div>
+                <div>
+                  <label className="mb-1 block text-xs text-[#e5e4e2]/60">Netto</label>
+                  {isEditing ? (
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={editForm.daily_price_net || ''}
+                      onChange={(e) =>
+                        handleChange('daily_price_net', parseFloat(e.target.value) || null)
+                      }
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
+                      placeholder="0.00"
+                    />
+                  ) : (
+                    <div className="text-[#e5e4e2]">
+                      {displayData.daily_price_net
+                        ? `${displayData.daily_price_net.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł`
+                        : '-'}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-[#e5e4e2]/60">Brutto</label>
+                  {isEditing ? (
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={editForm.daily_price_gross || ''}
+                      onChange={(e) =>
+                        handleChange('daily_price_gross', parseFloat(e.target.value) || null)
+                      }
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 font-semibold text-[#e5e4e2]"
+                      placeholder="0.00"
+                    />
+                  ) : (
+                    <div className="font-semibold text-[#e5e4e2]">
+                      {displayData.daily_price_gross
+                        ? `${displayData.daily_price_gross.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł`
+                        : '-'}
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Cena tygodniowa</label>
-                {isEditing ? (
-                  <input
-                    type="number"
-                    value={editForm.weekly_rental_price || ''}
-                    onChange={(e) => handleChange('weekly_rental_price', parseFloat(e.target.value))}
-                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
-                  />
-                ) : (
-                  <div className="text-[#e5e4e2]">
-                    {displayData.weekly_rental_price
-                      ? `${displayData.weekly_rental_price.toLocaleString('pl-PL')} zł`
-                      : '-'}
-                  </div>
-                )}
+              {/* Cena tygodniowa */}
+              <div className="space-y-3">
+                <div className="text-sm font-medium text-[#d3bb73]">Cena tygodniowa</div>
+                <div>
+                  <label className="mb-1 block text-xs text-[#e5e4e2]/60">Netto</label>
+                  {isEditing ? (
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={editForm.weekly_price_net || ''}
+                      onChange={(e) =>
+                        handleChange('weekly_price_net', parseFloat(e.target.value) || null)
+                      }
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
+                      placeholder="0.00"
+                    />
+                  ) : (
+                    <div className="text-[#e5e4e2]">
+                      {displayData.weekly_price_net
+                        ? `${displayData.weekly_price_net.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł`
+                        : '-'}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-[#e5e4e2]/60">Brutto</label>
+                  {isEditing ? (
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={editForm.weekly_price_gross || ''}
+                      onChange={(e) =>
+                        handleChange('weekly_price_gross', parseFloat(e.target.value) || null)
+                      }
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 font-semibold text-[#e5e4e2]"
+                      placeholder="0.00"
+                    />
+                  ) : (
+                    <div className="font-semibold text-[#e5e4e2]">
+                      {displayData.weekly_price_gross
+                        ? `${displayData.weekly_price_gross.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł`
+                        : '-'}
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Cena miesięczna</label>
-                {isEditing ? (
-                  <input
-                    type="number"
-                    value={editForm.monthly_rental_price || ''}
-                    onChange={(e) => handleChange('monthly_rental_price', parseFloat(e.target.value))}
-                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
-                  />
-                ) : (
-                  <div className="text-[#e5e4e2]">
-                    {displayData.monthly_rental_price
-                      ? `${displayData.monthly_rental_price.toLocaleString('pl-PL')} zł`
-                      : '-'}
-                  </div>
-                )}
+              {/* Cena miesięczna */}
+              <div className="space-y-3">
+                <div className="text-sm font-medium text-[#d3bb73]">Cena miesięczna</div>
+                <div>
+                  <label className="mb-1 block text-xs text-[#e5e4e2]/60">Netto</label>
+                  {isEditing ? (
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={editForm.monthly_price_net || ''}
+                      onChange={(e) =>
+                        handleChange('monthly_price_net', parseFloat(e.target.value) || null)
+                      }
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
+                      placeholder="0.00"
+                    />
+                  ) : (
+                    <div className="text-[#e5e4e2]">
+                      {displayData.monthly_price_net
+                        ? `${displayData.monthly_price_net.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł`
+                        : '-'}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-[#e5e4e2]/60">Brutto</label>
+                  {isEditing ? (
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={editForm.monthly_price_gross || ''}
+                      onChange={(e) =>
+                        handleChange('monthly_price_gross', parseFloat(e.target.value) || null)
+                      }
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 font-semibold text-[#e5e4e2]"
+                      placeholder="0.00"
+                    />
+                  ) : (
+                    <div className="font-semibold text-[#e5e4e2]">
+                      {displayData.monthly_price_gross
+                        ? `${displayData.monthly_price_gross.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł`
+                        : '-'}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -447,9 +569,7 @@ export default function RentalEquipmentDetailPage() {
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
                 />
               ) : (
-                <div className="text-[#e5e4e2] whitespace-pre-wrap">
-                  {displayData.notes || '-'}
-                </div>
+                <div className="whitespace-pre-wrap text-[#e5e4e2]">{displayData.notes || '-'}</div>
               )}
             </div>
           )}
