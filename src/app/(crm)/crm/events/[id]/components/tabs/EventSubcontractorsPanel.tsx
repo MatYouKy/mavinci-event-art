@@ -1,7 +1,22 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, UserCheck, Mail, Phone, Star, DollarSign, Clock, CheckCircle, AlertCircle, FileText, CreditCard as Edit, Trash2, Calendar, X } from 'lucide-react';
+import {
+  Plus,
+  UserCheck,
+  Mail,
+  Phone,
+  Star,
+  DollarSign,
+  Clock,
+  CheckCircle,
+  AlertCircle,
+  FileText,
+  CreditCard as Edit,
+  Trash2,
+  Calendar,
+  X,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
@@ -35,6 +50,7 @@ interface SubcontractorTask {
   payment_date: string | null;
   task_type?: 'service' | 'equipment_rental' | 'other';
   event_equipment_id?: string;
+  rental_equipment_id?: string;
   subcontractors?: Subcontractor;
   event_equipment?: {
     id: string;
@@ -45,7 +61,9 @@ interface SubcontractorTask {
     equipment_items?: { name: string; thumbnail_url?: string };
     equipment_kits?: { name: string; thumbnail_url?: string };
     cables?: { name: string };
+    rental_equipment?: { name: string; thumbnail_url?: string; brand?: string; model?: string };
   };
+  rental_equipment?: { name: string; thumbnail_url?: string; brand?: string; model?: string };
 }
 
 interface Contract {
@@ -104,8 +122,10 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
             cable_id,
             equipment_items (name, thumbnail_url),
             equipment_kits (name, thumbnail_url),
-            cables (name)
-          )
+            cables (name),
+            rental_equipment:subcontractor_rental_equipment (name, thumbnail_url, brand, model)
+          ),
+          rental_equipment:subcontractor_rental_equipment (name, thumbnail_url, brand, model)
         `,
         )
         .eq('event_id', eventId)
@@ -271,7 +291,8 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
         </div>
       </div>
 
-      {tasks.filter((t) => t.task_type === 'equipment_rental' && !t.subcontractor_id).length > 0 && (
+      {tasks.filter((t) => t.task_type === 'equipment_rental' && !t.subcontractor_id).length >
+        0 && (
         <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-6">
           <div className="mb-4 flex items-center gap-3">
             <AlertCircle className="h-5 w-5 text-yellow-400" />
@@ -287,10 +308,14 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
                   key={task.id}
                   className="flex items-center gap-4 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4"
                 >
-                  {(task.event_equipment?.equipment_items?.thumbnail_url ||
+                  {(task.rental_equipment?.thumbnail_url ||
+                    task.event_equipment?.rental_equipment?.thumbnail_url ||
+                    task.event_equipment?.equipment_items?.thumbnail_url ||
                     task.event_equipment?.equipment_kits?.thumbnail_url) && (
                     <img
                       src={
+                        task.rental_equipment?.thumbnail_url ||
+                        task.event_equipment?.rental_equipment?.thumbnail_url ||
                         task.event_equipment.equipment_items?.thumbnail_url ||
                         task.event_equipment.equipment_kits?.thumbnail_url
                       }
@@ -305,12 +330,14 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
                         WYNAJEM
                       </span>
                     </div>
-                    {task.event_equipment && (
+                    {(task.rental_equipment || task.event_equipment) && (
                       <p className="text-sm text-[#e5e4e2]/60">
-                        {task.event_equipment.equipment_items?.name ||
-                          task.event_equipment.equipment_kits?.name ||
-                          task.event_equipment.cables?.name}{' '}
-                        - {task.event_equipment.quantity} szt.
+                        {task.rental_equipment?.name ||
+                          task.event_equipment?.rental_equipment?.name ||
+                          task.event_equipment?.equipment_items?.name ||
+                          task.event_equipment?.equipment_kits?.name ||
+                          task.event_equipment?.cables?.name}{' '}
+                        - {task.event_equipment?.quantity || 1} szt.
                       </p>
                     )}
                     {task.description && (
@@ -431,12 +458,16 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
                               {task.description && (
                                 <p className="text-sm text-[#e5e4e2]/60">{task.description}</p>
                               )}
-                              {task.event_equipment && (
+                              {(task.rental_equipment || task.event_equipment) && (
                                 <div className="mt-2 flex items-center gap-2 rounded border border-[#d3bb73]/10 bg-[#1c1f33] p-2">
-                                  {(task.event_equipment.equipment_items?.thumbnail_url ||
-                                    task.event_equipment.equipment_kits?.thumbnail_url) && (
+                                  {(task.rental_equipment?.thumbnail_url ||
+                                    task.event_equipment?.rental_equipment?.thumbnail_url ||
+                                    task.event_equipment?.equipment_items?.thumbnail_url ||
+                                    task.event_equipment?.equipment_kits?.thumbnail_url) && (
                                     <img
                                       src={
+                                        task.rental_equipment?.thumbnail_url ||
+                                        task.event_equipment?.rental_equipment?.thumbnail_url ||
                                         task.event_equipment.equipment_items?.thumbnail_url ||
                                         task.event_equipment.equipment_kits?.thumbnail_url
                                       }
@@ -446,13 +477,15 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
                                   )}
                                   <div className="flex-1">
                                     <div className="text-sm font-medium text-[#e5e4e2]">
-                                      {task.event_equipment.equipment_items?.name ||
-                                        task.event_equipment.equipment_kits?.name ||
-                                        task.event_equipment.cables?.name ||
+                                      {task.rental_equipment?.name ||
+                                        task.event_equipment?.rental_equipment?.name ||
+                                        task.event_equipment?.equipment_items?.name ||
+                                        task.event_equipment?.equipment_kits?.name ||
+                                        task.event_equipment?.cables?.name ||
                                         'Sprzęt'}
                                     </div>
                                     <div className="text-xs text-[#e5e4e2]/60">
-                                      Ilość: {task.event_equipment.quantity} szt.
+                                      Ilość: {task.event_equipment?.quantity || 1} szt.
                                     </div>
                                   </div>
                                 </div>

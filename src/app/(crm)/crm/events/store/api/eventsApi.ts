@@ -316,6 +316,25 @@ export const eventsApi = createApi({
                     category:warehouse_categories(id, name, parent_id)
                   )
                 )
+              ),
+              rental_equipment:subcontractor_rental_equipment(
+                id,
+                name,
+                brand,
+                model,
+                thumbnail_url,
+                warehouse_category_id,
+                category:warehouse_categories(id, name, parent_id),
+                subcontractor:subcontractors(
+                  id,
+                  name,
+                  organization:organizations(id, name)
+                )
+              ),
+              rental_subcontractor:subcontractors(
+                id,
+                name,
+                organization:organizations(id, name)
               )
             `,
             )
