@@ -6,7 +6,7 @@ import Popover from '@/components/UI/Tooltip';
 import { EmployeeAvatar } from '../EmployeeAvatar';
 import { IEmployee } from '@/app/(crm)/crm/employees/type';
 
-interface Assignee {
+export interface Assignee {
   employee_id: string;
   employees: IEmployee;
 }

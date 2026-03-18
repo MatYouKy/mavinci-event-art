@@ -710,7 +710,7 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
   }
 
   return (
-    <div className="flex h-[calc(100vh-80px)] flex-col max-w-7xl mx-auto">
+    <div className="flex h-[calc(100vh-80px)] flex-col max-w-[1400px] mx-auto">
       <div
         className={`mb-3 flex flex-shrink-0 flex-wrap items-center justify-between gap-3 ${isMobile ? 'px-2' : 'px-2'}`}
       >

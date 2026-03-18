@@ -16,7 +16,7 @@ import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useMobile } from '@/hooks/useMobile';
-import TaskAssigneeAvatars from '@/components/crm/TaskAssigneeAvatars';
+import TaskAssigneeAvatars, { Assignee } from '@/components/crm/TaskAssigneeAvatars';
 
 interface Task {
   owner_id: string;
@@ -777,7 +777,7 @@ export default function PrivateTasksBoard({
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col ">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 px-2">
         <h3 className="text-lg font-light text-[#e5e4e2]">Moja tablica zadań</h3>
 
@@ -819,7 +819,7 @@ export default function PrivateTasksBoard({
       {/* ⬇️ dalej Twój render 1:1 */}
       <div
         ref={scrollContainerRef}
-        className="flex-1 overflow-x-auto pb-4"
+        className="flex-1 overflow-x-auto pb-4 max-w-[1400px] mx-auto"
         onTouchStart={isMobile ? handleTouchStart : undefined}
         onTouchMove={isMobile ? handleTouchMove : undefined}
         onTouchEnd={isMobile ? handleTouchEnd : undefined}
@@ -935,7 +935,7 @@ export default function PrivateTasksBoard({
 
                     {task.task_assignees && task.task_assignees.length > 0 && (
                       <div className="mb-2">
-                        <TaskAssigneeAvatars assignees={task.task_assignees} />
+                        <TaskAssigneeAvatars assignees={task.task_assignees as Assignee[]} />
                       </div>
                     )}
 
