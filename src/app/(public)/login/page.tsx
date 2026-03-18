@@ -50,7 +50,7 @@ export default function CRMLoginPage() {
 
     try {
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-        redirectTo: `${window.location.origin}/crm/reset-password`,
+        redirectTo: `${window.location.origin}/reset-password`,
       });
 
       if (resetError) {
