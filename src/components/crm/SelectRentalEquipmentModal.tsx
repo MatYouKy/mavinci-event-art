@@ -20,7 +20,7 @@ interface SelectRentalEquipmentModalProps {
 
 interface Subcontractor {
   id: string;
-  name: string;
+  company_name: string;
   alias: string | null;
 }
 
@@ -67,7 +67,7 @@ export default function SelectRentalEquipmentModal({
           subcontractor_id,
           subcontractors (
             id,
-            name,
+            company_name,
             alias
           )
         `,
@@ -142,7 +142,7 @@ export default function SelectRentalEquipmentModal({
       selectedSubcontractor.id,
       equipment.id,
       equipment.name,
-      selectedSubcontractor.alias || selectedSubcontractor.name,
+      selectedSubcontractor.alias || selectedSubcontractor.company_name,
     );
     handleClose();
   };
@@ -163,7 +163,7 @@ export default function SelectRentalEquipmentModal({
   };
 
   const filteredSubcontractors = subcontractors.filter((sub) =>
-    (sub.alias || sub.name).toLowerCase().includes(searchTerm.toLowerCase()),
+    (sub.alias || sub.company_name).toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   const filteredEquipment = equipmentList.filter(
@@ -194,7 +194,7 @@ export default function SelectRentalEquipmentModal({
               <p className="text-sm text-[#e5e4e2]/50">
                 Podwykonawca:{' '}
                 <span className="font-medium text-[#d3bb73]">
-                  {selectedSubcontractor.alias || selectedSubcontractor.name}
+                  {selectedSubcontractor.alias || selectedSubcontractor.company_name}
                 </span>
               </p>
             )}
@@ -252,8 +252,12 @@ export default function SelectRentalEquipmentModal({
                       <Building2 className="h-6 w-6 text-[#d3bb73]" />
                     </div>
                     <div className="text-left">
-                      <div className="font-medium text-[#e5e4e2]">{sub.alias || sub.name}</div>
-                      {sub.alias && <div className="text-xs text-[#e5e4e2]/50">{sub.name}</div>}
+                      <div className="font-medium text-[#e5e4e2]">
+                        {sub.alias || sub.company_name}
+                      </div>
+                      {sub.alias && (
+                        <div className="text-xs text-[#e5e4e2]/50">{sub.company_name}</div>
+                      )}
                     </div>
                   </div>
                   <div className="text-[#d3bb73]">→</div>
