@@ -89,20 +89,6 @@ export function EventEquipmentRow({
   const isShortage = !!row?.is_optional;
   const isRental = row?.status === 'rental' || !!row?.use_external_rental;
 
-  // Determine which equipment data to display
-  // Jeśli mamy rental_equipment to znaczy że to wynajem (equipment_id jest null)
-  const displayEquipment = row?.rental_equipment || row?.equipment;
-  const isDisplayingRental = !!row?.rental_equipment;
-
-  const displayName = isKit ? row.kit.name : displayEquipment?.name || 'Nieznany';
-
-  // rental_equipment nie ma brand/model, tylko description
-  const displayBrand = isDisplayingRental ? null : displayEquipment?.brand;
-  const displayModel = isDisplayingRental ? null : displayEquipment?.model;
-  const displayDescription = isDisplayingRental ? displayEquipment?.description : null;
-  const displayThumbnail = displayEquipment?.thumbnail_url;
-  const displayCategory = displayEquipment?.category;
-
   return (
     <div>
       <div
@@ -128,19 +114,19 @@ export function EventEquipmentRow({
         <div className="flex min-w-0 flex-1 items-center gap-3">
           {isKit ? (
             <span className="text-base">🎁</span>
-          ) : displayThumbnail ? (
+          ) : row?.equipment?.thumbnail_url ? (
             <Popover
               trigger={
                 <img
-                  src={displayThumbnail}
-                  alt={displayName}
+                  src={row.equipment.thumbnail_url}
+                  alt={row.equipment.name}
                   className="h-10 w-10 rounded border border-[#d3bb73]/20 object-cover"
                 />
               }
               content={
                 <img
-                  src={displayThumbnail}
-                  alt={displayName}
+                  src={row.equipment.thumbnail_url}
+                  alt={row.equipment.name}
                   className="h-auto cursor-pointer rounded-lg object-contain transition-all"
                 />
               }
@@ -154,7 +140,9 @@ export function EventEquipmentRow({
 
           <div className="flex min-w-0 flex-col">
             <div className="flex min-w-0 items-center gap-2">
-              <span className="truncate font-medium text-[#e5e4e2]">{displayName}</span>
+              <span className="truncate font-medium text-[#e5e4e2]">
+                {row?.kit ? row.kit.name : row?.equipment?.name || 'Nieznany'}
+              </span>
 
               <span
                 className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] uppercase ${badge.cls}`}
@@ -167,23 +155,15 @@ export function EventEquipmentRow({
                   BRAK
                 </span>
               )}
-
-              {isRental && row?.rental_subcontractor && (
-                <span className="shrink-0 rounded-full border border-purple-500/30 bg-purple-500/10 px-2 py-0.5 text-[10px] font-medium uppercase text-purple-400">
-                  RENTAL:{' '}
-                  {row.rental_subcontractor?.organization?.name || row.rental_subcontractor?.name}
-                </span>
-              )}
             </div>
 
-            {!isKit && displayEquipment && (
+            {!isKit && row?.equipment && (
               <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/50">
-                {isDisplayingRental && displayDescription && <span>{displayDescription}</span>}
-                {!isDisplayingRental && displayBrand && <span>{displayBrand}</span>}
-                {!isDisplayingRental && displayModel && (
+                {row.equipment.brand && <span>{row.equipment.brand}</span>}
+                {row.equipment.model && (
                   <>
-                    {displayBrand && <span>•</span>}
-                    <span>{displayModel}</span>
+                    {row.equipment.brand && <span>•</span>}
+                    <span>{row.equipment.model}</span>
                   </>
                 )}
               </div>
@@ -198,8 +178,8 @@ export function EventEquipmentRow({
         )}
 
         <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/60">
-          {!isKit && displayCategory && (
-            <span className="hidden md:inline">{displayCategory.name}</span>
+          {!isKit && row?.equipment?.category && (
+            <span className="hidden md:inline">{row.equipment.category.name}</span>
           )}
 
           {aKey && (
