@@ -13,6 +13,7 @@ import {
   useGetRentalEquipmentDetailsQuery,
   useUpdateRentalEquipmentMutation,
 } from '../../api/rentalApi';
+import { useGetEquipmentCategoriesQuery } from '@/app/(crm)/crm/equipment/store/equipmentApi';
 
 export default function RentalEquipmentDetailPage() {
   const router = useRouter();
@@ -33,6 +34,8 @@ export default function RentalEquipmentDetailPage() {
     skip: !equipmentId,
     refetchOnMountOrArgChange: true,
   });
+
+  const { data: warehouseCategories = [] } = useGetEquipmentCategoriesQuery();
 
   const [updateEquipmentMutation] = useUpdateRentalEquipmentMutation();
 
@@ -58,6 +61,7 @@ export default function RentalEquipmentDetailPage() {
           name: editForm.name,
           description: editForm.description,
           category: editForm.category,
+          warehouse_category_id: editForm.warehouse_category_id || null,
           daily_rental_price: editForm.daily_rental_price,
           weekly_rental_price: editForm.weekly_rental_price,
           monthly_rental_price: editForm.monthly_rental_price,
@@ -243,12 +247,34 @@ export default function RentalEquipmentDetailPage() {
               <div>
                 <label className="mb-2 block text-sm text-[#e5e4e2]/60">Kategoria</label>
                 {isEditing ? (
-                  <input
-                    type="text"
-                    value={editForm.category || ''}
-                    onChange={(e) => handleChange('category', e.target.value)}
-                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
-                  />
+                  <select
+                    value={editForm.warehouse_category_id || ''}
+                    onChange={(e) => handleChange('warehouse_category_id', e.target.value)}
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:outline-none focus:border-[#d3bb73]/30"
+                  >
+                    <option value="">Brak</option>
+                    {warehouseCategories?.filter((c: any) => c.level === 1).map((cat: any) => (
+                      <optgroup key={cat.id} label={cat.name}>
+                        <option value={cat.id}>{cat.name}</option>
+                        {warehouseCategories?.filter((sub: any) => sub.parent_id === cat.id).map((sub: any) => (
+                          <option key={sub.id} value={sub.id}>
+                            &nbsp;&nbsp;└─ {sub.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                ) : displayData.warehouse_categories ? (
+                  <div className="inline-block px-3 py-1 rounded bg-blue-500/20 text-blue-400">
+                    {(() => {
+                      const cat = displayData.warehouse_categories;
+                      if (cat.level === 2 && cat.parent_id) {
+                        const parent = warehouseCategories?.find((c: any) => c.id === cat.parent_id);
+                        return parent ? `${parent.name} / ${cat.name}` : cat.name;
+                      }
+                      return cat.name;
+                    })()}
+                  </div>
                 ) : (
                   <div className="text-[#e5e4e2]">{displayData.category || '-'}</div>
                 )}

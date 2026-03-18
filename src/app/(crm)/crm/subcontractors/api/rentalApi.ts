@@ -22,6 +22,12 @@ export const rentalApi = createApi({
                 email,
                 phone
               )
+            ),
+            warehouse_categories(
+              id,
+              name,
+              level,
+              parent_id
             )
           `,
           )
@@ -78,6 +84,12 @@ export const rentalApi = createApi({
                 id,
                 name
               )
+            ),
+            warehouse_categories(
+              id,
+              name,
+              level,
+              parent_id
             )
           `,
           )
