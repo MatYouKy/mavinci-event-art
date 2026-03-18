@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-assign-module-variable */
 'use client';
 
 import Link from 'next/link';
@@ -199,7 +200,7 @@ export default function CRMDashboard({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-7xl mx-auto">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-light text-[#e5e4e2]">Witaj w systemie CRM</h2>

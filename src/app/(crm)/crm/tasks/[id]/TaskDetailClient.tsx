@@ -795,7 +795,7 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
   }
 
   return (
-    <div className="bg-[#0a0d1a]">
+    <div className="bg-[#0a0d1a] max-w-7xl mx-auto">
       {/* Header - Sticky */}
       <div className="sticky top-0 z-10 border-b border-[#d3bb73]/10 bg-[#0f1119]">
         <div className={`flex items-center gap-2 ${isMobile ? 'p-2' : 'p-4'}`}>

@@ -399,7 +399,7 @@ export default function CalendarMain({
 
   if (isMobile) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6 max-w-7xl mx-auto">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-light text-[#e5e4e2]">Kalendarz</h1>
           <div className="flex items-center gap-2">
@@ -464,7 +464,7 @@ export default function CalendarMain({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-7xl mx-auto">
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <div className="flex items-center gap-4">
           <button
