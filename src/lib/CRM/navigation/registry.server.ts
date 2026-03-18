@@ -87,6 +87,32 @@ export const allNavigation: NavigationItemDTO[] = [
     iconKey: 'offers',
     module: 'offers',
     permissions: ['offers_view'],
+    children: [
+      {
+        key: 'offers',
+        name: 'Oferty',
+        href: '/crm/offers',
+        iconKey: 'fileText',
+        module: 'offers',
+        permissions: ['offers_view'],
+      },
+      {
+        key: 'offers',
+        name: 'Produkty',
+        href: '/crm/offers?tab=catalog',
+        iconKey: 'package',
+        module: 'offers',
+        permissions: ['offers_view'],
+      },
+      {
+        key: 'offers',
+        name: 'Szablony',
+        href: '/crm/offers?tab=templates',
+        iconKey: 'fileType',
+        module: 'offers',
+        permissions: ['offers_view'],
+      },
+    ],
   },
   {
     key: 'contacts',

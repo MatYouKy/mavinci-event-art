@@ -2,16 +2,34 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Plus, FileText, Search, DollarSign, Calendar, Building2, User, Package, FileType, CreditCard as Edit, Trash2, Eye, Grid3x3, List, Settings, X, Upload, BookOpen } from 'lucide-react';
+import {
+  Plus,
+  FileText,
+  Search,
+  DollarSign,
+  Calendar,
+  Building2,
+  User,
+  Package,
+  FileType,
+  CreditCard as Edit,
+  Trash2,
+  Eye,
+  Grid3x3,
+  List,
+  Settings,
+  X,
+  Upload,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import TechnicalBrochureEditor from './TechnicalBrochureEditor';
 import { OffersListView, OffersTableView, OffersGridView } from './OffersViews';
 import OfferWizard from '@/app/(crm)/crm/offers/[id]/components/OfferWizzard/OfferWizard';
 import OfferPageTemplatesEditor from '@/components/crm/OfferPageTemplatesEditor';
 
-type Tab = 'offers' | 'catalog' | 'templates' | 'brochure' | 'pages';
+type Tab = 'offers' | 'catalog' | 'templates';
+type TemplatesSubTab = 'offer-templates' | 'page-templates';
 
 interface Offer {
   client: any;
@@ -100,6 +118,7 @@ export function OfferPage({
   const { showSnackbar } = useSnackbar();
 
   const [activeTab, setActiveTab] = useState<Tab>((searchParams.get('tab') as Tab) || 'offers');
+  const [templatesSubTab, setTemplatesSubTab] = useState<TemplatesSubTab>('offer-templates');
   const [loading, setLoading] = useState(false);
 
   const [filteredOffers, setFilteredOffers] = useState<Offer[]>([]);
@@ -126,14 +145,7 @@ export function OfferPage({
 
   useEffect(() => {
     const tab = searchParams.get('tab') as Tab;
-    if (
-      tab &&
-      (tab === 'offers' ||
-        tab === 'catalog' ||
-        tab === 'templates' ||
-        tab === 'pages' ||
-        tab === 'brochure')
-    ) {
+    if (tab && (tab === 'offers' || tab === 'catalog' || tab === 'templates')) {
       setActiveTab(tab);
     }
   }, [searchParams]);
@@ -311,13 +323,6 @@ export function OfferPage({
             Zarządzaj ofertami, katalogiem produktów i szablonami
           </p>
         </div>
-        <button
-          onClick={() => router.push('/technical')}
-          className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-[#d3bb73] to-[#c1a85f] px-4 py-2 font-medium text-[#1c1f33] transition-all duration-300 hover:scale-105 hover:from-[#c1a85f] hover:to-[#d3bb73]"
-        >
-          <BookOpen className="h-5 w-5" />
-          <span>Broszura techniczna</span>
-        </button>
       </div>
 
       {/* Tabs */}
@@ -348,7 +353,7 @@ export function OfferPage({
         >
           <div className="flex items-center space-x-2">
             <Package className="h-5 w-5" />
-            <span>Katalog produktów</span>
+            <span>Produkty</span>
             <span className="ml-2 rounded-full bg-[#1c1f33] px-2 py-0.5 text-xs text-[#e5e4e2]/60">
               {products.length}
             </span>
@@ -372,36 +377,6 @@ export function OfferPage({
             </span>
           </div>
           {activeTab === 'templates' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
-          )}
-        </button>
-
-        <button
-          onClick={() => handleTabChange('brochure')}
-          className={`relative px-6 py-3 font-medium transition-colors ${
-            activeTab === 'brochure' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
-          }`}
-        >
-          <div className="flex items-center space-x-2">
-            <BookOpen className="h-5 w-5" />
-            <span>Technika Estradowa</span>
-          </div>
-          {activeTab === 'brochure' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
-          )}
-        </button>
-
-        <button
-          onClick={() => handleTabChange('pages')}
-          className={`relative px-6 py-3 font-medium transition-colors ${
-            activeTab === 'pages' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
-          }`}
-        >
-          <div className="flex items-center space-x-2">
-            <FileText className="h-5 w-5" />
-            <span>Szablony stron</span>
-          </div>
-          {activeTab === 'pages' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
           )}
         </button>
@@ -440,32 +415,53 @@ export function OfferPage({
       )}
 
       {activeTab === 'templates' && (
-        <TemplatesTab
-          templates={templates}
-          onNew={() => {
-            setEditingTemplate(null);
-            setShowTemplateModal(true);
-          }}
-          onEdit={(template) => {
-            setEditingTemplate(template);
-            setShowTemplateModal(true);
-          }}
-        />
-      )}
-
-      {activeTab === 'brochure' && (
-        <div className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]/50">
-          <div className="p-6">
-            <TechnicalBrochureEditor employee={employee} />
+        <div className="space-y-6">
+          {/* Sub-tabs dla Szablonów */}
+          <div className="flex space-x-1 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-1">
+            <button
+              onClick={() => setTemplatesSubTab('offer-templates')}
+              className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                templatesSubTab === 'offer-templates'
+                  ? 'bg-[#d3bb73] text-[#1c1f33]'
+                  : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+              }`}
+            >
+              Szablony ofert
+            </button>
+            <button
+              onClick={() => setTemplatesSubTab('page-templates')}
+              className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                templatesSubTab === 'page-templates'
+                  ? 'bg-[#d3bb73] text-[#1c1f33]'
+                  : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+              }`}
+            >
+              Szablony stron
+            </button>
           </div>
-        </div>
-      )}
 
-      {activeTab === 'pages' && (
-        <div className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]/50">
-          <div className="p-6">
-            <OfferPageTemplatesEditor />
-          </div>
+          {/* Treść sub-tabów */}
+          {templatesSubTab === 'offer-templates' && (
+            <TemplatesTab
+              templates={templates}
+              onNew={() => {
+                setEditingTemplate(null);
+                setShowTemplateModal(true);
+              }}
+              onEdit={(template) => {
+                setEditingTemplate(template);
+                setShowTemplateModal(true);
+              }}
+            />
+          )}
+
+          {templatesSubTab === 'page-templates' && (
+            <div className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]/50">
+              <div className="p-6">
+                <OfferPageTemplatesEditor />
+              </div>
+            </div>
+          )}
         </div>
       )}
 
