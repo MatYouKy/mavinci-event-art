@@ -105,6 +105,26 @@ export const rentalApi = createApi({
       },
       providesTags: [{ type: 'RentalEquipment', id: 'LIST' }],
     }),
+
+    deleteRentalEquipment: builder.mutation<void, string>({
+      async queryFn(id) {
+        const { error } = await supabase
+          .from('subcontractor_rental_equipment')
+          .delete()
+          .eq('id', id);
+
+        if (error) {
+          console.error('deleteRentalEquipment - error:', error);
+          return { error: error as any };
+        }
+
+        return { data: undefined };
+      },
+      invalidatesTags: (_res, _err, id) => [
+        { type: 'RentalEquipment', id },
+        { type: 'RentalEquipment', id: 'LIST' },
+      ],
+    }),
   }),
 });
 
@@ -112,4 +132,5 @@ export const {
   useGetRentalEquipmentDetailsQuery,
   useUpdateRentalEquipmentMutation,
   useGetAllRentalEquipmentQuery,
+  useDeleteRentalEquipmentMutation,
 } = rentalApi;

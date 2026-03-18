@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, Package, CreditCard as Edit, Save, X } from 'lucide-react';
+import { ArrowLeft, Package, CreditCard as Edit, Save, X, Trash2 } from 'lucide-react';
 
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
@@ -12,6 +12,7 @@ import RentalEquipmentGallery from '@/components/crm/RentalEquipmentGallery';
 import {
   useGetRentalEquipmentDetailsQuery,
   useUpdateRentalEquipmentMutation,
+  useDeleteRentalEquipmentMutation,
 } from '../../api/rentalApi';
 import { useGetEquipmentCategoriesQuery } from '@/app/(crm)/crm/equipment/store/equipmentApi';
 
@@ -38,6 +39,7 @@ export default function RentalEquipmentDetailPage() {
   const { data: warehouseCategories = [] } = useGetEquipmentCategoriesQuery();
 
   const [updateEquipmentMutation] = useUpdateRentalEquipmentMutation();
+  const [deleteEquipmentMutation] = useDeleteRentalEquipmentMutation();
 
   const canEdit = employee?.permissions?.includes('equipment_manage');
 
@@ -96,6 +98,20 @@ export default function RentalEquipmentDetailPage() {
 
   const handleChange = (field: string, value: any) => {
     setEditForm((prev: any) => ({ ...prev, [field]: value }));
+  };
+
+  const handleDelete = async () => {
+    if (!confirm(`Czy na pewno chcesz usunąć "${equipment.name}"? Ta operacja jest nieodwracalna.`)) {
+      return;
+    }
+
+    try {
+      await deleteEquipmentMutation(equipmentId).unwrap();
+      showSnackbar('Sprzęt został usunięty', 'success');
+      router.push('/crm/equipment/rental');
+    } catch (err: any) {
+      showSnackbar(err?.message || 'Błąd podczas usuwania', 'error');
+    }
   };
 
   if (employeeLoading || eqLoading) {
@@ -160,13 +176,22 @@ export default function RentalEquipmentDetailPage() {
                   </button>
                 </>
               ) : (
-                <button
-                  onClick={handleEdit}
-                  className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#0f1119] hover:bg-[#c4a859]"
-                >
-                  <Edit className="h-4 w-4" />
-                  Edytuj
-                </button>
+                <>
+                  <button
+                    onClick={handleDelete}
+                    className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-900/20 px-4 py-2 text-red-400 hover:bg-red-900/30"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Usuń
+                  </button>
+                  <button
+                    onClick={handleEdit}
+                    className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#0f1119] hover:bg-[#c4a859]"
+                  >
+                    <Edit className="h-4 w-4" />
+                    Edytuj
+                  </button>
+                </>
               )}
             </div>
           )}

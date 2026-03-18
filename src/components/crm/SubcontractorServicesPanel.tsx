@@ -321,6 +321,39 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
     }
   };
 
+  const handleDeleteCatalogItem = async (itemId: string, itemName: string) => {
+    if (!activeTab) return;
+
+    if (!confirm(`Czy na pewno chcesz usunąć "${itemName}"? Ta operacja jest nieodwracalna.`)) {
+      return;
+    }
+
+    try {
+      let tableName = '';
+      switch (activeTab) {
+        case 'services':
+          tableName = 'subcontractor_service_catalog';
+          break;
+        case 'rental':
+          tableName = 'subcontractor_rental_equipment';
+          break;
+        case 'transport':
+          tableName = 'subcontractor_transport_catalog';
+          break;
+      }
+
+      const { error } = await supabase.from(tableName).delete().eq('id', itemId);
+
+      if (error) throw error;
+
+      showSnackbar('Usunięto pozycję z katalogu', 'success');
+      fetchCatalog(activeTab);
+    } catch (error: any) {
+      console.error('Error deleting catalog item:', error);
+      showSnackbar(error.message || 'Błąd podczas usuwania pozycji', 'error');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -516,35 +549,49 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                   getCatalogItems().map((item) => (
                     <div
                       key={item.id}
-                      onClick={() => handleViewInCatalog(item)}
-                      className="cursor-pointer rounded-lg border border-gray-700 bg-[#1a1d2e] p-4 transition-colors hover:border-[#d3bb73]"
+                      className="relative rounded-lg border border-gray-700 bg-[#1a1d2e] p-4 transition-colors hover:border-[#d3bb73]"
                     >
-                      {item.thumbnail_url && (
-                        <img
-                          src={item.thumbnail_url}
-                          alt={item.name}
-                          className="mb-3 h-32 w-full rounded-lg object-cover"
-                        />
-                      )}
-                      <h4 className="mb-1 font-medium text-white">{item.name}</h4>
-                      {item.description && (
-                        <p className="mb-2 line-clamp-2 text-sm text-gray-400">{item.description}</p>
-                      )}
-                      {item.category && (
-                        <span className="inline-block rounded-full bg-[#d3bb73]/10 px-2 py-1 text-xs text-[#d3bb73]">
-                          {item.category}
-                        </span>
-                      )}
-                      <div className="mt-3 flex items-center justify-between border-t border-gray-700 pt-3 text-sm">
-                        {item.unit_price && (
-                          <span className="text-green-400">{item.unit_price} zł / {item.unit}</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteCatalogItem(item.id, item.name);
+                        }}
+                        className="absolute right-2 top-2 z-10 rounded-lg border border-red-500/20 bg-red-900/30 p-2 text-red-400 transition-colors hover:bg-red-900/50"
+                        title="Usuń pozycję"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                      <div
+                        onClick={() => handleViewInCatalog(item)}
+                        className="cursor-pointer"
+                      >
+                        {item.thumbnail_url && (
+                          <img
+                            src={item.thumbnail_url}
+                            alt={item.name}
+                            className="mb-3 h-32 w-full rounded-lg object-cover"
+                          />
                         )}
-                        {item.daily_rental_price && (
-                          <span className="text-green-400">{item.daily_rental_price} zł / dzień</span>
+                        <h4 className="mb-1 font-medium text-white">{item.name}</h4>
+                        {item.description && (
+                          <p className="mb-2 line-clamp-2 text-sm text-gray-400">{item.description}</p>
                         )}
-                        {!item.is_active && (
-                          <span className="text-xs text-red-400">Nieaktywny</span>
+                        {item.category && (
+                          <span className="inline-block rounded-full bg-[#d3bb73]/10 px-2 py-1 text-xs text-[#d3bb73]">
+                            {item.category}
+                          </span>
                         )}
+                        <div className="mt-3 flex items-center justify-between border-t border-gray-700 pt-3 text-sm">
+                          {item.unit_price && (
+                            <span className="text-green-400">{item.unit_price} zł / {item.unit}</span>
+                          )}
+                          {item.daily_rental_price && (
+                            <span className="text-green-400">{item.daily_rental_price} zł / dzień</span>
+                          )}
+                          {!item.is_active && (
+                            <span className="text-xs text-red-400">Nieaktywny</span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))

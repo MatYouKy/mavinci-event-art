@@ -2,9 +2,9 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { PackageOpen, Search, Building2, DollarSign, Package, Eye } from 'lucide-react';
+import { PackageOpen, Search, Building2, DollarSign, Package, Eye, Trash2 } from 'lucide-react';
 
-import { useGetAllRentalEquipmentQuery } from '../../subcontractors/api/rentalApi';
+import { useGetAllRentalEquipmentQuery, useDeleteRentalEquipmentMutation } from '../../subcontractors/api/rentalApi';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
@@ -25,7 +25,10 @@ export default function RentalEquipmentListPage() {
     refetchOnMountOrArgChange: true,
   });
 
+  const [deleteEquipmentMutation] = useDeleteRentalEquipmentMutation();
+
   const canView = employee?.permissions?.includes('equipment_view');
+  const canManage = employee?.permissions?.includes('equipment_manage');
 
   const filteredEquipment = rentalEquipment.filter((item) => {
     const matchesSearch =
@@ -42,6 +45,22 @@ export default function RentalEquipmentListPage() {
   const uniqueCategories = Array.from(
     new Set(rentalEquipment.map((item) => item.category).filter(Boolean)),
   );
+
+  const handleDelete = async (e: React.MouseEvent, item: any) => {
+    e.stopPropagation();
+
+    if (!confirm(`Czy na pewno chcesz usunąć "${item.name}"? Ta operacja jest nieodwracalna.`)) {
+      return;
+    }
+
+    try {
+      await deleteEquipmentMutation(item.id).unwrap();
+      showSnackbar('Sprzęt został usunięty', 'success');
+      refetch();
+    } catch (err: any) {
+      showSnackbar(err?.message || 'Błąd podczas usuwania', 'error');
+    }
+  };
 
   if (employeeLoading || equipmentLoading) {
     return (
@@ -179,10 +198,20 @@ export default function RentalEquipmentListPage() {
                   </div>
                 </div>
 
-                <button className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20">
-                  <Eye className="h-4 w-4" />
-                  Zobacz szczegóły
-                </button>
+                <div className="mt-4 flex gap-2">
+                  <button className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20">
+                    <Eye className="h-4 w-4" />
+                    Zobacz szczegóły
+                  </button>
+                  {canManage && (
+                    <button
+                      onClick={(e) => handleDelete(e, item)}
+                      className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-900/20 px-3 py-2 text-sm text-red-400 transition-colors hover:bg-red-900/30"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
