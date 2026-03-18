@@ -242,7 +242,8 @@ export const eventsApi = createApi({
         try {
           const { data, error } = await supabase
             .from('event_equipment')
-            .select(`
+            .select(
+              `
               id,
               equipment_id,
               cable_id,
@@ -257,9 +258,10 @@ export const eventsApi = createApi({
                   quantity
                 )
               )
-            `)
+            `,
+            )
             .eq('event_id', eventId);
-    
+
           if (error) {
             return {
               error: {
@@ -268,7 +270,7 @@ export const eventsApi = createApi({
               } as unknown as EventsApiError,
             };
           }
-    
+
           return { data: (data || []) as any[] };
         } catch (error: any) {
           return {
@@ -296,6 +298,7 @@ export const eventsApi = createApi({
                 model,
                 cable_specs,
                 thumbnail_url,
+                warehouse_category_id,
                 category:warehouse_categories(id, name, parent_id)
               ),
               kit:equipment_kits(
@@ -309,6 +312,7 @@ export const eventsApi = createApi({
                     model,
                     cable_specs,
                     thumbnail_url,
+                    warehouse_category_id,
                     category:warehouse_categories(id, name, parent_id)
                   )
                 )
@@ -449,12 +453,15 @@ export const eventsApi = createApi({
           }
 
           if (!data || data.length === 0) {
-            console.warn('[removeEventEquipment] No rows deleted - possibly blocked by RLS or item does not exist');
+            console.warn(
+              '[removeEventEquipment] No rows deleted - possibly blocked by RLS or item does not exist',
+            );
             return {
               error: {
                 status: 'CUSTOM_ERROR',
                 data: {
-                  error: 'Nie udało się usunąć sprzętu. Prawdopodobnie brak uprawnień lub wpis nie istnieje.',
+                  error:
+                    'Nie udało się usunąć sprzętu. Prawdopodobnie brak uprawnień lub wpis nie istnieje.',
                 },
               } as unknown as EventsApiError,
             };
@@ -602,73 +609,72 @@ export const eventsApi = createApi({
       async queryFn({ offerId, eventId }) {
         try {
           console.log('[DELETE OFFER] Attempting to delete offer:', offerId, 'for event:', eventId);
-    
+
           const {
             data: { user },
             error: userError,
           } = await supabase.auth.getUser();
-    
+
           console.log('[DELETE OFFER] auth user:', user);
           console.log('[DELETE OFFER] auth user error:', userError);
-    
+
           const { data: employeeMatch, error: employeeMatchError } = await supabase
             .from('employees')
             .select('id, auth_user_id, role, permissions')
             .eq('auth_user_id', user?.id)
             .maybeSingle();
-    
+
           console.log('[DELETE OFFER] employee by auth_user_id:', employeeMatch);
           console.log('[DELETE OFFER] employee by auth_user_id error:', employeeMatchError);
-    
+
           const { data: offerBefore, error: offerBeforeError } = await supabase
             .from('offers')
             .select('id, status, created_by')
             .eq('id', offerId)
             .maybeSingle();
-    
+
           console.log('[DELETE OFFER] offer before delete:', offerBefore);
           console.log('[DELETE OFFER] offer before delete error:', offerBeforeError);
-    
+
           const { error } = await supabase.from('offers').delete().eq('id', offerId);
-    
+
           console.log('[DELETE OFFER] delete error:', error);
-    
+
           if (error) {
             console.error('[DELETE OFFER] Supabase delete error:', error);
             throw error;
           }
-    
+
           const { data: existing, error: existingError } = await supabase
             .from('offers')
             .select('id')
             .eq('id', offerId)
             .maybeSingle();
-    
+
           console.log('[DELETE OFFER] existing after delete:', existing);
           console.log('[DELETE OFFER] existing after delete error:', existingError);
-    
+
           if (existingError) {
             console.error('[DELETE OFFER] Verification error:', existingError);
             throw existingError;
           }
-    
+
           if (existing) {
-            throw new Error('Oferta nie została usunięta. Najpewniej blokuje to policy RLS albo trigger bazy danych.');
+            throw new Error(
+              'Oferta nie została usunięta. Najpewniej blokuje to policy RLS albo trigger bazy danych.',
+            );
           }
-    
+
           console.log('[DELETE OFFER] Successfully deleted offer:', offerId);
           return { data: { success: true } };
         } catch (error: any) {
           console.error('[DELETE OFFER] Final error:', error);
-    
+
           return {
             error: {
               status: 'FETCH_ERROR',
               error:
-                error?.message ||
-                error?.error ||
-                error?.details ||
-                'Błąd podczas usuwania oferty',
+                error?.message || error?.error || error?.details || 'Błąd podczas usuwania oferty',
             } as unknown as EventsApiError,
           };
         }
@@ -773,7 +779,8 @@ export const eventsApi = createApi({
         try {
           const { data, error } = await supabase
             .from('event_audit_log')
-            .select(`
+            .select(
+              `
               *,
               employee:employees!event_audit_log_employee_id_fkey(
                 id,
@@ -785,7 +792,8 @@ export const eventsApi = createApi({
                 occupation,
                 email
               )
-            `)
+            `,
+            )
             .eq('event_id', eventId)
             .order('created_at', { ascending: false })
             .limit(100);
@@ -866,28 +874,26 @@ export const eventsApi = createApi({
             .select('*')
             .eq('event_id', eventId)
             .order('created_at', { ascending: true });
-    
+
           if (error) throw error;
-    
+
           const rows = data || [];
-    
+
           // ⬇️ MUSI BYĆ ID
           const { data: vehicles, error: vehiclesError } = await supabase
             .from('vehicles')
             .select('id, brand, model, name, thumb_url, registration_number')
             .in('id', rows.map((v: any) => v.vehicle_id).filter(Boolean));
-    
+
           if (vehiclesError) throw vehiclesError;
-    
-          const vehiclesMap = new Map(
-            (vehicles || []).map((v: any) => [v.id, v])
-          );
-    
+
+          const vehiclesMap = new Map((vehicles || []).map((v: any) => [v.id, v]));
+
           const enrichedData = rows.map((v: any) => ({
             ...v,
-            vehicle: v.vehicle_id ? vehiclesMap.get(v.vehicle_id) ?? null : null,
+            vehicle: v.vehicle_id ? (vehiclesMap.get(v.vehicle_id) ?? null) : null,
           }));
-    
+
           return { data: enrichedData };
         } catch (error: any) {
           return {
@@ -895,9 +901,7 @@ export const eventsApi = createApi({
           };
         }
       },
-      providesTags: (result, error, eventId) => [
-        { type: 'EventVehicles', id: eventId },
-      ],
+      providesTags: (result, error, eventId) => [{ type: 'EventVehicles', id: eventId }],
     }),
 
     // ============ SUBCONTRACTORS ENDPOINTS ============
