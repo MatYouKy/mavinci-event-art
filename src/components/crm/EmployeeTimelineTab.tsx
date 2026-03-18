@@ -13,7 +13,7 @@ interface Absence {
   start_date: string;
   end_date: string;
   all_day: boolean;
-  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  approval_status: 'pending' | 'approved' | 'rejected' | 'cancelled';
   notes: string | null;
   approved_by: string | null;
   approved_at: string | null;
@@ -244,8 +244,8 @@ const EmployeeTimelineTab: React.FC<EmployeeTimelineTabProps> = ({ employeeId, c
         <div className="space-y-4">
           {absences.map((absence) => {
             const duration = calculateDuration(absence.start_date, absence.end_date);
-            const canApprove = isAdmin && absence.status === 'pending';
-            const canDelete = (isOwnProfile && absence.status === 'pending') || isAdmin;
+            const canApprove = isAdmin && absence.approval_status === 'pending';
+            const canDelete = (isOwnProfile && absence.approval_status === 'pending') || isAdmin;
 
             return (
               <div
@@ -263,7 +263,7 @@ const EmployeeTimelineTab: React.FC<EmployeeTimelineTabProps> = ({ employeeId, c
                         <h4 className="text-lg font-medium text-[#e5e4e2]">
                           {getAbsenceTypeLabel(absence.absence_type)}
                         </h4>
-                        {getStatusBadge(absence.status)}
+                        {getStatusBadge(absence.approval_status)}
                       </div>
                       <div className="space-y-2 text-sm text-[#e5e4e2]/70">
                         <div className="flex items-center gap-2">
@@ -368,7 +368,7 @@ const AddAbsenceModal: React.FC<AddAbsenceModalProps> = ({ employeeId, onClose, 
         end_date: formData.end_date,
         all_day: formData.all_day,
         notes: formData.notes || null,
-        status: 'pending',
+        approval_status: 'pending',
         created_by: currentEmployee?.id,
       });
 
