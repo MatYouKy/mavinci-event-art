@@ -23,11 +23,13 @@ export default function EmployeesPageClient({ employees, viewMode }: { employees
   const [showAddModal, setShowAddModal] = useState(false);
   const [resetPasswordEmployee, setResetPasswordEmployee] = useState<IEmployee | null>(null);
 
-  const { canCreateInModule, employee: currentEmployee } = useCurrentEmployee();
+  const { canCreateInModule, canViewModule, employee: currentEmployee } = useCurrentEmployee();
   const canAddEmployee = canCreateInModule('employees');
   const isAdmin = currentEmployee?.access_level === 'admin' ||
                   currentEmployee?.permissions?.includes('admin') ||
                   currentEmployee?.permissions?.includes('employees_manage');
+
+  const canViewEmployees = canViewModule('employees');
 
   const { setViewMode } = useUserPreferences();
   const [localViewMode, setLocalViewMode] = useState<ViewMode>(viewMode);
@@ -187,7 +189,7 @@ export default function EmployeesPageClient({ employees, viewMode }: { employees
         <>
           {localViewMode === 'grid' && (
             <EmployeeCardsView
-            
+              canViewEmployees={canViewEmployees}
               employees={filteredEmployees}
               getRoleLabel={getRoleLabel}
               getAccessLevelLabel={getAccessLevelLabel}
@@ -199,6 +201,7 @@ export default function EmployeesPageClient({ employees, viewMode }: { employees
           )}
           {localViewMode === 'list' && (
             <EmployeeListView
+              canViewEmployees={canViewEmployees}
               employees={filteredEmployees}
               getRoleLabel={getRoleLabel}
               getAccessLevelLabel={getAccessLevelLabel}
@@ -210,6 +213,7 @@ export default function EmployeesPageClient({ employees, viewMode }: { employees
           )}
           {localViewMode === 'table' && (
             <EmployeeDetailedView
+              canViewEmployees={canViewEmployees}
               employees={filteredEmployees}
               getRoleLabel={getRoleLabel}
               getAccessLevelLabel={getAccessLevelLabel}

@@ -12,6 +12,7 @@ interface EmployeeViewProps {
   getAccessLevelLabel: (level: string) => string;
   getAccessLevelColor: (level: string) => string;
   canAddEmployee: boolean;
+  canViewEmployees: boolean;
   isAdmin?: boolean;
   onResetPassword?: (employee: IEmployee) => void;
 }
@@ -22,10 +23,14 @@ export function EmployeeCardsView({
   getAccessLevelLabel,
   getAccessLevelColor,
   isAdmin,
+  canViewEmployees,
   onResetPassword,
 }: EmployeeViewProps) {
   const router = useRouter();
   const { isOnline } = useAuth();
+  if (!canViewEmployees) {
+    return <div className="text-center text-sm text-red-400">Nie masz uprawnień do przeglądania pracowników</div>;
+  }
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       {employees.map((employee) => (

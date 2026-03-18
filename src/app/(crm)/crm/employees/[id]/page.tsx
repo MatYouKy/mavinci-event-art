@@ -155,8 +155,8 @@ export default function EmployeeDetailPage() {
   const {
     employee: currentEmployee,
     isAdmin,
-    canManagePermissions,
     canManageModule,
+    canViewModule,
     loading: currentUserLoading,
   } = useCurrentEmployee();
 
@@ -648,8 +648,8 @@ export default function EmployeeDetailPage() {
           ...(currentEmployee?.id === employeeId
             ? [{ id: 'tasks', label: 'Zadania', icon: CheckSquare }]
             : []),
-          { id: 'events', label: 'Wydarzenia', icon: Calendar },
-          { id: 'timeline', label: 'Oś czasu', icon: Clock },
+          ...(canViewOwnProfile ? [{ id: 'events', label: 'Wydarzenia', icon: Calendar }] : []),
+          ...(canViewOwnProfile ? [{ id: 'timeline', label: 'Oś czasu', icon: Clock }] : []),
         ].map((tab) => (
           <button
             key={tab.id}
@@ -1298,7 +1298,7 @@ export default function EmployeeDetailPage() {
         </div>
       )}
 
-      {activeTab === 'timeline' && (
+      {activeTab === 'timeline' && canViewOwnProfile && (
         <EmployeeTimelineTab employeeId={employeeId} canEdit={canEdit} />
       )}
 
