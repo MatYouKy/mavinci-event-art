@@ -2,23 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  Plus,
-  Search,
-  Building2,
-  User,
-  Mail,
-  Phone,
-  MapPin,
-  Users,
-  Briefcase,
-  UserCircle,
-  LayoutGrid,
-  List,
-  Star,
-  Tag,
-  UserCheck,
-} from 'lucide-react';
+import { Plus, Search, Building2, User, Mail, Phone, MapPin, Users, Briefcase, CircleUser as UserCircle, LayoutGrid, List, Star, Tag, UserCheck } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
@@ -45,11 +29,11 @@ export default function ContactsPage() {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
   const dispatch = useAppDispatch();
-  const { list: contacts, loading, create, updateById, deleteById } = useClients('all');
+  const [activeTab, setActiveTab] = useState<TabFilter>('all');
+  const { list: contacts, loading, create, updateById, deleteById } = useClients(activeTab);
 
   const [searchTerm, setSearchTerm] = useState('');
   // const [contacts, setLocalContacts] = useState<UnifiedContact[]>([]);
-  const [activeTab, setActiveTab] = useState<TabFilter>('all');
   const [typeFilter, setTypeFilter] = useState<ContactTypeFilter>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
 

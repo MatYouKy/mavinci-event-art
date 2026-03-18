@@ -7,7 +7,7 @@ import { ArrowLeft, Package, CreditCard as Edit, Save, X } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
-import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
+import RentalEquipmentGallery from '@/components/crm/RentalEquipmentGallery';
 
 import {
   useGetRentalEquipmentDetailsQuery,
@@ -36,7 +36,7 @@ export default function RentalEquipmentDetailPage() {
 
   const [updateEquipmentMutation] = useUpdateRentalEquipmentMutation();
 
-  const canEdit = employee?.permissions?.includes('equipment_manage') || employee?.is_admin;
+  const canEdit = employee?.permissions?.includes('equipment_manage');
 
   const handleEdit = () => {
     setEditForm({ ...equipment });
@@ -66,6 +66,8 @@ export default function RentalEquipmentDetailPage() {
           specifications: editForm.specifications,
           notes: editForm.notes,
           is_active: editForm.is_active,
+          images: editForm.images || [],
+          thumbnail_url: editForm.images?.[0]?.url || editForm.thumbnail_url,
         },
       }).unwrap();
 
@@ -75,6 +77,16 @@ export default function RentalEquipmentDetailPage() {
       refetchEquipment();
     } catch (err: any) {
       showSnackbar(err?.message || 'Błąd podczas zapisywania', 'error');
+    }
+  };
+
+  const handleImagesChange = (newImages: any[]) => {
+    if (isEditing) {
+      setEditForm((prev: any) => ({
+        ...prev,
+        images: newImages,
+        thumbnail_url: newImages.find((img) => img.isPrimary)?.url || newImages[0]?.url || null,
+      }));
     }
   };
 
@@ -110,39 +122,51 @@ export default function RentalEquipmentDetailPage() {
   return (
     <div className="min-h-screen bg-[#0a0d1a] p-6">
       <div className="mx-auto max-w-7xl">
-        <ResponsiveActionBar
-          title={
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => router.back()}
-                className="rounded-lg p-2 transition-colors hover:bg-[#d3bb73]/10"
-              >
-                <ArrowLeft className="h-5 w-5 text-[#e5e4e2]" />
-              </button>
-              <Package className="h-6 w-6 text-[#d3bb73]" />
-              <div>
-                <div className="text-sm text-[#e5e4e2]/60">Sprzęt wynajmu od podwykonawcy</div>
-                <h1 className="text-xl font-semibold text-[#e5e4e2]">{displayData.name}</h1>
-              </div>
+        <div className="mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.back()}
+              className="rounded-lg p-2 transition-colors hover:bg-[#d3bb73]/10"
+            >
+              <ArrowLeft className="h-5 w-5 text-[#e5e4e2]" />
+            </button>
+            <Package className="h-6 w-6 text-[#d3bb73]" />
+            <div>
+              <div className="text-sm text-[#e5e4e2]/60">Sprzęt wynajmu od podwykonawcy</div>
+              <h1 className="text-xl font-semibold text-[#e5e4e2]">{displayData.name}</h1>
             </div>
-          }
-          actions={[
-            {
-              label: isEditing ? 'Anuluj' : 'Edytuj',
-              onClick: isEditing ? handleCancelEdit : handleEdit,
-              icon: isEditing ? <X className="h-4 w-4" /> : <Edit className="h-4 w-4" />,
-              variant: isEditing ? 'secondary' : 'primary',
-              show: canEdit,
-            },
-            {
-              label: 'Zapisz',
-              onClick: handleSave,
-              icon: <Save className="h-4 w-4" />,
-              variant: 'primary',
-              show: isEditing,
-            },
-          ]}
-        />
+          </div>
+          {canEdit && (
+            <div className="flex gap-2">
+              {isEditing ? (
+                <>
+                  <button
+                    onClick={handleCancelEdit}
+                    className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] hover:bg-[#d3bb73]/10"
+                  >
+                    <X className="h-4 w-4" />
+                    Anuluj
+                  </button>
+                  <button
+                    onClick={handleSave}
+                    className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#0f1119] hover:bg-[#c4a859]"
+                  >
+                    <Save className="h-4 w-4" />
+                    Zapisz
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={handleEdit}
+                  className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#0f1119] hover:bg-[#c4a859]"
+                >
+                  <Edit className="h-4 w-4" />
+                  Edytuj
+                </button>
+              )}
+            </div>
+          )}
+        </div>
 
         <div className="mt-6 space-y-6">
           {/* Podwykonawca */}
@@ -351,6 +375,14 @@ export default function RentalEquipmentDetailPage() {
               </div>
             </div>
           )}
+
+          {/* Galeria zdjęć */}
+          <RentalEquipmentGallery
+            equipmentId={equipmentId}
+            images={displayData.images || []}
+            canManage={canEdit && isEditing}
+            onImagesChange={handleImagesChange}
+          />
 
           {/* Notatki */}
           {(displayData.notes || isEditing) && (
