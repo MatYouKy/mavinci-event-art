@@ -1533,6 +1533,11 @@ export const EventEquipmentTab: React.FC<{
           currentRowForRental?.kit?.name ||
           currentRowForRental?.item_name
         }
+        warehouseCategoryId={
+          currentRowForRental?.equipment?.warehouse_category_id ||
+          currentRowForRental?.equipment_items?.warehouse_category_id ||
+          null
+        }
       />
     </div>
   );
