@@ -98,13 +98,10 @@ export async function submitOfferWizard(params: {
     if (subsError) throw subsError;
   }
 
-  // Zapisz rental equipment bezpośrednio w offer_product_equipment dla każdego produktu
+  // Zamień konfliktowy sprzęt na rental equipment
   const rentalEquipment = getRentalEquipmentFromSelectedAlt(combinedSubstitutions);
 
   if (rentalEquipment.length > 0) {
-    // Dla każdego produktu w ofercie, dodaj rental equipment
-    const rentalEquipmentRecords = [];
-
     for (const rental of rentalEquipment) {
       // Znajdź wszystkie produkty w tej ofercie
       const { data: offerItemsWithProducts } = await supabase
@@ -115,27 +112,59 @@ export async function submitOfferWizard(params: {
 
       if (offerItemsWithProducts) {
         for (const offerItem of offerItemsWithProducts) {
-          // Dla każdego produktu, dodaj rental equipment
-          rentalEquipmentRecords.push({
-            product_id: offerItem.product_id,
-            rental_equipment_id: rental.rentalEquipmentId,
-            subcontractor_id: rental.subcontractorId,
-            quantity: rental.quantity,
-            is_rental: true,
-            is_optional: false,
-          });
+          // Znajdź oryginalny sprzęt który ma być zastąpiony
+          const { data: existingEquipment } = await supabase
+            .from('offer_product_equipment')
+            .select('id')
+            .eq('product_id', offerItem.product_id)
+            .eq(
+              rental.originalItemType === 'item' ? 'equipment_item_id' : 'equipment_kit_id',
+              rental.originalItemId
+            )
+            .maybeSingle();
+
+          if (existingEquipment) {
+            // Dodaj rental equipment
+            const { data: rentalRecord, error: rentalError } = await supabase
+              .from('offer_product_equipment')
+              .insert({
+                product_id: offerItem.product_id,
+                rental_equipment_id: rental.rentalEquipmentId,
+                subcontractor_id: rental.subcontractorId,
+                quantity: rental.quantity,
+                is_rental: true,
+                is_optional: false,
+              })
+              .select('id')
+              .single();
+
+            if (rentalError) {
+              console.error('Error inserting rental equipment:', rentalError);
+            } else if (rentalRecord) {
+              // Oznacz oryginalny sprzęt jako zastąpiony
+              await supabase
+                .from('offer_product_equipment')
+                .update({ replaced_by_rental_id: rentalRecord.id })
+                .eq('id', existingEquipment.id);
+            }
+          } else {
+            // Jeśli nie znaleziono oryginalnego (np. już nie istnieje), po prostu dodaj rental
+            const { error: rentalError } = await supabase
+              .from('offer_product_equipment')
+              .insert({
+                product_id: offerItem.product_id,
+                rental_equipment_id: rental.rentalEquipmentId,
+                subcontractor_id: rental.subcontractorId,
+                quantity: rental.quantity,
+                is_rental: true,
+                is_optional: false,
+              });
+
+            if (rentalError) {
+              console.error('Error inserting rental equipment:', rentalError);
+            }
+          }
         }
-      }
-    }
-
-    if (rentalEquipmentRecords.length > 0) {
-      const { error: rentalError } = await supabase
-        .from('offer_product_equipment')
-        .insert(rentalEquipmentRecords);
-
-      if (rentalError) {
-        console.error('Error inserting rental equipment:', rentalError);
-        // Nie rzucamy błędu - oferta została utworzona
       }
     }
   }

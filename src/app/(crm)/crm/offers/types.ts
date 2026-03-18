@@ -97,6 +97,7 @@ export type OfferProductEquipmentRow = {
   rental_equipment_id: string | null;
   subcontractor_id: string | null;
   is_rental: boolean | null;
+  replaced_by_rental_id: string | null;
   quantity: number | null;
   is_optional: boolean | null;
   notes: string | null;

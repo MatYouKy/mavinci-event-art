@@ -245,6 +245,7 @@ export const ProductEquipmentRow = ({
               rental_equipment_id: null,
               subcontractor_id: null,
               is_rental: null,
+              replaced_by_rental_id: null,
               is_optional: kitItem.is_optional,
               notes: kitItem.notes,
               created_at: new Date().toISOString(),

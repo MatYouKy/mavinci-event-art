@@ -752,6 +752,7 @@ export const offerWizardApi = createApi({
               )
             `)
             .eq('product_id', productId)
+            .is('replaced_by_rental_id', null)
             .order('created_at', { ascending: true });
 
           if (error) return { error: toRtkError(error) };
