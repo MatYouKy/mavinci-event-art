@@ -40,17 +40,18 @@ interface EmployeesTimelineViewProps {
 }
 
 const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees }) => {
-  const [zoomLevel, setZoomLevel] = useState<ZoomLevel>('week');
-  const [prevZoomLevel, setPrevZoomLevel] = useState<ZoomLevel>('week');
+  const [zoomLevel, setZoomLevel] = useState<ZoomLevel>('month');
+  const [prevZoomLevel, setPrevZoomLevel] = useState<ZoomLevel>('month');
   const [timelineBounds, setTimelineBounds] = useState<TimelineBounds>({
     start: (() => {
       const now = new Date();
+      now.setMonth(now.getMonth() - 1); // Start 1 month ago to see past assignments
       now.setHours(0, 0, 0, 0);
       return now;
     })(),
     end: (() => {
       const end = new Date();
-      end.setDate(end.getDate() + 7);
+      end.setMonth(end.getMonth() + 6); // Show 6 months ahead
       end.setHours(23, 59, 59, 999);
       return end;
     })(),
@@ -191,7 +192,20 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
         p_end_date: timelineBounds.end.toISOString(),
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('RPC Error:', error);
+        throw error;
+      }
+
+      console.log('Timeline data received:', {
+        totalItems: data?.length || 0,
+        employeeIds,
+        dateRange: {
+          start: timelineBounds.start.toISOString(),
+          end: timelineBounds.end.toISOString(),
+        },
+        sampleItems: data?.slice(0, 3),
+      });
 
       const grouped: Record<string, TimelineItem[]> = {};
       (data || []).forEach((item: TimelineItem) => {
@@ -206,6 +220,15 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
         }
 
         grouped[item.employee_id].push(item);
+      });
+
+      console.log('Grouped timeline data:', {
+        employeeCount: Object.keys(grouped).length,
+        itemsPerEmployee: Object.entries(grouped).map(([id, items]) => ({
+          employeeId: id,
+          itemCount: items.length,
+          types: items.map((i) => i.item_type),
+        })),
       });
 
       setTimelineData(grouped);
@@ -273,16 +296,20 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
     now.setHours(0, 0, 0, 0);
 
     if (range === 'week') {
+      const start = new Date(now);
+      start.setDate(start.getDate() - 7); // Start 1 week ago
       const end = new Date(now);
-      end.setDate(end.getDate() + 7);
+      end.setDate(end.getDate() + 14); // End 2 weeks ahead
       end.setHours(23, 59, 59, 999);
-      setTimelineBounds({ start: now, end });
+      setTimelineBounds({ start, end });
       setZoomLevel('week');
     } else if (range === 'month') {
+      const start = new Date(now);
+      start.setMonth(start.getMonth() - 1); // Start 1 month ago
       const end = new Date(now);
-      end.setDate(end.getDate() + 30);
+      end.setMonth(end.getMonth() + 6); // End 6 months ahead
       end.setHours(23, 59, 59, 999);
-      setTimelineBounds({ start: now, end });
+      setTimelineBounds({ start, end });
       setZoomLevel('month');
     }
     setQuickDateRange(range);
@@ -740,12 +767,27 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
 
       {/* Timeline */}
       <div className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119]">
-        <div
-          ref={scrollContainerRef}
-          className="overflow-x-auto overflow-y-auto scroll-smooth"
-          style={{ maxHeight: '70vh' }}
-        >
-          <div style={{ width: minWidth, paddingBottom: '24px' }}>
+        {loading ? (
+          <div className="flex h-64 items-center justify-center">
+            <div className="text-center">
+              <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-[#d3bb73] border-t-transparent mx-auto" />
+              <p className="text-[#e5e4e2]/60">Ładowanie danych...</p>
+            </div>
+          </div>
+        ) : filteredEmployees.length === 0 ? (
+          <div className="flex h-64 items-center justify-center">
+            <div className="text-center">
+              <Users className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
+              <p className="text-[#e5e4e2]/60">Wybierz pracowników aby zobaczyć ich harmonogram</p>
+            </div>
+          </div>
+        ) : (
+          <div
+            ref={scrollContainerRef}
+            className="overflow-x-auto overflow-y-auto scroll-smooth"
+            style={{ maxHeight: '70vh' }}
+          >
+            <div style={{ width: minWidth, paddingBottom: '24px' }}>
             {/* Time markers header */}
             <div className="sticky top-0 z-10 flex border-b border-[#d3bb73]/20 bg-[#1c1f33] shadow-sm">
               {/* Empty space for employee info column */}
@@ -874,9 +916,26 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
                       })}
 
                       {/* Items */}
+                      {items.length > 0 && (
+                        <div className="absolute left-2 top-0 text-xs text-[#e5e4e2]/40">
+                          {items.length} items
+                        </div>
+                      )}
                       {items.map((item, idx) => {
                         const pos = getItemPosition(item);
-                        if (!pos) return null;
+                        if (!pos) {
+                          console.log('Item out of range:', {
+                            title: item.item_title,
+                            type: item.item_type,
+                            start: item.item_start,
+                            end: item.item_end,
+                            timelineBounds: {
+                              start: timelineBounds.start.toISOString(),
+                              end: timelineBounds.end.toISOString(),
+                            },
+                          });
+                          return null;
+                        }
                         return (
                           <div
                             key={`${item.item_id}-${idx}`}
@@ -937,8 +996,9 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
                 </div>
               );
             })}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Legend */}
