@@ -943,6 +943,7 @@ export const EventEquipmentTab: React.FC<{
       const row = currentRowForRental;
 
       // Update event_equipment with rental info
+      // WAŻNE: czyścimy equipment_id/kit_id/cable_id bo teraz używamy rental_equipment_id
       const { error: eventEqError } = await supabase
         .from('event_equipment')
         .update({
@@ -952,6 +953,9 @@ export const EventEquipmentTab: React.FC<{
           auto_added: false,
           rental_subcontractor_id: subcontractorId,
           rental_equipment_id: equipmentId,
+          equipment_id: null,
+          kit_id: null,
+          cable_id: null,
           notes: `Wynajem od: ${subcontractorName} - ${equipmentName}`,
         })
         .eq('id', row.id);

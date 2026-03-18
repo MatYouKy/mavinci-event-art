@@ -61,9 +61,9 @@ interface SubcontractorTask {
     equipment_items?: { name: string; thumbnail_url?: string };
     equipment_kits?: { name: string; thumbnail_url?: string };
     cables?: { name: string };
-    rental_equipment?: { name: string; thumbnail_url?: string; brand?: string; model?: string };
+    rental_equipment?: { name: string; thumbnail_url?: string; description?: string };
   };
-  rental_equipment?: { name: string; thumbnail_url?: string; brand?: string; model?: string };
+  rental_equipment?: { name: string; thumbnail_url?: string; description?: string };
 }
 
 interface Contract {
@@ -123,9 +123,9 @@ export default function EventSubcontractorsPanel({ eventId }: EventSubcontractor
             equipment_items (name, thumbnail_url),
             equipment_kits (name, thumbnail_url),
             cables (name),
-            rental_equipment:subcontractor_rental_equipment (name, thumbnail_url, brand, model)
+            rental_equipment:subcontractor_rental_equipment (name, thumbnail_url, description)
           ),
-          rental_equipment:subcontractor_rental_equipment (name, thumbnail_url, brand, model)
+          rental_equipment:subcontractor_rental_equipment (name, thumbnail_url, description)
         `,
         )
         .eq('event_id', eventId)

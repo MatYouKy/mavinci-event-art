@@ -320,8 +320,7 @@ export const eventsApi = createApi({
               rental_equipment:subcontractor_rental_equipment(
                 id,
                 name,
-                brand,
-                model,
+                description,
                 thumbnail_url,
                 warehouse_category_id,
                 category:warehouse_categories(id, name, parent_id),

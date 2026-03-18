@@ -90,13 +90,16 @@ export function EventEquipmentRow({
   const isRental = row?.status === 'rental' || !!row?.use_external_rental;
 
   // Determine which equipment data to display
-  const displayEquipment =
-    isRental && row?.rental_equipment ? row.rental_equipment : row?.equipment;
+  // Jeśli mamy rental_equipment to znaczy że to wynajem (equipment_id jest null)
+  const displayEquipment = row?.rental_equipment || row?.equipment;
+  const isDisplayingRental = !!row?.rental_equipment;
 
   const displayName = isKit ? row.kit.name : displayEquipment?.name || 'Nieznany';
 
-  const displayBrand = displayEquipment?.brand;
-  const displayModel = displayEquipment?.model;
+  // rental_equipment nie ma brand/model, tylko description
+  const displayBrand = isDisplayingRental ? null : displayEquipment?.brand;
+  const displayModel = isDisplayingRental ? null : displayEquipment?.model;
+  const displayDescription = isDisplayingRental ? displayEquipment?.description : null;
   const displayThumbnail = displayEquipment?.thumbnail_url;
   const displayCategory = displayEquipment?.category;
 
@@ -175,8 +178,9 @@ export function EventEquipmentRow({
 
             {!isKit && displayEquipment && (
               <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/50">
-                {displayBrand && <span>{displayBrand}</span>}
-                {displayModel && (
+                {isDisplayingRental && displayDescription && <span>{displayDescription}</span>}
+                {!isDisplayingRental && displayBrand && <span>{displayBrand}</span>}
+                {!isDisplayingRental && displayModel && (
                   <>
                     {displayBrand && <span>•</span>}
                     <span>{displayModel}</span>
