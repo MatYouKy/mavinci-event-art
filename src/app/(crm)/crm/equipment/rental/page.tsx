@@ -31,19 +31,25 @@ export default function RentalEquipmentListPage() {
   const canManage = employee?.permissions?.includes('equipment_manage');
 
   const filteredEquipment = rentalEquipment.filter((item) => {
+    const categoryName = item.warehouse_categories?.name || item.category;
+
     const matchesSearch =
       !searchTerm ||
       item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.subcontractor?.company_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.category?.toLowerCase().includes(searchTerm.toLowerCase());
+      categoryName?.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const matchesCategory = categoryFilter === 'all' || item.category === categoryFilter;
+    const matchesCategory = categoryFilter === 'all' || categoryName === categoryFilter;
 
     return matchesSearch && matchesCategory && item.is_active;
   });
 
   const uniqueCategories = Array.from(
-    new Set(rentalEquipment.map((item) => item.category).filter(Boolean)),
+    new Set(
+      rentalEquipment
+        .map((item) => item.warehouse_categories?.name || item.category)
+        .filter(Boolean)
+    ),
   );
 
   const handleDelete = async (e: React.MouseEvent, item: any) => {
@@ -174,10 +180,10 @@ export default function RentalEquipmentListPage() {
                   <span>{item.subcontractor?.company_name || 'Nieznany podwykonawca'}</span>
                 </div>
 
-                {item.category && (
+                {(item.warehouse_categories?.name || item.category) && (
                   <div className="mb-3">
                     <span className="inline-block rounded-full bg-[#d3bb73]/10 px-3 py-1 text-xs text-[#d3bb73]">
-                      {item.category}
+                      {item.warehouse_categories?.name || item.category}
                     </span>
                   </div>
                 )}

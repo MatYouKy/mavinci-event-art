@@ -36,6 +36,12 @@ interface ServiceCatalogItem {
   price_gross?: number;
   daily_price_net?: number;
   daily_price_gross?: number;
+  warehouse_categories?: {
+    id: string;
+    name: string;
+    level: number;
+    parent_id: string | null;
+  } | null;
   weekly_price_net?: number;
   weekly_price_gross?: number;
   monthly_price_net?: number;
@@ -149,15 +155,22 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
           break;
       }
 
+      let selectQuery = '*';
+
+      // Dla sprzętu wynajmu dołącz warehouse_categories
+      if (serviceType === 'rental') {
+        selectQuery = '*, warehouse_categories(id, name, level, parent_id)';
+      }
+
       const { data, error } = await supabase
         .from(tableName)
-        .select('*')
+        .select(selectQuery)
         .eq('subcontractor_id', subcontractorId)
         .order('name');
 
       if (error) throw error;
 
-      setter(data || []);
+      setter((data as any) || []);
     } catch (error: any) {
       console.error(`Error fetching ${serviceType} catalog:`, error);
       showSnackbar(`Błąd podczas ładowania katalogu ${serviceTypeConfig[serviceType].label}`, 'error');
@@ -576,9 +589,9 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                         {item.description && (
                           <p className="mb-2 line-clamp-2 text-sm text-gray-400">{item.description}</p>
                         )}
-                        {item.category && (
+                        {(item.warehouse_categories?.name || item.category) && (
                           <span className="inline-block rounded-full bg-[#d3bb73]/10 px-2 py-1 text-xs text-[#d3bb73]">
-                            {item.category}
+                            {item.warehouse_categories?.name || item.category}
                           </span>
                         )}
                         <div className="mt-3 flex items-center justify-between border-t border-gray-700 pt-3 text-sm">
