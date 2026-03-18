@@ -300,6 +300,8 @@ export const tasksApi = createApi({
         priority: 'low' | 'medium' | 'high' | 'urgent';
         board_column: string;
         due_date?: string | null;
+        is_private: boolean;
+        owner_id: string | null;
         assigned_employees: string[];
         created_by?: string;
       }
@@ -307,21 +309,21 @@ export const tasksApi = createApi({
       async queryFn(taskData) {
         try {
           const { data: task, error } = await supabase
-            .from('tasks')
-            .insert({
-              title: taskData.title,
-              description: taskData.description || null,
-              priority: taskData.priority,
-              board_column: taskData.board_column,
-              due_date: taskData.due_date || null,
-              status: 'todo',
-              is_private: false,
-              event_id: null,
-              owner_id: null,
-              created_by: taskData.created_by,
-            })
-            .select()
-            .single();
+          .from('tasks')
+          .insert({
+            title: taskData.title,
+            description: taskData.description || null,
+            priority: taskData.priority,
+            board_column: taskData.board_column,
+            due_date: taskData.due_date || null,
+            status: 'todo',
+            is_private: taskData.is_private ?? false,
+            event_id: null,
+            owner_id: taskData.owner_id ?? taskData.created_by ?? null,
+            created_by: taskData.created_by ?? null,
+          })
+          .select()
+          .single();
 
           if (error) return { error: error as any };
 

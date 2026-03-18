@@ -196,10 +196,11 @@ interface Employee {
 export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
-  const { canCreateInModule, canManageModule, currentEmployee } = useCurrentEmployee();
+  const { canCreateInModule, canManageModule, canViewModule, currentEmployee } = useCurrentEmployee();
 
   const canCreateTasks = canCreateInModule('tasks');
   const canManageTasks = canManageModule('tasks');
+  const canViewTasks = canViewModule('tasks');
 
   const { data: tasks = initialTasks, isLoading: loading, refetch } = useGetTasksListQuery();
   const [createTask] = useCreateTaskMutation();
@@ -488,7 +489,9 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
           board_column: formData.board_column,
           due_date: formData.due_date || null,
           assigned_employees: formData.assigned_employees,
-          created_by: currentEmployee?.id,
+          created_by: currentEmployee?.id || null,
+          owner_id: currentEmployee?.id || null,
+          is_private: false,
         }).unwrap();
 
         showSnackbar('Zadanie zostało utworzone', 'success');
@@ -716,7 +719,7 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
       >
         {!isMobile && <h2 className="text-2xl font-light text-[#e5e4e2]">Zadania</h2>}
 
-        {canCreateTasks && (
+        {canCreateTasks || canViewTasks && (
           <button
             onClick={() => handleOpenModal()}
             className={`flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 ${isMobile ? 'ml-auto' : ''}`}
