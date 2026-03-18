@@ -217,7 +217,22 @@ export default function NavigationManager({
 
   const isChildActive = (item: NavigationItem): boolean => {
     if (!item.children) return false;
-    return item.children.some((child) => pathname === child.href || pathname.startsWith(child.href + '/'));
+    return item.children.some((child) => isRouteActive(child.href));
+  };
+
+  const isRouteActive = (href: string): boolean => {
+    if (pathname === href) return true;
+
+    // Dla /crm/equipment (bez subpath) - aktywne tylko dla /crm/equipment i /crm/equipment/[uuid]
+    if (href === '/crm/equipment') {
+      if (pathname === '/crm/equipment') return true;
+      // Sprawdź czy to szczegóły sprzętu (UUID pattern)
+      const match = pathname.match(/^\/crm\/equipment\/([a-f0-9-]{36})$/);
+      return match !== null;
+    }
+
+    // Dla innych routes - sprawdź czy zaczyna się od href + '/'
+    return pathname.startsWith(href + '/');
   };
 
   const getIcon = useMemo(() => {
@@ -363,7 +378,7 @@ export default function NavigationManager({
                   {isExpanded && !sidebarCollapsed && (
                     <ul className="ml-4 mt-1 space-y-1 border-l border-[#d3bb73]/10 pl-4">
                       {item.children.map((child) => {
-                        const childIsActive = pathname === child.href || pathname.startsWith(child.href + '/');
+                        const childIsActive = isRouteActive(child.href);
                         const ChildIcon = getIcon(child);
 
                         return (
