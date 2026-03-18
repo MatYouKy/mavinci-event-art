@@ -76,7 +76,7 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
     fetchTimelineData();
   }, [employeeIds, timelineBounds]);
 
-  // Realtime subscription - auto-refresh przy zmianach w employee_assignments
+  // Realtime subscription - auto-refresh przy zmianach w employee_assignments i employee_absences
   useEffect(() => {
     if (employeeIds.length === 0) return;
 
@@ -88,6 +88,36 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
           event: '*',
           schema: 'public',
           table: 'employee_assignments',
+        },
+        (payload) => {
+          // Sprawdź czy zmiany dotyczą jednego z filtrowanych pracowników
+          const affectedEmployeeId = (payload.new as any)?.employee_id || (payload.old as any)?.employee_id;
+          if (affectedEmployeeId && employeeIds.includes(affectedEmployeeId)) {
+            fetchTimelineData();
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'employee_absences',
+        },
+        (payload) => {
+          // Sprawdź czy zmiany dotyczą jednego z filtrowanych pracowników
+          const affectedEmployeeId = (payload.new as any)?.employee_id || (payload.old as any)?.employee_id;
+          if (affectedEmployeeId && employeeIds.includes(affectedEmployeeId)) {
+            fetchTimelineData();
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'event_phase_assignments',
         },
         (payload) => {
           // Sprawdź czy zmiany dotyczą jednego z filtrowanych pracowników

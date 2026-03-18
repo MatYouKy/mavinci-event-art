@@ -413,11 +413,87 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
               {/* Konflikty */}
               {conflicts && conflicts.length > 0 && (
                 <div className="mb-4 rounded-lg border border-red-500/20 bg-red-500/10 p-3">
-                  <div className="mb-1 text-sm font-semibold text-red-400">
-                    ⚠️ Znaleziono konflikty czasowe
+                  <div className="mb-2 text-sm font-semibold text-red-400">
+                    ⚠️ Znaleziono {conflicts.length} konflikt(ów) czasowych
                   </div>
-                  <div className="text-xs text-red-300">
-                    Pracownik jest już przypisany do {conflicts.length} innych zadań w tym czasie
+                  <div className="space-y-2">
+                    {conflicts.map((conflict) => {
+                      const startDate = new Date(conflict.assignment_start);
+                      const endDate = new Date(conflict.assignment_end);
+                      const formatDate = (date: Date) =>
+                        date.toLocaleString('pl-PL', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        });
+
+                      return (
+                        <div
+                          key={conflict.conflict_id}
+                          className="rounded border border-red-400/20 bg-red-500/5 p-2"
+                        >
+                          <div className="mb-1 flex items-center gap-2 text-xs font-medium text-red-300">
+                            {conflict.conflict_type === 'absence' && (
+                              <>
+                                <span>🏖️</span>
+                                <span>Nieobecność</span>
+                              </>
+                            )}
+                            {conflict.conflict_type === 'event' && (
+                              <>
+                                <span>📅</span>
+                                <span>Wydarzenie</span>
+                              </>
+                            )}
+                            {conflict.conflict_type === 'phase' && (
+                              <>
+                                <span>⚙️</span>
+                                <span>Faza wydarzenia</span>
+                              </>
+                            )}
+                            {conflict.conflict_status && (
+                              <span className="ml-auto rounded bg-red-400/20 px-2 py-0.5 text-[10px]">
+                                {conflict.conflict_status === 'approved' && 'Zatwierdzona'}
+                                {conflict.conflict_status === 'pending' && 'Oczekuje'}
+                                {conflict.conflict_status === 'accepted' && 'Zaakceptowana'}
+                                {conflict.conflict_status === 'rejected' && 'Odrzucona'}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="mb-1 text-xs font-semibold text-red-200">
+                            {conflict.event_name}
+                            {conflict.phase_name && ` - ${conflict.phase_name}`}
+                          </div>
+
+                          <div className="text-[11px] text-red-200/70">
+                            {formatDate(startDate)} - {formatDate(endDate)}
+                          </div>
+
+                          {conflict.conflict_details && (
+                            <div className="mt-1 text-[10px] text-red-200/60">
+                              {conflict.conflict_details.absence_type && (
+                                <div>
+                                  Typ: {
+                                    conflict.conflict_details.absence_type === 'vacation' ? 'Urlop wypoczynkowy' :
+                                    conflict.conflict_details.absence_type === 'sick_leave' ? 'Zwolnienie lekarskie' :
+                                    conflict.conflict_details.absence_type === 'unpaid_leave' ? 'Urlop bezpłatny' :
+                                    conflict.conflict_details.absence_type === 'training' ? 'Szkolenie' :
+                                    conflict.conflict_details.absence_type === 'remote_work' ? 'Praca zdalna' :
+                                    'Inna nieobecność'
+                                  }
+                                </div>
+                              )}
+                              {conflict.conflict_details.role && (
+                                <div>Rola: {conflict.conflict_details.role}</div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}

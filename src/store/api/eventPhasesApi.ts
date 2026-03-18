@@ -104,12 +104,16 @@ export interface EventPhaseVehicle {
 }
 
 export interface PhaseConflict {
-  phase_id: string;
-  phase_name: string;
-  event_id: string;
+  conflict_type: 'absence' | 'event' | 'phase';
+  conflict_id: string;
+  phase_id: string | null;
+  phase_name: string | null;
+  event_id: string | null;
   event_name: string;
-  start_time: string;
-  end_time: string;
+  assignment_start: string;
+  assignment_end: string;
+  conflict_status: string;
+  conflict_details: Record<string, any>;
 }
 
 export interface AlternativeEquipment {
