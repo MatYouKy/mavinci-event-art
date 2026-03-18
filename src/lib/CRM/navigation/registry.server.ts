@@ -29,6 +29,7 @@ export type NavigationItemDTO = {
   iconKey: string; // string, bo to leci do klienta przez JSON
   module?: string;
   permissions?: string[]; // do filtrowania po uprawnieniach
+  children?: NavigationItemDTO[]; // submenu
 };
 
 export const allNavigation: NavigationItemDTO[] = [
@@ -110,6 +111,48 @@ export const allNavigation: NavigationItemDTO[] = [
     iconKey: 'equipment',
     module: 'equipment',
     permissions: ['equipment_view'],
+    children: [
+      {
+        key: 'equipment',
+        name: 'Sprzęt',
+        href: '/crm/equipment',
+        iconKey: 'box',
+        module: 'equipment',
+        permissions: ['equipment_view'],
+      },
+      {
+        key: 'equipment',
+        name: 'Zestawy',
+        href: '/crm/equipment/kits',
+        iconKey: 'layers',
+        module: 'equipment',
+        permissions: ['equipment_view'],
+      },
+      {
+        key: 'equipment',
+        name: 'Przewody',
+        href: '/crm/equipment/cables',
+        iconKey: 'cable',
+        module: 'equipment',
+        permissions: ['equipment_view'],
+      },
+      {
+        key: 'equipment',
+        name: 'Rental',
+        href: '/crm/equipment/rental',
+        iconKey: 'packageOpen',
+        module: 'equipment',
+        permissions: ['equipment_view'],
+      },
+      {
+        key: 'equipment',
+        name: 'Kategorie',
+        href: '/crm/equipment/categories',
+        iconKey: 'folderTree',
+        module: 'equipment',
+        permissions: ['equipment_view'],
+      },
+    ],
   },
   {
     key: 'fleet',

@@ -58,7 +58,40 @@ export const rentalApi = createApi({
 
         return { data };
       },
-      invalidatesTags: (_res, _err, { id }) => [{ type: 'RentalEquipment', id }],
+      invalidatesTags: (_res, _err, { id }) => [
+        { type: 'RentalEquipment', id },
+        { type: 'RentalEquipment', id: 'LIST' },
+      ],
+    }),
+
+    getAllRentalEquipment: builder.query<any[], void>({
+      async queryFn() {
+        const { data, error } = await supabase
+          .from('subcontractor_rental_equipment')
+          .select(
+            `
+            *,
+            subcontractor:subcontractors(
+              id,
+              company_name,
+              organization:organizations(
+                id,
+                name
+              )
+            )
+          `,
+          )
+          .eq('is_active', true)
+          .order('created_at', { ascending: false });
+
+        if (error) {
+          console.error('getAllRentalEquipment - error:', error);
+          return { error: error as any };
+        }
+
+        return { data: data || [] };
+      },
+      providesTags: [{ type: 'RentalEquipment', id: 'LIST' }],
     }),
   }),
 });
@@ -66,4 +99,5 @@ export const rentalApi = createApi({
 export const {
   useGetRentalEquipmentDetailsQuery,
   useUpdateRentalEquipmentMutation,
+  useGetAllRentalEquipmentQuery,
 } = rentalApi;

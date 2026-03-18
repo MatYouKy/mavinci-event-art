@@ -7,6 +7,8 @@ import {
   RotateCcw,
   Settings,
   Home,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -25,6 +27,7 @@ interface NavigationItem {
   icon?: any;
 
   module?: string;
+  children?: NavigationItem[];
 }
 
 interface Props {
@@ -62,11 +65,21 @@ export default function NavigationManager({
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [items, setItems] = useState<NavigationItem[]>(navigation);
   const [saving, setSaving] = useState(false);
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
   // ✅ zawsze ufamy temu co przyszło z serwera (navigation)
   useEffect(() => {
     setItems(navigation);
   }, [navigation]);
+
+  // Auto-expand submenu when child is active
+  useEffect(() => {
+    navigation.forEach((item) => {
+      if (item.children && isChildActive(item)) {
+        setExpandedItems((prev) => new Set(prev).add(item.key));
+      }
+    });
+  }, [pathname, navigation]);
 
   // ✅ zabezpieczenie: jak ktoś nie może customizować, wyłącz edit mode
   useEffect(() => {
@@ -190,14 +203,31 @@ export default function NavigationManager({
 
   
 
+  const toggleExpanded = (key: string) => {
+    setExpandedItems((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(key)) {
+        newSet.delete(key);
+      } else {
+        newSet.add(key);
+      }
+      return newSet;
+    });
+  };
+
+  const isChildActive = (item: NavigationItem): boolean => {
+    if (!item.children) return false;
+    return item.children.some((child) => pathname === child.href || pathname.startsWith(child.href + '/'));
+  };
+
   const getIcon = useMemo(() => {
     return (item: NavigationItem) => {
       const candidate =
         (item.iconKey && (NavigationIcons as any)[item.iconKey]) || item.icon || Home;
-  
+
       // jeśli to string, to React będzie próbował <Clock> jako tag HTML
       if (typeof candidate === 'string') return Home;
-  
+
       return candidate;
     };
   }, []);
@@ -258,11 +288,14 @@ export default function NavigationManager({
       <ul className="space-y-1">
         {items.map((item, index) => {
           const isActive = pathname === item.href;
+          const hasChildren = item.children && item.children.length > 0;
+          const isExpanded = expandedItems.has(item.key);
+          const hasActiveChild = isChildActive(item);
           const Icon = getIcon(item);
 
           return (
             <li
-              key={item.key}
+              key={`${item.key}-${index}`}
               draggable={canCustomize && isEditMode}
               onDragStart={(e) => handleDragStart(e, index)}
               onDragOver={(e) => handleDragOver(e, index)}
@@ -296,6 +329,63 @@ export default function NavigationManager({
 
                   {!sidebarCollapsed && <span>{item.name}</span>}
                 </Link>
+              ) : hasChildren ? (
+                <>
+                  <button
+                    onClick={() => !isEditMode && toggleExpanded(item.key)}
+                    className={`flex w-full items-center ${
+                      sidebarCollapsed ? 'justify-center' : 'gap-3'
+                    } relative rounded-lg px-4 py-3 text-sm font-light transition-all duration-200 ${
+                      isActive || hasActiveChild
+                        ? 'bg-[#d3bb73]/20 text-[#d3bb73]'
+                        : 'text-[#e5e4e2]/70 hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]'
+                    } ${canCustomize && isEditMode ? 'pointer-events-none' : ''}`}
+                    title={sidebarCollapsed ? item.name : ''}
+                  >
+                    {canCustomize && isEditMode && !sidebarCollapsed && (
+                      <GripVertical className="h-4 w-4 text-[#e5e4e2]/40" />
+                    )}
+
+                    <Icon className="h-5 w-5" />
+
+                    {!sidebarCollapsed && (
+                      <>
+                        <span className="flex-1 text-left">{item.name}</span>
+                        {isExpanded ? (
+                          <ChevronDown className="h-4 w-4" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4" />
+                        )}
+                      </>
+                    )}
+                  </button>
+
+                  {isExpanded && !sidebarCollapsed && (
+                    <ul className="ml-4 mt-1 space-y-1 border-l border-[#d3bb73]/10 pl-4">
+                      {item.children.map((child) => {
+                        const childIsActive = pathname === child.href || pathname.startsWith(child.href + '/');
+                        const ChildIcon = getIcon(child);
+
+                        return (
+                          <li key={child.href}>
+                            <Link
+                              href={child.href}
+                              onClick={onClose}
+                              className={`flex items-center gap-3 rounded-lg px-4 py-2 text-sm font-light transition-all duration-200 ${
+                                childIsActive
+                                  ? 'bg-[#d3bb73]/20 text-[#d3bb73]'
+                                  : 'text-[#e5e4e2]/60 hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]'
+                              }`}
+                            >
+                              <ChildIcon className="h-4 w-4" />
+                              <span>{child.name}</span>
+                            </Link>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </>
               ) : (
                 <Link
                   href={item.href}

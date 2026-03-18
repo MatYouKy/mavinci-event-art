@@ -20,6 +20,11 @@ import {
   Clock,
   Database,
   Home,
+  Box,
+  Layers,
+  Cable,
+  PackageOpen,
+  FolderTree,
 } from 'lucide-react';
 
 /**
@@ -47,6 +52,13 @@ export const NavigationIcons = {
   locations: MapPin,
   time: Clock,
   databases: Database,
+
+  // equipment submenu
+  box: Box,
+  layers: Layers,
+  cable: Cable,
+  packageOpen: PackageOpen,
+  folderTree: FolderTree,
 } as const;
 
 export type IconKey = keyof typeof NavigationIcons;
