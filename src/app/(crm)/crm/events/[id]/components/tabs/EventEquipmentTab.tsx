@@ -345,15 +345,12 @@ export const EventEquipmentTab: React.FC<{
     event_end_date: eventEndDate,
   });
 
-
   useEffect(() => {
     if (!eventId) return;
     fetchAvailableEquipment();
   }, [eventId, eventDate, event?.event_end_date, fetchAvailableEquipment]);
 
   const handleRemoveEquipment = async (row: any) => {
-
-
     const isAuto = !!row?.auto_added;
 
     const confirmedRemove = await showConfirm('Usunąć tę pozycję z eventu (pochodzi z oferty)?');
@@ -604,7 +601,10 @@ export const EventEquipmentTab: React.FC<{
       // Odśwież dane wydarzenia
       await refetchEvent();
 
-      showSnackbar('Checklista sprzętu została wygenerowana i zapisana w zakładce Pliki', 'success');
+      showSnackbar(
+        'Checklista sprzętu została wygenerowana i zapisana w zakładce Pliki',
+        'success',
+      );
 
       worker.save();
     } catch (error) {
@@ -935,7 +935,7 @@ export const EventEquipmentTab: React.FC<{
     subcontractorId: string,
     equipmentId: string,
     equipmentName: string,
-    subcontractorName: string
+    subcontractorName: string,
   ) => {
     if (!currentRowForRental) return;
 
@@ -973,23 +973,21 @@ export const EventEquipmentTab: React.FC<{
         }
       }
 
-      // Create subcontractor task with catalog reference
+      // Create subcontractor task with rental equipment reference
       if (eventId) {
-        const { error: taskError } = await supabase
-          .from('subcontractor_tasks')
-          .insert({
-            event_id: eventId,
-            subcontractor_id: subcontractorId,
-            event_equipment_id: row.id,
-            equipment_catalog_id: equipmentId,
-            task_type: 'equipment_rental',
-            task_name: `Wynajem: ${equipmentName}`,
-            description: `Wynajem od ${subcontractorName} - ${equipmentName} (${row.quantity || row.required_qty || 1} szt.)`,
-            status: 'planned',
-            payment_type: 'fixed',
-            fixed_price: 0,
-            notes: 'Utworzone automatycznie z zakładki Sprzęt',
-          });
+        const { error: taskError } = await supabase.from('subcontractor_tasks').insert({
+          event_id: eventId,
+          subcontractor_id: subcontractorId,
+          event_equipment_id: row.id,
+          rental_equipment_id: equipmentId,
+          task_type: 'equipment_rental',
+          task_name: `Wynajem: ${equipmentName}`,
+          description: `Wynajem od ${subcontractorName} - ${equipmentName} (${row.quantity || row.required_qty || 1} szt.)`,
+          status: 'planned',
+          payment_type: 'fixed',
+          fixed_price: 0,
+          notes: 'Utworzone automatycznie z zakładki Sprzęt',
+        });
 
         if (taskError) {
           console.warn('Nie udało się utworzyć zadania dla podwykonawcy:', taskError);
@@ -1007,21 +1005,21 @@ export const EventEquipmentTab: React.FC<{
   const handleReplaceEquipment = async (alternativeId: string) => {
     try {
       if (!currentItemForReplacement) return;
-  
+
       const oldName =
         currentItemForReplacement?.equipment?.name ||
         currentItemForReplacement?.equipment_items?.name ||
         currentItemForReplacement?.item_name ||
         'Nieznany';
-  
+
       const { data: newEquipment, error: fetchError } = await supabase
         .from('equipment_items')
         .select('name')
         .eq('id', alternativeId)
         .single();
-  
+
       if (fetchError) throw fetchError;
-  
+
       const { error: updateError } = await supabase
         .from('event_equipment')
         .update({
@@ -1033,9 +1031,9 @@ export const EventEquipmentTab: React.FC<{
           notes: `Zamieniono z: ${oldName} → ${newEquipment?.name || alternativeId}`,
         })
         .eq('id', currentItemForReplacement.id);
-  
+
       if (updateError) throw updateError;
-  
+
       showSnackbar(`Sprzęt zamieniony: ${oldName} → ${newEquipment?.name}`, 'success');
       setShowAlternativesModal(false);
       setAlternatives([]);
@@ -1050,28 +1048,20 @@ export const EventEquipmentTab: React.FC<{
   const handleSuggestAlternative = async (row: any) => {
     try {
       console.log('[handleSuggestAlternative] row:', row);
-  
-      let currentEquipmentId =
-        row?.equipment?.id ||
-        row?.equipment_id ||
-        row?.item_id ||
-        null;
-  
+
+      let currentEquipmentId = row?.equipment?.id || row?.equipment_id || row?.item_id || null;
+
       let warehouseCategoryId =
-        row?.equipment?.warehouse_category_id ||
-        row?.warehouse_category_id ||
-        null;
-  
+        row?.equipment?.warehouse_category_id || row?.warehouse_category_id || null;
+
       // Jeśli to kit, na razie nie obsługujemy alternatyw
-      const rowItemType =
-        row?.item_type ||
-        (row?.kit_id ? 'kit' : 'item');
-  
+      const rowItemType = row?.item_type || (row?.kit_id ? 'kit' : 'item');
+
       if (rowItemType === 'kit') {
         showSnackbar('Alternatywy dla zestawów nie są jeszcze obsługiwane', 'info');
         return;
       }
-  
+
       // Dociągnij kategorię z equipment_items, jeśli nie przyszła w row
       if (!warehouseCategoryId && currentEquipmentId) {
         const { data: equipmentItem, error: equipmentError } = await supabase
@@ -1079,30 +1069,30 @@ export const EventEquipmentTab: React.FC<{
           .select('id, name, warehouse_category_id')
           .eq('id', currentEquipmentId)
           .single();
-  
+
         if (equipmentError) throw equipmentError;
-  
+
         warehouseCategoryId = equipmentItem?.warehouse_category_id ?? null;
         currentEquipmentId = equipmentItem?.id ?? currentEquipmentId;
       }
-  
+
       console.log('[handleSuggestAlternative] currentEquipmentId:', currentEquipmentId);
       console.log('[handleSuggestAlternative] warehouseCategoryId:', warehouseCategoryId);
-  
+
       if (!warehouseCategoryId) {
         showSnackbar('Nie można znaleźć kategorii sprzętu', 'error');
         return;
       }
-  
+
       // Pobierz informacje o kategorii
       const { data: category, error: categoryError } = await supabase
         .from('warehouse_categories')
         .select('id, name, parent_id, level')
         .eq('id', warehouseCategoryId)
         .single();
-  
+
       if (categoryError) throw categoryError;
-  
+
       // Szukaj w tej samej kategorii
       let { data: alternatives, error } = await supabase
         .from('equipment_items')
@@ -1110,87 +1100,87 @@ export const EventEquipmentTab: React.FC<{
         .eq('warehouse_category_id', warehouseCategoryId)
         .neq('id', currentEquipmentId || '')
         .limit(20);
-  
+
       if (error) throw error;
-  
+
       let searchLevel = 'subcategory';
       let parentCategoryName = '';
-  
+
       // Jeśli nie znaleziono alternatyw w podkategorii, szukaj w głównej kategorii
       if ((!alternatives || alternatives.length === 0) && category.parent_id) {
         searchLevel = 'main_category';
-  
+
         const { data: parentCategory } = await supabase
           .from('warehouse_categories')
           .select('id, name')
           .eq('id', category.parent_id)
           .single();
-  
+
         if (parentCategory) {
           parentCategoryName = parentCategory.name;
-  
+
           const { data: subcategories } = await supabase
             .from('warehouse_categories')
             .select('id')
             .eq('parent_id', category.parent_id);
-  
+
           if (subcategories && subcategories.length > 0) {
             const subcategoryIds = subcategories.map((s) => s.id);
-  
+
             const { data: mainCategoryAlternatives, error: mainError } = await supabase
               .from('equipment_items')
               .select('id, name, brand, model, thumbnail_url, warehouse_category_id')
               .in('warehouse_category_id', subcategoryIds)
               .neq('id', currentEquipmentId || '')
               .limit(20);
-  
+
             if (mainError) throw mainError;
-  
+
             if (mainCategoryAlternatives) {
               alternatives = mainCategoryAlternatives;
             }
           }
         }
       }
-  
+
       if (!alternatives || alternatives.length === 0) {
         showSnackbar('Brak dostępnych alternatyw', 'info');
         return;
       }
-  
+
       const enrichedAlternatives = await Promise.all(
         alternatives.map(async (alt) => {
           const { count: totalQty, error: totalError } = await supabase
             .from('equipment_units')
             .select('*', { count: 'exact', head: true })
             .eq('equipment_id', alt.id);
-  
+
           if (totalError) throw totalError;
-  
+
           const { count: availableQty, error: availableError } = await supabase
             .from('equipment_units')
             .select('*', { count: 'exact', head: true })
             .eq('equipment_id', alt.id)
             .eq('status', 'available');
-  
+
           if (availableError) throw availableError;
-  
+
           return {
             ...alt,
             total_qty: totalQty || 0,
             available_qty: availableQty || 0,
             reserved_qty: Math.max((totalQty || 0) - (availableQty || 0), 0),
           };
-        })
+        }),
       );
-  
+
       const message =
         searchLevel === 'main_category'
           ? `Znaleziono ${enrichedAlternatives.length} alternatyw z kategorii: ${parentCategoryName}`
           : `Znaleziono ${enrichedAlternatives.length} alternatyw`;
-  
+
       showSnackbar(message, 'info');
-  
+
       setAlternatives(enrichedAlternatives);
       setCurrentItemForReplacement(row);
       setShowAlternativesModal(true);
@@ -1350,7 +1340,8 @@ export const EventEquipmentTab: React.FC<{
             <div>
               <h3 className="mb-1 font-medium text-red-300">Braki sprzętowe</h3>
               <p className="text-sm text-red-300/80">
-                Event ma braki sprzętowe w terminie. Część sprzętu z oferty nie została dodana do eventu, ponieważ nie jest dostępna.
+                Event ma braki sprzętowe w terminie. Część sprzętu z oferty nie została dodana do
+                eventu, ponieważ nie jest dostępna.
               </p>
             </div>
           </div>
@@ -1452,9 +1443,7 @@ export const EventEquipmentTab: React.FC<{
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="w-full max-w-3xl rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6 shadow-xl">
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-lg font-medium text-[#e5e4e2]">
-                Wybierz alternatywny sprzęt
-              </h3>
+              <h3 className="text-lg font-medium text-[#e5e4e2]">Wybierz alternatywny sprzęt</h3>
               <button
                 onClick={() => {
                   setShowAlternativesModal(false);

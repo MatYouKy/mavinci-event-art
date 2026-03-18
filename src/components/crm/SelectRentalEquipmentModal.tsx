@@ -9,7 +9,12 @@ import Image from 'next/image';
 interface SelectRentalEquipmentModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSelect: (subcontractorId: string, equipmentId: string, equipmentName: string, subcontractorName: string) => void;
+  onSelect: (
+    subcontractorId: string,
+    equipmentId: string,
+    equipmentName: string,
+    subcontractorName: string,
+  ) => void;
   currentEquipmentName?: string;
 }
 
@@ -57,22 +62,23 @@ export default function SelectRentalEquipmentModal({
       // Pobierz podwykonawców którzy mają usługę rental
       const { data, error } = await supabase
         .from('subcontractor_services')
-        .select(`
+        .select(
+          `
           subcontractor_id,
           subcontractors (
             id,
             name,
             alias
           )
-        `)
+        `,
+        )
         .eq('service_type', 'rental')
         .eq('is_active', true);
 
       if (error) throw error;
 
-      const uniqueSubcontractors = data
-        ?.map((item: any) => item.subcontractors)
-        .filter((sub: any) => sub !== null) || [];
+      const uniqueSubcontractors =
+        data?.map((item: any) => item.subcontractors).filter((sub: any) => sub !== null) || [];
 
       setSubcontractors(uniqueSubcontractors);
     } catch (error: any) {
@@ -87,15 +93,34 @@ export default function SelectRentalEquipmentModal({
     try {
       setLoading(true);
       const { data, error } = await supabase
-        .from('subcontractor_equipment_catalog')
-        .select('*')
+        .from('subcontractor_rental_equipment')
+        .select(
+          `
+          id,
+          name,
+          description,
+          daily_rental_price,
+          quantity_available,
+          thumbnail_url,
+          specifications,
+          warehouse_categories (
+            name
+          )
+        `,
+        )
         .eq('subcontractor_id', subcontractorId)
         .eq('is_active', true)
         .order('name');
 
       if (error) throw error;
 
-      setEquipmentList(data || []);
+      // Przekształć dane aby dodać category z warehouse_categories
+      const transformedData = (data || []).map((item: any) => ({
+        ...item,
+        category: item.warehouse_categories?.name || null,
+      }));
+
+      setEquipmentList(transformedData);
     } catch (error: any) {
       console.error('Error fetching equipment:', error);
       showSnackbar('Błąd podczas ładowania sprzętu', 'error');
@@ -117,7 +142,7 @@ export default function SelectRentalEquipmentModal({
       selectedSubcontractor.id,
       equipment.id,
       equipment.name,
-      selectedSubcontractor.alias || selectedSubcontractor.name
+      selectedSubcontractor.alias || selectedSubcontractor.name,
     );
     handleClose();
   };
@@ -137,14 +162,15 @@ export default function SelectRentalEquipmentModal({
     setSearchTerm('');
   };
 
-  const filteredSubcontractors = subcontractors.filter(sub =>
-    (sub.alias || sub.name).toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredSubcontractors = subcontractors.filter((sub) =>
+    (sub.alias || sub.name).toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
-  const filteredEquipment = equipmentList.filter(eq =>
-    eq.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    eq.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    eq.category?.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredEquipment = equipmentList.filter(
+    (eq) =>
+      eq.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      eq.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      eq.category?.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   if (!isOpen) return null;
@@ -160,12 +186,14 @@ export default function SelectRentalEquipmentModal({
             </h3>
             {currentEquipmentName && (
               <p className="text-sm text-[#e5e4e2]/50">
-                Zamiennik dla: <span className="font-medium text-[#d3bb73]">{currentEquipmentName}</span>
+                Zamiennik dla:{' '}
+                <span className="font-medium text-[#d3bb73]">{currentEquipmentName}</span>
               </p>
             )}
             {step === 'equipment' && selectedSubcontractor && (
               <p className="text-sm text-[#e5e4e2]/50">
-                Podwykonawca: <span className="font-medium text-[#d3bb73]">
+                Podwykonawca:{' '}
+                <span className="font-medium text-[#d3bb73]">
                   {selectedSubcontractor.alias || selectedSubcontractor.name}
                 </span>
               </p>
@@ -187,7 +215,9 @@ export default function SelectRentalEquipmentModal({
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder={step === 'subcontractor' ? 'Szukaj podwykonawcy...' : 'Szukaj sprzętu...'}
+              placeholder={
+                step === 'subcontractor' ? 'Szukaj podwykonawcy...' : 'Szukaj sprzętu...'
+              }
               className="w-full rounded-lg border border-gray-700 bg-[#252837] py-2 pl-10 pr-4 text-white placeholder-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
             />
           </div>
@@ -205,7 +235,9 @@ export default function SelectRentalEquipmentModal({
               <div className="py-12 text-center">
                 <Building2 className="mx-auto mb-3 h-12 w-12 text-[#e5e4e2]/30" />
                 <p className="text-[#e5e4e2]/60">
-                  {searchTerm ? 'Nie znaleziono podwykonawców' : 'Brak podwykonawców z usługą rental'}
+                  {searchTerm
+                    ? 'Nie znaleziono podwykonawców'
+                    : 'Brak podwykonawców z usługą rental'}
                 </p>
               </div>
             ) : (
@@ -220,12 +252,8 @@ export default function SelectRentalEquipmentModal({
                       <Building2 className="h-6 w-6 text-[#d3bb73]" />
                     </div>
                     <div className="text-left">
-                      <div className="font-medium text-[#e5e4e2]">
-                        {sub.alias || sub.name}
-                      </div>
-                      {sub.alias && (
-                        <div className="text-xs text-[#e5e4e2]/50">{sub.name}</div>
-                      )}
+                      <div className="font-medium text-[#e5e4e2]">{sub.alias || sub.name}</div>
+                      {sub.alias && <div className="text-xs text-[#e5e4e2]/50">{sub.name}</div>}
                     </div>
                   </div>
                   <div className="text-[#d3bb73]">→</div>
@@ -272,10 +300,16 @@ export default function SelectRentalEquipmentModal({
                       <div className="flex-1 text-left">
                         <div className="font-medium text-[#e5e4e2]">{eq.name}</div>
                         {eq.description && (
-                          <div className="line-clamp-1 text-xs text-[#e5e4e2]/50">{eq.description}</div>
+                          <div className="line-clamp-1 text-xs text-[#e5e4e2]/50">
+                            {eq.description}
+                          </div>
                         )}
                         <div className="mt-1 flex items-center gap-2 text-xs text-[#e5e4e2]/50">
-                          {eq.category && <span className="rounded bg-[#d3bb73]/10 px-2 py-0.5 text-[#d3bb73]">{eq.category}</span>}
+                          {eq.category && (
+                            <span className="rounded bg-[#d3bb73]/10 px-2 py-0.5 text-[#d3bb73]">
+                              {eq.category}
+                            </span>
+                          )}
                           {eq.daily_rental_price && (
                             <span className="text-green-400">{eq.daily_rental_price} zł/dzień</span>
                           )}
