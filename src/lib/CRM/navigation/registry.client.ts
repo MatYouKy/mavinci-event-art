@@ -25,6 +25,7 @@ import {
   Cable,
   PackageOpen,
   FolderTree,
+  FileType,
 } from 'lucide-react';
 
 /**
@@ -59,6 +60,11 @@ export const NavigationIcons = {
   cable: Cable,
   packageOpen: PackageOpen,
   folderTree: FolderTree,
+
+  // offers submenu
+  fileText: FileText,
+  package: Package,
+  fileType: FileType,
 } as const;
 
 export type IconKey = keyof typeof NavigationIcons;
