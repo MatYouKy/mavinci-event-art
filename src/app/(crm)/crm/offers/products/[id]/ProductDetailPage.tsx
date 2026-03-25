@@ -254,13 +254,19 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
       }
 
       // Połącz obie listy, dodając pole type dla rozróżnienia
-      const servicesWithType = (services || []).map(s => ({ ...s, _type: 'service' }));
-      const equipmentWithType = (equipment || []).map(e => ({ ...e, _type: 'equipment' }));
+      const servicesWithType = (services || []).map((s) => ({ ...s, _type: 'service' }));
+      const equipmentWithType = (equipment || []).map((e) => ({ ...e, _type: 'equipment' }));
 
       const allItems = [...servicesWithType, ...equipmentWithType];
 
-      console.log('Fetched items for subcontractor:', orgData.subcontractor_id,
-        'services:', services?.length || 0, 'equipment:', equipment?.length || 0);
+      console.log(
+        'Fetched items for subcontractor:',
+        orgData.subcontractor_id,
+        'services:',
+        services?.length || 0,
+        'equipment:',
+        equipment?.length || 0,
+      );
 
       setSubcontractorServices(allItems);
     } catch (err: any) {
@@ -368,9 +374,9 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
     if (!product?.pdf_thumbnail_url) return null;
     return bucket.getPublicUrl(product.pdf_thumbnail_url).data.publicUrl;
   }, [bucket, product?.pdf_thumbnail_url]);
-  
+
   const [thumbSrc, setThumbSrc] = useState<string | null>(thumbPublicUrl);
-  
+
   // ważne: aktualizuj thumbSrc tylko gdy zmieni się pdf_thumbnail_url (np po upload/delete)
   useEffect(() => {
     setThumbSrc(thumbPublicUrl);
@@ -384,11 +390,13 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
       setLoading(true);
       const { data, error } = await supabase
         .from('offer_products')
-        .select(`
+        .select(
+          `
           *,
           category:event_categories(id, name),
           subcontractor:subcontractors(id, company_name)
-        `)
+        `,
+        )
         .eq('id', productId)
         .maybeSingle();
 
@@ -550,7 +558,8 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
   const handleDeletePdf = async () => {
     if (!product || !product.pdf_page_url || productId === 'new') return;
 
-    if (!confirm('Czy na pewno chcesz usunąć stronę PDF tego produktu (wraz z miniaturką)?')) return;
+    if (!confirm('Czy na pewno chcesz usunąć stronę PDF tego produktu (wraz z miniaturką)?'))
+      return;
 
     try {
       setSaving(true);
@@ -571,9 +580,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
 
       if (updateError) throw updateError;
 
-      setProduct((p) =>
-        p ? { ...p, pdf_page_url: null, pdf_thumbnail_url: null } : p,
-      );
+      setProduct((p) => (p ? { ...p, pdf_page_url: null, pdf_thumbnail_url: null } : p));
       setThumbSrc(null);
 
       showSnackbar('Strona PDF została usunięta', 'success');
@@ -690,7 +697,10 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
         showSnackbar('Produkt został dodany', 'success');
         router.push(`/crm/offers/products/${data.id}`);
       } else {
-        const { error } = await supabase.from('offer_products').update(productData).eq('id', product.id);
+        const { error } = await supabase
+          .from('offer_products')
+          .update(productData)
+          .eq('id', product.id);
         if (error) throw error;
 
         showSnackbar('Zapisano zmiany', 'success');
@@ -729,10 +739,9 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
     }
   };
 
-
   const pdfSectionActions = useMemo<Action[]>(() => {
     const actions: Action[] = [];
-  
+
     // 1) Brak PDF -> upload PDF
     if (canEdit && !product?.pdf_page_url) {
       actions.push({
@@ -744,7 +753,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
       });
       return actions;
     }
-  
+
     // 2) PDF istnieje -> miniaturka tylko gdy null
     if (canEdit && product?.pdf_page_url && !product?.pdf_thumbnail_url) {
       actions.push({
@@ -755,7 +764,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
         show: true,
       });
     }
-  
+
     // 3) PDF istnieje -> delete PDF
     if (canEdit && product?.pdf_page_url) {
       actions.push({
@@ -766,10 +775,18 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
         show: true,
       });
     }
-  
+
     return actions;
-  }, [canEdit, product?.pdf_page_url, product?.pdf_thumbnail_url, uploadingPdf, uploadingThumbnail, handleUploadPdf, handleUploadThumbnail, handleDeletePdf]);
-  
+  }, [
+    canEdit,
+    product?.pdf_page_url,
+    product?.pdf_thumbnail_url,
+    uploadingPdf,
+    uploadingThumbnail,
+    handleUploadPdf,
+    handleUploadThumbnail,
+    handleDeletePdf,
+  ]);
 
   // -----------------------------
   // RENDER
@@ -932,7 +949,9 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
               {product?.is_subcontractor_service && (
                 <>
                   <div>
-                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wybierz podwykonawcę</label>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                      Wybierz podwykonawcę
+                    </label>
                     <select
                       value={selectedSubcontractor}
                       onChange={(e) => setSelectedSubcontractor(e.target.value)}
@@ -968,7 +987,8 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
 
                           return (
                             <option key={item.id} value={item.id}>
-                              {badge}{item.name} - {price?.toLocaleString('pl-PL') || '0'} zł / {unit}
+                              {badge}
+                              {item.name} - {price?.toLocaleString('pl-PL') || '0'} zł / {unit}
                             </option>
                           );
                         })}
@@ -1029,7 +1049,10 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
               <select
                 value={product.category_id ?? ''}
                 onChange={(e) =>
-                  setProduct({ ...product, category_id: e.target.value === '' ? '' : e.target.value })
+                  setProduct({
+                    ...product,
+                    category_id: e.target.value === '' ? '' : e.target.value,
+                  })
                 }
                 disabled={!canEdit}
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
@@ -1109,7 +1132,9 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                         <option value="">-- Wybierz usługę --</option>
                         {subcontractorServices.map((item) => {
                           const isEquip = (item as any)._type === 'equipment';
-                          const price = isEquip ? (item as any).daily_rental_price : (item as any).unit_price;
+                          const price = isEquip
+                            ? (item as any).daily_rental_price
+                            : (item as any).unit_price;
                           const unit = isEquip ? 'dzień' : (item as any).unit || 'szt';
                           const badge = isEquip ? '[WYNAJEM] ' : '[USŁUGA] ';
                           return (
@@ -1153,7 +1178,9 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                 <input
                   type="number"
                   value={Number.isFinite(product.min_quantity) ? product.min_quantity : 0}
-                  onChange={(e) => setProduct({ ...product, min_quantity: toNumber(e.target.value) })}
+                  onChange={(e) =>
+                    setProduct({ ...product, min_quantity: toNumber(e.target.value) })
+                  }
                   disabled={!canEdit}
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] disabled:opacity-50"
                 />
@@ -1321,10 +1348,15 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                 <span className="text-[#e5e4e2]/60">Marża:</span>
                 <span
                   className={`font-medium ${
-                    margin > 50 ? 'text-green-400' : margin > 30 ? 'text-yellow-400' : 'text-red-400'
+                    margin > 50
+                      ? 'text-green-400'
+                      : margin > 30
+                        ? 'text-yellow-400'
+                        : 'text-red-400'
                   }`}
                 >
-                  {margin.toFixed(1)}% ({Number((priceNet - costNet).toFixed(2)).toLocaleString('pl-PL')} zł netto)
+                  {margin.toFixed(1)}% (
+                  {Number((priceNet - costNet).toFixed(2)).toLocaleString('pl-PL')} zł netto)
                 </span>
               </div>
 
@@ -1346,152 +1378,158 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
             </div>
           </div>
         </div>
-                  {/* PDF Upload Section */}
-{productId !== 'new' && (
-  <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-    <div className="mb-4 flex items-center justify-between gap-3">
-      <div className="flex items-center gap-2">
-        <FileText className="h-5 w-5 text-[#d3bb73]" />
-        <h2 className="text-lg font-medium text-[#e5e4e2]">Strona PDF produktu</h2>
-      </div>
+        {/* PDF Upload Section */}
+        {productId !== 'new' && (
+          <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-[#d3bb73]" />
+                <h2 className="text-lg font-medium text-[#e5e4e2]">Strona PDF produktu</h2>
+              </div>
 
-      {/* JEDEN ActionBar */}
-      <ResponsiveActionBar actions={pdfSectionActions} />
-    </div>
+              {/* JEDEN ActionBar */}
+              <ResponsiveActionBar actions={pdfSectionActions} />
+            </div>
 
-    <div className="space-y-4">
-      <p className="text-sm text-[#e5e4e2]/60">
-        Upload pojedynczej strony PDF dla tego produktu. Strona zostanie automatycznie dołączona do finalnej oferty.
-      </p>
+            <div className="space-y-4">
+              <p className="text-sm text-[#e5e4e2]/60">
+                Upload pojedynczej strony PDF dla tego produktu. Strona zostanie automatycznie
+                dołączona do finalnej oferty.
+              </p>
 
-      {product.pdf_page_url ? (
-        <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-[200px_1fr] md:items-start">
-            {/* Miniaturka / placeholder */}
-            <div className="relative">
-              {product.pdf_thumbnail_url ? (
-                <div
-                  className="group relative cursor-pointer"
-                  onClick={handleOpenPdf}
-                  title="Otwórz PDF"
-                >
-                  <Image
-                    src={thumbSrc ?? bucket.getPublicUrl(product.pdf_thumbnail_url).data.publicUrl}
-                    alt="Podgląd PDF"
-                    className="w-full rounded-lg border border-[#d3bb73]/20 transition-colors hover:border-[#d3bb73]/40"
-                    width={400}
-                    height={520}
-                    sizes="200px"
-                    priority
-                    onError={async () => {
-                      // fallback tylko jeśli publicUrl nie działa (np. prywatny bucket)
-                      const { data } = await bucket.createSignedUrl(product.pdf_thumbnail_url!, 3600);
-                      if (data?.signedUrl) setThumbSrc(data.signedUrl);
-                    }}
-                  />
-                  {/* Oczko na hover */}
-                  <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
-                    <Eye className="h-8 w-8 text-white" />
+              {product.pdf_page_url ? (
+                <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-[200px_1fr] md:items-start">
+                    {/* Miniaturka / placeholder */}
+                    <div className="relative">
+                      {product.pdf_thumbnail_url ? (
+                        <div
+                          className="group relative cursor-pointer"
+                          onClick={handleOpenPdf}
+                          title="Otwórz PDF"
+                        >
+                          <Image
+                            src={
+                              thumbSrc ??
+                              bucket.getPublicUrl(product.pdf_thumbnail_url).data.publicUrl
+                            }
+                            alt="Podgląd PDF"
+                            className="w-full rounded-lg border border-[#d3bb73]/20 transition-colors hover:border-[#d3bb73]/40"
+                            width={400}
+                            height={520}
+                            sizes="200px"
+                            priority
+                            onError={async () => {
+                              // fallback tylko jeśli publicUrl nie działa (np. prywatny bucket)
+                              const { data } = await bucket.createSignedUrl(
+                                product.pdf_thumbnail_url!,
+                                3600,
+                              );
+                              if (data?.signedUrl) setThumbSrc(data.signedUrl);
+                            }}
+                          />
+                          {/* Oczko na hover */}
+                          <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
+                            <Eye className="h-8 w-8 text-white" />
+                          </div>
+                        </div>
+                      ) : (
+                        <div
+                          className="flex aspect-[3/4] w-full items-center justify-center rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]"
+                          title="Brak miniaturki"
+                        >
+                          <FileText className="h-12 w-12 text-[#e5e4e2]/20" />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Informacje + (warunkowo) wybór miniaturki */}
+                    <div className="flex flex-col justify-center">
+                      <div className="mb-2 flex items-center gap-2">
+                        <FileText className="h-5 w-5 text-[#d3bb73]" />
+                        <div className="font-medium text-[#e5e4e2]">Strona PDF przesłana</div>
+                      </div>
+
+                      <div className="text-sm text-[#e5e4e2]/60">
+                        {product.pdf_thumbnail_url
+                          ? 'Kliknij miniaturkę aby otworzyć PDF w nowej karcie'
+                          : 'PDF jest dostępny, ale nie ma miniaturki'}
+                      </div>
+
+                      {/* WYBÓR MINIATURKI: tylko gdy thumbnail === null */}
+                      {canEdit && !product.pdf_thumbnail_url && (
+                        <div className="mt-4 space-y-2">
+                          <p className="text-xs text-[#e5e4e2]/60">
+                            Dodaj miniaturkę aby zobaczyć podgląd zawartości PDF
+                          </p>
+
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              if (!file.type.startsWith('image/')) {
+                                showSnackbar('Tylko pliki graficzne są dozwolone', 'error');
+                                return;
+                              }
+                              setThumbnailFile(file);
+                            }}
+                            className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] file:mr-4 file:rounded-lg file:border-0 file:bg-[#d3bb73] file:px-4 file:py-2 file:text-sm file:text-[#1c1f33] hover:file:bg-[#d3bb73]/90"
+                          />
+
+                          {thumbnailFile && (
+                            <p className="text-xs text-[#d3bb73]">
+                              Wybrany plik: {thumbnailFile.name} (
+                              {(thumbnailFile.size / 1024).toFixed(2)} KB)
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              ) : (
-                <div
-                  className="flex aspect-[3/4] w-full items-center justify-center rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]"
-                  title="Brak miniaturki"
-                >
-                  <FileText className="h-12 w-12 text-[#e5e4e2]/20" />
-                </div>
-              )}
-            </div>
+              ) : canEdit ? (
+                <div className="space-y-3">
+                  <div>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wybierz plik PDF</label>
+                    <input
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        if (file.type !== 'application/pdf') {
+                          showSnackbar('Tylko pliki PDF są dozwolone', 'error');
+                          return;
+                        }
+                        setPdfFile(file);
+                      }}
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] file:mr-4 file:rounded-lg file:border-0 file:bg-[#d3bb73] file:px-4 file:py-2 file:text-sm file:text-[#1c1f33] hover:file:bg-[#d3bb73]/90"
+                    />
 
-            {/* Informacje + (warunkowo) wybór miniaturki */}
-            <div className="flex flex-col justify-center">
-              <div className="mb-2 flex items-center gap-2">
-                <FileText className="h-5 w-5 text-[#d3bb73]" />
-                <div className="font-medium text-[#e5e4e2]">Strona PDF przesłana</div>
-              </div>
+                    {pdfFile && (
+                      <p className="mt-2 text-xs text-[#d3bb73]">
+                        Wybrany plik: {pdfFile.name} ({(pdfFile.size / 1024).toFixed(2)} KB)
+                      </p>
+                    )}
+                  </div>
 
-              <div className="text-sm text-[#e5e4e2]/60">
-                {product.pdf_thumbnail_url
-                  ? 'Kliknij miniaturkę aby otworzyć PDF w nowej karcie'
-                  : 'PDF jest dostępny, ale nie ma miniaturki'}
-              </div>
-
-              {/* WYBÓR MINIATURKI: tylko gdy thumbnail === null */}
-              {canEdit && !product.pdf_thumbnail_url && (
-                <div className="mt-4 space-y-2">
-                  <p className="text-xs text-[#e5e4e2]/60">
-                    Dodaj miniaturkę aby zobaczyć podgląd zawartości PDF
+                  {/* ActionBar już jest w headerze, więc tu nie dajemy przycisku */}
+                  <p className="text-xs text-[#e5e4e2]/40">
+                    Kliknij “Prześlij PDF” w prawym górnym rogu sekcji.
                   </p>
-
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      if (!file.type.startsWith('image/')) {
-                        showSnackbar('Tylko pliki graficzne są dozwolone', 'error');
-                        return;
-                      }
-                      setThumbnailFile(file);
-                    }}
-                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] file:mr-4 file:rounded-lg file:border-0 file:bg-[#d3bb73] file:px-4 file:py-2 file:text-sm file:text-[#1c1f33] hover:file:bg-[#d3bb73]/90"
-                  />
-
-                  {thumbnailFile && (
-                    <p className="text-xs text-[#d3bb73]">
-                      Wybrany plik: {thumbnailFile.name} ({(thumbnailFile.size / 1024).toFixed(2)} KB)
-                    </p>
-                  )}
                 </div>
-              )}
-            </div>
-          </div>
-        </div>
-      ) : (
-        canEdit ? (
-          <div className="space-y-3">
-            <div>
-              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wybierz plik PDF</label>
-              <input
-                type="file"
-                accept=".pdf,application/pdf"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  if (file.type !== 'application/pdf') {
-                    showSnackbar('Tylko pliki PDF są dozwolone', 'error');
-                    return;
-                  }
-                  setPdfFile(file);
-                }}
-                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] file:mr-4 file:rounded-lg file:border-0 file:bg-[#d3bb73] file:px-4 file:py-2 file:text-sm file:text-[#1c1f33] hover:file:bg-[#d3bb73]/90"
-              />
+              ) : null}
 
-              {pdfFile && (
-                <p className="mt-2 text-xs text-[#d3bb73]">
-                  Wybrany plik: {pdfFile.name} ({(pdfFile.size / 1024).toFixed(2)} KB)
+              {!canEdit && !product.pdf_page_url && (
+                <p className="py-4 text-center text-sm text-[#e5e4e2]/40">
+                  Brak strony PDF dla tego produktu
                 </p>
               )}
             </div>
-
-            {/* ActionBar już jest w headerze, więc tu nie dajemy przycisku */}
-            <p className="text-xs text-[#e5e4e2]/40">
-              Kliknij “Prześlij PDF” w prawym górnym rogu sekcji.
-            </p>
           </div>
-        ) : null
-      )}
-
-      {!canEdit && !product.pdf_page_url && (
-        <p className="py-4 text-center text-sm text-[#e5e4e2]/40">
-          Brak strony PDF dla tego produktu
-        </p>
-      )}
-    </div>
-  </div>
-)}
+        )}
 
         {/* Tags */}
         <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
@@ -1520,9 +1558,10 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
               className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] placeholder:text-[#e5e4e2]/30 disabled:opacity-50"
             />
 
-            <p className="mt-1 text-xs text-[#e5e4e2]/40">Tagi pomagają w wyszukiwaniu produktów w ofercie</p>
+            <p className="mt-1 text-xs text-[#e5e4e2]/40">
+              Tagi pomagają w wyszukiwaniu produktów w ofercie
+            </p>
           </div>
-          
 
           {product.tags?.length > 0 && (
             <div className="mt-4 flex flex-wrap gap-2">
@@ -1564,9 +1603,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
             <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4">
               <div className="mb-2 flex items-center gap-2">
                 <Building2 className="h-5 w-5 text-[#d3bb73]" />
-                <span className="text-sm font-medium text-[#e5e4e2]">
-                  Usługa od podwykonawcy
-                </span>
+                <span className="text-sm font-medium text-[#e5e4e2]">Usługa od podwykonawcy</span>
               </div>
               <p className="text-sm text-[#e5e4e2]/60">
                 Ten produkt jest powiązany z usługą świadczoną przez podwykonawcę
@@ -1619,16 +1656,13 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
               if (error) throw error;
 
               setProduct((prev) =>
-                prev ? { ...prev, recommended_contract_clauses: clauses } : prev
+                prev ? { ...prev, recommended_contract_clauses: clauses } : prev,
               );
 
               showSnackbar('Zapisano klauzule umowy', 'success');
             } catch (err: any) {
               console.error('Error saving contract clauses:', err);
-              showSnackbar(
-                err?.message || 'Błąd podczas zapisywania klauzul',
-                'error'
-              );
+              showSnackbar(err?.message || 'Błąd podczas zapisywania klauzul', 'error');
               throw err;
             }
           }}

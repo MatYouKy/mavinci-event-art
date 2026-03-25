@@ -78,6 +78,17 @@ const permissionCategories: PermissionCategory[] = [
     label: 'Klienci',
   },
   {
+    key: 'contacts',
+    label: 'Kontakty',
+    extraPermissions: [
+      {
+        key: 'contacts_manage',
+        label: 'Przypisywanie kontaktów',
+        description: 'Może przypisywać kontakty do pracowników',
+      },
+    ],
+  },
+  {
     key: 'events',
     label: 'Wydarzenia',
     extraPermissions: [
