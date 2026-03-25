@@ -8,6 +8,7 @@
  * - equipment_view, equipment_manage, equipment_create
  * - employees_view, employees_manage, employees_create, employees_permissions
  * - clients_view, clients_manage, clients_create
+ * - contacts_view, contacts_manage, contacts_create
  * - events_view, events_manage, events_create, event_categories_manage
  * - calendar_view, calendar_manage
  * - tasks_view, tasks_manage, tasks_create
@@ -20,6 +21,7 @@
  * - page_view, page_manage
  * - locations_view, locations_manage, locations_create
  * - time_tracking_view, time_tracking_manage
+ * - databases_view, databases_manage
  * - website_edit - edycja strony WWW (portfolio, usługi, zespół, itp.)
  */
 
@@ -96,6 +98,7 @@ export const MODULES = [
   'equipment',
   'employees',
   'clients',
+  'contacts',
   'events',
   'calendar',
   'tasks',
@@ -108,6 +111,7 @@ export const MODULES = [
   'page',
   'locations',
   'time_tracking',
+  'databases',
 ] as const;
 
 export type ModuleName = (typeof MODULES)[number];
@@ -119,6 +123,7 @@ const MODULES_WITH_CREATE = [
   'equipment',
   'employees',
   'clients',
+  'contacts',
   'events',
   'tasks',
   'offers',
@@ -141,6 +146,7 @@ export const getAllScopes = (): string[] => {
   });
   scopes.push('employees_permissions');
   scopes.push('messages_assign');
+  scopes.push('contacts_manage');
   scopes.push('event_categories_manage');
   scopes.push('website_edit');
   return scopes;

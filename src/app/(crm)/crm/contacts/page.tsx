@@ -22,6 +22,7 @@ import {
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import PermissionGuard from '@/components/crm/PermissionGuard';
 
 import { useClients } from './hooks/useClient';
 import { ClientEntityType, ContactRow } from './types';
@@ -426,167 +427,169 @@ export default function ContactsPage() {
   );
 
   return (
-    <div className="min-h-screen bg-[#0f1119] p-6">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <h1 className="mb-2 text-3xl font-bold text-white">Kontakty</h1>
-            <p className="text-gray-400">
-              Zarządzaj organizacjami, kontaktami i osobami prywatnymi
-            </p>
-          </div>
-          <button
-            onClick={handleNewContact}
-            className="flex items-center space-x-2 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#0f1119] transition-colors hover:bg-[#c4a859]"
-          >
-            <Plus className="h-5 w-5" />
-            <span>Nowy kontakt</span>
-          </button>
-        </div>
-
-        <div className="mb-6 border-b border-gray-700">
-          <div className="flex gap-0">
-            <button
-              onClick={() => {
-                setActiveTab('all');
-                setTypeFilter('all');
-              }}
-              className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
-                activeTab === 'all'
-                  ? 'border-[#d3bb73] text-[#d3bb73]'
-                  : 'border-transparent text-gray-400 hover:text-white'
-              }`}
-            >
-              <Users className="h-4 w-4" />
-              Wszystkie kontakty
-            </button>
-            <button
-              onClick={() => setActiveTab('subcontractors')}
-              className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
-                activeTab === 'subcontractors'
-                  ? 'border-[#d3bb73] text-[#d3bb73]'
-                  : 'border-transparent text-gray-400 hover:text-white'
-              }`}
-            >
-              <UserCheck className="h-4 w-4" />
-              Podwykonawcy
-            </button>
-          </div>
-        </div>
-
-        {activeTab === 'all' && (
-          <div className="mb-6 flex flex-wrap gap-2">
-            <button
-              onClick={() => setTypeFilter('all')}
-              className={`rounded-lg px-4 py-2 text-sm transition-colors ${
-                typeFilter === 'all'
-                  ? 'bg-[#d3bb73] text-[#0f1119]'
-                  : 'bg-[#1a1d2e] text-gray-400 hover:bg-[#252837]'
-              }`}
-            >
-              Wszystkie typy
-            </button>
-            <button
-              onClick={() => setTypeFilter('organization')}
-              className={`flex items-center space-x-2 rounded-lg px-4 py-2 text-sm transition-colors ${
-                typeFilter === 'organization'
-                  ? 'bg-[#d3bb73] text-[#0f1119]'
-                  : 'bg-[#1a1d2e] text-gray-400 hover:bg-[#252837]'
-              }`}
-            >
-              <Building2 className="h-4 w-4" />
-              <span>Organizacje</span>
-            </button>
-            <button
-              onClick={() => setTypeFilter('contact')}
-              className={`flex items-center space-x-2 rounded-lg px-4 py-2 text-sm transition-colors ${
-                typeFilter === 'contact'
-                  ? 'bg-[#d3bb73] text-[#0f1119]'
-                  : 'bg-[#1a1d2e] text-gray-400 hover:bg-[#252837]'
-              }`}
-            >
-              <User className="h-4 w-4" />
-              <span>Kontakty</span>
-            </button>
-            <button
-              onClick={() => setTypeFilter('individual')}
-              className={`flex items-center space-x-2 rounded-lg px-4 py-2 text-sm transition-colors ${
-                typeFilter === 'individual'
-                  ? 'bg-[#d3bb73] text-[#0f1119]'
-                  : 'bg-[#1a1d2e] text-gray-400 hover:bg-[#252837]'
-              }`}
-            >
-              <UserCircle className="h-4 w-4" />
-              <span>Osoby prywatne</span>
-            </button>
-          </div>
-        )}
-
-        <div className="mb-6 flex flex-col gap-4 md:flex-row">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 transform text-gray-400" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Szukaj kontaktów..."
-              className="w-full rounded-lg border border-gray-700 bg-[#1a1d2e] py-2 pl-10 pr-4 text-white focus:border-[#d3bb73] focus:outline-none"
-            />
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              onClick={() => setViewMode('grid')}
-              className={`rounded-lg p-2 transition-colors ${
-                viewMode === 'grid'
-                  ? 'bg-[#d3bb73] text-[#0f1119]'
-                  : 'bg-[#1a1d2e] text-gray-400 hover:bg-[#252837]'
-              }`}
-              title="Widok kafelków"
-            >
-              <LayoutGrid className="h-5 w-5" />
-            </button>
-            <button
-              onClick={() => setViewMode('list')}
-              className={`rounded-lg p-2 transition-colors ${
-                viewMode === 'list'
-                  ? 'bg-[#d3bb73] text-[#0f1119]'
-                  : 'bg-[#1a1d2e] text-gray-400 hover:bg-[#252837]'
-              }`}
-              title="Widok listy"
-            >
-              <List className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
-
-        {loading ? (
-          <div className="py-12 text-center">
-            <div className="inline-block h-8 w-8 animate-spin rounded-full border-b-2 border-[#d3bb73]"></div>
-          </div>
-        ) : filteredContacts.length === 0 ? (
-          <div className="rounded-lg border border-gray-700 bg-[#1a1d2e] p-12 text-center">
-            <User className="mx-auto mb-4 h-16 w-16 text-gray-600" />
-            <p className="mb-4 text-gray-400">
-              {searchTerm ? 'Nie znaleziono kontaktów' : 'Brak kontaktów'}
-            </p>
+    <PermissionGuard module="contacts">
+      <div className="min-h-screen bg-[#0f1119] p-6">
+        <div className="mx-auto max-w-7xl">
+          <div className="mb-6 flex items-center justify-between">
+            <div>
+              <h1 className="mb-2 text-3xl font-bold text-white">Kontakty</h1>
+              <p className="text-gray-400">
+                Zarządzaj organizacjami, kontaktami i osobami prywatnymi
+              </p>
+            </div>
             <button
               onClick={handleNewContact}
-              className="rounded-lg bg-[#d3bb73] px-4 py-2 text-[#0f1119] transition-colors hover:bg-[#c4a859]"
+              className="flex items-center space-x-2 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#0f1119] transition-colors hover:bg-[#c4a859]"
             >
-              Dodaj pierwszy kontakt
+              <Plus className="h-5 w-5" />
+              <span>Nowy kontakt</span>
             </button>
           </div>
-        ) : (
-          <>
-            {viewMode === 'grid' ? renderGridView() : renderListView()}
-            <div className="mt-6 text-center text-sm text-gray-500">
-              Wyświetlono {filteredContacts.length}{' '}
-              {activeTab === 'all' ? 'kontaktów' : 'podwykonawców'}
+
+          <div className="mb-6 border-b border-gray-700">
+            <div className="flex gap-0">
+              <button
+                onClick={() => {
+                  setActiveTab('all');
+                  setTypeFilter('all');
+                }}
+                className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
+                  activeTab === 'all'
+                    ? 'border-[#d3bb73] text-[#d3bb73]'
+                    : 'border-transparent text-gray-400 hover:text-white'
+                }`}
+              >
+                <Users className="h-4 w-4" />
+                Wszystkie kontakty
+              </button>
+              <button
+                onClick={() => setActiveTab('subcontractors')}
+                className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
+                  activeTab === 'subcontractors'
+                    ? 'border-[#d3bb73] text-[#d3bb73]'
+                    : 'border-transparent text-gray-400 hover:text-white'
+                }`}
+              >
+                <UserCheck className="h-4 w-4" />
+                Podwykonawcy
+              </button>
             </div>
-          </>
-        )}
+          </div>
+
+          {activeTab === 'all' && (
+            <div className="mb-6 flex flex-wrap gap-2">
+              <button
+                onClick={() => setTypeFilter('all')}
+                className={`rounded-lg px-4 py-2 text-sm transition-colors ${
+                  typeFilter === 'all'
+                    ? 'bg-[#d3bb73] text-[#0f1119]'
+                    : 'bg-[#1a1d2e] text-gray-400 hover:bg-[#252837]'
+                }`}
+              >
+                Wszystkie typy
+              </button>
+              <button
+                onClick={() => setTypeFilter('organization')}
+                className={`flex items-center space-x-2 rounded-lg px-4 py-2 text-sm transition-colors ${
+                  typeFilter === 'organization'
+                    ? 'bg-[#d3bb73] text-[#0f1119]'
+                    : 'bg-[#1a1d2e] text-gray-400 hover:bg-[#252837]'
+                }`}
+              >
+                <Building2 className="h-4 w-4" />
+                <span>Organizacje</span>
+              </button>
+              <button
+                onClick={() => setTypeFilter('contact')}
+                className={`flex items-center space-x-2 rounded-lg px-4 py-2 text-sm transition-colors ${
+                  typeFilter === 'contact'
+                    ? 'bg-[#d3bb73] text-[#0f1119]'
+                    : 'bg-[#1a1d2e] text-gray-400 hover:bg-[#252837]'
+                }`}
+              >
+                <User className="h-4 w-4" />
+                <span>Kontakty</span>
+              </button>
+              <button
+                onClick={() => setTypeFilter('individual')}
+                className={`flex items-center space-x-2 rounded-lg px-4 py-2 text-sm transition-colors ${
+                  typeFilter === 'individual'
+                    ? 'bg-[#d3bb73] text-[#0f1119]'
+                    : 'bg-[#1a1d2e] text-gray-400 hover:bg-[#252837]'
+                }`}
+              >
+                <UserCircle className="h-4 w-4" />
+                <span>Osoby prywatne</span>
+              </button>
+            </div>
+          )}
+
+          <div className="mb-6 flex flex-col gap-4 md:flex-row">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 transform text-gray-400" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Szukaj kontaktów..."
+                className="w-full rounded-lg border border-gray-700 bg-[#1a1d2e] py-2 pl-10 pr-4 text-white focus:border-[#d3bb73] focus:outline-none"
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setViewMode('grid')}
+                className={`rounded-lg p-2 transition-colors ${
+                  viewMode === 'grid'
+                    ? 'bg-[#d3bb73] text-[#0f1119]'
+                    : 'bg-[#1a1d2e] text-gray-400 hover:bg-[#252837]'
+                }`}
+                title="Widok kafelków"
+              >
+                <LayoutGrid className="h-5 w-5" />
+              </button>
+              <button
+                onClick={() => setViewMode('list')}
+                className={`rounded-lg p-2 transition-colors ${
+                  viewMode === 'list'
+                    ? 'bg-[#d3bb73] text-[#0f1119]'
+                    : 'bg-[#1a1d2e] text-gray-400 hover:bg-[#252837]'
+                }`}
+                title="Widok listy"
+              >
+                <List className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="py-12 text-center">
+              <div className="inline-block h-8 w-8 animate-spin rounded-full border-b-2 border-[#d3bb73]"></div>
+            </div>
+          ) : filteredContacts.length === 0 ? (
+            <div className="rounded-lg border border-gray-700 bg-[#1a1d2e] p-12 text-center">
+              <User className="mx-auto mb-4 h-16 w-16 text-gray-600" />
+              <p className="mb-4 text-gray-400">
+                {searchTerm ? 'Nie znaleziono kontaktów' : 'Brak kontaktów'}
+              </p>
+              <button
+                onClick={handleNewContact}
+                className="rounded-lg bg-[#d3bb73] px-4 py-2 text-[#0f1119] transition-colors hover:bg-[#c4a859]"
+              >
+                Dodaj pierwszy kontakt
+              </button>
+            </div>
+          ) : (
+            <>
+              {viewMode === 'grid' ? renderGridView() : renderListView()}
+              <div className="mt-6 text-center text-sm text-gray-500">
+                Wyświetlono {filteredContacts.length}{' '}
+                {activeTab === 'all' ? 'kontaktów' : 'podwykonawców'}
+              </div>
+            </>
+          )}
+        </div>
       </div>
-    </div>
+    </PermissionGuard>
   );
 }
