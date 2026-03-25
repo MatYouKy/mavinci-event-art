@@ -21,6 +21,7 @@ import {
   X,
   Upload,
 } from 'lucide-react';
+import Image from 'next/image';
 import { supabase } from '@/lib/supabase/browser';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -1150,7 +1151,13 @@ function TemplateEditorModal({
                 </span>
               </label>
               {formData.logo_url && (
-                <img src={formData.logo_url} alt="Logo" className="h-32 w-32 object-contain" />
+                <Image
+                  width={128}
+                  height={128}
+                  src={formData.logo_url}
+                  alt="Logo"
+                  className="h-32 w-32 object-contain"
+                />
               )}
             </div>
           </div>

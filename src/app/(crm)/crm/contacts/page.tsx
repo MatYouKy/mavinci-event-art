@@ -2,13 +2,30 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Building2, User, Mail, Phone, MapPin, Users, Briefcase, CircleUser as UserCircle, LayoutGrid, List, Star, Tag, UserCheck } from 'lucide-react';
+import {
+  Plus,
+  Search,
+  Building2,
+  User,
+  Mail,
+  Phone,
+  MapPin,
+  Users,
+  Briefcase,
+  CircleUser as UserCircle,
+  LayoutGrid,
+  List,
+  Star,
+  Tag,
+  UserCheck,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 
 import { useClients } from './hooks/useClient';
 import { ClientEntityType, ContactRow } from './types';
+import Image from 'next/image';
 
 type ViewMode = 'grid' | 'list';
 type TabFilter = 'all' | 'subcontractors';
@@ -219,10 +236,12 @@ export default function ContactsPage() {
           >
             <div className="mb-3 flex flex-col items-center text-center">
               {contact.avatar_url ? (
-                <img
+                <Image
                   src={contact.avatar_url}
                   alt={contact.name}
-                  className="mb-3 h-20 w-20 rounded-full object-cover"
+                  width={80}
+                  height={80}
+                  className="mb-3 rounded-full object-cover"
                 />
               ) : (
                 <div className="mb-3 flex h-20 w-20 items-center justify-center rounded-full bg-[#d3bb73]/10">
@@ -311,9 +330,11 @@ export default function ContactsPage() {
           >
             <div className="flex items-center gap-4">
               {contact.avatar_url ? (
-                <img
+                <Image
                   src={contact.avatar_url}
                   alt={contact.name}
+                  width={48}
+                  height={48}
                   className="h-12 w-12 flex-shrink-0 rounded-full object-cover"
                 />
               ) : (
