@@ -3,8 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Lock, Mail } from 'lucide-react';
-import { supabase } from '@/lib/supabase/browser';  
-
+import { supabase } from '@/lib/supabase/browser';
 
 export default function CRMLoginPage() {
   const router = useRouter();

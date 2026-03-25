@@ -89,7 +89,9 @@ export default function AdminResetPasswordModal({
 
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
-        throw new Error('Błąd serwera - nieprawidłowa odpowiedź. Sprawdź czy endpoint /api/reset-employee-password jest dostępny.');
+        throw new Error(
+          'Błąd serwera - nieprawidłowa odpowiedź. Sprawdź czy endpoint /api/reset-employee-password jest dostępny.',
+        );
       }
 
       const data = await response.json();

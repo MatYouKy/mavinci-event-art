@@ -3,22 +3,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import {
-  Plus,
-  Search,
-  Calendar,
-  MapPin,
-  Building2,
-  Tag,
-  SlidersHorizontal,
-  ArrowUpDown,
-  Trash2,
-  AlertTriangle,
-  Grid,
-  List,
-  User,
-  Table2,
-} from 'lucide-react';
+import { Plus, Search, Calendar, MapPin, Building2, Tag, SlidersHorizontal, ArrowUpDown, Trash2, AlertTriangle, Grid2x2 as Grid, List, User, Table2 } from 'lucide-react';
 import EventWizard from '@/components/crm/EventWizard';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -160,6 +145,11 @@ function ResizableTh({
   max = 900,
   align = 'left',
   draggable = false,
+  sortable = false,
+  sortField,
+  currentSortField,
+  sortDirection,
+  onSort,
   onDragStart,
   onDragOver,
   onDrop,
@@ -178,6 +168,13 @@ function ResizableTh({
   onDragOver?: React.DragEventHandler<HTMLTableCellElement>;
   onDrop?: React.DragEventHandler<HTMLTableCellElement>;
 
+  // sort
+  sortable?: boolean;
+  sortField?: SortField;
+  currentSortField?: SortField;
+  sortDirection?: SortDirection;
+  onSort?: (field: SortField) => void;
+
   // resize
   onResize: (nextWidth: number) => void; // ✅ live
   onResizeEnd: (nextWidth: number) => void; // ✅ persist
@@ -185,6 +182,8 @@ function ResizableTh({
   const draggingRef = useRef(false);
   const startXRef = useRef(0);
   const startWRef = useRef(0);
+
+  const isSorted = sortable && sortField === currentSortField;
 
   return (
     <th
@@ -200,7 +199,22 @@ function ResizableTh({
         textAlign: align,
       }}
     >
-      <div className="truncate pr-3">{label}</div>
+      <div
+        className={`flex items-center gap-2 truncate pr-3 ${sortable ? 'cursor-pointer hover:text-[#d3bb73]' : ''}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (sortable && sortField && onSort) {
+            onSort(sortField);
+          }
+        }}
+      >
+        <span className="truncate">{label}</span>
+        {sortable && isSorted && (
+          <ArrowUpDown
+            className={`h-3 w-3 flex-shrink-0 transition-transform ${sortDirection === 'desc' ? 'rotate-180' : ''}`}
+          />
+        )}
+      </div>
 
       {/* uchwyt do resize */}
       <div
@@ -250,7 +264,8 @@ export default function EventsPageClient({
   initialData: { events: EventRow[]; viewMode: ViewMode; categories: EventCategoryRow[] };
   currentEmployee: IEmployee;
 }) {
-  const isUserAdmin = currentEmployee.role === 'admin' || currentEmployee.permissions?.includes('events_manage');
+  const isUserAdmin =
+    currentEmployee.role === 'admin' || currentEmployee.permissions?.includes('events_manage');
 
   const { events: initialEvents, categories, viewMode: initialViewMode } = initialData;
   const router = useRouter();
@@ -1080,6 +1095,16 @@ export default function EventsPageClient({
                     const align: 'left' | 'right' =
                       key === 'budget' || key === 'actions' ? 'right' : 'left';
 
+                    // mapowanie kluczy kolumn na pola sortowania
+                    const sortFieldMap: Partial<Record<EventsTableColKey, SortField>> = {
+                      name: 'name',
+                      date: 'event_date',
+                      budget: 'budget',
+                    };
+
+                    const colSortField = sortFieldMap[key];
+                    const isSortable = !!colSortField;
+
                     return (
                       <ResizableTh
                         key={`${key}-${index}`}
@@ -1088,6 +1113,11 @@ export default function EventsPageClient({
                         min={minMap[key] ?? 120}
                         align={align}
                         draggable
+                        sortable={isSortable}
+                        sortField={colSortField}
+                        currentSortField={sortField}
+                        sortDirection={sortDirection}
+                        onSort={(field) => toggleSort(field)}
                         onDragStart={() => {
                           dragKeyRef.current = key;
                         }}
