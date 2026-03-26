@@ -18,6 +18,7 @@ import { useRouter } from 'next/navigation';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { supabase } from '@/lib/supabase/browser';
+import { AbsenceRequestModal } from '@/components/crm/employee/modal/AbsenceRequestModal';
 
 export interface Notification {
   id: string;
@@ -41,7 +42,7 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
   const { showSnackbar } = useSnackbar();
   const [notifications, setNotifications] = useState<Notification[]>(initialNotifications);
   const [unreadCount, setUnreadCount] = useState(initialNotifications.filter((n) => !n.is_read).length);
-  const [showPanel, setShowPanel] = useState(false);  
+  const [showPanel, setShowPanel] = useState(false);
   const [loading, setLoading] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -49,6 +50,7 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
   const [soundEnabled, setSoundEnabled] = useState(true);
   const prevUnreadCountRef = useRef<number>(0);
   const isInitialLoadRef = useRef(true);
+  const [absenceModalId, setAbsenceModalId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchNotifications();
@@ -326,6 +328,18 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
       markAsRead(notification.recipient_id);
     }
 
+    // Handle absence notifications with modal
+    if (
+      notification.category === 'absence_request' &&
+      notification.related_entity_type === 'absence' &&
+      notification.related_entity_id
+    ) {
+      setAbsenceModalId(notification.related_entity_id);
+      setShowPanel(false);
+      return;
+    }
+
+    // For other notifications, use action_url
     if (notification.action_url) {
       router.push(notification.action_url);
       setShowPanel(false);
@@ -729,6 +743,17 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
             </div>
           </div>
         </div>
+      )}
+
+      {/* Absence Request Modal */}
+      {absenceModalId && (
+        <AbsenceRequestModal
+          absenceId={absenceModalId}
+          onClose={() => setAbsenceModalId(null)}
+          onSuccess={() => {
+            fetchNotifications();
+          }}
+        />
       )}
     </div>
   );
