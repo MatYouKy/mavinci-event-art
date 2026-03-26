@@ -30,7 +30,7 @@ interface Employee {
   id: string;
   name: string;
   surname: string;
-  position: string | null;
+  occupation: string | null;
 }
 
 export const AbsenceRequestModal: React.FC<AbsenceRequestModalProps> = ({
@@ -68,7 +68,7 @@ export const AbsenceRequestModal: React.FC<AbsenceRequestModalProps> = ({
 
       const { data: employeeData, error: employeeError } = await supabase
         .from('employees')
-        .select('id, name, surname, position')
+        .select('id, name, surname, occupation')
         .eq('id', absenceData.employee_id)
         .single();
 
@@ -244,7 +244,7 @@ export const AbsenceRequestModal: React.FC<AbsenceRequestModalProps> = ({
               <p className="font-medium text-[#e5e4e2]">
                 {employee.name} {employee.surname}
               </p>
-              {employee.position && <p className="text-sm text-[#e5e4e2]/60">{employee.position}</p>}
+              {employee.occupation && <p className="text-sm text-[#e5e4e2]/60">{employee.occupation}</p>}
             </div>
           </div>
         </div>
