@@ -50,7 +50,7 @@ interface PrivateTasksBoardProps {
   tasksState: Task[];
 }
 
-export default function PrivateTasksBoard({
+export default function PrivateTasksBoardTab({
   employeeId,
   isOwnProfile,
   tasksState,
