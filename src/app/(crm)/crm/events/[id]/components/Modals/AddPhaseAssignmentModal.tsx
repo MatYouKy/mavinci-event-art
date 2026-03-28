@@ -507,6 +507,8 @@ export const AddPhaseAssignmentModal: React.FC<AddPhaseAssignmentModalProps> = (
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0d0f1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 >
                   <option value="technician">Technik</option>
+                  <option value="dj">DJ</option>
+                  <option value="konferansjer">Konferansjer</option>
                   <option value="assistant">Asystent</option>
                   <option value="specialist">Specjalista</option>
                   <option value="coordinator">Koordynator</option>

@@ -86,7 +86,7 @@ export default function AddEmployeeModal({ onClose, onSuccess, isOpen }: AddEmpl
     for (let i = 0; i < 12; i++) {
       password += chars.charAt(Math.floor(Math.random() * chars.length));
     }
-    setFormData((prev) => ({ ...prev, password }));
+    setFormData((prev) => ({ ...prev, password: password.trim() }));
     setShowPassword(true);
   };
 
@@ -253,7 +253,7 @@ export default function AddEmployeeModal({ onClose, onSuccess, isOpen }: AddEmpl
               <input
                 type="text"
                 value={formData.name}
-                onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+                onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value.trim() }))}
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1019] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                 required
               />
@@ -266,7 +266,7 @@ export default function AddEmployeeModal({ onClose, onSuccess, isOpen }: AddEmpl
               <input
                 type="text"
                 value={formData.surname}
-                onChange={(e) => setFormData((prev) => ({ ...prev, surname: e.target.value }))}
+                onChange={(e) => setFormData((prev) => ({ ...prev, surname: e.target.value.trim() }))}
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1019] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                 required
               />
@@ -280,7 +280,7 @@ export default function AddEmployeeModal({ onClose, onSuccess, isOpen }: AddEmpl
             <input
               type="text"
               value={formData.nickname}
-              onChange={(e) => setFormData((prev) => ({ ...prev, nickname: e.target.value }))}
+              onChange={(e) => setFormData((prev) => ({ ...prev, nickname: e.target.value.trim() }))}
               className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1019] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
             />
           </div>
@@ -293,7 +293,7 @@ export default function AddEmployeeModal({ onClose, onSuccess, isOpen }: AddEmpl
               <input
                 type="email"
                 value={formData.email}
-                onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
+                onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value.trim() }))}
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1019] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                 required
               />
@@ -304,7 +304,7 @@ export default function AddEmployeeModal({ onClose, onSuccess, isOpen }: AddEmpl
               <input
                 type="tel"
                 value={formData.phone_number}
-                onChange={(e) => setFormData((prev) => ({ ...prev, phone_number: e.target.value }))}
+                onChange={(e) => setFormData((prev) => ({ ...prev, phone_number: e.target.value.trim() }))}
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1019] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
               />
             </div>
@@ -319,7 +319,7 @@ export default function AddEmployeeModal({ onClose, onSuccess, isOpen }: AddEmpl
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={formData.password}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value }))}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value.trim() }))}
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1019] px-3 py-2 pr-10 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
                   required
                 />
@@ -383,7 +383,7 @@ export default function AddEmployeeModal({ onClose, onSuccess, isOpen }: AddEmpl
             <input
               type="text"
               value={formData.occupation}
-              onChange={(e) => setFormData((prev) => ({ ...prev, occupation: e.target.value }))}
+              onChange={(e) => setFormData((prev) => ({ ...prev, occupation: e.target.value.trim() }))}
               className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1019] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
               placeholder="np. Kierownik projektu, Technik audio"
             />
