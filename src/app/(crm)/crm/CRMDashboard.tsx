@@ -7,6 +7,7 @@ import { canView, canCreate, isAdmin, type Employee } from '@/lib/permissions';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { RecentActivityDTO } from '@/lib/CRM/dashboard/dashboardData';
 import { IEmployee } from './employees/type';
+import { useRouter } from 'next/navigation';
 
 interface DashboardStats {
   totalEvents: number;
@@ -36,7 +37,7 @@ export default function CRMDashboard({
   recentActivity: RecentActivityDTO[];
 }) {
   const { employee, loading } = useCurrentEmployee();
-
+  const router = useRouter();
   const getTimeAgo = (dateString: string): string => {
     const date = new Date(dateString);
     const now = new Date();
@@ -252,7 +253,7 @@ export default function CRMDashboard({
                 href="/crm/events"
                 className="text-sm text-[#d3bb73] transition-colors hover:text-[#d3bb73]/80"
               >
-                Zobacz wszystkie
+                Zobacz wszystkie wydarzenia
               </Link>
             )}
           </div>
@@ -260,10 +261,17 @@ export default function CRMDashboard({
             <div className="py-8 text-center text-[#e5e4e2]/40">Brak aktywności</div>
           ) : (
             <div className="space-y-4">
-              {filteredActivity.map((activity) => (
+              {filteredActivity.map((activity) => {
+                const href = `/crm/${activity.type}s/${activity.id}`;
+                console.log('href: ', href);
+              return (  
                 <div
                   key={activity.id}
-                  className="flex items-start gap-4 rounded-lg bg-[#0f1119] p-4 transition-colors hover:bg-[#0f1119]/50"
+                  onClick={() => {
+                    router.push(href);
+                  }}
+                  title={activity.title}
+                  className="flex items-start gap-4 rounded-lg bg-[#0f1119] p-4 transition-colors hover:bg-[#0f1119]/50 cursor-pointer"
                 >
                   <div className={`${activity.color} mt-1`}>
                     <activity.icon className="h-5 w-5" />
@@ -273,7 +281,8 @@ export default function CRMDashboard({
                     <p className="mt-1 text-xs text-[#e5e4e2]/40">{activity.time}</p>
                   </div>
                 </div>
-              ))}
+              );
+            })}
             </div>
           )}
         </div>

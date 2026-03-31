@@ -3,7 +3,22 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Plus, Search, Calendar, MapPin, Building2, Tag, SlidersHorizontal, ArrowUpDown, Trash2, AlertTriangle, Grid2x2 as Grid, List, User, Table2 } from 'lucide-react';
+import {
+  Plus,
+  Search,
+  Calendar,
+  MapPin,
+  Building2,
+  Tag,
+  SlidersHorizontal,
+  ArrowUpDown,
+  Trash2,
+  AlertTriangle,
+  Grid2x2 as Grid,
+  List,
+  User,
+  Table2,
+} from 'lucide-react';
 import EventWizard from '@/components/crm/EventWizard';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -11,7 +26,6 @@ import { Modal } from '@/components/UI/Modal';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
 import { EventStatusBadge } from './UI/EventStatusBadge';
-import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { ViewMode } from '../settings/page';
 import { EventCategoryRow, EventRow } from '@/lib/CRM/events/eventsData.server';
 import { IEmployee } from '../employees/type';
@@ -296,6 +310,19 @@ export default function EventsPageClient({
     return isUserAdmin ? base : base.filter((k) => k !== 'budget');
   });
 
+  const canViewEventStatus =
+    isUserAdmin ||
+    hasScope('events_manage', currentEmployee);
+
+  const canViewEventBudget =
+    isUserAdmin ||
+    hasScope('finances_manage', currentEmployee) ||
+    hasScope('finances_view', currentEmployee) ||
+    hasScope('offers_manage', currentEmployee) ||
+    hasScope('offers_view', currentEmployee) ||
+    hasScope('invoices_manage', currentEmployee) ||
+    hasScope('invoices_view', currentEmployee);
+
   // ---- Table widths from prefs (fallback to defaults)
 
   const [colWidths, setColWidths] = useState<Record<EventsTableColKey, number>>(() => ({
@@ -318,13 +345,20 @@ export default function EventsPageClient({
   const [showMobileFilters, setShowMobileFilters] = useState(false);
 
   const persistColOrder = async (next: EventsTableColKey[]) => {
-    setColOrder(next);
-
+    const sanitized = next.filter((k) => {
+      if (k === 'budget' && !canViewEventBudget) return false;
+      if (k === 'status' && !canViewEventStatus) return false;
+      if (k === 'actions' && !canViewEventStatus) return false;
+      return true;
+    });
+  
+    setColOrder(sanitized);
+  
     await setModulePrefs?.('events', {
       table: {
         ...(modulePrefs?.table ?? {}),
-        colOrder: next,
-        colWidths, // nie zgub szerokości
+        colOrder: sanitized,
+        colWidths,
       },
     });
   };
@@ -692,21 +726,26 @@ export default function EventsPageClient({
   };
 
   const actions = useMemo<Action[]>(() => {
-    return [
-      {
+    const arr: Action[] = [];
+  
+    if (canViewEventStatus) {
+      arr.push({
         label: 'Kategorie',
         onClick: () => router.push('/crm/event-categories'),
         icon: <Tag className="h-4 w-4" />,
         variant: 'default',
-      },
-      {
+      });
+  
+      arr.push({
         label: 'Nowy event',
         onClick: () => setIsModalOpen(true),
         icon: <Plus className="h-4 w-4" />,
         variant: 'primary',
-      },
-    ];
-  }, [router, setIsModalOpen]);
+      });
+    }
+  
+    return arr;
+  }, [router, setIsModalOpen, canViewEventStatus]);
 
   return (
     <div className="space-y-6">
@@ -1068,7 +1107,10 @@ export default function EventsPageClient({
                 <tr>
                   {colOrder.map((key, index) => {
                     // pomiń budget jeśli brak uprawnień (gdyby kiedyś prefs to zawierały)
-                    if (key === 'budget' && !canViewCommercials) return null;
+                    if (key === 'budget' && !canViewEventBudget) return null;
+                    if (key === 'status' && !canViewEventStatus) return null;
+                    if (key === 'actions' && !canViewEventStatus) return null;
+
 
                     const labelMap: Record<EventsTableColKey, React.ReactNode> = {
                       name: 'Nazwa',
@@ -1147,7 +1189,8 @@ export default function EventsPageClient({
                     className="cursor-pointer border-b border-[#d3bb73]/5 text-[#e5e4e2] hover:bg-[#0f1117]"
                   >
                     {colOrder.map((key) => {
-                      if (key === 'budget' && !canViewCommercials) return null;
+                      if (key === 'budget' && !canViewEventBudget) return null;
+                      if (key === 'status' && !canViewEventStatus) return null;
 
                       const cellClassMap: Record<EventsTableColKey, string> = {
                         name: 'px-3 py-3',
@@ -1183,18 +1226,28 @@ export default function EventsPageClient({
             <button
               onClick={() => {
                 persistColOrder(
-                  canViewCommercials
+                  canViewEventBudget
                     ? DEFAULT_COL_ORDER
-                    : DEFAULT_COL_ORDER.filter((k) => k !== 'budget'),
+                    : DEFAULT_COL_ORDER.filter((k) => {
+                      if (k === 'budget' && !canViewEventBudget) return false;
+                      if (k === 'status' && !canViewEventStatus) return false;
+                      if (k === 'actions' && !canViewEventStatus) return false;
+                      return true;
+                    }),
                 );
                 // szerokości też:
                 setColWidths(DEFAULT_EVENTS_COL_WIDTHS);
                 setModulePrefs?.('events', {
                   table: {
                     ...(modulePrefs?.table ?? {}),
-                    colOrder: canViewCommercials
+                    colOrder: canViewEventBudget
                       ? DEFAULT_COL_ORDER
-                      : DEFAULT_COL_ORDER.filter((k) => k !== 'budget'),
+                      : DEFAULT_COL_ORDER.filter((k) => {
+                        if (k === 'budget' && !canViewEventBudget) return false;
+                        if (k === 'status' && !canViewEventStatus) return false;
+                        if (k === 'actions' && !canViewEventStatus) return false;
+                        return true;
+                      }),
                     colWidths: DEFAULT_EVENTS_COL_WIDTHS,
                   },
                 });
@@ -1240,7 +1293,7 @@ export default function EventsPageClient({
 
                     <div className="flex items-center gap-2">
                       <div className="hidden md:block">
-                        {canViewCommercials && (
+                        {canViewEventStatus && (
                           <button
                             onClick={(e) => {
                               stop(e);
@@ -1255,7 +1308,7 @@ export default function EventsPageClient({
                       </div>
 
                       <div className="md:hidden">
-                        {canViewCommercials && (
+                        {canViewEventStatus && (
                           <ResponsiveActionBar
                             actions={[
                               {
@@ -1301,9 +1354,10 @@ export default function EventsPageClient({
                   </div>
 
                   <div className="mt-4 flex flex-wrap items-center gap-2">
-                    <div>
-                      <EventStatusBadge status={event.status} />
-                    </div>
+                    {canViewEventStatus && (<div>
+                        <EventStatusBadge status={event.status} />
+                      </div>
+                    )}
 
                     {event.event_categories && (
                       <div className="rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-2 py-1 text-xs text-[#d3bb73]">
@@ -1322,13 +1376,16 @@ export default function EventsPageClient({
                   )}
 
                   <div className="mt-3 hidden md:block">
-                    <EventStatusBadge status={event.status} />
+                    {canViewEventStatus && <div>
+                        <EventStatusBadge status={event.status} />
+                      </div>
+                    }
                   </div>
                 </div>
               );
             }
 
-            // LIST
+            // LIST VIEW
             return (
               <div
                 key={`${event.id}-list-${index}`}
@@ -1395,9 +1452,10 @@ export default function EventsPageClient({
 
                   <div className="flex items-center gap-2">
                     <div className="hidden items-center gap-2 md:flex">
-                      <div>
-                        <EventStatusBadge status={event.status} />
-                      </div>
+                      {canViewEventStatus && <div>
+                          <EventStatusBadge status={event.status} />
+                        </div>
+                      }
                       {event.event_categories && (
                         <div className="flex items-center gap-1 rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-3 py-1 text-xs text-[#d3bb73]">
                           <Tag className="h-3 w-3" />
@@ -1440,11 +1498,13 @@ export default function EventsPageClient({
                 </div>
 
                 <div className="mt-3 flex flex-wrap items-center gap-2 md:hidden">
-                  <div
-                    className={`rounded-full border px-2 py-1 text-xs ${statusColors[event.status]}`}
-                  >
-                    <EventStatusBadge status={event.status} />
-                  </div>
+                  {canViewEventStatus && (
+                    <div
+                      className={`rounded-full border px-2 py-1 text-xs ${statusColors[event.status]}`}
+                    >
+                      <EventStatusBadge status={event.status} />
+                    </div>
+                  )}
                   {event.event_categories && (
                     <div className="rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-2 py-1 text-xs text-[#d3bb73]">
                       {event.event_categories.name}

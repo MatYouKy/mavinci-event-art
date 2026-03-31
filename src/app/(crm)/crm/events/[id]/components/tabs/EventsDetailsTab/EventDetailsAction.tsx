@@ -16,11 +16,10 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { IEvent } from '@/app/(crm)/crm/events/type';
 import { EventStatus } from '@/components/crm/Calendar/types';
-import { useEventCategories } from '@/app/(crm)/crm/event-categories/hook/useEventCategories';
-import { IEventCategory } from '@/app/(crm)/crm/event-categories/types';
+
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { EventCategoryRow } from '@/lib/CRM/events/eventsData.server';
 
@@ -87,13 +86,12 @@ interface EventDetailsActionProps {
 export default function EventDetailsAction({
   event,
   categories,
-  canEditStatus = true,
+  canEditStatus = false,
   hasOffers = false,
   offersCount = 0,
 }: EventDetailsActionProps) {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
-  const { getCategoryById } = useEventCategories(); 
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [currentStatus, setCurrentStatus] = useState<EventStatus>(event?.status as EventStatus);
   const [isEditingCategory, setIsEditingCategory] = useState(false);
@@ -102,7 +100,14 @@ export default function EventDetailsAction({
   const [agenda, setAgenda] = useState<any | null>(null);
   const [equipmentChecklist, setEquipmentChecklist] = useState<any | null>(null);
   //Category
-  const [category, setCategory] = useState<EventCategoryRow | undefined>(categories.find((c) => c.id === event?.category_id) ?? undefined);
+  const [category, setCategory] = useState<EventCategoryRow | undefined>(
+    categories.find((c) => c.id === event?.category_id) ?? undefined,
+  );
+
+  useEffect(() => {
+    setCategory(categories.find((c) => c.id === event?.category_id) ?? undefined);
+  }, [event?.category_id]);
+  
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(event?.category_id ?? '');
   const [savingCategory, setSavingCategory] = useState(false);
 
@@ -110,12 +115,7 @@ export default function EventDetailsAction({
     setSelectedCategoryId(event?.category_id ?? '');
   }, [event?.category_id]);
 
-  
-
   const [generatedPdfPath, setGeneratedPdfPath] = useState<string | null>(null);
-  
-
-  
 
   useEffect(() => {
     if (event.status === 'ready_for_live' && event.id) {
@@ -144,9 +144,9 @@ export default function EventDetailsAction({
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
-  
+
     if (error && error.code !== 'PGRST116') throw error;
-  
+
     setEquipmentChecklist(data ?? null);
     return data ?? null; // ✅ KLUCZOWE
   };
@@ -155,30 +155,29 @@ export default function EventDetailsAction({
     if (event?.status) setCurrentStatus(event.status as EventStatus);
   }, [event?.status]);
 
-
-
   const handleShowChecklistPdf = async () => {
     try {
       // ✅ weź aktualny rekord: albo z state, albo pobierz świeży
-      const checklist =
-        equipmentChecklist?.file_path ? equipmentChecklist : await fetchEquipmentChecklist();
-  
+      const checklist = equipmentChecklist?.file_path
+        ? equipmentChecklist
+        : await fetchEquipmentChecklist();
+
       if (!checklist?.file_path) {
         showSnackbar('Brak checklisty sprzętu do wydruku', 'info');
         return;
       }
-  
+
       const { data, error } = await supabase.storage
         .from('event-files')
         .createSignedUrl(checklist.file_path, 3600);
-  
+
       if (error) throw error;
-  
+
       if (data?.signedUrl) {
         window.open(data.signedUrl, '_blank');
         return;
       }
-  
+
       showSnackbar('Nie udało się wygenerować linku do checklisty', 'error');
     } catch (err: any) {
       console.error('Checklist PDF error:', err);
@@ -188,21 +187,21 @@ export default function EventDetailsAction({
 
   const handleCategoryChange = async (newCategoryId: string) => {
     if (!event?.id) return;
-  
+
     try {
       setSavingCategory(true);
-  
+
       const payload = {
         category_id: newCategoryId && newCategoryId !== '' ? newCategoryId : null,
         updated_at: new Date().toISOString(),
       };
-  
+
       const { error } = await supabase.from('events').update(payload).eq('id', event.id);
-  
+
       if (error) throw error;
-  
+
       setSelectedCategoryId(newCategoryId);
-  
+
       // odśwież lokalny "category" (żeby od razu pokazało label/kolor)
       if (newCategoryId) {
         const next = categories.find((c) => c.id === newCategoryId);
@@ -210,7 +209,7 @@ export default function EventDetailsAction({
       } else {
         setCategory(null);
       }
-  
+
       showSnackbar('Zaktualizowano kategorię wydarzenia', 'success');
       setIsEditingCategory(false);
       router.refresh();
@@ -279,11 +278,16 @@ export default function EventDetailsAction({
   const canEquipment =
     employee?.permissions?.includes('equipment_manage') || employee?.permissions?.includes('admin');
 
+  const canOffers =
+    employee?.permissions?.includes('offers_manage') || employee?.permissions?.includes('admin');
+
   const badgeCls = useMemo(() => {
     const base =
       'inline-flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm transition-colors';
     const color = statusBadgeClasses[currentStatus] ?? 'bg-white/5 text-[#e5e4e2] border-white/10';
-    const clickable = canEditStatus ? 'cursor-pointer hover:bg-white/5' : 'cursor-default opacity-80';
+    const clickable = canEditStatus
+      ? 'cursor-pointer hover:bg-white/5'
+      : 'cursor-default opacity-80';
     return `${base} ${color} ${clickable}`;
   }, [currentStatus, canEditStatus]);
 
@@ -294,149 +298,175 @@ export default function EventDetailsAction({
       <div className="space-y-2">
         {/* ✅ POPRAWKA: sekcja kategorii nie znika po kliknięciu.
             Zamiast renderować tylko gdy !isEditingCategory, renderujemy zawsze i przełączamy zawartość. */}
-<div>
-  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Kategoria</label>
-
-  {!isEditingCategory ? (
-    <button
-      type="button"
-      onClick={() => setIsEditingCategory(true)}
-      className="flex w-full items-center gap-2 rounded-lg border px-3 py-2 transition-opacity hover:opacity-80"
-      style={{
-        backgroundColor: category?.color ? `${category.color}20` : 'rgba(255,255,255,0.04)',
-        borderColor: category?.color ? `${category.color}50` : 'rgba(255,255,255,0.10)',
-        color: category?.color ?? '#e5e4e2',
-      }}
-      title="Kliknij aby edytować kategorię"
-    >
-      {category?.icon ? (
-        <div
-          className="h-4 w-4"
-          style={{ color: category.color }}
-          dangerouslySetInnerHTML={{ __html: category.icon.svg_code }}
-        />
-      ) : (
-        <Tag className="h-4 w-4" />
-      )}
-
-      <span className="text-sm font-medium">{category?.name ?? 'Brak kategorii'}</span>
-
-      <span className="ml-auto text-xs opacity-70">Zmień</span>
-    </button>
-  ) : (
-    <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] p-3">
-      <div className="mb-2 flex items-center justify-between">
-        <div className="text-xs text-[#e5e4e2]/60">
-          Aktualnie:{' '}
-          <span className="text-[#e5e4e2]">{category?.name ?? 'brak'}</span>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => {
-            setIsEditingCategory(false);
-            setSelectedCategoryId(event?.category_id ?? '');
-          }}
-          className="rounded-md px-2 py-1 text-xs text-[#e5e4e2]/60 hover:bg-white/5 hover:text-[#e5e4e2]"
-        >
-          Anuluj
-        </button>
-      </div>
-
-      <div className="space-y-2">
-        <select
-          value={selectedCategoryId}
-          onChange={(e) => handleCategoryChange(e.target.value)}
-          disabled={savingCategory}
-          autoFocus
-          className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-2 text-sm text-[#e5e4e2] transition-colors focus:border-[#d3bb73] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <option value="">Brak kategorii</option>
-
-          {(categories || []).map((c: EventCategoryRow) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-
-        <div className="flex items-center justify-between">
-          <div className="text-xs text-[#e5e4e2]/40">
-            {savingCategory ? 'Zapisuję…' : 'Wybierz kategorię z listy'}
-          </div>
-
-          {savingCategory && <Loader2 className="h-4 w-4 animate-spin text-[#d3bb73]" />}
-        </div>
-      </div>
-    </div>
-  )}
-</div>
-
         <div>
-          <label className="mb-2 block text-sm text-[#e5e4e2]/60">Oferty</label>
-          <div
-            className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
-              hasOffers
-                ? 'border-green-500/20 bg-green-500/10 text-green-300'
-                : 'border-orange-500/20 bg-orange-500/10 text-orange-300'
-            }`}
-          >
-            <FileText className="h-4 w-4" />
-            <span className="font-medium">
-              {hasOffers ? `${offersCount} ofert${offersCount === 1 ? 'a' : offersCount < 5 ? 'y' : ''}` : 'Brak oferty'}
-            </span>
-          </div>
-        </div>
+          <label className="mb-2 block text-sm text-[#e5e4e2]/60">Kategoria</label>
 
-        <div>
-          <label className="mb-2 block text-sm text-[#e5e4e2]/60">Status eventu</label>
+          {!canOffers ? (
+            <div
+              className="flex w-full items-center gap-2 rounded-lg border px-3 py-2"
+              style={{
+                backgroundColor: category?.color ? `${category.color}20` : 'rgba(255,255,255,0.04)',
+                borderColor: category?.color ? `${category.color}50` : 'rgba(255,255,255,0.10)',
+                color: category?.color ?? '#e5e4e2',
+              }}
+            >
+              {category?.icon ? (
+                <div
+                  className="h-4 w-4"
+                  style={{ color: category?.color ?? '#e5e4e2' }}
+                  dangerouslySetInnerHTML={{ __html: category.icon.svg_code }}
+                />
+              ) : (
+                <Tag className="h-4 w-4" />
+              )}
 
-          {!statusEditActive ? (
+              <span className="text-sm font-medium">{category?.name ?? 'Brak kategorii'}</span>
+            </div>
+          ) : !isEditingCategory ? (
             <button
               type="button"
-              className={badgeCls}
-              onClick={() => canEditStatus && setStatusEditActive(true)}
-              disabled={!canEditStatus}
-              title={canEditStatus ? 'Kliknij aby zmienić status' : 'Brak uprawnień'}
+              onClick={() => setIsEditingCategory(true)}
+              className="flex w-full items-center gap-2 rounded-lg border px-3 py-2 transition-opacity hover:opacity-80"
+              style={{
+                backgroundColor: category?.color ? `${category.color}20` : 'rgba(255,255,255,0.04)',
+                borderColor: category?.color ? `${category.color}50` : 'rgba(255,255,255,0.10)',
+                color: category?.color ?? '#e5e4e2',
+              }}
+              title="Kliknij aby edytować kategorię"
             >
-              <span className="inline-flex items-center gap-2">
-                {statusIcon(currentStatus)}
-                <span className="font-medium">{eventStatusLabels[currentStatus]}</span>
-              </span>
+              {category?.icon ? (
+                <div
+                  className="h-4 w-4"
+                  style={{ color: category?.color ?? '#e5e4e2' }}
+                  dangerouslySetInnerHTML={{ __html: category.icon.svg_code }}
+                />
+              ) : (
+                <Tag className="h-4 w-4" />
+              )}
 
-              <span className="inline-flex items-center gap-2">
-                {updatingStatus ? (
-                  <Loader2 className="h-4 w-4 animate-spin opacity-80" />
-                ) : (
-                  <ChevronDown className="h-4 w-4 opacity-80" />
-                )}
-              </span>
+              <span className="text-sm font-medium">{category?.name ?? 'Brak kategorii'}</span>
+
+              <span className="ml-auto text-xs opacity-70">Zmień</span>
             </button>
           ) : (
-            <select
-              value={currentStatus}
-              onChange={(e) => handleStatusChange(e.target.value as EventStatus)}
-              onBlur={() => setStatusEditActive(false)}
-              disabled={updatingStatus}
-              autoFocus
-              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-2 text-sm text-[#e5e4e2] transition-colors focus:border-[#d3bb73] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {Object.entries(eventStatusLabels).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          )}
+            <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-xs text-[#e5e4e2]/60">
+                  Aktualnie: <span className="text-[#e5e4e2]">{category?.name ?? 'brak'}</span>
+                </div>
 
-          {canEditStatus && statusEditActive && (
-            <p className="mt-2 text-xs text-[#e5e4e2]/40">
-              Wybierz status. Klik poza polem anuluje edycję.
-            </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditingCategory(false);
+                    setSelectedCategoryId(event?.category_id ?? '');
+                  }}
+                  className="rounded-md px-2 py-1 text-xs text-[#e5e4e2]/60 hover:bg-white/5 hover:text-[#e5e4e2]"
+                >
+                  Anuluj
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                <select
+                  value={selectedCategoryId}
+                  onChange={(e) => handleCategoryChange(e.target.value)}
+                  disabled={savingCategory}
+                  autoFocus
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-2 text-sm text-[#e5e4e2] transition-colors focus:border-[#d3bb73] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="">Brak kategorii</option>
+
+                  {(categories || []).map((c: EventCategoryRow) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-[#e5e4e2]/40">
+                    {savingCategory ? 'Zapisuję…' : 'Wybierz kategorię z listy'}
+                  </div>
+
+                  {savingCategory && <Loader2 className="h-4 w-4 animate-spin text-[#d3bb73]" />}
+                </div>
+              </div>
+            </div>
           )}
         </div>
 
-        {isReadyForLive && canAgenda && agenda && (
+        {canOffers && (
+          <div>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Oferty</label>
+            <div
+              className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
+                hasOffers
+                  ? 'border-green-500/20 bg-green-500/10 text-green-300'
+                  : 'border-orange-500/20 bg-orange-500/10 text-orange-300'
+              }`}
+            >
+              <FileText className="h-4 w-4" />
+              <span className="font-medium">
+                {hasOffers
+                  ? `${offersCount} ofert${offersCount === 1 ? 'a' : offersCount < 5 ? 'y' : ''}`
+                  : 'Brak oferty'}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {canAgenda && (
+          <div>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Status eventu</label>
+
+            {!statusEditActive ? (
+              <button
+                type="button"
+                className={badgeCls}
+                onClick={() => canEditStatus && setStatusEditActive(true)}
+                disabled={!canEditStatus}
+                title={canEditStatus ? 'Kliknij aby zmienić status' : 'Brak uprawnień'}
+              >
+                <span className="inline-flex items-center gap-2">
+                  {statusIcon(currentStatus)}
+                  <span className="font-medium">{eventStatusLabels[currentStatus]}</span>
+                </span>
+
+                <span className="inline-flex items-center gap-2">
+                  {updatingStatus ? (
+                    <Loader2 className="h-4 w-4 animate-spin opacity-80" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 opacity-80" />
+                  )}
+                </span>
+              </button>
+            ) : (
+              <select
+                value={currentStatus}
+                onChange={(e) => handleStatusChange(e.target.value as EventStatus)}
+                onBlur={() => setStatusEditActive(false)}
+                disabled={updatingStatus}
+                autoFocus
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-2 text-sm text-[#e5e4e2] transition-colors focus:border-[#d3bb73] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {Object.entries(eventStatusLabels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {canEditStatus && statusEditActive && (
+              <p className="mt-2 text-xs text-[#e5e4e2]/40">
+                Wybierz status. Klik poza polem anuluje edycję.
+              </p>
+            )}
+          </div>
+        )}
+
+        {!isReadyForLive && agenda && (
           <button
             onClick={handleShowPdf}
             className="flex w-full items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"

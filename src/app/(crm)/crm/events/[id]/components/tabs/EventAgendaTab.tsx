@@ -3,7 +3,21 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase/browser';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import { Clock, Plus, Trash2, Save, FileDown, Printer, ChevronRight, List, Eye, Download, CreditCard as Edit3, Check, X } from 'lucide-react';
+import {
+  Clock,
+  Plus,
+  Trash2,
+  Save,
+  FileDown,
+  Printer,
+  ChevronRight,
+  List,
+  Eye,
+  Download,
+  CreditCard as Edit3,
+  Check,
+  X,
+} from 'lucide-react';
 import { buildAgendaHtml } from '@/app/(crm)/crm/events/[id]/helpers/buildAgendaPdf';
 import { supabaseServer } from '@/lib/supabaseServer';
 import { useEvent } from '../../../hooks/useEvent';
@@ -95,7 +109,7 @@ const getPdfStartEndFromItems = (items: AgendaItem[]) => {
   const last = sorted[sorted.length - 1]?.time || '';
 
   const pdfStart = first || null; // ✅ start -1h
-  const pdfEnd = last || null;                          // ✅ end bez zmian
+  const pdfEnd = last || null; // ✅ end bez zmian
 
   return { pdfStart, pdfEnd };
 };
@@ -146,6 +160,7 @@ export default function EventAgendaTab({
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  const [pdfExists, setPdfExists] = useState<boolean>(false);
 
   const [agendaId, setAgendaId] = useState<string | null>(null);
   const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([]);
@@ -158,6 +173,63 @@ export default function EventAgendaTab({
   } | null>(null);
 
   const normalizedEventDate = useMemo(() => isoToDateInput(eventDate), [eventDate]);
+
+  const markPdfAsMissing = async () => {
+    if (!agendaId) return;
+
+    try {
+      await supabase
+        .from('event_agendas')
+        .update({
+          generated_pdf_path: null,
+          generated_pdf_at: null,
+          modified_after_generation: true,
+        })
+        .eq('id', agendaId);
+    } catch (err) {
+      console.error('Error clearing missing PDF metadata:', err);
+    }
+
+    setGeneratedPdfPath(null);
+    setModifiedAfterGeneration(true);
+    setPdfExists(false);
+  };
+
+  const checkGeneratedPdfExists = async (
+    pathOverride?: string | null,
+    agendaIdOverride?: string | null,
+  ): Promise<boolean> => {
+    const path = pathOverride ?? generatedPdfPath;
+    const currentAgendaId = agendaIdOverride ?? agendaId;
+
+    if (!currentAgendaId || !path) {
+      setPdfExists(false);
+      return false;
+    }
+
+    try {
+      const { data, error } = await supabase.storage.from('event-files').createSignedUrl(path, 60);
+
+      if (error || !data?.signedUrl) {
+        await markPdfAsMissing();
+        return false;
+      }
+
+      const response = await fetch(data.signedUrl, { method: 'HEAD' });
+
+      if (!response.ok) {
+        await markPdfAsMissing();
+        return false;
+      }
+
+      setPdfExists(true);
+      return true;
+    } catch (err) {
+      console.error('Error checking generated PDF existence:', err);
+      await markPdfAsMissing();
+      return false;
+    }
+  };
 
   const [startTimeInput, setStartTimeInput] = useState(() => isoToTimeInput(startTime));
   const [endTimeInput, setEndTimeInput] = useState(() => isoToTimeInput(endTime));
@@ -211,6 +283,12 @@ export default function EventAgendaTab({
         setGeneratedPdfPath(agenda.generated_pdf_path || null);
         setModifiedAfterGeneration(agenda.modified_after_generation || false);
 
+        if (agenda.generated_pdf_path && !agenda.modified_after_generation) {
+          await checkGeneratedPdfExists(agenda.generated_pdf_path, agenda.id);
+        } else {
+          setPdfExists(false);
+        }
+
         const { data: items, error: itemsError } = await supabase
           .from('event_agenda_items')
           .select('*')
@@ -236,6 +314,11 @@ export default function EventAgendaTab({
         if (notesError) throw notesError;
         setAgendaNotes(buildNoteTree(notes || []));
       } else {
+        setAgendaId(null);
+        setGeneratedPdfPath(null);
+        setModifiedAfterGeneration(false);
+        setPdfExists(false);
+
         // brak agendy – reset do propsów
         setAgendaItems([]);
         setAgendaNotes([]);
@@ -416,10 +499,12 @@ export default function EventAgendaTab({
       }
 
       // Invaliduj cache aby odświeżyć historię zmian
-      dispatch(eventsApi.util.invalidateTags([
-        { type: 'EventAgenda', id: eventId },
-        { type: 'EventAuditLog', id: eventId },
-      ]));
+      dispatch(
+        eventsApi.util.invalidateTags([
+          { type: 'EventAgenda', id: eventId },
+          { type: 'EventAuditLog', id: eventId },
+        ]),
+      );
 
       alert('Agenda została zapisana');
       await fetchAgenda();
@@ -454,53 +539,31 @@ export default function EventAgendaTab({
     try {
       setGenerating(true);
 
-      // 0. Usuń poprzedni PDF jeśli istnieje
-      if (generatedPdfPath) {
-        try {
-          // Usuń z storage
-          await supabase.storage.from('event-files').remove([generatedPdfPath]);
-
-          // Usuń z event_files
-          await supabase.from('event_files').delete().eq('file_path', generatedPdfPath);
-        } catch (deleteError) {
-          console.warn('Błąd podczas usuwania poprzedniego PDF:', deleteError);
-        }
-      }
-
-      // 1. Pobierz dane klienta w zależności od typu
       let clientContact = '';
       let contactName = '';
       let contactNumber = '';
-      
+
       if (organization && contact) {
-        // Klient biznesowy
         clientContact = organization?.alias || organization?.name || '';
         contactName =
           contact?.full_name ||
           `${(contact as any)?.first_name || ''} ${(contact as any)?.last_name || ''}`.trim();
-      
         contactNumber = (contact as any)?.business_phone || (contact as any)?.mobile || '';
       } else {
-        // Klient indywidualny
         clientContact =
           contact?.full_name ||
           `${(contact as any)?.first_name || ''} ${(contact as any)?.last_name || ''}`.trim();
-      
         contactName = clientContact;
-      
         contactNumber = (contact as any)?.business_phone || (contact as any)?.mobile || '';
       }
 
       const { pdfStart, pdfEnd } = getPdfStartEndFromItems(getSortedAgendaItems());
 
-      const pdfStartTime = pdfStart ?? startTimeInput; // fallback jeśli brak itemów
-      const pdfEndTime = pdfEnd ?? endTimeInput;
-
-      const agendaPayload = {
+      const htmlPayload = {
         eventName,
-        eventDate: normalizedEventDate, // YYYY-MM-DD
-        startTime: pdfStartTime,
-        endTime: pdfEndTime,
+        eventDate: normalizedEventDate,
+        startTime: pdfStart ?? startTimeInput,
+        endTime: pdfEnd ?? endTimeInput,
         clientContact,
         contactName,
         contactNumber,
@@ -511,91 +574,40 @@ export default function EventAgendaTab({
         authorNumber: createdByEmployee?.phone_number || '',
       };
 
-      // 2. Zbuduj HTML agendy
-      const html = buildAgendaHtml(agendaPayload);
+      const response = await fetch('/bridge/events/agenda-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventId,
+          agendaId,
+          eventName,
+          htmlPayload,
+          createdBy: employee?.id ?? null,
+          previousPdfPath: generatedPdfPath,
+        }),
+      });
 
-      // 3. Dynamiczny import html2pdf.js (działa tylko w przeglądarce)
-      const { default: html2pdf } = await import('html2pdf.js');
-      const html2pdfFn: any = (html2pdf as any) || html2pdf;
+      const result = await response.json();
 
-      // 4. Tworzymy tymczasowy element z HTML-em
-      const element = document.createElement('div');
-      element.innerHTML = html;
-
-      const opt: any = {
-        margin: [10, 10, 20, 10], // większy bottom (20 mm)
-        filename: `agenda-${eventName.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.pdf`,
-        image: { type: 'jpeg' as const, quality: 0.98 },
-        html2canvas: { scale: 2 },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      };
-
-      // 5. Generujemy PDF jako Blob
-      const worker = html2pdfFn().from(element).set(opt).toPdf();
-      const pdfBlob: Blob = await worker.output('blob');
-
-      // 6. Zapisz PDF do storage i event_files
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-      const fileName = `agenda-${eventName.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${timestamp}.pdf`;
-      const storagePath = `${eventId}/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('event-files')
-        .upload(storagePath, pdfBlob, {
-          contentType: 'application/pdf',
-          upsert: false,
-        });
-
-      if (uploadError) {
-        console.error('Upload error:', uploadError);
-        alert('Błąd podczas zapisywania pliku');
-      } else {
-        const {
-          data: { publicUrl },
-        } = supabase.storage.from('event-files').getPublicUrl(storagePath);
-
-        const { data: folderId } = await supabase.rpc('get_or_create_documents_subfolder', {
-          p_event_id: eventId,
-          p_required_permission: null,
-          p_created_by: employee?.id,
-        });
-
-        await supabase.from('event_files').insert([
-          {
-            event_id: eventId,
-            folder_id: folderId,
-            name: fileName,
-            original_name: fileName,
-            file_path: storagePath,
-            file_size: pdfBlob.size,
-            mime_type: 'application/pdf',
-            document_type: 'agenda',
-            thumbnail_url: null,
-            uploaded_by: employee?.id,
-          },
-        ]);
-
-        await supabase
-          .from('event_agendas')
-          .update({
-            generated_pdf_path: storagePath,
-            generated_pdf_at: new Date().toISOString(),
-            modified_after_generation: false,
-          })
-          .eq('id', agendaId);
-
-        setGeneratedPdfPath(storagePath);
-        setModifiedAfterGeneration(false);
-
-        alert('Agenda PDF została zapisana w zakładce Pliki');
+      if (!response.ok) {
+        throw new Error(result.error || 'Nie udało się wygenerować PDF');
       }
 
-      // 7. Podgląd PDF w nowej karcie
-      const previewUrl = URL.createObjectURL(pdfBlob);
-      window.open(previewUrl, '_blank');
+      setGeneratedPdfPath(result.storagePath);
+      setModifiedAfterGeneration(false);
+      setPdfExists(true);
+
+      dispatch(
+        eventsApi.util.invalidateTags([
+          { type: 'EventAgenda', id: eventId },
+          { type: 'EventFiles', id: eventId },
+        ]),
+      );
+
+      alert('Agenda PDF została zapisana w folderze Dokumenty → Agenda');
     } catch (err) {
       console.error('Error generating PDF:', err);
-      alert('Wystąpił błąd podczas generowania PDF (szczegóły w konsoli)');
+      alert('Wystąpił błąd podczas generowania PDF');
     } finally {
       setGenerating(false);
     }
@@ -605,9 +617,18 @@ export default function EventAgendaTab({
     if (!generatedPdfPath) return;
 
     try {
-      const { data } = await supabase.storage
+      const exists = await checkGeneratedPdfExists();
+
+      if (!exists) {
+        alert('Plik PDF nie istnieje już w folderze. Wygeneruj agendę ponownie.');
+        return;
+      }
+
+      const { data, error } = await supabase.storage
         .from('event-files')
         .createSignedUrl(generatedPdfPath, 3600);
+
+      if (error) throw error;
 
       if (data?.signedUrl) {
         window.open(data.signedUrl, '_blank');
@@ -622,12 +643,25 @@ export default function EventAgendaTab({
     if (!generatedPdfPath) return;
 
     try {
-      const { data } = await supabase.storage
+      const exists = await checkGeneratedPdfExists();
+
+      if (!exists) {
+        alert('Plik PDF nie istnieje już w folderze. Wygeneruj agendę ponownie.');
+        return;
+      }
+
+      const { data, error } = await supabase.storage
         .from('event-files')
         .createSignedUrl(generatedPdfPath, 3600);
 
+      if (error) throw error;
+
       if (data?.signedUrl) {
         const response = await fetch(data.signedUrl);
+        if (!response.ok) {
+          throw new Error('Nie udało się pobrać pliku PDF');
+        }
+
         const blob = await response.blob();
         const blobUrl = window.URL.createObjectURL(blob);
 
@@ -854,9 +888,6 @@ export default function EventAgendaTab({
   const actions = useMemo<Action[]>(() => {
     const result: Action[] = [];
 
-    /** =====================
-     * TRYB NIE-EDYCJI AGENDA
-     * ===================== */
     if (canManage && !editMode) {
       result.push({
         label: 'Edytuj agendę',
@@ -866,9 +897,6 @@ export default function EventAgendaTab({
       });
     }
 
-    /** =====================
-     * TRYB EDYCJI AGENDA
-     * ===================== */
     if (canManage && editMode) {
       result.push(
         {
@@ -884,25 +912,26 @@ export default function EventAgendaTab({
         },
       );
 
-      return result; // ⬅️ w trybie edycji nie pokazujemy reszty akcji
+      return result;
     }
 
-    /** =====================
-     * PDF / DRUK (tylko gdy NIE editMode)
-     * ===================== */
     if (!editMode && agendaId) {
-      if (!generatedPdfPath || modifiedAfterGeneration) {
+      const shouldGenerate = !generatedPdfPath || modifiedAfterGeneration || !pdfExists;
+
+      if (canManage && shouldGenerate) {
         result.push({
           label: generating
             ? 'Generowanie...'
-            : modifiedAfterGeneration
+            : generatedPdfPath && (modifiedAfterGeneration || !pdfExists)
               ? 'Regeneruj PDF'
               : 'Generuj PDF',
           onClick: handleGeneratePDF,
           icon: <FileDown className="h-4 w-4" />,
           variant: 'default',
         });
-      } else {
+      }
+
+      if (generatedPdfPath && pdfExists && !modifiedAfterGeneration) {
         result.push(
           {
             label: 'Pokaż PDF',
@@ -935,12 +964,8 @@ export default function EventAgendaTab({
     agendaId,
     generatedPdfPath,
     modifiedAfterGeneration,
+    pdfExists,
     generating,
-    handleSave,
-    handleCancelEdit,
-    handleGeneratePDF,
-    handleShowPdf,
-    handleDownloadPdf,
   ]);
 
   const renderNoteEdit = (note: AgendaNote, depth: number = 0) => {

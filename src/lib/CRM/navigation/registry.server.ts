@@ -38,7 +38,6 @@ export const allNavigation: NavigationItemDTO[] = [
     name: 'Dashboard',
     href: '/crm',
     iconKey: 'dashboard',
-    permissions: ['dashboard_view'],
   },
   {
     key: 'calendar',

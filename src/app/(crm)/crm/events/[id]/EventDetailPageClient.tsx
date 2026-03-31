@@ -683,13 +683,13 @@ export default function EventDetailPageClient({
             </div>
 
             <div className="flex flex-col items-start gap-1 text-sm text-[#e5e4e2]/60 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
-              {event.client_type === 'business' && (
+              {event.client_type === 'business' && canViewCommercials && (
                 <div className="flex items-center gap-2">
                   <Building2 className="h-4 w-4" />
                   {organization ? organization.alias || organization.name : 'Brak klienta'}
                 </div>
               )}
-              {event.client_type === 'individual' && (
+              {event.client_type === 'individual' && canViewCommercials && (
                 <div className="flex items-center gap-2">
                   <User className="h-4 w-4" />
                   <span>
@@ -699,7 +699,7 @@ export default function EventDetailPageClient({
                   </span>
                 </div>
               )}
-              {event.client_type === 'business' && contact && (
+              {event.client_type === 'business' && contact && canViewCommercials && (
                 <div className="flex items-center gap-2">
                   <User className="h-4 w-4" />
                   <span>
@@ -948,29 +948,31 @@ export default function EventDetailPageClient({
               </>
             )}
 
-            <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-              <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Szybkie statystyki</h2>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-[#e5e4e2]/60">Sprzęt</span>
-                  <span className="font-medium text-[#e5e4e2]">{equipment.length}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-[#e5e4e2]/60">Zespół</span>
-                  {/* <span className="font-medium text-[#e5e4e2]">{employees.length}</span> */}
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-[#e5e4e2]/60">Pliki</span>
-                  <span className="font-medium text-[#e5e4e2]">
-                    {event.attachments?.length || 0}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-[#e5e4e2]/60">Checklisty</span>
-                  {/* <span className="font-medium text-[#e5e4e2]">{checklists.length}</span> */}
+            {canViewCommercials && (
+              <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+                <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Szybkie statystyki</h2>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-[#e5e4e2]/60">Sprzęt</span>
+                    <span className="font-medium text-[#e5e4e2]">{equipment.length}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-[#e5e4e2]/60">Zespół</span>
+                    {/* <span className="font-medium text-[#e5e4e2]">{employees.length}</span> */}
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-[#e5e4e2]/60">Pliki</span>
+                    <span className="font-medium text-[#e5e4e2]">
+                      {event.attachments?.length || 0}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-[#e5e4e2]/60">Checklisty</span>
+                    {/* <span className="font-medium text-[#e5e4e2]">{checklists.length}</span> */}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       )}

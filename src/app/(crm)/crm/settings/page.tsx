@@ -70,6 +70,14 @@ const modules = [
   { key: 'employees', label: 'Pracownicy' },
 ];
 
+const notificationCategories = [
+  { key: 'messages', label: 'Wiadomości', desc: 'Nowe wiadomości od klientów' },
+  { key: 'events', label: 'Wydarzenia', desc: 'Aktualizacje dotyczące wydarzeń' },
+  { key: 'tasks', label: 'Zadania', desc: 'Przypomnienia o zadaniach' },
+  { key: 'clients', label: 'Klienci', desc: 'Zmiany danych klientów' },
+  { key: 'equipment', label: 'Sprzęt', desc: 'Statusy i dostępność sprzętu' },
+] as const;
+
 export default function SettingsPage() {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
@@ -85,6 +93,21 @@ export default function SettingsPage() {
   const [showAddEmailModal, setShowAddEmailModal] = useState(false);
   const [emailAccounts, setEmailAccounts] = useState<any[]>([]);
   const [systemEmail, setSystemEmail] = useState<string | null>(null);
+  const { canViewModule } = useCurrentEmployee();
+  const visibleModules = modules.filter((module) => {
+    if (!employee) return false;
+
+    if (module.key === 'kits') {
+      return canViewModule('equipment');
+    }
+
+    return canViewModule(module.key);
+  });
+
+  const visibleNotificationCategories = notificationCategories.filter((category) => {
+    if (!employee) return false;
+    return canViewModule(category.key);
+  });
 
   useEffect(() => {
     if (employee) {
@@ -280,7 +303,7 @@ export default function SettingsPage() {
         >
           <div className="flex items-center gap-2">
             <Lock className="h-4 w-4" />
-          Dostępy
+            Dostępy
           </div>
           {activeTab === 'password' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
@@ -304,38 +327,40 @@ export default function SettingsPage() {
           )}
         </button>
 
-        {employee?.permissions?.includes('admin') && <button
-          onClick={() => setActiveTab('system-email')}
-          className={`relative px-4 py-3 text-sm font-medium transition-colors ${
-            activeTab === 'system-email'
-              ? 'text-[#d3bb73]'
-              : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <Mail className="h-4 w-4" />
-            Email systemowy
-          </div>
-          {activeTab === 'system-email' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
-          )}
-        </button>
-        }
-        {employee?.permissions?.includes('admin') && <button
-          onClick={() => setActiveTab('admin')}
-          className={`relative px-4 py-3 text-sm font-medium transition-colors ${
-            activeTab === 'admin' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <Shield className="h-4 w-4" />
-            Administracja
-          </div>
-          {activeTab === 'admin' && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
-          )}
-        </button>
-        }
+        {employee?.permissions?.includes('admin') && (
+          <button
+            onClick={() => setActiveTab('system-email')}
+            className={`relative px-4 py-3 text-sm font-medium transition-colors ${
+              activeTab === 'system-email'
+                ? 'text-[#d3bb73]'
+                : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Mail className="h-4 w-4" />
+              Email systemowy
+            </div>
+            {activeTab === 'system-email' && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
+            )}
+          </button>
+        )}
+        {employee?.permissions?.includes('admin') && (
+          <button
+            onClick={() => setActiveTab('admin')}
+            className={`relative px-4 py-3 text-sm font-medium transition-colors ${
+              activeTab === 'admin' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Shield className="h-4 w-4" />
+              Administracja
+            </div>
+            {activeTab === 'admin' && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
+            )}
+          </button>
+        )}
       </div>
 
       {activeTab === 'general' && (
@@ -348,7 +373,7 @@ export default function SettingsPage() {
             </p>
 
             <div className="space-y-4">
-              {modules.map((module) => (
+              {visibleModules.map((module) => (
                 <div
                   key={module.key}
                   className="flex items-center justify-between rounded-lg bg-[#0f1119] p-4"
@@ -359,8 +384,8 @@ export default function SettingsPage() {
                     <button
                       onClick={() => updateViewMode(module.key, 'list')}
                       className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-colors ${
-                        (preferences[module.key as keyof Preferences] as any)?.viewMode === 'list' ||
-                        !(preferences[module.key as keyof Preferences] as any)?.viewMode
+                        (preferences[module.key as keyof Preferences] as any)?.viewMode ===
+                          'list' || !(preferences[module.key as keyof Preferences] as any)?.viewMode
                           ? 'bg-[#d3bb73] text-[#1c1f33]'
                           : 'bg-[#1c1f33] text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
                       }`}
@@ -442,7 +467,7 @@ export default function SettingsPage() {
               Zarządzaj sposobem w jaki otrzymujesz powiadomienia z kalendarza.
             </p>
 
-<CalendarSettings />
+            <CalendarSettings />
           </div>
         </div>
       )}
@@ -510,33 +535,33 @@ export default function SettingsPage() {
               <div className="space-y-4">
                 <h4 className="text-sm font-medium text-[#e5e4e2]">Kategorie powiadomień</h4>
 
-                {[
-                  { key: 'messages', label: 'Wiadomości', desc: 'Nowe wiadomości od klientów' },
-                  { key: 'events', label: 'Wydarzenia', desc: 'Aktualizacje dotyczące wydarzeń' },
-                  { key: 'tasks', label: 'Zadania', desc: 'Przypomnienia o zadaniach' },
-                  { key: 'clients', label: 'Klienci', desc: 'Zmiany danych klientów' },
-                  { key: 'equipment', label: 'Sprzęt', desc: 'Statusy i dostępność sprzętu' },
-                ].map((category) => (
-                  <label
-                    key={category.key}
-                    className="flex cursor-pointer items-center justify-between rounded-lg bg-[#0f1119] p-4 transition-colors hover:bg-[#0f1119]/70"
-                  >
-                    <div>
-                      <p className="text-sm font-medium text-[#e5e4e2]">{category.label}</p>
-                      <p className="mt-1 text-xs text-[#e5e4e2]/60">{category.desc}</p>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={
-                        preferences.notifications?.categories?.[
-                          category.key as keyof NotificationPreferences['categories']
-                        ] ?? true
-                      }
-                      onChange={(e) => updateNotificationCategory(category.key, e.target.checked)}
-                      className="h-5 w-5 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50"
-                    />
-                  </label>
-                ))}
+                {visibleNotificationCategories.length === 0 ? (
+                  <div className="rounded-lg bg-[#0f1119] p-4 text-sm text-[#e5e4e2]/60">
+                    Brak dostępnych kategorii powiadomień.
+                  </div>
+                ) : (
+                  visibleNotificationCategories.map((category) => (
+                    <label
+                      key={category.key}
+                      className="flex cursor-pointer items-center justify-between rounded-lg bg-[#0f1119] p-4 transition-colors hover:bg-[#0f1119]/70"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-[#e5e4e2]">{category.label}</p>
+                        <p className="mt-1 text-xs text-[#e5e4e2]/60">{category.desc}</p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={
+                          preferences.notifications?.categories?.[
+                            category.key as keyof NotificationPreferences['categories']
+                          ] ?? true
+                        }
+                        onChange={(e) => updateNotificationCategory(category.key, e.target.checked)}
+                        className="h-5 w-5 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50"
+                      />
+                    </label>
+                  ))
+                )}
               </div>
             </div>
           </div>

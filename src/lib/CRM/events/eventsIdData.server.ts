@@ -111,7 +111,10 @@ function normalizeUuid(value: unknown): string | null {
     return null;
   }
 
-  return trimmed;
+  const uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+  return uuidRegex.test(trimmed) ? trimmed : null;
 }
 
 function normalizeTabs(value: unknown, fallback: string[]): string[] {
@@ -210,7 +213,7 @@ export async function fetchEventByIdServer(
         access_levels(event_tabs)
       `,
       )
-      .eq('id', currentUserId)
+      .eq('auth_user_id', currentUserId)
       .maybeSingle(),
 
     supabase

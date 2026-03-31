@@ -169,6 +169,8 @@ export default async function RootLayout({
   
   const employee = await getCurrentEmployeeServerCached();
 
+  console.log('employee: ', employee);
+
   const localBusiness = {
     '@context': 'https://schema.org',
     '@type': 'LocalBusiness',

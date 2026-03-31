@@ -1,4 +1,3 @@
-
 import type { IEmployee } from '@/app/(crm)/crm/employees/type';
 import { createSupabaseServerClient } from '@/lib/supabase/server.app';
 import { cache } from 'react';
@@ -9,20 +8,19 @@ export async function getCurrentEmployeeServer(): Promise<IEmployee | null> {
 
   const { data, error } = await supabase.auth.getUser();
 
-  // ✅ brak sesji to normalna sytuacja — nie logujemy jako "error"
   if (error) {
     if (error.name === 'AuthSessionMissingError') return null;
     console.error('[getCurrentEmployeeServer] auth.getUser error:', error);
     return null;
   }
 
-  const email = data.user?.email;
-  if (!email) return null;
+  const userId = data.user?.id;
+  if (!userId) return null;
 
   const { data: employee, error: empError } = await supabase
     .from('employees')
     .select('*')
-    .eq('email', email)
+    .eq('auth_user_id', userId)
     .maybeSingle();
 
   if (empError) {
