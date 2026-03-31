@@ -124,6 +124,7 @@ Deno.serve(async (req: Request) => {
         event_location: eventLocation.address || eventLocation.city || '',
 
         total_price: offer.total_price ? `${offer.total_price.toFixed(2)} PLN` : '',
+        total_price_numeric: offer.total_price || 0,
 
         employee_first_name: employee.name || '',
         employee_last_name: employee.surname || '',
@@ -138,6 +139,8 @@ Deno.serve(async (req: Request) => {
         seller_name: 'Mavinci Event & Entertainment',
         seller_address: 'ul. Przykładowa 1, 00-000 Warszawa',
         seller_nip: 'NIP: 1234567890',
+
+        offer_items: offer.offer_items || [],
       };
 
       console.log('Prepared offer data:', JSON.stringify(data, null, 2));
@@ -166,6 +169,171 @@ Deno.serve(async (req: Request) => {
       }
 
       return lines;
+    };
+
+    const drawOfferItemsTable = async (
+      pdfDoc: PDFDocument,
+      pageIndex: number,
+      offerItems: any[],
+      totalPrice: number,
+      startY: number = 200
+    ) => {
+      if (!offerItems || offerItems.length === 0) return;
+
+      pdfDoc.registerFontkit(fontkit);
+
+      const regularFontUrl = 'https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSans/hinted/ttf/NotoSans-Regular.ttf';
+      const boldFontUrl = 'https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSans/hinted/ttf/NotoSans-Bold.ttf';
+
+      const regularFontBytes = await fetch(regularFontUrl).then(res => res.arrayBuffer());
+      const boldFontBytes = await fetch(boldFontUrl).then(res => res.arrayBuffer());
+
+      const regularFont = await pdfDoc.embedFont(regularFontBytes);
+      const boldFont = await pdfDoc.embedFont(boldFontBytes);
+
+      const pages = pdfDoc.getPages();
+      const page = pages[pageIndex];
+      const { width, height } = page.getSize();
+
+      const margin = 50;
+      const tableWidth = width - 2 * margin;
+
+      const colWidths = {
+        lp: 30,
+        name: tableWidth - 30 - 80 - 60 - 80,
+        quantity: 80,
+        unit: 60,
+        price: 80,
+      };
+
+      let y = height - startY;
+      const rowHeight = 25;
+      const fontSize = 10;
+      const headerFontSize = 11;
+
+      const goldColor = rgb(0.827, 0.733, 0.451);
+      const darkColor = rgb(0.11, 0.12, 0.2);
+      const lightGray = rgb(0.95, 0.95, 0.95);
+
+      page.drawRectangle({
+        x: margin,
+        y: y - headerFontSize - 10,
+        width: tableWidth,
+        height: headerFontSize + 15,
+        color: goldColor,
+      });
+
+      const headers = [
+        { text: 'Lp.', x: margin + 5, width: colWidths.lp },
+        { text: 'Nazwa pozycji', x: margin + colWidths.lp + 5, width: colWidths.name },
+        { text: 'Ilość', x: margin + colWidths.lp + colWidths.name + 5, width: colWidths.quantity },
+        { text: 'Jedn.', x: margin + colWidths.lp + colWidths.name + colWidths.quantity + 5, width: colWidths.unit },
+        { text: 'Cena', x: margin + colWidths.lp + colWidths.name + colWidths.quantity + colWidths.unit + 5, width: colWidths.price },
+      ];
+
+      for (const header of headers) {
+        page.drawText(header.text, {
+          x: header.x,
+          y: y - headerFontSize - 5,
+          size: headerFontSize,
+          font: boldFont,
+          color: rgb(1, 1, 1),
+        });
+      }
+
+      y -= headerFontSize + 20;
+
+      offerItems.forEach((item, index) => {
+        const isEven = index % 2 === 0;
+        if (isEven) {
+          page.drawRectangle({
+            x: margin,
+            y: y - rowHeight + 5,
+            width: tableWidth,
+            height: rowHeight,
+            color: lightGray,
+          });
+        }
+
+        const itemName = item.name || item.product?.name || 'Pozycja';
+        const quantity = item.quantity || 1;
+        const unit = item.unit || 'szt';
+        const unitPrice = item.unit_price || item.final_price || 0;
+        const subtotal = quantity * unitPrice;
+
+        page.drawText(`${index + 1}.`, {
+          x: margin + 5,
+          y: y - fontSize - 5,
+          size: fontSize,
+          font: regularFont,
+          color: darkColor,
+        });
+
+        page.drawText(itemName, {
+          x: margin + colWidths.lp + 5,
+          y: y - fontSize - 5,
+          size: fontSize,
+          font: regularFont,
+          color: darkColor,
+        });
+
+        page.drawText(quantity.toString(), {
+          x: margin + colWidths.lp + colWidths.name + 5,
+          y: y - fontSize - 5,
+          size: fontSize,
+          font: regularFont,
+          color: darkColor,
+        });
+
+        page.drawText(unit, {
+          x: margin + colWidths.lp + colWidths.name + colWidths.quantity + 5,
+          y: y - fontSize - 5,
+          size: fontSize,
+          font: regularFont,
+          color: darkColor,
+        });
+
+        const priceText = `${subtotal.toFixed(2)} PLN`;
+        const priceWidth = regularFont.widthOfTextAtSize(priceText, fontSize);
+        page.drawText(priceText, {
+          x: margin + tableWidth - priceWidth - 5,
+          y: y - fontSize - 5,
+          size: fontSize,
+          font: regularFont,
+          color: darkColor,
+        });
+
+        y -= rowHeight;
+      });
+
+      y -= 10;
+      page.drawLine({
+        start: { x: margin, y: y },
+        end: { x: margin + tableWidth, y: y },
+        thickness: 2,
+        color: goldColor,
+      });
+
+      y -= 25;
+      page.drawText('SUMA:', {
+        x: margin + colWidths.lp + colWidths.name + colWidths.quantity,
+        y: y,
+        size: headerFontSize,
+        font: boldFont,
+        color: darkColor,
+      });
+
+      const totalText = `${totalPrice.toFixed(2)} PLN`;
+      const totalWidth = boldFont.widthOfTextAtSize(totalText, headerFontSize);
+      page.drawText(totalText, {
+        x: margin + tableWidth - totalWidth - 5,
+        y: y,
+        size: headerFontSize,
+        font: boldFont,
+        color: goldColor,
+      });
+
+      console.log(`Drew offer items table with ${offerItems.length} items, total: ${totalPrice} PLN`);
     };
 
     const overlayTextOnPages = async (
@@ -531,6 +699,18 @@ Deno.serve(async (req: Request) => {
       } catch (error) {
         console.error(`Error processing PDF for product ${item.product.name}:`, error);
       }
+    }
+
+    const pricingPageAdded = await addPdfFromTemplate('pricing');
+    if (pricingPageAdded && offerData.offer_items.length > 0) {
+      const pricingPageIndex = mergedPdf.getPageCount() - 1;
+      await drawOfferItemsTable(
+        mergedPdf,
+        pricingPageIndex,
+        offerData.offer_items,
+        offerData.total_price_numeric,
+        200
+      );
     }
 
     await addPdfFromTemplate('final');
