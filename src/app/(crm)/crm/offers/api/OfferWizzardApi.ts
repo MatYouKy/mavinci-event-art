@@ -10,6 +10,7 @@ import {
   IProduct,
   OfferProductEquipmentRow,
 } from '../types';
+import { deleteOfferWithFiles } from '@/lib/CRM/Offers/deleteOfferWithFiles';
 
 type SupabaseRTKError = {
   status: 'SUPABASE_ERROR' | 'UNKNOWN_ERROR';
@@ -410,9 +411,11 @@ export const offerWizardApi = createApi({
       ],
       queryFn: async ({ offerId }) => {
         try {
-          // ON DELETE CASCADE automatycznie usuwa offer_items i event_equipment (auto_added)
-          const { error } = await supabase.from('offers').delete().eq('id', offerId);
-          if (error) return { error: toRtkError(error) };
+          // Usuwa ofertę wraz z plikami ze storage i CASCADE usuwa powiązane rekordy
+          const result = await deleteOfferWithFiles(offerId);
+          if (!result.success) {
+            return { error: toRtkError(new Error(result.error || 'Failed to delete offer')) };
+          }
 
           return { data: { success: true } };
         } catch (e) {

@@ -19,6 +19,7 @@ import EditOfferItemModal from './components/EditOfferItemModal';
 import { usePrefetchOffer } from '../hooks/usePrefetchOffer';
 import { useOfferById } from '../hooks/useOfferById';
 import { IOfferItem } from '../types';
+import { deleteOfferWithFiles } from '@/lib/CRM/Offers/deleteOfferWithFiles';
 
 const statusColors: Record<string, string> = {
   draft: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
@@ -102,23 +103,22 @@ export default function OfferDetailPage() {
     if (!offer) return;
 
     const confirmMessage = offer.event_id
-      ? 'Czy na pewno chcesz usunąć tę ofertę?\n\nSprzęt automatycznie dodany z tej oferty zostanie usunięty z eventu.'
-      : 'Czy na pewno chcesz usunąć tę ofertę?';
+      ? 'Czy na pewno chcesz usunąć tę ofertę?\n\nSprzęt automatycznie dodany z tej oferty zostanie usunięty z eventu.\nWszystkie pliki PDF zostaną usunięte.'
+      : 'Czy na pewno chcesz usunąć tę ofertę?\nWszystkie pliki PDF zostaną usunięte.';
 
     const confirmed = await showConfirm(confirmMessage, 'Tej operacji nie można cofnąć.');
 
     if (!confirmed) return;
 
     try {
-      const { error } = await supabase.from('offers').delete().eq('id', offerId);
+      const result = await deleteOfferWithFiles(offerId);
 
-      if (error) {
-        console.error('Error deleting offer:', error);
-        showSnackbar('Błąd podczas usuwania oferty', 'error');
+      if (!result.success) {
+        showSnackbar(result.error || 'Błąd podczas usuwania oferty', 'error');
         return;
       }
 
-      showSnackbar('Oferta usunięta pomyślnie', 'success');
+      showSnackbar('Oferta i wszystkie pliki zostały usunięte', 'success');
 
       if (offer.event_id) {
         router.push(`/crm/events/${offer.event_id}`);

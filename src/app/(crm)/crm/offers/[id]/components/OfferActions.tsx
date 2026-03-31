@@ -9,6 +9,7 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { IUser } from '@/types/auth.types';
 import { OfferStatus, offerStatusLabels } from '../../helpers/statusColors';
 import ReserveEquipmentModal from '@/components/crm/ReserveEquipmentModal';
+import { deleteOfferWithFiles } from '@/lib/CRM/Offers/deleteOfferWithFiles';
 
 interface OfferActionsProps {
   offer: any;
@@ -107,11 +108,14 @@ export default function OfferActions({
 
     try {
       setDeleting(true);
-      const { error } = await supabase.from('offers').delete().eq('id', offer.id);
 
-      if (error) throw error;
+      const result = await deleteOfferWithFiles(offer.id);
 
-      showSnackbar('Oferta została usunięta', 'success');
+      if (!result.success) {
+        throw new Error(result.error || 'Błąd podczas usuwania oferty');
+      }
+
+      showSnackbar('Oferta i wszystkie powiązane pliki zostały usunięte', 'success');
 
       // Przekieruj do eventu lub listy ofert
       if (offer.event_id) {

@@ -28,6 +28,7 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { OffersListView, OffersTableView, OffersGridView } from './OffersViews';
 import OfferWizard from '@/app/(crm)/crm/offers/[id]/components/OfferWizzard/OfferWizard';
 import OfferPageTemplatesEditor from '@/components/crm/OfferPageTemplatesEditor';
+import { deleteOfferWithFiles } from '@/lib/CRM/Offers/deleteOfferWithFiles';
 import { CatalogTab } from '@/components/crm/offers/products/CatalogTab';
 
 type Tab = 'offers' | 'catalog' | 'templates';
@@ -224,19 +225,21 @@ export function OfferPage({
   const handleDeleteOffer = async (offerId: string) => {
     const offer = offers.find((o) => o.id === offerId);
     const confirmMessage = offer?.event_id
-      ? 'Czy na pewno chcesz usunąć tę ofertę?\n\nSprzęt automatycznie dodany z tej oferty zostanie usunięty z eventu.\n\nTej operacji nie można cofnąć.'
-      : 'Czy na pewno chcesz usunąć tę ofertę? Tej operacji nie można cofnąć.';
+      ? 'Czy na pewno chcesz usunąć tę ofertę?\n\nSprzęt automatycznie dodany z tej oferty zostanie usunięty z eventu.\nWszystkie pliki PDF zostaną usunięte.\n\nTej operacji nie można cofnąć.'
+      : 'Czy na pewno chcesz usunąć tę ofertę?\nWszystkie pliki PDF zostaną usunięte.\n\nTej operacji nie można cofnąć.';
 
     if (!confirm(confirmMessage)) {
       return;
     }
 
     try {
-      const { error } = await supabase.from('offers').delete().eq('id', offerId);
+      const result = await deleteOfferWithFiles(offerId);
 
-      if (error) throw error;
+      if (!result.success) {
+        throw new Error(result.error || 'Błąd podczas usuwania oferty');
+      }
 
-      showSnackbar('Oferta została usunięta pomyślnie', 'success');
+      showSnackbar('Oferta i wszystkie pliki zostały usunięte', 'success');
     } catch (err: any) {
       showSnackbar(err.message || 'Błąd podczas usuwania oferty', 'error');
     }
