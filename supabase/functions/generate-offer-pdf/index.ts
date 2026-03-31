@@ -603,6 +603,7 @@ Deno.serve(async (req: Request) => {
             file_size: pdfBytes.length,
             mime_type: 'application/pdf',
             document_type: 'offer',
+            offer_id: offerId,
             thumbnail_url: null,
             uploaded_by: currentEmployee?.id || offer.created_by,
           },
