@@ -10,6 +10,7 @@ import { IUser } from '@/types/auth.types';
 import { OfferStatus, offerStatusLabels } from '../../helpers/statusColors';
 import ReserveEquipmentModal from '@/components/crm/ReserveEquipmentModal';
 import { deleteOfferWithFiles } from '@/lib/CRM/Offers/deleteOfferWithFiles';
+import { deleteOfferPdfFiles } from '@/lib/CRM/Offers/deleteOfferPdfFiles';
 
 interface OfferActionsProps {
   offer: any;
@@ -36,6 +37,7 @@ export default function OfferActions({
   const [currentStatus, setCurrentStatus] = useState<OfferStatus>(offer?.status || 'draft');
   const [showReserveModal, setShowReserveModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deletingPdf, setDeletingPdf] = useState(false);
 
   useEffect(() => {
     if (offer?.status) {
@@ -99,6 +101,34 @@ export default function OfferActions({
     }
   };
 
+  const handleDeletePdf = async () => {
+    if (!offer?.id) return;
+
+    if (!confirm('Czy na pewno chcesz usunąć pliki PDF tej oferty?\n\nOferta zostanie zachowana, zostaną usunięte tylko wygenerowane pliki PDF.')) {
+      return;
+    }
+
+    try {
+      setDeletingPdf(true);
+
+      const result = await deleteOfferPdfFiles(offer.id);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Błąd podczas usuwania plików PDF');
+      }
+
+      showSnackbar('Pliki PDF zostały usunięte', 'success');
+
+      // Odśwież dane oferty aby zaktualizować przyciski
+      onOfferUpdated?.();
+    } catch (err: any) {
+      console.error('Error deleting PDF files:', err);
+      showSnackbar(err.message || 'Błąd podczas usuwania plików PDF', 'error');
+    } finally {
+      setDeletingPdf(false);
+    }
+  };
+
   const handleDeleteOffer = async () => {
     if (!offer?.id) return;
 
@@ -117,12 +147,11 @@ export default function OfferActions({
 
       showSnackbar('Oferta i wszystkie powiązane pliki zostały usunięte', 'success');
 
-      // Przekieruj do eventu lub listy ofert
-      if (offer.event_id) {
-        router.push(`/crm/events/${offer.event_id}`);
-      } else {
-        router.push('/crm/offers');
-      }
+      // Odśwież dane oferty aby zaktualizować widok
+      onOfferUpdated?.();
+
+      // Przekieruj do listy ofert (nie do eventu)
+      router.push('/crm/offers');
     } catch (err: any) {
       console.error('Error deleting offer:', err);
       showSnackbar(err.message || 'Błąd podczas usuwania oferty', 'error');
@@ -372,7 +401,28 @@ export default function OfferActions({
           </>
         )}
 
-        {/* Przycisk usuwania */}
+        {/* Przycisk usuwania PDF - tylko gdy PDF istnieje */}
+        {offer.generated_pdf_url && (
+          <button
+            onClick={handleDeletePdf}
+            disabled={deletingPdf}
+            className="flex w-full items-center gap-2 rounded-lg border border-orange-500/20 bg-orange-500/10 px-4 py-2 text-sm text-orange-400 transition-colors hover:bg-orange-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {deletingPdf ? (
+              <>
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                Usuwanie PDF...
+              </>
+            ) : (
+              <>
+                <X className="h-4 w-4" />
+                Usuń PDF
+              </>
+            )}
+          </button>
+        )}
+
+        {/* Przycisk usuwania oferty */}
         <button
           onClick={handleDeleteOffer}
           disabled={deleting}

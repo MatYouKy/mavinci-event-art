@@ -120,11 +120,8 @@ export default function OfferDetailPage() {
 
       showSnackbar('Oferta i wszystkie pliki zostały usunięte', 'success');
 
-      if (offer.event_id) {
-        router.push(`/crm/events/${offer.event_id}`);
-      } else {
-        router.push('/crm/offers');
-      }
+      // Przekieruj do listy ofert (nie do eventu)
+      router.push('/crm/offers');
     } catch (err) {
       console.error('Error:', err);
       showSnackbar('Wystąpił błąd', 'error');
