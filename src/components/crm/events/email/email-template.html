@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="pl" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="supported-color-schemes" content="dark" />
+  <title>Zaproszenie do wydarzenia</title>
+
+  <style>
+    body, table, td, a, p, span {
+      -webkit-text-size-adjust: 100%;
+      -ms-text-size-adjust: 100%;
+    }
+
+    table, td {
+      mso-table-lspace: 0pt;
+      mso-table-rspace: 0pt;
+      border-collapse: collapse;
+    }
+
+    img {
+      -ms-interpolation-mode: bicubic;
+      border: 0;
+      outline: none;
+      text-decoration: none;
+      display: block;
+      height: auto;
+      line-height: 100%;
+    }
+
+    body {
+      margin: 0 !important;
+      padding: 0 !important;
+      width: 100% !important;
+      min-width: 100% !important;
+      background-color: #0b0f17 !important;
+      color: #f3f4f6 !important;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif !important;
+    }
+
+    .wrapper {
+      width: 100% !important;
+      background-color: #0b0f17 !important;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background-color: #111827 !important;
+      border: 1px solid #2b3445;
+    }
+
+    .header-logo {
+      padding: 28px 24px 20px 24px;
+      text-align: center;
+      background-color: #111827 !important;
+    }
+
+    .header {
+      background-color: #d4b86a !important;
+      padding: 20px 30px;
+      text-align: center;
+    }
+
+    .header-title {
+      margin: 0;
+      color: #1c1f33 !important;
+      font-size: 28px;
+      line-height: 1.3;
+      font-weight: 700;
+    }
+
+    .content {
+      padding: 36px 28px;
+      background-color: #111827 !important;
+      color: #f3f4f6 !important;
+    }
+
+    .text {
+      margin: 0 0 20px 0;
+      font-size: 16px;
+      line-height: 1.6;
+      color: #f3f4f6 !important;
+    }
+
+    .text-muted {
+      color: #cbd5e1 !important;
+    }
+
+    .section-box {
+      background-color: #182131 !important;
+      border: 1px solid #2b3445;
+    }
+
+    .event-title {
+      margin: 0;
+      color: #d4b86a !important;
+      font-size: 22px;
+      line-height: 1.4;
+      font-weight: 700;
+    }
+
+    .label {
+      font-size: 12px;
+      line-height: 1.4;
+      font-weight: 700;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      color: #d4b86a !important;
+    }
+
+    .value {
+      font-size: 16px;
+      line-height: 1.6;
+      color: #f3f4f6 !important;
+      text-align: left !important;
+    }
+
+    .value-muted {
+      color: #cbd5e1 !important;
+    }
+
+    .section-title {
+      font-size: 18px;
+      line-height: 1.4;
+      font-weight: 700;
+      color: #d4b86a !important;
+    }
+
+    .phases-wrap {
+      background-color: #141b29 !important;
+      border: 1px solid #2b3445;
+    }
+
+    .phases-head {
+      background-color: #1d2636 !important;
+    }
+
+    .phases-th {
+      padding: 10px;
+      text-align: left;
+      font-size: 12px;
+      line-height: 1.4;
+      font-weight: 700;
+      color: #d4b86a !important;
+      border-bottom: 1px solid #2b3445;
+    }
+
+    .phases-td {
+      padding: 10px;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #f3f4f6 !important;
+      border-bottom: 1px solid #2b3445;
+    }
+
+    .phases-td-muted {
+      color: #cbd5e1 !important;
+    }
+
+    .cta-title {
+      margin: 40px 0 20px 0;
+      font-size: 16px;
+      line-height: 1.6;
+      font-weight: 600;
+      color: #f3f4f6 !important;
+      text-align: center;
+    }
+
+    .button-cell {
+      padding: 5px;
+    }
+
+    .button-link {
+      display: block;
+      text-decoration: none;
+      text-align: center;
+      border-radius: 8px;
+      padding: 14px 18px;
+      font-size: 16px;
+      line-height: 1.2;
+      font-weight: 700;
+      color: #ffffff !important;
+    }
+
+    .button-accept {
+      background-color: #16a34a !important;
+    }
+
+    .button-reject {
+      background-color: #dc2626 !important;
+    }
+
+    .divider {
+      border-top: 1px solid #2b3445;
+    }
+
+    .crm-link-text {
+      margin: 0 0 15px 0;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #cbd5e1 !important;
+      text-align: center;
+    }
+
+    .crm-link {
+      color: #d4b86a !important;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 15px;
+    }
+
+    .footer-note {
+      background-color: #141b29 !important;
+      border: 1px solid #2b3445;
+    }
+
+    .footer-note-text {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #cbd5e1 !important;
+      text-align: center;
+    }
+
+    .bottom {
+      background-color: #0f1724 !important;
+      border-top: 1px solid #2b3445;
+      text-align: center;
+      padding: 24px 28px;
+    }
+
+    .bottom-text {
+      margin: 0 0 8px 0;
+      font-size: 14px;
+      line-height: 1.5;
+      color: #cbd5e1 !important;
+    }
+
+    .bottom-copy {
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.5;
+      color: #94a3b8 !important;
+    }
+
+    @media only screen and (max-width: 600px) {
+      .mobile-full {
+        display: block !important;
+        width: 100% !important;
+      }
+
+      .content {
+        padding: 24px 18px !important;
+      }
+
+      .header-logo {
+        padding: 22px 16px 16px 16px !important;
+      }
+
+      .header {
+        padding: 18px 16px !important;
+      }
+
+      .header-title {
+        font-size: 24px !important;
+      }
+
+      .event-title {
+        font-size: 20px !important;
+      }
+
+      .text,
+      .value,
+      .cta-title {
+        font-size: 15px !important;
+      }
+
+      .button-link {
+        font-size: 15px !important;
+        white-space: normal !important;
+      }
+
+      .phases-th,
+      .phases-td {
+        padding: 8px !important;
+        font-size: 12px !important;
+      }
+    }
+  </style>
+</head>
+
+<body style="margin:0; padding:0; background-color:#0b0f17 !important; color:#f3f4f6 !important;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="#0b0f17" class="wrapper" style="background-color:#0b0f17 !important;">
+    <tr>
+      <td align="center" valign="top" style="padding:0; background-color:#0b0f17 !important;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" class="container" style="max-width:600px; width:100%;">
+          <tr>
+            <td class="card" bgcolor="#111827" style="background-color:#111827 !important; border:1px solid #2b3445;">
+
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                <tr>
+                  <td class="header-logo" align="center" bgcolor="#111827" style="padding:28px 24px 20px 24px; background-color:#111827 !important;">
+                    <img src="https://mavinci.pl/logo%20mavinci.svg" alt="Mavinci CRM" width="180" style="display:block; margin:0 auto; width:180px; max-width:100%; height:auto;">
+                  </td>
+                </tr>
+
+                <tr>
+                  <td class="header" align="center" bgcolor="#d4b86a" style="background-color:#d4b86a !important; padding:20px 30px;">
+                    <h1 class="header-title" style="margin:0; color:#1c1f33 !important; font-size:28px; line-height:1.3; font-weight:700;">
+                      Zaproszenie do wydarzenia
+                    </h1>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td class="content" bgcolor="#111827" style="padding:36px 28px; background-color:#111827 !important; color:#f3f4f6 !important;">
+
+                    <p class="text" style="margin:0 0 20px 0; font-size:16px; line-height:1.6; color:#f3f4f6 !important;">
+                      Cześć <strong style="color:#f3f4f6 !important;">${employee.name} ${employee.surname}</strong>,
+                    </p>
+
+                    <p class="text text-muted" style="margin:0 0 20px 0; font-size:16px; line-height:1.6; color:#cbd5e1 !important;">
+                      Zostałeś zaproszony do zespołu wydarzenia. Poniżej szczegóły:
+                    </p>
+
+                    <!-- EVENT BOX -->
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:30px 0;">
+                      <tr>
+                        <td class="section-box" bgcolor="#182131" style="background-color:#182131 !important; border:1px solid #2b3445; border-left:4px solid #d4b86a; padding:24px;">
+                          <h2 class="event-title" style="margin:0 0 20px 0; color:#d4b86a !important; font-size:22px; line-height:1.4; font-weight:700;">
+                            ${event.name}
+                          </h2>
+
+                          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 4px 0;">
+                            <tr>
+                              <td style="padding-right:6px; vertical-align:middle;">
+                                <img src="https://mavinci.pl/icons/calendar-gold.svg" width="16" alt="" style="display:block;">
+                              </td>
+                              <td style="vertical-align:middle;">
+                                <span class="label" style="font-size:12px; line-height:1.4; font-weight:700; letter-spacing:0.6px; text-transform:uppercase; color:#d4b86a !important;">
+                                  Data wydarzenia
+                                </span>
+                              </td>
+                            </tr>
+                          </table>
+
+                          <p class="value" style="margin:0 0 14px 0; font-size:16px; line-height:1.6; color:#f3f4f6 !important; text-align:left !important;">
+                            ${eventDateFormatted}
+                          </p>
+
+                          ${event.location ? `
+                          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 4px 0;">
+                            <tr>
+                              <td style="padding-right:6px; vertical-align:middle;">
+                                <img src="https://mavinci.pl/icons/location-gold.svg" width="16" alt="" style="display:block;">
+                              </td>
+                              <td style="vertical-align:middle;">
+                                <span class="label" style="font-size:12px; line-height:1.4; font-weight:700; letter-spacing:0.6px; text-transform:uppercase; color:#d4b86a !important;">
+                                  Lokalizacja
+                                </span>
+                              </td>
+                            </tr>
+                          </table>
+
+                          <p class="value" style="margin:0 0 14px 0; font-size:16px; line-height:1.6; color:#f3f4f6 !important; text-align:left !important;">
+                            ${event.location}
+                          </p>
+                          ` : ''}
+
+                          ${assignment.role ? `
+                          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 4px 0;">
+                            <tr>
+                              <td style="padding-right:6px; vertical-align:middle;">
+                                <img src="https://mavinci.pl/icons/user-gold.svg" width="16" alt="" style="display:block;">
+                              </td>
+                              <td style="vertical-align:middle;">
+                                <span class="label" style="font-size:12px; line-height:1.4; font-weight:700; letter-spacing:0.6px; text-transform:uppercase; color:#d4b86a !important;">
+                                  Twoja rola
+                                </span>
+                              </td>
+                            </tr>
+                          </table>
+
+                          <p class="value" style="margin:0 0 14px 0; font-size:16px; line-height:1.6; color:#f3f4f6 !important; text-align:left !important;">
+                            ${assignment.role}
+                          </p>
+                          ` : ''}
+
+                          ${assignment.responsibilities ? `
+                          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 4px 0;">
+                            <tr>
+                              <td style="padding-right:6px; vertical-align:middle;">
+                                <img src="https://mavinci.pl/icons/checklist-gold.svg" width="16" alt="" style="display:block;">
+                              </td>
+                              <td style="vertical-align:middle;">
+                                <span class="label" style="font-size:12px; line-height:1.4; font-weight:700; letter-spacing:0.6px; text-transform:uppercase; color:#d4b86a !important;">
+                                  Obowiązki
+                                </span>
+                              </td>
+                            </tr>
+                          </table>
+
+                          <p class="value" style="margin:0 0 14px 0; font-size:16px; line-height:1.6; color:#f3f4f6 !important; text-align:left !important; white-space:pre-wrap;">
+                            ${assignment.responsibilities}
+                          </p>
+                          ` : ''}
+
+                          ${event.description ? `
+                          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 4px 0;">
+                            <tr>
+                              <td style="padding-right:6px; vertical-align:middle;">
+                                <img src="https://mavinci.pl/icons/info-gold.svg" width="16" alt="" style="display:block;">
+                              </td>
+                              <td style="vertical-align:middle;">
+                                <span class="label" style="font-size:12px; line-height:1.4; font-weight:700; letter-spacing:0.6px; text-transform:uppercase; color:#d4b86a !important;">
+                                  Opis wydarzenia
+                                </span>
+                              </td>
+                            </tr>
+                          </table>
+
+                          <p class="value value-muted" style="margin:0; font-size:16px; line-height:1.6; color:#cbd5e1 !important; text-align:left !important; white-space:pre-wrap;">
+                            ${event.description}
+                          </p>
+                          ` : ''}
+                        </td>
+                      </tr>
+                    </table>
+
+                    ${phasesTableHtml}
+
+                    <p class="cta-title" style="margin:40px 0 20px 0; font-size:16px; line-height:1.6; font-weight:600; color:#f3f4f6 !important; text-align:center;">
+                      Potwierdź swoją obecność:
+                    </p>
+
+                    <!-- BUTTONS -->
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                      <tr>
+                        <td class="mobile-full button-cell" width="50%" style="padding:5px;">
+                          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                            <tr>
+                              <td align="center" bgcolor="#16a34a" style="background-color:#16a34a !important; border-radius:8px; padding:4px;">
+                                <a href="${acceptUrl}" class="button-link" style="display:block; text-decoration:none; color:#ffffff !important; font-size:16px; line-height:1.2; font-weight:700;">
+                                  Akceptuję zaproszenie
+                                </a>
+                              </td>
+                            </tr>
+                          </table>
+                        </td>
+
+                        <td class="mobile-full button-cell" width="50%" style="padding:5px;">
+                          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                            <tr>
+                              <td align="center" bgcolor="#dc2626" style="background-color:#dc2626 !important; border-radius:8px; padding:4px;">
+                                <a href="${rejectUrl}" class="button-link" style="display:block; text-decoration:none; color:#ffffff !important; font-size:16px; line-height:1.2; font-weight:700;">
+                                  Odrzucam zaproszenie
+                                </a>
+                              </td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <!-- CRM LINK -->
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:30px;">
+                      <tr>
+                        <td class="divider" style="padding-top:25px; border-top:1px solid #2b3445;">
+                          <p class="crm-link-text" style="margin:0 0 15px 0; font-size:14px; line-height:1.6; color:#cbd5e1 !important; text-align:center;">
+                            Możesz też zalogować się do systemu CRM aby zobaczyć więcej szczegółów:
+                          </p>
+                          <p style="margin:0; text-align:center;">
+                            <a href="${eventUrl}" class="crm-link" style="color:#d4b86a !important; text-decoration:none; font-weight:600; font-size:15px;">
+                              Zobacz szczegóły wydarzenia w CRM →
+                            </a>
+                          </p>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <!-- FOOTER NOTE -->
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:30px;">
+                      <tr>
+                        <td class="footer-note" bgcolor="#141b29" style="background-color:#141b29 !important; border:1px solid #2b3445; padding:18px;">
+                          <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto 6px auto;">
+                            <tr>
+                              <td style="vertical-align:middle; padding-right:8px;">
+                                <img src="https://mavinci.pl/icons/clock1-gold.svg" width="16" alt="" style="display:block;">
+                              </td>
+                              <td style="vertical-align:middle;">
+                                <span style="font-size:12px; line-height:1.4; font-weight:700; letter-spacing:0.6px; text-transform:uppercase; color:#d4b86a !important;">
+                                  Link wygasa
+                                </span>
+                                <strong style="color:#d4b86a !important; margin-left:6px;">
+                                  ${expiresAt}
+                                </strong>
+                              </td>
+                            </tr>
+                          </table>
+
+                          <p class="footer-note-text" style="margin:0; font-size:14px; line-height:1.6; color:#cbd5e1 !important; text-align:center;">
+                            Po tym czasie musisz zalogować się do systemu CRM aby potwierdzić udział.
+                          </p>
+                        </td>
+                      </tr>
+                    </table>
+
+                  </td>
+                </tr>
+
+                <tr>
+                  <td class="bottom" bgcolor="#0f1724" style="background-color:#0f1724 !important; border-top:1px solid #2b3445; text-align:center; padding:24px 28px;">
+                    <p class="bottom-text" style="margin:0 0 8px 0; font-size:14px; line-height:1.5; color:#cbd5e1 !important;">
+                      Wiadomość wysłana z systemu <strong style="color:#d4b86a !important;">Mavinci CRM</strong>
+                    </p>
+                    <p class="bottom-copy" style="margin:0; font-size:12px; line-height:1.5; color:#94a3b8 !important;">
+                      © ${new Date().getFullYear()} Mavinci Events. Wszelkie prawa zastrzeżone.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
