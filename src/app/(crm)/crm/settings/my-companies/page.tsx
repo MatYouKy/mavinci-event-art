@@ -13,7 +13,9 @@ interface MyCompany {
   nip: string;
   regon?: string;
   krs?: string;
-  address: string;
+  street: string;
+  building_number: string;
+  apartment_number?: string;
   city: string;
   postal_code: string;
   country: string;
@@ -216,7 +218,8 @@ export default function MyCompaniesPage() {
                       <div className="col-span-2">
                         <span className="text-[#e5e4e2]/40">Adres:</span>{' '}
                         <span className="text-[#e5e4e2]">
-                          {company.address}, {company.postal_code} {company.city}
+                          {company.street} {company.building_number}
+                          {company.apartment_number && `/${company.apartment_number}`}, {company.postal_code} {company.city}
                         </span>
                       </div>
                       {company.bank_account && (
@@ -325,7 +328,9 @@ function CompanyModal({
     nip: company?.nip || '',
     regon: company?.regon || '',
     krs: company?.krs || '',
-    address: company?.address || '',
+    street: company?.street || '',
+    building_number: company?.building_number || '',
+    apartment_number: company?.apartment_number || '',
     city: company?.city || '',
     postal_code: company?.postal_code || '',
     country: company?.country || 'Polska',
@@ -447,28 +452,47 @@ function CompanyModal({
             </div>
 
             <div className="col-span-2">
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                Adres
+              </label>
+            </div>
+
+            <div>
               <label className="mb-2 block text-sm text-[#e5e4e2]">
-                Adres <span className="text-red-400">*</span>
+                Ulica <span className="text-red-400">*</span>
               </label>
               <input
                 type="text"
-                value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                value={formData.street}
+                onChange={(e) => setFormData({ ...formData, street: e.target.value })}
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-                placeholder="ul. Przykładowa 1"
+                placeholder="Przykładowa"
               />
             </div>
 
             <div>
               <label className="mb-2 block text-sm text-[#e5e4e2]">
-                Miasto <span className="text-red-400">*</span>
+                Numer budynku <span className="text-red-400">*</span>
               </label>
               <input
                 type="text"
-                value={formData.city}
-                onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                value={formData.building_number}
+                onChange={(e) => setFormData({ ...formData, building_number: e.target.value })}
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-                placeholder="Warszawa"
+                placeholder="1"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm text-[#e5e4e2]">
+                Numer lokalu
+              </label>
+              <input
+                type="text"
+                value={formData.apartment_number}
+                onChange={(e) => setFormData({ ...formData, apartment_number: e.target.value })}
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                placeholder="opcjonalnie"
               />
             </div>
 
@@ -484,6 +508,19 @@ function CompanyModal({
                 }
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 placeholder="00-001"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm text-[#e5e4e2]">
+                Miasto <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="text"
+                value={formData.city}
+                onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                placeholder="Warszawa"
               />
             </div>
 
