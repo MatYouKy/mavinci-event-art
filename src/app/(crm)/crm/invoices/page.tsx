@@ -40,12 +40,30 @@ export default function InvoicesPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterCompany, setFilterCompany] = useState<string>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [activeTab, setActiveTab] = useState<'invoices' | 'ksef'>('invoices');
+  const [myCompanies, setMyCompanies] = useState<any[]>([]);
 
   useEffect(() => {
     fetchInvoices();
+    fetchMyCompanies();
   }, []);
+
+  const fetchMyCompanies = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('my_companies')
+        .select('id, name')
+        .eq('is_active', true)
+        .order('is_default', { ascending: false });
+
+      if (error) throw error;
+      setMyCompanies(data || []);
+    } catch (err) {
+      console.error('Error fetching companies:', err);
+    }
+  };
 
   const fetchInvoices = async () => {
     try {
@@ -55,7 +73,8 @@ export default function InvoicesPage() {
           `
           *,
           event:events(name),
-          organization:organizations(name)
+          organization:organizations(name),
+          my_company:my_companies(id, name)
         `,
         )
         .order('issue_date', { ascending: false });
@@ -143,8 +162,9 @@ export default function InvoicesPage() {
 
     const matchesType = filterType === 'all' || invoice.invoice_type === filterType;
     const matchesStatus = filterStatus === 'all' || invoice.status === filterStatus;
+    const matchesCompany = filterCompany === 'all' || (invoice as any).my_company_id === filterCompany;
 
-    return matchesSearch && matchesType && matchesStatus;
+    return matchesSearch && matchesType && matchesStatus && matchesCompany;
   });
 
   const totalNet = filteredInvoices.reduce((sum, inv) => sum + Number(inv.total_net), 0);
@@ -282,7 +302,23 @@ export default function InvoicesPage() {
           </div>
 
           {showFilters && (
-            <div className="mt-4 grid grid-cols-1 gap-4 border-t border-[#d3bb73]/10 pt-4 md:grid-cols-2">
+            <div className="mt-4 grid grid-cols-1 gap-4 border-t border-[#d3bb73]/10 pt-4 md:grid-cols-3">
+              <div>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Moja firma</label>
+                <select
+                  value={filterCompany}
+                  onChange={(e) => setFilterCompany(e.target.value)}
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                >
+                  <option value="all">Wszystkie firmy</option>
+                  {myCompanies.map((company) => (
+                    <option key={company.id} value={company.id}>
+                      {company.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div>
                 <label className="mb-2 block text-sm text-[#e5e4e2]/60">Typ faktury</label>
                 <select

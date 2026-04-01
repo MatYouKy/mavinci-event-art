@@ -15,6 +15,20 @@ interface Organization {
   city: string | null;
 }
 
+interface MyCompany {
+  id: string;
+  name: string;
+  legal_name: string;
+  nip: string;
+  address: string;
+  city: string;
+  postal_code: string;
+  email: string;
+  phone: string;
+  bank_account: string | null;
+  is_default: boolean;
+}
+
 interface InvoiceItem {
   position_number: number;
   name: string;
@@ -32,6 +46,8 @@ export default function NewInvoicePage() {
 
   const [loading, setLoading] = useState(false);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [myCompanies, setMyCompanies] = useState<MyCompany[]>([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>('');
   const [settings, setSettings] = useState<any>(null);
 
   const [invoiceType, setInvoiceType] = useState<'vat' | 'proforma' | 'advance' | 'corrective'>(
@@ -53,9 +69,14 @@ export default function NewInvoicePage() {
 
   const fetchData = async () => {
     try {
-      const [settingsRes, businessClientsRes] = await Promise.all([
+      const [settingsRes, businessClientsRes, companiesRes] = await Promise.all([
         supabase.rpc('get_invoice_settings_for_creation'),
         supabase.rpc('get_business_clients'),
+        supabase
+          .from('my_companies')
+          .select('*')
+          .eq('is_active', true)
+          .order('is_default', { ascending: false }),
       ]);
 
       if (settingsRes.error) {
@@ -77,6 +98,16 @@ export default function NewInvoicePage() {
           client_type: client.client_type,
         }));
         setOrganizations(formattedClients);
+      }
+
+      if (companiesRes.data) {
+        setMyCompanies(companiesRes.data);
+        const defaultCompany = companiesRes.data.find((c: MyCompany) => c.is_default);
+        if (defaultCompany) {
+          setSelectedCompanyId(defaultCompany.id);
+        } else if (companiesRes.data.length > 0) {
+          setSelectedCompanyId(companiesRes.data[0].id);
+        }
       }
 
       if (eventId) {
@@ -221,6 +252,11 @@ export default function NewInvoicePage() {
   };
 
   const handleSubmit = async () => {
+    if (!selectedCompanyId) {
+      showSnackbar('Wybierz firmę wystawiającą fakturę', 'error');
+      return;
+    }
+
     if (!selectedOrgId) {
       showSnackbar('Wybierz nabywcę', 'error');
       return;
@@ -236,6 +272,9 @@ export default function NewInvoicePage() {
 
       const selectedOrg = organizations.find((o) => o.id === selectedOrgId);
       if (!selectedOrg) throw new Error('Organization not found');
+
+      const selectedCompany = myCompanies.find((c) => c.id === selectedCompanyId);
+      if (!selectedCompany) throw new Error('Company not found');
 
       const { data: invoiceNumber } = await supabase.rpc('generate_invoice_number', {
         p_invoice_type: invoiceType,
@@ -261,11 +300,12 @@ export default function NewInvoicePage() {
         payment_due_date: calculatePaymentDueDate(),
         event_id: eventId || null,
         organization_id: selectedOrgId,
-        seller_name: settings.company_name,
-        seller_nip: settings.company_nip,
-        seller_street: settings.company_street,
-        seller_postal_code: settings.company_postal_code,
-        seller_city: settings.company_city,
+        my_company_id: selectedCompanyId,
+        seller_name: selectedCompany.legal_name,
+        seller_nip: selectedCompany.nip,
+        seller_street: selectedCompany.address,
+        seller_postal_code: selectedCompany.postal_code,
+        seller_city: selectedCompany.city,
         seller_country: 'Polska',
         buyer_name: selectedOrg.name,
         buyer_nip: selectedOrg.nip,
@@ -273,9 +313,9 @@ export default function NewInvoicePage() {
         buyer_postal_code: selectedOrg.postal_code || '',
         buyer_city: selectedOrg.city || '',
         buyer_country: 'Polska',
-        payment_method: settings.default_payment_method,
-        bank_account: settings.bank_account,
-        issue_place: settings.invoice_issue_place,
+        payment_method: settings?.default_payment_method || 'Przelew',
+        bank_account: selectedCompany.bank_account || '',
+        issue_place: selectedCompany.city,
         created_by: employee?.id,
       };
 
@@ -344,6 +384,30 @@ export default function NewInvoicePage() {
           <h1 className="mb-8 text-2xl font-light text-[#e5e4e2]">Wystaw fakturę VAT</h1>
 
           <div className="space-y-6">
+            <div className="mb-6 rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/5 p-4">
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                Firma wystawiająca fakturę *
+              </label>
+              <select
+                value={selectedCompanyId}
+                onChange={(e) => setSelectedCompanyId(e.target.value)}
+                className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+              >
+                <option value="">Wybierz firmę...</option>
+                {myCompanies.map((company) => (
+                  <option key={company.id} value={company.id}>
+                    {company.name} - NIP: {company.nip}
+                    {company.is_default && ' (domyślna)'}
+                  </option>
+                ))}
+              </select>
+              {selectedCompanyId && (
+                <div className="mt-2 text-xs text-[#e5e4e2]/60">
+                  {myCompanies.find((c) => c.id === selectedCompanyId)?.legal_name}
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-2 gap-6">
               <div>
                 <label className="mb-2 block text-sm text-[#e5e4e2]/60">Typ faktury *</label>

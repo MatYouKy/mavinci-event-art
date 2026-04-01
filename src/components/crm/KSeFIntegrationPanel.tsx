@@ -20,12 +20,17 @@ import { useDialog } from '@/contexts/DialogContext';
 
 interface KSeFCredentials {
   id: string;
-  organization_id: string;
+  my_company_id: string;
   nip: string;
   is_test_environment: boolean;
   session_token?: string;
   session_expires_at?: string;
   is_active: boolean;
+  my_company?: {
+    id: string;
+    name: string;
+    nip: string;
+  };
 }
 
 interface KSeFInvoice {
@@ -50,7 +55,8 @@ interface SyncLog {
 }
 
 export default function KSeFIntegrationPanel() {
-  const [credentials, setCredentials] = useState<KSeFCredentials | null>(null);
+  const [allCredentials, setAllCredentials] = useState<KSeFCredentials[]>([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
@@ -64,24 +70,37 @@ export default function KSeFIntegrationPanel() {
   const { showSnackbar } = useSnackbar();
   const { showDialog } = useDialog();
 
+  const selectedCredentials = allCredentials.find(c => c.my_company_id === selectedCompanyId);
+
   useEffect(() => {
     loadCredentials();
-    loadInvoices();
-    loadSyncLogs();
   }, []);
+
+  useEffect(() => {
+    if (selectedCompanyId) {
+      loadInvoices();
+      loadSyncLogs();
+    }
+  }, [selectedCompanyId]);
 
   const loadCredentials = async () => {
     try {
       const { data, error } = await supabase
-        .from('ksef_credentials')
-        .select('*')
-        .eq('is_active', true)
-        .single();
+        .from('ksef_selectedCredentials')
+        .select(`
+          *,
+          my_company:my_companies(id, name, nip)
+        `)
+        .eq('is_active', true);
 
-      if (error && error.code !== 'PGRST116') throw error;
-      setCredentials(data);
+      if (error) throw error;
+      setAllCredentials(data || []);
+
+      if (data && data.length > 0 && !selectedCompanyId) {
+        setSelectedCompanyId(data[0].my_company_id);
+      }
     } catch (error) {
-      console.error('Error loading credentials:', error);
+      console.error('Error loading selectedCredentials:', error);
     }
   };
 
@@ -117,8 +136,8 @@ export default function KSeFIntegrationPanel() {
   };
 
   const handleAuthenticate = async () => {
-    if (!credentials) {
-      showSnackbar('Skonfiguruj najpierw dane KSeF', 'error');
+    if (!selectedCredentials) {
+      showSnackbar('Skonfiguruj najpierw dane KSeF dla wybranej firmy', 'error');
       return;
     }
 
@@ -126,7 +145,7 @@ export default function KSeFIntegrationPanel() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/ksef-api?action=authenticate&organizationId=${credentials.organization_id}`,
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/ksef-api?action=authenticate&organizationId=${selectedCredentials.my_company_id}`,
         {
           method: 'POST',
           headers: {
@@ -151,7 +170,7 @@ export default function KSeFIntegrationPanel() {
   };
 
   const handleSyncInvoices = async (type: 'issued' | 'received') => {
-    if (!credentials?.session_token) {
+    if (!selectedCredentials?.session_token) {
       showSnackbar('Najpierw uwierzytelnij się w KSeF', 'error');
       return;
     }
@@ -163,7 +182,7 @@ export default function KSeFIntegrationPanel() {
 
       const params = new URLSearchParams({
         action,
-        organizationId: credentials.organization_id,
+        organizationId: selectedCredentials.organization_id,
       });
 
       if (dateFrom) params.append('dateFrom', dateFrom);
@@ -199,7 +218,7 @@ export default function KSeFIntegrationPanel() {
   };
 
   const handleViewInvoiceXml = async (ksefReferenceNumber: string) => {
-    if (!credentials?.session_token) {
+    if (!selectedCredentials?.session_token) {
       showSnackbar('Najpierw uwierzytelnij się w KSeF', 'error');
       return;
     }
@@ -208,7 +227,7 @@ export default function KSeFIntegrationPanel() {
       const { data: { session } } = await supabase.auth.getSession();
       const params = new URLSearchParams({
         action: 'get-invoice-xml',
-        organizationId: credentials.organization_id,
+        organizationId: selectedCredentials.organization_id,
         ksefReferenceNumber,
       });
 
@@ -239,8 +258,8 @@ export default function KSeFIntegrationPanel() {
   };
 
   const isSessionActive = () => {
-    if (!credentials?.session_expires_at) return false;
-    return new Date(credentials.session_expires_at) > new Date();
+    if (!selectedCredentials?.session_expires_at) return false;
+    return new Date(selectedCredentials.session_expires_at) > new Date();
   };
 
   return (
@@ -263,7 +282,7 @@ export default function KSeFIntegrationPanel() {
           </button>
           <button
             onClick={handleAuthenticate}
-            disabled={loading || !credentials}
+            disabled={loading || !selectedCredentials}
             className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
           >
             <Key className="h-4 w-4" />
@@ -272,18 +291,51 @@ export default function KSeFIntegrationPanel() {
         </div>
       </div>
 
+      {/* Company selector */}
+      {allCredentials.length > 0 && (
+        <div className="rounded-xl border border-[#d3bb73]/20 bg-[#252945] p-4">
+          <label className="mb-2 block text-sm text-[#e5e4e2]">Wybierz firmę</label>
+          <select
+            value={selectedCompanyId}
+            onChange={(e) => setSelectedCompanyId(e.target.value)}
+            className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+          >
+            {allCredentials.map((cred) => (
+              <option key={cred.id} value={cred.my_company_id}>
+                {cred.my_company?.name || cred.nip} - NIP: {cred.nip}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {allCredentials.length === 0 && (
+        <div className="rounded-xl border border-[#d3bb73]/20 bg-[#252945] p-8 text-center">
+          <Building2 className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
+          <p className="mb-4 text-[#e5e4e2]/60">
+            Brak skonfigurowanych firm. Najpierw dodaj firmę i skonfiguruj jej dane KSeF.
+          </p>
+          <button
+            onClick={() => setShowSetup(true)}
+            className="text-[#d3bb73] hover:text-[#d3bb73]/80"
+          >
+            Skonfiguruj KSeF
+          </button>
+        </div>
+      )}
+
       {/* Status */}
-      {credentials && (
+      {selectedCredentials && (
         <div className="rounded-xl border border-[#d3bb73]/20 bg-[#252945] p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Building2 className="h-5 w-5 text-[#d3bb73]" />
               <div>
                 <p className="text-sm font-medium text-[#e5e4e2]">
-                  NIP: {credentials.nip}
+                  NIP: {selectedCredentials.nip}
                 </p>
                 <p className="text-xs text-[#e5e4e2]/60">
-                  Środowisko: {credentials.is_test_environment ? 'Testowe' : 'Produkcyjne'}
+                  Środowisko: {selectedCredentials.is_test_environment ? 'Testowe' : 'Produkcyjne'}
                 </p>
               </div>
             </div>
@@ -493,7 +545,7 @@ export default function KSeFIntegrationPanel() {
       {/* Setup modal */}
       {showSetup && (
         <KSeFSetupModal
-          credentials={credentials}
+          selectedCredentials={selectedCredentials}
           onClose={() => setShowSetup(false)}
           onSave={() => {
             setShowSetup(false);
@@ -506,34 +558,38 @@ export default function KSeFIntegrationPanel() {
 }
 
 function KSeFSetupModal({
-  credentials,
+  selectedCredentials,
   onClose,
   onSave,
 }: {
-  credentials: KSeFCredentials | null;
+  selectedCredentials: KSeFCredentials | null;
   onClose: () => void;
   onSave: () => void;
 }) {
-  const [nip, setNip] = useState(credentials?.nip || '');
+  const [nip, setNip] = useState(selectedCredentials?.nip || '');
   const [token, setToken] = useState('');
-  const [isTestEnv, setIsTestEnv] = useState(credentials?.is_test_environment ?? true);
-  const [organizationId, setOrganizationId] = useState(credentials?.organization_id || '');
+  const [isTestEnv, setIsTestEnv] = useState(selectedCredentials?.is_test_environment ?? true);
+  const [myCompanyId, setMyCompanyId] = useState(selectedCredentials?.my_company_id || '');
   const [loading, setLoading] = useState(false);
-  const [organizations, setOrganizations] = useState<any[]>([]);
+  const [myCompanies, setMyCompanies] = useState<any[]>([]);
 
   const { showSnackbar } = useSnackbar();
 
   useEffect(() => {
-    loadOrganizations();
+    loadMyCompanies();
   }, []);
 
-  const loadOrganizations = async () => {
-    const { data } = await supabase.from('organizations').select('id, name, nip');
-    setOrganizations(data || []);
+  const loadMyCompanies = async () => {
+    const { data } = await supabase
+      .from('my_companies')
+      .select('id, name, nip')
+      .eq('is_active', true)
+      .order('is_default', { ascending: false });
+    setMyCompanies(data || []);
   };
 
   const handleSave = async () => {
-    if (!nip || !token || !organizationId) {
+    if (!nip || !token || !myCompanyId) {
       showSnackbar('Wszystkie pola są wymagane', 'error');
       return;
     }
@@ -541,18 +597,18 @@ function KSeFSetupModal({
     setLoading(true);
     try {
       const payload = {
-        organization_id: organizationId,
+        my_company_id: myCompanyId,
         nip,
         token,
         is_test_environment: isTestEnv,
         is_active: true,
       };
 
-      if (credentials) {
+      if (selectedCredentials) {
         const { error } = await supabase
           .from('ksef_credentials')
           .update(payload)
-          .eq('id', credentials.id);
+          .eq('id', selectedCredentials.id);
         if (error) throw error;
       } else {
         const { error } = await supabase.from('ksef_credentials').insert(payload);
@@ -576,19 +632,24 @@ function KSeFSetupModal({
         </div>
         <div className="space-y-4 p-6">
           <div>
-            <label className="mb-2 block text-sm text-[#e5e4e2]">Organizacja</label>
+            <label className="mb-2 block text-sm text-[#e5e4e2]">Moja firma</label>
             <select
-              value={organizationId}
-              onChange={(e) => setOrganizationId(e.target.value)}
+              value={myCompanyId}
+              onChange={(e) => setMyCompanyId(e.target.value)}
               className="w-full rounded border border-[#d3bb73]/20 bg-[#252945] px-3 py-2 text-[#e5e4e2]"
             >
-              <option value="">Wybierz organizację</option>
-              {organizations.map((org) => (
-                <option key={org.id} value={org.id}>
-                  {org.name} ({org.nip})
+              <option value="">Wybierz firmę</option>
+              {myCompanies.map((company) => (
+                <option key={company.id} value={company.id}>
+                  {company.name} ({company.nip})
                 </option>
               ))}
             </select>
+            {myCompanies.length === 0 && (
+              <p className="mt-2 text-xs text-[#e5e4e2]/60">
+                Najpierw dodaj firmę w <a href="/crm/settings/my-companies" className="text-[#d3bb73]">Ustawieniach → Moje firmy</a>
+              </p>
+            )}
           </div>
           <div>
             <label className="mb-2 block text-sm text-[#e5e4e2]">NIP</label>
