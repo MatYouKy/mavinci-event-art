@@ -72,7 +72,8 @@ Deno.serve(async (req: Request) => {
             id,
             name,
             description,
-            pdf_page_url
+            pdf_page_url,
+            vat_rate
           )
         )
       `)
@@ -176,7 +177,7 @@ Deno.serve(async (req: Request) => {
       pageIndex: number,
       offerItems: any[],
       totalPrice: number,
-      startY: number = 200
+      config: any = {}
     ) => {
       if (!offerItems || offerItems.length === 0) return;
 
@@ -195,32 +196,56 @@ Deno.serve(async (req: Request) => {
       const page = pages[pageIndex];
       const { width, height } = page.getSize();
 
+      const startY = config.start_y || 200;
+      const showUnitPriceNet = config.show_unit_price_net !== false;
+      const showValueNet = config.show_value_net !== false;
+      const showValueGross = config.show_value_gross !== false;
+      const defaultVatRate = config.vat_rate || 23;
+
+      const hexToRgb = (hex: string) => {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? rgb(
+          parseInt(result[1], 16) / 255,
+          parseInt(result[2], 16) / 255,
+          parseInt(result[3], 16) / 255
+        ) : rgb(0.827, 0.733, 0.451);
+      };
+
+      const headerColor = config.header_color ? hexToRgb(config.header_color) : rgb(0.827, 0.733, 0.451);
+      const textColor = config.text_color ? hexToRgb(config.text_color) : rgb(0.11, 0.12, 0.2);
+      const rowBgColor = config.row_bg_color ? hexToRgb(config.row_bg_color) : rgb(0.95, 0.95, 0.95);
+
       const margin = 50;
       const tableWidth = width - 2 * margin;
 
       const colWidths = {
         lp: 30,
-        name: tableWidth - 30 - 80 - 60 - 80,
-        quantity: 80,
-        unit: 60,
-        price: 80,
+        name: 180,
+        quantity: 50,
+        unit: 45,
+        unitPriceNet: showUnitPriceNet ? 70 : 0,
+        valueNet: showValueNet ? 80 : 0,
+        valueGross: showValueGross ? 80 : 0,
       };
+
+      const totalColWidth = colWidths.lp + colWidths.name + colWidths.quantity + colWidths.unit +
+                            colWidths.unitPriceNet + colWidths.valueNet + colWidths.valueGross;
+
+      if (totalColWidth < tableWidth) {
+        colWidths.name = tableWidth - (totalColWidth - colWidths.name);
+      }
 
       let y = height - startY;
       const rowHeight = 25;
       const fontSize = 10;
       const headerFontSize = 11;
 
-      const goldColor = rgb(0.827, 0.733, 0.451);
-      const darkColor = rgb(0.11, 0.12, 0.2);
-      const lightGray = rgb(0.95, 0.95, 0.95);
-
       page.drawRectangle({
         x: margin,
         y: y - headerFontSize - 10,
         width: tableWidth,
         height: headerFontSize + 15,
-        color: goldColor,
+        color: headerColor,
       });
 
       const headers = [
@@ -228,8 +253,23 @@ Deno.serve(async (req: Request) => {
         { text: 'Nazwa pozycji', x: margin + colWidths.lp + 5, width: colWidths.name },
         { text: 'Ilość', x: margin + colWidths.lp + colWidths.name + 5, width: colWidths.quantity },
         { text: 'Jedn.', x: margin + colWidths.lp + colWidths.name + colWidths.quantity + 5, width: colWidths.unit },
-        { text: 'Cena', x: margin + colWidths.lp + colWidths.name + colWidths.quantity + colWidths.unit + 5, width: colWidths.price },
       ];
+
+      let currentX = margin + colWidths.lp + colWidths.name + colWidths.quantity + colWidths.unit;
+
+      if (showUnitPriceNet) {
+        headers.push({ text: 'Cena jedn. netto', x: currentX + 5, width: colWidths.unitPriceNet });
+        currentX += colWidths.unitPriceNet;
+      }
+
+      if (showValueNet) {
+        headers.push({ text: 'Wartość netto', x: currentX + 5, width: colWidths.valueNet });
+        currentX += colWidths.valueNet;
+      }
+
+      if (showValueGross) {
+        headers.push({ text: 'Wartość brutto', x: currentX + 5, width: colWidths.valueGross });
+      }
 
       for (const header of headers) {
         page.drawText(header.text, {
@@ -243,6 +283,9 @@ Deno.serve(async (req: Request) => {
 
       y -= headerFontSize + 20;
 
+      let totalNet = 0;
+      let totalGross = 0;
+
       offerItems.forEach((item, index) => {
         const isEven = index % 2 === 0;
         if (isEven) {
@@ -251,7 +294,7 @@ Deno.serve(async (req: Request) => {
             y: y - rowHeight + 5,
             width: tableWidth,
             height: rowHeight,
-            color: lightGray,
+            color: rowBgColor,
           });
         }
 
@@ -259,14 +302,20 @@ Deno.serve(async (req: Request) => {
         const quantity = item.quantity || 1;
         const unit = item.unit || 'szt';
         const unitPrice = item.unit_price || item.final_price || 0;
-        const subtotal = quantity * unitPrice;
+        const vatRate = item.product?.vat_rate || item.vat_rate || defaultVatRate;
+
+        const valueNet = quantity * unitPrice;
+        const valueGross = valueNet * (1 + vatRate / 100);
+
+        totalNet += valueNet;
+        totalGross += valueGross;
 
         page.drawText(`${index + 1}.`, {
           x: margin + 5,
           y: y - fontSize - 5,
           size: fontSize,
           font: regularFont,
-          color: darkColor,
+          color: textColor,
         });
 
         page.drawText(itemName, {
@@ -274,7 +323,7 @@ Deno.serve(async (req: Request) => {
           y: y - fontSize - 5,
           size: fontSize,
           font: regularFont,
-          color: darkColor,
+          color: textColor,
         });
 
         page.drawText(quantity.toString(), {
@@ -282,7 +331,7 @@ Deno.serve(async (req: Request) => {
           y: y - fontSize - 5,
           size: fontSize,
           font: regularFont,
-          color: darkColor,
+          color: textColor,
         });
 
         page.drawText(unit, {
@@ -290,18 +339,48 @@ Deno.serve(async (req: Request) => {
           y: y - fontSize - 5,
           size: fontSize,
           font: regularFont,
-          color: darkColor,
+          color: textColor,
         });
 
-        const priceText = `${subtotal.toFixed(2)} PLN`;
-        const priceWidth = regularFont.widthOfTextAtSize(priceText, fontSize);
-        page.drawText(priceText, {
-          x: margin + tableWidth - priceWidth - 5,
-          y: y - fontSize - 5,
-          size: fontSize,
-          font: regularFont,
-          color: darkColor,
-        });
+        let currentX = margin + colWidths.lp + colWidths.name + colWidths.quantity + colWidths.unit;
+
+        if (showUnitPriceNet) {
+          const unitPriceText = `${unitPrice.toFixed(2)}`;
+          const unitPriceWidth = regularFont.widthOfTextAtSize(unitPriceText, fontSize);
+          page.drawText(unitPriceText, {
+            x: currentX + colWidths.unitPriceNet - unitPriceWidth - 5,
+            y: y - fontSize - 5,
+            size: fontSize,
+            font: regularFont,
+            color: textColor,
+          });
+          currentX += colWidths.unitPriceNet;
+        }
+
+        if (showValueNet) {
+          const valueNetText = `${valueNet.toFixed(2)}`;
+          const valueNetWidth = regularFont.widthOfTextAtSize(valueNetText, fontSize);
+          page.drawText(valueNetText, {
+            x: currentX + colWidths.valueNet - valueNetWidth - 5,
+            y: y - fontSize - 5,
+            size: fontSize,
+            font: regularFont,
+            color: textColor,
+          });
+          currentX += colWidths.valueNet;
+        }
+
+        if (showValueGross) {
+          const valueGrossText = `${valueGross.toFixed(2)}`;
+          const valueGrossWidth = regularFont.widthOfTextAtSize(valueGrossText, fontSize);
+          page.drawText(valueGrossText, {
+            x: currentX + colWidths.valueGross - valueGrossWidth - 5,
+            y: y - fontSize - 5,
+            size: fontSize,
+            font: regularFont,
+            color: textColor,
+          });
+        }
 
         y -= rowHeight;
       });
@@ -311,29 +390,75 @@ Deno.serve(async (req: Request) => {
         start: { x: margin, y: y },
         end: { x: margin + tableWidth, y: y },
         thickness: 2,
-        color: goldColor,
+        color: headerColor,
       });
 
       y -= 25;
-      page.drawText('SUMA:', {
-        x: margin + colWidths.lp + colWidths.name + colWidths.quantity,
-        y: y,
-        size: headerFontSize,
-        font: boldFont,
-        color: darkColor,
-      });
 
-      const totalText = `${totalPrice.toFixed(2)} PLN`;
-      const totalWidth = boldFont.widthOfTextAtSize(totalText, headerFontSize);
-      page.drawText(totalText, {
-        x: margin + tableWidth - totalWidth - 5,
-        y: y,
-        size: headerFontSize,
-        font: boldFont,
-        color: goldColor,
-      });
+      const summaryStartX = margin + colWidths.lp + colWidths.name + colWidths.quantity + colWidths.unit;
 
-      console.log(`Drew offer items table with ${offerItems.length} items, total: ${totalPrice} PLN`);
+      if (showUnitPriceNet) {
+        page.drawText('', {
+          x: summaryStartX,
+          y: y,
+          size: headerFontSize,
+          font: boldFont,
+          color: textColor,
+        });
+      }
+
+      let summaryX = summaryStartX;
+      if (showUnitPriceNet) summaryX += colWidths.unitPriceNet;
+
+      if (showValueNet) {
+        page.drawText('SUMA NETTO:', {
+          x: summaryX - 60,
+          y: y,
+          size: headerFontSize - 1,
+          font: boldFont,
+          color: textColor,
+        });
+
+        const totalNetText = `${totalNet.toFixed(2)} PLN`;
+        const totalNetWidth = boldFont.widthOfTextAtSize(totalNetText, headerFontSize);
+        page.drawText(totalNetText, {
+          x: summaryX + colWidths.valueNet - totalNetWidth - 5,
+          y: y,
+          size: headerFontSize,
+          font: boldFont,
+          color: headerColor,
+        });
+        summaryX += colWidths.valueNet;
+      }
+
+      if (showValueGross) {
+        if (showValueNet) {
+          y -= 20;
+          summaryX = summaryStartX;
+          if (showUnitPriceNet) summaryX += colWidths.unitPriceNet;
+          if (showValueNet) summaryX += colWidths.valueNet;
+        }
+
+        page.drawText('SUMA BRUTTO:', {
+          x: summaryX - 65,
+          y: y,
+          size: headerFontSize - 1,
+          font: boldFont,
+          color: textColor,
+        });
+
+        const totalGrossText = `${totalGross.toFixed(2)} PLN`;
+        const totalGrossWidth = boldFont.widthOfTextAtSize(totalGrossText, headerFontSize);
+        page.drawText(totalGrossText, {
+          x: summaryX + colWidths.valueGross - totalGrossWidth - 5,
+          y: y,
+          size: headerFontSize,
+          font: boldFont,
+          color: headerColor,
+        });
+      }
+
+      console.log(`Drew offer items table with ${offerItems.length} items, total net: ${totalNet.toFixed(2)} PLN, total gross: ${totalGross.toFixed(2)} PLN`);
     };
 
     const overlayTextOnPages = async (
@@ -633,7 +758,7 @@ Deno.serve(async (req: Request) => {
       try {
         const { data: template } = await supabase
           .from('offer_page_templates')
-          .select('pdf_url, text_fields_config')
+          .select('pdf_url, text_fields_config, table_config')
           .eq('type', templateType)
           .eq('is_default', true)
           .eq('is_active', true)
@@ -662,13 +787,13 @@ Deno.serve(async (req: Request) => {
               );
             }
 
-            return true;
+            return { success: true, tableConfig: template.table_config };
           }
         }
       } catch (error) {
         console.error(`Error adding ${templateType} template:`, error);
       }
-      return false;
+      return { success: false };
     };
 
     await addPdfFromTemplate('cover');
@@ -701,15 +826,15 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const pricingPageAdded = await addPdfFromTemplate('pricing');
-    if (pricingPageAdded && offerData.offer_items.length > 0) {
+    const pricingResult = await addPdfFromTemplate('pricing');
+    if (pricingResult.success && offerData.offer_items.length > 0) {
       const pricingPageIndex = mergedPdf.getPageCount() - 1;
       await drawOfferItemsTable(
         mergedPdf,
         pricingPageIndex,
         offerData.offer_items,
         offerData.total_price_numeric,
-        200
+        pricingResult.tableConfig || {}
       );
     }
 
