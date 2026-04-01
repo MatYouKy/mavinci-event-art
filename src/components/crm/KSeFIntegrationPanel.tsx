@@ -80,13 +80,81 @@ export default function KSeFIntegrationPanel() {
     if (selectedCompanyId) {
       loadInvoices();
       loadSyncLogs();
+
+      // Auto-sync jeśli sesja aktywna
+      const creds = allCredentials.find(c => c.my_company_id === selectedCompanyId);
+      if (creds?.session_token && creds?.session_expires_at) {
+        const expiresAt = new Date(creds.session_expires_at);
+        if (expiresAt > new Date()) {
+          handleAutoSync(creds);
+        }
+      }
     }
-  }, [selectedCompanyId]);
+  }, [selectedCompanyId, allCredentials]);
+
+  const handleAutoSync = async (credentials: KSeFCredentials) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
+
+      // Pobierz wystawione faktury
+      const issuedRes = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/ksef-api?action=get-issued-invoices&companyId=${credentials.my_company_id}`,
+        {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        }
+      );
+
+      if (issuedRes.ok) {
+        const issuedData = await issuedRes.json();
+        if (issuedData.invoiceList?.length > 0) {
+          for (const inv of issuedData.invoiceList) {
+            await supabase.from('ksef_invoices').upsert({
+              ksef_reference_number: inv.ksefReferenceNumber,
+              invoice_type: 'issued',
+              xml_content: '',
+              sync_status: 'synced',
+              ksef_issued_at: inv.acquisitionTimestamp || new Date().toISOString(),
+            }, { onConflict: 'ksef_reference_number' });
+          }
+        }
+      }
+
+      // Pobierz otrzymane faktury
+      const receivedRes = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/ksef-api?action=get-received-invoices&companyId=${credentials.my_company_id}`,
+        {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        }
+      );
+
+      if (receivedRes.ok) {
+        const receivedData = await receivedRes.json();
+        if (receivedData.invoiceList?.length > 0) {
+          for (const inv of receivedData.invoiceList) {
+            await supabase.from('ksef_invoices').upsert({
+              ksef_reference_number: inv.ksefReferenceNumber,
+              invoice_type: 'received',
+              xml_content: '',
+              sync_status: 'synced',
+              ksef_issued_at: inv.acquisitionTimestamp || new Date().toISOString(),
+            }, { onConflict: 'ksef_reference_number' });
+          }
+        }
+      }
+
+      await loadInvoices();
+    } catch (err) {
+      console.log('Auto-sync skipped:', err);
+    }
+  };
 
   const loadCredentials = async () => {
     try {
       const { data, error } = await supabase
-        .from('ksef_selectedCredentials')
+        .from('ksef_credentials')
         .select(`
           *,
           my_company:my_companies(id, name, nip)
@@ -100,7 +168,7 @@ export default function KSeFIntegrationPanel() {
         setSelectedCompanyId(data[0].my_company_id);
       }
     } catch (error) {
-      console.error('Error loading selectedCredentials:', error);
+      console.error('Error loading credentials:', error);
     }
   };
 
