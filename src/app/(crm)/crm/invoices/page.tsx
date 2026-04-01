@@ -3,22 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
-import {
-  FileText,
-  Plus,
-  Search,
-  Filter,
-  Download,
-  Eye,
-  Edit,
-  Trash2,
-  CheckCircle,
-  Clock,
-  Send,
-  XCircle,
-  DollarSign,
-  Calendar,
-} from 'lucide-react';
+import { FileText, Plus, Search, Filter, Download, Eye, CreditCard as Edit, Trash2, CheckCircle, Clock, Send, XCircle, DollarSign, Calendar, Building2 } from 'lucide-react';
+import KSeFIntegrationPanel from '@/components/crm/KSeFIntegrationPanel';
 
 interface Invoice {
   id: string;
@@ -55,6 +41,7 @@ export default function InvoicesPage() {
   const [filterType, setFilterType] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [showFilters, setShowFilters] = useState(false);
+  const [activeTab, setActiveTab] = useState<'invoices' | 'ksef'>('invoices');
 
   useEffect(() => {
     fetchInvoices();
@@ -191,6 +178,38 @@ export default function InvoicesPage() {
             Wystaw fakturę
           </button>
         </div>
+
+        {/* Tabs */}
+        <div className="mb-6 flex gap-2 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-1">
+          <button
+            onClick={() => setActiveTab('invoices')}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${
+              activeTab === 'invoices'
+                ? 'bg-[#d3bb73] text-[#1c1f33]'
+                : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+            }`}
+          >
+            <FileText className="h-4 w-4" />
+            Lokalne faktury
+          </button>
+          <button
+            onClick={() => setActiveTab('ksef')}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${
+              activeTab === 'ksef'
+                ? 'bg-[#d3bb73] text-[#1c1f33]'
+                : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+            }`}
+          >
+            <Building2 className="h-4 w-4" />
+            Integracja KSeF
+          </button>
+        </div>
+
+        {activeTab === 'ksef' ? (
+          <KSeFIntegrationPanel />
+        ) : (
+          <>
+        {/* Original content */}
 
         {/* Stats */}
         <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-4">
@@ -424,6 +443,8 @@ export default function InvoicesPage() {
             </div>
           )}
         </div>
+        </>
+        )}
       </div>
     </div>
   );
