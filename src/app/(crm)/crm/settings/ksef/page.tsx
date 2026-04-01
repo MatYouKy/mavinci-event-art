@@ -137,9 +137,9 @@ export default function KSeFSettingsPage() {
                   <li className="flex gap-2">
                     <span className="font-medium text-blue-400">1.</span>
                     <div>
-                      <strong>Uzyskaj token autoryzacyjny</strong>
+                      <strong>Zaloguj się do KSeF</strong>
                       <p className="mt-1 text-[#e5e4e2]/60">
-                        Zaloguj się na platformie KSeF pod adresem{' '}
+                        Przejdź do platformy KSeF pod adresem{' '}
                         <a
                           href="https://ksef.mf.gov.pl"
                           target="_blank"
@@ -149,26 +149,26 @@ export default function KSeFSettingsPage() {
                           ksef.mf.gov.pl
                           <ExternalLink className="h-3 w-3" />
                         </a>
+                        {' '}i zaloguj się przy użyciu profilu zaufanego lub certyfikatu
                       </p>
                     </div>
                   </li>
                   <li className="flex gap-2">
                     <span className="font-medium text-blue-400">2.</span>
                     <div>
-                      <strong>Wygeneruj token</strong>
+                      <strong>Wygeneruj token autoryzacyjny</strong>
                       <p className="mt-1 text-[#e5e4e2]/60">
-                        W panelu KSeF przejdź do sekcji &quot;Tokeny&quot; i wygeneruj nowy
-                        token dla swojej aplikacji
+                        W panelu KSeF przejdź do: <strong>Ustawienia → Tokeny → Dodaj nowy token</strong>.
+                        Nadaj mu nazwę (np. &quot;Mavinci CRM&quot;) i zapisz wygenerowany token
                       </p>
                     </div>
                   </li>
                   <li className="flex gap-2">
                     <span className="font-medium text-blue-400">3.</span>
                     <div>
-                      <strong>Wprowadź dane w systemie</strong>
+                      <strong>Wprowadź token w systemie</strong>
                       <p className="mt-1 text-[#e5e4e2]/60">
-                        Wybierz firmę z listy poniżej i wklej token oraz hasło w odpowiednie
-                        pola
+                        Wybierz firmę z listy poniżej i wklej skopiowany token w pole &quot;Token autoryzacyjny&quot;
                       </p>
                     </div>
                   </li>
@@ -177,7 +177,17 @@ export default function KSeFSettingsPage() {
                     <div>
                       <strong>Testuj połączenie</strong>
                       <p className="mt-1 text-[#e5e4e2]/60">
-                        Kliknij &quot;Testuj połączenie&quot; aby sprawdzić czy dane są poprawne
+                        Zapisz konfigurację i kliknij &quot;Testuj połączenie&quot; aby zweryfikować poprawność danych
+                      </p>
+                    </div>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="font-medium text-blue-400">5.</span>
+                    <div>
+                      <strong>Certyfikat kwalifikowany</strong>
+                      <p className="mt-1 text-[#e5e4e2]/60">
+                        Do wysyłania faktur będziesz potrzebować <strong>certyfikatu kwalifikowanego</strong> (plik .p12/.pfx)
+                        wraz z hasłem. Certyfikat zostanie przesłany bezpiecznie podczas każdego wysyłania faktury do KSeF
                       </p>
                     </div>
                   </li>

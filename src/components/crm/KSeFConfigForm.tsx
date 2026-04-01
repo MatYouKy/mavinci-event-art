@@ -21,9 +21,7 @@ interface KSeFConfigFormProps {
 export default function KSeFConfigForm({ companyId, onUpdate }: KSeFConfigFormProps) {
   const [nip, setNip] = useState('');
   const [token, setToken] = useState('');
-  const [password, setPassword] = useState('');
   const [isTestEnv, setIsTestEnv] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
   const [showToken, setShowToken] = useState(false);
   const [hasCredentials, setHasCredentials] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -74,8 +72,8 @@ export default function KSeFConfigForm({ companyId, onUpdate }: KSeFConfigFormPr
   };
 
   const handleSave = async () => {
-    if (!token.trim() || !password.trim()) {
-      showSnackbar('Wypełnij wszystkie wymagane pola', 'error');
+    if (!token.trim()) {
+      showSnackbar('Wypełnij token autoryzacyjny', 'error');
       return;
     }
 
@@ -86,8 +84,7 @@ export default function KSeFConfigForm({ companyId, onUpdate }: KSeFConfigFormPr
         const { error } = await supabase
           .from('ksef_credentials')
           .update({
-            token_value: token,
-            token_password: password,
+            token: token,
             is_test_environment: isTestEnv,
             updated_at: new Date().toISOString(),
           })
@@ -98,8 +95,7 @@ export default function KSeFConfigForm({ companyId, onUpdate }: KSeFConfigFormPr
         const { error } = await supabase.from('ksef_credentials').insert({
           my_company_id: companyId,
           nip: nip,
-          token_value: token,
-          token_password: password,
+          token: token,
           is_test_environment: isTestEnv,
           is_active: true,
         });
@@ -196,27 +192,22 @@ export default function KSeFConfigForm({ companyId, onUpdate }: KSeFConfigFormPr
             {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </button>
         </div>
+        <p className="mt-2 text-xs text-[#e5e4e2]/60">
+          Token należy wygenerować w panelu KSeF (Ustawienia → Tokeny)
+        </p>
       </div>
 
-      <div>
-        <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-          Hasło do tokenu <span className="text-red-400">*</span>
-        </label>
-        <div className="relative">
-          <input
-            type={showPassword ? 'text' : 'password'}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder={hasCredentials ? '••••••••' : 'Wprowadź hasło do tokenu'}
-            className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#0f1119] px-4 py-3 pr-12 text-[#e5e4e2] placeholder:text-[#e5e4e2]/30 focus:border-[#d3bb73] focus:outline-none"
-          />
-          <button
-            type="button"
-            onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/40 transition-colors hover:text-[#e5e4e2]"
-          >
-            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-          </button>
+      <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-4">
+        <div className="mb-2 flex items-start gap-2">
+          <AlertCircle className="mt-0.5 h-4 w-4 text-amber-400" />
+          <div>
+            <div className="text-sm font-medium text-amber-400">Certyfikat kwalifikowany</div>
+            <p className="mt-1 text-xs text-[#e5e4e2]/80">
+              Do podpisywania i wysyłania faktur do KSeF będziesz potrzebować certyfikatu
+              kwalifikowanego (plik .p12 lub .pfx) wraz z hasłem. Certyfikat zostanie przesłany
+              bezpiecznie podczas wysyłania faktury.
+            </p>
+          </div>
         </div>
       </div>
 
