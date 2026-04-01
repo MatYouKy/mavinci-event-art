@@ -9,6 +9,8 @@ import {
   CheckCircle,
   AlertCircle,
   Loader2,
+  Upload,
+  FileKey,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -23,6 +25,11 @@ export default function KSeFConfigForm({ companyId, onUpdate }: KSeFConfigFormPr
   const [token, setToken] = useState('');
   const [isTestEnv, setIsTestEnv] = useState(false);
   const [showToken, setShowToken] = useState(false);
+  const [certificateKey, setCertificateKey] = useState('');
+  const [certificatePassword, setCertificatePassword] = useState('');
+  const [showCertPassword, setShowCertPassword] = useState(false);
+  const [hasCertificate, setHasCertificate] = useState(false);
+  const [certificateUploadedAt, setCertificateUploadedAt] = useState<string | null>(null);
   const [hasCredentials, setHasCredentials] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -60,14 +67,37 @@ export default function KSeFConfigForm({ companyId, onUpdate }: KSeFConfigFormPr
       if (credentials) {
         setHasCredentials(true);
         setIsTestEnv(credentials.is_test_environment || false);
+        setHasCertificate(!!credentials.certificate_key);
+        setCertificateUploadedAt(credentials.certificate_uploaded_at);
       } else {
         setHasCredentials(false);
+        setHasCertificate(false);
       }
     } catch (err) {
       console.error('Error loading credentials:', err);
       showSnackbar('Błąd podczas wczytywania danych', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+
+      if (!text.includes('BEGIN ENCRYPTED PRIVATE KEY') && !text.includes('BEGIN PRIVATE KEY')) {
+        showSnackbar('Nieprawidłowy format pliku. Oczekiwano klucza PEM (.key)', 'error');
+        return;
+      }
+
+      setCertificateKey(text);
+      showSnackbar('Plik certyfikatu został wczytany', 'success');
+    } catch (err) {
+      console.error('Error reading file:', err);
+      showSnackbar('Błąd podczas wczytywania pliku', 'error');
     }
   };
 
@@ -80,31 +110,46 @@ export default function KSeFConfigForm({ companyId, onUpdate }: KSeFConfigFormPr
     try {
       setSaving(true);
 
+      const updateData: any = {
+        token: token,
+        is_test_environment: isTestEnv,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (certificateKey && certificatePassword) {
+        updateData.certificate_key = certificateKey;
+        updateData.certificate_password = certificatePassword;
+        updateData.certificate_uploaded_at = new Date().toISOString();
+      }
+
       if (hasCredentials) {
         const { error } = await supabase
           .from('ksef_credentials')
-          .update({
-            token: token,
-            is_test_environment: isTestEnv,
-            updated_at: new Date().toISOString(),
-          })
+          .update(updateData)
           .eq('my_company_id', companyId);
 
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('ksef_credentials').insert({
+        const insertData = {
           my_company_id: companyId,
           nip: nip,
-          token: token,
-          is_test_environment: isTestEnv,
           is_active: true,
-        });
+          ...updateData,
+        };
+
+        const { error } = await supabase.from('ksef_credentials').insert(insertData);
 
         if (error) throw error;
       }
 
       showSnackbar('Konfiguracja KSeF została zapisana', 'success');
       setHasCredentials(true);
+      if (certificateKey) {
+        setHasCertificate(true);
+        setCertificateUploadedAt(new Date().toISOString());
+        setCertificateKey('');
+        setCertificatePassword('');
+      }
       setTestResult(null);
       onUpdate?.();
     } catch (err: any) {
@@ -197,17 +242,96 @@ export default function KSeFConfigForm({ companyId, onUpdate }: KSeFConfigFormPr
         </p>
       </div>
 
-      <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-4">
-        <div className="mb-2 flex items-start gap-2">
-          <AlertCircle className="mt-0.5 h-4 w-4 text-amber-400" />
-          <div>
-            <div className="text-sm font-medium text-amber-400">Certyfikat kwalifikowany</div>
-            <p className="mt-1 text-xs text-[#e5e4e2]/80">
-              Do podpisywania i wysyłania faktur do KSeF będziesz potrzebować certyfikatu
-              kwalifikowanego (plik .p12 lub .pfx) wraz z hasłem. Certyfikat zostanie przesłany
-              bezpiecznie podczas wysyłania faktury.
+      <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] p-6">
+        <div className="mb-4 flex items-start gap-3">
+          <FileKey className="mt-1 h-5 w-5 text-[#d3bb73]" />
+          <div className="flex-1">
+            <h3 className="font-medium text-[#e5e4e2]">Certyfikat kwalifikowany</h3>
+            <p className="mt-1 text-sm text-[#e5e4e2]/60">
+              Prześlij klucz prywatny (.key) i hasło do bezpiecznego przechowania w systemie
             </p>
           </div>
+        </div>
+
+        {hasCertificate && certificateUploadedAt && (
+          <div className="mb-4 rounded-lg border border-green-500/20 bg-green-500/5 p-3">
+            <div className="flex items-center gap-2 text-sm text-green-400">
+              <CheckCircle className="h-4 w-4" />
+              <span>
+                Certyfikat przesłany{' '}
+                {new Date(certificateUploadedAt).toLocaleDateString('pl-PL', {
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </span>
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-4">
+          <div>
+            <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+              Klucz prywatny (.key)
+            </label>
+            <div className="relative">
+              <input
+                type="file"
+                accept=".key,.pem"
+                onChange={handleFileUpload}
+                className="hidden"
+                id="cert-upload"
+              />
+              <label
+                htmlFor="cert-upload"
+                className="flex cursor-pointer items-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#0f1119] px-4 py-3 text-[#e5e4e2] transition-colors hover:border-[#d3bb73]"
+              >
+                <Upload className="h-4 w-4" />
+                {certificateKey ? 'Plik wczytany ✓' : 'Wybierz plik .key lub .pem'}
+              </label>
+            </div>
+            <p className="mt-2 text-xs text-[#e5e4e2]/60">
+              Plik zawierający -----BEGIN ENCRYPTED PRIVATE KEY-----
+            </p>
+          </div>
+
+          {certificateKey && (
+            <div>
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                Hasło do klucza prywatnego
+              </label>
+              <div className="relative">
+                <input
+                  type={showCertPassword ? 'text' : 'password'}
+                  value={certificatePassword}
+                  onChange={(e) => setCertificatePassword(e.target.value)}
+                  placeholder="Wprowadź hasło do certyfikatu"
+                  className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#0f1119] px-4 py-3 pr-12 text-[#e5e4e2] placeholder:text-[#e5e4e2]/30 focus:border-[#d3bb73] focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCertPassword(!showCertPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/40 transition-colors hover:text-[#e5e4e2]"
+                >
+                  {showCertPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {certificateKey && certificatePassword && (
+            <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-3">
+              <div className="flex items-start gap-2 text-xs text-green-400">
+                <CheckCircle className="mt-0.5 h-3 w-3" />
+                <span>
+                  Certyfikat i hasło zostaną bezpiecznie zapisane w bazie danych. Nie będziesz
+                  musiał podawać ich ponownie przy każdym wysyłaniu faktury.
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

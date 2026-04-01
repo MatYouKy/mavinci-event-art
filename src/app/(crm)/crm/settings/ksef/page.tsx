@@ -184,10 +184,11 @@ export default function KSeFSettingsPage() {
                   <li className="flex gap-2">
                     <span className="font-medium text-blue-400">5.</span>
                     <div>
-                      <strong>Certyfikat kwalifikowany</strong>
+                      <strong>Prześlij certyfikat kwalifikowany (opcjonalnie)</strong>
                       <p className="mt-1 text-[#e5e4e2]/60">
-                        Do wysyłania faktur będziesz potrzebować <strong>certyfikatu kwalifikowanego</strong> (plik .p12/.pfx)
-                        wraz z hasłem. Certyfikat zostanie przesłany bezpiecznie podczas każdego wysyłania faktury do KSeF
+                        Możesz przesłać <strong>klucz prywatny</strong> (plik .key lub .pem) wraz z hasłem.
+                        Dane zostaną bezpiecznie zapisane w systemie i nie będziesz musiał podawać ich
+                        przy każdym wysyłaniu faktury do KSeF
                       </p>
                     </div>
                   </li>
