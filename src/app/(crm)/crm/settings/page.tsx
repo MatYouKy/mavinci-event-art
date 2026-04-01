@@ -19,6 +19,7 @@ import {
   Plus,
   List,
   Table2,
+  Building2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -767,6 +768,22 @@ export default function SettingsPage() {
                     <div className="font-medium text-[#e5e4e2]">Kategorie produktów ofertowych</div>
                     <div className="text-xs text-[#e5e4e2]/60">
                       Zarządzaj kategoriami produktów w ofercie
+                    </div>
+                  </div>
+                </div>
+                <ArrowRight className="h-5 w-5 text-[#e5e4e2]/40" />
+              </button>
+
+              <button
+                onClick={() => router.push('/crm/settings/my-companies')}
+                className="flex w-full items-center justify-between rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4 transition-colors hover:bg-[#1c1f33]"
+              >
+                <div className="flex items-center gap-3">
+                  <Building2 className="h-5 w-5 text-[#d3bb73]" />
+                  <div className="text-left">
+                    <div className="font-medium text-[#e5e4e2]">Moje działalności</div>
+                    <div className="text-xs text-[#e5e4e2]/60">
+                      Zarządzaj firmami, które wystawiają faktury i obsługują KSeF
                     </div>
                   </div>
                 </div>
