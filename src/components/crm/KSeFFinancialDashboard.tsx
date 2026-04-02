@@ -17,7 +17,7 @@ import {
   X
 } from 'lucide-react';
 import { parseMT940, parseJPK_WB, findMatchingInvoices, type BankTransaction, type MatchCandidate } from '@/lib/bankStatementParsers';
-import UnmatchedTransactionsModal from './UnmatchedTransactionsModal';
+import BankTransactionsAnalysis from './BankTransactionsAnalysis';
 
 interface MonthlySummary {
   id: string;
@@ -582,14 +582,14 @@ export default function KSeFFinancialDashboard() {
                 </div>
               )}
 
-              {/* Przycisk dopasowania płatności */}
+              {/* Przycisk analizy transakcji */}
               {selectedMonth.bank_statement_uploaded && (
                 <div className="rounded-lg border border-[#d3bb73]/20 bg-[#252945] p-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h4 className="text-sm font-medium text-[#e5e4e2]">Dopasowanie płatności</h4>
+                      <h4 className="text-sm font-medium text-[#e5e4e2]">Analiza transakcji</h4>
                       <p className="mt-1 text-xs text-[#e5e4e2]/60">
-                        Ręczne dopasowanie transakcji do faktur
+                        Przejrzyj wszystkie transakcje z wyciągu i zarządzaj dopasowaniami
                       </p>
                     </div>
                     <button
@@ -600,7 +600,7 @@ export default function KSeFFinancialDashboard() {
                       className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
                     >
                       <LinkIcon className="h-4 w-4" />
-                      Dopasuj płatności
+                      Analizuj transakcje
                     </button>
                   </div>
                 </div>
@@ -619,9 +619,9 @@ export default function KSeFFinancialDashboard() {
         </div>
       )}
 
-      {/* Modal dopasowania niedopasowanych płatności */}
+      {/* Modal analizy transakcji */}
       {showUnmatchedModal && unmatchedModalMonth && (
-        <UnmatchedTransactionsModal
+        <BankTransactionsAnalysis
           month={unmatchedModalMonth.month}
           year={unmatchedModalMonth.year}
           onClose={() => {
