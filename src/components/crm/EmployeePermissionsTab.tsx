@@ -365,6 +365,15 @@ export default function EmployeePermissionsTab({
   };
 
   const getCategoryStatus = (category: PermissionCategory): string => {
+    if (category.key === 'invoices' && category.extraPermissions) {
+      const activePermissions = category.extraPermissions.filter((ep) =>
+        permissions.includes(ep.key),
+      );
+      if (activePermissions.length === 0) return 'Brak';
+      if (activePermissions.length === 1) return activePermissions[0].label.split(' ')[0];
+      return `${activePermissions.length} uprawnień`;
+    }
+
     const level = getPermissionLevel(category.key);
 
     if (level === 'none') return 'Brak';
@@ -477,26 +486,37 @@ export default function EmployeePermissionsTab({
 
               {isExpanded && (
                 <div className="space-y-4 border-t border-[#d3bb73]/10 p-4">
-                  <div>
-                    <label className="mb-2 block">
-                      <span className="text-sm font-medium text-[#e5e4e2]/80">Poziom dostępu</span>
-                    </label>
-                    <select
-                      value={level}
-                      onChange={(e) =>
-                        setPermissionLevel(
-                          category.key,
-                          e.target.value as 'none' | 'view' | 'manage',
-                        )
-                      }
-                      disabled={!canEditThisEmployee}
-                      className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:ring-2 focus:ring-[#d3bb73]/50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <option value="none">Brak</option>
-                      <option value="view">Przeglądanie</option>
-                      <option value="manage">Zarządzanie</option>
-                    </select>
-                  </div>
+                  {category.key !== 'invoices' && (
+                    <div>
+                      <label className="mb-2 block">
+                        <span className="text-sm font-medium text-[#e5e4e2]/80">Poziom dostępu</span>
+                      </label>
+                      <select
+                        value={level}
+                        onChange={(e) =>
+                          setPermissionLevel(
+                            category.key,
+                            e.target.value as 'none' | 'view' | 'manage',
+                          )
+                        }
+                        disabled={!canEditThisEmployee}
+                        className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:ring-2 focus:ring-[#d3bb73]/50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <option value="none">Brak</option>
+                        <option value="view">Przeglądanie</option>
+                        <option value="manage">Zarządzanie</option>
+                      </select>
+                    </div>
+                  )}
+
+                  {category.key === 'invoices' && (
+                    <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-3">
+                      <p className="text-xs text-blue-200">
+                        Uprawnienia do faktur są zarządzane przez checkboxy poniżej (integracja z
+                        KSeF)
+                      </p>
+                    </div>
+                  )}
 
                   {category.key === 'events' && level !== 'none' && (
                     <div className="space-y-3 border-t border-[#d3bb73]/10 pt-3">
@@ -603,37 +623,35 @@ export default function EmployeePermissionsTab({
                     </>
                   )}
 
-                  {hasManageLevel &&
-                    category.extraPermissions &&
-                    category.extraPermissions.length > 0 && (
-                      <div className="space-y-3 border-t border-[#d3bb73]/10 pt-3">
-                        <div className="mb-2 text-sm font-medium text-[#e5e4e2]/80">
-                          Dodatkowe uprawnienia
-                        </div>
-                        {category.extraPermissions.map((extra) => (
-                          <label
-                            key={extra.key}
-                            className="group flex cursor-pointer items-start gap-3"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={permissions.includes(extra.key)}
-                              onChange={() => toggleExtraPermission(extra.key)}
-                              disabled={!canEditThisEmployee}
-                              className="mt-1 h-4 w-4 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50 focus:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
-                            />
-                            <div className="flex-1">
-                              <div className="text-sm font-medium text-[#e5e4e2] transition-colors group-hover:text-[#d3bb73]">
-                                {extra.label}
-                              </div>
-                              <div className="mt-0.5 text-xs text-[#e5e4e2]/60">
-                                {extra.description}
-                              </div>
-                            </div>
-                          </label>
-                        ))}
+                  {category.extraPermissions && category.extraPermissions.length > 0 && (
+                    <div className="space-y-3 border-t border-[#d3bb73]/10 pt-3">
+                      <div className="mb-2 text-sm font-medium text-[#e5e4e2]/80">
+                        {category.key === 'invoices' ? 'Uprawnienia' : 'Dodatkowe uprawnienia'}
                       </div>
-                    )}
+                      {category.extraPermissions.map((extra) => (
+                        <label
+                          key={extra.key}
+                          className="group flex cursor-pointer items-start gap-3"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={permissions.includes(extra.key)}
+                            onChange={() => toggleExtraPermission(extra.key)}
+                            disabled={!canEditThisEmployee}
+                            className="mt-1 h-4 w-4 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50 focus:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
+                          />
+                          <div className="flex-1">
+                            <div className="text-sm font-medium text-[#e5e4e2] transition-colors group-hover:text-[#d3bb73]">
+                              {extra.label}
+                            </div>
+                            <div className="mt-0.5 text-xs text-[#e5e4e2]/60">
+                              {extra.description}
+                            </div>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
