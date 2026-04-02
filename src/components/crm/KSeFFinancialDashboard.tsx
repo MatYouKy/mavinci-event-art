@@ -12,8 +12,12 @@ import {
   Download,
   CheckCircle,
   AlertCircle,
-  Clock
+  Clock,
+  Link as LinkIcon,
+  X
 } from 'lucide-react';
+import { parseMT940, parseJPK_WB, findMatchingInvoices, type BankTransaction, type MatchCandidate } from '@/lib/bankStatementParsers';
+import UnmatchedTransactionsModal from './UnmatchedTransactionsModal';
 
 interface MonthlySummary {
   id: string;
@@ -41,6 +45,8 @@ export default function KSeFFinancialDashboard() {
   const [uploadingFile, setUploadingFile] = useState(false);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [availableYears, setAvailableYears] = useState<number[]>([]);
+  const [showUnmatchedModal, setShowUnmatchedModal] = useState(false);
+  const [unmatchedModalMonth, setUnmatchedModalMonth] = useState<{ month: number; year: number } | null>(null);
   const { showSnackbar } = useSnackbar();
 
   useEffect(() => {
@@ -124,7 +130,20 @@ export default function KSeFFinancialDashboard() {
       const fileContent = await file.text();
       const fileType = file.name.toLowerCase().endsWith('.xml') ? 'JPK_WB' : 'MT940';
 
-      const { error } = await supabase
+      // Parsuj wyciąg
+      let parsedStatement;
+      try {
+        if (fileType === 'MT940') {
+          parsedStatement = parseMT940(fileContent);
+        } else {
+          parsedStatement = parseJPK_WB(fileContent);
+        }
+      } catch (parseError: any) {
+        throw new Error(`Błąd parsowania: ${parseError.message}`);
+      }
+
+      // Zapisz wyciąg do bazy
+      const { data: statement, error: statementError } = await supabase
         .from('bank_statements')
         .insert({
           file_name: file.name,
@@ -132,12 +151,80 @@ export default function KSeFFinancialDashboard() {
           file_content: fileContent,
           statement_month: month,
           statement_year: year,
-          uploaded_by: (await supabase.auth.getUser()).data.user?.id
+          account_number: parsedStatement.accountNumber,
+          opening_balance: parsedStatement.openingBalance,
+          closing_balance: parsedStatement.closingBalance,
+          currency: parsedStatement.currency,
+          transactions_count: parsedStatement.transactions.length,
+          uploaded_by: (await supabase.auth.getUser()).data.user?.id,
+          processed: false,
+        })
+        .select()
+        .single();
+
+      if (statementError) throw statementError;
+
+      // Zapisz transakcje i automatycznie dopasuj
+      let matchedCount = 0;
+      let unmatchedCount = 0;
+
+      for (const transaction of parsedStatement.transactions) {
+        // Znajdź pasujące faktury
+        const matches = await findMatchingInvoices(transaction, supabase);
+
+        let matchedInvoiceId: string | null = null;
+        let matchConfidence: number | null = null;
+
+        // Automatycznie dopasuj jeśli confidence >= 90%
+        if (matches.length > 0 && matches[0].confidence >= 0.9) {
+          matchedInvoiceId = matches[0].invoiceId;
+          matchConfidence = matches[0].confidence;
+          matchedCount++;
+
+          // Zaktualizuj fakturę jako opłaconą
+          await supabase
+            .from('ksef_invoices')
+            .update({
+              payment_status: 'paid',
+              payment_date: transaction.transactionDate,
+            })
+            .eq('id', matchedInvoiceId);
+        } else {
+          unmatchedCount++;
+        }
+
+        // Zapisz transakcję
+        await supabase.from('bank_transactions').insert({
+          statement_id: statement.id,
+          transaction_date: transaction.transactionDate,
+          posting_date: transaction.postingDate,
+          amount: transaction.amount,
+          currency: transaction.currency,
+          transaction_type: transaction.type,
+          counterparty_name: transaction.counterpartyName,
+          counterparty_account: transaction.counterpartyAccount,
+          title: transaction.title,
+          reference_number: transaction.referenceNumber,
+          matched_invoice_id: matchedInvoiceId,
+          match_confidence: matchConfidence,
+          manual_match: false,
         });
+      }
 
-      if (error) throw error;
+      // Oznacz wyciąg jako przetworzony
+      await supabase
+        .from('bank_statements')
+        .update({
+          processed: true,
+          processed_at: new Date().toISOString(),
+        })
+        .eq('id', statement.id);
 
-      showSnackbar('Wyciąg bankowy został zaimportowany', 'success');
+      showSnackbar(
+        `Wyciąg zaimportowany! Transakcji: ${parsedStatement.transactions.length}, Automatycznie dopasowanych: ${matchedCount}, Wymaga ręcznego dopasowania: ${unmatchedCount}`,
+        'success'
+      );
+
       await loadSummaries();
       setSelectedMonth(null);
     } catch (error: any) {
@@ -494,6 +581,30 @@ export default function KSeFFinancialDashboard() {
                   ✓ Wyciąg bankowy został przesłany
                 </div>
               )}
+
+              {/* Przycisk dopasowania płatności */}
+              {selectedMonth.bank_statement_uploaded && (
+                <div className="rounded-lg border border-[#d3bb73]/20 bg-[#252945] p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-sm font-medium text-[#e5e4e2]">Dopasowanie płatności</h4>
+                      <p className="mt-1 text-xs text-[#e5e4e2]/60">
+                        Ręczne dopasowanie transakcji do faktur
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setUnmatchedModalMonth({ month: selectedMonth.month, year: selectedMonth.year });
+                        setShowUnmatchedModal(true);
+                      }}
+                      className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
+                    >
+                      <LinkIcon className="h-4 w-4" />
+                      Dopasuj płatności
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end border-t border-[#d3bb73]/10 p-6">
@@ -506,6 +617,19 @@ export default function KSeFFinancialDashboard() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal dopasowania niedopasowanych płatności */}
+      {showUnmatchedModal && unmatchedModalMonth && (
+        <UnmatchedTransactionsModal
+          month={unmatchedModalMonth.month}
+          year={unmatchedModalMonth.year}
+          onClose={() => {
+            setShowUnmatchedModal(false);
+            setUnmatchedModalMonth(null);
+            loadSummaries();
+          }}
+        />
       )}
     </div>
   );
