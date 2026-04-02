@@ -139,8 +139,20 @@ const permissionCategories: PermissionCategory[] = [
     label: 'Czas pracy',
   },
   {
-    key: 'finances',
+    key: 'invoices',
     label: 'Faktury',
+    extraPermissions: [
+      {
+        key: 'invoices_view',
+        label: 'Podgląd faktur KSeF',
+        description: 'Może przeglądać faktury pobrane z KSeF',
+      },
+      {
+        key: 'invoices_manage',
+        label: 'Zarządzanie fakturami KSeF',
+        description: 'Może konfigurować integrację z KSeF i zarządzać fakturami',
+      },
+    ],
   },
   {
     key: 'page',

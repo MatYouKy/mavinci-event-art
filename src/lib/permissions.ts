@@ -22,6 +22,7 @@
  * - locations_view, locations_manage, locations_create
  * - time_tracking_view, time_tracking_manage
  * - databases_view, databases_manage
+ * - invoices_view, invoices_manage - faktury KSeF
  * - website_edit - edycja strony WWW (portfolio, usługi, zespół, itp.)
  */
 
@@ -112,6 +113,7 @@ export const MODULES = [
   'locations',
   'time_tracking',
   'databases',
+  'invoices',
 ] as const;
 
 export type ModuleName = (typeof MODULES)[number];
@@ -149,6 +151,8 @@ export const getAllScopes = (): string[] => {
   scopes.push('contacts_manage');
   scopes.push('event_categories_manage');
   scopes.push('website_edit');
+  scopes.push('invoices_view');
+  scopes.push('invoices_manage');
   return scopes;
 };
 
