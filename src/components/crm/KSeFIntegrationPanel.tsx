@@ -13,11 +13,14 @@ import {
   Calendar,
   FileText,
   Eye,
+  FileCheck,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import ResponsiveActionBar from './ResponsiveActionBar';
+import InvoiceDetailsModal from './InvoiceDetailsModal';
 
 interface KSeFCredentials {
   id: string;
@@ -100,6 +103,7 @@ export default function KSeFIntegrationPanel() {
   const [activeTab, setActiveTab] = useState<'issued' | 'received' | 'logs'>('issued');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [selectedInvoice, setSelectedInvoice] = useState<KSeFInvoice | null>(null);
 
   const { canManageModule } = useCurrentEmployee();
 
@@ -109,6 +113,18 @@ export default function KSeFIntegrationPanel() {
   const { showDialog, hideDialog } = useDialog();
 
   const selectedCredentials = allCredentials.find((c) => c.my_company_id === selectedCompanyId);
+
+  const currentInvoices = useMemo(() => {
+    return activeTab === 'issued' ? issuedInvoices : receivedInvoices;
+  }, [activeTab, issuedInvoices, receivedInvoices]);
+
+  const totalNetAmount = useMemo(() => {
+    return currentInvoices.reduce((sum, inv) => sum + (inv.net_amount || 0), 0);
+  }, [currentInvoices]);
+
+  const totalGrossAmount = useMemo(() => {
+    return currentInvoices.reduce((sum, inv) => sum + (inv.gross_amount || 0), 0);
+  }, [currentInvoices]);
 
   useEffect(() => {
     loadCredentials();
@@ -652,18 +668,42 @@ export default function KSeFIntegrationPanel() {
                         </td>
 
                         <td className="px-4 py-3 text-right">
-                          <button
-                            onClick={() => handleViewInvoiceXml(invoice)}
-                            className="inline-flex items-center gap-2 rounded px-3 py-1.5 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/10 disabled:opacity-50"
-                            disabled={invoice.sync_status !== 'synced'}
-                          >
-                            <Eye className="h-4 w-4" />
-                            Zobacz XML
-                          </button>
+                          <ResponsiveActionBar
+                            actions={[
+                              {
+                                label: 'Szczegóły',
+                                onClick: () => setSelectedInvoice(invoice),
+                                icon: <FileCheck className="h-4 w-4" />,
+                                variant: 'secondary',
+                              },
+                              {
+                                label: 'Zobacz XML',
+                                onClick: () => handleViewInvoiceXml(invoice),
+                                icon: <Eye className="h-4 w-4" />,
+                                variant: 'secondary',
+                                disabled: invoice.sync_status !== 'synced',
+                              },
+                            ]}
+                          />
                         </td>
                       </tr>
                     );
                   })}
+
+                  {currentInvoices.length > 0 && (
+                    <tr className="border-t-2 border-[#d3bb73]/30 bg-[#d3bb73]/5">
+                      <td colSpan={3} className="px-4 py-4 text-right text-sm font-medium text-[#e5e4e2]">
+                        SUMA:
+                      </td>
+                      <td className="px-4 py-4 text-sm font-medium text-[#e5e4e2]">
+                        {totalNetAmount.toFixed(2)} PLN
+                      </td>
+                      <td className="px-4 py-4 text-sm font-bold text-[#d3bb73]">
+                        {totalGrossAmount.toFixed(2)} PLN
+                      </td>
+                      <td colSpan={2}></td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             )}
@@ -721,6 +761,13 @@ export default function KSeFIntegrationPanel() {
             setShowSetup(false);
             loadCredentials();
           }}
+        />
+      )}
+
+      {selectedInvoice && (
+        <InvoiceDetailsModal
+          invoice={selectedInvoice}
+          onClose={() => setSelectedInvoice(null)}
         />
       )}
     </div>

@@ -272,3 +272,31 @@ html, body {
   border-color: rgba(211, 187, 115, 0.2) !important;
   margin: 1rem 0;
 }
+
+/* Print styles for invoice */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  #invoice-print,
+  #invoice-print * {
+    visibility: visible;
+  }
+
+  #invoice-print {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+
+  .print\:hidden {
+    display: none !important;
+  }
+
+  @page {
+    margin: 2cm;
+    size: A4;
+  }
+}
