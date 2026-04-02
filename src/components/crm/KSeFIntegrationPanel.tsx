@@ -14,6 +14,7 @@ import {
   FileText,
   Eye,
   FileCheck,
+  X,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -89,6 +90,43 @@ const getInvoiceTypeBadgeColor = (type: string): string => {
     case 'Korygująca': return 'text-orange-400 bg-orange-400/10';
     default: return 'text-[#d3bb73] bg-[#d3bb73]/10';
   }
+};
+
+const getPaymentStatus = (invoice: any): { status: string; label: string; color: string; icon: any } => {
+  if (invoice.payment_status === 'paid') {
+    return {
+      status: 'paid',
+      label: invoice.payment_date
+        ? `Opłacona ${new Date(invoice.payment_date).toLocaleDateString('pl-PL')}`
+        : 'Opłacona',
+      color: 'text-green-400 bg-green-400/10',
+      icon: CheckCircle,
+    };
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (invoice.payment_due_date) {
+    const dueDate = new Date(invoice.payment_due_date);
+    dueDate.setHours(0, 0, 0, 0);
+
+    if (dueDate < today || invoice.payment_status === 'overdue') {
+      return {
+        status: 'overdue',
+        label: 'Płatność po terminie',
+        color: 'text-red-400 bg-red-400/10',
+        icon: AlertCircle,
+      };
+    }
+  }
+
+  return {
+    status: 'unpaid',
+    label: 'Nieopłacona',
+    color: 'text-orange-400 bg-orange-400/10',
+    icon: RefreshCw,
+  };
 };
 
 export default function KSeFIntegrationPanel() {
@@ -390,6 +428,46 @@ export default function KSeFIntegrationPanel() {
     return new Date(selectedCredentials.access_token_valid_until) > new Date();
   };
 
+  const handleMarkAsPaid = async (invoice: any) => {
+    try {
+      const { error } = await supabase
+        .from('ksef_invoices')
+        .update({
+          payment_status: 'paid',
+          payment_date: new Date().toISOString(),
+        })
+        .eq('id', invoice.id);
+
+      if (error) throw error;
+
+      showSnackbar('Faktura oznaczona jako opłacona', 'success');
+      await loadInvoices();
+    } catch (error: any) {
+      console.error('Error marking invoice as paid:', error);
+      showSnackbar(error.message || 'Błąd podczas oznaczania faktury', 'error');
+    }
+  };
+
+  const handleMarkAsUnpaid = async (invoice: any) => {
+    try {
+      const { error } = await supabase
+        .from('ksef_invoices')
+        .update({
+          payment_status: 'unpaid',
+          payment_date: null,
+        })
+        .eq('id', invoice.id);
+
+      if (error) throw error;
+
+      showSnackbar('Status płatności zaktualizowany', 'success');
+      await loadInvoices();
+    } catch (error: any) {
+      console.error('Error marking invoice as unpaid:', error);
+      showSnackbar(error.message || 'Błąd podczas aktualizacji statusu', 'error');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -583,7 +661,10 @@ export default function KSeFIntegrationPanel() {
                       Typ faktury
                     </th>
                     <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
-                      Status
+                      Status płatności
+                    </th>
+                    <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
+                      Status KSeF
                     </th>
                     <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
                       Akcje
@@ -601,6 +682,8 @@ export default function KSeFIntegrationPanel() {
                     const invoiceDate = invoice.issue_date || invoice.ksef_issued_at;
                     const invoiceType = getInvoiceTypeLabel(invoice.invoice_number);
                     const typeBadgeColor = getInvoiceTypeBadgeColor(invoiceType);
+                    const paymentStatus = getPaymentStatus(invoice);
+                    const PaymentIcon = paymentStatus.icon;
 
                     return (
                       <tr
@@ -614,7 +697,12 @@ export default function KSeFIntegrationPanel() {
                           </div>
                         </td>
 
-                        <td className="px-4 py-3 text-sm text-[#e5e4e2]/80">{contractorName}</td>
+                        <td className="px-4 py-3 text-sm text-[#e5e4e2]/80">
+                          <div>{contractorName}</div>
+                          <div className="mt-1 text-xs text-[#e5e4e2]/40">
+                            NIP: {activeTab === 'issued' ? invoice.buyer_nip : invoice.seller_nip || 'Brak NIP'}
+                          </div>
+                        </td>
 
                         <td className="px-4 py-3 text-sm text-[#e5e4e2]/80">
                           {invoiceDate ? new Date(invoiceDate).toLocaleDateString('pl-PL') : '—'}
@@ -636,6 +724,22 @@ export default function KSeFIntegrationPanel() {
                           <span className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${typeBadgeColor}`}>
                             {invoiceType}
                           </span>
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <PaymentIcon className="h-4 w-4" />
+                            <div>
+                              <div className={`text-sm font-medium ${paymentStatus.color.split(' ')[0]}`}>
+                                {paymentStatus.label}
+                              </div>
+                              {invoice.payment_due_date && paymentStatus.status !== 'paid' && (
+                                <div className="mt-1 text-xs text-[#e5e4e2]/40">
+                                  Termin: {new Date(invoice.payment_due_date).toLocaleDateString('pl-PL')}
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         </td>
 
                         <td className="px-4 py-3">
@@ -683,6 +787,23 @@ export default function KSeFIntegrationPanel() {
                                 variant: 'secondary',
                                 disabled: invoice.sync_status !== 'synced',
                               },
+                              ...(invoice.payment_status === 'paid'
+                                ? [
+                                    {
+                                      label: 'Oznacz jako nieopłaconą',
+                                      onClick: () => handleMarkAsUnpaid(invoice),
+                                      icon: <X className="h-4 w-4" />,
+                                      variant: 'secondary' as const,
+                                    },
+                                  ]
+                                : [
+                                    {
+                                      label: 'Oznacz jako opłaconą',
+                                      onClick: () => handleMarkAsPaid(invoice),
+                                      icon: <CheckCircle className="h-4 w-4" />,
+                                      variant: 'secondary' as const,
+                                    },
+                                  ]),
                             ]}
                           />
                         </td>
@@ -701,7 +822,7 @@ export default function KSeFIntegrationPanel() {
                       <td className="px-4 py-4 text-sm font-bold text-[#d3bb73]">
                         {totalGrossAmount.toFixed(2)} PLN
                       </td>
-                      <td colSpan={2}></td>
+                      <td colSpan={3}></td>
                     </tr>
                   )}
                 </tbody>
