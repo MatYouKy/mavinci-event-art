@@ -1,27 +1,14 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import {
-  Settings,
-  Download,
-  Upload,
-  RefreshCw,
-  CheckCircle,
-  AlertCircle,
-  Key,
-  Building2,
-  Calendar,
-  FileText,
-  Eye,
-  FileCheck,
-  X,
-} from 'lucide-react';
+import { Settings, Download, Upload, RefreshCw, CheckCircle, AlertCircle, Key, Building2, Calendar, FileText, Eye, FileCheck, X, CreditCard as Edit } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import ResponsiveActionBar from './ResponsiveActionBar';
 import InvoiceDetailsModal from './InvoiceDetailsModal';
+import KSeFFinancialDashboard from './KSeFFinancialDashboard';
 
 interface KSeFCredentials {
   id: string;
@@ -142,10 +129,13 @@ export default function KSeFIntegrationPanel() {
   const [issuedInvoices, setIssuedInvoices] = useState<KSeFInvoice[]>([]);
   const [receivedInvoices, setReceivedInvoices] = useState<KSeFInvoice[]>([]);
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
-  const [activeTab, setActiveTab] = useState<'issued' | 'received' | 'logs'>('issued');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'issued' | 'received' | 'logs'>('dashboard');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [selectedInvoice, setSelectedInvoice] = useState<KSeFInvoice | null>(null);
+  const [editPaymentInvoice, setEditPaymentInvoice] = useState<KSeFInvoice | null>(null);
+  const [paymentDate, setPaymentDate] = useState('');
+  const [paymentDueDate, setPaymentDueDate] = useState('');
 
   const { canManageModule } = useCurrentEmployee();
 
@@ -472,6 +462,48 @@ export default function KSeFIntegrationPanel() {
     }
   };
 
+  const handleOpenEditPayment = (invoice: any) => {
+    setEditPaymentInvoice(invoice);
+    setPaymentDate(invoice.payment_date ? new Date(invoice.payment_date).toISOString().split('T')[0] : '');
+    setPaymentDueDate(invoice.payment_due_date || '');
+  };
+
+  const handleSavePaymentEdit = async () => {
+    if (!editPaymentInvoice) return;
+
+    try {
+      const updates: any = {
+        payment_due_date: paymentDueDate || null,
+      };
+
+      if (paymentDate) {
+        updates.payment_date = paymentDate;
+        updates.payment_status = 'paid';
+      } else {
+        updates.payment_date = null;
+        if (paymentDueDate && new Date(paymentDueDate) < new Date()) {
+          updates.payment_status = 'overdue';
+        } else {
+          updates.payment_status = 'unpaid';
+        }
+      }
+
+      const { error } = await supabase
+        .from('ksef_invoices')
+        .update(updates)
+        .eq('id', editPaymentInvoice.id);
+
+      if (error) throw error;
+
+      showSnackbar('Dane płatności zaktualizowane', 'success');
+      setEditPaymentInvoice(null);
+      await loadInvoices();
+    } catch (error: any) {
+      console.error('Error updating payment:', error);
+      showSnackbar(error.message || 'Błąd podczas aktualizacji', 'error');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -585,6 +617,17 @@ export default function KSeFIntegrationPanel() {
 
       <div className="flex gap-1 rounded-lg border border-[#d3bb73]/20 bg-[#252945] p-1">
         <button
+          onClick={() => setActiveTab('dashboard')}
+          className={`flex-1 rounded px-4 py-2 text-sm font-medium transition-colors ${
+            activeTab === 'dashboard'
+              ? 'bg-[#d3bb73] text-[#1c1f33]'
+              : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+          }`}
+        >
+          <FileText className="mr-2 inline-block h-4 w-4" />
+          Dashboard
+        </button>
+        <button
           onClick={() => setActiveTab('issued')}
           className={`flex-1 rounded px-4 py-2 text-sm font-medium transition-colors ${
             activeTab === 'issued'
@@ -619,6 +662,9 @@ export default function KSeFIntegrationPanel() {
         </button>
       </div>
 
+      {activeTab === 'dashboard' && <KSeFFinancialDashboard />}
+
+      {activeTab !== 'dashboard' && (
       <div className="rounded-xl border border-[#d3bb73]/20 bg-[#252945]">
         <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-4">
           <h3 className="font-medium text-[#e5e4e2]">
@@ -787,6 +833,12 @@ export default function KSeFIntegrationPanel() {
                                 variant: 'default',
                               },
                               {
+                                label: 'Edytuj płatność',
+                                onClick: () => handleOpenEditPayment(invoice),
+                                icon: <Edit className="h-4 w-4" />,
+                                variant: 'default',
+                              },
+                              {
                                 label: 'Zobacz XML',
                                 onClick: () => handleViewInvoiceXml(invoice),
                                 icon: <Eye className="h-4 w-4" />,
@@ -879,6 +931,7 @@ export default function KSeFIntegrationPanel() {
           </div>
         )}
       </div>
+      )}
 
       {showSetup && (
         <KSeFSetupModal
@@ -1050,6 +1103,87 @@ function KSeFSetupModal({
           </button>
         </div>
       </div>
+
+      {/* Modal edycji płatności */}
+      {editPaymentInvoice && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-xl bg-[#1c1f33] border border-[#d3bb73]/20 shadow-xl">
+            <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-6">
+              <h3 className="text-xl font-medium text-[#e5e4e2]">Edycja płatności</h3>
+              <button
+                onClick={() => setEditPaymentInvoice(null)}
+                className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <div className="text-sm text-[#e5e4e2]/60 mb-2">Faktura</div>
+                <div className="text-base text-[#e5e4e2] font-medium">
+                  {editPaymentInvoice.invoice_number || editPaymentInvoice.ksef_reference_number}
+                </div>
+              </div>
+
+              <div>
+                <div className="text-sm text-[#e5e4e2]/60 mb-2">Kwota</div>
+                <div className="text-base text-[#d3bb73] font-medium">
+                  {editPaymentInvoice.gross_amount
+                    ? `${Number(editPaymentInvoice.gross_amount).toFixed(2)} PLN`
+                    : 'Brak danych'}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm text-[#e5e4e2] mb-2">
+                  Termin płatności
+                </label>
+                <input
+                  type="date"
+                  value={paymentDueDate}
+                  onChange={(e) => setPaymentDueDate(e.target.value)}
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#252945] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-[#e5e4e2] mb-2">
+                  Data płatności <span className="text-[#e5e4e2]/40">(opcjonalne)</span>
+                </label>
+                <input
+                  type="date"
+                  value={paymentDate}
+                  onChange={(e) => setPaymentDate(e.target.value)}
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#252945] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                />
+                <div className="mt-1 text-xs text-[#e5e4e2]/40">
+                  Wypełnij tylko gdy faktura została już opłacona
+                </div>
+              </div>
+
+              <div className="text-sm text-[#e5e4e2]/60 p-3 rounded bg-[#252945] border border-[#d3bb73]/10">
+                <strong>Wskazówka:</strong> Jeśli wpiszesz datę płatności, faktura zostanie automatycznie oznaczona jako opłacona.
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 border-t border-[#d3bb73]/10 p-6">
+              <button
+                onClick={() => setEditPaymentInvoice(null)}
+                className="rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#252945]"
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={handleSavePaymentEdit}
+                className="rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
+              >
+                Zapisz
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

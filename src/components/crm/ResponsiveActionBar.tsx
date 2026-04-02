@@ -112,7 +112,7 @@ export default function ResponsiveActionBar({
         </button>
 
         {showMenu && (
-          <div className={`absolute right-0 w-56 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl shadow-xl z-50 overflow-hidden ${
+          <div className={`absolute right-0 w-56 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl shadow-xl z-[9999] overflow-hidden ${
             openUpward ? 'bottom-full mb-2' : 'top-full mt-2'
           }`}>
             {filteredActions.map((action, index) => (
