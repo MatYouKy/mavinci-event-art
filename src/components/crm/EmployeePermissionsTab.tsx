@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase/browser';
 import { getAllScopes } from '@/lib/permissions';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface Props {
   employeeId: string;
@@ -183,6 +184,7 @@ export default function EmployeePermissionsTab({
 }: Props) {
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
+  const { refresh: refreshCurrentEmployee } = useCurrentEmployee();
   const [permissions, setPermissions] = useState<string[]>([]);
   const [eventTabs, setEventTabs] = useState<string[]>([]);
   const [contactTabs, setContactTabs] = useState<string[]>([]);
@@ -345,6 +347,15 @@ export default function EmployeePermissionsTab({
 
       setHasChanges(false);
       showSnackbar('Uprawnienia zostały zapisane', 'success');
+
+      // Odśwież cache użytkownika jeśli edytujemy własne uprawnienia
+      if (employeeId === currentEmployeeId) {
+        await refreshCurrentEmployee();
+        showSnackbar('Odświeżanie strony za 2 sekundy...', 'info');
+        setTimeout(() => {
+          window.location.reload();
+        }, 2000);
+      }
     } catch (err) {
       console.error('Error saving permissions:', err);
       showSnackbar('Błąd podczas zapisywania uprawnień', 'error');

@@ -43,7 +43,7 @@ export default function PermissionGuard({
         if (permission) {
           // Sprawdź konkretny permission (np. event_categories_manage)
           hasPermissionCheck =
-            isAdmin(employee) || employee.permissions?.includes(permission) || false;
+            isAdmin(employee) || employee?.permissions?.includes(permission) || false;
         } else if (module) {
           // Sprawdź moduł (np. events_view lub events_manage)
           hasPermissionCheck = isAdmin(employee) || canView(employee, module);
@@ -67,7 +67,7 @@ export default function PermissionGuard({
     };
 
     checkPermission();
-  }, [module, permission, router, fallbackPath]);
+  }, [module, permission, router, fallbackPath, employee]);
 
   if (loading) {
     return (
@@ -85,6 +85,14 @@ export default function PermissionGuard({
         <p className="max-w-md text-center text-[#e5e4e2]/60">
           Nie masz uprawnień do przeglądania tej strony. Za chwilę zostaniesz przekierowany...
         </p>
+        {module && (
+          <p className="mt-4 text-sm text-[#e5e4e2]/40">
+            Wymagane uprawnienie: {module}_view lub {module}_manage
+          </p>
+        )}
+        {permission && (
+          <p className="mt-4 text-sm text-[#e5e4e2]/40">Wymagane uprawnienie: {permission}</p>
+        )}
       </div>
     );
   }
