@@ -23,8 +23,12 @@ interface KSeFCredentials {
   my_company_id: string;
   nip: string;
   is_test_environment: boolean;
-  session_token?: string;
-  session_expires_at?: string;
+  access_token?: string | null;
+  access_token_valid_until?: string | null;
+  refresh_token?: string | null;
+  refresh_token_valid_until?: string | null;
+  last_auth_reference_number?: string | null;
+  last_authenticated_at?: string | null;
   is_active: boolean;
   my_company?: {
     id: string;
@@ -37,10 +41,17 @@ interface KSeFInvoice {
   id: string;
   invoice_id?: string;
   ksef_reference_number: string;
+  invoice_number?: string | null;
   invoice_type: 'issued' | 'received';
   sync_status: 'pending' | 'synced' | 'error';
   sync_error?: string;
   ksef_issued_at: string;
+  issue_date?: string | null;
+  seller_name?: string | null;
+  buyer_name?: string | null;
+  net_amount?: number | null;
+  gross_amount?: number | null;
+  currency?: string | null;
   synced_at: string;
 }
 
@@ -68,100 +79,47 @@ export default function KSeFIntegrationPanel() {
   const [dateTo, setDateTo] = useState('');
 
   const { showSnackbar } = useSnackbar();
-  const { showDialog } = useDialog();
+  const { showDialog, hideDialog } = useDialog();
 
-  const selectedCredentials = allCredentials.find(c => c.my_company_id === selectedCompanyId);
+  const selectedCredentials = allCredentials.find((c) => c.my_company_id === selectedCompanyId);
 
   useEffect(() => {
     loadCredentials();
   }, []);
 
   useEffect(() => {
+    const now = new Date();
+    const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    setDateFrom(firstDayOfMonth.toISOString().slice(0, 10));
+    setDateTo(now.toISOString().slice(0, 10));
+  }, []);
+
+  useEffect(() => {
     if (selectedCompanyId) {
       loadInvoices();
       loadSyncLogs();
-
-      // Auto-sync jeśli sesja aktywna
-      const creds = allCredentials.find(c => c.my_company_id === selectedCompanyId);
-      if (creds?.session_token && creds?.session_expires_at) {
-        const expiresAt = new Date(creds.session_expires_at);
-        if (expiresAt > new Date()) {
-          handleAutoSync(creds);
-        }
-      }
     }
-  }, [selectedCompanyId, allCredentials]);
+  }, [selectedCompanyId]);
 
-  const handleAutoSync = async (credentials: KSeFCredentials) => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) return;
-
-      // Pobierz wystawione faktury
-      const issuedRes = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/ksef-api?action=get-issued-invoices&companyId=${credentials.my_company_id}`,
-        {
-          method: 'GET',
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        }
-      );
-
-      if (issuedRes.ok) {
-        const issuedData = await issuedRes.json();
-        if (issuedData.invoiceList?.length > 0) {
-          for (const inv of issuedData.invoiceList) {
-            await supabase.from('ksef_invoices').upsert({
-              ksef_reference_number: inv.ksefReferenceNumber,
-              invoice_type: 'issued',
-              xml_content: '',
-              sync_status: 'synced',
-              ksef_issued_at: inv.acquisitionTimestamp || new Date().toISOString(),
-            }, { onConflict: 'ksef_reference_number' });
-          }
-        }
-      }
-
-      // Pobierz otrzymane faktury
-      const receivedRes = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/ksef-api?action=get-received-invoices&companyId=${credentials.my_company_id}`,
-        {
-          method: 'GET',
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        }
-      );
-
-      if (receivedRes.ok) {
-        const receivedData = await receivedRes.json();
-        if (receivedData.invoiceList?.length > 0) {
-          for (const inv of receivedData.invoiceList) {
-            await supabase.from('ksef_invoices').upsert({
-              ksef_reference_number: inv.ksefReferenceNumber,
-              invoice_type: 'received',
-              xml_content: '',
-              sync_status: 'synced',
-              ksef_issued_at: inv.acquisitionTimestamp || new Date().toISOString(),
-            }, { onConflict: 'ksef_reference_number' });
-          }
-        }
-      }
-
-      await loadInvoices();
-    } catch (err) {
-      console.log('Auto-sync skipped:', err);
-    }
+  const handleAutoSync = async () => {
+    console.log('Auto-sync disabled until migration to Next API is finished');
   };
 
   const loadCredentials = async () => {
     try {
       const { data, error } = await supabase
         .from('ksef_credentials')
-        .select(`
+        .select(
+          `
           *,
           my_company:my_companies(id, name, nip)
-        `)
+        `,
+        )
         .eq('is_active', true);
 
       if (error) throw error;
+
       setAllCredentials(data || []);
 
       if (data && data.length > 0 && !selectedCompanyId) {
@@ -169,6 +127,7 @@ export default function KSeFIntegrationPanel() {
       }
     } catch (error) {
       console.error('Error loading credentials:', error);
+      showSnackbar('Błąd wczytywania konfiguracji KSeF', 'error');
     }
   };
 
@@ -181,10 +140,33 @@ export default function KSeFIntegrationPanel() {
 
       if (error) throw error;
 
-      setIssuedInvoices(data?.filter((inv) => inv.invoice_type === 'issued') || []);
-      setReceivedInvoices(data?.filter((inv) => inv.invoice_type === 'received') || []);
+      console.log('[KSEF_FRONT] loadInvoices raw', {
+        count: data?.length || 0,
+        sample: data?.[0] || null,
+      });
+
+      const normalizedIssued =
+        (data || []).filter((inv) => {
+          const type = String(inv.invoice_type || '').toLowerCase();
+          return type === 'issued';
+        }) || [];
+
+      const normalizedReceived =
+        (data || []).filter((inv) => {
+          const type = String(inv.invoice_type || '').toLowerCase();
+          return type === 'received';
+        }) || [];
+
+      console.log('[KSEF_FRONT] loadInvoices mapped', {
+        issuedCount: normalizedIssued.length,
+        receivedCount: normalizedReceived.length,
+      });
+
+      setIssuedInvoices(normalizedIssued);
+      setReceivedInvoices(normalizedReceived);
     } catch (error) {
       console.error('Error loading invoices:', error);
+      showSnackbar('Błąd wczytywania faktur z bazy', 'error');
     }
   };
 
@@ -210,129 +192,163 @@ export default function KSeFIntegrationPanel() {
     }
 
     setLoading(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/ksef-api?action=authenticate&organizationId=${selectedCredentials.my_company_id}`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${session?.access_token}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Błąd autoryzacji');
+    try {
+      const response = await fetch('/api/ksef/auth/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          companyId: selectedCredentials.my_company_id,
+        }),
+      });
+
+      const raw = await response.text();
+
+      let result: any = null;
+      try {
+        result = raw ? JSON.parse(raw) : null;
+      } catch {
+        result = { raw };
       }
 
-      showSnackbar('Pomyślnie uwierzytelniono w KSeF', 'success');
+      console.log('[KSEF_FRONT] auth result', {
+        status: response.status,
+        result,
+      });
+
+      if (!response.ok || !result?.success) {
+        throw new Error(
+          result?.error ||
+            result?.details ||
+            `Błąd uwierzytelnienia KSeF (HTTP ${response.status})`,
+        );
+      }
+
       await loadCredentials();
+      showSnackbar('Uwierzytelnienie KSeF wykonane poprawnie', 'success');
     } catch (error: any) {
-      showSnackbar(error.message || 'Błąd autoryzacji', 'error');
+      console.error('[KSEF_FRONT] auth error', error);
+      showSnackbar(error.message || 'Błąd uwierzytelnienia KSeF', 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSyncInvoices = async (type: 'issued' | 'received') => {
-    if (!selectedCredentials?.session_token) {
-      showSnackbar('Najpierw uwierzytelnij się w KSeF', 'error');
+  const handleSyncInvoices = async () => {
+    if (!selectedCredentials) {
+      showSnackbar('Brak konfiguracji KSeF', 'error');
+      return;
+    }
+
+    if (!isSessionActive()) {
+      showSnackbar('Sesja wygasła – uwierzytelnij ponownie', 'error');
+      return;
+    }
+
+    if (!dateFrom || !dateTo) {
+      showSnackbar('Wybierz zakres dat w formularzu', 'error');
       return;
     }
 
     setSyncing(true);
+
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const action = type === 'issued' ? 'get-issued-invoices' : 'get-received-invoices';
+      const finalDateFrom = new Date(dateFrom);
+      const finalDateTo = new Date(dateTo);
 
-      const params = new URLSearchParams({
-        action,
-        organizationId: selectedCredentials.organization_id,
-      });
+      const payload = {
+        companyId: selectedCredentials.my_company_id,
+        dateFrom: finalDateFrom.toISOString(),
+        dateTo: finalDateTo.toISOString(),
+      };
 
-      if (dateFrom) params.append('dateFrom', dateFrom);
-      if (dateTo) params.append('dateTo', dateTo);
+      const [issuedResponse, receivedResponse] = await Promise.all([
+        fetch('/api/ksef/invoices/issued', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }),
+        fetch('/api/ksef/invoices/received', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }),
+      ]);
 
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/ksef-api?${params.toString()}`,
-        {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${session?.access_token}`,
-          },
-        }
-      );
+      const issuedRaw = await issuedResponse.text();
+      const receivedRaw = await receivedResponse.text();
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Błąd synchronizacji');
+      let issuedResult: any = null;
+      let receivedResult: any = null;
+
+      try {
+        issuedResult = issuedRaw ? JSON.parse(issuedRaw) : null;
+      } catch {
+        issuedResult = { raw: issuedRaw };
       }
 
-      const data = await response.json();
+      try {
+        receivedResult = receivedRaw ? JSON.parse(receivedRaw) : null;
+      } catch {
+        receivedResult = { raw: receivedRaw };
+      }
+
+      console.log('[KSEF_FRONT] sync issued result', {
+        status: issuedResponse.status,
+        result: issuedResult,
+      });
+
+      console.log('[KSEF_FRONT] sync received result', {
+        status: receivedResponse.status,
+        result: receivedResult,
+      });
+
+      if (!issuedResponse.ok || !issuedResult?.success) {
+        throw new Error(
+          issuedResult?.error ||
+            issuedResult?.details ||
+            `Błąd synchronizacji wystawionych (HTTP ${issuedResponse.status})`,
+        );
+      }
+
+      if (!receivedResponse.ok || !receivedResult?.success) {
+        throw new Error(
+          receivedResult?.error ||
+            receivedResult?.details ||
+            `Błąd synchronizacji otrzymanych (HTTP ${receivedResponse.status})`,
+        );
+      }
+
+      const issuedCount = issuedResult?.data?.invoices?.length || 0;
+      const receivedCount = receivedResult?.data?.invoices?.length || 0;
+
       showSnackbar(
-        `Zsynchronizowano ${data.invoiceList?.length || 0} faktur`,
-        'success'
+        `Zsynchronizowano ${issuedCount} wystawionych i ${receivedCount} otrzymanych faktur`,
+        'success',
       );
+
+      await new Promise((resolve) => setTimeout(resolve, 400));
       await loadInvoices();
       await loadSyncLogs();
     } catch (error: any) {
+      console.error('[KSEF_FRONT] sync error', error);
       showSnackbar(error.message || 'Błąd synchronizacji', 'error');
     } finally {
       setSyncing(false);
     }
   };
 
-  const handleViewInvoiceXml = async (ksefReferenceNumber: string) => {
-    if (!selectedCredentials?.session_token) {
-      showSnackbar('Najpierw uwierzytelnij się w KSeF', 'error');
-      return;
-    }
-
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const params = new URLSearchParams({
-        action: 'get-invoice-xml',
-        organizationId: selectedCredentials.organization_id,
-        ksefReferenceNumber,
-      });
-
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/ksef-api?${params.toString()}`,
-        {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${session?.access_token}`,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Błąd pobierania XML');
-      }
-
-      const data = await response.json();
-      showDialog({
-        title: 'XML Faktury',
-        message: `<pre class="max-h-96 overflow-auto text-xs">${data.xml}</pre>`,
-        confirmText: 'Zamknij',
-      });
-    } catch (error: any) {
-      showSnackbar(error.message || 'Błąd pobierania XML', 'error');
-    }
+  const handleViewInvoiceXml = async (_invoice: KSeFInvoice) => {
+    showSnackbar('Podgląd XML nie został jeszcze przepięty na nowe API Next.js', 'error');
   };
 
   const isSessionActive = () => {
-    if (!selectedCredentials?.session_expires_at) return false;
-    return new Date(selectedCredentials.session_expires_at) > new Date();
+    if (!selectedCredentials?.access_token_valid_until) return false;
+    return new Date(selectedCredentials.access_token_valid_until) > new Date();
   };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-light text-[#e5e4e2]">Integracja KSeF</h2>
@@ -359,7 +375,6 @@ export default function KSeFIntegrationPanel() {
         </div>
       </div>
 
-      {/* Company selector */}
       {allCredentials.length > 0 && (
         <div className="rounded-xl border border-[#d3bb73]/20 bg-[#252945] p-4">
           <label className="mb-2 block text-sm text-[#e5e4e2]">Wybierz firmę</label>
@@ -392,16 +407,13 @@ export default function KSeFIntegrationPanel() {
         </div>
       )}
 
-      {/* Status */}
       {selectedCredentials && (
         <div className="rounded-xl border border-[#d3bb73]/20 bg-[#252945] p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Building2 className="h-5 w-5 text-[#d3bb73]" />
               <div>
-                <p className="text-sm font-medium text-[#e5e4e2]">
-                  NIP: {selectedCredentials.nip}
-                </p>
+                <p className="text-sm font-medium text-[#e5e4e2]">NIP: {selectedCredentials.nip}</p>
                 <p className="text-xs text-[#e5e4e2]/60">
                   Środowisko: {selectedCredentials.is_test_environment ? 'Testowe' : 'Produkcyjne'}
                 </p>
@@ -424,7 +436,6 @@ export default function KSeFIntegrationPanel() {
         </div>
       )}
 
-      {/* Date filters */}
       <div className="flex items-center gap-4 rounded-xl border border-[#d3bb73]/20 bg-[#252945] p-4">
         <div className="flex items-center gap-2">
           <Calendar className="h-4 w-4 text-[#d3bb73]" />
@@ -445,7 +456,6 @@ export default function KSeFIntegrationPanel() {
         />
       </div>
 
-      {/* Tabs */}
       <div className="flex gap-1 rounded-lg border border-[#d3bb73]/20 bg-[#252945] p-1">
         <button
           onClick={() => setActiveTab('issued')}
@@ -482,9 +492,7 @@ export default function KSeFIntegrationPanel() {
         </button>
       </div>
 
-      {/* Content */}
       <div className="rounded-xl border border-[#d3bb73]/20 bg-[#252945]">
-        {/* Action bar */}
         <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-4">
           <h3 className="font-medium text-[#e5e4e2]">
             {activeTab === 'issued' && 'Faktury wystawione'}
@@ -493,7 +501,7 @@ export default function KSeFIntegrationPanel() {
           </h3>
           {activeTab !== 'logs' && (
             <button
-              onClick={() => handleSyncInvoices(activeTab)}
+              onClick={handleSyncInvoices}
               disabled={syncing || !isSessionActive()}
               className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
             >
@@ -503,71 +511,135 @@ export default function KSeFIntegrationPanel() {
           )}
         </div>
 
-        {/* Invoices list */}
         {(activeTab === 'issued' || activeTab === 'received') && (
-          <div className="divide-y divide-[#d3bb73]/10">
+          <div className="overflow-x-auto">
             {(activeTab === 'issued' ? issuedInvoices : receivedInvoices).length === 0 ? (
-              <div className="p-8 text-center text-[#e5e4e2]/40">
-                Brak faktur do wyświetlenia
-              </div>
+              <div className="p-8 text-center text-[#e5e4e2]/40">Brak faktur do wyświetlenia</div>
             ) : (
-              (activeTab === 'issued' ? issuedInvoices : receivedInvoices).map((invoice) => (
-                <div
-                  key={invoice.id}
-                  className="flex items-center justify-between p-4 hover:bg-[#1c1f33]/50"
-                >
-                  <div className="flex items-center gap-4">
-                    <div
-                      className={`rounded-full p-2 ${
-                        invoice.sync_status === 'synced'
-                          ? 'bg-green-400/10'
-                          : invoice.sync_status === 'error'
-                            ? 'bg-red-400/10'
-                            : 'bg-yellow-400/10'
-                      }`}
-                    >
-                      {invoice.sync_status === 'synced' && (
-                        <CheckCircle className="h-4 w-4 text-green-400" />
-                      )}
-                      {invoice.sync_status === 'error' && (
-                        <AlertCircle className="h-4 w-4 text-red-400" />
-                      )}
-                      {invoice.sync_status === 'pending' && (
-                        <RefreshCw className="h-4 w-4 text-yellow-400" />
-                      )}
-                    </div>
-                    <div>
-                      <p className="font-medium text-[#e5e4e2]">
-                        {invoice.ksef_reference_number}
-                      </p>
-                      <p className="text-sm text-[#e5e4e2]/60">
-                        {new Date(invoice.ksef_issued_at).toLocaleDateString('pl-PL')}
-                      </p>
-                      {invoice.sync_error && (
-                        <p className="text-xs text-red-400">{invoice.sync_error}</p>
-                      )}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleViewInvoiceXml(invoice.ksef_reference_number)}
-                    className="flex items-center gap-2 rounded px-3 py-1.5 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/10"
-                  >
-                    <Eye className="h-4 w-4" />
-                    Zobacz XML
-                  </button>
-                </div>
-              ))
+              <table className="min-w-full border-collapse">
+                <thead>
+                  <tr className="border-b border-[#d3bb73]/10 bg-[#1c1f33]/40 text-left">
+                    <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
+                      Numer faktury
+                    </th>
+                    <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
+                      Kontrahent
+                    </th>
+                    <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
+                      Data
+                    </th>
+                    <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
+                      Netto
+                    </th>
+                    <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
+                      Brutto
+                    </th>
+                    <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
+                      Waluta
+                    </th>
+                    <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
+                      Status
+                    </th>
+                    <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
+                      Akcje
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {(activeTab === 'issued' ? issuedInvoices : receivedInvoices).map((invoice) => {
+                    const contractorName =
+                      activeTab === 'issued'
+                        ? invoice.buyer_name || 'Brak danych nabywcy'
+                        : invoice.seller_name || 'Brak danych sprzedawcy';
+
+                    const invoiceDate = invoice.issue_date || invoice.ksef_issued_at;
+                    const currency = invoice.currency || 'PLN';
+
+                    return (
+                      <tr
+                        key={invoice.id}
+                        className="border-b border-[#d3bb73]/10 transition-colors hover:bg-[#1c1f33]/40"
+                      >
+                        <td className="px-4 py-3 text-sm font-medium text-[#e5e4e2]">
+                          <div>{invoice.invoice_number || 'Brak numeru faktury'}</div>
+                          <div className="mt-1 text-xs text-[#e5e4e2]/40">
+                            KSeF: {invoice.ksef_reference_number}
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-3 text-sm text-[#e5e4e2]/80">{contractorName}</td>
+
+                        <td className="px-4 py-3 text-sm text-[#e5e4e2]/80">
+                          {invoiceDate ? new Date(invoiceDate).toLocaleDateString('pl-PL') : '—'}
+                        </td>
+
+                        <td className="px-4 py-3 text-sm text-[#e5e4e2]/80">
+                          {invoice.net_amount != null
+                            ? `${Number(invoice.net_amount).toFixed(2)}`
+                            : '—'}
+                        </td>
+
+                        <td className="px-4 py-3 text-sm font-medium text-[#e5e4e2]">
+                          {invoice.gross_amount != null
+                            ? `${Number(invoice.gross_amount).toFixed(2)}`
+                            : '—'}
+                        </td>
+
+                        <td className="px-4 py-3 text-sm text-[#e5e4e2]/80">{currency}</td>
+
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            {invoice.sync_status === 'synced' && (
+                              <>
+                                <CheckCircle className="h-4 w-4 text-green-400" />
+                                <span className="text-sm text-green-400">OK</span>
+                              </>
+                            )}
+
+                            {invoice.sync_status === 'error' && (
+                              <>
+                                <AlertCircle className="h-4 w-4 text-red-400" />
+                                <span className="text-sm text-red-400">Błąd</span>
+                              </>
+                            )}
+
+                            {invoice.sync_status === 'pending' && (
+                              <>
+                                <RefreshCw className="h-4 w-4 text-yellow-400" />
+                                <span className="text-sm text-yellow-400">Pending</span>
+                              </>
+                            )}
+                          </div>
+
+                          {invoice.sync_error && (
+                            <div className="mt-1 text-xs text-red-400">{invoice.sync_error}</div>
+                          )}
+                        </td>
+
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={() => handleViewInvoiceXml(invoice)}
+                            className="inline-flex items-center gap-2 rounded px-3 py-1.5 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/10 disabled:opacity-50"
+                            disabled={invoice.sync_status !== 'synced'}
+                          >
+                            <Eye className="h-4 w-4" />
+                            Zobacz XML
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             )}
           </div>
         )}
 
-        {/* Sync logs */}
         {activeTab === 'logs' && (
           <div className="divide-y divide-[#d3bb73]/10">
             {syncLogs.length === 0 ? (
-              <div className="p-8 text-center text-[#e5e4e2]/40">
-                Brak historii synchronizacji
-              </div>
+              <div className="p-8 text-center text-[#e5e4e2]/40">Brak historii synchronizacji</div>
             ) : (
               syncLogs.map((log) => (
                 <div key={log.id} className="p-4 hover:bg-[#1c1f33]/50">
@@ -586,8 +658,7 @@ export default function KSeFIntegrationPanel() {
                       </div>
                       <div>
                         <p className="font-medium text-[#e5e4e2]">
-                          Synchronizacja:{' '}
-                          {log.sync_type === 'issued' ? 'Wystawione' : 'Otrzymane'}
+                          Synchronizacja: {log.sync_type === 'issued' ? 'Wystawione' : 'Otrzymane'}
                         </p>
                         <p className="text-sm text-[#e5e4e2]/60">
                           {new Date(log.started_at).toLocaleString('pl-PL')}
@@ -595,9 +666,7 @@ export default function KSeFIntegrationPanel() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="font-medium text-[#e5e4e2]">
-                        {log.invoices_count} faktur
-                      </p>
+                      <p className="font-medium text-[#e5e4e2]">{log.invoices_count} faktur</p>
                       {log.error_message && (
                         <p className="text-xs text-red-400">{log.error_message}</p>
                       )}
@@ -610,7 +679,6 @@ export default function KSeFIntegrationPanel() {
         )}
       </div>
 
-      {/* Setup modal */}
       {showSetup && (
         <KSeFSetupModal
           selectedCredentials={selectedCredentials}
@@ -657,7 +725,10 @@ function KSeFSetupModal({
   };
 
   const handleSave = async () => {
-    if (!nip || !token || !myCompanyId) {
+    const normalizedToken = token.trim();
+    const normalizedNip = nip.trim();
+
+    if (!normalizedNip || !normalizedToken || !myCompanyId) {
       showSnackbar('Wszystkie pola są wymagane', 'error');
       return;
     }
@@ -666,8 +737,8 @@ function KSeFSetupModal({
     try {
       const payload = {
         my_company_id: myCompanyId,
-        nip,
-        token,
+        nip: normalizedNip,
+        token: normalizedToken,
         is_test_environment: isTestEnv,
         is_active: true,
       };
@@ -715,7 +786,10 @@ function KSeFSetupModal({
             </select>
             {myCompanies.length === 0 && (
               <p className="mt-2 text-xs text-[#e5e4e2]/60">
-                Najpierw dodaj firmę w <a href="/crm/settings/my-companies" className="text-[#d3bb73]">Ustawieniach → Moje firmy</a>
+                Najpierw dodaj firmę w{' '}
+                <a href="/crm/settings/my-companies" className="text-[#d3bb73]">
+                  Ustawieniach → Moje firmy
+                </a>
               </p>
             )}
           </div>

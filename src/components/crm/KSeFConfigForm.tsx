@@ -102,16 +102,25 @@ export default function KSeFConfigForm({ companyId, onUpdate }: KSeFConfigFormPr
   };
 
   const handleSave = async () => {
-    if (!token.trim()) {
+    const normalizedToken = token.trim();
+
+    if (!normalizedToken) {
       showSnackbar('Wypełnij token autoryzacyjny', 'error');
+      return;
+    }
+
+    if (certificateKey && !certificatePassword) {
+      showSnackbar('Podaj hasło do klucza prywatnego', 'error');
       return;
     }
 
     try {
       setSaving(true);
 
+      const normalizedToken = token.trim();
+
       const updateData: any = {
-        token: token,
+        token: normalizedToken,
         is_test_environment: isTestEnv,
         updated_at: new Date().toISOString(),
       };
@@ -143,6 +152,8 @@ export default function KSeFConfigForm({ companyId, onUpdate }: KSeFConfigFormPr
       }
 
       showSnackbar('Konfiguracja KSeF została zapisana', 'success');
+
+      
       setHasCredentials(true);
       if (certificateKey) {
         setHasCertificate(true);
@@ -150,7 +161,10 @@ export default function KSeFConfigForm({ companyId, onUpdate }: KSeFConfigFormPr
         setCertificateKey('');
         setCertificatePassword('');
       }
+
       setTestResult(null);
+      await loadCredentials();
+      
       onUpdate?.();
     } catch (err: any) {
       console.error('Error saving credentials:', err);
@@ -193,6 +207,7 @@ export default function KSeFConfigForm({ companyId, onUpdate }: KSeFConfigFormPr
       setTesting(false);
     }
   };
+
 
   if (loading) {
     return (
