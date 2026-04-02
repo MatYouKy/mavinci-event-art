@@ -39,42 +39,76 @@ export default function KSeFFinancialDashboard() {
   const [loading, setLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState<MonthlySummary | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [availableYears, setAvailableYears] = useState<number[]>([]);
   const { showSnackbar } = useSnackbar();
 
   useEffect(() => {
     loadSummaries();
-  }, []);
+  }, [selectedYear]);
 
   const loadSummaries = async () => {
     try {
       setLoading(true);
 
-      // Pobierz podsumowania z ostatnich 12 miesięcy
-      const currentDate = new Date();
+      // Generuj podsumowania dla wszystkich miesięcy wybranego roku
       const summariesPromises = [];
-
-      for (let i = 0; i < 12; i++) {
-        const date = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1);
-        const month = date.getMonth() + 1;
-        const year = date.getFullYear();
-
+      for (let month = 1; month <= 12; month++) {
         summariesPromises.push(
-          supabase.rpc('update_monthly_summary', { p_month: month, p_year: year })
+          supabase.rpc('update_monthly_summary', { p_month: month, p_year: selectedYear })
         );
       }
 
       await Promise.all(summariesPromises);
 
-      // Pobierz zaktualizowane dane
+      // Pobierz zaktualizowane dane dla wybranego roku
       const { data, error } = await supabase
         .from('monthly_financial_summaries')
         .select('*')
-        .order('year', { ascending: false })
-        .order('month', { ascending: false })
-        .limit(12);
+        .eq('year', selectedYear)
+        .order('month', { ascending: true });
 
       if (error) throw error;
-      setSummaries(data || []);
+
+      // Uzupełnij brakujące miesiące
+      const fullYearData: MonthlySummary[] = [];
+      for (let month = 1; month <= 12; month++) {
+        const existingMonth = data?.find(d => d.month === month);
+        if (existingMonth) {
+          fullYearData.push(existingMonth);
+        } else {
+          fullYearData.push({
+            id: `${selectedYear}-${month}`,
+            month,
+            year: selectedYear,
+            total_income: 0,
+            total_expenses: 0,
+            invoices_issued_count: 0,
+            invoices_received_count: 0,
+            invoices_paid_count: 0,
+            invoices_unpaid_count: 0,
+            invoices_overdue_count: 0,
+            bank_statement_uploaded: false,
+          });
+        }
+      }
+
+      setSummaries(fullYearData);
+
+      // Pobierz listę dostępnych lat (lata w których są faktury)
+      const { data: yearsData } = await supabase
+        .from('monthly_financial_summaries')
+        .select('year')
+        .order('year', { ascending: false });
+
+      if (yearsData) {
+        const uniqueYears = [...new Set(yearsData.map(d => d.year))];
+        // Dodaj aktualny rok jeśli nie ma faktur
+        if (!uniqueYears.includes(new Date().getFullYear())) {
+          uniqueYears.unshift(new Date().getFullYear());
+        }
+        setAvailableYears(uniqueYears);
+      }
     } catch (error: any) {
       console.error('Error loading summaries:', error);
       showSnackbar(error.message || 'Błąd podczas ładowania podsumowań', 'error');
@@ -114,19 +148,101 @@ export default function KSeFFinancialDashboard() {
     }
   };
 
-  const currentMonth = summaries[0] || null;
+  // Aktualny miesiąc
+  const currentDate = new Date();
+  const currentMonth = summaries.find(s =>
+    s.month === currentDate.getMonth() + 1 && s.year === selectedYear
+  ) || summaries[0] || null;
+
+  // Miesiące z fakturamai (dla filtrowania widoku)
+  const monthsWithData = summaries.filter(s =>
+    s.invoices_issued_count > 0 || s.invoices_received_count > 0
+  );
+
+  // Jeśli rok rozliczeniowy ma tylko 2 miesiące - pokaż tylko te 2
+  const displayedSummaries = monthsWithData.length > 0 && monthsWithData.length < 12
+    ? monthsWithData
+    : summaries;
+
+  // Roczne podsumowanie
+  const yearTotals = summaries.reduce((acc, s) => ({
+    income: acc.income + s.total_income,
+    expenses: acc.expenses + s.total_expenses,
+    issued: acc.issued + s.invoices_issued_count,
+    received: acc.received + s.invoices_received_count,
+    paid: acc.paid + s.invoices_paid_count,
+    unpaid: acc.unpaid + s.invoices_unpaid_count,
+    overdue: acc.overdue + s.invoices_overdue_count,
+  }), { income: 0, expenses: 0, issued: 0, received: 0, paid: 0, unpaid: 0, overdue: 0 });
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-light text-[#e5e4e2]">Dashboard Finansowy</h2>
-        <p className="mt-1 text-sm text-[#e5e4e2]/60">
-          Podsumowanie finansowe faktur KSeF z podziałem na miesiące
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-light text-[#e5e4e2]">Dashboard Finansowy KSeF</h2>
+          <p className="mt-1 text-sm text-[#e5e4e2]/60">
+            Podsumowanie finansowe faktur z systemu KSeF
+          </p>
+        </div>
+
+        {/* Selektor roku */}
+        <div className="flex items-center gap-3">
+          <label className="text-sm text-[#e5e4e2]/60">Rok rozliczeniowy:</label>
+          <select
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(Number(e.target.value))}
+            className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+          >
+            {availableYears.map(year => (
+              <option key={year} value={year}>{year}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
-      {/* Aktualny miesiąc - duże karty */}
-      {currentMonth && (
+      {/* Podsumowanie roczne */}
+      <div className="rounded-xl bg-gradient-to-br from-[#d3bb73]/10 to-[#d3bb73]/5 border border-[#d3bb73]/20 p-6">
+        <h3 className="text-lg font-medium text-[#e5e4e2] mb-4">Podsumowanie {selectedYear} roku</h3>
+        <div className="grid gap-4 md:grid-cols-4">
+          <div>
+            <div className="text-sm text-[#e5e4e2]/60">Przychody</div>
+            <div className="text-xl font-bold text-green-400">{yearTotals.income.toFixed(2)} PLN</div>
+            <div className="text-xs text-[#e5e4e2]/40">{yearTotals.issued} faktur</div>
+          </div>
+          <div>
+            <div className="text-sm text-[#e5e4e2]/60">Wydatki</div>
+            <div className="text-xl font-bold text-red-400">{yearTotals.expenses.toFixed(2)} PLN</div>
+            <div className="text-xs text-[#e5e4e2]/40">{yearTotals.received} faktur</div>
+          </div>
+          <div>
+            <div className="text-sm text-[#e5e4e2]/60">Bilans</div>
+            <div className={`text-xl font-bold ${
+              (yearTotals.income - yearTotals.expenses) >= 0 ? 'text-green-400' : 'text-red-400'
+            }`}>
+              {(yearTotals.income - yearTotals.expenses).toFixed(2)} PLN
+            </div>
+          </div>
+          <div>
+            <div className="text-sm text-[#e5e4e2]/60">Status płatności</div>
+            <div className="flex gap-2 text-xs mt-1">
+              <span className="text-green-400">{yearTotals.paid} opł.</span>
+              <span className="text-orange-400">{yearTotals.unpaid} nieop.</span>
+              <span className="text-red-400">{yearTotals.overdue} przet.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Info o wyświetlanych miesiącach */}
+      {monthsWithData.length > 0 && monthsWithData.length < 12 && (
+        <div className="rounded-lg bg-blue-500/10 border border-blue-500/20 p-4 text-sm text-blue-400">
+          <strong>Uwaga:</strong> W roku {selectedYear} masz faktury tylko w {monthsWithData.length} {monthsWithData.length === 1 ? 'miesiącu' : 'miesiącach'}.
+          Poniżej wyświetlane są tylko miesiące z danymi.
+        </div>
+      )}
+
+      {/* Karty aktualnego miesiąca - opcjonalnie */}
+      {false && currentMonth && (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-xl bg-gradient-to-br from-green-500/10 to-green-600/5 border border-green-500/20 p-6">
             <div className="flex items-center justify-between">
@@ -240,7 +356,7 @@ export default function KSeFFinancialDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {summaries.map((summary) => {
+                {displayedSummaries.map((summary) => {
                   const balance = summary.total_income - summary.total_expenses;
 
                   return (

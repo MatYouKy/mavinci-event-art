@@ -129,7 +129,7 @@ export default function KSeFIntegrationPanel() {
   const [issuedInvoices, setIssuedInvoices] = useState<KSeFInvoice[]>([]);
   const [receivedInvoices, setReceivedInvoices] = useState<KSeFInvoice[]>([]);
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'issued' | 'received' | 'logs'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'issued' | 'received' | 'logs'>('issued');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [selectedInvoice, setSelectedInvoice] = useState<KSeFInvoice | null>(null);
@@ -617,17 +617,6 @@ export default function KSeFIntegrationPanel() {
 
       <div className="flex gap-1 rounded-lg border border-[#d3bb73]/20 bg-[#252945] p-1">
         <button
-          onClick={() => setActiveTab('dashboard')}
-          className={`flex-1 rounded px-4 py-2 text-sm font-medium transition-colors ${
-            activeTab === 'dashboard'
-              ? 'bg-[#d3bb73] text-[#1c1f33]'
-              : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
-          }`}
-        >
-          <FileText className="mr-2 inline-block h-4 w-4" />
-          Dashboard
-        </button>
-        <button
           onClick={() => setActiveTab('issued')}
           className={`flex-1 rounded px-4 py-2 text-sm font-medium transition-colors ${
             activeTab === 'issued'
@@ -662,9 +651,6 @@ export default function KSeFIntegrationPanel() {
         </button>
       </div>
 
-      {activeTab === 'dashboard' && <KSeFFinancialDashboard />}
-
-      {activeTab !== 'dashboard' && (
       <div className="rounded-xl border border-[#d3bb73]/20 bg-[#252945]">
         <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-4">
           <h3 className="font-medium text-[#e5e4e2]">
@@ -931,7 +917,6 @@ export default function KSeFIntegrationPanel() {
           </div>
         )}
       </div>
-      )}
 
       {showSetup && (
         <KSeFSetupModal

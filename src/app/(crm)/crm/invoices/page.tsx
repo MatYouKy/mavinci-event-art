@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase/browser';
 import { FileText, Plus, Search, Filter, Download, Eye, CreditCard as Edit, Trash2, CheckCircle, Clock, Send, XCircle, DollarSign, Calendar, Building2, Building } from 'lucide-react';
 import KSeFIntegrationPanel from '@/components/crm/KSeFIntegrationPanel';
 import FinancialDashboard from '@/components/crm/FinancialDashboard';
+import KSeFFinancialDashboard from '@/components/crm/KSeFFinancialDashboard';
 import PermissionGuard from '@/components/crm/PermissionGuard';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
@@ -243,7 +244,13 @@ export default function InvoicesPage() {
       </div>
 
         {activeTab === 'dashboard' ? (
-          <FinancialDashboard />
+          <>
+            <KSeFFinancialDashboard />
+            <div className="mt-8">
+              <h3 className="text-xl font-light text-[#e5e4e2] mb-6">Faktury lokalne</h3>
+              <FinancialDashboard />
+            </div>
+          </>
         ) : activeTab === 'ksef' ? (
           <KSeFIntegrationPanel />
         ) : (
