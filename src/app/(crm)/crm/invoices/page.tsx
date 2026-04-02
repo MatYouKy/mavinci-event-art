@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
 import { FileText, Plus, Search, Filter, Download, Eye, CreditCard as Edit, Trash2, CheckCircle, Clock, Send, XCircle, DollarSign, Calendar, Building2, Building } from 'lucide-react';
 import KSeFIntegrationPanel from '@/components/crm/KSeFIntegrationPanel';
+import FinancialDashboard from '@/components/crm/FinancialDashboard';
 import PermissionGuard from '@/components/crm/PermissionGuard';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
@@ -45,7 +46,7 @@ export default function InvoicesPage() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterCompany, setFilterCompany] = useState<string>('all');
   const [showFilters, setShowFilters] = useState(false);
-  const [activeTab, setActiveTab] = useState<'invoices' | 'ksef'>('ksef');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'invoices' | 'ksef'>('dashboard');
   const [myCompanies, setMyCompanies] = useState<any[]>([]);
 
   const { canManageModule } = useCurrentEmployee();
@@ -215,6 +216,7 @@ export default function InvoicesPage() {
 
         <div className="flex gap-2 overflow-x-auto border-b border-[#d3bb73]/10 mb-6">
         {[
+          { id: 'dashboard', label: 'Dashboard', icon: DollarSign },
           { id: 'ksef', label: 'KSeF', icon: FileText },
           { id: 'local', label: 'Lokalne faktury', icon: Building },
         ]
@@ -240,7 +242,9 @@ export default function InvoicesPage() {
           })}
       </div>
 
-        {activeTab === 'ksef' ? (
+        {activeTab === 'dashboard' ? (
+          <FinancialDashboard />
+        ) : activeTab === 'ksef' ? (
           <KSeFIntegrationPanel />
         ) : (
           <>

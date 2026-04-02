@@ -66,6 +66,28 @@ interface SyncLog {
   completed_at?: string;
 }
 
+const getInvoiceTypeLabel = (invoiceNumber: string | null): string => {
+  if (!invoiceNumber) return 'VAT';
+
+  const upperNumber = invoiceNumber.toUpperCase();
+
+  if (upperNumber.includes('PRO') || upperNumber.includes('PROFORMA')) return 'Pro forma';
+  if (upperNumber.includes('ZAL') || upperNumber.includes('ADVANCE')) return 'Zaliczkowa';
+  if (upperNumber.includes('KOR') || upperNumber.includes('CORRECTIVE')) return 'Korygująca';
+  if (upperNumber.includes('FV')) return 'VAT';
+
+  return 'VAT';
+};
+
+const getInvoiceTypeBadgeColor = (type: string): string => {
+  switch (type) {
+    case 'Pro forma': return 'text-blue-400 bg-blue-400/10';
+    case 'Zaliczkowa': return 'text-purple-400 bg-purple-400/10';
+    case 'Korygująca': return 'text-orange-400 bg-orange-400/10';
+    default: return 'text-[#d3bb73] bg-[#d3bb73]/10';
+  }
+};
+
 export default function KSeFIntegrationPanel() {
   const [allCredentials, setAllCredentials] = useState<KSeFCredentials[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>('');
@@ -542,7 +564,7 @@ export default function KSeFIntegrationPanel() {
                       Brutto
                     </th>
                     <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
-                      Waluta
+                      Typ faktury
                     </th>
                     <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
                       Status
@@ -561,7 +583,8 @@ export default function KSeFIntegrationPanel() {
                         : invoice.seller_name || 'Brak danych sprzedawcy';
 
                     const invoiceDate = invoice.issue_date || invoice.ksef_issued_at;
-                    const currency = invoice.currency || 'PLN';
+                    const invoiceType = getInvoiceTypeLabel(invoice.invoice_number);
+                    const typeBadgeColor = getInvoiceTypeBadgeColor(invoiceType);
 
                     return (
                       <tr
@@ -583,17 +606,21 @@ export default function KSeFIntegrationPanel() {
 
                         <td className="px-4 py-3 text-sm text-[#e5e4e2]/80">
                           {invoice.net_amount != null
-                            ? `${Number(invoice.net_amount).toFixed(2)}`
+                            ? `${Number(invoice.net_amount).toFixed(2)} PLN`
                             : '—'}
                         </td>
 
                         <td className="px-4 py-3 text-sm font-medium text-[#e5e4e2]">
                           {invoice.gross_amount != null
-                            ? `${Number(invoice.gross_amount).toFixed(2)}`
+                            ? `${Number(invoice.gross_amount).toFixed(2)} PLN`
                             : '—'}
                         </td>
 
-                        <td className="px-4 py-3 text-sm text-[#e5e4e2]/80">{currency}</td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${typeBadgeColor}`}>
+                            {invoiceType}
+                          </span>
+                        </td>
 
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
