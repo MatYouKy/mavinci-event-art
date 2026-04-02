@@ -76,38 +76,83 @@ export function parseMT940(content: string): BankStatement {
         const day = dateStr.substring(4, 6);
 
         currentTransaction.transactionDate = `${year}-${month}-${day}`;
+
+        // Jeśli jest data księgowania (MMDD)
+        if (match[2]) {
+          const postMonth = match[2].substring(0, 2);
+          const postDay = match[2].substring(2, 4);
+          currentTransaction.postingDate = `${year}-${postMonth}-${postDay}`;
+        }
+
         currentTransaction.type = match[3] === 'C' ? 'credit' : 'debit';
         currentTransaction.amount = parseFloat(match[4].replace(',', '.'));
         currentTransaction.currency = currency;
       }
     }
 
-    // :86: - opis transakcji
+    // :86: - opis transakcji (format PKO BP z separatorem ~)
     if (trimmed.startsWith(':86:')) {
-      const description = trimmed.substring(4).trim();
+      const fullDescription = trimmed.substring(4).trim();
 
-      if (!currentTransaction.title) {
-        currentTransaction.title = description;
-      } else {
-        currentTransaction.title += ' ' + description;
+      // Podziel po separatorze ~ (tilde)
+      const parts = fullDescription.split('~');
+
+      let titleParts: string[] = [];
+
+      for (const part of parts) {
+        const cleanPart = part.trim();
+        if (!cleanPart) continue;
+
+        // ~20 - tytuł płatności (pole 20-25)
+        if (cleanPart.match(/^2[0-5]/)) {
+          const titleText = cleanPart.substring(2).trim();
+          if (titleText && titleText !== '0' && titleText !== '�') {
+            titleParts.push(titleText);
+          }
+        }
+
+        // ~32 lub ~33 - nazwa kontrahenta
+        if (cleanPart.startsWith('32') || cleanPart.startsWith('33')) {
+          const name = cleanPart.substring(2).trim();
+          if (name && name !== '�') {
+            if (!currentTransaction.counterpartyName) {
+              currentTransaction.counterpartyName = name;
+            } else {
+              currentTransaction.counterpartyName += ' ' + name;
+            }
+          }
+        }
+
+        // ~38 - numer konta kontrahenta (IBAN)
+        if (cleanPart.startsWith('38')) {
+          const account = cleanPart.substring(2).trim();
+          if (account && account !== '�') {
+            currentTransaction.counterpartyAccount = account;
+          }
+        }
+
+        // ~60 - data waluty
+        if (cleanPart.startsWith('60')) {
+          const valueDate = cleanPart.substring(2).trim();
+          if (valueDate && valueDate.length === 8) {
+            const vYear = valueDate.substring(0, 4);
+            const vMonth = valueDate.substring(4, 6);
+            const vDay = valueDate.substring(6, 8);
+            if (!currentTransaction.postingDate) {
+              currentTransaction.postingDate = `${vYear}-${vMonth}-${vDay}`;
+            }
+          }
+        }
       }
 
-      // Wyciągnij nazwę kontrahenta
-      const nameMatch = description.match(/NAZWA:([^~]+)/);
-      if (nameMatch) {
-        currentTransaction.counterpartyName = nameMatch[1].trim();
+      // Ustaw tytuł płatności
+      if (titleParts.length > 0) {
+        currentTransaction.title = titleParts.join(' ').trim();
       }
 
-      // Wyciągnij numer konta
-      const accountMatch = description.match(/RACHUNEK:([0-9\s]+)/);
-      if (accountMatch) {
-        currentTransaction.counterpartyAccount = accountMatch[1].replace(/\s/g, '');
-      }
-
-      // Wyciągnij numer referencyjny
-      const refMatch = description.match(/REF:([^\s~]+)/);
-      if (refMatch) {
-        currentTransaction.referenceNumber = refMatch[1];
+      // Fallback - jeśli nie udało się sparsować, użyj całego opisu
+      if (!currentTransaction.title && fullDescription && fullDescription !== '�') {
+        currentTransaction.title = fullDescription.replace(/~/g, ' ').trim();
       }
     }
   }

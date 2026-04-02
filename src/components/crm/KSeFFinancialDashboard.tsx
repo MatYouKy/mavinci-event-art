@@ -43,6 +43,7 @@ export default function KSeFFinancialDashboard() {
   const [loading, setLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState<MonthlySummary | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({ step: '', current: 0, total: 0 });
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [availableYears, setAvailableYears] = useState<number[]>([]);
   const [showUnmatchedModal, setShowUnmatchedModal] = useState(false);
@@ -126,11 +127,13 @@ export default function KSeFFinancialDashboard() {
   const handleFileUpload = async (file: File, month: number, year: number) => {
     try {
       setUploadingFile(true);
+      setUploadProgress({ step: 'Wczytywanie pliku...', current: 0, total: 5 });
 
       const fileContent = await file.text();
       const fileType = file.name.toLowerCase().endsWith('.xml') ? 'JPK_WB' : 'MT940';
 
       // Parsuj wyciąg
+      setUploadProgress({ step: 'Parsowanie wyciągu bankowego...', current: 1, total: 5 });
       let parsedStatement;
       try {
         if (fileType === 'MT940') {
@@ -143,6 +146,7 @@ export default function KSeFFinancialDashboard() {
       }
 
       // Zapisz wyciąg do bazy
+      setUploadProgress({ step: 'Zapisywanie wyciągu do bazy danych...', current: 2, total: 5 });
       const { data: statement, error: statementError } = await supabase
         .from('bank_statements')
         .insert({
@@ -165,10 +169,27 @@ export default function KSeFFinancialDashboard() {
       if (statementError) throw statementError;
 
       // Zapisz transakcje i automatycznie dopasuj
+      setUploadProgress({
+        step: `Przetwarzanie transakcji (0/${parsedStatement.transactions.length})...`,
+        current: 3,
+        total: 5
+      });
+
       let matchedCount = 0;
       let unmatchedCount = 0;
 
-      for (const transaction of parsedStatement.transactions) {
+      for (let i = 0; i < parsedStatement.transactions.length; i++) {
+        const transaction = parsedStatement.transactions[i];
+
+        // Aktualizuj progress co 5 transakcji
+        if (i % 5 === 0) {
+          setUploadProgress({
+            step: `Przetwarzanie transakcji (${i + 1}/${parsedStatement.transactions.length})...`,
+            current: 3,
+            total: 5
+          });
+        }
+
         // Znajdź pasujące faktury
         const matches = await findMatchingInvoices(transaction, supabase);
 
@@ -212,6 +233,7 @@ export default function KSeFFinancialDashboard() {
       }
 
       // Oznacz wyciąg jako przetworzony
+      setUploadProgress({ step: 'Finalizowanie importu...', current: 4, total: 5 });
       await supabase
         .from('bank_statements')
         .update({
@@ -571,7 +593,20 @@ export default function KSeFFinancialDashboard() {
                     disabled={uploadingFile}
                   />
                   {uploadingFile && (
-                    <div className="mt-2 text-sm text-[#d3bb73]">Importowanie...</div>
+                    <div className="mt-4 space-y-2">
+                      <div className="text-sm text-[#d3bb73] font-medium">
+                        {uploadProgress.step}
+                      </div>
+                      <div className="w-full bg-[#252945] rounded-full h-2">
+                        <div
+                          className="bg-[#d3bb73] h-2 rounded-full transition-all duration-300"
+                          style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
+                        />
+                      </div>
+                      <div className="text-xs text-[#e5e4e2]/60">
+                        Krok {uploadProgress.current + 1} z {uploadProgress.total}
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
