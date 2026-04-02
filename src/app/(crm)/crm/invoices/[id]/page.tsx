@@ -3,21 +3,10 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
-import {
-  ArrowLeft,
-  Download,
-  Edit,
-  Printer,
-  Send,
-  CheckCircle,
-  XCircle,
-  Building2,
-  Calendar,
-  FileText,
-  Link as LinkIcon,
-} from 'lucide-react';
+import { ArrowLeft, Download, CreditCard as Edit, Printer, Send, CheckCircle, XCircle, Building2, Calendar, FileText, Link as LinkIcon } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import SendInvoiceEmailModal from '@/components/crm/SendInvoiceEmailModal';
+import PermissionGuard from '@/components/crm/PermissionGuard';
 
 interface Invoice {
   id: string;
@@ -223,15 +212,16 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0d1a] p-6">
-      <div className="mx-auto max-w-5xl">
-        <button
-          onClick={() => router.back()}
-          className="mb-6 flex items-center gap-2 text-[#e5e4e2]/60 hover:text-[#d3bb73]"
-        >
-          <ArrowLeft className="h-5 w-5" />
-          Powrót
-        </button>
+    <PermissionGuard module="invoices">
+      <div className="min-h-screen bg-[#0a0d1a] p-6">
+        <div className="mx-auto max-w-5xl">
+          <button
+            onClick={() => router.back()}
+            className="mb-6 flex items-center gap-2 text-[#e5e4e2]/60 hover:text-[#d3bb73]"
+          >
+            <ArrowLeft className="h-5 w-5" />
+            Powrót
+          </button>
 
         {/* Relations Section */}
         {(relatedData.event ||
@@ -636,6 +626,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           }}
         />
       )}
-    </div>
+      </div>
+    </PermissionGuard>
   );
 }

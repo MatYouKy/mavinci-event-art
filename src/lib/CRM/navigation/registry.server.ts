@@ -200,8 +200,8 @@ export const allNavigation: NavigationItemDTO[] = [
     name: 'Faktury',
     href: '/crm/invoices',
     iconKey: 'invoices',
-    module: 'finances',
-    permissions: ['finances_view'],
+    module: 'invoices',
+    permissions: ['invoices_view', 'invoices_manage'],
   },
   {
     key: 'locations',

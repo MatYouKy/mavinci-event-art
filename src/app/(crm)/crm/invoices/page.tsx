@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
 import { FileText, Plus, Search, Filter, Download, Eye, CreditCard as Edit, Trash2, CheckCircle, Clock, Send, XCircle, DollarSign, Calendar, Building2 } from 'lucide-react';
 import KSeFIntegrationPanel from '@/components/crm/KSeFIntegrationPanel';
+import PermissionGuard from '@/components/crm/PermissionGuard';
 
 interface Invoice {
   id: string;
@@ -182,8 +183,9 @@ export default function InvoicesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0d1a] p-6">
-      <div className="mx-auto max-w-[1800px]">
+    <PermissionGuard module="invoices">
+      <div className="min-h-screen bg-[#0a0d1a] p-6">
+        <div className="mx-auto max-w-[1800px]">
         {/* Header */}
         <div className="mb-8 flex items-center justify-between">
           <div>
@@ -481,7 +483,8 @@ export default function InvoicesPage() {
         </div>
         </>
         )}
+        </div>
       </div>
-    </div>
+    </PermissionGuard>
   );
 }

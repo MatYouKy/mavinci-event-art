@@ -16,6 +16,7 @@ import {
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import KSeFConfigForm from '@/components/crm/KSeFConfigForm';
+import PermissionGuard from '@/components/crm/PermissionGuard';
 
 interface MyCompany {
   id: string;
@@ -93,15 +94,16 @@ export default function KSeFSettingsPage() {
   }
 
   return (
-    <div className="max-w-6xl">
-      <div className="mb-8">
-        <button
-          onClick={() => router.push('/crm/settings')}
-          className="mb-4 flex items-center gap-2 text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Powrót do ustawień
-        </button>
+    <PermissionGuard permission="invoices_manage">
+      <div className="max-w-6xl">
+        <div className="mb-8">
+          <button
+            onClick={() => router.push('/crm/settings')}
+            className="mb-4 flex items-center gap-2 text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Powrót do ustawień
+          </button>
 
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -292,6 +294,7 @@ export default function KSeFSettingsPage() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </PermissionGuard>
   );
 }
