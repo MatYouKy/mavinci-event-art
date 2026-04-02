@@ -88,6 +88,13 @@ export async function POST(req: Request) {
         vat_amount: inv.vatAmount ?? null,
         currency: inv.currency || 'PLN',
         issue_date: inv.issueDate || null,
+        seller_nip: inv.seller?.nip || null,
+buyer_nip:
+  inv.buyer?.identifier?.type === 'Nip'
+    ? inv.buyer?.identifier?.value || null
+    : null,
+payment_due_date: inv.paymentDueDate || null,
+payment_status: 'unpaid',
         xml_content: '',
         sync_status: 'synced',
         sync_error: null,

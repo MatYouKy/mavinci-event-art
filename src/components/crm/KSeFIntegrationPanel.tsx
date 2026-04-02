@@ -43,6 +43,10 @@ interface KSeFCredentials {
 }
 
 interface KSeFInvoice {
+  payment_status: string;
+  payment_due_date: string;
+  seller_nip: string;
+  buyer_nip: string;
   id: string;
   invoice_id?: string;
   ksef_reference_number: string;
@@ -773,18 +777,20 @@ export default function KSeFIntegrationPanel() {
 
                         <td className="px-4 py-3 text-right">
                           <ResponsiveActionBar
+                            disabledBackground
+                            mobileBreakpoint={4000}
                             actions={[
                               {
                                 label: 'Szczegóły',
                                 onClick: () => setSelectedInvoice(invoice),
                                 icon: <FileCheck className="h-4 w-4" />,
-                                variant: 'secondary',
+                                variant: 'default',
                               },
                               {
                                 label: 'Zobacz XML',
                                 onClick: () => handleViewInvoiceXml(invoice),
                                 icon: <Eye className="h-4 w-4" />,
-                                variant: 'secondary',
+                                variant: 'default',
                                 disabled: invoice.sync_status !== 'synced',
                               },
                               ...(invoice.payment_status === 'paid'
@@ -793,7 +799,7 @@ export default function KSeFIntegrationPanel() {
                                       label: 'Oznacz jako nieopłaconą',
                                       onClick: () => handleMarkAsUnpaid(invoice),
                                       icon: <X className="h-4 w-4" />,
-                                      variant: 'secondary' as const,
+                                      variant: 'default' as const,
                                     },
                                   ]
                                 : [
@@ -801,7 +807,7 @@ export default function KSeFIntegrationPanel() {
                                       label: 'Oznacz jako opłaconą',
                                       onClick: () => handleMarkAsPaid(invoice),
                                       icon: <CheckCircle className="h-4 w-4" />,
-                                      variant: 'secondary' as const,
+                                      variant: 'default' as const,
                                     },
                                   ]),
                             ]}
