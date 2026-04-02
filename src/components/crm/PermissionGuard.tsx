@@ -38,23 +38,32 @@ export default function PermissionGuard({
           return;
         }
 
+        // Czekamy aż employee będzie załadowany
+        if (!employee) {
+          return;
+        }
+
+        console.log('employee', employee);
+
         let hasPermissionCheck = false;
 
         if (permission) {
-          // Sprawdź konkretny permission (np. event_categories_manage)
           hasPermissionCheck =
-            isAdmin(employee) || employee?.permissions?.includes(permission) || false;
+            isAdmin(employee) || employee.permissions?.includes(permission) || false;
         } else if (module) {
-          // Sprawdź moduł (np. events_view lub events_manage)
           hasPermissionCheck = isAdmin(employee) || canView(employee, module);
+        } else {
+          hasPermissionCheck = true;
         }
 
         if (!hasPermissionCheck) {
           setHasAccess(false);
           setLoading(false);
+
           setTimeout(() => {
             router.push(fallbackPath);
           }, 2000);
+
           return;
         }
 
@@ -69,7 +78,7 @@ export default function PermissionGuard({
     checkPermission();
   }, [module, permission, router, fallbackPath, employee]);
 
-  if (loading) {
+  if (loading || !employee) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <RefreshCw className="h-8 w-8 animate-spin text-[#d3bb73]" />

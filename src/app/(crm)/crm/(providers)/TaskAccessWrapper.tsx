@@ -15,6 +15,15 @@ function getSyncAccess(pathname: string, employee: Employee | null): AccessState
 
   if (isAdmin(employee)) return 'granted';
 
+  // jawny wyjątek dla modułu faktur
+  if (pathname.startsWith('/crm/invoices')) {
+    const hasInvoicesAccess =
+      employee.permissions?.includes('invoices_view') ||
+      employee.permissions?.includes('invoices_manage');
+
+    return hasInvoicesAccess ? 'granted' : 'denied';
+  }
+
   const currentNav = allNavigation.find(
     (nav) => pathname.startsWith(nav.href) && nav.href !== '/crm',
   );
@@ -26,12 +35,10 @@ function getSyncAccess(pathname: string, employee: Employee | null): AccessState
     return 'granted';
   }
 
-  // Jeśli user ma zwykłe uprawnienie modułowe, wpuszczamy od razu
   if (canView(employee, currentNav.module)) {
     return 'granted';
   }
 
-  // Task detail / event detail mogą wymagać dopiero dopytania bazy
   const isTaskDetails = /^\/crm\/tasks\/([a-f0-9-]+)$/.test(pathname);
   const isEventDetails = /^\/crm\/events\/([a-f0-9-]+)$/.test(pathname);
 
@@ -59,6 +66,8 @@ export function TaskAccessWrapper({
   useEffect(() => {
     setAccessState(syncAccess);
   }, [syncAccess]);
+  console.log('accessState', accessState);
+  console.log('employee', employee);
 
   useEffect(() => {
     if (!employee?.id) return;
@@ -95,6 +104,8 @@ export function TaskAccessWrapper({
 
             if (cancelled) return;
 
+            console.log('assignee', assignee);
+
             setAccessState(assignee ? 'granted' : 'denied');
             return;
           }
@@ -116,10 +127,15 @@ export function TaskAccessWrapper({
             .maybeSingle();
 
           if (cancelled) return;
+          console.log('assignment', assignment);
 
           setAccessState(assignment ? 'granted' : 'denied');
           return;
         }
+
+        console.log('syncAccess', syncAccess);
+        console.log('pathname', pathname);
+        console.log('employee.id', employee.id);
 
         setAccessState('denied');
       } catch {

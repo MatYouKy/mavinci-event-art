@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Settings,
   Download,
@@ -17,6 +17,7 @@ import {
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface KSeFCredentials {
   id: string;
@@ -77,6 +78,10 @@ export default function KSeFIntegrationPanel() {
   const [activeTab, setActiveTab] = useState<'issued' | 'received' | 'logs'>('issued');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+
+  const { canManageModule } = useCurrentEmployee();
+
+  const canManageKSeF = useMemo(() => canManageModule('ksef'), [canManageModule]);
 
   const { showSnackbar } = useSnackbar();
   const { showDialog, hideDialog } = useDialog();
@@ -357,6 +362,7 @@ export default function KSeFIntegrationPanel() {
           </p>
         </div>
         <div className="flex gap-3">
+          {canManageKSeF && (
           <button
             onClick={() => setShowSetup(true)}
             className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#252945] px-4 py-2 text-sm text-[#e5e4e2] hover:border-[#d3bb73]/40"
@@ -364,6 +370,7 @@ export default function KSeFIntegrationPanel() {
             <Settings className="h-4 w-4" />
             Konfiguracja
           </button>
+          )}
           <button
             onClick={handleAuthenticate}
             disabled={loading || !selectedCredentials}

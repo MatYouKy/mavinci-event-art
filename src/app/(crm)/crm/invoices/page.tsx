@@ -1,11 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
-import { FileText, Plus, Search, Filter, Download, Eye, CreditCard as Edit, Trash2, CheckCircle, Clock, Send, XCircle, DollarSign, Calendar, Building2 } from 'lucide-react';
+import { FileText, Plus, Search, Filter, Download, Eye, CreditCard as Edit, Trash2, CheckCircle, Clock, Send, XCircle, DollarSign, Calendar, Building2, Building } from 'lucide-react';
 import KSeFIntegrationPanel from '@/components/crm/KSeFIntegrationPanel';
 import PermissionGuard from '@/components/crm/PermissionGuard';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 
 interface Invoice {
   id: string;
@@ -43,8 +45,14 @@ export default function InvoicesPage() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterCompany, setFilterCompany] = useState<string>('all');
   const [showFilters, setShowFilters] = useState(false);
-  const [activeTab, setActiveTab] = useState<'invoices' | 'ksef'>('invoices');
+  const [activeTab, setActiveTab] = useState<'invoices' | 'ksef'>('ksef');
   const [myCompanies, setMyCompanies] = useState<any[]>([]);
+
+  const { canManageModule } = useCurrentEmployee();
+
+  const canManageInvoices = useMemo(() => canManageModule('invoices'), [canManageModule]);
+
+  console.log('canManageInvoices', canManageInvoices);
 
   useEffect(() => {
     fetchInvoices();
@@ -192,40 +200,45 @@ export default function InvoicesPage() {
             <h1 className="mb-2 text-3xl font-light text-[#e5e4e2]">Faktury VAT</h1>
             <p className="text-[#e5e4e2]/60">Zarządzaj fakturami i dokumentami finansowymi</p>
           </div>
-          <button
-            onClick={() => router.push('/crm/invoices/new')}
-            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
-          >
-            <Plus className="h-5 w-5" />
-            Wystaw fakturę
-          </button>
+
+          <ResponsiveActionBar
+            actions={canManageInvoices ? [
+              {
+                label: 'Wystaw fakturę',
+                onClick: () => router.push('/crm/invoices/new'),
+                icon: <Plus className="h-5 w-5" />,
+                variant: 'primary',
+              },
+            ] : []}
+          />
         </div>
 
-        {/* Tabs */}
-        <div className="mb-6 flex gap-2 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-1">
-          <button
-            onClick={() => setActiveTab('invoices')}
-            className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${
-              activeTab === 'invoices'
-                ? 'bg-[#d3bb73] text-[#1c1f33]'
-                : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
-            }`}
-          >
-            <FileText className="h-4 w-4" />
-            Lokalne faktury
-          </button>
-          <button
-            onClick={() => setActiveTab('ksef')}
-            className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-medium transition-colors ${
-              activeTab === 'ksef'
-                ? 'bg-[#d3bb73] text-[#1c1f33]'
-                : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
-            }`}
-          >
-            <Building2 className="h-4 w-4" />
-            Integracja KSeF
-          </button>
-        </div>
+        <div className="flex gap-2 overflow-x-auto border-b border-[#d3bb73]/10 mb-6">
+        {[
+          { id: 'ksef', label: 'KSeF', icon: FileText },
+          { id: 'local', label: 'Lokalne faktury', icon: Building },
+        ]
+          .filter((tab) => {
+            return true;
+          })
+          .map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
+                  activeTab === tab.id
+                    ? 'border-[#d3bb73] text-[#d3bb73]'
+                    : 'border-transparent text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+                {tab.label}
+              </button>
+            );
+          })}
+      </div>
 
         {activeTab === 'ksef' ? (
           <KSeFIntegrationPanel />
