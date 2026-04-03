@@ -186,10 +186,21 @@ export default function KSeFIntegrationPanel() {
 
   useEffect(() => {
     const now = new Date();
-    const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const year = now.getFullYear();
+    const month = now.getMonth();
 
-    setDateFrom(firstDayOfMonth.toISOString().slice(0, 10));
-    setDateTo(now.toISOString().slice(0, 10));
+    const firstDay = new Date(year, month, 1);
+    const today = new Date(year, month, now.getDate());
+
+    const formatDate = (date: Date) => {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    };
+
+    setDateFrom(formatDate(firstDay));
+    setDateTo(formatDate(today));
   }, []);
 
   useEffect(() => {
@@ -788,7 +799,23 @@ export default function KSeFIntegrationPanel() {
 
                         <td className="px-4 py-3">
                           <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-400/10 px-3 py-1 text-xs font-medium text-blue-400">
-                            {(invoice as any).vat_rate || '23%'}
+                            {(() => {
+                              if (invoice.vat_rate) return invoice.vat_rate;
+
+                              if (invoice.net_amount != null && invoice.gross_amount != null) {
+                                const net = Number(invoice.net_amount);
+                                const gross = Number(invoice.gross_amount);
+
+                                if (Math.abs(gross - net) < 0.01) {
+                                  return 'zw';
+                                }
+
+                                const vatPercent = Math.round(((gross - net) / net) * 100);
+                                return `${vatPercent}%`;
+                              }
+
+                              return '23%';
+                            })()}
                           </span>
                         </td>
 
