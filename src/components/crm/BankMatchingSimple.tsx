@@ -142,24 +142,49 @@ export default function BankMatchingSimple({ month, year, onClose }: Props) {
     try {
       setLoading(true);
 
-      const { data: statements } = await supabase
-        .from('bank_statements')
-        .select('id')
-        .eq('statement_month', month)
-        .eq('statement_year', year);
+      const monthsToCheck = [];
 
-      if (statements && statements.length > 0) {
-        const statementIds = statements.map((s) => s.id);
+      const prevMonth = month === 1 ? 12 : month - 1;
+      const prevYear = month === 1 ? year - 1 : year;
+      monthsToCheck.push({ month: prevMonth, year: prevYear });
 
+      monthsToCheck.push({ month, year });
+
+      const nextMonth = month === 12 ? 1 : month + 1;
+      const nextYear = month === 12 ? year + 1 : year;
+      monthsToCheck.push({ month: nextMonth, year: nextYear });
+
+      const allStatementIds: string[] = [];
+
+      for (const { month: m, year: y } of monthsToCheck) {
+        const { data: statements } = await supabase
+          .from('bank_statements')
+          .select('id')
+          .eq('statement_month', m)
+          .eq('statement_year', y);
+
+        if (statements) {
+          allStatementIds.push(...statements.map((s) => s.id));
+        }
+      }
+
+      if (allStatementIds.length > 0) {
         const { data: transData, error: transError } = await supabase
           .from('bank_transactions')
           .select('*')
-          .in('statement_id', statementIds)
+          .in('statement_id', allStatementIds)
           .is('matched_invoice_id', null)
           .eq('transaction_type', 'credit')
           .order('transaction_date', { ascending: false });
 
         if (transError) throw transError;
+
+        console.log('[BankMatchingSimple] Loaded transactions:', {
+          months: monthsToCheck,
+          statementsCount: allStatementIds.length,
+          transactionsCount: transData?.length || 0,
+        });
+
         setTransactions(transData || []);
       }
 
@@ -167,11 +192,21 @@ export default function BankMatchingSimple({ month, year, onClose }: Props) {
         .from('ksef_invoices')
         .select('*')
         .in('payment_status', ['unpaid', 'overdue'])
-        .neq('payment_method', '1')
         .order('payment_due_date', { ascending: true });
 
       if (invError) throw invError;
-      setInvoices(invoicesData || []);
+
+      const filteredInvoices = (invoicesData || []).filter(
+        (inv) => inv.payment_method !== '1'
+      );
+
+      console.log('[BankMatchingSimple] Loaded invoices:', {
+        total: invoicesData?.length || 0,
+        afterCashFilter: filteredInvoices.length,
+        sample: filteredInvoices[0],
+      });
+
+      setInvoices(filteredInvoices);
     } catch (error: any) {
       console.error('Error loading data:', error);
       showSnackbar(error.message || 'Błąd podczas ładowania danych', 'error');

@@ -16,6 +16,7 @@ import {
   FileCheck,
   X,
   CreditCard as Edit,
+  Link as LinkIcon,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -23,6 +24,7 @@ import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import ResponsiveActionBar from './ResponsiveActionBar';
 import InvoiceDetailsModal from './InvoiceDetailsModal';
+import BankMatchingSimple from './BankMatchingSimple';
 
 interface KSeFCredentials {
   id: string;
@@ -158,6 +160,8 @@ export default function KSeFIntegrationPanel() {
   const [editPaymentInvoice, setEditPaymentInvoice] = useState<KSeFInvoice | null>(null);
   const [paymentDate, setPaymentDate] = useState('');
   const [paymentDueDate, setPaymentDueDate] = useState('');
+  const [showMatchModal, setShowMatchModal] = useState(false);
+  const [matchModalDate, setMatchModalDate] = useState<{ month: number; year: number } | null>(null);
 
   const { canManageModule } = useCurrentEmployee();
 
@@ -501,6 +505,15 @@ export default function KSeFIntegrationPanel() {
       invoice.payment_date ? new Date(invoice.payment_date).toISOString().split('T')[0] : '',
     );
     setPaymentDueDate(invoice.payment_due_date || '');
+  };
+
+  const handleOpenMatchPayment = () => {
+    const now = new Date();
+    setMatchModalDate({
+      month: now.getMonth() + 1,
+      year: now.getFullYear(),
+    });
+    setShowMatchModal(true);
   };
 
   const handleSavePaymentEdit = async () => {
@@ -910,6 +923,12 @@ export default function KSeFIntegrationPanel() {
                                   ]
                                 : [
                                     {
+                                      label: 'Dopasuj płatność',
+                                      onClick: handleOpenMatchPayment,
+                                      icon: <LinkIcon className="h-4 w-4" />,
+                                      variant: 'primary' as const,
+                                    },
+                                    {
                                       label: 'Oznacz jako opłaconą',
                                       onClick: () => handleMarkAsPaid(invoice),
                                       icon: <CheckCircle className="h-4 w-4" />,
@@ -1237,6 +1256,18 @@ function KSeFSetupModal({
           </div>
         </div>
       )} */}
+
+      {showMatchModal && matchModalDate && (
+        <BankMatchingSimple
+          month={matchModalDate.month}
+          year={matchModalDate.year}
+          onClose={() => {
+            setShowMatchModal(false);
+            setMatchModalDate(null);
+            loadInvoices();
+          }}
+        />
+      )}
     </div>
   );
 }
