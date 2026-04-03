@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { parseMT940, parseJPK_WB, findMatchingInvoices } from '@/lib/bankStatementParsers';
 import BankTransactionsAnalysis from './BankTransactionsAnalysis';
+import BankMatchingSimple from './BankMatchingSimple';
 
 interface MonthlySummary {
   id: string;
@@ -55,6 +56,7 @@ export default function KSeFFinancialDashboard() {
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [availableYears, setAvailableYears] = useState<number[]>([]);
   const [showUnmatchedModal, setShowUnmatchedModal] = useState(false);
+  const [showSimpleMatchModal, setShowSimpleMatchModal] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [unmatchedModalMonth, setUnmatchedModalMonth] = useState<{
     month: number;
@@ -788,19 +790,34 @@ export default function KSeFFinancialDashboard() {
                         Przejrzyj wszystkie transakcje z wyciągu i zarządzaj dopasowaniami
                       </p>
                     </div>
-                    <button
-                      onClick={() => {
-                        setUnmatchedModalMonth({
-                          month: selectedMonth.month,
-                          year: selectedMonth.year,
-                        });
-                        setShowUnmatchedModal(true);
-                      }}
-                      className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
-                    >
-                      <LinkIcon className="h-4 w-4" />
-                      Analizuj transakcje
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setUnmatchedModalMonth({
+                            month: selectedMonth.month,
+                            year: selectedMonth.year,
+                          });
+                          setShowSimpleMatchModal(true);
+                        }}
+                        className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
+                      >
+                        <LinkIcon className="h-4 w-4" />
+                        Dopasuj płatności
+                      </button>
+                      <button
+                        onClick={() => {
+                          setUnmatchedModalMonth({
+                            month: selectedMonth.month,
+                            year: selectedMonth.year,
+                          });
+                          setShowUnmatchedModal(true);
+                        }}
+                        className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm font-medium text-[#e5e4e2] hover:bg-[#252945]"
+                      >
+                        <FileText className="h-4 w-4" />
+                        Szczegółowa analiza
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -824,6 +841,18 @@ export default function KSeFFinancialDashboard() {
           year={unmatchedModalMonth.year}
           onClose={() => {
             setShowUnmatchedModal(false);
+            setUnmatchedModalMonth(null);
+            loadSummaries();
+          }}
+        />
+      )}
+
+      {showSimpleMatchModal && unmatchedModalMonth && (
+        <BankMatchingSimple
+          month={unmatchedModalMonth.month}
+          year={unmatchedModalMonth.year}
+          onClose={() => {
+            setShowSimpleMatchModal(false);
             setUnmatchedModalMonth(null);
             loadSummaries();
           }}

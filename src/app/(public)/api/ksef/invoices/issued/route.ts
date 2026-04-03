@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getCredentials, supabase } from '@/lib/ksef/db';
 import { getKSeFInvoices } from '../../client';
+import { parsePaymentData } from '../../parsePaymentData';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -118,6 +119,9 @@ export async function POST(req: Request) {
           }
         }
 
+        // Parsuj dane płatności
+        const paymentData = parsePaymentData(inv);
+
         return {
           ksef_reference_number:
             inv.ksefNumber ||
@@ -140,8 +144,11 @@ export async function POST(req: Request) {
             inv.buyer?.identifier?.type === 'Nip'
               ? inv.buyer?.identifier?.value || null
               : null,
-          payment_due_date: paymentDueDate,
-          payment_status: 'unpaid',
+          payment_due_date: paymentData.payment_due_date || paymentDueDate,
+          payment_method: paymentData.payment_method,
+          payment_date: paymentData.payment_date,
+          bank_account_number: paymentData.bank_account_number,
+          payment_status: paymentData.payment_method === '1' ? 'paid' : 'unpaid',
           xml_content: '',
           sync_status: 'synced',
           sync_error: null,

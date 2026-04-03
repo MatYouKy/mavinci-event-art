@@ -61,6 +61,7 @@ interface KSeFInvoice {
   payment_status?: string | null;
   invoice_type?: 'issued' | 'received' | null;
   ksef_issued_at?: string | null;
+  payment_method?: string | null;
 }
 
 interface Props {
@@ -194,10 +195,12 @@ export default function BankTransactionsAnalysis({ month, year, onClose }: Props
           net_amount,
           payment_status,
           invoice_type,
-          ksef_issued_at
+          ksef_issued_at,
+          payment_method
         `)
         .gte('issue_date', monthStart)
         .lte('issue_date', monthEnd)
+        .neq('payment_method', '1')
         .order('issue_date', { ascending: false });
 
       if (invoicesError) throw invoicesError;
