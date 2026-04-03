@@ -75,10 +75,11 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
 
           {/* Invoice Content - Format A4 (210mm x 297mm = 794px x 1123px w 96dpi) */}
           <div
-            className="p-8 print:p-12 bg-white"
+            className="p-8 print:p-12 bg-white flex flex-col"
             id="invoice-print-wrapper"
             style={{ minHeight: '1123px' }}
           >
+            <div className="flex-1">
           {/* Header sekcja */}
           <div className="mb-8 flex items-start justify-between">
             <div>
@@ -193,25 +194,57 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
                 </tr>
               </thead>
               <tbody>
-                <tr className="border-b border-gray-200">
-                  <td className="py-4 text-sm text-gray-900">1</td>
-                  <td className="py-4 text-sm text-gray-900">
-                    Usługi eventowe
-                    <div className="text-xs text-gray-500">
-                      Zgodnie z umową nr {invoice.invoice_number}
-                    </div>
-                  </td>
-                  <td className="py-4 text-right text-sm text-gray-900">1</td>
-                  <td className="py-4 text-right text-sm text-gray-900">
-                    {invoice.net_amount ? `${Number(invoice.net_amount).toFixed(2)} PLN` : '—'}
-                  </td>
-                  <td className="py-4 text-right text-sm text-gray-900">23%</td>
-                  <td className="py-4 text-right text-sm font-semibold text-gray-900">
-                    {invoice.gross_amount
-                      ? `${Number(invoice.gross_amount).toFixed(2)} PLN`
-                      : '—'}
-                  </td>
-                </tr>
+                {invoice.invoice_items && Array.isArray(invoice.invoice_items) && invoice.invoice_items.length > 0 ? (
+                  invoice.invoice_items.map((item: any, index: number) => (
+                    <tr key={index} className="border-b border-gray-200">
+                      <td className="py-4 text-sm text-gray-900">{index + 1}</td>
+                      <td className="py-4 text-sm text-gray-900">
+                        {item.name || item.description || item.serviceName || 'Brak nazwy'}
+                        {item.description && item.name !== item.description && (
+                          <div className="text-xs text-gray-500">{item.description}</div>
+                        )}
+                      </td>
+                      <td className="py-4 text-right text-sm text-gray-900">
+                        {item.quantity || item.qty || 1}
+                      </td>
+                      <td className="py-4 text-right text-sm text-gray-900">
+                        {item.netAmount || item.net_amount || item.netPrice
+                          ? `${Number(item.netAmount || item.net_amount || item.netPrice).toFixed(2)} PLN`
+                          : '—'}
+                      </td>
+                      <td className="py-4 text-right text-sm text-gray-900">
+                        {item.vatRate || item.vat_rate || invoice.vat_rate || '23%'}
+                      </td>
+                      <td className="py-4 text-right text-sm font-semibold text-gray-900">
+                        {item.grossAmount || item.gross_amount || item.grossPrice
+                          ? `${Number(item.grossAmount || item.gross_amount || item.grossPrice).toFixed(2)} PLN`
+                          : '—'}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr className="border-b border-gray-200">
+                    <td className="py-4 text-sm text-gray-900">1</td>
+                    <td className="py-4 text-sm text-gray-900">
+                      Usługi zgodnie z fakturą
+                      <div className="text-xs text-gray-500">
+                        Faktura nr {invoice.invoice_number}
+                      </div>
+                    </td>
+                    <td className="py-4 text-right text-sm text-gray-900">1</td>
+                    <td className="py-4 text-right text-sm text-gray-900">
+                      {invoice.net_amount ? `${Number(invoice.net_amount).toFixed(2)} PLN` : '—'}
+                    </td>
+                    <td className="py-4 text-right text-sm text-gray-900">
+                      {invoice.vat_rate || '23%'}
+                    </td>
+                    <td className="py-4 text-right text-sm font-semibold text-gray-900">
+                      {invoice.gross_amount
+                        ? `${Number(invoice.gross_amount).toFixed(2)} PLN`
+                        : '—'}
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -227,10 +260,12 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
                   </span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">VAT (23%):</span>
+                  <span className="text-gray-600">VAT ({invoice.vat_rate || '23%'}):</span>
                   <span className="font-medium text-gray-900">
-                    {invoice.net_amount
-                      ? `${(Number(invoice.net_amount) * 0.23).toFixed(2)} PLN`
+                    {invoice.vat_amount
+                      ? `${Number(invoice.vat_amount).toFixed(2)} PLN`
+                      : invoice.net_amount && invoice.gross_amount
+                      ? `${(Number(invoice.gross_amount) - Number(invoice.net_amount)).toFixed(2)} PLN`
                       : '—'}
                   </span>
                 </div>
@@ -245,9 +280,10 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
               </div>
             </div>
           </div>
+          </div>
 
           {/* Stopka */}
-          <div className="mt-8 border-t border-gray-200 pt-6">
+          <div className="mt-auto border-t border-gray-200 pt-6">
             <div className="text-xs text-gray-500">
               <p>
                 Faktura wygenerowana przez system Mavinci CRM w ramach integracji z Krajowym

@@ -61,6 +61,8 @@ interface KSeFInvoice {
   buyer_name?: string | null;
   net_amount?: number | null;
   gross_amount?: number | null;
+  vat_rate?: string | null;
+  invoice_items?: any;
   currency?: string | null;
   synced_at: string;
 }
@@ -716,6 +718,9 @@ export default function KSeFIntegrationPanel() {
                       Brutto
                     </th>
                     <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
+                      Stawka VAT
+                    </th>
+                    <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
                       Typ faktury
                     </th>
                     <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
@@ -779,6 +784,12 @@ export default function KSeFIntegrationPanel() {
                           {invoice.gross_amount != null
                             ? `${Number(invoice.gross_amount).toFixed(2)} PLN`
                             : '—'}
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-400/10 px-3 py-1 text-xs font-medium text-blue-400">
+                            {(invoice as any).vat_rate || '23%'}
+                          </span>
                         </td>
 
                         <td className="px-4 py-3">

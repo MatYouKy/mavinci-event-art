@@ -90,6 +90,34 @@ export async function POST(req: Request) {
           inv.termin ||
           null;
 
+        // Próbujemy pobrać stawkę VAT z różnych pól
+        let vatRate = null;
+        if (inv.vatRate) {
+          vatRate = inv.vatRate;
+        } else if (inv.vat_rate) {
+          vatRate = inv.vat_rate;
+        } else if (inv.taxRate) {
+          vatRate = inv.taxRate;
+        } else if (inv.items && Array.isArray(inv.items) && inv.items.length > 0) {
+          // Jeśli nie ma głównej stawki, spróbuj z pierwszej pozycji
+          vatRate = inv.items[0]?.vatRate || inv.items[0]?.vat_rate || inv.items[0]?.taxRate;
+        }
+
+        // Normalizuj stawkę VAT do formatu tekstowego
+        if (vatRate !== null && typeof vatRate === 'number') {
+          if (vatRate === 0) {
+            vatRate = '0%';
+          } else {
+            vatRate = `${vatRate}%`;
+          }
+        } else if (vatRate && typeof vatRate === 'string' && !vatRate.includes('%')) {
+          if (vatRate === '0' || vatRate === 'zw' || vatRate.toLowerCase() === 'zwolniona') {
+            vatRate = vatRate === 'zw' || vatRate.toLowerCase() === 'zwolniona' ? 'zw' : '0%';
+          } else {
+            vatRate = `${vatRate}%`;
+          }
+        }
+
         return {
           ksef_reference_number:
             inv.ksefNumber ||
@@ -103,6 +131,8 @@ export async function POST(req: Request) {
           net_amount: inv.netAmount ?? null,
           gross_amount: inv.grossAmount ?? null,
           vat_amount: inv.vatAmount ?? null,
+          vat_rate: vatRate,
+          invoice_items: inv.items || inv.invoiceItems || null,
           currency: inv.currency || 'PLN',
           issue_date: inv.issueDate || null,
           seller_nip: inv.seller?.nip || null,
