@@ -26,6 +26,26 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
   const invoiceDate = invoice.issue_date || invoice.ksef_issued_at;
   const invoiceType = getInvoiceTypeLabel(invoice.invoice_number);
 
+  const calculateVatRate = () => {
+    if (invoice.vat_rate) return invoice.vat_rate;
+
+    if (invoice.net_amount != null && invoice.gross_amount != null) {
+      const net = Number(invoice.net_amount);
+      const gross = Number(invoice.gross_amount);
+
+      if (Math.abs(gross - net) < 0.01) {
+        return 'zw';
+      }
+
+      const vatPercent = Math.round(((gross - net) / net) * 100);
+      return `${vatPercent}%`;
+    }
+
+    return '23%';
+  };
+
+  const displayVatRate = calculateVatRate();
+
   return (
     <>
       {/* Print-specific styles */}
@@ -213,7 +233,7 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
                           : '—'}
                       </td>
                       <td className="py-4 text-right text-sm text-gray-900">
-                        {item.vatRate || item.vat_rate || invoice.vat_rate || '23%'}
+                        {item.vatRate || item.vat_rate || displayVatRate}
                       </td>
                       <td className="py-4 text-right text-sm font-semibold text-gray-900">
                         {item.grossAmount || item.gross_amount || item.grossPrice
@@ -226,9 +246,9 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
                   <tr className="border-b border-gray-200">
                     <td className="py-4 text-sm text-gray-900">1</td>
                     <td className="py-4 text-sm text-gray-900">
-                      Usługi zgodnie z fakturą
+                      Brak szczegółowych pozycji faktury
                       <div className="text-xs text-gray-500">
-                        Faktura nr {invoice.invoice_number}
+                        Dane nie zostały pobrane z KSeF
                       </div>
                     </td>
                     <td className="py-4 text-right text-sm text-gray-900">1</td>
@@ -236,7 +256,7 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
                       {invoice.net_amount ? `${Number(invoice.net_amount).toFixed(2)} PLN` : '—'}
                     </td>
                     <td className="py-4 text-right text-sm text-gray-900">
-                      {invoice.vat_rate || '23%'}
+                      {displayVatRate}
                     </td>
                     <td className="py-4 text-right text-sm font-semibold text-gray-900">
                       {invoice.gross_amount
@@ -260,7 +280,7 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
                   </span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">VAT ({invoice.vat_rate || '23%'}):</span>
+                  <span className="text-gray-600">VAT ({displayVatRate}):</span>
                   <span className="font-medium text-gray-900">
                     {invoice.vat_amount
                       ? `${Number(invoice.vat_amount).toFixed(2)} PLN`
