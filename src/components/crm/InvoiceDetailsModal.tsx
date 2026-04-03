@@ -27,30 +27,58 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
   const invoiceType = getInvoiceTypeLabel(invoice.invoice_number);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-      <div className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl bg-white shadow-2xl">
-        {/* Header */}
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4 print:hidden">
-          <h2 className="text-xl font-semibold text-gray-900">Szczegóły faktury</h2>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handlePrint}
-              className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50"
-            >
-              <Printer className="h-4 w-4" />
-              Drukuj
-            </button>
-            <button
-              onClick={onClose}
-              className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
+    <>
+      {/* Print-specific styles */}
+      <style jsx global>{`
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+          #invoice-print-wrapper,
+          #invoice-print-wrapper * {
+            visibility: visible;
+          }
+          #invoice-print-wrapper {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            background: white;
+          }
+          .print\\:hidden {
+            display: none !important;
+          }
+        }
+      `}</style>
 
-        {/* Invoice Content */}
-        <div className="p-8 print:p-12" id="invoice-print">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+        <div className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl bg-white shadow-2xl">
+          {/* Header */}
+          <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4 print:hidden">
+            <h2 className="text-xl font-semibold text-gray-900">Szczegóły faktury</h2>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handlePrint}
+                className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50"
+              >
+                <Printer className="h-4 w-4" />
+                Drukuj
+              </button>
+              <button
+                onClick={onClose}
+                className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Invoice Content - Format A4 (210mm x 297mm = 794px x 1123px w 96dpi) */}
+          <div
+            className="p-8 print:p-12 bg-white"
+            id="invoice-print-wrapper"
+            style={{ minHeight: '1123px' }}
+          >
           {/* Header sekcja */}
           <div className="mb-8 flex items-start justify-between">
             <div>
@@ -236,6 +264,7 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
         </div>
       </div>
     </div>
+    </>
   );
 }
 

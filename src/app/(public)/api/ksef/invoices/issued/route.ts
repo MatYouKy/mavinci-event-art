@@ -70,43 +70,61 @@ export async function POST(req: Request) {
       companyId,
       count: invoices.length,
       sampleKeys: invoices[0] ? Object.keys(invoices[0]) : [],
+      sampleInvoice: invoices[0] || null,
     });
 
     if (invoices.length > 0) {
-      const rows = invoices.map((inv: any) => ({
-        ksef_reference_number:
-          inv.ksefNumber ||
-          inv.ksefReferenceNumber ||
-          inv.ksef_reference_number ||
-          inv.referenceNumber,
-        invoice_number: inv.invoiceNumber || null,
-        invoice_type: 'issued',
-        seller_name: inv.seller?.name || null,
-        buyer_name: inv.buyer?.name || null,
-        net_amount: inv.netAmount ?? null,
-        gross_amount: inv.grossAmount ?? null,
-        vat_amount: inv.vatAmount ?? null,
-        currency: inv.currency || 'PLN',
-        issue_date: inv.issueDate || null,
-        seller_nip: inv.seller?.nip || null,
-buyer_nip:
-  inv.buyer?.identifier?.type === 'Nip'
-    ? inv.buyer?.identifier?.value || null
-    : null,
-payment_due_date: inv.paymentDueDate || null,
-payment_status: 'unpaid',
-        xml_content: '',
-        sync_status: 'synced',
-        sync_error: null,
-        ksef_issued_at:
-          inv.acquisitionDate ||
-          inv.invoicingDate ||
-          inv.issueDate ||
-          inv.acquisitionTimestamp ||
-          inv.invoiceDate ||
-          new Date().toISOString(),
-        synced_at: new Date().toISOString(),
-      }));
+      const rows = invoices.map((inv: any) => {
+        // Próbujemy różne warianty pola terminu płatności
+        const paymentDueDate =
+          inv.paymentDueDate ||
+          inv.payment_due_date ||
+          inv.TerminPlatnosci ||
+          inv.terminPlatnosci ||
+          inv.dueDate ||
+          inv.PaymentDueDate ||
+          inv.paymentDate ||
+          inv.payment_date ||
+          inv.deadline ||
+          inv.Termin ||
+          inv.termin ||
+          null;
+
+        return {
+          ksef_reference_number:
+            inv.ksefNumber ||
+            inv.ksefReferenceNumber ||
+            inv.ksef_reference_number ||
+            inv.referenceNumber,
+          invoice_number: inv.invoiceNumber || null,
+          invoice_type: 'issued',
+          seller_name: inv.seller?.name || null,
+          buyer_name: inv.buyer?.name || null,
+          net_amount: inv.netAmount ?? null,
+          gross_amount: inv.grossAmount ?? null,
+          vat_amount: inv.vatAmount ?? null,
+          currency: inv.currency || 'PLN',
+          issue_date: inv.issueDate || null,
+          seller_nip: inv.seller?.nip || null,
+          buyer_nip:
+            inv.buyer?.identifier?.type === 'Nip'
+              ? inv.buyer?.identifier?.value || null
+              : null,
+          payment_due_date: paymentDueDate,
+          payment_status: 'unpaid',
+          xml_content: '',
+          sync_status: 'synced',
+          sync_error: null,
+          ksef_issued_at:
+            inv.acquisitionDate ||
+            inv.invoicingDate ||
+            inv.issueDate ||
+            inv.acquisitionTimestamp ||
+            inv.invoiceDate ||
+            new Date().toISOString(),
+          synced_at: new Date().toISOString(),
+        };
+      });
 
       const validRows = rows.filter((row) => !!row.ksef_reference_number);
 
