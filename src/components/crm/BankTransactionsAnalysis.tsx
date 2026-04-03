@@ -117,6 +117,8 @@ export default function BankTransactionsAnalysis({ month, year, onClose }: Props
   const [ksefInvoices, setKsefInvoices] = useState<KSeFInvoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<'all' | 'matched' | 'unmatched'>('all');
+  const [matchModalOpen, setMatchModalOpen] = useState(false);
+  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const { showSnackbar } = useSnackbar();
 
   useEffect(() => {
@@ -201,6 +203,42 @@ export default function BankTransactionsAnalysis({ month, year, onClose }: Props
     }
   };
 
+  const handleManualMatch = async (transactionId: string, invoiceId: string) => {
+    try {
+      const transaction = transactions.find((t) => t.id === transactionId);
+      if (!transaction) throw new Error('Transakcja nie została znaleziona');
+
+      const { error: transError } = await supabase
+        .from('bank_transactions')
+        .update({
+          matched_invoice_id: invoiceId,
+          match_confidence: 1.0,
+          manual_match: true,
+        })
+        .eq('id', transactionId);
+
+      if (transError) throw transError;
+
+      const { error: invError } = await supabase
+        .from('ksef_invoices')
+        .update({
+          payment_status: 'paid',
+          payment_date: transaction.transaction_date,
+        })
+        .eq('id', invoiceId);
+
+      if (invError) throw invError;
+
+      showSnackbar('Płatność została ręcznie dopasowana', 'success');
+      setMatchModalOpen(false);
+      setSelectedTransaction(null);
+      await loadData();
+    } catch (error: any) {
+      console.error('Error matching:', error);
+      showSnackbar(error.message || 'Błąd podczas dopasowywania płatności', 'error');
+    }
+  };
+
   const handleUnmatch = async (transactionId: string, invoiceId: string) => {
     try {
       const { error: transError } = await supabase
@@ -230,6 +268,11 @@ export default function BankTransactionsAnalysis({ month, year, onClose }: Props
       console.error('Error unmatching:', error);
       showSnackbar(error.message || 'Błąd podczas usuwania dopasowania', 'error');
     }
+  };
+
+  const openMatchModal = (transaction: Transaction) => {
+    setSelectedTransaction(transaction);
+    setMatchModalOpen(true);
   };
 
   const filteredTransactions = useMemo(() => {
@@ -537,7 +580,12 @@ export default function BankTransactionsAnalysis({ month, year, onClose }: Props
                                     Usuń
                                   </button>
                                 ) : (
-                                  <span className="text-xs text-[#e5e4e2]/30">—</span>
+                                  <button
+                                    onClick={() => openMatchModal(transaction)}
+                                    className="rounded bg-[#d3bb73]/20 px-3 py-1 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/30"
+                                  >
+                                    Dopasuj
+                                  </button>
                                 )}
                               </td>
                             </tr>
@@ -664,6 +712,129 @@ export default function BankTransactionsAnalysis({ month, year, onClose }: Props
           </>
         )}
       </div>
+
+      {matchModalOpen && selectedTransaction && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-3xl max-h-[80vh] flex flex-col overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-4">
+              <div>
+                <h3 className="text-lg font-medium text-[#e5e4e2]">
+                  Dopasuj fakturę do płatności
+                </h3>
+                <p className="mt-1 text-sm text-[#e5e4e2]/60">
+                  Kwota: {selectedTransaction.transaction_type === 'credit' ? '+' : '-'}
+                  {selectedTransaction.amount.toFixed(2)} {selectedTransaction.currency}
+                  {' • '}
+                  {safeDate(selectedTransaction.transaction_date)}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setMatchModalOpen(false);
+                  setSelectedTransaction(null);
+                }}
+                className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-auto p-4">
+              <div className="space-y-2">
+                {ksefInvoices
+                  .filter((inv) => !matchedInvoiceIds.has(inv.id))
+                  .map((invoice) => {
+                    const amountMatch =
+                      invoice.gross_amount != null &&
+                      Math.abs(invoice.gross_amount - selectedTransaction.amount) < 0.01;
+
+                    const contractor =
+                      sanitizeBrokenPolish(
+                        invoice.invoice_type === 'issued'
+                          ? invoice.buyer_name
+                          : invoice.seller_name,
+                      ) || '—';
+
+                    return (
+                      <button
+                        key={invoice.id}
+                        onClick={() => handleManualMatch(selectedTransaction.id, invoice.id)}
+                        className={`w-full rounded-lg border p-4 text-left transition-colors hover:bg-[#252945] ${
+                          amountMatch
+                            ? 'border-green-500/40 bg-green-500/5'
+                            : 'border-[#d3bb73]/20 bg-[#252945]'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-[#e5e4e2]">
+                                {invoice.invoice_number || 'Brak numeru'}
+                              </span>
+                              {amountMatch && (
+                                <span className="rounded bg-green-500/20 px-2 py-0.5 text-xs text-green-400">
+                                  Kwota się zgadza
+                                </span>
+                              )}
+                            </div>
+                            <div className="mt-1 text-xs text-[#e5e4e2]/50">
+                              {invoice.ksef_reference_number}
+                            </div>
+                            <div className="mt-2 text-sm text-[#e5e4e2]/70">{contractor}</div>
+                            <div className="mt-2 flex items-center gap-4 text-xs text-[#e5e4e2]/50">
+                              <span>Wystawiona: {safeDate(invoice.issue_date || invoice.ksef_issued_at)}</span>
+                              <span>Termin: {safeDate(invoice.payment_due_date)}</span>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-lg font-bold text-[#d3bb73]">
+                              {safeMoney(invoice.gross_amount)}
+                            </div>
+                            <div className="mt-1">
+                              <span
+                                className={`rounded px-2 py-1 text-xs ${
+                                  invoice.payment_status === 'paid'
+                                    ? 'bg-green-500/10 text-green-400'
+                                    : invoice.payment_status === 'overdue'
+                                      ? 'bg-red-500/10 text-red-400'
+                                      : 'bg-orange-500/10 text-orange-400'
+                                }`}
+                              >
+                                {invoice.payment_status === 'paid'
+                                  ? 'Opłacona'
+                                  : invoice.payment_status === 'overdue'
+                                    ? 'Po terminie'
+                                    : 'Nieopłacona'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+
+                {ksefInvoices.filter((inv) => !matchedInvoiceIds.has(inv.id)).length === 0 && (
+                  <div className="py-8 text-center text-[#e5e4e2]/60">
+                    Wszystkie faktury z tego miesiąca są już dopasowane
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="border-t border-[#d3bb73]/10 p-4">
+              <button
+                onClick={() => {
+                  setMatchModalOpen(false);
+                  setSelectedTransaction(null);
+                }}
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#252945] px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#1c1f33]"
+              >
+                Anuluj
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
