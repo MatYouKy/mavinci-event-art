@@ -1,14 +1,28 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Settings, Download, Upload, RefreshCw, CheckCircle, AlertCircle, Key, Building2, Calendar, FileText, Eye, FileCheck, X, CreditCard as Edit } from 'lucide-react';
+import {
+  Settings,
+  Download,
+  Upload,
+  RefreshCw,
+  CheckCircle,
+  AlertCircle,
+  Key,
+  Building2,
+  Calendar,
+  FileText,
+  Eye,
+  FileCheck,
+  X,
+  CreditCard as Edit,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import ResponsiveActionBar from './ResponsiveActionBar';
 import InvoiceDetailsModal from './InvoiceDetailsModal';
-import KSeFFinancialDashboard from './KSeFFinancialDashboard';
 
 interface KSeFCredentials {
   id: string;
@@ -76,14 +90,20 @@ const getInvoiceTypeLabel = (invoiceNumber: string | null): string => {
 
 const getInvoiceTypeBadgeColor = (type: string): string => {
   switch (type) {
-    case 'Pro forma': return 'text-blue-400 bg-blue-400/10';
-    case 'Zaliczkowa': return 'text-purple-400 bg-purple-400/10';
-    case 'Korygująca': return 'text-orange-400 bg-orange-400/10';
-    default: return 'text-[#d3bb73] bg-[#d3bb73]/10';
+    case 'Pro forma':
+      return 'text-blue-400 bg-blue-400/10';
+    case 'Zaliczkowa':
+      return 'text-purple-400 bg-purple-400/10';
+    case 'Korygująca':
+      return 'text-orange-400 bg-orange-400/10';
+    default:
+      return 'text-[#d3bb73] bg-[#d3bb73]/10';
   }
 };
 
-const getPaymentStatus = (invoice: any): { status: string; label: string; color: string; icon: any } => {
+const getPaymentStatus = (
+  invoice: any,
+): { status: string; label: string; color: string; icon: any } => {
   if (invoice.payment_status === 'paid') {
     return {
       status: 'paid',
@@ -464,7 +484,9 @@ export default function KSeFIntegrationPanel() {
 
   const handleOpenEditPayment = (invoice: any) => {
     setEditPaymentInvoice(invoice);
-    setPaymentDate(invoice.payment_date ? new Date(invoice.payment_date).toISOString().split('T')[0] : '');
+    setPaymentDate(
+      invoice.payment_date ? new Date(invoice.payment_date).toISOString().split('T')[0] : '',
+    );
     setPaymentDueDate(invoice.payment_due_date || '');
   };
 
@@ -515,13 +537,13 @@ export default function KSeFIntegrationPanel() {
         </div>
         <div className="flex gap-3">
           {canManageKSeF && (
-          <button
-            onClick={() => setShowSetup(true)}
-            className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#252945] px-4 py-2 text-sm text-[#e5e4e2] hover:border-[#d3bb73]/40"
-          >
-            <Settings className="h-4 w-4" />
-            Konfiguracja
-          </button>
+            <button
+              onClick={() => setShowSetup(true)}
+              className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#252945] px-4 py-2 text-sm text-[#e5e4e2] hover:border-[#d3bb73]/40"
+            >
+              <Settings className="h-4 w-4" />
+              Konfiguracja
+            </button>
           )}
           <button
             onClick={handleAuthenticate}
@@ -736,7 +758,10 @@ export default function KSeFIntegrationPanel() {
                         <td className="px-4 py-3 text-sm text-[#e5e4e2]/80">
                           <div>{contractorName}</div>
                           <div className="mt-1 text-xs text-[#e5e4e2]/40">
-                            NIP: {activeTab === 'issued' ? invoice.buyer_nip : invoice.seller_nip || 'Brak NIP'}
+                            NIP:{' '}
+                            {activeTab === 'issued'
+                              ? invoice.buyer_nip
+                              : invoice.seller_nip || 'Brak NIP'}
                           </div>
                         </td>
 
@@ -757,7 +782,9 @@ export default function KSeFIntegrationPanel() {
                         </td>
 
                         <td className="px-4 py-3">
-                          <span className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${typeBadgeColor}`}>
+                          <span
+                            className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${typeBadgeColor}`}
+                          >
                             {invoiceType}
                           </span>
                         </td>
@@ -766,12 +793,15 @@ export default function KSeFIntegrationPanel() {
                           <div className="flex items-center gap-2">
                             <PaymentIcon className="h-4 w-4" />
                             <div>
-                              <div className={`text-sm font-medium ${paymentStatus.color.split(' ')[0]}`}>
+                              <div
+                                className={`text-sm font-medium ${paymentStatus.color.split(' ')[0]}`}
+                              >
                                 {paymentStatus.label}
                               </div>
                               {invoice.payment_due_date && paymentStatus.status !== 'paid' && (
                                 <div className="mt-1 text-xs text-[#e5e4e2]/40">
-                                  Termin: {new Date(invoice.payment_due_date).toLocaleDateString('pl-PL')}
+                                  Termin:{' '}
+                                  {new Date(invoice.payment_due_date).toLocaleDateString('pl-PL')}
                                 </div>
                               )}
                             </div>
@@ -857,7 +887,10 @@ export default function KSeFIntegrationPanel() {
 
                   {currentInvoices.length > 0 && (
                     <tr className="border-t-2 border-[#d3bb73]/30 bg-[#d3bb73]/5">
-                      <td colSpan={3} className="px-4 py-4 text-right text-sm font-medium text-[#e5e4e2]">
+                      <td
+                        colSpan={3}
+                        className="px-4 py-4 text-right text-sm font-medium text-[#e5e4e2]"
+                      >
                         SUMA:
                       </td>
                       <td className="px-4 py-4 text-sm font-medium text-[#e5e4e2]">
@@ -930,10 +963,7 @@ export default function KSeFIntegrationPanel() {
       )}
 
       {selectedInvoice && (
-        <InvoiceDetailsModal
-          invoice={selectedInvoice}
-          onClose={() => setSelectedInvoice(null)}
-        />
+        <InvoiceDetailsModal invoice={selectedInvoice} onClose={() => setSelectedInvoice(null)} />
       )}
     </div>
   );
@@ -1090,9 +1120,10 @@ function KSeFSetupModal({
       </div>
 
       {/* Modal edycji płatności */}
-      {editPaymentInvoice && (
+
+      {/* {editPaymentInvoice && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-lg rounded-xl bg-[#1c1f33] border border-[#d3bb73]/20 shadow-xl">
+          <div className="w-full max-w-lg rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl">
             <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-6">
               <h3 className="text-xl font-medium text-[#e5e4e2]">Edycja płatności</h3>
               <button
@@ -1103,42 +1134,40 @@ function KSeFSetupModal({
               </button>
             </div>
 
-            <div className="p-6 space-y-4">
+            <div className="space-y-4 p-6">
               <div>
-                <div className="text-sm text-[#e5e4e2]/60 mb-2">Faktura</div>
-                <div className="text-base text-[#e5e4e2] font-medium">
-                  {editPaymentInvoice.invoice_number || editPaymentInvoice.ksef_reference_number}
+                <div className="mb-2 text-sm text-[#e5e4e2]/60">Faktura</div>
+                <div className="text-base font-medium text-[#e5e4e2]">
+                  {selectedInvoice.invoice_number || selectedInvoice.ksef_reference_number}
                 </div>
               </div>
 
               <div>
-                <div className="text-sm text-[#e5e4e2]/60 mb-2">Kwota</div>
-                <div className="text-base text-[#d3bb73] font-medium">
-                  {editPaymentInvoice.gross_amount
+                <div className="mb-2 text-sm text-[#e5e4e2]/60">Kwota</div>
+                <div className="text-base font-medium text-[#d3bb73]">
+                  {selectedInvoice.gross_amount != null
                     ? `${Number(editPaymentInvoice.gross_amount).toFixed(2)} PLN`
                     : 'Brak danych'}
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm text-[#e5e4e2] mb-2">
-                  Termin płatności
-                </label>
+                <label className="mb-2 block text-sm text-[#e5e4e2]">Termin płatności</label>
                 <input
                   type="date"
-                  value={paymentDueDate}
+                  value={selectedInvoice.payment_due_date}
                   onChange={(e) => setPaymentDueDate(e.target.value)}
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#252945] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-sm text-[#e5e4e2] mb-2">
+                <label className="mb-2 block text-sm text-[#e5e4e2]">
                   Data płatności <span className="text-[#e5e4e2]/40">(opcjonalne)</span>
                 </label>
                 <input
                   type="date"
-                  value={paymentDate}
+                  value={selectedInvoice.payment_date}
                   onChange={(e) => setPaymentDate(e.target.value)}
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#252945] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 />
@@ -1147,20 +1176,21 @@ function KSeFSetupModal({
                 </div>
               </div>
 
-              <div className="text-sm text-[#e5e4e2]/60 p-3 rounded bg-[#252945] border border-[#d3bb73]/10">
-                <strong>Wskazówka:</strong> Jeśli wpiszesz datę płatności, faktura zostanie automatycznie oznaczona jako opłacona.
+              <div className="rounded border border-[#d3bb73]/10 bg-[#252945] p-3 text-sm text-[#e5e4e2]/60">
+                <strong>Wskazówka:</strong> Jeśli wpiszesz datę płatności, faktura zostanie
+                automatycznie oznaczona jako opłacona.
               </div>
             </div>
 
             <div className="flex justify-end gap-3 border-t border-[#d3bb73]/10 p-6">
               <button
-                onClick={() => setEditPaymentInvoice(null)}
+                onClick={onClose}
                 className="rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#252945]"
               >
                 Anuluj
               </button>
               <button
-                onClick={handleSavePaymentEdit}
+                onClick={() => handleSavePaymentEdit(selectedInvoice)}
                 className="rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
               >
                 Zapisz
@@ -1168,7 +1198,7 @@ function KSeFSetupModal({
             </div>
           </div>
         </div>
-      )}
+      )} */}
     </div>
   );
 }
