@@ -224,10 +224,14 @@ export default function KSeFIntegrationPanel() {
 
   useEffect(() => {
     if (selectedCompanyId) {
-      loadInvoices();
-      loadSyncLogs();
+      loadCredentials();
     }
-  }, [selectedCompanyId, companyFilter]);
+  }, []);
+
+  useEffect(() => {
+    loadInvoices();
+    loadSyncLogs();
+  }, [companyFilter]);
 
   const handleAutoSync = async () => {
     console.log('Auto-sync disabled until migration to Next API is finished');
@@ -262,8 +266,16 @@ export default function KSeFIntegrationPanel() {
     try {
       let query = supabase.from('ksef_invoices').select('*');
 
+      console.log('[KSEF_FRONT] loadInvoices START', {
+        companyFilter,
+        hasFilter: !!companyFilter,
+      });
+
       if (companyFilter) {
         query = query.eq('my_company_id', companyFilter);
+        console.log('[KSEF_FRONT] Applying company filter:', companyFilter);
+      } else {
+        console.log('[KSEF_FRONT] No filter - showing all companies');
       }
 
       const { data, error } = await query.order('ksef_issued_at', { ascending: false });
@@ -274,6 +286,7 @@ export default function KSeFIntegrationPanel() {
         count: data?.length || 0,
         companyFilter: companyFilter,
         sample: data?.[0] || null,
+        sampleCompanyId: data?.[0]?.my_company_id || null,
       });
 
       const normalizedIssued =

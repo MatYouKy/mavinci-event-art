@@ -67,7 +67,11 @@ export default function CompanySelector({
       </label>
       <select
         value={value || ''}
-        onChange={(e) => onChange(e.target.value || null)}
+        onChange={(e) => {
+          const newValue = e.target.value || null;
+          console.log('[CompanySelector] Changed to:', newValue);
+          onChange(newValue);
+        }}
         disabled={loading}
         className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#252945] px-4 py-2.5 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
       >
