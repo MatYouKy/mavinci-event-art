@@ -293,8 +293,9 @@ export default function NewInvoicePage() {
 
       const invoiceData = {
         invoice_number: invoiceNumber,
-        invoice_type: invoiceType,
-        status: 'draft',
+        invoice_type: invoiceType === 'proforma' ? 'vat' : invoiceType, // Proformy zapisujemy jako VAT
+        is_proforma: invoiceType === 'proforma', // Ale z flagą is_proforma
+        status: invoiceType === 'proforma' ? 'proforma' : 'draft',
         issue_date: issueDate,
         sale_date: saleDate,
         payment_due_date: calculatePaymentDueDate(),

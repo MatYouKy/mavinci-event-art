@@ -85,3 +85,19 @@ export function isCashPayment(paymentMethod: string | null): boolean {
 export function isTransferPayment(paymentMethod: string | null): boolean {
   return paymentMethod === '6';
 }
+
+/**
+ * Pobiera aktualny certyfikat publiczny KSeF do szyfrowania tokenów
+ */
+export async function getKSeFPublicKeyCertificate(isTestEnvironment: boolean): Promise<string> {
+  const { getKSeFPublicKeyCertificates } = await import('./client');
+
+  const certificates = await getKSeFPublicKeyCertificates(isTestEnvironment);
+
+  if (!certificates || certificates.length === 0) {
+    throw new Error('Brak dostępnych certyfikatów publicznych KSeF');
+  }
+
+  // Wybierz pierwszy certyfikat (KSeF API zwraca aktywne certyfikaty)
+  return certificates[0].certificate;
+}

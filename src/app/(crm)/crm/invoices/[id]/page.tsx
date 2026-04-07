@@ -36,6 +36,8 @@ interface Invoice {
   event_id: string | null;
   organization_id: string | null;
   related_invoice_id: string | null;
+  is_proforma: boolean;
+  proforma_converted_to_invoice_id: string | null;
 }
 
 interface RelatedData {
@@ -185,6 +187,80 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     }
   };
 
+  const [sendingToKSeF, setSendingToKSeF] = useState(false);
+
+  const handleConvertToVAT = async () => {
+    if (
+      !confirm(
+        'Czy na pewno chcesz wystawić fakturę VAT na podstawie tej proformy? Zostanie utworzona nowa faktura.'
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setSendingToKSeF(true);
+
+      const { convertProformaToInvoice } = await import(
+        '@/lib/invoices/convertProformaToInvoice'
+      );
+
+      const result = await convertProformaToInvoice(params.id);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Błąd konwersji');
+      }
+
+      showSnackbar('Faktura VAT została utworzona', 'success');
+
+      // Przekieruj na nową fakturę
+      if (result.invoiceId) {
+        router.push(`/crm/invoices/${result.invoiceId}`);
+      } else {
+        await fetchInvoice();
+      }
+    } catch (err: any) {
+      console.error('Error converting to VAT:', err);
+      showSnackbar(err.message || 'Błąd podczas tworzenia faktury VAT', 'error');
+    } finally {
+      setSendingToKSeF(false);
+    }
+  };
+
+  const handleSendToKSeF = async () => {
+    if (!confirm('Czy na pewno chcesz wysłać tę fakturę do KSeF? Tej operacji nie można cofnąć.')) {
+      return;
+    }
+
+    try {
+      setSendingToKSeF(true);
+
+      const response = await fetch('/api/ksef/invoices/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ invoiceId: params.id }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Błąd wysyłki do KSeF');
+      }
+
+      showSnackbar(`Faktura została wysłana do KSeF: ${result.ksef_reference_number}`, 'success');
+
+      // Odśwież dane faktury
+      await fetchInvoice();
+    } catch (err: any) {
+      console.error('Error sending to KSeF:', err);
+      showSnackbar(err.message || 'Błąd podczas wysyłania faktury do KSeF', 'error');
+    } finally {
+      setSendingToKSeF(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#0a0d1a]">
@@ -222,6 +298,63 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             <ArrowLeft className="h-5 w-5" />
             Powrót
           </button>
+
+        {/* Proforma Alert */}
+        {invoice.is_proforma && (
+          <div className="mb-6 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-6">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <h3 className="mb-2 text-lg font-medium text-yellow-400">
+                  📋 Faktura Proforma
+                </h3>
+                <p className="mb-4 text-sm text-[#e5e4e2]/80">
+                  Ta proforma nie zostanie wysłana do KSeF. Aby wystawić prawnie wiążącą fakturę
+                  VAT, użyj przycisku poniżej.
+                </p>
+
+                {!invoice.proforma_converted_to_invoice_id ? (
+                  <button
+                    onClick={handleConvertToVAT}
+                    disabled={sendingToKSeF}
+                    className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
+                  >
+                    <CheckCircle className="h-4 w-4" />
+                    {sendingToKSeF ? 'Tworzenie...' : 'Wystaw fakturę VAT na podstawie proformy'}
+                  </button>
+                ) : (
+                  <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3">
+                    <div className="mb-2 text-sm font-medium text-green-400">
+                      ✅ Faktura VAT została wystawiona
+                    </div>
+                    <button
+                      onClick={() =>
+                        router.push(`/crm/invoices/${invoice.proforma_converted_to_invoice_id}`)
+                      }
+                      className="text-sm text-[#d3bb73] hover:underline"
+                    >
+                      Zobacz fakturę VAT →
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* VAT Invoice from Proforma */}
+        {!invoice.is_proforma && invoice.related_invoice_id && (
+          <div className="mb-6 rounded-xl border border-blue-500/30 bg-blue-500/10 p-4">
+            <div className="text-sm text-[#e5e4e2]/80">
+              📋 Wystawiona na podstawie proformy:
+              <button
+                onClick={() => router.push(`/crm/invoices/${invoice.related_invoice_id}`)}
+                className="ml-2 text-[#d3bb73] hover:underline"
+              >
+                Zobacz proformę →
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Relations Section */}
         {(relatedData.event ||
@@ -352,13 +485,14 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               <Printer className="h-4 w-4" />
               Drukuj
             </button>
-            {invoice.status === 'draft' && (
+            {invoice.status === 'draft' && !invoice.is_proforma && (
               <button
-                onClick={() => handleStatusChange('issued')}
-                className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] hover:bg-[#d3bb73]/90"
+                onClick={handleSendToKSeF}
+                disabled={sendingToKSeF}
+                className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
               >
-                <CheckCircle className="h-4 w-4" />
-                Wystaw
+                <Send className="h-4 w-4" />
+                {sendingToKSeF ? 'Wysyłanie...' : 'Wyślij do KSeF'}
               </button>
             )}
             {invoice.status === 'issued' && (
