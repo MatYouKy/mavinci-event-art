@@ -17,6 +17,7 @@ import {
 import { parseMT940, parseJPK_WB, findMatchingInvoices } from '@/lib/bankStatementParsers';
 import BankTransactionsAnalysis from './BankTransactionsAnalysis';
 import BankMatchingSimple from './BankMatchingSimple';
+import CompanySelector from './CompanySelector';
 
 interface MonthlySummary {
   id: string;
@@ -62,11 +63,12 @@ export default function KSeFFinancialDashboard() {
     month: number;
     year: number;
   } | null>(null);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const { showSnackbar } = useSnackbar();
 
   useEffect(() => {
     loadSummaries();
-  }, [selectedYear]);
+  }, [selectedYear, selectedCompanyId]);
 
   const handleSelectedFile = async (file: File | null, month: number, year: number) => {
     if (!file) return;
@@ -397,19 +399,27 @@ export default function KSeFFinancialDashboard() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <label className="text-sm text-[#e5e4e2]/60">Rok rozliczeniowy:</label>
-          <select
-            value={selectedYear}
-            onChange={(e) => setSelectedYear(Number(e.target.value))}
-            className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-          >
-            {availableYears.map((year) => (
-              <option key={year} value={year}>
-                {year}
-              </option>
-            ))}
-          </select>
+        <div className="flex items-center gap-4">
+          <CompanySelector
+            value={selectedCompanyId}
+            onChange={setSelectedCompanyId}
+            showAllOption={true}
+            className="w-64"
+          />
+          <div className="flex items-center gap-3">
+            <label className="text-sm text-[#e5e4e2]/60">Rok rozliczeniowy:</label>
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
+              className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+            >
+              {availableYears.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
