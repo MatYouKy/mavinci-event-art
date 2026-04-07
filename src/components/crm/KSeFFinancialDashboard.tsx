@@ -89,17 +89,28 @@ export default function KSeFFinancialDashboard() {
       const summariesPromises = [];
       for (let month = 1; month <= 12; month++) {
         summariesPromises.push(
-          supabase.rpc('update_monthly_summary', { p_month: month, p_year: selectedYear }),
+          supabase.rpc('update_monthly_summary', {
+            p_month: month,
+            p_year: selectedYear,
+            p_company_id: selectedCompanyId
+          }),
         );
       }
 
       await Promise.all(summariesPromises);
 
-      const { data, error } = await supabase
+      let query = supabase
         .from('monthly_financial_summaries')
         .select('*')
-        .eq('year', selectedYear)
-        .order('month', { ascending: true });
+        .eq('year', selectedYear);
+
+      if (selectedCompanyId) {
+        query = query.eq('my_company_id', selectedCompanyId);
+      } else {
+        query = query.is('my_company_id', null);
+      }
+
+      const { data, error } = await query.order('month', { ascending: true });
 
       if (error) throw error;
 

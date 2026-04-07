@@ -229,10 +229,8 @@ export default function KSeFIntegrationPanel() {
   }, []);
 
   useEffect(() => {
-    if (selectedCompanyId) {
-      loadInvoices();
-      loadSyncLogs();
-    }
+    loadInvoices();
+    loadSyncLogs();
   }, [selectedCompanyId]);
 
   const handleAutoSync = async () => {
@@ -270,15 +268,14 @@ export default function KSeFIntegrationPanel() {
 
       console.log('[KSEF_FRONT] loadInvoices START', {
         selectedCompanyId,
-        hasFilter: !!selectedCompanyId,
+        showingAllCompanies: !selectedCompanyId,
       });
 
       if (selectedCompanyId) {
         query = query.eq('my_company_id', selectedCompanyId);
-        console.log('[KSEF_FRONT] Applying company filter:', selectedCompanyId);
+        console.log('[KSEF_FRONT] Filtering by company:', selectedCompanyId);
       } else {
-        console.log('[KSEF_FRONT] No selectedCompanyId - skipping load');
-        return;
+        console.log('[KSEF_FRONT] Showing all companies');
       }
 
       const { data, error } = await query.order('ksef_issued_at', { ascending: false });
@@ -612,8 +609,8 @@ export default function KSeFIntegrationPanel() {
         <CompanySelector
           value={selectedCompanyId}
           onChange={setSelectedCompanyId}
-          showAllOption={false}
-          label="Wybierz firmę"
+          showAllOption={true}
+          label="Firma"
         />
       )}
 
