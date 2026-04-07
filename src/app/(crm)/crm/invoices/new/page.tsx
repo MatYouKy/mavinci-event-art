@@ -120,57 +120,88 @@ export default function NewInvoicePage() {
         const [eventRes, financialInfoRes] = await Promise.all([
           supabase
             .from('events')
-            .select('name, organization_id, contact_person_id')
+            .select('name, event_date, organization_id, contact_person_id')
             .eq('id', eventId)
             .maybeSingle(),
           supabase.rpc('get_event_financial_info', { p_event_id: eventId }),
         ]);
 
-        if (eventRes.data && financialInfoRes.data?.[0]) {
-          const financialInfo = financialInfoRes.data[0];
-
-          // Auto-wybór nabywcy (organizacja lub kontakt businessowy)
+        if (eventRes.data) {
           if (eventRes.data.organization_id) {
             setSelectedOrgId(eventRes.data.organization_id);
-          } else if (eventRes.data.contact_person_id && financialInfo.is_business) {
-            setSelectedOrgId(eventRes.data.contact_person_id);
           }
 
-          // Auto-wypełnienie kwoty z zaakceptowanej oferty (z budżetu eventu)
-          const offerTotal =
-            financialInfo.accepted_offer_total || financialInfo.expected_revenue || 0;
-          const priceNet = offerTotal > 0 ? Math.round((offerTotal / 1.23) * 100) / 100 : 0;
+          if (eventRes.data.event_date) {
+            setSaleDate(eventRes.data.event_date.split('T')[0]);
+          }
+        }
 
+        const financialInfo = financialInfoRes.data?.[0];
+
+        if (financialInfo && !financialInfo.can_invoice) {
+          showSnackbar(
+            'Uwaga: Ten klient nie ma uzupelnionego NIP. Nie bedzie mozna zapisac faktury.',
+            'warning',
+          );
+        }
+
+        if (financialInfo?.accepted_offer_id) {
+          const { data: offerData } = await supabase
+            .from('offers')
+            .select(`
+              tax_percent,
+              offer_items (
+                name,
+                quantity,
+                unit,
+                unit_price,
+                discount_percent,
+                total,
+                display_order
+              )
+            `)
+            .eq('id', financialInfo.accepted_offer_id)
+            .maybeSingle();
+
+          if (offerData?.offer_items && offerData.offer_items.length > 0) {
+            const vatRate = offerData.tax_percent ?? 23;
+            const sortedItems = [...offerData.offer_items].sort(
+              (a: any, b: any) => (a.display_order ?? 0) - (b.display_order ?? 0),
+            );
+
+            setItems(
+              sortedItems.map((oi: any, idx: number) => ({
+                position_number: idx + 1,
+                name: oi.name || '',
+                unit: oi.unit || 'szt.',
+                quantity: oi.quantity ?? 1,
+                price_net: Number(oi.total ?? 0) / Math.max(oi.quantity ?? 1, 1),
+                vat_rate: vatRate,
+              })),
+            );
+
+            const totalNetto = sortedItems.reduce(
+              (sum: number, oi: any) => sum + Number(oi.total ?? 0),
+              0,
+            );
+            const totalBrutto = totalNetto * (1 + vatRate / 100);
+
+            showSnackbar(
+              `Pozycje wypelnione z oferty ${financialInfo.accepted_offer_number}: ${totalBrutto.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zl brutto`,
+              'success',
+            );
+          }
+        } else if (eventRes.data) {
           setItems([
             {
               position_number: 1,
-              name: `Obsługa techniczna - ${eventRes.data.name}`,
+              name: `Obsluga techniczna - ${eventRes.data.name}`,
               unit: 'szt.',
               quantity: 1,
-              price_net: priceNet,
+              price_net: 0,
               vat_rate: 23,
             },
           ]);
-
-          if (priceNet > 0 && financialInfo.accepted_offer_number) {
-            showSnackbar(
-              `Kwota została automatycznie wypełniona z oferty ${financialInfo.accepted_offer_number}: ${offerTotal.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł brutto`,
-              'success',
-            );
-          } else if (priceNet > 0) {
-            showSnackbar(
-              `Kwota została automatycznie wypełniona z budżetu eventu: ${offerTotal.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł brutto`,
-              'success',
-            );
-          }
-
-          // Ostrzeżenie jeśli nie można wystawić faktury
-          if (!financialInfo.can_invoice) {
-            showSnackbar(
-              'Uwaga: Ten klient nie ma uzupełnionego NIP. Nie będzie można zapisać faktury.',
-              'warning',
-            );
-          }
         }
       }
     } catch (err: any) {

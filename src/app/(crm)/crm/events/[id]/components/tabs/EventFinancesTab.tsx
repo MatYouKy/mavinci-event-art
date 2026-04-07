@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
 import { DollarSign, TrendingUp, TrendingDown, Receipt, Plus, Trash2, CreditCard as Edit, Check, X, FileText, Calendar, Fuel, Users, Package, Truck, Upload, Eye, AlertCircle, Building2, User, Info } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import IssueInvoiceFromEventModal from '../IssueInvoiceFromEventModal';
 
 interface FinancialSummary {
   expected_revenue: number;
@@ -98,7 +97,6 @@ export default function EventFinancesTab({ eventId }: Props) {
   const [showAddCashModal, setShowAddCashModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showAddCost, setShowAddCost] = useState(false);
-  const [showIssueInvoiceModal, setShowIssueInvoiceModal] = useState(false);
 
   // Formularz kosztu
   const [costForm, setCostForm] = useState({
@@ -470,22 +468,13 @@ export default function EventFinancesTab({ eventId }: Props) {
               <FileText className="h-5 w-5 text-[#d3bb73]" />
               Faktury ({invoices.length})
             </h3>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowIssueInvoiceModal(true)}
-                className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm text-[#1c1f33] hover:bg-[#d3bb73]/90"
-              >
-                <Plus className="h-4 w-4" />
-                Wystaw fakturę do KSeF
-              </button>
-              <button
-                onClick={() => router.push(`/crm/invoices/new?event=${eventId}`)}
-                className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/5"
-              >
-                <Plus className="h-4 w-4" />
-                Ręczna faktura
-              </button>
-            </div>
+            <button
+              onClick={() => router.push(`/crm/invoices/new?event=${eventId}`)}
+              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm text-[#1c1f33] hover:bg-[#d3bb73]/90"
+            >
+              <Plus className="h-4 w-4" />
+              Wystaw fakturę
+            </button>
           </div>
 
           {invoices.length === 0 ? (
@@ -877,16 +866,6 @@ export default function EventFinancesTab({ eventId }: Props) {
         </div>
       )}
 
-      {/* Issue Invoice Modal */}
-      <IssueInvoiceFromEventModal
-        isOpen={showIssueInvoiceModal}
-        onClose={() => setShowIssueInvoiceModal(false)}
-        eventId={eventId}
-        onSuccess={() => {
-          fetchFinancialData();
-          setShowIssueInvoiceModal(false);
-        }}
-      />
     </div>
   );
 }
