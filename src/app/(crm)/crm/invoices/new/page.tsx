@@ -5,6 +5,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
 import { ArrowLeft, Plus, Trash2, Save } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import BuyerSearchInput from './components/BuyerSearchInput';
+import AddBuyerModal from './components/AddBuyerModal';
+import InvoiceNumberInput from './components/InvoiceNumberInput';
 
 interface Organization {
   id: string;
@@ -13,6 +16,7 @@ interface Organization {
   street: string | null;
   postal_code: string | null;
   city: string | null;
+  client_type?: string;
 }
 
 interface MyCompany {
@@ -49,10 +53,12 @@ export default function NewInvoicePage() {
   const [myCompanies, setMyCompanies] = useState<MyCompany[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>('');
   const [settings, setSettings] = useState<any>(null);
+  const [showAddBuyerModal, setShowAddBuyerModal] = useState(false);
 
   const [invoiceType, setInvoiceType] = useState<'vat' | 'proforma' | 'advance' | 'corrective'>(
     'vat',
   );
+  const [invoiceNumber, setInvoiceNumber] = useState<string>('');
   const [issueDate, setIssueDate] = useState(new Date().toISOString().split('T')[0]);
   const [saleDate, setSaleDate] = useState(new Date().toISOString().split('T')[0]);
   const [paymentDays, setPaymentDays] = useState(14);
@@ -251,6 +257,11 @@ export default function NewInvoicePage() {
     ];
   };
 
+  const handleBuyerAdded = async (buyerId: string) => {
+    setSelectedOrgId(buyerId);
+    await fetchData();
+  };
+
   const handleSubmit = async () => {
     if (!selectedCompanyId) {
       showSnackbar('Wybierz firmę wystawiającą fakturę', 'error');
@@ -259,6 +270,11 @@ export default function NewInvoicePage() {
 
     if (!selectedOrgId) {
       showSnackbar('Wybierz nabywcę', 'error');
+      return;
+    }
+
+    if (!invoiceNumber) {
+      showSnackbar('Numer faktury jest wymagany', 'error');
       return;
     }
 
@@ -275,12 +291,6 @@ export default function NewInvoicePage() {
 
       const selectedCompany = myCompanies.find((c) => c.id === selectedCompanyId);
       if (!selectedCompany) throw new Error('Company not found');
-
-      const { data: invoiceNumber } = await supabase.rpc('generate_invoice_number', {
-        p_invoice_type: invoiceType,
-      });
-
-      if (!invoiceNumber) throw new Error('Failed to generate invoice number');
 
       const {
         data: { user },
@@ -425,20 +435,24 @@ export default function NewInvoicePage() {
               </div>
 
               <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nabywca *</label>
-                <select
-                  value={selectedOrgId}
-                  onChange={(e) => setSelectedOrgId(e.target.value)}
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
-                >
-                  <option value="">Wybierz nabywcę...</option>
-                  {organizations.map((org) => (
-                    <option key={org.id} value={org.id}>
-                      {org.name} {org.nip && `(NIP: ${org.nip})`}
-                    </option>
-                  ))}
-                </select>
+                <InvoiceNumberInput
+                  invoiceType={invoiceType}
+                  value={invoiceNumber}
+                  onChange={setInvoiceNumber}
+                />
               </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-6">
+              <BuyerSearchInput
+                contacts={organizations}
+                selectedContactId={selectedOrgId}
+                onContactSelect={setSelectedOrgId}
+                onAddNew={() => setShowAddBuyerModal(true)}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-6">
 
               <div>
                 <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data wystawienia *</label>
@@ -708,6 +722,12 @@ export default function NewInvoicePage() {
           </div>
         </div>
       </div>
+
+      <AddBuyerModal
+        isOpen={showAddBuyerModal}
+        onClose={() => setShowAddBuyerModal(false)}
+        onSuccess={handleBuyerAdded}
+      />
     </div>
   );
 }
