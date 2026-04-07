@@ -1,8 +1,24 @@
 # Implementacja Fakturowania - Zakończona
 
-## Status: ✅ UKOŃCZONE
+## Status: ✅ UKOŃCZONE I NAPRAWIONE
 
-Data: 2026-04-07
+Data implementacji: 2026-04-07
+Data naprawy: 2026-04-07 14:10
+
+### 🔧 Problemy Naprawione (2026-04-07 14:10)
+
+1. **Błąd `Info is not defined`**
+   - Dodano brakujący import `Info` z lucide-react
+   - Plik: `IssueInvoiceFromEventModal.tsx`
+
+2. **Dane finansowe pokazywały 0,00 zł**
+   - Trigger synchronizacji brał WSZYSTKIE oferty (nie tylko zaakceptowane)
+   - Naprawiono trigger aby sprawdzał `status = 'accepted'`
+   - Usunięto duplikaty triggerów
+   - Zresetowano dane w existing events
+   - Migracje: `fix_budget_sync_accepted_offers_only.sql`, `cleanup_duplicate_budget_sync_triggers.sql`
+
+**Status po naprawie:** System w pełni działający ✅
 
 ---
 

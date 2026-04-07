@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Loader2, FileText, AlertCircle, CheckCircle2, Building2 } from 'lucide-react';
+import { X, Loader2, FileText, AlertCircle, CheckCircle2, Building2, Info } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
