@@ -57,6 +57,7 @@ interface Props {
   month: number;
   year: number;
   invoice: KSeFInvoice;
+  companyId: string | null;
   onClose: () => void;
 }
 
@@ -199,7 +200,7 @@ const COL_SCORE = 'w-[260px]';
 const COL_REASONS = 'w-[12%]';
 const COL_ACTION = 'w-[6%]';
 
-export default function BankMatchingSimple({ month, year, invoice, onClose }: Props) {
+export default function BankMatchingSimple({ month, year, invoice, companyId, onClose }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [matchingId, setMatchingId] = useState<string | null>(null);
@@ -222,11 +223,17 @@ export default function BankMatchingSimple({ month, year, invoice, onClose }: Pr
       const allStatementIds: string[] = [];
 
       for (const range of monthsToCheck) {
-        const { data: statements, error: statementsError } = await supabase
+        let query = supabase
           .from('bank_statements')
           .select('id')
           .eq('statement_month', range.month)
           .eq('statement_year', range.year);
+
+        if (companyId) {
+          query = query.eq('my_company_id', companyId);
+        }
+
+        const { data: statements, error: statementsError } = await query;
 
         if (statementsError) throw statementsError;
 

@@ -1043,6 +1043,7 @@ export default function KSeFIntegrationPanel() {
           month={matchModalDate.month}
           year={matchModalDate.year}
           invoice={matchInvoice}
+          companyId={selectedCompanyId}
           onClose={() => {
             setShowMatchModal(false);
             setMatchModalDate(null);

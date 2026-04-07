@@ -160,43 +160,49 @@ export default function KSeFFinancialDashboard() {
 
   const handleFileUpload = async (file: File, month: number, year: number) => {
     try {
+      if (!selectedCompanyId) {
+        showSnackbar('Wybierz firmę przed uplodem wyciągu bankowego', 'error');
+        return;
+      }
+
       setUploadingFile(true);
       setUploadProgress({ step: 'Wczytywanie pliku PDF...', current: 0, total: 7 });
-  
+
       const lowerName = file.name.toLowerCase();
-  
+
       if (!lowerName.endsWith('.pdf')) {
         throw new Error('Obsługiwane są wyłącznie pliki PDF');
       }
-  
+
       const fileType: 'MT940' = 'MT940';
-  
+
       setUploadProgress({ step: 'Parsowanie PDF...', current: 1, total: 7 });
-  
+
       const formData = new FormData();
       formData.append('file', file);
-  
+
       const response = await fetch('/api/bank/parse-pdf', {
         method: 'POST',
         body: formData,
       });
-  
+
       const result = await response.json();
-  
+
       if (!response.ok || !result?.success) {
         throw new Error(result?.error || 'Nie udało się sparsować PDF');
       }
-  
+
       const parsedStatement = result.data;
       const fileContent = parsedStatement?.rawText || '[PDF parsed]';
-  
+
       setUploadProgress({ step: 'Wyszukiwanie poprzedniego wyciągu...', current: 2, total: 7 });
-  
+
       const { data: existingStatements, error: existingStatementsError } = await supabase
         .from('bank_statements')
         .select('id')
         .eq('statement_month', month)
-        .eq('statement_year', year);
+        .eq('statement_year', year)
+        .eq('my_company_id', selectedCompanyId);
   
       if (existingStatementsError) throw existingStatementsError;
   
@@ -257,6 +263,7 @@ export default function KSeFFinancialDashboard() {
           file_content: fileContent,
           statement_month: month,
           statement_year: year,
+          my_company_id: selectedCompanyId,
           account_number: parsedStatement.accountNumber,
           opening_balance: parsedStatement.openingBalance,
           closing_balance: parsedStatement.closingBalance,
@@ -898,6 +905,7 @@ export default function KSeFFinancialDashboard() {
           month={unmatchedModalMonth.month}
           year={unmatchedModalMonth.year}
           invoice={null}
+          companyId={selectedCompanyId}
           onClose={() => {
             setShowSimpleMatchModal(false);
             setUnmatchedModalMonth(null);
