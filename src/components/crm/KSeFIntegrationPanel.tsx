@@ -166,7 +166,7 @@ export default function KSeFIntegrationPanel() {
   const [matchModalDate, setMatchModalDate] = useState<{ month: number; year: number } | null>(
     null,
   );
-  const [companyFilter, setCompanyFilter] = useState<string | null>(null);
+  const [matchInvoice, setMatchInvoice] = useState<KSeFInvoice | null>(null);
 
   const handleOpenMatchPayment = (invoice: KSeFInvoice) => {
     const baseDate = invoice.issue_date ? new Date(invoice.issue_date) : new Date();
@@ -229,9 +229,11 @@ export default function KSeFIntegrationPanel() {
   }, []);
 
   useEffect(() => {
-    loadInvoices();
-    loadSyncLogs();
-  }, [companyFilter]);
+    if (selectedCompanyId) {
+      loadInvoices();
+      loadSyncLogs();
+    }
+  }, [selectedCompanyId]);
 
   const handleAutoSync = async () => {
     console.log('Auto-sync disabled until migration to Next API is finished');
@@ -267,15 +269,16 @@ export default function KSeFIntegrationPanel() {
       let query = supabase.from('ksef_invoices').select('*');
 
       console.log('[KSEF_FRONT] loadInvoices START', {
-        companyFilter,
-        hasFilter: !!companyFilter,
+        selectedCompanyId,
+        hasFilter: !!selectedCompanyId,
       });
 
-      if (companyFilter) {
-        query = query.eq('my_company_id', companyFilter);
-        console.log('[KSEF_FRONT] Applying company filter:', companyFilter);
+      if (selectedCompanyId) {
+        query = query.eq('my_company_id', selectedCompanyId);
+        console.log('[KSEF_FRONT] Applying company filter:', selectedCompanyId);
       } else {
-        console.log('[KSEF_FRONT] No filter - showing all companies');
+        console.log('[KSEF_FRONT] No selectedCompanyId - skipping load');
+        return;
       }
 
       const { data, error } = await query.order('ksef_issued_at', { ascending: false });
@@ -284,7 +287,7 @@ export default function KSeFIntegrationPanel() {
 
       console.log('[KSEF_FRONT] loadInvoices raw', {
         count: data?.length || 0,
-        companyFilter: companyFilter,
+        selectedCompanyId: selectedCompanyId,
         sample: data?.[0] || null,
         sampleCompanyId: data?.[0]?.my_company_id || null,
       });
@@ -606,20 +609,12 @@ export default function KSeFIntegrationPanel() {
       </div>
 
       {allCredentials.length > 0 && (
-        <div className="rounded-xl border border-[#d3bb73]/20 bg-[#252945] p-4">
-          <label className="mb-2 block text-sm text-[#e5e4e2]">Wybierz firmę</label>
-          <select
-            value={selectedCompanyId}
-            onChange={(e) => setSelectedCompanyId(e.target.value)}
-            className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-          >
-            {allCredentials.map((cred) => (
-              <option key={cred.id} value={cred.my_company_id}>
-                {cred.my_company?.name || cred.nip} - NIP: {cred.nip}
-              </option>
-            ))}
-          </select>
-        </div>
+        <CompanySelector
+          value={selectedCompanyId}
+          onChange={setSelectedCompanyId}
+          showAllOption={false}
+          label="Wybierz firmę"
+        />
       )}
 
       {allCredentials.length === 0 && (
@@ -666,32 +661,24 @@ export default function KSeFIntegrationPanel() {
         </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <CompanySelector
-          value={companyFilter}
-          onChange={setCompanyFilter}
-          showAllOption={true}
-        />
-
-        <div className="flex items-center gap-4 rounded-xl border border-[#d3bb73]/20 bg-[#252945] p-4">
-          <div className="flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-[#d3bb73]" />
-            <span className="text-sm text-[#e5e4e2]">Okres:</span>
-          </div>
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-1.5 text-sm text-[#e5e4e2]"
-          />
-          <span className="text-sm text-[#e5e4e2]/60">do</span>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-1.5 text-sm text-[#e5e4e2]"
-          />
+      <div className="flex items-center gap-4 rounded-xl border border-[#d3bb73]/20 bg-[#252945] p-4">
+        <div className="flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-[#d3bb73]" />
+          <span className="text-sm text-[#e5e4e2]">Okres:</span>
         </div>
+        <input
+          type="date"
+          value={dateFrom}
+          onChange={(e) => setDateFrom(e.target.value)}
+          className="rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-1.5 text-sm text-[#e5e4e2]"
+        />
+        <span className="text-sm text-[#e5e4e2]/60">do</span>
+        <input
+          type="date"
+          value={dateTo}
+          onChange={(e) => setDateTo(e.target.value)}
+          className="rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-1.5 text-sm text-[#e5e4e2]"
+        />
       </div>
 
       <div className="flex gap-1 rounded-lg border border-[#d3bb73]/20 bg-[#252945] p-1">
