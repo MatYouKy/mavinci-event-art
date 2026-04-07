@@ -179,10 +179,19 @@ const OfferBasicInfo = forwardRef<OfferBasicInfoHandle, OfferBasicInfoProps>(
             <div className="flex items-start gap-3">
               <DollarSign className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
               <div className="flex-1">
-                <p className="text-xs text-[#e5e4e2]/60">Wartość całkowita</p>
+                <p className="text-xs text-[#e5e4e2]/60">Wartość oferty</p>
                 <p className="text-lg font-medium text-[#d3bb73]">
-                  {offer.total_amount?.toFixed(2) || '0.00'} PLN
+                  {((Number(offer.subtotal || offer.total_amount || 0)) + Number(offer.tax_amount || 0)).toFixed(2)} PLN
+                  <span className="ml-1 text-xs font-normal text-[#e5e4e2]/40">brutto</span>
                 </p>
+                <div className="mt-1 space-y-0.5 text-xs text-[#e5e4e2]/50">
+                  <div>
+                    Netto: {Number(offer.subtotal || offer.total_amount || 0).toFixed(2)} PLN
+                  </div>
+                  <div>
+                    VAT ({offer.tax_percent ?? 23}%): {Number(offer.tax_amount || 0).toFixed(2)} PLN
+                  </div>
+                </div>
               </div>
             </div>
 

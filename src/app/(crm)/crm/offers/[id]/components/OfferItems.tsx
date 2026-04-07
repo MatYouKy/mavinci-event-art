@@ -45,6 +45,7 @@ interface OfferItem {
 interface OfferItemsProps {
   items: OfferItem[];
   offerId: string;
+  vatRate?: number;
   onItemsReordered: () => void;
   onEditItem: (item: OfferItem) => void;
   onDeleteItem: (itemId: string) => void;
@@ -55,6 +56,7 @@ interface OfferItemsProps {
 export default function OfferItems({
   items,
   offerId,
+  vatRate = 23,
   onItemsReordered,
   onEditItem,
   onDeleteItem,
@@ -239,7 +241,7 @@ const handleDragEnd = async (result: DropResult) => {
                               <div className="mt-1 flex items-center gap-4">
                                 <span className="text-xs text-[#e5e4e2]/60">Ilość: {item.quantity}</span>
                                 <span className="text-xs text-[#e5e4e2]/60">
-                                  Cena: {item.unit_price.toFixed(2)} PLN
+                                  Netto: {item.unit_price.toFixed(2)} PLN
                                 </span>
                                 {item.discount_percent > 0 && (
                                   <span className="text-xs text-green-400">Rabat: {item.discount_percent}%</span>
@@ -249,11 +251,14 @@ const handleDragEnd = async (result: DropResult) => {
 
                             <div className="flex items-center gap-2">
                               <div className="mr-4 text-right">
-                                <div className="text-sm font-medium text-[#e5e4e2]">
-                                  {item.total.toFixed(2)} PLN
+                                <div className="text-sm font-medium text-[#d3bb73]">
+                                  {(item.total * (1 + vatRate / 100)).toFixed(2)} PLN
+                                </div>
+                                <div className="text-xs text-[#e5e4e2]/60">
+                                  netto: {item.total.toFixed(2)} PLN
                                 </div>
                                 {item.discount_amount > 0 && (
-                                  <div className="text-xs text-[#e5e4e2]/60 line-through">
+                                  <div className="text-xs text-[#e5e4e2]/40 line-through">
                                     {item.subtotal.toFixed(2)} PLN
                                   </div>
                                 )}

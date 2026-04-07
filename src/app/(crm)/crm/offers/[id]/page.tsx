@@ -320,6 +320,7 @@ export default function OfferDetailPage() {
           <OfferItems
             items={offer.offer_items || []}
             offerId={offer.id}
+            vatRate={offer.tax_percent ?? 23}
             onItemsReordered={refetch}
             onEditItem={(item) => {
               setEditingItem(item as IOfferItem);
@@ -366,6 +367,8 @@ export default function OfferDetailPage() {
       {editingItem && (
         <EditOfferItemModal
           item={editingItem}
+          offerId={offer.id}
+          vatRate={offer.tax_percent ?? 23}
           onClose={() => setEditingItem(null)}
           onSuccess={refetch}
         />

@@ -160,7 +160,10 @@ export default function EventTabOffer({
 
                       <div className="text-right">
                         <p className="text-2xl font-light text-[#d3bb73]">
-                          {offer.total_amount ? offer.total_amount.toLocaleString('pl-PL') : '0'} zł
+                          {(Number(offer.subtotal || offer.total_amount || 0) + Number(offer.tax_amount || 0)).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                        </p>
+                        <p className="text-xs text-[#e5e4e2]/50">
+                          netto: {Number(offer.subtotal || offer.total_amount || 0).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
                         </p>
                         {offer.valid_until && (
                           <p className="mt-1 text-xs text-[#e5e4e2]/40">

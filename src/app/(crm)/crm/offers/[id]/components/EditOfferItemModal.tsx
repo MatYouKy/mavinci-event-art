@@ -1,25 +1,32 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { X } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { IOfferItem } from '../../types';
 
+const VAT_RATES = [0, 5, 8, 23] as const;
+
 interface EditOfferItemModalProps {
   item: IOfferItem | null;
+  offerId?: string;
+  vatRate?: number;
   onClose: () => void;
   onSuccess: () => void;
 }
 
-export default function EditOfferItemModal({ item, onClose, onSuccess }: EditOfferItemModalProps) {
+export default function EditOfferItemModal({ item, offerId, vatRate = 23, onClose, onSuccess }: EditOfferItemModalProps) {
   const { showSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(false);
-  const [quantity, setQuantity] = useState(item.quantity);
-  const [unitPrice, setUnitPrice] = useState(item.unit_price);
-  const [discountPercent, setDiscountPercent] = useState(item.discount_percent);
+  const [quantity, setQuantity] = useState(item?.quantity ?? 0);
+  const [unitPrice, setUnitPrice] = useState(item?.unit_price ?? 0);
+  const [discountPercent, setDiscountPercent] = useState(item?.discount_percent ?? 0);
+  const [itemVatRate, setItemVatRate] = useState(vatRate);
 
   const handleSave = async () => {
+    if (!item) return;
+
     if (quantity <= 0) {
       showSnackbar('Ilość musi być większa od 0', 'error');
       return;
@@ -44,6 +51,15 @@ export default function EditOfferItemModal({ item, onClose, onSuccess }: EditOff
 
       if (error) throw error;
 
+      if (offerId) {
+        const { error: offerError } = await supabase
+          .from('offers')
+          .update({ tax_percent: itemVatRate })
+          .eq('id', offerId);
+
+        if (offerError) console.error('Error updating VAT rate:', offerError);
+      }
+
       showSnackbar('Pozycja zaktualizowana', 'success');
       onSuccess();
       onClose();
@@ -55,9 +71,13 @@ export default function EditOfferItemModal({ item, onClose, onSuccess }: EditOff
     }
   };
 
-  const subtotal = quantity * unitPrice;
-  const discountAmount = (subtotal * discountPercent) / 100;
-  const total = subtotal - discountAmount;
+  const netto = quantity * unitPrice;
+  const discountAmount = (netto * discountPercent) / 100;
+  const nettoAfterDiscount = netto - discountAmount;
+  const vatAmount = (nettoAfterDiscount * itemVatRate) / 100;
+  const brutto = nettoAfterDiscount + vatAmount;
+
+  if (!item) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -82,7 +102,7 @@ export default function EditOfferItemModal({ item, onClose, onSuccess }: EditOff
             </p>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Ilość *</label>
               <input
@@ -97,7 +117,7 @@ export default function EditOfferItemModal({ item, onClose, onSuccess }: EditOff
 
             <div>
               <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-                Cena jednostkowa (PLN) *
+                Cena jednostkowa netto (PLN) *
               </label>
               <input
                 type="number"
@@ -121,22 +141,47 @@ export default function EditOfferItemModal({ item, onClose, onSuccess }: EditOff
                 className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
               />
             </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Stawka VAT</label>
+              <select
+                value={itemVatRate}
+                onChange={(e) => setItemVatRate(parseInt(e.target.value))}
+                className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
+              >
+                {VAT_RATES.map((rate) => (
+                  <option key={rate} value={rate}>
+                    {rate}%
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
             <div className="mb-2 flex items-center justify-between">
-              <span className="text-sm text-[#e5e4e2]/60">Wartość brutto:</span>
-              <span className="text-base text-[#e5e4e2]">{subtotal.toFixed(2)} PLN</span>
+              <span className="text-sm text-[#e5e4e2]/60">Wartość netto:</span>
+              <span className="text-base text-[#e5e4e2]">{netto.toFixed(2)} PLN</span>
             </div>
             {discountAmount > 0 && (
               <div className="mb-2 flex items-center justify-between">
-                <span className="text-sm text-[#e5e4e2]/60">Rabat:</span>
+                <span className="text-sm text-[#e5e4e2]/60">Rabat ({discountPercent}%):</span>
                 <span className="text-base text-green-400">-{discountAmount.toFixed(2)} PLN</span>
               </div>
             )}
+            {discountAmount > 0 && (
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-sm text-[#e5e4e2]/60">Netto po rabacie:</span>
+                <span className="text-base text-[#e5e4e2]">{nettoAfterDiscount.toFixed(2)} PLN</span>
+              </div>
+            )}
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-sm text-[#e5e4e2]/60">VAT ({itemVatRate}%):</span>
+              <span className="text-base text-[#e5e4e2]/80">{vatAmount.toFixed(2)} PLN</span>
+            </div>
             <div className="flex items-center justify-between border-t border-[#d3bb73]/10 pt-2">
-              <span className="text-base font-medium text-[#e5e4e2]">Razem:</span>
-              <span className="text-lg font-bold text-[#d3bb73]">{total.toFixed(2)} PLN</span>
+              <span className="text-base font-medium text-[#e5e4e2]">Brutto:</span>
+              <span className="text-lg font-bold text-[#d3bb73]">{brutto.toFixed(2)} PLN</span>
             </div>
           </div>
         </div>

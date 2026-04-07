@@ -370,36 +370,50 @@ export default function EventFinancesTab({ eventId }: Props) {
           <div className="rounded-xl border border-[#d3bb73]/20 bg-[#0a0d1a] p-6">
             <div className="mb-2 flex items-center gap-3">
               <TrendingUp className="h-5 w-5 text-green-400" />
-              <span className="text-sm text-[#e5e4e2]/60">Przychód faktyczny</span>
-            </div>
-            <div className="text-2xl font-light text-green-400">
-              {summary.actual_revenue.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+              <span className="text-sm text-[#e5e4e2]/60">Przychód planowany</span>
             </div>
             {acceptedOffer ? (
-              <div className="mt-2 space-y-0.5 text-xs text-[#e5e4e2]/40">
-                <div>
-                  Plan brutto:{' '}
-                  <span className="text-[#e5e4e2]/60">
-                    {(Number(acceptedOffer.subtotal || acceptedOffer.total_amount || 0) + Number(acceptedOffer.tax_amount || 0)).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
-                  </span>
+              <>
+                <div className="text-2xl font-light text-[#d3bb73]">
+                  {(Number(acceptedOffer.subtotal || acceptedOffer.total_amount || 0) + Number(acceptedOffer.tax_amount || 0)).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
                 </div>
-                <div>
-                  Netto:{' '}
-                  <span className="text-[#e5e4e2]/60">
-                    {Number(acceptedOffer.subtotal || acceptedOffer.total_amount || 0).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
-                  </span>
+                <div className="mt-2 space-y-0.5 text-xs text-[#e5e4e2]/40">
+                  <div>
+                    Netto:{' '}
+                    <span className="text-[#e5e4e2]/60">
+                      {Number(acceptedOffer.subtotal || acceptedOffer.total_amount || 0).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                    </span>
+                  </div>
+                  <div>
+                    VAT ({acceptedOffer.tax_percent ?? 23}%):{' '}
+                    <span className="text-[#e5e4e2]/60">
+                      {Number(acceptedOffer.tax_amount || 0).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                    </span>
+                  </div>
+                  <div>
+                    Brutto:{' '}
+                    <span className="text-[#e5e4e2]/60">
+                      {(Number(acceptedOffer.subtotal || acceptedOffer.total_amount || 0) + Number(acceptedOffer.tax_amount || 0)).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  VAT ({acceptedOffer.tax_percent ?? 23}%):{' '}
-                  <span className="text-[#e5e4e2]/60">
-                    {Number(acceptedOffer.tax_amount || 0).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
-                  </span>
-                </div>
-              </div>
+                {summary.actual_revenue > 0 && (
+                  <div className="mt-2 border-t border-[#d3bb73]/10 pt-2 text-xs text-green-400">
+                    Zapłacono: {summary.actual_revenue.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                  </div>
+                )}
+              </>
             ) : (
-              <div className="mt-1 text-xs text-[#e5e4e2]/40">
-                Plan: {summary.expected_revenue.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
-              </div>
+              <>
+                <div className="text-2xl font-light text-green-400">
+                  {summary.expected_revenue.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                </div>
+                {summary.actual_revenue > 0 && (
+                  <div className="mt-1 text-xs text-green-400">
+                    Zapłacono: {summary.actual_revenue.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                  </div>
+                )}
+              </>
             )}
           </div>
 
