@@ -160,9 +160,23 @@ export default function KSeFIntegrationPanel() {
   const [editPaymentInvoice, setEditPaymentInvoice] = useState<KSeFInvoice | null>(null);
   const [paymentDate, setPaymentDate] = useState('');
   const [paymentDueDate, setPaymentDueDate] = useState('');
-  const [showMatchModal, setShowMatchModal] = useState(false);
-  const [matchModalDate, setMatchModalDate] = useState<{ month: number; year: number } | null>(null);
 
+  const [showMatchModal, setShowMatchModal] = useState(false);
+  const [matchModalDate, setMatchModalDate] = useState<{ month: number; year: number } | null>(
+    null,
+  );
+  const [matchInvoice, setMatchInvoice] = useState<KSeFInvoice | null>(null);
+
+  const handleOpenMatchPayment = (invoice: KSeFInvoice) => {
+    const baseDate = invoice.issue_date ? new Date(invoice.issue_date) : new Date();
+
+    setMatchInvoice(invoice);
+    setMatchModalDate({
+      month: baseDate.getMonth() + 1,
+      year: baseDate.getFullYear(),
+    });
+    setShowMatchModal(true);
+  };
   const { canManageModule } = useCurrentEmployee();
 
   const canManageKSeF = useMemo(() => canManageModule('ksef'), [canManageModule]);
@@ -505,15 +519,6 @@ export default function KSeFIntegrationPanel() {
       invoice.payment_date ? new Date(invoice.payment_date).toISOString().split('T')[0] : '',
     );
     setPaymentDueDate(invoice.payment_due_date || '');
-  };
-
-  const handleOpenMatchPayment = () => {
-    const now = new Date();
-    setMatchModalDate({
-      month: now.getMonth() + 1,
-      year: now.getFullYear(),
-    });
-    setShowMatchModal(true);
   };
 
   const handleSavePaymentEdit = async () => {
@@ -924,7 +929,7 @@ export default function KSeFIntegrationPanel() {
                                 : [
                                     {
                                       label: 'Dopasuj płatność',
-                                      onClick: handleOpenMatchPayment,
+                                      onClick: () => handleOpenMatchPayment(invoice),
                                       icon: <LinkIcon className="h-4 w-4" />,
                                       variant: 'primary' as const,
                                     },
@@ -1021,6 +1026,20 @@ export default function KSeFIntegrationPanel() {
 
       {selectedInvoice && (
         <InvoiceDetailsModal invoice={selectedInvoice} onClose={() => setSelectedInvoice(null)} />
+      )}
+
+      {showMatchModal && matchModalDate && matchInvoice && (
+        <BankMatchingSimple
+          month={matchModalDate.month}
+          year={matchModalDate.year}
+          invoice={matchInvoice}
+          onClose={() => {
+            setShowMatchModal(false);
+            setMatchModalDate(null);
+            setMatchInvoice(null);
+            loadInvoices();
+          }}
+        />
       )}
     </div>
   );
@@ -1256,18 +1275,6 @@ function KSeFSetupModal({
           </div>
         </div>
       )} */}
-
-      {showMatchModal && matchModalDate && (
-        <BankMatchingSimple
-          month={matchModalDate.month}
-          year={matchModalDate.year}
-          onClose={() => {
-            setShowMatchModal(false);
-            setMatchModalDate(null);
-            loadInvoices();
-          }}
-        />
-      )}
     </div>
   );
 }

@@ -70,6 +70,13 @@ export default function KSeFFinancialDashboard() {
 
   const handleSelectedFile = async (file: File | null, month: number, year: number) => {
     if (!file) return;
+  
+    const isPdf = file.name.toLowerCase().endsWith('.pdf');
+    if (!isPdf) {
+      showSnackbar('Dozwolony jest tylko plik PDF z wyciągiem bankowym', 'error');
+      return;
+    }
+  
     await handleFileUpload(file, month, year);
   };
 
@@ -141,37 +148,61 @@ export default function KSeFFinancialDashboard() {
   const handleFileUpload = async (file: File, month: number, year: number) => {
     try {
       setUploadingFile(true);
-      setUploadProgress({ step: 'Wczytywanie pliku...', current: 0, total: 7 });
-
-      const fileContent = await file.text();
-      const fileType = file.name.toLowerCase().endsWith('.xml') ? 'JPK_WB' : 'MT940';
-
-      setUploadProgress({ step: 'Wyszukiwanie poprzedniego wyciągu...', current: 1, total: 7 });
-
+      setUploadProgress({ step: 'Wczytywanie pliku PDF...', current: 0, total: 7 });
+  
+      const lowerName = file.name.toLowerCase();
+  
+      if (!lowerName.endsWith('.pdf')) {
+        throw new Error('Obsługiwane są wyłącznie pliki PDF');
+      }
+  
+      const fileType: 'MT940' = 'MT940';
+  
+      setUploadProgress({ step: 'Parsowanie PDF...', current: 1, total: 7 });
+  
+      const formData = new FormData();
+      formData.append('file', file);
+  
+      const response = await fetch('/api/bank/parse-pdf', {
+        method: 'POST',
+        body: formData,
+      });
+  
+      const result = await response.json();
+  
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.error || 'Nie udało się sparsować PDF');
+      }
+  
+      const parsedStatement = result.data;
+      const fileContent = parsedStatement?.rawText || '[PDF parsed]';
+  
+      setUploadProgress({ step: 'Wyszukiwanie poprzedniego wyciągu...', current: 2, total: 7 });
+  
       const { data: existingStatements, error: existingStatementsError } = await supabase
         .from('bank_statements')
         .select('id')
         .eq('statement_month', month)
         .eq('statement_year', year);
-
+  
       if (existingStatementsError) throw existingStatementsError;
-
+  
       const existingStatementIds = (existingStatements || []).map((s) => s.id);
-
+  
       if (existingStatementIds.length > 0) {
-        setUploadProgress({ step: 'Czyszczenie starego wyciągu...', current: 2, total: 7 });
-
+        setUploadProgress({ step: 'Czyszczenie starego wyciągu...', current: 3, total: 7 });
+  
         const { data: oldTransactions, error: oldTransactionsError } = await supabase
           .from('bank_transactions')
           .select('id, matched_invoice_id')
           .in('statement_id', existingStatementIds);
-
+  
         if (oldTransactionsError) throw oldTransactionsError;
-
+  
         const oldMatchedInvoiceIds = [
           ...new Set((oldTransactions || []).map((t) => t.matched_invoice_id).filter(Boolean)),
         ];
-
+  
         if (oldMatchedInvoiceIds.length > 0) {
           const { error: resetInvoicesError } = await supabase
             .from('ksef_invoices')
@@ -180,44 +211,31 @@ export default function KSeFFinancialDashboard() {
               payment_date: null,
             })
             .in('id', oldMatchedInvoiceIds);
-
+  
           if (resetInvoicesError) throw resetInvoicesError;
         }
-
+  
         const { error: deleteTransactionsError } = await supabase
           .from('bank_transactions')
           .delete()
           .in('statement_id', existingStatementIds);
-
+  
         if (deleteTransactionsError) throw deleteTransactionsError;
-
+  
         const { error: deleteStatementsError } = await supabase
           .from('bank_statements')
           .delete()
           .in('id', existingStatementIds);
-
+  
         if (deleteStatementsError) throw deleteStatementsError;
       }
-
-      setUploadProgress({ step: 'Parsowanie wyciągu bankowego...', current: 3, total: 7 });
-
-      let parsedStatement;
-      try {
-        if (fileType === 'MT940') {
-          parsedStatement = parseMT940(fileContent);
-        } else {
-          parsedStatement = parseJPK_WB(fileContent);
-        }
-      } catch (parseError: any) {
-        throw new Error(`Błąd parsowania: ${parseError.message}`);
-      }
-
+  
       setUploadProgress({ step: 'Zapisywanie nowego wyciągu...', current: 4, total: 7 });
-
+  
       const {
         data: { user },
       } = await supabase.auth.getUser();
-
+  
       const { data: statement, error: statementError } = await supabase
         .from('bank_statements')
         .insert({
@@ -236,21 +254,21 @@ export default function KSeFFinancialDashboard() {
         })
         .select()
         .single();
-
+  
       if (statementError) throw statementError;
-
+  
       setUploadProgress({
         step: `Przetwarzanie transakcji (0/${parsedStatement.transactions.length})...`,
         current: 5,
         total: 7,
       });
-
+  
       let matchedCount = 0;
       let unmatchedCount = 0;
-
+  
       for (let i = 0; i < parsedStatement.transactions.length; i++) {
         const transaction = parsedStatement.transactions[i];
-
+  
         if (i % 5 === 0) {
           setUploadProgress({
             step: `Przetwarzanie transakcji (${i + 1}/${parsedStatement.transactions.length})...`,
@@ -258,17 +276,17 @@ export default function KSeFFinancialDashboard() {
             total: 7,
           });
         }
-
+  
         const matches = await findMatchingInvoices(transaction, supabase);
-
+  
         let matchedInvoiceId: string | null = null;
         let matchConfidence: number | null = null;
-
+  
         if (matches.length > 0 && matches[0].confidence >= 0.95) {
           matchedInvoiceId = matches[0].invoiceId;
           matchConfidence = matches[0].confidence;
           matchedCount++;
-
+  
           const { error: markPaidError } = await supabase
             .from('ksef_invoices')
             .update({
@@ -276,7 +294,7 @@ export default function KSeFFinancialDashboard() {
               payment_date: transaction.transactionDate,
             })
             .eq('id', matchedInvoiceId);
-
+  
           if (markPaidError) throw markPaidError;
         } else if (matches.length > 0 && matches[0].confidence >= 0.75) {
           matchedInvoiceId = matches[0].invoiceId;
@@ -285,7 +303,7 @@ export default function KSeFFinancialDashboard() {
         } else {
           unmatchedCount++;
         }
-
+  
         const { error: insertTransactionError } = await supabase.from('bank_transactions').insert({
           statement_id: statement.id,
           transaction_date: transaction.transactionDate,
@@ -300,13 +318,15 @@ export default function KSeFFinancialDashboard() {
           matched_invoice_id: matchedInvoiceId,
           match_confidence: matchConfidence,
           manual_match: false,
+          raw_description: transaction.rawDescription ?? null,
+          raw_counterparty: transaction.rawCounterparty ?? null,
         });
-
+  
         if (insertTransactionError) throw insertTransactionError;
       }
-
+  
       setUploadProgress({ step: 'Finalizowanie importu...', current: 6, total: 7 });
-
+  
       const { error: finalizeStatementError } = await supabase
         .from('bank_statements')
         .update({
@@ -314,11 +334,11 @@ export default function KSeFFinancialDashboard() {
           processed_at: new Date().toISOString(),
         })
         .eq('id', statement.id);
-
+  
       if (finalizeStatementError) throw finalizeStatementError;
-
+  
       await loadSummaries();
-
+  
       setSelectedMonth((prev) =>
         prev
           ? {
@@ -327,14 +347,14 @@ export default function KSeFFinancialDashboard() {
             }
           : prev,
       );
-
+  
       showSnackbar(
-        `Wyciąg został podmieniony. Transakcji: ${parsedStatement.transactions.length}, automatycznie dopasowanych: ${matchedCount}, do weryfikacji: ${unmatchedCount}`,
+        `Wyciąg PDF został podmieniony. Transakcji: ${parsedStatement.transactions.length}, automatycznie dopasowanych: ${matchedCount}, do weryfikacji: ${unmatchedCount}`,
         'success',
       );
     } catch (error: any) {
-      console.error('Error uploading file:', error);
-      showSnackbar(error.message || 'Błąd podczas importu wyciągu', 'error');
+      console.error('Error uploading PDF:', error);
+      showSnackbar(error.message || 'Błąd podczas importu PDF', 'error');
     } finally {
       setUploadingFile(false);
       setUploadProgress({ step: '', current: 0, total: 0 });
@@ -701,11 +721,16 @@ export default function KSeFFinancialDashboard() {
                   e.preventDefault();
                   e.stopPropagation();
                   setIsDragOver(false);
-
+                
                   if (uploadingFile) return;
-
-                  const file = e.dataTransfer.files?.[0];
-                  await handleSelectedFile(file ?? null, selectedMonth.month, selectedMonth.year);
+                
+                  const file = e.dataTransfer.files?.[0] ?? null;
+                  if (file && !file.name.toLowerCase().endsWith('.pdf')) {
+                    showSnackbar('Możesz upuścić tylko plik PDF', 'error');
+                    return;
+                  }
+                
+                  await handleSelectedFile(file, selectedMonth.month, selectedMonth.year);
                 }}
                 className={`rounded-lg border-2 border-dashed p-6 transition-all ${
                   isDragOver
@@ -725,7 +750,7 @@ export default function KSeFFinancialDashboard() {
                   </h4>
 
                   <p className="mt-1 text-xs text-[#e5e4e2]/60">
-                    Format MT940 (.txt) lub JPK_WB (.xml)
+                    Format PDF (.pdf)
                   </p>
 
                   <label className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#252945] px-4 py-2 text-sm text-[#e5e4e2] hover:border-[#d3bb73]/40 hover:bg-[#2d3254]">
@@ -733,7 +758,7 @@ export default function KSeFFinancialDashboard() {
                     Wybierz plik
                     <input
                       type="file"
-                      accept=".txt,.xml"
+                      accept=".pdf"
                       disabled={uploadingFile}
                       className="hidden"
                       onChange={async (e) => {
@@ -851,6 +876,7 @@ export default function KSeFFinancialDashboard() {
         <BankMatchingSimple
           month={unmatchedModalMonth.month}
           year={unmatchedModalMonth.year}
+          invoice={null}
           onClose={() => {
             setShowSimpleMatchModal(false);
             setUnmatchedModalMonth(null);

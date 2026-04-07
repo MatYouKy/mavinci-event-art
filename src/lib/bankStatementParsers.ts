@@ -1,3 +1,4 @@
+export type BankStatementFileType = 'MT940' | 'JPK_WB' | 'PDF';
 export interface BankTransaction {
   transactionDate: string;
   postingDate?: string;
@@ -8,6 +9,9 @@ export interface BankTransaction {
   counterpartyAccount?: string;
   title?: string;
   referenceNumber?: string;
+
+  rawDescription?: string;
+  rawCounterparty?: string;
 }
 
 export interface BankStatement {
@@ -16,6 +20,7 @@ export interface BankStatement {
   closingBalance?: number;
   currency: string;
   transactions: BankTransaction[];
+  sourceType: BankStatementFileType;
 }
 
 function normalizeText(value?: string | null): string {
@@ -31,6 +36,41 @@ function normalizeText(value?: string | null): string {
     .replace(/[ŹŻ]/g, 'Z')
     .replace(/[^A-Z0-9]/g, '');
 }
+function extractReadableCounterpartyFromFallback(text?: string | null): string | undefined {
+  const source = sanitizeBankEncoding(text);
+  if (!source) return undefined;
+
+  const normalized = source
+    .replace(/\b\d{6,}\b/g, ' ')
+    .replace(/\bPL\d{10,}\b/gi, ' ')
+    .replace(/\bNONREF\b/gi, ' ')
+    .replace(/\bV\d+\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const matchers = [
+    /CASTORAMA[ A-Z0-9.\-]*/i,
+    /ALLEGRO[ A-Z0-9.\-]*/i,
+    /APPLE\.COM\/BILL[ A-Z0-9.\-]*/i,
+    /INTER CHIP[ A-Z0-9.\-]*/i,
+    /CIRCLE K[ A-Z0-9.\-]*/i,
+    /MILEWSCY[ A-Z0-9.\-]*/i,
+    /ORANGE[ A-Z0-9.\-]*/i,
+    /AGMAR[ A-Z0-9.\-]*/i,
+    /STREFA INSPIRACJI[ A-Z0-9.\-]*/i,
+    /URZAD[ A-Z0-9.\-]*/i,
+    /URZĄD[ A-Z0-9.\-]*/i,
+    /SKARBOWY[ A-Z0-9.\-]*/i,
+  ];
+
+  for (const regex of matchers) {
+    const found = normalized.match(regex);
+    if (found?.[0]) return found[0].trim();
+  }
+
+  return undefined;
+}
+
 
 function extractNips(text?: string | null): string[] {
   if (!text) return [];
@@ -38,30 +78,124 @@ function extractNips(text?: string | null): string[] {
   return matches ? [...new Set(matches)] : [];
 }
 
+function sanitizeBankEncoding(text?: string | null): string {
+  return (text || '')
+    .replace(/\uFFFD/g, '') // znak zastępczy �
+    .replace(/[\u0000-\u001F]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function cleanBankText(value?: string | null): string {
+  return (value || '')
+    .replace(/ÿ/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isLikelyNoiseToken(token: string): boolean {
+  const upper = token.toUpperCase();
+
+  return (
+    /^\d+$/.test(upper) ||
+    /^[A-Z]?\d+[A-Z0-9]*$/.test(upper) ||
+    /^(PL|POLSKA|POLAND|V\d+|J|K|L|M|N|NONREF|REF|NRREF|ID|DATA)$/.test(upper)
+  );
+}
+
+function extractReadableCounterpartyFromText(text?: string | null): string | undefined {
+  const source = cleanBankText(text);
+  if (!source) return undefined;
+
+  const normalized = source
+    .replace(/\b\d{6,}\b/g, ' ')
+    .replace(/\b[0-9A-Z]{10,}\b/g, ' ')
+    .replace(/\bPL\d{10,}\b/gi, ' ')
+    .replace(/\bV\d+\b/gi, ' ')
+    .replace(/\bNONREF\b/gi, ' ')
+    .replace(/\bOLSZTYN PL\b/gi, ' ')
+    .replace(/\b[A-Z]{1,2}\d{4,}\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const tokens = normalized.split(' ').filter(Boolean);
+
+  if (!tokens.length) return undefined;
+
+  const kept: string[] = [];
+
+  for (const token of tokens) {
+    if (isLikelyNoiseToken(token)) continue;
+    kept.push(token);
+  }
+
+  if (!kept.length) return undefined;
+
+  const joined = kept.join(' ').trim();
+
+  const knownPrefixes = [
+    'CASTORAMA',
+    'ALLEGRO',
+    'APPLE.COM',
+    'APPLE',
+    'INTER',
+    'INTER CHIP',
+    'ORANGE',
+    'MILEWSCY',
+    'STREFA',
+    'AGMAR',
+    'CIRCLE K',
+    'IKEA',
+    'LIDL',
+    'BIEDRONKA',
+    'ZUS',
+    'URZAD',
+    'URZĄD',
+    'SKARBOWY',
+  ];
+
+  const upperJoined = joined.toUpperCase();
+
+  for (const prefix of knownPrefixes) {
+    const idx = upperJoined.indexOf(prefix);
+    if (idx >= 0) {
+      return joined.slice(idx).trim();
+    }
+  }
+
+  return joined.length >= 3 ? joined : undefined;
+}
+
 function parse86Segments(description: string): {
   title?: string;
   counterpartyName?: string;
   counterpartyAccount?: string;
   postingDate?: string;
+  rawDescription?: string;
 } {
-  const parts = description
+  const cleanedDescription = sanitizeBankEncoding(description);
+
+  const parts = cleanedDescription
     .split('~')
     .map((p) => p.trim())
     .filter(Boolean);
 
   const titleParts: string[] = [];
   const counterpartyParts: string[] = [];
+  const fallbackParts: string[] = [];
+
   let counterpartyAccount: string | undefined;
   let postingDate: string | undefined;
 
   for (const part of parts) {
     const fieldCode = part.substring(0, 2);
-    const rawValue = part.substring(2).trim();
+    const rawValue = sanitizeBankEncoding(part.substring(2));
 
-    if (!rawValue || rawValue === '0' || rawValue === '�') continue;
+    if (!rawValue || rawValue === '0') continue;
 
     if (/^(20|21|22|23|24|25)$/.test(fieldCode)) {
       titleParts.push(rawValue);
+      fallbackParts.push(rawValue);
       continue;
     }
 
@@ -76,7 +210,7 @@ function parse86Segments(description: string): {
     }
 
     if (fieldCode === '60') {
-      if (rawValue.length === 8 && /^\d{8}$/.test(rawValue)) {
+      if (/^\d{8}$/.test(rawValue)) {
         const year = rawValue.substring(0, 4);
         const month = rawValue.substring(4, 6);
         const day = rawValue.substring(6, 8);
@@ -86,23 +220,24 @@ function parse86Segments(description: string): {
     }
   }
 
-  const title = titleParts
-    .join(' ')
-    .replace(/\s+/g, ' ')
-    .replace(/^0+\s*/, '')
-    .replace(/^\d+\s+[A-Z0-9]+\s*/i, '')
-    .trim();
+  const title = sanitizeBankEncoding(titleParts.join(' '));
 
-  const counterpartyName = counterpartyParts.join(' ').replace(/\s+/g, ' ').trim();
+  let counterpartyName = sanitizeBankEncoding(counterpartyParts.join(' '));
+
+  if (!counterpartyName) {
+    counterpartyName = extractReadableCounterpartyFromFallback(
+      fallbackParts.join(' ')
+    );
+  }
 
   return {
     title: title || undefined,
     counterpartyName: counterpartyName || undefined,
     counterpartyAccount,
     postingDate,
+    rawDescription: cleanedDescription || undefined,
   };
 }
-
 export function parseMT940(content: string): BankStatement {
   const transactions: BankTransaction[] = [];
   let accountNumber: string | undefined;
@@ -123,7 +258,7 @@ export function parseMT940(content: string): BankStatement {
       currentTransaction.title = parsed86.title;
     }
 
-    if (parsed86.counterpartyName) {
+    if (parsed86.counterpartyName && !currentTransaction.counterpartyName) {
       currentTransaction.counterpartyName = parsed86.counterpartyName;
     }
 
@@ -133,6 +268,9 @@ export function parseMT940(content: string): BankStatement {
 
     if (!currentTransaction.postingDate && parsed86.postingDate) {
       currentTransaction.postingDate = parsed86.postingDate;
+    }
+    if (parsed86.rawDescription) {
+      currentTransaction.rawDescription = parsed86.rawDescription;
     }
 
     current86Buffer = '';
@@ -238,7 +376,9 @@ export function parseMT940(content: string): BankStatement {
     closingBalance,
     currency,
     transactions,
+    sourceType: 'MT940',
   };
+
 }
 
 export function parseJPK_WB(xmlContent: string): BankStatement {
@@ -306,6 +446,7 @@ export function parseJPK_WB(xmlContent: string): BankStatement {
     closingBalance,
     currency,
     transactions,
+    sourceType: 'JPK_WB',
   };
 }
 
@@ -337,8 +478,15 @@ export async function findMatchingInvoices(
     return candidates;
   }
 
-  const transactionTitleNormalized = normalizeText(transaction.title);
-  const transactionCounterpartyNormalized = normalizeText(transaction.counterpartyName);
+  const transactionTitleNormalized = normalizeText(
+    transaction.title || transaction.rawDescription
+  );
+  
+  const transactionCounterpartyNormalized = normalizeText(
+    transaction.counterpartyName || transaction.rawCounterparty || transaction.title
+  );
+
+
   const transactionNips = [
     ...new Set([
       ...extractNips(transaction.title),
