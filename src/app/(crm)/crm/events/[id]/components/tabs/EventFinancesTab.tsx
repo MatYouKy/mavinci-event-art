@@ -72,6 +72,13 @@ interface ClientInfo {
   can_invoice: boolean;
 }
 
+interface AcceptedOffer {
+  total_amount: number;
+  subtotal: number;
+  tax_percent: number;
+  tax_amount: number;
+}
+
 interface Props {
   eventId: string;
 }
@@ -81,6 +88,7 @@ export default function EventFinancesTab({ eventId }: Props) {
   const { showSnackbar } = useSnackbar();
 
   const [summary, setSummary] = useState<FinancialSummary | null>(null);
+  const [acceptedOffer, setAcceptedOffer] = useState<AcceptedOffer | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [costs, setCosts] = useState<Cost[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -127,7 +135,7 @@ export default function EventFinancesTab({ eventId }: Props) {
 
   const fetchFinancialData = async () => {
     try {
-      const [summaryRes, invoicesRes, costsRes, categoriesRes, clientInfoRes] = await Promise.all([
+      const [summaryRes, invoicesRes, costsRes, categoriesRes, clientInfoRes, offerRes] = await Promise.all([
         supabase.rpc('get_event_financial_summary', { p_event_id: eventId }),
         supabase
           .from('invoices')
@@ -148,11 +156,20 @@ export default function EventFinancesTab({ eventId }: Props) {
           .order('cost_date', { ascending: false }),
         supabase.from('event_cost_categories').select('*').eq('is_active', true).order('name'),
         supabase.rpc('get_event_client_info', { p_event_id: eventId }),
+        supabase
+          .from('offers')
+          .select('total_amount, subtotal, tax_percent, tax_amount')
+          .eq('event_id', eventId)
+          .eq('status', 'accepted')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
       ]);
 
       if (summaryRes.data?.[0]) setSummary(summaryRes.data[0]);
       if (invoicesRes.data) setInvoices(invoicesRes.data);
       if (clientInfoRes.data?.[0]) setClientInfo(clientInfoRes.data[0]);
+      if (offerRes.data) setAcceptedOffer(offerRes.data);
       if (costsRes.data) {
         const formattedCosts = costsRes.data.map((cost: any) => ({
           ...cost,
@@ -358,10 +375,32 @@ export default function EventFinancesTab({ eventId }: Props) {
             <div className="text-2xl font-light text-green-400">
               {summary.actual_revenue.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
             </div>
-            <div className="mt-1 text-xs text-[#e5e4e2]/40">
-              Plan: {summary.expected_revenue.toLocaleString('pl-PL', { minimumFractionDigits: 2 })}{' '}
-              zł
-            </div>
+            {acceptedOffer ? (
+              <div className="mt-2 space-y-0.5 text-xs text-[#e5e4e2]/40">
+                <div>
+                  Plan brutto:{' '}
+                  <span className="text-[#e5e4e2]/60">
+                    {(Number(acceptedOffer.subtotal || acceptedOffer.total_amount || 0) + Number(acceptedOffer.tax_amount || 0)).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                  </span>
+                </div>
+                <div>
+                  Netto:{' '}
+                  <span className="text-[#e5e4e2]/60">
+                    {Number(acceptedOffer.subtotal || acceptedOffer.total_amount || 0).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                  </span>
+                </div>
+                <div>
+                  VAT ({acceptedOffer.tax_percent ?? 23}%):{' '}
+                  <span className="text-[#e5e4e2]/60">
+                    {Number(acceptedOffer.tax_amount || 0).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-1 text-xs text-[#e5e4e2]/40">
+                Plan: {summary.expected_revenue.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+              </div>
+            )}
           </div>
 
           <div className="rounded-xl border border-[#d3bb73]/20 bg-[#0a0d1a] p-6">
@@ -373,8 +412,7 @@ export default function EventFinancesTab({ eventId }: Props) {
               {summary.actual_costs.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
             </div>
             <div className="mt-1 text-xs text-[#e5e4e2]/40">
-              Plan: {summary.estimated_costs.toLocaleString('pl-PL', { minimumFractionDigits: 2 })}{' '}
-              zł
+              Plan: {summary.estimated_costs.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
             </div>
           </div>
 
@@ -395,7 +433,7 @@ export default function EventFinancesTab({ eventId }: Props) {
 
           <div className="rounded-xl border border-[#d3bb73]/20 bg-[#0a0d1a] p-6">
             <div className="mb-2 flex items-center gap-3">
-              <Receipt className="h-5 w-5 text-purple-400" />
+              <Receipt className="h-5 w-5 text-[#d3bb73]" />
               <span className="text-sm text-[#e5e4e2]/60">Bilans</span>
             </div>
             {clientInfo?.can_invoice && (

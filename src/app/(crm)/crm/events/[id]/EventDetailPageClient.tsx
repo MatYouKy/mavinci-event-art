@@ -619,9 +619,11 @@ export default function EventDetailPageClient({
   }, [offersData]);
 
   const plannedRevenue = useMemo(() => {
-    // ✅ preferuj total_amount z oferty
-    if (latestOffer?.total_amount != null) return Number(latestOffer.total_amount);
-    // fallback: event.expected_revenue
+    if (latestOffer?.total_amount != null) {
+      const netto = Number(latestOffer.subtotal || latestOffer.total_amount || 0);
+      const vat = Number(latestOffer.tax_amount || 0);
+      return netto + vat;
+    }
     if (event?.expected_revenue != null) return Number(event.expected_revenue);
     return 0;
   }, [latestOffer, event?.expected_revenue]);
@@ -903,25 +905,24 @@ export default function EventDetailPageClient({
                         {plannedRevenue.toLocaleString('pl-PL')} zł
                       </p>
 
-                      {/* jeśli masz ofertę – pokaż rozbicie */}
                       {latestOffer && (
                         <div className="mt-2 space-y-1 text-xs text-[#e5e4e2]/50">
                           <div>
                             Netto:{' '}
                             <span className="text-[#e5e4e2]/70">
-                              {Number(latestOffer.subtotal || 0).toLocaleString('pl-PL')} zł
+                              {Number(latestOffer.subtotal || latestOffer.total_amount || 0).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
                             </span>
                           </div>
                           <div>
-                            VAT ({latestOffer.tax_percent ?? 0}%):{' '}
+                            VAT ({latestOffer.tax_percent ?? 23}%):{' '}
                             <span className="text-[#e5e4e2]/70">
-                              {Number(latestOffer.total_amount || 0).toLocaleString('pl-PL')} zł
+                              {Number(latestOffer.tax_amount || 0).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
                             </span>
                           </div>
                           <div>
                             Brutto:{' '}
                             <span className="text-[#e5e4e2]/70">
-                              {Number(latestOffer.total_amount || 0).toLocaleString('pl-PL')} zł
+                              {(Number(latestOffer.subtotal || latestOffer.total_amount || 0) + Number(latestOffer.tax_amount || 0)).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
                             </span>
                           </div>
                         </div>
