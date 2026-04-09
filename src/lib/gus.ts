@@ -32,14 +32,26 @@ export async function fetchCompanyDataFromGUS(nip: string): Promise<GUSCompanyDa
     }
 
     const subject = data.result.subject;
+    const rawAddress = subject.workingAddress || subject.residenceAddress || '';
+
+    let street = rawAddress;
+    let city: string | undefined;
+    let postalCode: string | undefined;
+
+    const postalMatch = rawAddress.match(/(\d{2}-\d{3})\s+(.+)$/);
+    if (postalMatch) {
+      postalCode = postalMatch[1];
+      city = postalMatch[2].trim();
+      street = rawAddress.substring(0, postalMatch.index).trim().replace(/,\s*$/, '');
+    }
 
     return {
       nip: subject.nip,
       name: subject.name || '',
       regon: subject.regon || undefined,
-      address: subject.workingAddress || subject.residenceAddress || undefined,
-      city: undefined,
-      postalCode: undefined,
+      address: street || undefined,
+      city,
+      postalCode,
       voivodeship: undefined,
     };
   } catch (error: any) {

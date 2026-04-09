@@ -206,6 +206,8 @@ export default function NewContactPage() {
           name: data.name || formData.name,
           regon: data.regon || formData.regon,
           address: data.address || formData.address,
+          city: data.city || formData.city,
+          postalCode: data.postalCode || formData.postalCode,
         });
         showSnackbar('Dane pobrane z GUS', 'success');
       }
@@ -616,17 +618,83 @@ export default function NewContactPage() {
                     </div>
                   </div>
 
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-300">
-                      Strona WWW
-                    </label>
-                    <input
-                      type="url"
-                      value={formData.website}
-                      onChange={(e) => setFormData({ ...formData, website: e.target.value })}
-                      className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                      placeholder="https://"
-                    />
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                    <div className="md:col-span-2">
+                      <label className="mb-2 block text-sm font-medium text-gray-300">
+                        Adres (ulica)
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.address}
+                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                        placeholder="np. ul. Chmielna 85/87"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-gray-300">
+                        Kod pocztowy
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.postalCode}
+                        onChange={(e) => setFormData({ ...formData, postalCode: e.target.value })}
+                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                        placeholder="00-000"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-gray-300">
+                        Miasto
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.city}
+                        onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                        placeholder="np. Warszawa"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-gray-300">
+                        Email
+                      </label>
+                      <input
+                        type="email"
+                        value={formData.email}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-gray-300">
+                        Telefon
+                      </label>
+                      <input
+                        type="tel"
+                        value={formData.phone}
+                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-gray-300">
+                        Strona WWW
+                      </label>
+                      <input
+                        type="url"
+                        value={formData.website}
+                        onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                        placeholder="https://"
+                      />
+                    </div>
                   </div>
                 </>
               )}
@@ -953,28 +1021,22 @@ export default function NewContactPage() {
                 </div>
               )}
 
-              <div className="border-t border-gray-700 pt-6">
-                <h3 className="mb-4 text-lg font-semibold text-white">Dane kontaktowe</h3>
-                <div className="space-y-4">
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-300">Email</label>
-                    <input
-                      type="email"
-                      value={
-                        contactType === 'contact' || contactType === 'individual'
-                          ? newContact.email
-                          : formData.email
-                      }
-                      onChange={(e) =>
-                        contactType === 'contact' || contactType === 'individual'
-                          ? setNewContact({ ...newContact, email: e.target.value })
-                          : setFormData({ ...formData, email: e.target.value })
-                      }
-                      className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                    />
-                  </div>
+              {(contactType === 'contact' || contactType === 'individual') && (
+                <div className="border-t border-gray-700 pt-6">
+                  <h3 className="mb-4 text-lg font-semibold text-white">Dane kontaktowe</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-gray-300">Email</label>
+                      <input
+                        type="email"
+                        value={newContact.email}
+                        onChange={(e) =>
+                          setNewContact({ ...newContact, email: e.target.value })
+                        }
+                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                      />
+                    </div>
 
-                  {contactType === 'contact' || contactType === 'individual' ? (
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                       <div>
                         <label className="mb-2 block text-sm font-medium text-gray-300">
@@ -1009,37 +1071,9 @@ export default function NewContactPage() {
                         </div>
                       )}
                     </div>
-                  ) : (
-                    <div>
-                      <label className="mb-2 block text-sm font-medium text-gray-300">
-                        Telefon
-                      </label>
-                      <input
-                        type="tel"
-                        value={formData.phone}
-                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                      />
-                    </div>
-                  )}
-
-                  {(contactType === 'contact' || contactType === 'individual') &&
-                    formData.address && (
-                      <div>
-                        <label className="mb-2 block text-sm font-medium text-gray-300">
-                          Adres <span className="text-xs text-gray-500">(opcjonalne)</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={formData.address}
-                          onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                          placeholder="ul. Przykładowa 123"
-                        />
-                      </div>
-                    )}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {(contactType === 'organization' || contactType === 'subcontractor') && (
                 <OrganizationLocationPicker

@@ -3,10 +3,10 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Building2, Mail, Phone, MapPin, Star, DollarSign, FileText, Plus, CreditCard as Edit, Save, X, User, CircleUser as UserCircle, History, Users, Globe, CreditCard, Loader2, ExternalLink, Trash2, StickyNote, Receipt, Calendar, ChevronDown, Check, Wrench } from 'lucide-react';
+import { ArrowLeft, Building2, Mail, Phone, MapPin, Star, DollarSign, FileText, Plus, CreditCard as Edit, Save, X, User, CircleUser as UserCircle, History, Users, Globe, CreditCard, Loader2, ExternalLink, Trash2, StickyNote, Receipt, Calendar, ChevronDown, Check, Wrench, Search } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import { parseGoogleMapsUrl } from '@/lib/gus';
+import { parseGoogleMapsUrl, fetchCompanyDataFromGUS } from '@/lib/gus';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import OrganizationLocationPicker from '@/components/crm/OrganizationLocationPicker';
 import OrganizationRepresentatives from '@/components/crm/OrganizationRepresentatives';
@@ -190,6 +190,7 @@ export default function OrganizationDetailPage() {
   const [editedData, setEditedData] = useState<Partial<Organization & Contact>>({});
   const [saving, setSaving] = useState(false);
 
+  const [loadingGUS, setLoadingGUS] = useState(false);
   const [showAddContactModal, setShowAddContactModal] = useState(false);
   const [addContactMode, setAddContactMode] = useState<'select' | 'create'>('select');
   const [availableContacts, setAvailableContacts] = useState<any[]>([]);
@@ -617,6 +618,35 @@ useEffect(() => {
       }
     } catch (error: any) {
       showSnackbar(error.message || 'Błąd podczas parsowania URL', 'error');
+    }
+  };
+
+  const handleFetchFromGUS = async () => {
+    const nip = editedData.nip || organization?.nip;
+    if (!nip) {
+      showSnackbar('Wprowadź NIP', 'error');
+      return;
+    }
+
+    try {
+      setLoadingGUS(true);
+      const data = await fetchCompanyDataFromGUS(nip);
+
+      if (data) {
+        setEditedData({
+          ...editedData,
+          name: data.name || editedData.name,
+          regon: data.regon || editedData.regon,
+          address: data.address || editedData.address,
+          city: data.city || editedData.city,
+          postal_code: data.postalCode || editedData.postal_code,
+        });
+        showSnackbar('Dane pobrane z GUS', 'success');
+      }
+    } catch (error: any) {
+      showSnackbar(error.message || 'Błąd podczas pobierania danych z GUS', 'error');
+    } finally {
+      setLoadingGUS(false);
     }
   };
 
@@ -1244,12 +1274,27 @@ useEffect(() => {
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-400">NIP</label>
                   {editMode ? (
-                    <input
-                      type="text"
-                      value={editedData.nip || ''}
-                      onChange={(e) => setEditedData({ ...editedData, nip: e.target.value })}
-                      className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                    />
+                    <div className="flex space-x-2">
+                      <input
+                        type="text"
+                        value={editedData.nip || ''}
+                        onChange={(e) => setEditedData({ ...editedData, nip: e.target.value })}
+                        className="flex-1 rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleFetchFromGUS}
+                        disabled={loadingGUS}
+                        className="flex items-center space-x-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#0f1119] transition-colors hover:bg-[#c4a859] disabled:opacity-50"
+                      >
+                        {loadingGUS ? (
+                          <Loader2 className="h-5 w-5 animate-spin" />
+                        ) : (
+                          <Search className="h-5 w-5" />
+                        )}
+                        <span>GUS</span>
+                      </button>
+                    </div>
                   ) : (
                     <p className="text-white">{organization.nip || '-'}</p>
                   )}
@@ -1316,6 +1361,57 @@ useEffect(() => {
                     />
                   ) : (
                     <p className="text-white">{organization.regon || '-'}</p>
+                  )}
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="mb-1 block text-sm font-medium text-gray-400">
+                    Adres (ulica)
+                  </label>
+                  {editMode ? (
+                    <input
+                      type="text"
+                      value={editedData.address || ''}
+                      onChange={(e) => setEditedData({ ...editedData, address: e.target.value })}
+                      className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                      placeholder="np. ul. Chmielna 85/87"
+                    />
+                  ) : (
+                    <p className="text-white">{organization.address || '-'}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-400">
+                    Kod pocztowy
+                  </label>
+                  {editMode ? (
+                    <input
+                      type="text"
+                      value={editedData.postal_code || ''}
+                      onChange={(e) => setEditedData({ ...editedData, postal_code: e.target.value })}
+                      className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                      placeholder="00-000"
+                    />
+                  ) : (
+                    <p className="text-white">{organization.postal_code || '-'}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-400">
+                    Miasto
+                  </label>
+                  {editMode ? (
+                    <input
+                      type="text"
+                      value={editedData.city || ''}
+                      onChange={(e) => setEditedData({ ...editedData, city: e.target.value })}
+                      className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                      placeholder="np. Warszawa"
+                    />
+                  ) : (
+                    <p className="text-white">{organization.city || '-'}</p>
                   )}
                 </div>
 
