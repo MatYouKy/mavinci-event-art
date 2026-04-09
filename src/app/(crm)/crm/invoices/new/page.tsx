@@ -24,11 +24,13 @@ interface MyCompany {
   name: string;
   legal_name: string;
   nip: string;
-  address: string | null;
-  city: string | null;
-  postal_code: string | null;
-  email: string | null;
-  phone: string | null;
+  street: string;
+  building_number: string;
+  apartment_number: string | null;
+  city: string;
+  postal_code: string;
+  email: string;
+  phone: string;
   bank_account: string | null;
   is_default: boolean;
 }
@@ -332,10 +334,16 @@ export default function NewInvoicePage() {
         .eq('email', user?.email)
         .maybeSingle();
 
+      const sellerStreet = [
+        selectedCompany.street,
+        selectedCompany.building_number,
+        selectedCompany.apartment_number ? `/ ${selectedCompany.apartment_number}` : '',
+      ].filter(Boolean).join(' ').trim();
+
       const missingSellerFields: string[] = [];
       if (!selectedCompany.legal_name) missingSellerFields.push('nazwa firmy');
       if (!selectedCompany.nip) missingSellerFields.push('NIP');
-      if (!selectedCompany.address) missingSellerFields.push('adres (ulica)');
+      if (!selectedCompany.street) missingSellerFields.push('adres (ulica)');
       if (!selectedCompany.postal_code) missingSellerFields.push('kod pocztowy');
       if (!selectedCompany.city) missingSellerFields.push('miasto');
 
@@ -367,9 +375,9 @@ export default function NewInvoicePage() {
         my_company_id: selectedCompanyId,
         seller_name: selectedCompany.legal_name,
         seller_nip: selectedCompany.nip,
-        seller_street: selectedCompany.address || '',
-        seller_postal_code: selectedCompany.postal_code || '',
-        seller_city: selectedCompany.city || '',
+        seller_street: sellerStreet,
+        seller_postal_code: selectedCompany.postal_code,
+        seller_city: selectedCompany.city,
         seller_country: 'Polska',
         buyer_name: selectedOrg.name,
         buyer_nip: selectedOrg.nip,
@@ -379,7 +387,7 @@ export default function NewInvoicePage() {
         buyer_country: 'Polska',
         payment_method: settings?.default_payment_method || 'Przelew',
         bank_account: selectedCompany.bank_account || '',
-        issue_place: selectedCompany.city || '',
+        issue_place: selectedCompany.city,
         created_by: employee?.id,
       };
 
