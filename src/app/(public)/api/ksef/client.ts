@@ -11,6 +11,9 @@ import type {
   KSeFPublicKeyCertificate,
   KSeFExceptionResponse,
   KSeFRedeemTokensResponse,
+  KSeFSessionOpenOnlineResponse,
+  KSeFInvoiceSendResponse,
+  KSeFSessionCloseResponse,
 } from "./types";
 
 function getBaseUrl(isTestEnvironment: boolean) {
@@ -193,6 +196,88 @@ export async function redeemKSeFAuthToken(
       headers: {
         Accept: "application/json",
         Authorization: `Bearer ${authenticationToken}`,
+      },
+    },
+    { isTestEnvironment, context }
+  );
+}
+
+export async function openKSeFOnlineSession(
+  accessToken: string,
+  invoiceVersion: "v2" | "v3",
+  isTestEnvironment: boolean,
+  context?: Record<string, unknown>
+): Promise<KSeFSessionOpenOnlineResponse> {
+  return await ksefFetch<KSeFSessionOpenOnlineResponse>(
+    "/sessions/online",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ invoiceVersion }),
+    },
+    { isTestEnvironment, context }
+  );
+}
+
+export async function sendKSeFInvoiceInSession(
+  sessionReferenceNumber: string,
+  invoiceXml: string,
+  accessToken: string,
+  isTestEnvironment: boolean,
+  context?: Record<string, unknown>
+): Promise<KSeFInvoiceSendResponse> {
+  return await ksefFetch<KSeFInvoiceSendResponse>(
+    `/sessions/online/${sessionReferenceNumber}/invoices`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/xml",
+        Accept: "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: invoiceXml,
+    },
+    { isTestEnvironment, context }
+  );
+}
+
+export async function getKSeFInvoiceStatus(
+  sessionReferenceNumber: string,
+  invoiceReferenceNumber: string,
+  accessToken: string,
+  isTestEnvironment: boolean,
+  context?: Record<string, unknown>
+): Promise<any> {
+  return await ksefFetch<any>(
+    `/sessions/${sessionReferenceNumber}/invoices/${invoiceReferenceNumber}`,
+    {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+    { isTestEnvironment, context }
+  );
+}
+
+export async function closeKSeFOnlineSession(
+  sessionReferenceNumber: string,
+  accessToken: string,
+  isTestEnvironment: boolean,
+  context?: Record<string, unknown>
+): Promise<KSeFSessionCloseResponse> {
+  return await ksefFetch<KSeFSessionCloseResponse>(
+    `/sessions/online/${sessionReferenceNumber}/close`,
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${accessToken}`,
       },
     },
     { isTestEnvironment, context }

@@ -94,3 +94,19 @@ export interface KSeFRedeemTokensResponse {
     validUntil: string;
   };
 }
+
+export interface KSeFSessionOpenOnlineResponse {
+  referenceNumber: string;
+  dateCreated?: string;
+}
+
+export interface KSeFInvoiceSendResponse {
+  invoiceReferenceNumber: string;
+  timestamp?: string;
+}
+
+export interface KSeFSessionCloseResponse {
+  processingCode: number;
+  processingDescription?: string;
+  referenceNumber?: string;
+}

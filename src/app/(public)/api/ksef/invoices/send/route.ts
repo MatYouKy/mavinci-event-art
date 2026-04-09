@@ -7,7 +7,10 @@ import {
   getKSeFAuthStatus,
   redeemKSeFAuthToken,
   getKSeFPublicKeyCertificates,
-  ksefFetch,
+  openKSeFOnlineSession,
+  sendKSeFInvoiceInSession,
+  getKSeFInvoiceStatus,
+  closeKSeFOnlineSession,
 } from '../../../ksef/client';
 import { encryptKSeFTokenPayloadFromCertificate } from '../../../ksef/crypto';
 
@@ -193,33 +196,77 @@ export async function POST(request: NextRequest) {
       xmlLength: xmlContent.length,
     });
 
-    // 8. Wyślij fakturę do KSeF
-    const sendResponse = await ksefFetch<{
-      referenceNumber: string;
-      timestamp: string;
-      elementReferenceNumber?: string;
-    }>(
-      '/invoices/send',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/xml',
-          Accept: 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: xmlContent,
-      },
-      { isTestEnvironment: isTestEnv, context: { action: 'send-invoice', invoiceId } }
+    // 8. Otwórz sesję interaktywną w KSeF
+    console.log('Opening KSeF online session...');
+    const sessionResponse = await openKSeFOnlineSession(
+      accessToken,
+      'v2',
+      isTestEnv,
+      { action: 'send-invoice', invoiceId }
     );
 
-    console.log('KSeF send response:', sendResponse);
+    const sessionId = sessionResponse.referenceNumber;
+    console.log('KSeF session opened:', { sessionId });
 
-    // 9. Zapisz w tabeli ksef_invoices
+    // 9. Wyślij fakturę w ramach sesji
+    const sendResponse = await sendKSeFInvoiceInSession(
+      sessionId,
+      xmlContent,
+      accessToken,
+      isTestEnv,
+      { action: 'send-invoice', invoiceId }
+    );
+
+    console.log('KSeF invoice sent in session:', sendResponse);
+
+    // 10. Sprawdź status faktury (polling)
+    let ksefNumber: string | undefined;
+    let acquisitionTimestamp: string | undefined;
+    const maxRetries = 10;
+    for (let i = 0; i < maxRetries; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      const invoiceStatus = await getKSeFInvoiceStatus(
+        sessionId,
+        sendResponse.invoiceReferenceNumber,
+        accessToken,
+        isTestEnv,
+        { action: 'send-invoice', invoiceId }
+      );
+
+      console.log(`Invoice status check ${i + 1}:`, invoiceStatus);
+
+      const statusCode = invoiceStatus?.processingCode ?? invoiceStatus?.status?.code;
+      if (statusCode === 200) {
+        ksefNumber = invoiceStatus.ksefReferenceNumber || invoiceStatus.invoiceKsefNumber;
+        acquisitionTimestamp = invoiceStatus.acquisitionTimestamp || invoiceStatus.acquisitionDate;
+        break;
+      }
+      if (statusCode && statusCode >= 400) {
+        throw new Error(`KSeF odrzucił fakturę: ${statusCode} - ${invoiceStatus?.processingDescription || invoiceStatus?.status?.description}`);
+      }
+    }
+
+    // 11. Zamknij sesję
+    try {
+      await closeKSeFOnlineSession(sessionId, accessToken, isTestEnv, {
+        action: 'send-invoice',
+        invoiceId,
+      });
+      console.log('KSeF session closed');
+    } catch (closeErr) {
+      console.warn('Failed to close KSeF session:', closeErr);
+    }
+
+    const finalRefNumber = ksefNumber || sendResponse.invoiceReferenceNumber;
+    const finalTimestamp = acquisitionTimestamp || sendResponse.timestamp || new Date().toISOString();
+
+    // 12. Zapisz w tabeli ksef_invoices
     const { data: ksefInvoice, error: ksefError } = await supabase
       .from('ksef_invoices')
       .insert({
         invoice_id: invoiceId,
-        ksef_reference_number: sendResponse.referenceNumber,
+        ksef_reference_number: finalRefNumber,
         invoice_type: 'issued',
         invoice_number: invoice.invoice_number,
         seller_name: invoice.seller_name,
@@ -234,7 +281,7 @@ export async function POST(request: NextRequest) {
         payment_due_date: invoice.payment_due_date,
         xml_content: xmlContent,
         sync_status: 'synced',
-        ksef_issued_at: sendResponse.timestamp,
+        ksef_issued_at: finalTimestamp,
         synced_at: new Date().toISOString(),
         my_company_id: invoice.my_company_id,
       })
@@ -243,10 +290,9 @@ export async function POST(request: NextRequest) {
 
     if (ksefError) {
       console.error('Error saving to ksef_invoices:', ksefError);
-      // Nie przerywamy - faktura została wysłana, tylko zapis nie udał się
     }
 
-    // 10. Zaktualizuj status faktury
+    // 13. Zaktualizuj status faktury
     await supabase
       .from('invoices')
       .update({
@@ -255,7 +301,7 @@ export async function POST(request: NextRequest) {
       })
       .eq('id', invoiceId);
 
-    // 11. Dodaj do historii
+    // 14. Dodaj do historii
     const { data: user } = await supabase.auth.getUser();
     const { data: employee } = await supabase
       .from('employees')
@@ -268,16 +314,16 @@ export async function POST(request: NextRequest) {
       action: 'sent_to_ksef',
       changed_by: employee?.id,
       changes: {
-        ksef_reference_number: sendResponse.referenceNumber,
-        sent_at: sendResponse.timestamp,
+        ksef_reference_number: finalRefNumber,
+        sent_at: finalTimestamp,
       },
     });
 
     return NextResponse.json({
       success: true,
       message: 'Faktura została pomyślnie wysłana do KSeF',
-      ksef_reference_number: sendResponse.referenceNumber,
-      ksef_timestamp: sendResponse.timestamp,
+      ksef_reference_number: finalRefNumber,
+      ksef_timestamp: finalTimestamp,
       invoice: ksefInvoice,
     });
   } catch (error: any) {
