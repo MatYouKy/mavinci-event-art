@@ -4,10 +4,12 @@ import { generateFA2XML, validateFA2Requirements } from '@/lib/ksef/generateFA2X
 import {
   getKSeFChallenge,
   authenticateWithKSeFToken,
+  getKSeFAuthStatus,
+  redeemKSeFAuthToken,
+  getKSeFPublicKeyCertificates,
   ksefFetch,
 } from '../../../ksef/client';
 import { encryptKSeFTokenPayloadFromCertificate } from '../../../ksef/crypto';
-import { getKSeFPublicKeyCertificate } from '../../../ksef/parsePaymentData';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -111,13 +113,24 @@ export async function POST(request: NextRequest) {
         invoiceId,
       });
 
-      // 6b. Pobierz certyfikat publiczny KSeF
-      const publicKeyCert = await getKSeFPublicKeyCertificate(isTestEnv);
+      // 6b. Pobierz certyfikaty publiczne KSeF
+      const publicKeyCertificates = await getKSeFPublicKeyCertificates(isTestEnv, {
+        action: 'send-invoice',
+        invoiceId,
+      });
+
+      const encryptionCert = publicKeyCertificates.find((cert) =>
+        cert.usage?.includes('KsefTokenEncryption')
+      );
+      if (!encryptionCert) {
+        throw new Error('Nie znaleziono certyfikatu do szyfrowania tokenu KSeF');
+      }
 
       // 6c. Zaszyfruj token
+      const plainToEncrypt = `${credentials.token}|${challengeResponse.timestampMs}`;
       const encryptedToken = encryptKSeFTokenPayloadFromCertificate(
-        credentials.token,
-        publicKeyCert
+        plainToEncrypt,
+        encryptionCert.certificate
       );
 
       // 6d. Uwierzytelnij
@@ -131,21 +144,44 @@ export async function POST(request: NextRequest) {
         { action: 'send-invoice', invoiceId }
       );
 
-      // 6e. Zapisz nowy token
-      const expiryDate = new Date();
-      expiryDate.setHours(expiryDate.getHours() + 24); // Token ważny 24h
+      if (!authResponse.authenticationToken?.token) {
+        throw new Error('KSeF nie zwrócił authenticationToken');
+      }
 
+      // 6e. Poczekaj na zatwierdzenie sesji
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
+      const authStatus = await getKSeFAuthStatus(
+        authResponse.referenceNumber,
+        authResponse.authenticationToken.token,
+        isTestEnv,
+        { action: 'send-invoice', invoiceId }
+      );
+
+      if (authStatus.status?.code !== 200) {
+        console.log('Auth status not ready:', authStatus);
+        throw new Error(`KSeF auth status: ${authStatus.status?.code} - ${authStatus.status?.description}`);
+      }
+
+      // 6f. Wymień authenticationToken na accessToken
+      const redeemResponse = await redeemKSeFAuthToken(
+        authResponse.authenticationToken.token,
+        isTestEnv,
+        { action: 'send-invoice', invoiceId }
+      );
+
+      // 6g. Zapisz nowy accessToken
       await supabase
         .from('ksef_credentials')
         .update({
-          access_token: authResponse.authenticationToken,
-          access_token_valid_until: expiryDate.toISOString(),
+          access_token: redeemResponse.accessToken.token,
+          access_token_valid_until: redeemResponse.accessToken.validUntil,
           last_auth_reference_number: authResponse.referenceNumber,
           last_authenticated_at: new Date().toISOString(),
         })
         .eq('id', credentials.id);
 
-      accessToken = authResponse.authenticationToken;
+      accessToken = redeemResponse.accessToken.token;
     }
 
     // 7. Generuj XML FA(2)
@@ -163,7 +199,7 @@ export async function POST(request: NextRequest) {
       timestamp: string;
       elementReferenceNumber?: string;
     }>(
-      '/invoices',
+      '/invoices/send',
       {
         method: 'POST',
         headers: {
