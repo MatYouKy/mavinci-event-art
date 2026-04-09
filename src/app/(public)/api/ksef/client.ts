@@ -11,10 +11,14 @@ import type {
   KSeFPublicKeyCertificate,
   KSeFExceptionResponse,
   KSeFRedeemTokensResponse,
+  KSeFSessionOpenOnlineRequest,
   KSeFSessionOpenOnlineResponse,
-  KSeFInvoiceSendResponse,
-  KSeFSessionCloseResponse,
+  KSeFSendInvoiceResponse,
+  KSeFSessionStatusResponse,
+  KSeFSessionInvoicesResponse,
+  KSeFFormCode,
 } from "./types";
+import type { EncryptedInvoicePayload, SymmetricKeyMaterial } from "./crypto";
 
 function getBaseUrl(isTestEnvironment: boolean) {
   return isTestEnvironment ? KSEF_API_BASE_URL_TEST : KSEF_API_BASE_URL_PROD;
@@ -204,10 +208,19 @@ export async function redeemKSeFAuthToken(
 
 export async function openKSeFOnlineSession(
   accessToken: string,
-  invoiceVersion: "v2" | "v3",
+  formCode: KSeFFormCode,
+  encryptionMaterial: SymmetricKeyMaterial,
   isTestEnvironment: boolean,
   context?: Record<string, unknown>
 ): Promise<KSeFSessionOpenOnlineResponse> {
+  const requestBody: KSeFSessionOpenOnlineRequest = {
+    formCode,
+    encryption: {
+      encryptedSymmetricKey: encryptionMaterial.encryptedSymmetricKey,
+      initializationVector: encryptionMaterial.initializationVectorBase64,
+    },
+  };
+
   return await ksefFetch<KSeFSessionOpenOnlineResponse>(
     "/sessions/online",
     {
@@ -217,7 +230,7 @@ export async function openKSeFOnlineSession(
         Accept: "application/json",
         Authorization: `Bearer ${accessToken}`,
       },
-      body: JSON.stringify({ invoiceVersion }),
+      body: JSON.stringify(requestBody),
     },
     { isTestEnvironment, context }
   );
@@ -225,35 +238,53 @@ export async function openKSeFOnlineSession(
 
 export async function sendKSeFInvoiceInSession(
   sessionReferenceNumber: string,
-  invoiceXml: string,
+  encryptedInvoice: EncryptedInvoicePayload,
   accessToken: string,
   isTestEnvironment: boolean,
   context?: Record<string, unknown>
-): Promise<KSeFInvoiceSendResponse> {
-  return await ksefFetch<KSeFInvoiceSendResponse>(
+): Promise<KSeFSendInvoiceResponse> {
+  return await ksefFetch<KSeFSendInvoiceResponse>(
     `/sessions/online/${sessionReferenceNumber}/invoices`,
     {
       method: "POST",
       headers: {
-        "Content-Type": "application/xml",
+        "Content-Type": "application/json",
         Accept: "application/json",
         Authorization: `Bearer ${accessToken}`,
       },
-      body: invoiceXml,
+      body: JSON.stringify(encryptedInvoice),
     },
     { isTestEnvironment, context }
   );
 }
 
-export async function getKSeFInvoiceStatus(
+export async function getKSeFSessionStatus(
   sessionReferenceNumber: string,
-  invoiceReferenceNumber: string,
   accessToken: string,
   isTestEnvironment: boolean,
   context?: Record<string, unknown>
-): Promise<any> {
-  return await ksefFetch<any>(
-    `/sessions/${sessionReferenceNumber}/invoices/${invoiceReferenceNumber}`,
+): Promise<KSeFSessionStatusResponse> {
+  return await ksefFetch<KSeFSessionStatusResponse>(
+    `/sessions/${sessionReferenceNumber}`,
+    {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+    { isTestEnvironment, context }
+  );
+}
+
+export async function getKSeFSessionInvoices(
+  sessionReferenceNumber: string,
+  accessToken: string,
+  isTestEnvironment: boolean,
+  context?: Record<string, unknown>
+): Promise<KSeFSessionInvoicesResponse> {
+  return await ksefFetch<KSeFSessionInvoicesResponse>(
+    `/sessions/${sessionReferenceNumber}/invoices`,
     {
       method: "GET",
       headers: {
@@ -270,8 +301,8 @@ export async function closeKSeFOnlineSession(
   accessToken: string,
   isTestEnvironment: boolean,
   context?: Record<string, unknown>
-): Promise<KSeFSessionCloseResponse> {
-  return await ksefFetch<KSeFSessionCloseResponse>(
+): Promise<void> {
+  await ksefFetch<unknown>(
     `/sessions/online/${sessionReferenceNumber}/close`,
     {
       method: "POST",

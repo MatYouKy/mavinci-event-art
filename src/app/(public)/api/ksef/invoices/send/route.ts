@@ -9,18 +9,25 @@ import {
   getKSeFPublicKeyCertificates,
   openKSeFOnlineSession,
   sendKSeFInvoiceInSession,
-  getKSeFInvoiceStatus,
+  getKSeFSessionInvoices,
   closeKSeFOnlineSession,
 } from '../../../ksef/client';
-import { encryptKSeFTokenPayloadFromCertificate } from '../../../ksef/crypto';
+import {
+  encryptKSeFTokenPayloadFromCertificate,
+  createSymmetricKeyMaterial,
+  encryptInvoiceXml,
+} from '../../../ksef/crypto';
+import type { KSeFFormCode } from '../../../ksef/types';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-/**
- * POST /api/ksef/invoices/send
- * Wyślij fakturę do KSeF
- */
+const FA2_FORM_CODE: KSeFFormCode = {
+  systemCode: 'FA (2)',
+  schemaVersion: '1-0E',
+  value: 'FA',
+};
+
 export async function POST(request: NextRequest) {
   try {
     const { invoiceId } = await request.json();
@@ -31,7 +38,6 @@ export async function POST(request: NextRequest) {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // 1. Pobierz fakturę z pozycjami
     const { data: invoice, error: invoiceError } = await supabase
       .from('invoices')
       .select('*, invoice_items(*)')
@@ -45,7 +51,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 2. Walidacja - proformy nie idą do KSeF
     if (invoice.is_proforma) {
       return NextResponse.json(
         { error: 'Faktury proforma nie mogą być wysłane do KSeF. Wystaw fakturę VAT.' },
@@ -53,7 +58,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 3. Sprawdź czy już nie została wysłana
     if (invoice.status === 'issued') {
       const { data: existingKsef } = await supabase
         .from('ksef_invoices')
@@ -73,7 +77,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 4. Walidacja wymagań FA(2)
     const validation = validateFA2Requirements(invoice);
     if (!validation.valid) {
       return NextResponse.json(
@@ -85,7 +88,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 5. Pobierz dane uwierzytelniające dla firmy
     const { data: credentials, error: credError } = await supabase
       .from('ksef_credentials')
       .select('*')
@@ -102,21 +104,17 @@ export async function POST(request: NextRequest) {
 
     const isTestEnv = credentials.is_test_environment ?? false;
 
-    // 6. Sprawdź token dostępu
     let accessToken = credentials.access_token;
     const tokenExpiry = credentials.access_token_valid_until;
 
     if (!accessToken || !tokenExpiry || new Date(tokenExpiry) < new Date()) {
-      // Token wygasł lub nie istnieje - trzeba się ponownie uwierzytelnić
       console.log('Access token expired or missing, re-authenticating...');
 
-      // 6a. Pobierz challenge
       const challengeResponse = await getKSeFChallenge(isTestEnv, {
         action: 'send-invoice',
         invoiceId,
       });
 
-      // 6b. Pobierz certyfikaty publiczne KSeF
       const publicKeyCertificates = await getKSeFPublicKeyCertificates(isTestEnv, {
         action: 'send-invoice',
         invoiceId,
@@ -126,17 +124,15 @@ export async function POST(request: NextRequest) {
         cert.usage?.includes('KsefTokenEncryption')
       );
       if (!encryptionCert) {
-        throw new Error('Nie znaleziono certyfikatu do szyfrowania tokenu KSeF');
+        throw new Error('Nie znaleziono certyfikatu KsefTokenEncryption');
       }
 
-      // 6c. Zaszyfruj token
       const plainToEncrypt = `${credentials.token}|${challengeResponse.timestampMs}`;
       const encryptedToken = encryptKSeFTokenPayloadFromCertificate(
         plainToEncrypt,
         encryptionCert.certificate
       );
 
-      // 6d. Uwierzytelnij
       const authResponse = await authenticateWithKSeFToken(
         {
           encryptedToken,
@@ -151,7 +147,6 @@ export async function POST(request: NextRequest) {
         throw new Error('KSeF nie zwrócił authenticationToken');
       }
 
-      // 6e. Poczekaj na zatwierdzenie sesji
       await new Promise((resolve) => setTimeout(resolve, 1500));
 
       const authStatus = await getKSeFAuthStatus(
@@ -162,23 +157,24 @@ export async function POST(request: NextRequest) {
       );
 
       if (authStatus.status?.code !== 200) {
-        console.log('Auth status not ready:', authStatus);
-        throw new Error(`KSeF auth status: ${authStatus.status?.code} - ${authStatus.status?.description}`);
+        throw new Error(
+          `KSeF auth status: ${authStatus.status?.code} - ${authStatus.status?.description}`
+        );
       }
 
-      // 6f. Wymień authenticationToken na accessToken
       const redeemResponse = await redeemKSeFAuthToken(
         authResponse.authenticationToken.token,
         isTestEnv,
         { action: 'send-invoice', invoiceId }
       );
 
-      // 6g. Zapisz nowy accessToken
       await supabase
         .from('ksef_credentials')
         .update({
           access_token: redeemResponse.accessToken.token,
           access_token_valid_until: redeemResponse.accessToken.validUntil,
+          refresh_token: redeemResponse.refreshToken?.token ?? null,
+          refresh_token_valid_until: redeemResponse.refreshToken?.validUntil ?? null,
           last_auth_reference_number: authResponse.referenceNumber,
           last_authenticated_at: new Date().toISOString(),
         })
@@ -187,7 +183,6 @@ export async function POST(request: NextRequest) {
       accessToken = redeemResponse.accessToken.token;
     }
 
-    // 7. Generuj XML FA(2)
     const xmlContent = generateFA2XML(invoice);
 
     console.log('Generated FA(2) XML:', {
@@ -196,11 +191,25 @@ export async function POST(request: NextRequest) {
       xmlLength: xmlContent.length,
     });
 
-    // 8. Otwórz sesję interaktywną w KSeF
+    const publicKeyCertificates = await getKSeFPublicKeyCertificates(isTestEnv, {
+      action: 'session-encryption',
+      invoiceId,
+    });
+
+    const symmetricKeyCert = publicKeyCertificates.find((cert) =>
+      cert.usage?.includes('SymmetricKeyEncryption')
+    );
+    if (!symmetricKeyCert) {
+      throw new Error('Nie znaleziono certyfikatu SymmetricKeyEncryption');
+    }
+
+    const keyMaterial = createSymmetricKeyMaterial(symmetricKeyCert.certificate);
+
     console.log('Opening KSeF online session...');
     const sessionResponse = await openKSeFOnlineSession(
       accessToken,
-      'v2',
+      FA2_FORM_CODE,
+      keyMaterial,
       isTestEnv,
       { action: 'send-invoice', invoiceId }
     );
@@ -208,46 +217,55 @@ export async function POST(request: NextRequest) {
     const sessionId = sessionResponse.referenceNumber;
     console.log('KSeF session opened:', { sessionId });
 
-    // 9. Wyślij fakturę w ramach sesji
+    const encryptedInvoice = encryptInvoiceXml(xmlContent, keyMaterial);
+
+    console.log('Sending encrypted invoice in session...', {
+      invoiceSize: encryptedInvoice.invoiceSize,
+      encryptedSize: encryptedInvoice.encryptedInvoiceSize,
+    });
+
     const sendResponse = await sendKSeFInvoiceInSession(
       sessionId,
-      xmlContent,
+      encryptedInvoice,
       accessToken,
       isTestEnv,
       { action: 'send-invoice', invoiceId }
     );
 
-    console.log('KSeF invoice sent in session:', sendResponse);
+    console.log('KSeF invoice sent:', sendResponse);
 
-    // 10. Sprawdź status faktury (polling)
     let ksefNumber: string | undefined;
     let acquisitionTimestamp: string | undefined;
-    const maxRetries = 10;
+    const maxRetries = 15;
     for (let i = 0; i < maxRetries; i++) {
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
-      const invoiceStatus = await getKSeFInvoiceStatus(
-        sessionId,
-        sendResponse.invoiceReferenceNumber,
-        accessToken,
-        isTestEnv,
-        { action: 'send-invoice', invoiceId }
-      );
+      try {
+        const sessionInvoices = await getKSeFSessionInvoices(
+          sessionId,
+          accessToken,
+          isTestEnv,
+          { action: 'check-invoice-status', invoiceId, attempt: i + 1 }
+        );
 
-      console.log(`Invoice status check ${i + 1}:`, invoiceStatus);
+        console.log(`Invoice status check ${i + 1}:`, sessionInvoices);
 
-      const statusCode = invoiceStatus?.processingCode ?? invoiceStatus?.status?.code;
-      if (statusCode === 200) {
-        ksefNumber = invoiceStatus.ksefReferenceNumber || invoiceStatus.invoiceKsefNumber;
-        acquisitionTimestamp = invoiceStatus.acquisitionTimestamp || invoiceStatus.acquisitionDate;
-        break;
-      }
-      if (statusCode && statusCode >= 400) {
-        throw new Error(`KSeF odrzucił fakturę: ${statusCode} - ${invoiceStatus?.processingDescription || invoiceStatus?.status?.description}`);
+        const inv = sessionInvoices.invoices?.find(
+          (inv) =>
+            inv.invoiceReferenceNumber === sendResponse.referenceNumber ||
+            inv.invoiceReferenceNumber === sendResponse.invoiceReferenceNumber
+        );
+
+        if (inv?.ksefReferenceNumber) {
+          ksefNumber = inv.ksefReferenceNumber;
+          acquisitionTimestamp = inv.acquisitionTimestamp;
+          break;
+        }
+      } catch (pollErr) {
+        console.warn(`Poll attempt ${i + 1} failed:`, pollErr);
       }
     }
 
-    // 11. Zamknij sesję
     try {
       await closeKSeFOnlineSession(sessionId, accessToken, isTestEnv, {
         action: 'send-invoice',
@@ -258,10 +276,13 @@ export async function POST(request: NextRequest) {
       console.warn('Failed to close KSeF session:', closeErr);
     }
 
-    const finalRefNumber = ksefNumber || sendResponse.invoiceReferenceNumber;
-    const finalTimestamp = acquisitionTimestamp || sendResponse.timestamp || new Date().toISOString();
+    const finalRefNumber =
+      ksefNumber ||
+      sendResponse.invoiceReferenceNumber ||
+      sendResponse.referenceNumber;
+    const finalTimestamp =
+      acquisitionTimestamp || sendResponse.timestamp || new Date().toISOString();
 
-    // 12. Zapisz w tabeli ksef_invoices
     const { data: ksefInvoice, error: ksefError } = await supabase
       .from('ksef_invoices')
       .insert({
@@ -292,7 +313,6 @@ export async function POST(request: NextRequest) {
       console.error('Error saving to ksef_invoices:', ksefError);
     }
 
-    // 13. Zaktualizuj status faktury
     await supabase
       .from('invoices')
       .update({
@@ -301,7 +321,6 @@ export async function POST(request: NextRequest) {
       })
       .eq('id', invoiceId);
 
-    // 14. Dodaj do historii
     const { data: user } = await supabase.auth.getUser();
     const { data: employee } = await supabase
       .from('employees')

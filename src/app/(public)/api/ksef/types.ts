@@ -95,18 +95,44 @@ export interface KSeFRedeemTokensResponse {
   };
 }
 
+export interface KSeFFormCode {
+  systemCode: string;
+  schemaVersion: string;
+  value: string;
+}
+
+export interface KSeFSessionOpenOnlineRequest {
+  formCode: KSeFFormCode;
+  encryption: {
+    encryptedSymmetricKey: string;
+    initializationVector: string;
+  };
+}
+
 export interface KSeFSessionOpenOnlineResponse {
   referenceNumber: string;
   dateCreated?: string;
 }
 
-export interface KSeFInvoiceSendResponse {
-  invoiceReferenceNumber: string;
+export interface KSeFSendInvoiceResponse {
+  referenceNumber: string;
+  invoiceReferenceNumber?: string;
   timestamp?: string;
 }
 
-export interface KSeFSessionCloseResponse {
-  processingCode: number;
-  processingDescription?: string;
-  referenceNumber?: string;
+export interface KSeFSessionStatusResponse {
+  status: string;
+  referenceNumber: string;
+  invoicesCount?: number;
+}
+
+export interface KSeFSessionInvoiceStatus {
+  invoiceReferenceNumber: string;
+  ksefReferenceNumber?: string;
+  status: string;
+  acquisitionTimestamp?: string;
+}
+
+export interface KSeFSessionInvoicesResponse {
+  invoices: KSeFSessionInvoiceStatus[];
 }
