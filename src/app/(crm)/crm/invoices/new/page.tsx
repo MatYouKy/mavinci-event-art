@@ -24,11 +24,11 @@ interface MyCompany {
   name: string;
   legal_name: string;
   nip: string;
-  address: string;
-  city: string;
-  postal_code: string;
-  email: string;
-  phone: string;
+  address: string | null;
+  city: string | null;
+  postal_code: string | null;
+  email: string | null;
+  phone: string | null;
   bank_account: string | null;
   is_default: boolean;
 }
@@ -332,10 +332,32 @@ export default function NewInvoicePage() {
         .eq('email', user?.email)
         .maybeSingle();
 
+      const missingSellerFields: string[] = [];
+      if (!selectedCompany.legal_name) missingSellerFields.push('nazwa firmy');
+      if (!selectedCompany.nip) missingSellerFields.push('NIP');
+      if (!selectedCompany.address) missingSellerFields.push('adres (ulica)');
+      if (!selectedCompany.postal_code) missingSellerFields.push('kod pocztowy');
+      if (!selectedCompany.city) missingSellerFields.push('miasto');
+
+      if (missingSellerFields.length > 0) {
+        showSnackbar(
+          `Uzupelnij dane firmy wystawiajacej: ${missingSellerFields.join(', ')}. Przejdz do Ustawienia > Moje firmy.`,
+          'error',
+        );
+        setLoading(false);
+        return;
+      }
+
+      if (!selectedOrg.nip) {
+        showSnackbar('Nabywca nie ma uzupelnionego NIP. Uzupelnij dane kontrahenta.', 'error');
+        setLoading(false);
+        return;
+      }
+
       const invoiceData = {
         invoice_number: invoiceNumber,
-        invoice_type: invoiceType === 'proforma' ? 'vat' : invoiceType, // Proformy zapisujemy jako VAT
-        is_proforma: invoiceType === 'proforma', // Ale z flagą is_proforma
+        invoice_type: invoiceType === 'proforma' ? 'vat' : invoiceType,
+        is_proforma: invoiceType === 'proforma',
         status: invoiceType === 'proforma' ? 'proforma' : 'draft',
         issue_date: issueDate,
         sale_date: saleDate,
@@ -345,9 +367,9 @@ export default function NewInvoicePage() {
         my_company_id: selectedCompanyId,
         seller_name: selectedCompany.legal_name,
         seller_nip: selectedCompany.nip,
-        seller_street: selectedCompany.address,
-        seller_postal_code: selectedCompany.postal_code,
-        seller_city: selectedCompany.city,
+        seller_street: selectedCompany.address || '',
+        seller_postal_code: selectedCompany.postal_code || '',
+        seller_city: selectedCompany.city || '',
         seller_country: 'Polska',
         buyer_name: selectedOrg.name,
         buyer_nip: selectedOrg.nip,
@@ -357,7 +379,7 @@ export default function NewInvoicePage() {
         buyer_country: 'Polska',
         payment_method: settings?.default_payment_method || 'Przelew',
         bank_account: selectedCompany.bank_account || '',
-        issue_place: selectedCompany.city,
+        issue_place: selectedCompany.city || '',
         created_by: employee?.id,
       };
 
@@ -403,7 +425,29 @@ export default function NewInvoicePage() {
       router.push(`/crm/invoices/${invoice.id}`);
     } catch (err: any) {
       console.error('Error creating invoice:', err);
-      showSnackbar(err.message || 'Błąd podczas tworzenia faktury', 'error');
+      let msg = 'Blad podczas tworzenia faktury';
+      if (err?.code === '23502') {
+        const col = err.message?.match(/column "(.+?)"/)?.[1] || '';
+        const fieldMap: Record<string, string> = {
+          seller_street: 'adres sprzedawcy',
+          seller_city: 'miasto sprzedawcy',
+          seller_postal_code: 'kod pocztowy sprzedawcy',
+          seller_nip: 'NIP sprzedawcy',
+          seller_name: 'nazwa sprzedawcy',
+          buyer_nip: 'NIP nabywcy',
+          buyer_name: 'nazwa nabywcy',
+          buyer_street: 'adres nabywcy',
+          buyer_city: 'miasto nabywcy',
+          invoice_number: 'numer faktury',
+        };
+        const fieldName = fieldMap[col] || col;
+        msg = `Brakuje wymaganego pola: ${fieldName}. Uzupelnij dane i sprobuj ponownie.`;
+      } else if (err?.code === '23505') {
+        msg = 'Faktura o tym numerze juz istnieje. Wybierz inny numer.';
+      } else if (err?.message) {
+        msg = err.message;
+      }
+      showSnackbar(msg, 'error');
     } finally {
       setLoading(false);
     }
