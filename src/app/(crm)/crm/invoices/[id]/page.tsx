@@ -605,21 +605,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                   </td>
                 </tr>
               ))}
-              <tr className="font-medium">
-                <td colSpan={5} className="border border-gray-300 p-2 text-right">
-                  W tym
-                </td>
-                <td className="border border-gray-300 p-2 text-right">
-                  {invoice.total_net.toFixed(2)}
-                </td>
-                <td className="border border-gray-300 p-2 text-center">23%</td>
-                <td className="border border-gray-300 p-2 text-right">
-                  {invoice.total_vat.toFixed(2)}
-                </td>
-                <td className="border border-gray-300 p-2 text-right">
-                  {invoice.total_gross.toFixed(2)}
-                </td>
-              </tr>
+
               <tr className="bg-gray-100 font-bold">
                 <td colSpan={5} className="border border-gray-300 p-2 text-right">
                   Razem
