@@ -43,8 +43,6 @@ export default function PermissionGuard({
           return;
         }
 
-        console.log('employee', employee);
-
         let hasPermissionCheck = false;
 
         if (permission) {

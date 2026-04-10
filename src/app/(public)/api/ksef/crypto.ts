@@ -8,9 +8,27 @@ import {
 } from "node:crypto";
 import { KSEF_LOG_PREFIX } from "./logger";
 
-function derBase64ToPemCertificate(base64Der: string): string {
-  const lines = base64Der.match(/.{1,64}/g)?.join("\n") ?? base64Der;
-  return `-----BEGIN CERTIFICATE-----\n${lines}\n-----END CERTIFICATE-----`;
+function derBase64ToPemCertificate(base64?: string) {
+  if (!base64 || typeof base64 !== 'string') {
+    throw new Error('derBase64ToPemCertificate: certificate base64 is missing');
+  }
+
+  const normalized = base64
+    .replace(/-----BEGIN CERTIFICATE-----/g, '')
+    .replace(/-----END CERTIFICATE-----/g, '')
+    .replace(/\s+/g, '');
+
+  if (!normalized) {
+    throw new Error('derBase64ToPemCertificate: certificate is empty after normalization');
+  }
+
+  const chunks = normalized.match(/.{1,64}/g) ?? [];
+
+  return [
+    '-----BEGIN CERTIFICATE-----',
+    ...chunks,
+    '-----END CERTIFICATE-----',
+  ].join('\n');
 }
 
 export function encryptKSeFTokenPayloadFromCertificate(

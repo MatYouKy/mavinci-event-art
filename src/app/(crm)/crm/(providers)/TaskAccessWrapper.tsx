@@ -66,8 +66,6 @@ export function TaskAccessWrapper({
   useEffect(() => {
     setAccessState(syncAccess);
   }, [syncAccess]);
-  console.log('accessState', accessState);
-  console.log('employee', employee);
 
   useEffect(() => {
     if (!employee?.id) return;
@@ -135,7 +133,6 @@ export function TaskAccessWrapper({
 
         console.log('syncAccess', syncAccess);
         console.log('pathname', pathname);
-        console.log('employee.id', employee.id);
 
         setAccessState('denied');
       } catch {

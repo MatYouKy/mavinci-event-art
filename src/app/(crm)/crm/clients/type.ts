@@ -1,4 +1,4 @@
-export type ClientType = 'business' | 'individual';
+export type ClientType = 'business' | 'individual' | 'company';
 
 export interface Client {
   id: string;

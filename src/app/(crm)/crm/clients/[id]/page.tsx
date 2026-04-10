@@ -1113,15 +1113,15 @@ export default function ClientDetailPage() {
                 <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-4 text-center">
                   <p className="mb-2 text-blue-400">🔐 Aby przypisać atrakcje klientowi:</p>
                   <ol className="mx-auto max-w-md space-y-1 text-left text-sm text-[#e5e4e2]/60">
-                    <li>1. Włącz przełącznik "Dostęp do portalu"</li>
+                    <li>1. Włącz przełącznik "Dostęp do portalu&rdquo;</li>
                     <li>2. Wpisz email logowania</li>
-                    <li>3. Kliknij "Zapisz ustawienia"</li>
+                    <li>3. Kliknij &quot;Zapisz ustawienia&rdquo;</li>
                     <li>4. Następnie będziesz mógł przypisać konkretne atrakcje</li>
                   </ol>
                 </div>
               ) : allowedAttractions.length === 0 ? (
                 <p className="py-4 text-center text-[#e5e4e2]/60">
-                  Brak przypisanych atrakcji. Kliknij "Zarządzaj atrakcjami" aby dodać.
+                  Brak przypisanych atrakcji. Kliknij &quot;Zarządzaj atrakcjami&rdquo; aby dodać.
                 </p>
               ) : (
                 <div className="space-y-3">

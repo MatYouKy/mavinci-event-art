@@ -127,10 +127,24 @@ export interface KSeFSessionStatusResponse {
 }
 
 export interface KSeFSessionInvoiceStatus {
-  invoiceReferenceNumber: string;
+  invoiceReferenceNumber?: string;
   ksefReferenceNumber?: string;
-  status: string;
   acquisitionTimestamp?: string;
+
+  status?: string;
+  processingCode?: string;
+
+  // 🔥 DODAJ TO
+  statusDescription?: string;
+  processingDescription?: string;
+  errorDescription?: string;
+  message?: string;
+
+  // opcjonalnie na przyszłość
+  errors?: Array<{
+    code?: string;
+    description?: string;
+  }>;
 }
 
 export interface KSeFSessionInvoicesResponse {
