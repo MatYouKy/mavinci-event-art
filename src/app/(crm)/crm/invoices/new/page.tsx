@@ -8,6 +8,7 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import BuyerSearchInput from './components/BuyerSearchInput';
 import AddBuyerModal from './components/AddBuyerModal';
 import InvoiceNumberInput from './components/InvoiceNumberInput';
+import { MyCompany } from '../../settings/my-companies/page';
 
 interface Organization {
   id: string;
@@ -17,22 +18,10 @@ interface Organization {
   postal_code: string | null;
   city: string | null;
   client_type?: string;
-}
-
-interface MyCompany {
-  id: string;
-  name: string;
-  legal_name: string;
-  nip: string;
-  street: string;
-  building_number: string;
-  apartment_number: string | null;
-  city: string;
-  postal_code: string;
   email: string;
   phone: string;
-  bank_account: string | null;
-  is_default: boolean;
+  bank_name: string;
+  bank_account: string;
 }
 
 interface InvoiceItem {
@@ -74,6 +63,12 @@ export default function NewInvoicePage() {
   useEffect(() => {
     fetchData();
   }, [eventId]);
+
+  useEffect(() => {
+    if (selectedCompanyId) {
+      fetchData();
+    }
+  }, [selectedCompanyId]);
 
   const fetchData = async () => {
     try {
@@ -337,8 +332,17 @@ export default function NewInvoicePage() {
       const sellerStreet = [
         selectedCompany.street,
         selectedCompany.building_number,
-        selectedCompany.apartment_number ? `/ ${selectedCompany.apartment_number}` : '',
+        selectedCompany.apartment_number ?`/${selectedCompany.apartment_number}` : '',
       ].filter(Boolean).join(' ').trim();
+      console.log('--------------------------------');
+      console.log('--------------------------------');
+      console.log('--------------------------------');
+      console.log('--------------------------------');
+      console.log('[NEW_INVOICE] selectedCompany', selectedCompany);
+      console.log('--------------------------------');
+      console.log('--------------------------------');
+      console.log('--------------------------------');
+      console.log('--------------------------------');
 
       const missingSellerFields: string[] = [];
       if (!selectedCompany.legal_name) missingSellerFields.push('nazwa firmy');
@@ -346,6 +350,10 @@ export default function NewInvoicePage() {
       if (!selectedCompany.street) missingSellerFields.push('adres (ulica)');
       if (!selectedCompany.postal_code) missingSellerFields.push('kod pocztowy');
       if (!selectedCompany.city) missingSellerFields.push('miasto');
+      if (!selectedCompany.bank_name) missingSellerFields.push('nazwa banku');
+      if (!selectedCompany.bank_account) missingSellerFields.push('numer konta bankowego');
+      if (!selectedCompany.email) missingSellerFields.push('email');
+      if (!selectedCompany.phone) missingSellerFields.push('telefon');
 
       if (missingSellerFields.length > 0) {
         showSnackbar(
@@ -361,6 +369,11 @@ export default function NewInvoicePage() {
         setLoading(false);
         return;
       }
+
+      console.log('--------------------------------');
+      console.log('[NEW_INVOICE] selectedCompany', selectedCompany);
+      console.log('--------------------------------');
+
 
       const invoiceData = {
         invoice_number: invoiceNumber,
@@ -378,6 +391,8 @@ export default function NewInvoicePage() {
         seller_street: sellerStreet,
         seller_postal_code: selectedCompany.postal_code,
         seller_city: selectedCompany.city,
+        seller_email: selectedCompany.email,
+        seller_phone: selectedCompany.phone,
         seller_country: 'Polska',
         buyer_name: selectedOrg.name,
         buyer_nip: selectedOrg.nip,
@@ -386,6 +401,7 @@ export default function NewInvoicePage() {
         buyer_city: selectedOrg.city || '',
         buyer_country: 'Polska',
         payment_method: settings?.default_payment_method || 'Przelew',
+        bank_name: selectedCompany.bank_name || '',
         bank_account: selectedCompany.bank_account || '',
         issue_place: selectedCompany.city,
         created_by: employee?.id,
@@ -442,11 +458,15 @@ export default function NewInvoicePage() {
           seller_postal_code: 'kod pocztowy sprzedawcy',
           seller_nip: 'NIP sprzedawcy',
           seller_name: 'nazwa sprzedawcy',
+          seller_email: 'email sprzedawcy',
+          seller_phone: 'telefon sprzedawcy',
           buyer_nip: 'NIP nabywcy',
           buyer_name: 'nazwa nabywcy',
           buyer_street: 'adres nabywcy',
           buyer_city: 'miasto nabywcy',
           invoice_number: 'numer faktury',
+          bank_name: 'nazwa banku sprzedawcy',
+          bank_account: 'numer konta bankowego sprzedawcy',
         };
         const fieldName = fieldMap[col] || col;
         msg = `Brakuje wymaganego pola: ${fieldName}. Uzupelnij dane i sprobuj ponownie.`;
@@ -625,8 +645,7 @@ export default function NewInvoicePage() {
                         className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-sm text-[#e5e4e2]"
                       />
                       <div className="mt-2 text-xs text-blue-400">
-                        Np. zamiast "DJ Standard 2500 zł + Konferansjer 3000 zł" → "Obsługa muzyczna
-                        5500 zł"
+                        {`Np. zamiast "DJ Standard 2500 zł + Konferansjer 3000 zł" → "Obsługa muzyczna 5500 zł"`}
                       </div>
                     </div>
                   )}

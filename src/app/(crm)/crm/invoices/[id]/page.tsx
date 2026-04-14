@@ -7,8 +7,12 @@ import { ArrowLeft, Download, CreditCard as Edit, Printer, Send, CheckCircle, XC
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import SendInvoiceEmailModal from '@/components/crm/SendInvoiceEmailModal';
 import PermissionGuard from '@/components/crm/PermissionGuard';
+import { useDialog } from '@/contexts/DialogContext';
+import Image from 'next/image';
 
 interface Invoice {
+  bank_name: string;
+  company_logo_url: string;
   id: string;
   invoice_number: string;
   invoice_type: string;
@@ -68,11 +72,14 @@ interface InvoiceItem {
 export default function InvoiceDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
+  const { showConfirm } = useDialog();
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [relatedData, setRelatedData] = useState<RelatedData>({});
   const [loading, setLoading] = useState(true);
   const [showSendEmailModal, setShowSendEmailModal] = useState(false);
+
+  console.log('[INVOICE_DETAIL-invoice] invoice', invoice);
 
   useEffect(() => {
     fetchInvoice();
@@ -190,11 +197,8 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   const [sendingToKSeF, setSendingToKSeF] = useState(false);
 
   const handleConvertToVAT = async () => {
-    if (
-      !confirm(
-        'Czy na pewno chcesz wystawić fakturę VAT na podstawie tej proformy? Zostanie utworzona nowa faktura.'
-      )
-    ) {
+    const confirmed = await showConfirm('Czy na pewno chcesz wystawić fakturę VAT na podstawie tej proformy? Zostanie utworzona nowa faktura.', 'Czy na pewno chcesz wystawić fakturę VAT na podstawie tej proformy? Zostanie utworzona nowa faktura?');
+    if (!confirmed) {
       return;
     }
 
@@ -228,14 +232,15 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   };
 
   const handleSendToKSeF = async () => {
-    if (!confirm('Czy na pewno chcesz wysłać tę fakturę do KSeF? Tej operacji nie można cofnąć.')) {
+    const confirmed = await showConfirm('Czy na pewno chcesz wysłać tę fakturę do KSeF? Tej operacji nie można cofnąć.', 'Tej operacji nie można cofnąć.');
+    if (!confirmed) {
       return;
     }
 
     try {
       setSendingToKSeF(true);
 
-      const response = await fetch('/api/ksef/invoices/send', {
+      const response = await fetch('/bridge/ksef/invoices/send', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -515,10 +520,12 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           {/* Header */}
           <div className="mb-12 flex items-start justify-between">
             <div className="flex items-center gap-4">
-              <img
-                src="/logo-mavinci-crm.png"
-                alt="MAVINCI Logo"
+              <Image
+                src={invoice.company_logo_url || '/logo-mavinci-crm.png'}
+                alt="Logo firmy"
                 className="h-16 w-auto object-contain"
+                width={128}
+                height={128}
               />
             </div>
             <div className="text-right text-sm">
@@ -637,6 +644,10 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               <div>
                 <span className="text-gray-600">Numer konta:</span>
                 <div className="font-mono">{invoice.bank_account}</div>
+              </div>
+              <div>
+                <span className="text-gray-600">Nazwa banku:</span>
+                <div className="font-mono">{invoice.bank_name}</div>
               </div>
             </div>
             <div>

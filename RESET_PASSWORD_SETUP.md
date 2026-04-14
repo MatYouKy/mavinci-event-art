@@ -47,7 +47,7 @@ Kliknij **Save** na dole strony.
 1. Admin otwiera profil pracownika
 2. Klika "Resetuj hasło"
 3. Wpisuje nowe hasło i je potwierdza
-4. System wywołuje endpoint `/api/reset-employee-password`
+4. System wywołuje endpoint `/bridge/reset-employee-password`
 5. Endpoint sprawdza uprawnienia (admin lub employees_manage)
 6. Hasło jest zmieniane przez `supabaseAdmin.auth.admin.updateUserById()`
 

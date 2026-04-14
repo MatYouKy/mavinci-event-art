@@ -814,9 +814,6 @@ Deno.serve(async (req: Request) => {
       throw new Error("System email account not configured");
     }
 
-    console.log('[send-event-invitation] System email found:', systemEmail.id);
-    console.log('[send-event-invitation] Sending emails to:', notificationEmails);
-
     const sendEmailUrl = `${supabaseUrl}/functions/v1/send-email`;
 
     const emailPromises = notificationEmails.map(async (emailAddress) => {
@@ -842,12 +839,10 @@ Deno.serve(async (req: Request) => {
         throw new Error(`Failed to send email to ${emailAddress}: ${errorData.error || 'Unknown error'}`);
       }
 
-      console.log(`[send-event-invitation] Email sent successfully to ${emailAddress}`);
       return emailAddress;
     });
 
     const sentEmails = await Promise.all(emailPromises);
-    console.log('[send-event-invitation] All emails sent successfully:', sentEmails);
 
     await supabase
       .from("employee_assignments")
@@ -856,8 +851,6 @@ Deno.serve(async (req: Request) => {
         invitation_email_sent_at: new Date().toISOString(),
       })
       .eq("id", assignmentId);
-
-    console.log('[send-event-invitation] Assignment updated');
 
     return new Response(
       JSON.stringify({

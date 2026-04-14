@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft,
@@ -21,6 +21,7 @@ import {
   Image as ImageIcon,
   FileText,
   ZoomIn,
+  Loader2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -37,8 +38,10 @@ import {
   useAddCommentMutation,
   useDeleteCommentMutation,
   useDeleteAttachmentMutation,
+  useDeleteTaskMutation,
 } from '@/store/api/tasksApi';
 import { IEmployee } from '../../employees/type';
+import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 
 interface Task {
   id: string;
@@ -134,7 +137,7 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
 
   const task = taskFromApi ?? initialTask;
 
-  const [updateTask] = useUpdateTaskMutation();
+  const [updateTask, { isLoading: isUpdating }] = useUpdateTaskMutation();
   const [addComment] = useAddCommentMutation();
   const [deleteComment] = useDeleteCommentMutation();
   const [deleteAttachment] = useDeleteAttachmentMutation();
@@ -154,6 +157,8 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
     name: string;
     type: string;
   } | null>(null);
+
+  const [deleteTask, { isLoading: isDeleting }] = useDeleteTaskMutation();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -324,6 +329,27 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
       (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
     );
   };
+
+  const handleDeleteTask = useCallback(
+    async (taskId: string) => {
+      const confirmed = await showConfirm(
+        'Czy na pewno chcesz usunąć to zadanie? Usunięte zostaną również wszystkie powiązane wpisy czasu pracy. Ta operacja jest nieodwracalna.',
+        'Usuń zadanie',
+      );
+
+      if (!confirmed) return;
+
+      try {
+        await deleteTask(taskId).unwrap();
+        showSnackbar('Zadanie zostało usunięte', 'success');
+        router.push('/crm/tasks');
+      } catch (error: any) {
+        console.error('Error deleting task:', error);
+        showSnackbar(error.message || 'Błąd podczas usuwania zadania', 'error');
+      }
+    },
+    [deleteTask, showConfirm, showSnackbar],
+  );
 
   const handleSendComment = async () => {
     if (!newComment.trim() || !currentEmployee) return;
@@ -795,7 +821,7 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
   }
 
   return (
-    <div className="bg-[#0a0d1a] max-w-7xl mx-auto">
+    <div className="mx-auto max-w-7xl bg-[#0a0d1a]">
       {/* Header - Sticky */}
       <div className="sticky top-0 z-10 border-b border-[#d3bb73]/10 bg-[#0f1119]">
         <div className={`flex items-center gap-2 ${isMobile ? 'p-2' : 'p-4'}`}>
@@ -810,7 +836,25 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
               {isMobile ? 'Szczegóły' : 'Szczegóły zadania'}
             </h1>
           </div>
-          {!isEditing && (
+          <ResponsiveActionBar
+          actions={[
+            {
+              label: 'Usuń',
+              onClick: () => handleDeleteTask(task.id),
+              disabled: isDeleting,
+              variant:'danger',
+              icon: isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />,
+            },
+            {
+              label: isEditing ? 'Anuluj' : 'Edytuj',
+              onClick: isEditing ? handleCancelEdit : handleStartEdit,
+              icon: isEditing ? <X className="h-4 w-4" /> : isUpdating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Edit3 className="h-4 w-4" />,
+              variant: isEditing ? 'default' : 'primary',
+              disabled: isUpdating,
+            },
+          ]}
+        />
+          {/* {!isEditing && (
             <button
               onClick={handleStartEdit}
               className={`flex items-center gap-1.5 ${isMobile ? 'px-2 py-1.5 text-xs' : 'px-4 py-2'} rounded-lg bg-[#d3bb73]/10 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20`}
@@ -818,8 +862,9 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
               <Edit3 className={`${isMobile ? 'h-3 w-3' : 'h-4 w-4'}`} />
               {isMobile ? 'Edytuj' : 'Edytuj'}
             </button>
-          )}
+          )} */}
         </div>
+        
       </div>
 
       {/* Task Details Section - Scrollable */}
@@ -926,7 +971,7 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
                     onClick={handleSaveEdit}
                     className={`flex items-center ${isMobile ? 'gap-1.5 px-3 py-1.5 text-xs' : 'gap-2 px-4 py-2'} rounded-lg bg-[#d3bb73] font-medium text-[#0a0d1a] transition-colors hover:bg-[#c4ac64]`}
                   >
-                    <Save className={`${isMobile ? 'h-3 w-3' : 'h-4 w-4'}`} />
+                    {isUpdating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className={`${isMobile ? 'h-3 w-3' : 'h-4 w-4'}`} />}
                     Zapisz
                   </button>
                   <button
@@ -1127,7 +1172,7 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
                                       size={128}
                                       showActivityStatus
                                     />
-                           
+
                                     <div className="absolute inset-0 flex items-center justify-center rounded bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
                                       <ZoomIn className="h-4 w-4 text-white" />
                                     </div>

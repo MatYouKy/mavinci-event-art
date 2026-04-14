@@ -4,20 +4,13 @@ import { useState, useEffect } from 'react';
 import { X, Loader2, FileText, AlertCircle, CheckCircle2, Building2, Info } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { MyCompany } from '@/app/(crm)/crm/settings/my-companies/page';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   eventId: string;
   onSuccess: () => void;
-}
-
-interface MyCompany {
-  id: string;
-  name: string;
-  legal_name: string;
-  nip: string;
-  is_default: boolean;
 }
 
 interface Offer {
@@ -338,7 +331,8 @@ export default function IssueInvoiceFromEventModal({
           buyer_city: eventDetails.buyer_city || '',
           buyer_country: 'Polska',
           payment_method: 'Przelew',
-          bank_account: '',
+          bank_name: selectedCompany.bank_name || '',
+          bank_account: selectedCompany.bank_account || '',
           issue_place: '',
           created_by: employee?.id,
         })
@@ -378,7 +372,7 @@ export default function IssueInvoiceFromEventModal({
       }
 
       // 5. Wyślij do KSeF
-      const ksefResponse = await fetch('/api/ksef/invoices/send', {
+      const ksefResponse = await fetch('/bridge/ksef/invoices/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ invoiceId: invoice.id }),

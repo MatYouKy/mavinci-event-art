@@ -80,31 +80,10 @@ async function fetchWithRetry(
 
   for (let attempt = 1; attempt <= retries + 1; attempt++) {
     try {
-      console.log(`${LOG_PREFIX} fetch attempt`, {
-        requestId,
-        url,
-        method: init.method ?? "GET",
-        attempt,
-        maxAttempts: retries + 1,
-        timeoutMs,
-        ...context,
-      });
-
       const response = await fetch(url, {
         ...init,
         signal: AbortSignal.timeout(timeoutMs),
       });
-
-      console.log(`${LOG_PREFIX} fetch response`, {
-        requestId,
-        url,
-        method: init.method ?? "GET",
-        attempt,
-        status: response.status,
-        ok: response.ok,
-        ...context,
-      });
-
       return response;
     } catch (error) {
       lastError = error;

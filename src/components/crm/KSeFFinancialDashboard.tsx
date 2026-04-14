@@ -181,7 +181,7 @@ export default function KSeFFinancialDashboard() {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch('/api/bank/parse-pdf', {
+      const response = await fetch('/bridge/ksef/bank/parse-pdf', {
         method: 'POST',
         body: formData,
       });

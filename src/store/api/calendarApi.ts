@@ -424,14 +424,6 @@ export const calendarApi = createApi({
           const equipmentArray = Array.from(equipment.values());
           const eventsArray = Array.from(eventsMap.values());
 
-          console.log('Timeline resources loaded:', {
-            vehicles: vehiclesArray.length,
-            employees: employeesArray.length,
-            equipment: equipmentArray.length,
-            eventsWithAssignments: eventsArray.length,
-            sampleEvent: eventsArray[0],
-          });
-
           return {
             data: {
               vehicles: vehiclesArray,

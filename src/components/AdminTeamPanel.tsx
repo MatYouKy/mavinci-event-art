@@ -25,7 +25,7 @@ export default function AdminTeamPanel() {
   const fetchMembers = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/team-members?all=true');
+      const response = await fetch('/bridge/team-members?all=true');
       if (!response.ok) {
         throw new Error('Failed to fetch team members');
       }
@@ -105,7 +105,7 @@ export default function AdminTeamPanel() {
       };
 
       if (isNew) {
-        const response = await fetch('/api/team-members', {
+        const response = await fetch('/bridge/team-members', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -116,7 +116,7 @@ export default function AdminTeamPanel() {
         if (!response.ok) throw new Error('Failed to create');
         setIsAdding(false);
       } else {
-        const response = await fetch(`/api/team-members/${editingMember?.id}`, {
+        const response = await fetch(`/bridge/team-members/${editingMember?.id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -144,7 +144,7 @@ export default function AdminTeamPanel() {
     }
 
     try {
-      const response = await fetch(`/api/team-members/${id}`, {
+      const response = await fetch(`/bridge/team-members/${id}`, {
         method: 'DELETE',
         headers: {
           'X-Admin-Token': process.env.NEXT_PUBLIC_ADMIN_API_TOKEN || 'mavinci-admin-secret-2025',

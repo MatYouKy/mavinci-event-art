@@ -199,6 +199,7 @@ export default function NewContactPage() {
     try {
       setLoadingGUS(true);
       const data = await fetchCompanyDataFromGUS(formData.nip);
+      console.log('[GUS_DEBUG-Data] data', data);
 
       if (data) {
         setFormData({
@@ -212,6 +213,7 @@ export default function NewContactPage() {
         showSnackbar('Dane pobrane z GUS', 'success');
       }
     } catch (error: any) {
+      console.error('[GUS_DEBUG] error', error);
       showSnackbar(error.message || 'Błąd podczas pobierania danych z GUS', 'error');
     } finally {
       setLoadingGUS(false);

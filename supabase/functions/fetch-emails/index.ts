@@ -51,8 +51,6 @@ Deno.serve(async (req: Request) => {
 
     const emails = [];
 
-    console.log("Fetching emails for account:", emailAccount.email_address);
-
     // 1. Pobierz wysłane emaile z tego konta
     const { data: sentEmails, error: sentError } = await supabase
       .from("sent_emails")
@@ -117,8 +115,6 @@ Deno.serve(async (req: Request) => {
 
     // Sortuj wszystkie emaile po dacie
     emails.sort((a, b) => b.date.getTime() - a.date.getTime());
-
-    console.log(`Returned ${emails.length} emails (sent: ${sentEmails?.length || 0}, received: ${receivedEmails?.length || 0})`);
 
     return new Response(
       JSON.stringify({

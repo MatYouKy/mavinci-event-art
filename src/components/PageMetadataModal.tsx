@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/browser';
 import { X, Plus, Trash2, Save } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import Image from 'next/image';
 
 interface PageMetadataModalProps {
   isOpen: boolean;
@@ -130,7 +131,7 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
 
     try {
       const pathToRevalidate = `/${pageSlug}`;
-      await fetch('/api/revalidate', {
+      await fetch('/bridge/revalidate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: pathToRevalidate }),
@@ -228,9 +229,11 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
                             : 'border-[#d3bb73]/20 hover:border-[#d3bb73]/50'
                         }`}
                       >
-                        <img
+                        <Image
                           src={img.desktop_url}
                           alt={img.alt_text || img.section}
+                          width={1000}
+                          height={1000}
                           className="h-full w-full object-cover"
                         />
                         {ogImage === img.desktop_url && (
@@ -250,9 +253,12 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
 
               {ogImage && (
                 <div className="relative">
-                  <img
-                    src={ogImage}
+                  <Image
+                    src={ogImage as string}
                     alt="Selected OG Image"
+                    width={1000}
+                    height={1000}
+                    quality={100}
                     className="max-h-40 w-full rounded border border-[#d3bb73]/20 object-cover"
                   />
                   <button

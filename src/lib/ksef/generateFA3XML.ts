@@ -14,9 +14,11 @@ export type FA3PreparedInvoice = {
     postalCode: string;
     city: string;
     countryCode: string;
+    email: string;
+    phone: string;
   };
   buyer: {
-    isGv: any;
+    isGv: boolean;
     nip?: string;
     name: string;
     street: string;
@@ -30,6 +32,12 @@ export type FA3PreparedInvoice = {
     isJst: boolean;
   };
   invoice: {
+    marginProcedure: boolean;
+    newTransport: boolean;
+    metodaKasowa: boolean; //P_16 
+    samofakturowanie: boolean; //P_17
+    odwrotneObciazenie: boolean; //P_18
+    splitPayment: boolean; //P_18A
     number: string;
     type: 'VAT' | 'ZAL' | 'KON';
     issueDate: string;
@@ -40,6 +48,7 @@ export type FA3PreparedInvoice = {
     totalVat: number;
     totalGross: number;
     bankAccount?: string;
+    bankName?: string;
     items: Array<{
       lineNumber: number;
       name: string;
@@ -155,16 +164,6 @@ function getPaymentMethodCode(method: string): string {
   return '6';
 }
 
-function buildBuyerCustomerNumber(organization: any): string | undefined {
-  return normalizeCustomerToken(
-    pickFirstNonEmpty(organization?.alias, organization?.krs, organization?.regon),
-  );
-}
-
-function buildBuyerInternalId(_organization: any): string | undefined {
-  return undefined;
-}
-
 function buildPodmiot2Jst(data: FA3PreparedInvoice): string {
   const jstValue = data.buyer.isJst ? '1' : '2';
   const gvValue = data.buyer.isGv ? '1' : '2';
@@ -172,6 +171,22 @@ function buildPodmiot2Jst(data: FA3PreparedInvoice): string {
   return `
     <JST>${jstValue}</JST>
     <GV>${gvValue}</GV>`;
+}
+
+function buildPodmiot1Extra(data: FA3PreparedInvoice): string {
+  const email = data.seller.email?.trim();
+  const phone = data.seller.phone?.trim();
+  const chunks: string[] = [];
+
+  if (email || phone) {
+    chunks.push(`
+    <DaneKontaktowe>
+      ${email ? `<Email>${escapeXml(email)}</Email>` : ''}
+      ${phone ? `<Telefon>${escapeXml(phone)}</Telefon>` : ''}
+    </DaneKontaktowe>`);
+  }
+
+  return chunks.join('');
 }
 
 function buildPodmiot2Extra(data: FA3PreparedInvoice): string {
@@ -203,6 +218,90 @@ function buildPodmiot2Extra(data: FA3PreparedInvoice): string {
   return chunks.join('');
 }
 
+function buildAdnotacjeXml(data: FA3PreparedInvoice): string {
+  const chunks: string[] = [];
+
+  if (data.invoice.metodaKasowa === true) {
+    chunks.push('<P_16>1</P_16>');
+  } else {
+    chunks.push('<P_16>2</P_16>');
+  }
+  if (data.invoice.samofakturowanie === true) {
+    chunks.push('<P_17>1</P_17>');
+  } else {
+    chunks.push('<P_17>2</P_17>');
+  }
+  if (data.invoice.odwrotneObciazenie === true) {
+    chunks.push('<P_18>1</P_18>');
+  } else {
+    chunks.push('<P_18>2</P_18>');
+  }
+
+  if (data.invoice.splitPayment === true) {
+    chunks.push('<P_18A>1</P_18A>');
+  } else {
+    chunks.push('<P_18A>2</P_18A>');
+  }
+
+  // opcjonalne struktury (tylko gdy true)
+  if (data.invoice.newTransport === true) {
+    chunks.push(`
+      <NoweSrodkiTransportu>
+        <P_22N>1</P_22N>
+      </NoweSrodkiTransportu>`);
+  }
+
+  if (data.invoice.marginProcedure === true) {
+    chunks.push(`
+      <PMarzy>
+        <P_PMarzyN>1</P_PMarzyN>
+      </PMarzy>`);
+  }
+
+  return `
+    <Adnotacje>
+      ${chunks.join('')}
+    </Adnotacje>`;
+}
+
+function buildPaymentXml(data: FA3PreparedInvoice): string {
+  const hasPayment =
+    !!data.invoice.paymentDueDate ||
+    !!data.invoice.paymentMethod ||
+    !!data.invoice.bankAccount;
+
+  if (!hasPayment) {
+    return '';
+  }
+
+  return `
+    <Platnosc>
+      ${data.invoice.paymentDueDate ? `<TerminPlatnosci>${formatDate(data.invoice.paymentDueDate)}</TerminPlatnosci>` : ''}
+      ${data.invoice.paymentMethod ? `<FormaPlatnosci>${getPaymentMethodCode(data.invoice.paymentMethod)}</FormaPlatnosci>` : ''}
+      ${
+        data.invoice.bankAccount
+          ? `
+      <RachunekBankowy>
+        <NrRB>${escapeXml(data.invoice.bankAccount)}</NrRB>
+      </RachunekBankowy>`
+          : ''
+      }
+      ${data.invoice.bankName ? `<NazwaBanku>${escapeXml(data.invoice.bankName)}</NazwaBanku>` : ''}
+    </Platnosc>`;
+}
+
+function getFa3RodzajFaktury(invoice: any): 'VAT' | 'ZAL' | 'KON' {
+  if (invoice?.is_advance === true || invoice?.invoice_type === 'advance') {
+    return 'ZAL';
+  }
+
+  if (invoice?.is_final === true || invoice?.invoice_type === 'final') {
+    return 'KON';
+  }
+
+  return 'VAT';
+}
+
 export function prepareFA3Invoice(invoice: any, organization: any): FA3PreparedInvoice {
   return {
     seller: {
@@ -212,6 +311,8 @@ export function prepareFA3Invoice(invoice: any, organization: any): FA3PreparedI
       postalCode: pickFirstNonEmpty(invoice?.seller_postal_code) || '',
       city: pickFirstNonEmpty(invoice?.seller_city) || '',
       countryCode: normalizeCountryCode(invoice?.seller_country),
+      email: pickFirstNonEmpty(invoice?.seller_email),
+      phone: normalizePhone(pickFirstNonEmpty(invoice?.seller_phone)),
     },
     buyer: {
       nip: normalizeNip(pickFirstNonEmpty(invoice?.buyer_nip, organization?.nip)),
@@ -235,6 +336,12 @@ export function prepareFA3Invoice(invoice: any, organization: any): FA3PreparedI
     },
     invoice: {
       number: pickFirstNonEmpty(invoice?.invoice_number) || '',
+      marginProcedure: invoice?.margin_procedure ?? false,
+      newTransport: invoice?.new_transport ?? false,
+      splitPayment: invoice?.split_payment ?? false,
+      metodaKasowa: invoice?.metoda_kasowa ?? false,
+      samofakturowanie: invoice?.samofakturowanie ?? false,
+      odwrotneObciazenie: invoice?.odwrotne_obciazenie ?? false,
       type: getFa3RodzajFaktury(invoice),
       issueDate: invoice?.issue_date || '',
       saleDate: invoice?.sale_date || '',
@@ -244,6 +351,7 @@ export function prepareFA3Invoice(invoice: any, organization: any): FA3PreparedI
       totalVat: Number(invoice?.total_vat || 0),
       totalGross: Number(invoice?.total_gross || 0),
       bankAccount: normalizeBankAccount(invoice?.bank_account),
+      bankName: pickFirstNonEmpty(invoice?.bank_name),
       items: (invoice?.invoice_items || []).map((item: any, index: number) => ({
         lineNumber: Number(item?.position_number ?? index + 1),
         name: pickFirstNonEmpty(item?.name) || '',
@@ -264,13 +372,6 @@ export function validatePreparedFA3Invoice(
 ): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
-  console.log('[FA3_DEBUG] buyer identifiers', {
-    customerNumber: data.buyer.customerNumber,
-    internalId: data.buyer.internalId,
-  });
-
-  console.log('[FA3_DEBUG] buyer JST', data.buyer.isJst);
-
   if (!data.invoice.number) errors.push('Brak numeru faktury');
   if (!data.invoice.issueDate) errors.push('Brak daty wystawienia');
   if (!data.invoice.saleDate) errors.push('Brak daty sprzedaży');
@@ -283,6 +384,8 @@ export function validatePreparedFA3Invoice(
   if (!data.seller.street) errors.push('Brak ulicy sprzedawcy');
   if (!data.seller.postalCode) errors.push('Brak kodu pocztowego sprzedawcy');
   if (!data.seller.city) errors.push('Brak miasta sprzedawcy');
+  if (!data.seller.email) errors.push('Brak email sprzedawcy');
+  if (!data.seller.phone) errors.push('Brak telefonu sprzedawcy');
 
   if (!data.buyer.name) errors.push('Brak nazwy nabywcy');
   if (!data.buyer.street) errors.push('Brak ulicy nabywcy');
@@ -303,11 +406,6 @@ export function validatePreparedFA3Invoice(
   if (data.invoice.totalGross <= 0) {
     errors.push('Nieprawidłowa suma brutto');
   }
-
-  console.log('[FA3_DEBUG] buyer JST', {
-    isJst: data.buyer.isJst,
-    podmiot2Jst: buildPodmiot2Jst(data),
-  });
 
   if (
     !data.buyer.email &&
@@ -347,22 +445,6 @@ export function debugFA3PreparedInvoice(data: FA3PreparedInvoice): void {
       <AdresL2>${escapeXml(data.buyer.postalCode)} ${escapeXml(data.buyer.city)}</AdresL2>
     </Adres>${podmiot2Extra}
   </Podmiot2>`;
-
-  console.log('[FA3_DEBUG] buyer payload', JSON.stringify(data.buyer, null, 2));
-  console.log('[FA3_DEBUG] buyer extra xml', podmiot2Extra || 'BRAK');
-  console.log('[FA3_DEBUG] Podmiot2 XML\n', podmiot2Xml);
-}
-
-function getFa3RodzajFaktury(invoice: any): 'VAT' | 'ZAL' | 'KON' {
-  if (invoice.is_advance === true || invoice.invoice_type === 'advance') {
-    return 'ZAL';
-  }
-
-  if (invoice.is_final === true || invoice.invoice_type === 'final') {
-    return 'KON';
-  }
-
-  return 'VAT';
 }
 
 export function generateFA3XML(
@@ -371,37 +453,37 @@ export function generateFA3XML(
 ): string {
   const currentDateTime = new Date().toISOString();
 
-  const itemsByVatRate = data.invoice.items.reduce(
-    (acc, item) => {
-      const rate = item.vatRate;
-      if (!acc[rate]) {
-        acc[rate] = [];
-      }
-      acc[rate].push(item);
-      return acc;
-    },
-    {} as Record<number, FA3PreparedInvoice['invoice']['items']>,
-  );
-
-  const vatSummary = Object.entries(itemsByVatRate).map(([rate, items]) => {
-    const totalNet = items.reduce((sum, item) => sum + Number(item.valueNet || 0), 0);
-    const totalVat = items.reduce((sum, item) => sum + Number(item.vatAmount || 0), 0);
-
-    return {
-      rate: Number(rate),
-      netAmount: totalNet,
-      vatAmount: totalVat,
-    };
-  });
-
-  
+  const podmiot1Extra = buildPodmiot1Extra(data);
   const podmiot2Extra = buildPodmiot2Extra(data);
   const podmiot2Jst = buildPodmiot2Jst(data);
-  const rodzajFaktury = getFa3RodzajFaktury(data);
-  
-  console.log('[FA3_DEBUG] rodzaj faktury', rodzajFaktury, data);
+  const adnotacjeXml = buildAdnotacjeXml(data);
+  const paymentXml = buildPaymentXml(data);
+  const rodzajFaktury = data.invoice.type;
 
-const xml = `<?xml version="1.0" encoding="UTF-8"?>
+  const invoiceRowsXml = data.invoice.items
+    .map(
+      (item) => `
+  <FaWiersz>
+    <NrWierszaFa>${item.lineNumber}</NrWierszaFa>
+    <P_7>${escapeXml(item.name)}</P_7>
+    <P_8A>${escapeXml(item.unit)}</P_8A>
+    <P_8B>${formatDecimal(item.quantity)}</P_8B>
+    <P_9A>${formatDecimal(item.priceNet)}</P_9A>
+    <P_11>${formatDecimal(item.valueNet)}</P_11>
+    <P_12>${getVatRateCode(item.vatRate)}</P_12>
+  </FaWiersz>`
+    )
+    .join('');
+
+  const rowsCtrlXml = `
+  <FaWierszCtrl>
+    <LiczbaWierszyFaktury>${data.invoice.items.length}</LiczbaWierszyFaktury>
+    <WartoscWierszyFaktury>${formatDecimal(
+      data.invoice.items.reduce((sum, item) => sum + Number(item.valueNet || 0), 0),
+    )}</WartoscWierszyFaktury>
+  </FaWierszCtrl>`;
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Faktura xmlns="http://crd.gov.pl/wzor/2025/06/25/13775/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <Naglowek>
     <KodFormularza kodSystemowy="FA (3)" wersjaSchemy="1-0E">FA</KodFormularza>
@@ -420,6 +502,7 @@ const xml = `<?xml version="1.0" encoding="UTF-8"?>
       <AdresL1>${escapeXml(data.seller.street)}</AdresL1>
       <AdresL2>${escapeXml(data.seller.postalCode)} ${escapeXml(data.seller.city)}</AdresL2>
     </Adres>
+    ${podmiot1Extra}
   </Podmiot1>
 
   <Podmiot2>
@@ -433,8 +516,7 @@ const xml = `<?xml version="1.0" encoding="UTF-8"?>
       <AdresL2>${escapeXml(data.buyer.postalCode)} ${escapeXml(data.buyer.city)}</AdresL2>
     </Adres>
     ${podmiot2Extra}
-    <JST>${data.buyer.isJst ? '1' : '2'}</JST>
-    <GV>${data.buyer.isGv ? '1' : '2'}</GV>
+    ${podmiot2Jst}
   </Podmiot2>
 
   <Fa>
@@ -443,40 +525,15 @@ const xml = `<?xml version="1.0" encoding="UTF-8"?>
     <P_1M>${escapeXml(data.seller.city)}</P_1M>
     <P_2>${escapeXml(data.invoice.number)}</P_2>
     <P_6>${formatDate(data.invoice.saleDate)}</P_6>
-
     <P_13_1>${formatDecimal(data.invoice.totalNet)}</P_13_1>
     <P_14_1>${formatDecimal(data.invoice.totalVat)}</P_14_1>
     <P_15>${formatDecimal(data.invoice.totalGross)}</P_15>
-
-    <Adnotacje>
-      <P_16>2</P_16>
-      <P_17>2</P_17>
-      <P_18>2</P_18>
-      <P_18A>2</P_18A>
-      <Zwolnienie>
-        <P_19N>1</P_19N>
-      </Zwolnienie>
-      <NoweSrodkiTransportu>
-        <P_22N>1</P_22N>
-      </NoweSrodkiTransportu>
-      <P_23>2</P_23>
-      <PMarzy>
-        <P_PMarzyN>1</P_PMarzyN>
-      </PMarzy>
-    </Adnotacje>
+    ${invoiceRowsXml}
+    ${rowsCtrlXml}
+    ${adnotacjeXml}
+    ${paymentXml}
     <RodzajFaktury>${rodzajFaktury}</RodzajFaktury>
   </Fa>
 </Faktura>`;
-
-  if (options.debug) {
-    console.log('[FA3_DEBUG] final buyer payload', JSON.stringify(data.buyer, null, 2));
-    console.log('[FA3_DEBUG] final podmiot2 extra', podmiot2Extra || 'BRAK');
-
-    const podmiot2Match = xml.match(/<Podmiot2>[\s\S]*?<\/Podmiot2>/);
-    console.log('[FA3_DEBUG] final Podmiot2 XML\n', podmiot2Match?.[0] ?? 'BRAK Podmiot2');
-
-    console.log('[FA3_DEBUG] xml length', xml.length);
-  }
-
   return xml;
 }

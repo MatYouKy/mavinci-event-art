@@ -338,7 +338,7 @@ export default function KSeFIntegrationPanel() {
     setLoading(true);
 
     try {
-      const response = await fetch('/api/ksef/auth/token', {
+      const response = await fetch('/bridge/ksef/auth/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -407,12 +407,12 @@ export default function KSeFIntegrationPanel() {
       };
 
       const [issuedResponse, receivedResponse] = await Promise.all([
-        fetch('/api/ksef/invoices/issued', {
+        fetch('/bridge/ksef/invoices/issued', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         }),
-        fetch('/api/ksef/invoices/received', {
+        fetch('/bridge/ksef/invoices/received', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),

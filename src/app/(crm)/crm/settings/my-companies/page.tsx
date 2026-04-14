@@ -5,8 +5,9 @@ import { Building2, Plus, CreditCard as Edit, Trash2, Check, Star, Save, X, Uplo
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
+import Image from 'next/image';
 
-interface MyCompany {
+export interface MyCompany {
   id: string;
   name: string;
   legal_name: string;
@@ -22,6 +23,7 @@ interface MyCompany {
   email: string;
   phone: string;
   bank_account?: string;
+  bank_name: string;
   logo_url?: string;
   is_active: boolean;
   is_default: boolean;
@@ -35,7 +37,7 @@ export default function MyCompaniesPage() {
   const [editingCompany, setEditingCompany] = useState<MyCompany | null>(null);
 
   const { showSnackbar } = useSnackbar();
-  const { showDialog } = useDialog();
+  const { showConfirm } = useDialog();
 
   useEffect(() => {
     loadCompanies();
@@ -92,14 +94,16 @@ export default function MyCompaniesPage() {
   };
 
   const handleDelete = async (companyId: string, companyName: string) => {
-    const confirmed = await showDialog({
+    const confirmed = await showConfirm({
       title: 'Usuń firmę',
       message: `Czy na pewno chcesz usunąć firmę "${companyName}"? Wszystkie powiązane dane zostaną zachowane, ale firma nie będzie już dostępna.`,
       confirmText: 'Usuń',
       cancelText: 'Anuluj',
     });
 
-    if (!confirmed) return;
+    if (!confirmed) {
+      return;
+    }
 
     try {
       const { error } = await supabase
@@ -160,10 +164,12 @@ export default function MyCompaniesPage() {
               <div className="flex items-start justify-between">
                 <div className="flex gap-4">
                   {company.logo_url ? (
-                    <img
+                    <Image
                       src={company.logo_url}
                       alt={company.name}
                       className="h-16 w-16 rounded-lg object-cover"
+                      width={64}
+                      height={64}
                     />
                   ) : (
                     <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-[#d3bb73]/10">
@@ -337,6 +343,7 @@ function CompanyModal({
     email: company?.email || '',
     phone: company?.phone || '',
     bank_account: company?.bank_account || '',
+    bank_name: company?.bank_name || '',
     is_default: company?.is_default || false,
   });
   const [loading, setLoading] = useState(false);
@@ -560,6 +567,17 @@ function CompanyModal({
                 }
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 placeholder="PL 12 3456 7890 1234 5678 9012 3456"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm text-[#e5e4e2]">Nazwa banku</label>
+              <input
+                type="text"
+                value={formData.bank_name}
+                onChange={(e) => setFormData({ ...formData, bank_name: e.target.value })}
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                placeholder="Bank Polski"
               />
             </div>
 

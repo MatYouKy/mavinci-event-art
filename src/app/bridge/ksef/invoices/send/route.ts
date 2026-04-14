@@ -11,22 +11,22 @@ import {
   sendKSeFInvoiceInSession,
   getKSeFSessionInvoices,
   closeKSeFOnlineSession,
-} from '../../../ksef/client';
+} from '../../client';
 
 import {
   createSymmetricKeyMaterial,
   encryptInvoiceXml,
   encryptKSeFTokenPayloadFromCertificate,
-} from '../../../ksef/crypto';
+} from '../../crypto';
 
-import type { KSeFFormCode } from '../../../ksef/types';
+import type { KSeFFormCode } from '../../types';
 
 import {
   prepareFA3Invoice,
   validatePreparedFA3Invoice,
   generateFA3XML,
   debugFA3PreparedInvoice,
-} from '../../../../../../lib/ksef/generateFA3XML';
+} from '../../../../../lib/ksef/generateFA3XML';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -388,8 +388,6 @@ export async function POST(request: NextRequest) {
     // 2. Organizacja
     const organizationQuery = await fetchOrganization(supabase, invoice.organization_id);
 
-    console.log('Organization Query for KSeF:', organizationQuery);
-
     if (organizationQuery.error) {
       return NextResponse.json(
         { error: 'Nie udało się pobrać danych organizacji do KSeF' },
@@ -397,23 +395,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const organization = organizationQuery.data ?? null;
 
+    const organization = organizationQuery.data ?? null;
     // 3. Przygotowanie danych do FA(3)
 
     // 4. XML
     const preparedInvoice = prepareFA3Invoice(invoice, organization);
+
 debugFA3PreparedInvoice(preparedInvoice);
 const xmlContent = generateFA3XML(preparedInvoice, { debug: true });
-
-    const podmiot2Match = xmlContent.match(/<Podmiot2>[\s\S]*?<\/Podmiot2>/);
-
-    console.log('Podmiot2 XML:', podmiot2Match?.[0] ?? 'BRAK Podmiot2');
-    console.log('Generated FA(3) XML:', {
-      invoiceId,
-      invoiceNumber: invoice.invoice_number,
-      xmlLength: xmlContent.length,
-    });
 
     // 5. Credentials
     const { data: credentials, error: credError } = await fetchActiveCredentials(
@@ -430,14 +420,6 @@ const xmlContent = generateFA3XML(preparedInvoice, { debug: true });
 
     const isTestEnv = credentials.is_test_environment ?? false;
     let accessToken = credentials.access_token;
-
-    console.log('[KSEF_SEND] token debug', {
-      accessTokenExists: !!accessToken,
-      tokenExpiry: credentials.access_token_valid_until,
-      now: new Date().toISOString(),
-      companyId: invoice.my_company_id,
-    });
-
     if (!accessToken) {
       return NextResponse.json(
         {
@@ -452,13 +434,6 @@ const xmlContent = generateFA3XML(preparedInvoice, { debug: true });
       action: 'session-encryption',
       invoiceId,
       myCompanyId: invoice.my_company_id,
-    });
-
-    console.log('KSeF public certificates fetched', {
-      invoiceId,
-      isTestEnv,
-      count: publicKeyCertificates?.length ?? 0,
-      usages: publicKeyCertificates?.map((cert) => cert.usage) ?? [],
     });
 
     const symmetricKeyCert = publicKeyCertificates.find((cert) =>
@@ -568,7 +543,6 @@ const xmlContent = generateFA3XML(preparedInvoice, { debug: true });
             attempt: i + 1,
           },
         );
-        console.log(`Invoice status check ${i + 1}:`, JSON.stringify(sessionInvoices, null, 2));
 
         const inv = sessionInvoices.invoices?.[0];
         
@@ -687,7 +661,6 @@ if (rawStatus && typeof rawStatus === 'object') {
           invoiceId: invoiceIdForClose,
           myCompanyId: myCompanyIdForClose,
         });
-        console.log('KSeF session closed');
       } catch (closeErr) {
         console.warn('Failed to close KSeF session:', closeErr);
       }

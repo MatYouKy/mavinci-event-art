@@ -184,7 +184,7 @@ export default function KSeFConfigForm({ companyId, onUpdate }: KSeFConfigFormPr
       setTesting(true);
       setTestResult(null);
 
-      const response = await fetch('/api/ksef/test-connection', {
+      const response = await fetch('/bridge/ksef/test-connection', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ companyId }),

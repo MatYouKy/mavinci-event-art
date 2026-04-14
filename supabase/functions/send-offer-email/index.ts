@@ -129,7 +129,6 @@ Deno.serve(async (req: Request) => {
       if (pdfResponse.ok) {
         const pdfBlob = await pdfResponse.arrayBuffer();
         pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfBlob)));
-        console.log('[send-offer-email] PDF generated successfully, size:', pdfBase64.length);
       } else {
         const errorText = await pdfResponse.text();
         console.error('[send-offer-email] PDF generation failed:', errorText);

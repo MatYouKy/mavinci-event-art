@@ -1,0 +1,75 @@
+<Faktura xmlns="http://crd.gov.pl/wzor/2025/06/25/13775/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Naglowek>
+    <KodFormularza kodSystemowy="FA (3)" wersjaSchemy="1-0E">FA</KodFormularza>
+    <WariantFormularza>3</WariantFormularza>
+    <DataWytworzeniaFa>2026-04-13T14:52:41.726Z</DataWytworzeniaFa>
+    <SystemInfo>Mavinci CRM v1.0</SystemInfo>
+  </Naglowek>
+
+  <Podmiot1>
+    <DaneIdentyfikacyjne>
+      <NIP>7394011583</NIP>
+      <Nazwa>MAVINCI SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ</Nazwa>
+    </DaneIdentyfikacyjne>
+    <Adres>
+      <KodKraju>PL</KodKraju>
+      <AdresL1>Marcina Kasprzaka 15 / 66</AdresL1>
+      <AdresL2>10-057 Olsztyn</AdresL2>
+    </Adres>
+  </Podmiot1>
+
+  <Podmiot2>
+    <DaneIdentyfikacyjne>
+      <NIP>7393787560</NIP>
+      <Nazwa>SPIDER SOUND JAKUB PAJĄK</Nazwa>
+    </DaneIdentyfikacyjne>
+    <Adres>
+      <KodKraju>PL</KodKraju>
+      <AdresL1>ŻOŁNIERSKA 41/10</AdresL1>
+      <AdresL2>OLSZTYN OLSZTYN</AdresL2>
+    </Adres>
+    
+    <NrKlienta>SPIDER SOUND</NrKlienta>
+    <IDNabywcy>SPIDER SOUND</IDNabywcy>
+    
+    <JST>2</JST>
+    <GV>2</GV>
+  </Podmiot2>
+
+  <Fa>
+    <KodWaluty>PLN</KodWaluty>
+    <P_1>2026-04-13</P_1>
+    <P_1M>Olsztyn</P_1M>
+    <P_2>31/2026</P_2>
+    <P_6>2026-04-13</P_6>
+    <P_13_1>100.00</P_13_1>
+    <P_14_1>23.00</P_14_1>
+    <P_15>123.00</P_15>
+    
+    
+    <Platnosc>
+      <TerminPlatnosci>2026-04-27</TerminPlatnosci>
+      <FormaPlatnosci>6</FormaPlatnosci>
+      
+      <RachunekBankowy>
+        <NrRB>12102035410000550204086815</NrRB>
+      </RachunekBankowy>
+    </Platnosc>
+    <RodzajFaktury>VAT</RodzajFaktury>
+  </Fa>
+    
+  <FaWiersz>
+    <NrWierszaFa>1</NrWierszaFa>
+    <P_7>realizacja Nagłośnienia</P_7>
+    <P_8A>szt.</P_8A>
+    <P_8B>1.00</P_8B>
+    <P_9A>100.00</P_9A>
+    <P_11>100.00</P_11>
+    <P_12>23</P_12>
+  </FaWiersz>
+    
+  <FaWierszCtrl>
+    <LiczbaWierszyFaktury>1</LiczbaWierszyFaktury>
+    <WartoscWierszyFaktury>100.00</WartoscWierszyFaktury>
+  </FaWierszCtrl>
+</Faktura>

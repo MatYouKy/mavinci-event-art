@@ -75,7 +75,7 @@ export default function AdminResetPasswordModal({
         throw new Error('Nie można zidentyfikować użytkownika');
       }
 
-      const response = await fetch('/api/reset-employee-password', {
+      const response = await fetch('/bridge/reset-employee-password', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -90,7 +90,7 @@ export default function AdminResetPasswordModal({
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
         throw new Error(
-          'Błąd serwera - nieprawidłowa odpowiedź. Sprawdź czy endpoint /api/reset-employee-password jest dostępny.',
+          'Błąd serwera - nieprawidłowa odpowiedź. Sprawdź czy endpoint /bridge/reset-employee-password jest dostępny.',
         );
       }
 

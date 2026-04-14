@@ -40,14 +40,6 @@ export async function POST(req: Request) {
       );
     }
 
-    console.log('[KSEF_NEXT] issued invoices request', {
-      companyId,
-      dateFrom,
-      dateTo,
-      hasAccessToken: !!credentials.access_token,
-      environment: credentials.is_test_environment ? 'test' : 'production',
-    });
-
     const data = await getKSeFInvoices(
       {
         accessToken: credentials.access_token,
@@ -66,13 +58,6 @@ export async function POST(req: Request) {
     );
 
     const invoices = Array.isArray(data?.invoices) ? data.invoices : [];
-
-    console.log('[KSEF_NEXT] issued invoices fetched', {
-      companyId,
-      count: invoices.length,
-      sampleKeys: invoices[0] ? Object.keys(invoices[0]) : [],
-      sampleInvoice: invoices[0] || null,
-    });
 
     if (invoices.length > 0) {
       const rows = invoices.map((inv: any) => {
@@ -164,13 +149,6 @@ export async function POST(req: Request) {
       });
 
       const validRows = rows.filter((row) => !!row.ksef_reference_number);
-
-      console.log('[KSEF_NEXT] issued invoices mapped for upsert', {
-        companyId,
-        mappedCount: rows.length,
-        validCount: validRows.length,
-        firstRow: validRows[0] ?? null,
-      });
 
       if (validRows.length > 0) {
         const { error: upsertError } = await supabase
