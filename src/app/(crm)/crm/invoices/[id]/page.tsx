@@ -42,6 +42,12 @@ interface Invoice {
   related_invoice_id: string | null;
   is_proforma: boolean;
   proforma_converted_to_invoice_id: string | null;
+  correction_reason: string | null;
+  correction_scope: string | null;
+  corrected_invoice_number: string | null;
+  corrected_invoice_issue_date: string | null;
+  corrected_invoice_ksef_number: string | null;
+  corrected_invoice_was_in_ksef: boolean;
 }
 
 interface RelatedData {
@@ -347,17 +353,69 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
         )}
 
         {/* VAT Invoice from Proforma */}
-        {!invoice.is_proforma && invoice.related_invoice_id && (
+        {!invoice.is_proforma && invoice.related_invoice_id && invoice.invoice_type !== 'corrective' && (
           <div className="mb-6 rounded-xl border border-blue-500/30 bg-blue-500/10 p-4">
             <div className="text-sm text-[#e5e4e2]/80">
-              📋 Wystawiona na podstawie proformy:
+              Wystawiona na podstawie proformy:
               <button
                 onClick={() => router.push(`/crm/invoices/${invoice.related_invoice_id}`)}
                 className="ml-2 text-[#d3bb73] hover:underline"
               >
-                Zobacz proformę →
+                Zobacz proformę
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Corrective Invoice Info */}
+        {invoice.invoice_type === 'corrective' && (
+          <div className="mb-6 rounded-xl border border-orange-500/30 bg-orange-500/10 p-6">
+            <h3 className="mb-4 text-lg font-medium text-orange-400">
+              Faktura korygujaca
+            </h3>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <div className="mb-1 text-xs text-[#e5e4e2]/40">Faktura korygowana</div>
+                {invoice.corrected_invoice_number ? (
+                  <button
+                    onClick={() => invoice.related_invoice_id && router.push(`/crm/invoices/${invoice.related_invoice_id}`)}
+                    className="font-medium text-[#d3bb73] hover:underline"
+                  >
+                    {invoice.corrected_invoice_number}
+                  </button>
+                ) : (
+                  <div className="text-[#e5e4e2]/60">-</div>
+                )}
+              </div>
+              <div>
+                <div className="mb-1 text-xs text-[#e5e4e2]/40">Data wystawienia korygowanej</div>
+                <div className="text-[#e5e4e2]">
+                  {invoice.corrected_invoice_issue_date
+                    ? new Date(invoice.corrected_invoice_issue_date).toLocaleDateString('pl-PL')
+                    : '-'}
+                </div>
+              </div>
+              <div>
+                <div className="mb-1 text-xs text-[#e5e4e2]/40">Nr KSeF korygowanej</div>
+                <div className="text-[#e5e4e2]">
+                  {invoice.corrected_invoice_ksef_number || 'Nie wyslano do KSeF'}
+                </div>
+              </div>
+              <div>
+                <div className="mb-1 text-xs text-[#e5e4e2]/40">Zakres korekty</div>
+                <div className="text-[#e5e4e2]">
+                  {invoice.correction_scope === 'full' ? 'Calosc faktury' : 'Czesc faktury'}
+                </div>
+              </div>
+            </div>
+            {invoice.correction_reason && (
+              <div className="mt-4">
+                <div className="mb-1 text-xs text-[#e5e4e2]/40">Przyczyna korekty</div>
+                <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-3 text-sm text-[#e5e4e2]">
+                  {invoice.correction_reason}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -572,7 +630,9 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
           {/* Invoice Number */}
           <div className="mb-8 text-center">
-            <div className="text-2xl font-bold">Faktura VAT {invoice.invoice_number}</div>
+            <div className="text-2xl font-bold">
+              {getTypeLabel(invoice.invoice_type)} {invoice.invoice_number}
+            </div>
           </div>
 
           {/* Items Table */}

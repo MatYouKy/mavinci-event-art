@@ -58,13 +58,22 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
   const [paymentMethod, setPaymentMethod] = useState('Przelew');
   const [issuePlace, setIssuePlace] = useState('');
 
+  const [correctionReason, setCorrectionReason] = useState('');
+  const [correctionScope, setCorrectionScope] = useState<'full' | 'partial'>('full');
+  const [relatedInvoiceId, setRelatedInvoiceId] = useState('');
+  const [correctedInvoiceNumber, setCorrectedInvoiceNumber] = useState('');
+  const [correctedInvoiceIssueDate, setCorrectedInvoiceIssueDate] = useState('');
+  const [correctedInvoiceKsefNumber, setCorrectedInvoiceKsefNumber] = useState('');
+  const [correctedInvoiceWasInKsef, setCorrectedInvoiceWasInKsef] = useState(false);
+  const [availableInvoices, setAvailableInvoices] = useState<any[]>([]);
+
   useEffect(() => {
     fetchData();
   }, []);
 
   const fetchData = async () => {
     try {
-      const [invoiceRes, itemsRes, businessClientsRes, companiesRes] = await Promise.all([
+      const [invoiceRes, itemsRes, businessClientsRes, companiesRes, allInvoicesRes] = await Promise.all([
         supabase.from('invoices').select('*').eq('id', params.id).single(),
         supabase
           .from('invoice_items')
@@ -77,7 +86,18 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
           .select('*')
           .eq('is_active', true)
           .order('is_default', { ascending: false }),
+        supabase
+          .from('invoices')
+          .select('id, invoice_number, invoice_type, issue_date, total_gross, buyer_name, status')
+          .neq('id', params.id)
+          .neq('invoice_type', 'corrective')
+          .in('status', ['issued', 'sent', 'paid'])
+          .order('issue_date', { ascending: false }),
       ]);
+
+      if (allInvoicesRes.data) {
+        setAvailableInvoices(allInvoicesRes.data);
+      }
 
       if (invoiceRes.data) {
         const inv = invoiceRes.data;
@@ -100,6 +120,14 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         } else {
           setInvoiceType('vat');
         }
+
+        setCorrectionReason(inv.correction_reason || '');
+        setCorrectionScope(inv.correction_scope || 'full');
+        setRelatedInvoiceId(inv.related_invoice_id || '');
+        setCorrectedInvoiceNumber(inv.corrected_invoice_number || '');
+        setCorrectedInvoiceIssueDate(inv.corrected_invoice_issue_date || '');
+        setCorrectedInvoiceKsefNumber(inv.corrected_invoice_ksef_number || '');
+        setCorrectedInvoiceWasInKsef(inv.corrected_invoice_was_in_ksef ?? false);
 
         if (inv.issue_date && inv.payment_due_date) {
           const issueD = new Date(inv.issue_date);
@@ -142,6 +170,62 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
       showSnackbar('Blad podczas ladowania danych', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSelectOriginalInvoice = async (invoiceId: string) => {
+    setRelatedInvoiceId(invoiceId);
+    if (!invoiceId) {
+      setCorrectedInvoiceNumber('');
+      setCorrectedInvoiceIssueDate('');
+      setCorrectedInvoiceKsefNumber('');
+      setCorrectedInvoiceWasInKsef(false);
+      return;
+    }
+
+    const { data: origInvoice } = await supabase
+      .from('invoices')
+      .select('*, invoice_items(*)')
+      .eq('id', invoiceId)
+      .single();
+
+    if (origInvoice) {
+      setCorrectedInvoiceNumber(origInvoice.invoice_number || '');
+      setCorrectedInvoiceIssueDate(origInvoice.issue_date || '');
+      setSelectedOrgId(origInvoice.organization_id || '');
+      setSelectedCompanyId(origInvoice.my_company_id || '');
+
+      const { data: ksefRecord } = await supabase
+        .from('ksef_invoices')
+        .select('ksef_reference_number')
+        .eq('invoice_id', invoiceId)
+        .eq('sync_status', 'synced')
+        .maybeSingle();
+
+      if (ksefRecord?.ksef_reference_number) {
+        setCorrectedInvoiceKsefNumber(ksefRecord.ksef_reference_number);
+        setCorrectedInvoiceWasInKsef(true);
+      } else {
+        setCorrectedInvoiceKsefNumber('');
+        setCorrectedInvoiceWasInKsef(false);
+      }
+
+      if (origInvoice.invoice_items?.length > 0) {
+        const sortedItems = [...origInvoice.invoice_items].sort(
+          (a: any, b: any) => (a.position_number ?? 0) - (b.position_number ?? 0),
+        );
+        setItems(
+          sortedItems.map((item: any) => ({
+            id: undefined,
+            position_number: item.position_number,
+            name: item.name,
+            unit: item.unit,
+            quantity: item.quantity,
+            price_net: Number(item.price_net),
+            vat_rate: item.vat_rate,
+          })),
+        );
+      }
     }
   };
 
@@ -219,9 +303,16 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
       return;
     }
 
-    if (items.some((item) => !item.name || item.price_net <= 0)) {
-      showSnackbar('Wypelnij wszystkie pozycje faktury', 'error');
-      return;
+    if (invoiceType === 'corrective') {
+      if (items.some((item) => !item.name)) {
+        showSnackbar('Wypelnij nazwy wszystkich pozycji faktury', 'error');
+        return;
+      }
+    } else {
+      if (items.some((item) => !item.name || item.price_net <= 0)) {
+        showSnackbar('Wypelnij wszystkie pozycje faktury', 'error');
+        return;
+      }
     }
 
     try {
@@ -268,6 +359,18 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
 
       const totals = calculateTotals();
 
+      if (invoiceType === 'corrective' && !relatedInvoiceId) {
+        showSnackbar('Wybierz fakture do korekty', 'error');
+        setSaving(false);
+        return;
+      }
+
+      if (invoiceType === 'corrective' && !correctionReason.trim()) {
+        showSnackbar('Podaj przyczyne korekty', 'error');
+        setSaving(false);
+        return;
+      }
+
       const invoiceData: Record<string, any> = {
         invoice_number: invoiceNumber,
         invoice_type: invoiceType === 'proforma' ? 'vat' : invoiceType,
@@ -301,6 +404,24 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         total_gross: totals.totalGross,
         updated_at: new Date().toISOString(),
       };
+
+      if (invoiceType === 'corrective') {
+        invoiceData.related_invoice_id = relatedInvoiceId || null;
+        invoiceData.correction_reason = correctionReason;
+        invoiceData.correction_scope = correctionScope;
+        invoiceData.corrected_invoice_number = correctedInvoiceNumber;
+        invoiceData.corrected_invoice_issue_date = correctedInvoiceIssueDate || null;
+        invoiceData.corrected_invoice_ksef_number = correctedInvoiceKsefNumber || null;
+        invoiceData.corrected_invoice_was_in_ksef = correctedInvoiceWasInKsef;
+      } else {
+        invoiceData.related_invoice_id = null;
+        invoiceData.correction_reason = null;
+        invoiceData.correction_scope = null;
+        invoiceData.corrected_invoice_number = null;
+        invoiceData.corrected_invoice_issue_date = null;
+        invoiceData.corrected_invoice_ksef_number = null;
+        invoiceData.corrected_invoice_was_in_ksef = false;
+      }
 
       const { error: invoiceError } = await supabase
         .from('invoices')
@@ -476,6 +597,105 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
                 />
               </div>
             </div>
+
+            {invoiceType === 'corrective' && (
+              <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 p-4">
+                <h3 className="mb-3 text-sm font-medium text-orange-400">
+                  Dane faktury korygowanej
+                </h3>
+
+                <div className="mb-4">
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                    Wybierz fakture do korekty *
+                  </label>
+                  <select
+                    value={relatedInvoiceId}
+                    onChange={(e) => handleSelectOriginalInvoice(e.target.value)}
+                    className="w-full rounded-lg border border-orange-500/30 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-orange-500 focus:outline-none"
+                  >
+                    <option value="">Wybierz fakture...</option>
+                    {availableInvoices.map((inv) => (
+                      <option key={inv.id} value={inv.id}>
+                        {inv.invoice_number} - {inv.buyer_name} ({Number(inv.total_gross).toFixed(2)} zl) -{' '}
+                        {inv.invoice_type === 'advance' ? 'Zaliczkowa' : inv.invoice_type === 'vat' ? 'VAT' : inv.invoice_type}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {correctedInvoiceNumber && (
+                  <div className="mb-4 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-3">
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <span className="text-[#e5e4e2]/40">Nr faktury korygowanej:</span>
+                        <span className="ml-2 text-[#e5e4e2]">{correctedInvoiceNumber}</span>
+                      </div>
+                      <div>
+                        <span className="text-[#e5e4e2]/40">Data wystawienia:</span>
+                        <span className="ml-2 text-[#e5e4e2]">
+                          {correctedInvoiceIssueDate
+                            ? new Date(correctedInvoiceIssueDate).toLocaleDateString('pl-PL')
+                            : '-'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[#e5e4e2]/40">Nr KSeF:</span>
+                        <span className="ml-2 text-[#e5e4e2]">
+                          {correctedInvoiceKsefNumber || 'Nie wyslano do KSeF'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[#e5e4e2]/40">W KSeF:</span>
+                        <span className={`ml-2 ${correctedInvoiceWasInKsef ? 'text-green-400' : 'text-[#e5e4e2]/60'}`}>
+                          {correctedInvoiceWasInKsef ? 'Tak' : 'Nie'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="mb-4">
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Zakres korekty *</label>
+                  <div className="flex gap-4">
+                    <label className="flex cursor-pointer items-center gap-2">
+                      <input
+                        type="radio"
+                        name="correctionScope"
+                        value="full"
+                        checked={correctionScope === 'full'}
+                        onChange={() => setCorrectionScope('full')}
+                        className="text-orange-500"
+                      />
+                      <span className="text-sm text-[#e5e4e2]">Calosc faktury</span>
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-2">
+                      <input
+                        type="radio"
+                        name="correctionScope"
+                        value="partial"
+                        checked={correctionScope === 'partial'}
+                        onChange={() => setCorrectionScope('partial')}
+                        className="text-orange-500"
+                      />
+                      <span className="text-sm text-[#e5e4e2]">Czesc faktury</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                    Przyczyna korekty *
+                  </label>
+                  <textarea
+                    value={correctionReason}
+                    onChange={(e) => setCorrectionReason(e.target.value)}
+                    placeholder="np. Zmiana ceny uslugi, Blad w ilosci, Rabat potransakcyjny..."
+                    rows={2}
+                    className="w-full rounded-lg border border-orange-500/30 bg-[#0a0d1a] px-4 py-3 text-sm text-[#e5e4e2] placeholder-[#e5e4e2]/30 focus:border-orange-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+            )}
 
             {/* Nabywca */}
             <div className="grid grid-cols-1 gap-6">

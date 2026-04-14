@@ -397,9 +397,20 @@ export async function POST(request: NextRequest) {
 
 
     const organization = organizationQuery.data ?? null;
-    // 3. Przygotowanie danych do FA(3)
 
-    // 4. XML
+    if (invoice.invoice_type === 'corrective' && invoice.related_invoice_id) {
+      const db = getDb(supabase);
+      const { data: relatedInv } = await db
+        .invoices()
+        .select('invoice_type')
+        .eq('id', invoice.related_invoice_id)
+        .maybeSingle();
+
+      if (relatedInv) {
+        invoice.corrected_invoice_type = relatedInv.invoice_type;
+      }
+    }
+
     const preparedInvoice = prepareFA3Invoice(invoice, organization);
 
 debugFA3PreparedInvoice(preparedInvoice);

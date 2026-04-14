@@ -6,6 +6,14 @@
  * - generateFA3XML() buduje XML wyłącznie z przygotowanego modelu
  */
 
+export type FA3CorrectionData = {
+  correctedInvoiceNumber: string;
+  correctedInvoiceIssueDate: string;
+  correctedInvoiceKsefNumber?: string;
+  correctedInvoiceWasInKsef: boolean;
+  correctionReason: string;
+};
+
 export type FA3PreparedInvoice = {
   seller: {
     nip: string;
@@ -34,12 +42,12 @@ export type FA3PreparedInvoice = {
   invoice: {
     marginProcedure: boolean;
     newTransport: boolean;
-    metodaKasowa: boolean; //P_16 
-    samofakturowanie: boolean; //P_17
-    odwrotneObciazenie: boolean; //P_18
-    splitPayment: boolean; //P_18A
+    metodaKasowa: boolean;
+    samofakturowanie: boolean;
+    odwrotneObciazenie: boolean;
+    splitPayment: boolean;
     number: string;
-    type: 'VAT' | 'ZAL' | 'KON';
+    type: 'VAT' | 'ZAL' | 'KON' | 'KOR' | 'KOR_ZAL' | 'KOR_ROZ';
     issueDate: string;
     saleDate: string;
     paymentDueDate: string;
@@ -49,6 +57,7 @@ export type FA3PreparedInvoice = {
     totalGross: number;
     bankAccount?: string;
     bankName?: string;
+    correction?: FA3CorrectionData;
     items: Array<{
       lineNumber: number;
       name: string;
@@ -59,6 +68,7 @@ export type FA3PreparedInvoice = {
       vatRate: number;
       vatAmount: number;
       valueGross: number;
+      stanPrzed?: boolean;
     }>;
   };
 };
@@ -290,7 +300,14 @@ function buildPaymentXml(data: FA3PreparedInvoice): string {
     </Platnosc>`;
 }
 
-function getFa3RodzajFaktury(invoice: any): 'VAT' | 'ZAL' | 'KON' {
+function getFa3RodzajFaktury(invoice: any): 'VAT' | 'ZAL' | 'KON' | 'KOR' | 'KOR_ZAL' | 'KOR_ROZ' {
+  if (invoice?.invoice_type === 'corrective') {
+    const relatedType = invoice?.corrected_invoice_type;
+    if (relatedType === 'advance') return 'KOR_ZAL';
+    if (relatedType === 'final') return 'KOR_ROZ';
+    return 'KOR';
+  }
+
   if (invoice?.is_advance === true || invoice?.invoice_type === 'advance') {
     return 'ZAL';
   }
@@ -352,6 +369,13 @@ export function prepareFA3Invoice(invoice: any, organization: any): FA3PreparedI
       totalGross: Number(invoice?.total_gross || 0),
       bankAccount: normalizeBankAccount(invoice?.bank_account),
       bankName: pickFirstNonEmpty(invoice?.bank_name),
+      correction: invoice?.invoice_type === 'corrective' ? {
+        correctedInvoiceNumber: invoice?.corrected_invoice_number || '',
+        correctedInvoiceIssueDate: invoice?.corrected_invoice_issue_date || '',
+        correctedInvoiceKsefNumber: invoice?.corrected_invoice_ksef_number || undefined,
+        correctedInvoiceWasInKsef: invoice?.corrected_invoice_was_in_ksef ?? false,
+        correctionReason: invoice?.correction_reason || '',
+      } : undefined,
       items: (invoice?.invoice_items || []).map((item: any, index: number) => ({
         lineNumber: Number(item?.position_number ?? index + 1),
         name: pickFirstNonEmpty(item?.name) || '',
@@ -403,8 +427,30 @@ export function validatePreparedFA3Invoice(
     if (item.valueNet < 0) errors.push(`Pozycja ${index + 1}: nieprawidłowa wartość netto`);
   });
 
-  if (data.invoice.totalGross <= 0) {
+  const isCorrectiveType = ['KOR', 'KOR_ZAL', 'KOR_ROZ'].includes(data.invoice.type);
+
+  if (!isCorrectiveType && data.invoice.totalGross <= 0) {
     errors.push('Nieprawidłowa suma brutto');
+  }
+
+  if (isCorrectiveType) {
+    const correction = data.invoice.correction;
+    if (!correction) {
+      errors.push('Brak danych faktury korygowanej (DaneFaKorygowanej)');
+    } else {
+      if (!correction.correctedInvoiceNumber) {
+        errors.push('Brak numeru faktury korygowanej');
+      }
+      if (!correction.correctedInvoiceIssueDate) {
+        errors.push('Brak daty wystawienia faktury korygowanej');
+      }
+      if (!correction.correctionReason) {
+        errors.push('Brak przyczyny korekty');
+      }
+      if (correction.correctedInvoiceWasInKsef && !correction.correctedInvoiceKsefNumber) {
+        errors.push('Brak numeru KSeF faktury korygowanej');
+      }
+    }
   }
 
   if (
@@ -447,6 +493,34 @@ export function debugFA3PreparedInvoice(data: FA3PreparedInvoice): void {
   </Podmiot2>`;
 }
 
+function buildDaneFaKorygowanejXml(data: FA3PreparedInvoice): string {
+  const correction = data.invoice.correction;
+  if (!correction) return '';
+
+  const chunks: string[] = [];
+
+  chunks.push(`<DaneFaKorygowanej>`);
+  chunks.push(`  <DataWystFaKorygowanej>${formatDate(correction.correctedInvoiceIssueDate)}</DataWystFaKorygowanej>`);
+  chunks.push(`  <NrFaKorygowanej>${escapeXml(correction.correctedInvoiceNumber)}</NrFaKorygowanej>`);
+
+  if (correction.correctedInvoiceWasInKsef && correction.correctedInvoiceKsefNumber) {
+    chunks.push(`  <NrKSeFFaKorygowanej>${escapeXml(correction.correctedInvoiceKsefNumber)}</NrKSeFFaKorygowanej>`);
+  } else {
+    chunks.push(`  <NrKSeFN>1</NrKSeFN>`);
+  }
+
+  chunks.push(`</DaneFaKorygowanej>`);
+
+  return chunks.join('\n    ');
+}
+
+function buildPrzyczynaKorektyXml(data: FA3PreparedInvoice): string {
+  const correction = data.invoice.correction;
+  if (!correction?.correctionReason) return '';
+
+  return `<PrzyczynaKorekty>${escapeXml(correction.correctionReason)}</PrzyczynaKorekty>`;
+}
+
 export function generateFA3XML(
   data: FA3PreparedInvoice,
   options: GenerateFA3XMLOptions = {},
@@ -459,12 +533,16 @@ export function generateFA3XML(
   const adnotacjeXml = buildAdnotacjeXml(data);
   const paymentXml = buildPaymentXml(data);
   const rodzajFaktury = data.invoice.type;
+  const isCorrectiveType = ['KOR', 'KOR_ZAL', 'KOR_ROZ'].includes(rodzajFaktury);
+  const daneFaKorygowanejXml = isCorrectiveType ? buildDaneFaKorygowanejXml(data) : '';
+  const przyczynaKorektyXml = isCorrectiveType ? buildPrzyczynaKorektyXml(data) : '';
 
   const invoiceRowsXml = data.invoice.items
     .map(
       (item) => `
   <FaWiersz>
     <NrWierszaFa>${item.lineNumber}</NrWierszaFa>
+    ${item.stanPrzed ? '<StanPrzed>1</StanPrzed>' : ''}
     <P_7>${escapeXml(item.name)}</P_7>
     <P_8A>${escapeXml(item.unit)}</P_8A>
     <P_8B>${formatDecimal(item.quantity)}</P_8B>
@@ -528,6 +606,8 @@ export function generateFA3XML(
     <P_13_1>${formatDecimal(data.invoice.totalNet)}</P_13_1>
     <P_14_1>${formatDecimal(data.invoice.totalVat)}</P_14_1>
     <P_15>${formatDecimal(data.invoice.totalGross)}</P_15>
+    ${daneFaKorygowanejXml}
+    ${przyczynaKorektyXml}
     ${invoiceRowsXml}
     ${rowsCtrlXml}
     ${adnotacjeXml}
