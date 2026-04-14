@@ -38,6 +38,8 @@ export default function NewInvoicePage() {
   const searchParams = useSearchParams();
   const { showSnackbar } = useSnackbar();
   const eventId = searchParams.get('event');
+  const urlType = searchParams.get('type');
+  const urlRelated = searchParams.get('related');
 
   const [loading, setLoading] = useState(false);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
@@ -47,7 +49,7 @@ export default function NewInvoicePage() {
   const [showAddBuyerModal, setShowAddBuyerModal] = useState(false);
 
   const [invoiceType, setInvoiceType] = useState<'vat' | 'proforma' | 'advance' | 'corrective'>(
-    'vat',
+    urlType === 'corrective' ? 'corrective' : 'vat',
   );
   const [invoiceNumber, setInvoiceNumber] = useState<string>('');
   const [issueDate, setIssueDate] = useState(new Date().toISOString().split('T')[0]);
@@ -69,15 +71,24 @@ export default function NewInvoicePage() {
   const [correctedInvoiceWasInKsef, setCorrectedInvoiceWasInKsef] = useState(false);
   const [availableInvoices, setAvailableInvoices] = useState<any[]>([]);
 
+  const [urlRelatedLoaded, setUrlRelatedLoaded] = useState(false);
+
   useEffect(() => {
     fetchData();
   }, [eventId]);
 
   useEffect(() => {
-    if (selectedCompanyId) {
+    if (selectedCompanyId && !urlRelatedLoaded && !(urlType === 'corrective' && urlRelated)) {
       fetchData();
     }
   }, [selectedCompanyId]);
+
+  useEffect(() => {
+    if (urlType === 'corrective' && urlRelated && !urlRelatedLoaded && organizations.length > 0 && myCompanies.length > 0) {
+      setUrlRelatedLoaded(true);
+      handleSelectOriginalInvoice(urlRelated);
+    }
+  }, [urlType, urlRelated, urlRelatedLoaded, organizations, myCompanies]);
 
   const handleSelectOriginalInvoice = async (invoiceId: string) => {
     setRelatedInvoiceId(invoiceId);
@@ -100,6 +111,10 @@ export default function NewInvoicePage() {
       setCorrectedInvoiceIssueDate(origInvoice.issue_date || '');
       setSelectedOrgId(origInvoice.organization_id || '');
       setSelectedCompanyId(origInvoice.my_company_id || '');
+
+      if (origInvoice.sale_date) {
+        setSaleDate(origInvoice.sale_date.split('T')[0]);
+      }
 
       const { data: ksefRecord } = await supabase
         .from('ksef_invoices')
@@ -632,7 +647,8 @@ export default function NewInvoicePage() {
                 <select
                   value={invoiceType}
                   onChange={(e) => setInvoiceType(e.target.value as any)}
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
+                  disabled={urlType === 'corrective' && !!urlRelated}
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <option value="vat">Faktura VAT</option>
                   <option value="proforma">Proforma</option>
@@ -663,7 +679,8 @@ export default function NewInvoicePage() {
                   <select
                     value={relatedInvoiceId}
                     onChange={(e) => handleSelectOriginalInvoice(e.target.value)}
-                    className="w-full rounded-lg border border-orange-500/30 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-orange-500 focus:outline-none"
+                    disabled={!!urlRelated && urlRelatedLoaded}
+                    className="w-full rounded-lg border border-orange-500/30 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-orange-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <option value="">Wybierz fakture...</option>
                     {availableInvoices.map((inv) => (
