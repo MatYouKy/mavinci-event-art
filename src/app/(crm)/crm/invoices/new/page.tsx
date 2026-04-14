@@ -603,7 +603,8 @@ export default function NewInvoicePage() {
               <select
                 value={selectedCompanyId}
                 onChange={(e) => setSelectedCompanyId(e.target.value)}
-                className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                disabled={invoiceType === 'corrective' && !!relatedInvoiceId}
+                className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <option value="">Wybierz firmę...</option>
                 {myCompanies.map((company) => (
@@ -613,7 +614,12 @@ export default function NewInvoicePage() {
                   </option>
                 ))}
               </select>
-              {selectedCompanyId && (
+              {invoiceType === 'corrective' && relatedInvoiceId && (
+                <div className="mt-2 text-xs text-orange-400">
+                  Firma wystawiajaca zostala pobrana z faktury korygowanej
+                </div>
+              )}
+              {selectedCompanyId && !(invoiceType === 'corrective' && relatedInvoiceId) && (
                 <div className="mt-2 text-xs text-[#e5e4e2]/60">
                   {myCompanies.find((c) => c.id === selectedCompanyId)?.legal_name}
                 </div>
@@ -744,12 +750,29 @@ export default function NewInvoicePage() {
             )}
 
             <div className="grid grid-cols-1 gap-6">
-              <BuyerSearchInput
-                contacts={organizations}
-                selectedContactId={selectedOrgId}
-                onContactSelect={setSelectedOrgId}
-                onAddNew={() => setShowAddBuyerModal(true)}
-              />
+              {invoiceType === 'corrective' && relatedInvoiceId ? (
+                <div>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nabywca *</label>
+                  <div className="rounded-lg border border-orange-500/20 bg-[#0a0d1a]/50 px-4 py-3 text-[#e5e4e2]">
+                    {organizations.find((o) => o.id === selectedOrgId)?.name || 'Nabywca z faktury korygowanej'}
+                    {organizations.find((o) => o.id === selectedOrgId)?.nip && (
+                      <span className="ml-2 text-xs text-[#e5e4e2]/40">
+                        NIP: {organizations.find((o) => o.id === selectedOrgId)?.nip}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-2 text-xs text-orange-400">
+                    Nabywca zostal pobrany z faktury korygowanej
+                  </div>
+                </div>
+              ) : (
+                <BuyerSearchInput
+                  contacts={organizations}
+                  selectedContactId={selectedOrgId}
+                  onContactSelect={setSelectedOrgId}
+                  onAddNew={() => setShowAddBuyerModal(true)}
+                />
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-6">

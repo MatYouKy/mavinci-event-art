@@ -1,15 +1,17 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
-import { FileText, Plus, Search, Filter, Download, Eye, CreditCard as Edit, Trash2, CheckCircle, Clock, Send, XCircle, DollarSign, Calendar, Building2, Building } from 'lucide-react';
+import { FileText, Plus, Search, Filter, Download, Eye, Trash2, CheckCircle, Clock, Send, XCircle, DollarSign, Calendar, Building, MoreVertical, Settings, RotateCcw, AlertTriangle, RefreshCw, Save } from 'lucide-react';
 import KSeFIntegrationPanel from '@/components/crm/KSeFIntegrationPanel';
 import FinancialDashboard from '@/components/crm/FinancialDashboard';
 import KSeFFinancialDashboard from '@/components/crm/KSeFFinancialDashboard';
 import PermissionGuard from '@/components/crm/PermissionGuard';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
+import { useDialog } from '@/contexts/DialogContext';
+import { useSnackbar } from '@/contexts/SnackbarContext';
 
 interface Invoice {
   id: string;
@@ -38,6 +40,340 @@ interface Invoice {
   };
 }
 
+function InvoiceContextMenu({ invoice, onView, onDelete, onCorrection, canManage, isAdmin }: {
+  invoice: Invoice;
+  onView: () => void;
+  onDelete: () => void;
+  onCorrection: () => void;
+  canManage: boolean;
+  isAdmin: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    if (open) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [open]);
+
+  return (
+    <div ref={menuRef} className="relative">
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
+        className="rounded-lg p-2 text-[#e5e4e2]/60 transition-colors hover:bg-[#d3bb73]/10 hover:text-[#d3bb73]"
+      >
+        <MoreVertical className="h-4 w-4" />
+      </button>
+      {open && (
+        <div
+          className="absolute right-0 top-full z-[9999] mt-1 w-52 overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] shadow-2xl"
+          style={{ zIndex: 9999 }}
+        >
+          {invoice.pdf_url && (
+            <button
+              onClick={(e) => { e.stopPropagation(); window.open(invoice.pdf_url!, '_blank'); setOpen(false); }}
+              className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10"
+            >
+              <Download className="h-4 w-4 text-[#e5e4e2]/40" />
+              Pobierz PDF
+            </button>
+          )}
+          <button
+            onClick={(e) => { e.stopPropagation(); onView(); setOpen(false); }}
+            className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10"
+          >
+            <Eye className="h-4 w-4 text-[#e5e4e2]/40" />
+            Zobacz fakture
+          </button>
+          {(canManage || isAdmin) && invoice.invoice_type !== 'corrective' && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onCorrection(); setOpen(false); }}
+              className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10"
+            >
+              <RotateCcw className="h-4 w-4 text-orange-400/60" />
+              <span className="text-orange-400">Wystaw korekte</span>
+            </button>
+          )}
+          {(canManage || isAdmin) && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(); setOpen(false); }}
+              className="flex w-full items-center gap-3 border-t border-[#d3bb73]/10 px-4 py-3 text-left text-sm text-red-400 transition-colors hover:bg-red-500/10"
+            >
+              <Trash2 className="h-4 w-4" />
+              Usun fakture
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InvoiceSettingsTab() {
+  const [settings, setSettings] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [nextNumber, setNextNumber] = useState('');
+  const [validationError, setValidationError] = useState('');
+  const [existingNumbers, setExistingNumbers] = useState<string[]>([]);
+  const { showSnackbar } = useSnackbar();
+
+  const fetchSettings = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('invoice_settings')
+        .select('*')
+        .order('created_at')
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+      setSettings(data);
+      if (data) {
+        setNextNumber(String(data.last_invoice_number + 1));
+      }
+    } catch (err) {
+      console.error('Error fetching settings:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchExistingNumbers = useCallback(async () => {
+    try {
+      const { data } = await supabase
+        .from('invoices')
+        .select('invoice_number');
+      setExistingNumbers((data || []).map((i: any) => i.invoice_number));
+    } catch (err) {
+      console.error('Error fetching existing numbers:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSettings();
+    fetchExistingNumbers();
+  }, [fetchSettings, fetchExistingNumbers]);
+
+  const validateNumber = useCallback((num: string) => {
+    if (!settings) return;
+    const n = parseInt(num, 10);
+    if (isNaN(n) || n < 1) {
+      setValidationError('Numer musi byc liczba wieksza od 0');
+      return false;
+    }
+
+    const year = settings.current_year;
+    const prefixes = ['', 'PRO', 'ZAL', 'KOR'];
+    for (const prefix of prefixes) {
+      const formatted = prefix ? `${prefix}/${n}/${year}` : `${n}/${year}`;
+      if (existingNumbers.includes(formatted)) {
+        setValidationError(`Numer ${formatted} jest juz uzyty. Nastepny wolny numer zostanie przydzielony automatycznie.`);
+        return false;
+      }
+    }
+    setValidationError('');
+    return true;
+  }, [settings, existingNumbers]);
+
+  const handleSave = async () => {
+    if (!settings) return;
+    const n = parseInt(nextNumber, 10);
+    if (!validateNumber(nextNumber)) return;
+
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from('invoice_settings')
+        .update({
+          last_invoice_number: n - 1,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', settings.id);
+
+      if (error) throw error;
+      showSnackbar('Numeracja zaktualizowana', 'success');
+      await fetchSettings();
+      await fetchExistingNumbers();
+    } catch (err) {
+      console.error('Error saving settings:', err);
+      showSnackbar('Blad podczas zapisywania', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const findNextAvailable = useCallback(() => {
+    if (!settings) return;
+    const year = settings.current_year;
+    const prefixes = ['', 'PRO', 'ZAL', 'KOR'];
+    let candidate = parseInt(nextNumber, 10) || settings.last_invoice_number + 1;
+
+    for (let i = 0; i < 1000; i++) {
+      let conflict = false;
+      for (const prefix of prefixes) {
+        const formatted = prefix ? `${prefix}/${candidate}/${year}` : `${candidate}/${year}`;
+        if (existingNumbers.includes(formatted)) {
+          conflict = true;
+          break;
+        }
+      }
+      if (!conflict) {
+        setNextNumber(String(candidate));
+        setValidationError('');
+        return;
+      }
+      candidate++;
+    }
+  }, [settings, existingNumbers, nextNumber]);
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-16">
+        <div className="text-[#e5e4e2]/60">Ladowanie ustawien...</div>
+      </div>
+    );
+  }
+
+  if (!settings) {
+    return (
+      <div className="rounded-xl border border-red-500/20 bg-[#1c1f33] p-8 text-center">
+        <AlertTriangle className="mx-auto mb-4 h-12 w-12 text-red-400" />
+        <p className="text-[#e5e4e2]/80">Nie znaleziono ustawien faktur</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+        <h3 className="mb-6 text-lg font-medium text-[#e5e4e2]">Numeracja faktur</h3>
+
+        <div className="mb-6 grid grid-cols-1 gap-6 md:grid-cols-3">
+          <div className="rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a] p-4">
+            <div className="mb-1 text-xs text-[#e5e4e2]/40">Aktualny rok</div>
+            <div className="text-xl font-light text-[#e5e4e2]">{settings.current_year}</div>
+          </div>
+          <div className="rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a] p-4">
+            <div className="mb-1 text-xs text-[#e5e4e2]/40">Ostatni uzyty numer</div>
+            <div className="text-xl font-light text-[#d3bb73]">{settings.last_invoice_number}</div>
+          </div>
+          <div className="rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a] p-4">
+            <div className="mb-1 text-xs text-[#e5e4e2]/40">Laczna liczba faktur</div>
+            <div className="text-xl font-light text-[#e5e4e2]">{existingNumbers.length}</div>
+          </div>
+        </div>
+
+        <div className="mb-4 rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a] p-4">
+          <div className="mb-3 text-sm text-[#e5e4e2]/60">Format numeracji</div>
+          <div className="space-y-2 text-sm">
+            <div className="flex items-center gap-3">
+              <span className="rounded bg-[#1c1f33] px-2 py-1 font-mono text-[#d3bb73]">{'{numer}'}/{settings.current_year}</span>
+              <span className="text-[#e5e4e2]/40">Faktura VAT</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="rounded bg-[#1c1f33] px-2 py-1 font-mono text-[#d3bb73]">PRO/{'{numer}'}/{settings.current_year}</span>
+              <span className="text-[#e5e4e2]/40">Proforma</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="rounded bg-[#1c1f33] px-2 py-1 font-mono text-[#d3bb73]">ZAL/{'{numer}'}/{settings.current_year}</span>
+              <span className="text-[#e5e4e2]/40">Zaliczkowa</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="rounded bg-[#1c1f33] px-2 py-1 font-mono text-[#d3bb73]">KOR/{'{numer}'}/{settings.current_year}</span>
+              <span className="text-[#e5e4e2]/40">Korygujaca</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-[#d3bb73]/10 pt-6">
+          <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+            Nastepny numer faktury
+          </label>
+          <div className="flex items-start gap-3">
+            <div className="flex-1">
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  min="1"
+                  value={nextNumber}
+                  onChange={(e) => {
+                    setNextNumber(e.target.value);
+                    validateNumber(e.target.value);
+                  }}
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                />
+                <button
+                  onClick={findNextAvailable}
+                  className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-sm text-[#e5e4e2]/60 transition-colors hover:border-[#d3bb73]/40 hover:text-[#e5e4e2]"
+                  title="Znajdz nastepny wolny numer"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                </button>
+              </div>
+              {validationError && (
+                <div className="mt-2 flex items-center gap-2 text-xs text-orange-400">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  {validationError}
+                </div>
+              )}
+              <div className="mt-2 text-xs text-[#e5e4e2]/40">
+                Nastepna faktura VAT: <span className="font-mono text-[#d3bb73]">{nextNumber}/{settings.current_year}</span>
+              </div>
+            </div>
+            <button
+              onClick={handleSave}
+              disabled={saving || !!validationError}
+              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#c4ac64] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Save className="h-4 w-4" />
+              {saving ? 'Zapisywanie...' : 'Zapisz'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+        <h3 className="mb-4 text-lg font-medium text-[#e5e4e2]">Dane firmy (sprzedawca)</h3>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
+            <div className="mb-1 text-xs text-[#e5e4e2]/40">Nazwa firmy</div>
+            <div className="text-sm text-[#e5e4e2]">{settings.company_name}</div>
+          </div>
+          <div>
+            <div className="mb-1 text-xs text-[#e5e4e2]/40">NIP</div>
+            <div className="text-sm text-[#e5e4e2]">{settings.company_nip}</div>
+          </div>
+          <div>
+            <div className="mb-1 text-xs text-[#e5e4e2]/40">Adres</div>
+            <div className="text-sm text-[#e5e4e2]">{settings.company_street}, {settings.company_postal_code} {settings.company_city}</div>
+          </div>
+          <div>
+            <div className="mb-1 text-xs text-[#e5e4e2]/40">Konto bankowe</div>
+            <div className="text-sm font-mono text-[#e5e4e2]">{settings.bank_account}</div>
+          </div>
+          <div>
+            <div className="mb-1 text-xs text-[#e5e4e2]/40">Miejsce wystawienia</div>
+            <div className="text-sm text-[#e5e4e2]">{settings.invoice_issue_place}</div>
+          </div>
+          <div>
+            <div className="mb-1 text-xs text-[#e5e4e2]/40">Domyslny termin platnosci</div>
+            <div className="text-sm text-[#e5e4e2]">{settings.default_payment_days} dni</div>
+          </div>
+        </div>
+        <div className="mt-4 rounded-lg border border-blue-500/20 bg-blue-500/5 p-3 text-xs text-blue-400">
+          Dane firmy mozna zmieniac bezposrednio w systemie "Moje firmy" w ustawieniach.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function InvoicesPage() {
   const router = useRouter();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -47,14 +383,62 @@ export default function InvoicesPage() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterCompany, setFilterCompany] = useState<string>('all');
   const [showFilters, setShowFilters] = useState(false);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'invoices' | 'ksef'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'local' | 'ksef' | 'settings'>('dashboard');
   const [myCompanies, setMyCompanies] = useState<any[]>([]);
 
-  const { canManageModule } = useCurrentEmployee();
+  const { canManageModule, isAdmin } = useCurrentEmployee();
+  const { showConfirm } = useDialog();
+  const { showSnackbar } = useSnackbar();
 
   const canManageInvoices = useMemo(() => canManageModule('invoices'), [canManageModule]);
 
-  console.log('canManageInvoices', canManageInvoices);
+  const handleDeleteInvoice = async (invoice: Invoice) => {
+    if (!isAdmin && canManageInvoices) {
+      const confirmed = await showConfirm({
+        title: 'Wymagane potwierdzenie administratora',
+        message: `Usuwanie faktury ${invoice.invoice_number} wymaga potwierdzenia przez administratora. Czy na pewno chcesz kontynuowac?`,
+        confirmText: 'Usun (wymaga admin)',
+        cancelText: 'Anuluj',
+      });
+      if (!confirmed) return;
+    } else if (isAdmin) {
+      const confirmed = await showConfirm({
+        title: 'Usuwanie faktury',
+        message: `Czy na pewno chcesz usunac fakture ${invoice.invoice_number}? Tej operacji nie mozna cofnac.`,
+        confirmText: 'Usun',
+        cancelText: 'Anuluj',
+      });
+      if (!confirmed) return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('invoices')
+        .delete()
+        .eq('id', invoice.id);
+
+      if (error) throw error;
+      showSnackbar('Faktura zostala usunieta', 'success');
+      fetchInvoices();
+    } catch (err) {
+      console.error('Error deleting invoice:', err);
+      showSnackbar('Blad podczas usuwania faktury', 'error');
+    }
+  };
+
+  const handleCreateCorrection = async (invoice: Invoice) => {
+    if (!isAdmin && canManageInvoices) {
+      const confirmed = await showConfirm({
+        title: 'Wymagane potwierdzenie administratora',
+        message: `Wystawienie korekty do faktury ${invoice.invoice_number} wymaga potwierdzenia przez administratora. Czy na pewno chcesz kontynuowac?`,
+        confirmText: 'Wystaw korekte (wymaga admin)',
+        cancelText: 'Anuluj',
+      });
+      if (!confirmed) return;
+    }
+
+    router.push(`/crm/invoices/new?type=corrective&related=${invoice.id}`);
+  };
 
   useEffect(() => {
     fetchInvoices();
@@ -220,6 +604,7 @@ export default function InvoicesPage() {
           { id: 'dashboard', label: 'Dashboard', icon: DollarSign },
           { id: 'ksef', label: 'KSeF', icon: FileText },
           { id: 'local', label: 'Lokalne faktury', icon: Building },
+          ...(canManageInvoices ? [{ id: 'settings', label: 'Ustawienia faktur', icon: Settings }] : []),
         ]
           .filter((tab) => {
             return true;
@@ -253,6 +638,8 @@ export default function InvoicesPage() {
           </>
         ) : activeTab === 'ksef' ? (
           <KSeFIntegrationPanel />
+        ) : activeTab === 'settings' ? (
+          <InvoiceSettingsTab />
         ) : (
           <>
         {/* Original content */}
@@ -473,29 +860,15 @@ export default function InvoicesPage() {
                         {getStatusBadge(invoice.status)}
                       </td>
                       <td className="whitespace-nowrap px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          {invoice.pdf_url && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                window.open(invoice.pdf_url!, '_blank');
-                              }}
-                              className="rounded-lg p-2 text-[#e5e4e2]/60 transition-colors hover:bg-[#d3bb73]/10 hover:text-[#d3bb73]"
-                              title="Pobierz PDF"
-                            >
-                              <Download className="h-4 w-4" />
-                            </button>
-                          )}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              router.push(`/crm/invoices/${invoice.id}`);
-                            }}
-                            className="rounded-lg p-2 text-[#e5e4e2]/60 transition-colors hover:bg-[#d3bb73]/10 hover:text-[#d3bb73]"
-                            title="Zobacz szczegóły"
-                          >
-                            <Eye className="h-4 w-4" />
-                          </button>
+                        <div className="flex items-center justify-end">
+                          <InvoiceContextMenu
+                            invoice={invoice}
+                            onView={() => router.push(`/crm/invoices/${invoice.id}`)}
+                            onDelete={() => handleDeleteInvoice(invoice)}
+                            onCorrection={() => handleCreateCorrection(invoice)}
+                            canManage={canManageInvoices}
+                            isAdmin={isAdmin}
+                          />
                         </div>
                       </td>
                     </tr>
