@@ -14,6 +14,7 @@ import { useDialog } from '@/contexts/DialogContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
 interface Invoice {
+  ksef_status: string;
   id: string;
   invoice_number: string;
   invoice_type: 'vat' | 'proforma' | 'advance' | 'corrective';
@@ -367,7 +368,7 @@ function InvoiceSettingsTab() {
           </div>
         </div>
         <div className="mt-4 rounded-lg border border-blue-500/20 bg-blue-500/5 p-3 text-xs text-blue-400">
-          Dane firmy mozna zmieniac bezposrednio w systemie "Moje firmy" w ustawieniach.
+          Dane firmy mozna zmieniac bezposrednio w systemie &rdquo;Moje firmy&rdquo; w ustawieniach.
         </div>
       </div>
     </div>

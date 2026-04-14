@@ -1,14 +1,28 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
-import { ArrowLeft, Download, CreditCard as Edit, Printer, Send, CheckCircle, XCircle, Building2, Calendar, FileText, Link as LinkIcon, FilePlus2 } from 'lucide-react';
+import {
+  ArrowLeft,
+  Download,
+  CreditCard as Edit,
+  Printer,
+  Send,
+  CheckCircle,
+  XCircle,
+  Building2,
+  Calendar,
+  FileText,
+  Link as LinkIcon,
+  FilePlus2,
+} from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import SendInvoiceEmailModal from '@/components/crm/SendInvoiceEmailModal';
 import PermissionGuard from '@/components/crm/PermissionGuard';
 import { useDialog } from '@/contexts/DialogContext';
 import Image from 'next/image';
+import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
 
 interface Invoice {
   bank_name: string;
@@ -207,7 +221,10 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   const [sendingToKSeF, setSendingToKSeF] = useState(false);
 
   const handleConvertToVAT = async () => {
-    const confirmed = await showConfirm('Czy na pewno chcesz wystawić fakturę VAT na podstawie tej proformy? Zostanie utworzona nowa faktura.', 'Czy na pewno chcesz wystawić fakturę VAT na podstawie tej proformy? Zostanie utworzona nowa faktura?');
+    const confirmed = await showConfirm(
+      'Czy na pewno chcesz wystawić fakturę VAT na podstawie tej proformy? Zostanie utworzona nowa faktura.',
+      'Czy na pewno chcesz wystawić fakturę VAT na podstawie tej proformy? Zostanie utworzona nowa faktura?',
+    );
     if (!confirmed) {
       return;
     }
@@ -215,9 +232,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     try {
       setSendingToKSeF(true);
 
-      const { convertProformaToInvoice } = await import(
-        '@/lib/invoices/convertProformaToInvoice'
-      );
+      const { convertProformaToInvoice } = await import('@/lib/invoices/convertProformaToInvoice');
 
       const result = await convertProformaToInvoice(params.id);
 
@@ -242,7 +257,10 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   };
 
   const handleSendToKSeF = async () => {
-    const confirmed = await showConfirm('Czy na pewno chcesz wysłać tę fakturę do KSeF? Tej operacji nie można cofnąć.', 'Tej operacji nie można cofnąć.');
+    const confirmed = await showConfirm(
+      'Czy na pewno chcesz wysłać tę fakturę do KSeF? Tej operacji nie można cofnąć.',
+      'Tej operacji nie można cofnąć.',
+    );
     if (!confirmed) {
       return;
     }
@@ -275,6 +293,67 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
       setSendingToKSeF(false);
     }
   };
+
+  const actions = useMemo<Action[]>(() => {
+    const nextActions: Action[] = [];
+
+    if (invoice?.status !== 'cancelled') {
+      nextActions.push({
+        label: 'Edytuj',
+        icon: <Edit className="h-4 w-4" />,
+        onClick: () => router.push(`/crm/invoices/${invoice.id}/edit`),
+        variant: 'default',
+      });
+    }
+
+    nextActions.push(
+      {
+        label: 'Pobierz PDF',
+        icon: <Download className="h-4 w-4" />,
+        onClick: handleGeneratePDF,
+        variant: 'default',
+      },
+      {
+        label: 'Drukuj',
+        icon: <Printer className="h-4 w-4" />,
+        onClick: handleGeneratePDF,
+        variant: 'default',
+      },
+    );
+
+    if (invoice?.status !== 'cancelled') {
+      nextActions.push({
+        label: 'Wyślij email',
+        icon: <Send className="h-4 w-4" />,
+        onClick: handleSendEmail,
+        variant: 'default',
+      });
+    }
+
+    if (invoice?.status === 'draft' && !invoice?.is_proforma) {
+      nextActions.push({
+        label: sendingToKSeF ? 'Wysyłanie...' : 'Wyślij do KSeF',
+        icon: <Send className="h-4 w-4" />,
+        onClick: handleSendToKSeF,
+        variant: 'primary',
+        disabled: sendingToKSeF,
+      });
+    }
+
+    if (
+      (invoice?.status === 'issued' || invoice?.status === 'sent') &&
+      invoice.invoice_type !== 'corrective'
+    ) {
+      nextActions.push({
+        label: 'Wystaw korektę',
+        icon: <FilePlus2 className="h-4 w-4" />,
+        onClick: () => router.push(`/crm/invoices/new?type=corrective&related=${invoice.id}`),
+        variant: 'default',
+      });
+    }
+
+    return nextActions;
+  }, [invoice, router, handleGeneratePDF, handleSendEmail, handleSendToKSeF, sendingToKSeF]);
 
   if (loading) {
     return (
@@ -314,575 +393,540 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             Powrót
           </button>
 
-        {/* Proforma Alert */}
-        {invoice.is_proforma && (
-          <div className="mb-6 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-6">
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <h3 className="mb-2 text-lg font-medium text-yellow-400">
-                  📋 Faktura Proforma
-                </h3>
-                <p className="mb-4 text-sm text-[#e5e4e2]/80">
-                  Ta proforma nie zostanie wysłana do KSeF. Aby wystawić prawnie wiążącą fakturę
-                  VAT, użyj przycisku poniżej.
-                </p>
+          {/* Proforma Alert */}
+          {invoice.is_proforma && (
+            <div className="mb-6 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-6">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <h3 className="mb-2 text-lg font-medium text-yellow-400">📋 Faktura Proforma</h3>
+                  <p className="mb-4 text-sm text-[#e5e4e2]/80">
+                    Ta proforma nie zostanie wysłana do KSeF. Aby wystawić prawnie wiążącą fakturę
+                    VAT, użyj przycisku poniżej.
+                  </p>
 
-                {!invoice.proforma_converted_to_invoice_id ? (
-                  <button
-                    onClick={handleConvertToVAT}
-                    disabled={sendingToKSeF}
-                    className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
-                  >
-                    <CheckCircle className="h-4 w-4" />
-                    {sendingToKSeF ? 'Tworzenie...' : 'Wystaw fakturę VAT na podstawie proformy'}
-                  </button>
-                ) : (
-                  <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3">
-                    <div className="mb-2 text-sm font-medium text-green-400">
-                      ✅ Faktura VAT została wystawiona
+                  {!invoice.proforma_converted_to_invoice_id ? (
+                    <button
+                      onClick={handleConvertToVAT}
+                      disabled={sendingToKSeF}
+                      className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
+                    >
+                      <CheckCircle className="h-4 w-4" />
+                      {sendingToKSeF ? 'Tworzenie...' : 'Wystaw fakturę VAT na podstawie proformy'}
+                    </button>
+                  ) : (
+                    <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3">
+                      <div className="mb-2 text-sm font-medium text-green-400">
+                        ✅ Faktura VAT została wystawiona
+                      </div>
+                      <button
+                        onClick={() =>
+                          router.push(`/crm/invoices/${invoice.proforma_converted_to_invoice_id}`)
+                        }
+                        className="text-sm text-[#d3bb73] hover:underline"
+                      >
+                        Zobacz fakturę VAT →
+                      </button>
                     </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* VAT Invoice from Proforma */}
+          {!invoice.is_proforma &&
+            invoice.related_invoice_id &&
+            invoice.invoice_type !== 'corrective' && (
+              <div className="mb-6 rounded-xl border border-blue-500/30 bg-blue-500/10 p-4">
+                <div className="text-sm text-[#e5e4e2]/80">
+                  Wystawiona na podstawie proformy:
+                  <button
+                    onClick={() => router.push(`/crm/invoices/${invoice.related_invoice_id}`)}
+                    className="ml-2 text-[#d3bb73] hover:underline"
+                  >
+                    Zobacz proformę
+                  </button>
+                </div>
+              </div>
+            )}
+
+          {/* Corrective Invoice Info */}
+          {invoice.invoice_type === 'corrective' && (
+            <div className="mb-6 rounded-xl border border-orange-500/30 bg-orange-500/10 p-6">
+              <h3 className="mb-4 text-lg font-medium text-orange-400">Faktura korygujaca</h3>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <div className="mb-1 text-xs text-[#e5e4e2]/40">Faktura korygowana</div>
+                  {invoice.corrected_invoice_number ? (
                     <button
                       onClick={() =>
-                        router.push(`/crm/invoices/${invoice.proforma_converted_to_invoice_id}`)
+                        invoice.related_invoice_id &&
+                        router.push(`/crm/invoices/${invoice.related_invoice_id}`)
                       }
-                      className="text-sm text-[#d3bb73] hover:underline"
+                      className="font-medium text-[#d3bb73] hover:underline"
                     >
-                      Zobacz fakturę VAT →
+                      {invoice.corrected_invoice_number}
                     </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* VAT Invoice from Proforma */}
-        {!invoice.is_proforma && invoice.related_invoice_id && invoice.invoice_type !== 'corrective' && (
-          <div className="mb-6 rounded-xl border border-blue-500/30 bg-blue-500/10 p-4">
-            <div className="text-sm text-[#e5e4e2]/80">
-              Wystawiona na podstawie proformy:
-              <button
-                onClick={() => router.push(`/crm/invoices/${invoice.related_invoice_id}`)}
-                className="ml-2 text-[#d3bb73] hover:underline"
-              >
-                Zobacz proformę
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Corrective Invoice Info */}
-        {invoice.invoice_type === 'corrective' && (
-          <div className="mb-6 rounded-xl border border-orange-500/30 bg-orange-500/10 p-6">
-            <h3 className="mb-4 text-lg font-medium text-orange-400">
-              Faktura korygujaca
-            </h3>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div>
-                <div className="mb-1 text-xs text-[#e5e4e2]/40">Faktura korygowana</div>
-                {invoice.corrected_invoice_number ? (
-                  <button
-                    onClick={() => invoice.related_invoice_id && router.push(`/crm/invoices/${invoice.related_invoice_id}`)}
-                    className="font-medium text-[#d3bb73] hover:underline"
-                  >
-                    {invoice.corrected_invoice_number}
-                  </button>
-                ) : (
-                  <div className="text-[#e5e4e2]/60">-</div>
-                )}
-              </div>
-              <div>
-                <div className="mb-1 text-xs text-[#e5e4e2]/40">Data wystawienia korygowanej</div>
-                <div className="text-[#e5e4e2]">
-                  {invoice.corrected_invoice_issue_date
-                    ? new Date(invoice.corrected_invoice_issue_date).toLocaleDateString('pl-PL')
-                    : '-'}
-                </div>
-              </div>
-              <div>
-                <div className="mb-1 text-xs text-[#e5e4e2]/40">Nr KSeF korygowanej</div>
-                <div className="text-[#e5e4e2]">
-                  {invoice.corrected_invoice_ksef_number || 'Nie wyslano do KSeF'}
-                </div>
-              </div>
-              <div>
-                <div className="mb-1 text-xs text-[#e5e4e2]/40">Zakres korekty</div>
-                <div className="text-[#e5e4e2]">
-                  {invoice.correction_scope === 'full' ? 'Calosc faktury' : 'Czesc faktury'}
-                </div>
-              </div>
-            </div>
-            {invoice.correction_reason && (
-              <div className="mt-4">
-                <div className="mb-1 text-xs text-[#e5e4e2]/40">Przyczyna korekty</div>
-                <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-3 text-sm text-[#e5e4e2]">
-                  {invoice.correction_reason}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Relations Section */}
-        {(relatedData.event ||
-          relatedData.organization ||
-          relatedData.relatedInvoice ||
-          (relatedData.relatedInvoices && relatedData.relatedInvoices.length > 0)) && (
-          <div className="mb-6 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-            <h3 className="mb-4 flex items-center gap-2 text-lg font-medium text-[#e5e4e2]">
-              <LinkIcon className="h-5 w-5 text-[#d3bb73]" />
-              Powiązania
-            </h3>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {relatedData.event && (
-                <div
-                  onClick={() => router.push(`/crm/events/${relatedData.event!.id}`)}
-                  className="cursor-pointer rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4 transition-colors hover:border-[#d3bb73]/40"
-                >
-                  <div className="flex items-start gap-3">
-                    <Calendar className="mt-0.5 h-5 w-5 text-blue-400" />
-                    <div className="flex-1">
-                      <div className="mb-1 text-xs text-[#e5e4e2]/40">Event</div>
-                      <div className="font-medium text-[#e5e4e2]">{relatedData.event.name}</div>
-                      <div className="mt-1 text-xs text-[#e5e4e2]/60">
-                        {new Date(relatedData.event.event_date).toLocaleDateString('pl-PL')}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {relatedData.organization && (
-                <div
-                  onClick={() => router.push(`/crm/contacts/${relatedData.organization!.id}`)}
-                  className="cursor-pointer rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4 transition-colors hover:border-[#d3bb73]/40"
-                >
-                  <div className="flex items-start gap-3">
-                    <Building2 className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
-                    <div className="flex-1">
-                      <div className="mb-1 text-xs text-[#e5e4e2]/40">Organizacja</div>
-                      <div className="font-medium text-[#e5e4e2]">
-                        {relatedData.organization.name}
-                      </div>
-                      {relatedData.organization.nip && (
-                        <div className="mt-1 text-xs text-[#e5e4e2]/60">
-                          NIP: {relatedData.organization.nip}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {relatedData.relatedInvoice && (
-                <div
-                  onClick={() => router.push(`/crm/invoices/${relatedData.relatedInvoice!.id}`)}
-                  className="cursor-pointer rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4 transition-colors hover:border-[#d3bb73]/40"
-                >
-                  <div className="flex items-start gap-3">
-                    <FileText className="mt-0.5 h-5 w-5 text-purple-400" />
-                    <div className="flex-1">
-                      <div className="mb-1 text-xs text-[#e5e4e2]/40">Powiązana faktura</div>
-                      <div className="font-medium text-[#e5e4e2]">
-                        {relatedData.relatedInvoice.invoice_number}
-                      </div>
-                      <div className="mt-1 text-xs text-[#e5e4e2]/60">
-                        {getTypeLabel(relatedData.relatedInvoice.invoice_type)}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {relatedData.relatedInvoices && relatedData.relatedInvoices.length > 0 && (
-                <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4">
-                  <div className="flex items-start gap-3">
-                    <FileText className="mt-0.5 h-5 w-5 text-orange-400" />
-                    <div className="flex-1">
-                      <div className="mb-2 text-xs text-[#e5e4e2]/40">Faktury korygujące</div>
-                      {relatedData.relatedInvoices.map((rel) => (
-                        <div
-                          key={rel.id}
-                          onClick={() => router.push(`/crm/invoices/${rel.id}`)}
-                          className="mb-1 cursor-pointer text-[#e5e4e2] hover:text-[#d3bb73]"
-                        >
-                          {rel.invoice_number}{' '}
-                          <span className="text-xs text-[#e5e4e2]/60">
-                            ({getTypeLabel(rel.invoice_type)})
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Header Actions */}
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <h1 className="mb-2 text-3xl font-light text-[#e5e4e2]">
-              Faktura {invoice.invoice_number}
-            </h1>
-            <p className="text-[#e5e4e2]/60">{getTypeLabel(invoice.invoice_type)}{invoice.is_proforma ? ' (Proforma)' : ''}</p>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            {invoice.status !== 'cancelled' && (
-              <button
-                onClick={() => router.push(`/crm/invoices/${invoice.id}/edit`)}
-                className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] hover:bg-[#d3bb73]/5"
-              >
-                <Edit className="h-4 w-4" />
-                Edytuj
-              </button>
-            )}
-            <button
-              onClick={handleGeneratePDF}
-              className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] hover:bg-[#d3bb73]/5"
-            >
-              <Download className="h-4 w-4" />
-              Pobierz PDF
-            </button>
-            <button
-              onClick={handleGeneratePDF}
-              className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] hover:bg-[#d3bb73]/5"
-            >
-              <Printer className="h-4 w-4" />
-              Drukuj
-            </button>
-            {invoice.status !== 'cancelled' && (
-              <button
-                onClick={handleSendEmail}
-                className="flex items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/20 px-4 py-2 text-blue-400 hover:bg-blue-500/30"
-              >
-                <Send className="h-4 w-4" />
-                Wyślij email
-              </button>
-            )}
-            {invoice.status === 'draft' && !invoice.is_proforma && (
-              <button
-                onClick={handleSendToKSeF}
-                disabled={sendingToKSeF}
-                className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
-              >
-                <Send className="h-4 w-4" />
-                {sendingToKSeF ? 'Wysyłanie...' : 'Wyślij do KSeF'}
-              </button>
-            )}
-            {(invoice.status === 'issued' || invoice.status === 'sent') && invoice.invoice_type !== 'corrective' && (
-              <button
-                onClick={() => router.push(`/crm/invoices/new?type=corrective&related=${invoice.id}`)}
-                className="flex items-center gap-2 rounded-lg border border-orange-500/30 bg-orange-500/20 px-4 py-2 text-orange-400 hover:bg-orange-500/30"
-              >
-                <FilePlus2 className="h-4 w-4" />
-                Wystaw korektę
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* KSeF Status */}
-        {invoice.ksef_status && (
-          <div className={`mb-6 rounded-xl border p-4 ${
-            invoice.ksef_status === 'accepted'
-              ? 'border-green-500/30 bg-green-500/10'
-              : invoice.ksef_status === 'rejected'
-                ? 'border-red-500/30 bg-red-500/10'
-                : invoice.ksef_status === 'sent'
-                  ? 'border-blue-500/30 bg-blue-500/10'
-                  : 'border-[#d3bb73]/20 bg-[#1c1f33]'
-          }`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className={`flex h-8 w-8 items-center justify-center rounded-full ${
-                  invoice.ksef_status === 'accepted'
-                    ? 'bg-green-500/20 text-green-400'
-                    : invoice.ksef_status === 'rejected'
-                      ? 'bg-red-500/20 text-red-400'
-                      : 'bg-blue-500/20 text-blue-400'
-                }`}>
-                  {invoice.ksef_status === 'accepted' ? (
-                    <CheckCircle className="h-5 w-5" />
-                  ) : invoice.ksef_status === 'rejected' ? (
-                    <XCircle className="h-5 w-5" />
                   ) : (
-                    <Send className="h-5 w-5" />
+                    <div className="text-[#e5e4e2]/60">-</div>
                   )}
                 </div>
                 <div>
-                  <div className="text-sm font-medium text-[#e5e4e2]">
-                    KSeF: {invoice.ksef_status === 'accepted' ? 'Zaakceptowana' : invoice.ksef_status === 'rejected' ? 'Odrzucona' : invoice.ksef_status === 'sent' ? 'Wysłana' : 'Szkic'}
+                  <div className="mb-1 text-xs text-[#e5e4e2]/40">Data wystawienia korygowanej</div>
+                  <div className="text-[#e5e4e2]">
+                    {invoice.corrected_invoice_issue_date
+                      ? new Date(invoice.corrected_invoice_issue_date).toLocaleDateString('pl-PL')
+                      : '-'}
                   </div>
-                  {invoice.ksef_reference_number && (
-                    <div className="text-xs text-[#e5e4e2]/60">
-                      Nr ref.: {invoice.ksef_reference_number}
-                    </div>
-                  )}
+                </div>
+                <div>
+                  <div className="mb-1 text-xs text-[#e5e4e2]/40">Nr KSeF korygowanej</div>
+                  <div className="text-[#e5e4e2]">
+                    {invoice.corrected_invoice_ksef_number || 'Nie wyslano do KSeF'}
+                  </div>
+                </div>
+                <div>
+                  <div className="mb-1 text-xs text-[#e5e4e2]/40">Zakres korekty</div>
+                  <div className="text-[#e5e4e2]">
+                    {invoice.correction_scope === 'full' ? 'Calosc faktury' : 'Czesc faktury'}
+                  </div>
                 </div>
               </div>
-              {invoice.ksef_sent_at && (
-                <div className="text-xs text-[#e5e4e2]/40">
-                  {new Date(invoice.ksef_sent_at).toLocaleString('pl-PL')}
+              {invoice.correction_reason && (
+                <div className="mt-4">
+                  <div className="mb-1 text-xs text-[#e5e4e2]/40">Przyczyna korekty</div>
+                  <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-3 text-sm text-[#e5e4e2]">
+                    {invoice.correction_reason}
+                  </div>
                 </div>
               )}
             </div>
-            {invoice.ksef_error && (
-              <div className="mt-3 rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-sm text-red-400">
-                {invoice.ksef_error}
-              </div>
-            )}
-          </div>
-        )}
+          )}
 
-        {/* Invoice Preview - A4 Format (210mm x 297mm at 96dpi = 794px x 1123px) */}
-        <div
-          className="invoice-preview mx-auto mb-6 rounded-xl bg-white text-black"
-          style={{ width: '794px', minHeight: '1123px', padding: '60px' }}
-        >
-          {/* Header */}
-          <div className="mb-12 flex items-start justify-between">
-            <div className="flex items-center gap-4">
-              <Image
-                src={invoice.company_logo_url || '/logo-mavinci-crm.png'}
-                alt="Logo firmy"
-                className="h-16 w-auto object-contain"
-                width={128}
-                height={128}
-              />
-            </div>
-            <div className="text-right text-sm">
-              <div className="mb-4">
-                <div className="text-gray-600">Miejsce wystawienia</div>
-                <div className="font-medium">{invoice.issue_place}</div>
+          {/* Relations Section */}
+          {(relatedData.event ||
+            relatedData.organization ||
+            relatedData.relatedInvoice ||
+            (relatedData.relatedInvoices && relatedData.relatedInvoices.length > 0)) && (
+            <div className="mb-6 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+              <h3 className="mb-4 flex items-center gap-2 text-lg font-medium text-[#e5e4e2]">
+                <LinkIcon className="h-5 w-5 text-[#d3bb73]" />
+                Powiązania
+              </h3>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {relatedData.event && (
+                  <div
+                    onClick={() => router.push(`/crm/events/${relatedData.event!.id}`)}
+                    className="cursor-pointer rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4 transition-colors hover:border-[#d3bb73]/40"
+                  >
+                    <div className="flex items-start gap-3">
+                      <Calendar className="mt-0.5 h-5 w-5 text-blue-400" />
+                      <div className="flex-1">
+                        <div className="mb-1 text-xs text-[#e5e4e2]/40">Event</div>
+                        <div className="font-medium text-[#e5e4e2]">{relatedData.event.name}</div>
+                        <div className="mt-1 text-xs text-[#e5e4e2]/60">
+                          {new Date(relatedData.event.event_date).toLocaleDateString('pl-PL')}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {relatedData.organization && (
+                  <div
+                    onClick={() => router.push(`/crm/contacts/${relatedData.organization!.id}`)}
+                    className="cursor-pointer rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4 transition-colors hover:border-[#d3bb73]/40"
+                  >
+                    <div className="flex items-start gap-3">
+                      <Building2 className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
+                      <div className="flex-1">
+                        <div className="mb-1 text-xs text-[#e5e4e2]/40">Organizacja</div>
+                        <div className="font-medium text-[#e5e4e2]">
+                          {relatedData.organization.name}
+                        </div>
+                        {relatedData.organization.nip && (
+                          <div className="mt-1 text-xs text-[#e5e4e2]/60">
+                            NIP: {relatedData.organization.nip}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {relatedData.relatedInvoice && (
+                  <div
+                    onClick={() => router.push(`/crm/invoices/${relatedData.relatedInvoice!.id}`)}
+                    className="cursor-pointer rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4 transition-colors hover:border-[#d3bb73]/40"
+                  >
+                    <div className="flex items-start gap-3">
+                      <FileText className="mt-0.5 h-5 w-5 text-purple-400" />
+                      <div className="flex-1">
+                        <div className="mb-1 text-xs text-[#e5e4e2]/40">Powiązana faktura</div>
+                        <div className="font-medium text-[#e5e4e2]">
+                          {relatedData.relatedInvoice.invoice_number}
+                        </div>
+                        <div className="mt-1 text-xs text-[#e5e4e2]/60">
+                          {getTypeLabel(relatedData.relatedInvoice.invoice_type)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {relatedData.relatedInvoices && relatedData.relatedInvoices.length > 0 && (
+                  <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4">
+                    <div className="flex items-start gap-3">
+                      <FileText className="mt-0.5 h-5 w-5 text-orange-400" />
+                      <div className="flex-1">
+                        <div className="mb-2 text-xs text-[#e5e4e2]/40">Faktury korygujące</div>
+                        {relatedData.relatedInvoices.map((rel) => (
+                          <div
+                            key={rel.id}
+                            onClick={() => router.push(`/crm/invoices/${rel.id}`)}
+                            className="mb-1 cursor-pointer text-[#e5e4e2] hover:text-[#d3bb73]"
+                          >
+                            {rel.invoice_number}{' '}
+                            <span className="text-xs text-[#e5e4e2]/60">
+                              ({getTypeLabel(rel.invoice_type)})
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="mb-4">
-                <div className="text-gray-600">Data wystawienia</div>
-                <div className="font-medium">
-                  {new Date(invoice.issue_date).toLocaleDateString('pl-PL')}
+            </div>
+          )}
+
+          {/* Header Actions */}
+          <div className="mb-6 flex items-center justify-between">
+            <div>
+              <h1 className="mb-2 text-3xl font-light text-[#e5e4e2]">
+                Faktura {invoice.invoice_number}
+              </h1>
+              <p className="text-[#e5e4e2]/60">
+                {getTypeLabel(invoice.invoice_type)}
+                {invoice.is_proforma ? ' (Proforma)' : ''}
+              </p>
+            </div>
+            <ResponsiveActionBar disabledBackground actions={actions} mobileBreakpoint={900} />
+          </div>
+
+          {/* KSeF Status */}
+          {invoice.ksef_status && (
+            <div
+              className={`mb-6 rounded-xl border p-4 ${
+                invoice.ksef_status === 'accepted'
+                  ? 'border-green-500/30 bg-green-500/10'
+                  : invoice.ksef_status === 'rejected'
+                    ? 'border-red-500/30 bg-red-500/10'
+                    : invoice.ksef_status === 'sent'
+                      ? 'border-blue-500/30 bg-blue-500/10'
+                      : 'border-[#d3bb73]/20 bg-[#1c1f33]'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`flex h-8 w-8 items-center justify-center rounded-full ${
+                      invoice.ksef_status === 'accepted'
+                        ? 'bg-green-500/20 text-green-400'
+                        : invoice.ksef_status === 'rejected'
+                          ? 'bg-red-500/20 text-red-400'
+                          : 'bg-blue-500/20 text-blue-400'
+                    }`}
+                  >
+                    {invoice.ksef_status === 'accepted' ? (
+                      <CheckCircle className="h-5 w-5" />
+                    ) : invoice.ksef_status === 'rejected' ? (
+                      <XCircle className="h-5 w-5" />
+                    ) : (
+                      <Send className="h-5 w-5" />
+                    )}
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-[#e5e4e2]">
+                      KSeF:{' '}
+                      {invoice.ksef_status === 'accepted'
+                        ? 'Zaakceptowana'
+                        : invoice.ksef_status === 'rejected'
+                          ? 'Odrzucona'
+                          : invoice.ksef_status === 'sent'
+                            ? 'Wysłana'
+                            : 'Szkic'}
+                    </div>
+                    {invoice.ksef_reference_number && (
+                      <div className="text-xs text-[#e5e4e2]/60">
+                        Nr ref.: {invoice.ksef_reference_number}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {invoice.ksef_sent_at && (
+                  <div className="text-xs text-[#e5e4e2]/40">
+                    {new Date(invoice.ksef_sent_at).toLocaleString('pl-PL')}
+                  </div>
+                )}
+              </div>
+              {invoice.ksef_error && (
+                <div className="mt-3 rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-sm text-red-400">
+                  {invoice.ksef_error}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Invoice Preview - A4 Format (210mm x 297mm at 96dpi = 794px x 1123px) */}
+          <div
+            className="invoice-preview mx-auto mb-6 rounded-xl bg-white text-black"
+            style={{ width: '794px', minHeight: '1123px', padding: '60px' }}
+          >
+            {/* Header */}
+            <div className="mb-12 flex items-start justify-between">
+              <div className="flex items-center gap-4">
+                <Image
+                  src={invoice.company_logo_url || '/logo-mavinci-crm.png'}
+                  alt="Logo firmy"
+                  className="h-16 w-auto object-contain"
+                  width={128}
+                  height={128}
+                />
+              </div>
+              <div className="text-right text-sm">
+                <div className="mb-4">
+                  <div className="text-gray-600">Miejsce wystawienia</div>
+                  <div className="font-medium">{invoice.issue_place}</div>
+                </div>
+                <div className="mb-4">
+                  <div className="text-gray-600">Data wystawienia</div>
+                  <div className="font-medium">
+                    {new Date(invoice.issue_date).toLocaleDateString('pl-PL')}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-gray-600">Data sprzedaży</div>
+                  <div className="font-medium">
+                    {new Date(invoice.sale_date).toLocaleDateString('pl-PL')}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Seller & Buyer */}
+            <div className="mb-12 grid grid-cols-2 gap-12">
+              <div>
+                <div className="mb-2 text-sm text-gray-600">Sprzedawca</div>
+                <div className="font-medium">{invoice.seller_name}</div>
+                <div className="text-sm">NIP: {invoice.seller_nip}</div>
+                <div className="text-sm">{invoice.seller_street}</div>
+                <div className="text-sm">
+                  {invoice.seller_postal_code} {invoice.seller_city}
                 </div>
               </div>
               <div>
-                <div className="text-gray-600">Data sprzedaży</div>
-                <div className="font-medium">
-                  {new Date(invoice.sale_date).toLocaleDateString('pl-PL')}
+                <div className="mb-2 text-sm text-gray-600">Nabywca</div>
+                <div className="font-medium">{invoice.buyer_name}</div>
+                {invoice.buyer_nip && <div className="text-sm">NIP: {invoice.buyer_nip}</div>}
+                <div className="text-sm">{invoice.buyer_street}</div>
+                <div className="text-sm">
+                  {invoice.buyer_postal_code} {invoice.buyer_city}
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* Seller & Buyer */}
-          <div className="mb-12 grid grid-cols-2 gap-12">
-            <div>
-              <div className="mb-2 text-sm text-gray-600">Sprzedawca</div>
-              <div className="font-medium">{invoice.seller_name}</div>
-              <div className="text-sm">NIP: {invoice.seller_nip}</div>
-              <div className="text-sm">{invoice.seller_street}</div>
-              <div className="text-sm">
-                {invoice.seller_postal_code} {invoice.seller_city}
+            {/* Invoice Number */}
+            <div className="mb-8 text-center">
+              <div className="text-2xl font-bold">
+                {getTypeLabel(invoice.invoice_type)} {invoice.invoice_number}
               </div>
             </div>
-            <div>
-              <div className="mb-2 text-sm text-gray-600">Nabywca</div>
-              <div className="font-medium">{invoice.buyer_name}</div>
-              {invoice.buyer_nip && <div className="text-sm">NIP: {invoice.buyer_nip}</div>}
-              <div className="text-sm">{invoice.buyer_street}</div>
-              <div className="text-sm">
-                {invoice.buyer_postal_code} {invoice.buyer_city}
-              </div>
-            </div>
-          </div>
 
-          {/* Invoice Number */}
-          <div className="mb-8 text-center">
-            <div className="text-2xl font-bold">
-              {getTypeLabel(invoice.invoice_type)} {invoice.invoice_number}
-            </div>
-          </div>
+            {/* Items Table */}
+            <table className="mb-8 w-full text-sm">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="border border-gray-300 p-2 text-left">Lp.</th>
+                  <th className="border border-gray-300 p-2 text-left">Nazwa towaru lub usługi</th>
+                  <th className="border border-gray-300 p-2">Jm.</th>
+                  <th className="border border-gray-300 p-2">Ilość</th>
+                  <th className="border border-gray-300 p-2">Cena netto</th>
+                  <th className="border border-gray-300 p-2">Wartość netto</th>
+                  <th className="border border-gray-300 p-2">Stawka VAT</th>
+                  <th className="border border-gray-300 p-2">Kwota VAT</th>
+                  <th className="border border-gray-300 p-2">Wartość brutto</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item) => (
+                  <tr key={item.id}>
+                    <td className="border border-gray-300 p-2">{item.position_number}</td>
+                    <td className="border border-gray-300 p-2">{item.name}</td>
+                    <td className="border border-gray-300 p-2 text-center">{item.unit}</td>
+                    <td className="border border-gray-300 p-2 text-right">{item.quantity}</td>
+                    <td className="border border-gray-300 p-2 text-right">
+                      {item.price_net.toFixed(2)}
+                    </td>
+                    <td className="border border-gray-300 p-2 text-right">
+                      {item.value_net.toFixed(2)}
+                    </td>
+                    <td className="border border-gray-300 p-2 text-center">{item.vat_rate}%</td>
+                    <td className="border border-gray-300 p-2 text-right">
+                      {item.vat_amount.toFixed(2)}
+                    </td>
+                    <td className="border border-gray-300 p-2 text-right font-medium">
+                      {item.value_gross.toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
 
-          {/* Items Table */}
-          <table className="mb-8 w-full text-sm">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="border border-gray-300 p-2 text-left">Lp.</th>
-                <th className="border border-gray-300 p-2 text-left">Nazwa towaru lub usługi</th>
-                <th className="border border-gray-300 p-2">Jm.</th>
-                <th className="border border-gray-300 p-2">Ilość</th>
-                <th className="border border-gray-300 p-2">Cena netto</th>
-                <th className="border border-gray-300 p-2">Wartość netto</th>
-                <th className="border border-gray-300 p-2">Stawka VAT</th>
-                <th className="border border-gray-300 p-2">Kwota VAT</th>
-                <th className="border border-gray-300 p-2">Wartość brutto</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={item.id}>
-                  <td className="border border-gray-300 p-2">{item.position_number}</td>
-                  <td className="border border-gray-300 p-2">{item.name}</td>
-                  <td className="border border-gray-300 p-2 text-center">{item.unit}</td>
-                  <td className="border border-gray-300 p-2 text-right">{item.quantity}</td>
-                  <td className="border border-gray-300 p-2 text-right">
-                    {item.price_net.toFixed(2)}
+                <tr className="bg-gray-100 font-bold">
+                  <td colSpan={5} className="border border-gray-300 p-2 text-right">
+                    Razem
                   </td>
                   <td className="border border-gray-300 p-2 text-right">
-                    {item.value_net.toFixed(2)}
+                    {invoice.total_net.toFixed(2)}
                   </td>
-                  <td className="border border-gray-300 p-2 text-center">{item.vat_rate}%</td>
+                  <td className="border border-gray-300 p-2"></td>
                   <td className="border border-gray-300 p-2 text-right">
-                    {item.vat_amount.toFixed(2)}
+                    {invoice.total_vat.toFixed(2)}
                   </td>
-                  <td className="border border-gray-300 p-2 text-right font-medium">
-                    {item.value_gross.toFixed(2)}
+                  <td className="border border-gray-300 p-2 text-right">
+                    {invoice.total_gross.toFixed(2)}
                   </td>
                 </tr>
-              ))}
+              </tbody>
+            </table>
 
-              <tr className="bg-gray-100 font-bold">
-                <td colSpan={5} className="border border-gray-300 p-2 text-right">
-                  Razem
-                </td>
-                <td className="border border-gray-300 p-2 text-right">
-                  {invoice.total_net.toFixed(2)}
-                </td>
-                <td className="border border-gray-300 p-2"></td>
-                <td className="border border-gray-300 p-2 text-right">
-                  {invoice.total_vat.toFixed(2)}
-                </td>
-                <td className="border border-gray-300 p-2 text-right">
-                  {invoice.total_gross.toFixed(2)}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-
-          {/* Payment Details */}
-          <div className="mb-8 grid grid-cols-2 gap-12 text-sm">
-            <div>
-              <div className="mb-2">
-                <span className="text-gray-600">Sposób płatności:</span> {invoice.payment_method}
-              </div>
-              <div className="mb-2">
-                <span className="text-gray-600">Termin płatności:</span>{' '}
-                {new Date(invoice.payment_due_date).toLocaleDateString('pl-PL')}
+            {/* Payment Details */}
+            <div className="mb-8 grid grid-cols-2 gap-12 text-sm">
+              <div>
+                <div className="mb-2">
+                  <span className="text-gray-600">Sposób płatności:</span> {invoice.payment_method}
+                </div>
+                <div className="mb-2">
+                  <span className="text-gray-600">Termin płatności:</span>{' '}
+                  {new Date(invoice.payment_due_date).toLocaleDateString('pl-PL')}
+                </div>
+                <div>
+                  <span className="text-gray-600">Numer konta:</span>
+                  <div className="font-mono">{invoice.bank_account}</div>
+                </div>
+                <div>
+                  <span className="text-gray-600">Nazwa banku:</span>
+                  <div className="font-mono">{invoice.bank_name}</div>
+                </div>
               </div>
               <div>
-                <span className="text-gray-600">Numer konta:</span>
-                <div className="font-mono">{invoice.bank_account}</div>
-              </div>
-              <div>
-                <span className="text-gray-600">Nazwa banku:</span>
-                <div className="font-mono">{invoice.bank_name}</div>
-              </div>
-            </div>
-            <div>
-              <div className="mb-2">
-                <span className="text-gray-600">Do zapłaty:</span>{' '}
-                <span className="text-lg font-bold">{invoice.total_gross.toFixed(2)} PLN</span>
-              </div>
-              <div className="text-xs text-gray-600">
-                Słownie: {/* Tu można dodać funkcję zamiany liczby na słowa */}
+                <div className="mb-2">
+                  <span className="text-gray-600">Do zapłaty:</span>{' '}
+                  <span className="text-lg font-bold">{invoice.total_gross.toFixed(2)} PLN</span>
+                </div>
+                <div className="text-xs text-gray-600">
+                  Słownie: {/* Tu można dodać funkcję zamiany liczby na słowa */}
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Footer */}
-          <div className="mb-8 text-xs text-gray-600">
-            Niniejsza faktura jest wezwaniem do zapłaty zgodnie z artykułem 455kc. po przekroczeniu
-            terminu płatności będą naliczane ustawowe odsetki za zwłokę.
-          </div>
-
-          {/* Signature */}
-          <div className="flex justify-end">
-            <div className="w-64 border-t border-gray-300 pt-2 text-center">
-              <div className="mb-1 text-sm">Mateusz Kwiatkowski</div>
-              <div className="text-xs text-gray-600">Podpis osoby upoważnionej do wystawienia</div>
+            {/* Footer */}
+            <div className="mb-8 text-xs text-gray-600">
+              Niniejsza faktura jest wezwaniem do zapłaty zgodnie z artykułem 455kc. po
+              przekroczeniu terminu płatności będą naliczane ustawowe odsetki za zwłokę.
             </div>
+
+            {/* Signature */}
+            <div className="flex justify-end">
+              <div className="w-64 border-t border-gray-300 pt-2 text-center">
+                <div className="mb-1 text-sm">Mateusz Kwiatkowski</div>
+                <div className="text-xs text-gray-600">
+                  Podpis osoby upoważnionej do wystawienia
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-8 text-center text-xs text-gray-500">www.mavinci.pl</div>
           </div>
 
-          <div className="mt-8 text-center text-xs text-gray-500">www.mavinci.pl</div>
+          {/* Status Change */}
+          {invoice.status !== 'paid' && invoice.status !== 'cancelled' && (
+            <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+              <h3 className="mb-4 text-lg font-medium text-[#e5e4e2]">Zmiana statusu</h3>
+              <div className="flex gap-3">
+                {invoice.status === 'issued' && (
+                  <button
+                    onClick={() => handleStatusChange('sent')}
+                    className="flex items-center gap-2 rounded-lg border border-purple-500/30 bg-purple-500/20 px-4 py-2 text-purple-400 hover:bg-purple-500/30"
+                  >
+                    <Send className="h-4 w-4" />
+                    Oznacz jako wysłaną
+                  </button>
+                )}
+                {(invoice.status === 'issued' || invoice.status === 'sent') && (
+                  <button
+                    onClick={() => handleStatusChange('paid')}
+                    className="flex items-center gap-2 rounded-lg border border-green-500/30 bg-green-500/20 px-4 py-2 text-green-400 hover:bg-green-500/30"
+                  >
+                    <CheckCircle className="h-4 w-4" />
+                    Oznacz jako opłaconą
+                  </button>
+                )}
+                <button
+                  onClick={() => handleStatusChange('cancelled')}
+                  className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/20 px-4 py-2 text-red-400 hover:bg-red-500/30"
+                >
+                  <XCircle className="h-4 w-4" />
+                  Anuluj fakturę
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Status Change */}
-        {invoice.status !== 'paid' && invoice.status !== 'cancelled' && (
-          <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-            <h3 className="mb-4 text-lg font-medium text-[#e5e4e2]">Zmiana statusu</h3>
-            <div className="flex gap-3">
-              {invoice.status === 'issued' && (
-                <button
-                  onClick={() => handleStatusChange('sent')}
-                  className="flex items-center gap-2 rounded-lg border border-purple-500/30 bg-purple-500/20 px-4 py-2 text-purple-400 hover:bg-purple-500/30"
-                >
-                  <Send className="h-4 w-4" />
-                  Oznacz jako wysłaną
-                </button>
-              )}
-              {(invoice.status === 'issued' || invoice.status === 'sent') && (
-                <button
-                  onClick={() => handleStatusChange('paid')}
-                  className="flex items-center gap-2 rounded-lg border border-green-500/30 bg-green-500/20 px-4 py-2 text-green-400 hover:bg-green-500/30"
-                >
-                  <CheckCircle className="h-4 w-4" />
-                  Oznacz jako opłaconą
-                </button>
-              )}
-              <button
-                onClick={() => handleStatusChange('cancelled')}
-                className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/20 px-4 py-2 text-red-400 hover:bg-red-500/30"
-              >
-                <XCircle className="h-4 w-4" />
-                Anuluj fakturę
-              </button>
-            </div>
-          </div>
+        <style jsx global>{`
+          @media print {
+            body * {
+              visibility: hidden;
+            }
+
+            .invoice-preview,
+            .invoice-preview * {
+              visibility: visible;
+            }
+
+            .invoice-preview {
+              position: absolute;
+              left: 0;
+              top: 0;
+              width: 210mm;
+              height: 297mm;
+              margin: 0;
+              padding: 20mm;
+              background: white;
+              box-shadow: none;
+              border-radius: 0;
+            }
+
+            @page {
+              size: A4;
+              margin: 0;
+            }
+          }
+        `}</style>
+
+        {/* Modal wysyłania faktury */}
+        {showSendEmailModal && invoice && relatedData.organization && (
+          <SendInvoiceEmailModal
+            invoiceId={invoice.id}
+            invoiceNumber={invoice.invoice_number}
+            clientEmail={relatedData.organization.email}
+            clientName={relatedData.organization.name}
+            onClose={() => setShowSendEmailModal(false)}
+            onSent={() => {
+              showSnackbar('Faktura wysłana', 'success');
+            }}
+          />
         )}
-      </div>
-
-      <style jsx global>{`
-        @media print {
-          body * {
-            visibility: hidden;
-          }
-
-          .invoice-preview,
-          .invoice-preview * {
-            visibility: visible;
-          }
-
-          .invoice-preview {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 210mm;
-            height: 297mm;
-            margin: 0;
-            padding: 20mm;
-            background: white;
-            box-shadow: none;
-            border-radius: 0;
-          }
-
-          @page {
-            size: A4;
-            margin: 0;
-          }
-        }
-      `}</style>
-
-      {/* Modal wysyłania faktury */}
-      {showSendEmailModal && invoice && relatedData.organization && (
-        <SendInvoiceEmailModal
-          invoiceId={invoice.id}
-          invoiceNumber={invoice.invoice_number}
-          clientEmail={relatedData.organization.email}
-          clientName={relatedData.organization.name}
-          onClose={() => setShowSendEmailModal(false)}
-          onSent={() => {
-            showSnackbar('Faktura wysłana', 'success');
-          }}
-        />
-      )}
       </div>
     </PermissionGuard>
   );
