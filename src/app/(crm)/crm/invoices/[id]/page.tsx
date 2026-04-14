@@ -48,6 +48,10 @@ interface Invoice {
   corrected_invoice_issue_date: string | null;
   corrected_invoice_ksef_number: string | null;
   corrected_invoice_was_in_ksef: boolean;
+  ksef_reference_number: string | null;
+  ksef_status: string | null;
+  ksef_error: string | null;
+  ksef_sent_at: string | null;
 }
 
 interface RelatedData {
@@ -578,6 +582,59 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             )}
           </div>
         </div>
+
+        {/* KSeF Status */}
+        {invoice.ksef_status && (
+          <div className={`mb-6 rounded-xl border p-4 ${
+            invoice.ksef_status === 'accepted'
+              ? 'border-green-500/30 bg-green-500/10'
+              : invoice.ksef_status === 'rejected'
+                ? 'border-red-500/30 bg-red-500/10'
+                : invoice.ksef_status === 'sent'
+                  ? 'border-blue-500/30 bg-blue-500/10'
+                  : 'border-[#d3bb73]/20 bg-[#1c1f33]'
+          }`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className={`flex h-8 w-8 items-center justify-center rounded-full ${
+                  invoice.ksef_status === 'accepted'
+                    ? 'bg-green-500/20 text-green-400'
+                    : invoice.ksef_status === 'rejected'
+                      ? 'bg-red-500/20 text-red-400'
+                      : 'bg-blue-500/20 text-blue-400'
+                }`}>
+                  {invoice.ksef_status === 'accepted' ? (
+                    <CheckCircle className="h-5 w-5" />
+                  ) : invoice.ksef_status === 'rejected' ? (
+                    <XCircle className="h-5 w-5" />
+                  ) : (
+                    <Send className="h-5 w-5" />
+                  )}
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-[#e5e4e2]">
+                    KSeF: {invoice.ksef_status === 'accepted' ? 'Zaakceptowana' : invoice.ksef_status === 'rejected' ? 'Odrzucona' : invoice.ksef_status === 'sent' ? 'Wysłana' : 'Szkic'}
+                  </div>
+                  {invoice.ksef_reference_number && (
+                    <div className="text-xs text-[#e5e4e2]/60">
+                      Nr ref.: {invoice.ksef_reference_number}
+                    </div>
+                  )}
+                </div>
+              </div>
+              {invoice.ksef_sent_at && (
+                <div className="text-xs text-[#e5e4e2]/40">
+                  {new Date(invoice.ksef_sent_at).toLocaleString('pl-PL')}
+                </div>
+              )}
+            </div>
+            {invoice.ksef_error && (
+              <div className="mt-3 rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-sm text-red-400">
+                {invoice.ksef_error}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Invoice Preview - A4 Format (210mm x 297mm at 96dpi = 794px x 1123px) */}
         <div

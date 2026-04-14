@@ -857,7 +857,20 @@ export default function InvoicesPage() {
                         </div>
                       </td>
                       <td className="whitespace-nowrap px-6 py-4">
-                        {getStatusBadge(invoice.status)}
+                        <div className="flex items-center gap-2">
+                          {getStatusBadge(invoice.status)}
+                          {invoice.ksef_status && (
+                            <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                              invoice.ksef_status === 'accepted'
+                                ? 'bg-green-500/20 text-green-400'
+                                : invoice.ksef_status === 'rejected'
+                                  ? 'bg-red-500/20 text-red-400'
+                                  : 'bg-blue-500/20 text-blue-400'
+                            }`}>
+                              KSeF
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="whitespace-nowrap px-6 py-4 text-right">
                         <div className="flex items-center justify-end">

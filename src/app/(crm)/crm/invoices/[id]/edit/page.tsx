@@ -543,6 +543,46 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
               </select>
             </div>
 
+            {/* KSeF Info (read-only) */}
+            {invoice?.ksef_status && (
+              <div className={`rounded-lg border p-4 ${
+                invoice.ksef_status === 'accepted'
+                  ? 'border-green-500/30 bg-green-500/10'
+                  : invoice.ksef_status === 'rejected'
+                    ? 'border-red-500/30 bg-red-500/10'
+                    : 'border-blue-500/30 bg-blue-500/10'
+              }`}>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Status KSeF</label>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-xs text-[#e5e4e2]/40">Status</div>
+                    <div className={`font-medium ${
+                      invoice.ksef_status === 'accepted' ? 'text-green-400' : invoice.ksef_status === 'rejected' ? 'text-red-400' : 'text-blue-400'
+                    }`}>
+                      {invoice.ksef_status === 'accepted' ? 'Zaakceptowana' : invoice.ksef_status === 'rejected' ? 'Odrzucona' : invoice.ksef_status === 'sent' ? 'Wysłana' : 'Szkic'}
+                    </div>
+                  </div>
+                  {invoice.ksef_reference_number && (
+                    <div>
+                      <div className="text-xs text-[#e5e4e2]/40">Nr referencyjny KSeF</div>
+                      <div className="font-mono text-sm text-[#e5e4e2]">{invoice.ksef_reference_number}</div>
+                    </div>
+                  )}
+                  {invoice.ksef_sent_at && (
+                    <div>
+                      <div className="text-xs text-[#e5e4e2]/40">Data wysyłki</div>
+                      <div className="text-sm text-[#e5e4e2]">{new Date(invoice.ksef_sent_at).toLocaleString('pl-PL')}</div>
+                    </div>
+                  )}
+                </div>
+                {invoice.ksef_error && (
+                  <div className="mt-3 rounded border border-red-500/20 bg-red-500/5 p-2 text-sm text-red-400">
+                    {invoice.ksef_error}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Firma wystawiajaca */}
             <div className="rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/5 p-4">
               <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">

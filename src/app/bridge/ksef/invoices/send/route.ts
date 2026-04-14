@@ -296,6 +296,9 @@ async function updateInvoiceStatus(params: {
   supabase: SupabaseClient<any>;
   invoiceId: string;
   isRejected: boolean;
+  ksefNumber: string | null;
+  finalTimestamp: string | null;
+  rejectionMessage?: string;
 }) {
   const db = getDb(params.supabase);
 
@@ -303,6 +306,10 @@ async function updateInvoiceStatus(params: {
     .invoices()
     .update({
       status: params.isRejected ? 'draft' : 'issued',
+      ksef_status: params.isRejected ? 'rejected' : 'accepted',
+      ksef_reference_number: params.ksefNumber,
+      ksef_error: params.rejectionMessage ?? null,
+      ksef_sent_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
     .eq('id', params.invoiceId);
@@ -624,6 +631,9 @@ if (rawStatus && typeof rawStatus === 'object') {
       supabase,
       invoiceId,
       isRejected,
+      ksefNumber: finalRefNumber,
+      finalTimestamp,
+      rejectionMessage,
     });
 
     await writeInvoiceHistory({
