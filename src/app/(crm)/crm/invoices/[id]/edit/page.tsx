@@ -527,40 +527,20 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
 
           <div className="space-y-6">
             {/* Status faktury */}
-            <div className="rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/5 p-4">
-              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-                Status faktury
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  { value: 'draft', label: 'Szkic', color: 'border-gray-500/30 bg-gray-500/20 text-gray-400', activeColor: 'border-gray-400 bg-gray-500/40 text-gray-200 ring-1 ring-gray-400' },
-                  { value: 'issued', label: 'Wystawiona', color: 'border-blue-500/30 bg-blue-500/20 text-blue-400', activeColor: 'border-blue-400 bg-blue-500/40 text-blue-200 ring-1 ring-blue-400' },
-                  { value: 'sent', label: 'Wysłana', color: 'border-cyan-500/30 bg-cyan-500/20 text-cyan-400', activeColor: 'border-cyan-400 bg-cyan-500/40 text-cyan-200 ring-1 ring-cyan-400' },
-                  { value: 'paid', label: 'Opłacona', color: 'border-green-500/30 bg-green-500/20 text-green-400', activeColor: 'border-green-400 bg-green-500/40 text-green-200 ring-1 ring-green-400' },
-                  { value: 'overdue', label: 'Przeterminowana', color: 'border-orange-500/30 bg-orange-500/20 text-orange-400', activeColor: 'border-orange-400 bg-orange-500/40 text-orange-200 ring-1 ring-orange-400' },
-                  { value: 'cancelled', label: 'Anulowana', color: 'border-red-500/30 bg-red-500/20 text-red-400', activeColor: 'border-red-400 bg-red-500/40 text-red-200 ring-1 ring-red-400' },
-                  ...(isProforma ? [{ value: 'proforma', label: 'Proforma', color: 'border-yellow-500/30 bg-yellow-500/20 text-yellow-400', activeColor: 'border-yellow-400 bg-yellow-500/40 text-yellow-200 ring-1 ring-yellow-400' }] : []),
-                ].map((status) => (
-                  <button
-                    key={status.value}
-                    onClick={() => setInvoiceStatus(status.value)}
-                    className={`rounded-lg border px-4 py-2 text-sm font-medium transition-all ${
-                      invoiceStatus === status.value ? status.activeColor : status.color + ' hover:opacity-80'
-                    }`}
-                  >
-                    {status.label}
-                  </button>
-                ))}
-              </div>
-              {invoiceStatus !== invoice?.status && (
-                <div className="mt-2 text-xs text-yellow-500">
-                  Status zostanie zmieniony z &quot;{
-                    { draft: 'Szkic', issued: 'Wystawiona', sent: 'Wysłana', paid: 'Opłacona', overdue: 'Przeterminowana', cancelled: 'Anulowana', proforma: 'Proforma' }[invoice?.status || ''] || invoice?.status
-                  }&quot; na &quot;{
-                    { draft: 'Szkic', issued: 'Wystawiona', sent: 'Wysłana', paid: 'Opłacona', overdue: 'Przeterminowana', cancelled: 'Anulowana', proforma: 'Proforma' }[invoiceStatus] || invoiceStatus
-                  }&quot;
-                </div>
-              )}
+            <div>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Status faktury</label>
+              <select
+                value={invoiceStatus}
+                onChange={(e) => setInvoiceStatus(e.target.value)}
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
+              >
+                <option value="draft">Szkic</option>
+                <option value="issued">Wystawiona</option>
+                <option value="sent">Wysłana</option>
+                <option value="paid">Opłacona</option>
+                <option value="overdue">Przeterminowana</option>
+                <option value="cancelled">Anulowana</option>
+              </select>
             </div>
 
             {/* Firma wystawiajaca */}

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
-import { ArrowLeft, Download, CreditCard as Edit, Printer, Send, CheckCircle, XCircle, Building2, Calendar, FileText, Link as LinkIcon } from 'lucide-react';
+import { ArrowLeft, Download, CreditCard as Edit, Printer, Send, CheckCircle, XCircle, Building2, Calendar, FileText, Link as LinkIcon, FilePlus2 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import SendInvoiceEmailModal from '@/components/crm/SendInvoiceEmailModal';
 import PermissionGuard from '@/components/crm/PermissionGuard';
@@ -522,10 +522,10 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             <h1 className="mb-2 text-3xl font-light text-[#e5e4e2]">
               Faktura {invoice.invoice_number}
             </h1>
-            <p className="text-[#e5e4e2]/60">{getTypeLabel(invoice.invoice_type)}</p>
+            <p className="text-[#e5e4e2]/60">{getTypeLabel(invoice.invoice_type)}{invoice.is_proforma ? ' (Proforma)' : ''}</p>
           </div>
-          <div className="flex gap-3">
-            {(invoice.status === 'draft' || invoice.status === 'issued') && (
+          <div className="flex flex-wrap gap-3">
+            {invoice.status !== 'cancelled' && (
               <button
                 onClick={() => router.push(`/crm/invoices/${invoice.id}/edit`)}
                 className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] hover:bg-[#d3bb73]/5"
@@ -548,6 +548,15 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               <Printer className="h-4 w-4" />
               Drukuj
             </button>
+            {invoice.status !== 'cancelled' && (
+              <button
+                onClick={handleSendEmail}
+                className="flex items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/20 px-4 py-2 text-blue-400 hover:bg-blue-500/30"
+              >
+                <Send className="h-4 w-4" />
+                Wyślij email
+              </button>
+            )}
             {invoice.status === 'draft' && !invoice.is_proforma && (
               <button
                 onClick={handleSendToKSeF}
@@ -558,13 +567,13 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                 {sendingToKSeF ? 'Wysyłanie...' : 'Wyślij do KSeF'}
               </button>
             )}
-            {invoice.status === 'issued' && (
+            {(invoice.status === 'issued' || invoice.status === 'sent') && invoice.invoice_type !== 'corrective' && (
               <button
-                onClick={handleSendEmail}
-                className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+                onClick={() => router.push(`/crm/invoices/new?type=corrective&related=${invoice.id}`)}
+                className="flex items-center gap-2 rounded-lg border border-orange-500/30 bg-orange-500/20 px-4 py-2 text-orange-400 hover:bg-orange-500/30"
               >
-                <Send className="h-4 w-4" />
-                Wyślij email
+                <FilePlus2 className="h-4 w-4" />
+                Wystaw korektę
               </button>
             )}
           </div>
