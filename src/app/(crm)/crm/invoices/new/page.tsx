@@ -84,11 +84,11 @@ export default function NewInvoicePage() {
   }, [selectedCompanyId]);
 
   useEffect(() => {
-    if (urlType === 'corrective' && urlRelated && !urlRelatedLoaded && organizations.length > 0 && myCompanies.length > 0) {
+    if (urlType === 'corrective' && urlRelated && !urlRelatedLoaded && organizations.length > 0 && myCompanies.length > 0 && availableInvoices.length > 0) {
       setUrlRelatedLoaded(true);
       handleSelectOriginalInvoice(urlRelated);
     }
-  }, [urlType, urlRelated, urlRelatedLoaded, organizations, myCompanies]);
+  }, [urlType, urlRelated, urlRelatedLoaded, organizations, myCompanies, availableInvoices]);
 
   const handleSelectOriginalInvoice = async (invoiceId: string) => {
     setRelatedInvoiceId(invoiceId);
@@ -141,7 +141,7 @@ export default function NewInvoicePage() {
             name: item.name,
             unit: item.unit,
             quantity: item.quantity,
-            price_net: Number(item.price_net),
+            price_net: -Math.abs(Number(item.price_net)),
             vat_rate: item.vat_rate,
           })),
         );
@@ -408,7 +408,7 @@ export default function NewInvoicePage() {
         showSnackbar('Wypelnij nazwy wszystkich pozycji faktury', 'error');
         return;
       }
-    } else if (items.some((item) => !item.name || item.price_net <= 0)) {
+    } else if (items.some((item) => !item.name || item.price_net === 0)) {
       showSnackbar('Wypełnij wszystkie pozycje faktury', 'error');
       return;
     }
@@ -436,15 +436,6 @@ export default function NewInvoicePage() {
         selectedCompany.building_number,
         selectedCompany.apartment_number ?`/${selectedCompany.apartment_number}` : '',
       ].filter(Boolean).join(' ').trim();
-      console.log('--------------------------------');
-      console.log('--------------------------------');
-      console.log('--------------------------------');
-      console.log('--------------------------------');
-      console.log('[NEW_INVOICE] selectedCompany', selectedCompany);
-      console.log('--------------------------------');
-      console.log('--------------------------------');
-      console.log('--------------------------------');
-      console.log('--------------------------------');
 
       const missingSellerFields: string[] = [];
       if (!selectedCompany.legal_name) missingSellerFields.push('nazwa firmy');
@@ -471,11 +462,6 @@ export default function NewInvoicePage() {
         setLoading(false);
         return;
       }
-
-      console.log('--------------------------------');
-      console.log('[NEW_INVOICE] selectedCompany', selectedCompany);
-      console.log('--------------------------------');
-
 
       const invoiceData = {
         invoice_number: invoiceNumber,
