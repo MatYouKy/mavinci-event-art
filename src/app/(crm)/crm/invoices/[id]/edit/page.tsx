@@ -58,6 +58,8 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
   const [paymentMethod, setPaymentMethod] = useState('Przelew');
   const [issuePlace, setIssuePlace] = useState('');
 
+  const [invoiceStatus, setInvoiceStatus] = useState('draft');
+
   const [correctionReason, setCorrectionReason] = useState('');
   const [correctionScope, setCorrectionScope] = useState<'full' | 'partial'>('full');
   const [relatedInvoiceId, setRelatedInvoiceId] = useState('');
@@ -110,6 +112,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         setPaymentMethod(inv.payment_method || 'Przelew');
         setIssuePlace(inv.issue_place || '');
         setIsProforma(inv.is_proforma ?? false);
+        setInvoiceStatus(inv.status || 'draft');
 
         if (inv.is_proforma) {
           setInvoiceType('proforma');
@@ -375,7 +378,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         invoice_number: invoiceNumber,
         invoice_type: invoiceType === 'proforma' ? 'vat' : invoiceType,
         is_proforma: invoiceType === 'proforma',
-        status: invoice.status === 'issued' ? 'draft' : invoice.status,
+        status: invoiceStatus,
         issue_date: issueDate,
         sale_date: saleDate,
         payment_due_date: calculatePaymentDueDate(),
@@ -460,11 +463,16 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         .eq('email', user?.email)
         .maybeSingle();
 
+      const changes: Record<string, any> = { updated_fields: Object.keys(invoiceData) };
+      if (invoiceStatus !== invoice.status) {
+        changes.status_change = { from: invoice.status, to: invoiceStatus };
+      }
+
       await supabase.from('invoice_history').insert({
         invoice_id: params.id,
-        action: 'edited',
+        action: invoiceStatus !== invoice.status ? 'status_changed' : 'edited',
         changed_by: employee?.id,
-        changes: { updated_fields: Object.keys(invoiceData) },
+        changes,
       });
 
       showSnackbar('Faktura zostala zaktualizowana', 'success');
@@ -517,29 +525,44 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
             Edytuj fakture {invoice.invoice_number}
           </h1>
 
-          {invoice.status === 'issued' && (
-            <div className="mb-6 rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-4">
-              <div className="flex items-start gap-3">
-                <div className="flex-1">
-                  <div className="mb-1 text-sm font-medium text-yellow-500">
-                    Uwaga: Edycja wystawionej faktury
-                  </div>
-                  <div className="mb-3 text-xs text-[#e5e4e2]/60">
-                    Ta faktura zostala juz wystawiona. Po zapisaniu zmian, faktura zostanie cofnieta do
-                    statusu szkic.
-                  </div>
-                  <button
-                    onClick={() => router.back()}
-                    className="text-xs text-yellow-500 underline hover:text-yellow-400"
-                  >
-                    Anuluj i wroc
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
           <div className="space-y-6">
+            {/* Status faktury */}
+            <div className="rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/5 p-4">
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                Status faktury
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { value: 'draft', label: 'Szkic', color: 'border-gray-500/30 bg-gray-500/20 text-gray-400', activeColor: 'border-gray-400 bg-gray-500/40 text-gray-200 ring-1 ring-gray-400' },
+                  { value: 'issued', label: 'Wystawiona', color: 'border-blue-500/30 bg-blue-500/20 text-blue-400', activeColor: 'border-blue-400 bg-blue-500/40 text-blue-200 ring-1 ring-blue-400' },
+                  { value: 'sent', label: 'Wysłana', color: 'border-cyan-500/30 bg-cyan-500/20 text-cyan-400', activeColor: 'border-cyan-400 bg-cyan-500/40 text-cyan-200 ring-1 ring-cyan-400' },
+                  { value: 'paid', label: 'Opłacona', color: 'border-green-500/30 bg-green-500/20 text-green-400', activeColor: 'border-green-400 bg-green-500/40 text-green-200 ring-1 ring-green-400' },
+                  { value: 'overdue', label: 'Przeterminowana', color: 'border-orange-500/30 bg-orange-500/20 text-orange-400', activeColor: 'border-orange-400 bg-orange-500/40 text-orange-200 ring-1 ring-orange-400' },
+                  { value: 'cancelled', label: 'Anulowana', color: 'border-red-500/30 bg-red-500/20 text-red-400', activeColor: 'border-red-400 bg-red-500/40 text-red-200 ring-1 ring-red-400' },
+                  ...(isProforma ? [{ value: 'proforma', label: 'Proforma', color: 'border-yellow-500/30 bg-yellow-500/20 text-yellow-400', activeColor: 'border-yellow-400 bg-yellow-500/40 text-yellow-200 ring-1 ring-yellow-400' }] : []),
+                ].map((status) => (
+                  <button
+                    key={status.value}
+                    onClick={() => setInvoiceStatus(status.value)}
+                    className={`rounded-lg border px-4 py-2 text-sm font-medium transition-all ${
+                      invoiceStatus === status.value ? status.activeColor : status.color + ' hover:opacity-80'
+                    }`}
+                  >
+                    {status.label}
+                  </button>
+                ))}
+              </div>
+              {invoiceStatus !== invoice?.status && (
+                <div className="mt-2 text-xs text-yellow-500">
+                  Status zostanie zmieniony z &quot;{
+                    { draft: 'Szkic', issued: 'Wystawiona', sent: 'Wysłana', paid: 'Opłacona', overdue: 'Przeterminowana', cancelled: 'Anulowana', proforma: 'Proforma' }[invoice?.status || ''] || invoice?.status
+                  }&quot; na &quot;{
+                    { draft: 'Szkic', issued: 'Wystawiona', sent: 'Wysłana', paid: 'Opłacona', overdue: 'Przeterminowana', cancelled: 'Anulowana', proforma: 'Proforma' }[invoiceStatus] || invoiceStatus
+                  }&quot;
+                </div>
+              )}
+            </div>
+
             {/* Firma wystawiajaca */}
             <div className="rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/5 p-4">
               <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
