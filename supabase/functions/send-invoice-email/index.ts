@@ -7,11 +7,18 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+interface Attachment {
+  filename: string;
+  content: string;
+  contentType: string;
+}
+
 interface SendInvoiceEmailRequest {
   invoiceId: string;
   to: string;
   subject: string;
   message: string;
+  attachments?: Attachment[];
 }
 
 Deno.serve(async (req: Request) => {
@@ -23,7 +30,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { invoiceId, to, subject, message }: SendInvoiceEmailRequest = await req.json();
+    const { invoiceId, to, subject, message, attachments = [] }: SendInvoiceEmailRequest = await req.json();
 
     if (!invoiceId || !to || !subject) {
       throw new Error("Missing required fields: invoiceId, to, subject");
@@ -85,29 +92,7 @@ Deno.serve(async (req: Request) => {
       </div>
     `;
 
-    // TODO: Generate invoice PDF
-    // For now, create a simple text placeholder attachment
-    console.log('[send-invoice-email] Generating invoice PDF for:', invoiceId);
-
-    const invoiceText = `
-Faktura: ${invoice.invoice_number}
-Data wystawienia: ${invoice.issue_date}
-Termin płatności: ${invoice.due_date}
-Kwota: ${invoice.total_amount} PLN
-
-Niniejsza faktura zostanie wkrótce dostarczona w formacie PDF.
-    `.trim();
-
-    const pdfBase64 = btoa(invoiceText);
-    const pdfFilename = `Faktura_${invoice.invoice_number || invoiceId}.txt`;
-
-    const attachments = [{
-      filename: pdfFilename,
-      content: pdfBase64,
-      contentType: 'text/plain',
-    }];
-
-    console.log('[send-invoice-email] Attachment prepared:', pdfFilename);
+    console.log('[send-invoice-email] Sending with', attachments.length, 'attachments for invoice:', invoiceId);
 
     const relayPayload = {
       smtpConfig: {
@@ -121,7 +106,11 @@ Niniejsza faktura zostanie wkrótce dostarczona w formacie PDF.
       to,
       subject,
       body: htmlBody,
-      attachments,
+      attachments: attachments.map((att: Attachment) => ({
+        filename: att.filename,
+        content: att.content,
+        contentType: att.contentType || 'application/pdf',
+      })),
     };
 
     const relayResponse = await fetch(`${relayUrl}/api/send-email`, {

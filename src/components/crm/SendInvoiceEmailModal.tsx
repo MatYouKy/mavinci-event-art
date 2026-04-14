@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Send, Mail, Loader } from 'lucide-react';
+import { X, Send, Mail, Loader, Paperclip } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
@@ -14,6 +14,181 @@ interface SendInvoiceEmailModalProps {
   onSent?: () => void;
 }
 
+interface InvoiceData {
+  id: string;
+  invoice_number: string;
+  invoice_type: string;
+  is_proforma: boolean;
+  issue_date: string;
+  sale_date: string;
+  issue_place: string;
+  payment_method: string;
+  payment_due_date: string;
+  bank_account: string;
+  bank_name: string;
+  seller_name: string;
+  seller_nip: string;
+  seller_street: string;
+  seller_city: string;
+  seller_postal_code: string;
+  buyer_name: string;
+  buyer_nip: string;
+  buyer_street: string;
+  buyer_city: string;
+  buyer_postal_code: string;
+  total_net: number;
+  total_vat: number;
+  total_gross: number;
+  company_logo_url: string | null;
+  status: string;
+}
+
+interface InvoiceItem {
+  id: string;
+  position_number: number;
+  name: string;
+  unit: string;
+  quantity: number;
+  price_net: number;
+  vat_rate: number;
+  value_net: number;
+  vat_amount: number;
+  value_gross: number;
+}
+
+function getTypeLabel(type: string) {
+  const labels: Record<string, string> = {
+    standard: 'Faktura VAT',
+    proforma: 'Faktura Proforma',
+    corrective: 'Faktura korygująca',
+  };
+  return labels[type] || 'Faktura VAT';
+}
+
+function buildInvoiceHtml(invoice: InvoiceData, items: InvoiceItem[]): string {
+  const itemsRows = items
+    .map(
+      (item) => `
+    <tr>
+      <td style="border:1px solid #d1d5db;padding:6px 8px">${item.position_number}</td>
+      <td style="border:1px solid #d1d5db;padding:6px 8px">${item.name}</td>
+      <td style="border:1px solid #d1d5db;padding:6px 8px;text-align:center">${item.unit}</td>
+      <td style="border:1px solid #d1d5db;padding:6px 8px;text-align:right">${item.quantity}</td>
+      <td style="border:1px solid #d1d5db;padding:6px 8px;text-align:right">${item.price_net.toFixed(2)}</td>
+      <td style="border:1px solid #d1d5db;padding:6px 8px;text-align:right">${item.value_net.toFixed(2)}</td>
+      <td style="border:1px solid #d1d5db;padding:6px 8px;text-align:center">${item.vat_rate}%</td>
+      <td style="border:1px solid #d1d5db;padding:6px 8px;text-align:right">${item.vat_amount.toFixed(2)}</td>
+      <td style="border:1px solid #d1d5db;padding:6px 8px;text-align:right;font-weight:600">${item.value_gross.toFixed(2)}</td>
+    </tr>`,
+    )
+    .join('');
+
+  const logoUrl = invoice.company_logo_url || '/logo-mavinci-crm.png';
+  const logoSrc = logoUrl.startsWith('http')
+    ? logoUrl
+    : `${window.location.origin}${logoUrl}`;
+
+  return `
+    <div style="font-family:Arial,Helvetica,sans-serif;width:210mm;padding:15mm;box-sizing:border-box;color:#111;font-size:12px;line-height:1.5">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:30px">
+        <div>
+          <img src="${logoSrc}" alt="Logo" style="height:50px;width:auto;object-fit:contain" crossorigin="anonymous" />
+        </div>
+        <div style="text-align:right;font-size:11px">
+          <div style="margin-bottom:10px">
+            <div style="color:#666">Miejsce wystawienia</div>
+            <div style="font-weight:600">${invoice.issue_place || ''}</div>
+          </div>
+          <div style="margin-bottom:10px">
+            <div style="color:#666">Data wystawienia</div>
+            <div style="font-weight:600">${new Date(invoice.issue_date).toLocaleDateString('pl-PL')}</div>
+          </div>
+          <div>
+            <div style="color:#666">Data sprzedaży</div>
+            <div style="font-weight:600">${new Date(invoice.sale_date).toLocaleDateString('pl-PL')}</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:40px;margin-bottom:30px">
+        <div style="flex:1">
+          <div style="color:#666;font-size:11px;margin-bottom:4px">Sprzedawca</div>
+          <div style="font-weight:600">${invoice.seller_name}</div>
+          <div>NIP: ${invoice.seller_nip}</div>
+          <div>${invoice.seller_street || ''}</div>
+          <div>${invoice.seller_postal_code || ''} ${invoice.seller_city || ''}</div>
+        </div>
+        <div style="flex:1">
+          <div style="color:#666;font-size:11px;margin-bottom:4px">Nabywca</div>
+          <div style="font-weight:600">${invoice.buyer_name}</div>
+          ${invoice.buyer_nip ? `<div>NIP: ${invoice.buyer_nip}</div>` : ''}
+          <div>${invoice.buyer_street || ''}</div>
+          <div>${invoice.buyer_postal_code || ''} ${invoice.buyer_city || ''}</div>
+        </div>
+      </div>
+
+      <div style="text-align:center;margin-bottom:20px">
+        <div style="font-size:18px;font-weight:700">
+          ${getTypeLabel(invoice.invoice_type)} ${invoice.invoice_number}
+        </div>
+      </div>
+
+      <table style="width:100%;border-collapse:collapse;margin-bottom:20px;font-size:11px">
+        <thead>
+          <tr style="background:#f3f4f6">
+            <th style="border:1px solid #d1d5db;padding:6px 8px;text-align:left">Lp.</th>
+            <th style="border:1px solid #d1d5db;padding:6px 8px;text-align:left">Nazwa towaru lub usługi</th>
+            <th style="border:1px solid #d1d5db;padding:6px 8px;text-align:center">Jm.</th>
+            <th style="border:1px solid #d1d5db;padding:6px 8px;text-align:center">Ilość</th>
+            <th style="border:1px solid #d1d5db;padding:6px 8px;text-align:center">Cena netto</th>
+            <th style="border:1px solid #d1d5db;padding:6px 8px;text-align:center">Wartość netto</th>
+            <th style="border:1px solid #d1d5db;padding:6px 8px;text-align:center">VAT</th>
+            <th style="border:1px solid #d1d5db;padding:6px 8px;text-align:center">Kwota VAT</th>
+            <th style="border:1px solid #d1d5db;padding:6px 8px;text-align:center">Brutto</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${itemsRows}
+          <tr style="background:#f3f4f6;font-weight:700">
+            <td colspan="5" style="border:1px solid #d1d5db;padding:6px 8px;text-align:right">Razem</td>
+            <td style="border:1px solid #d1d5db;padding:6px 8px;text-align:right">${invoice.total_net.toFixed(2)}</td>
+            <td style="border:1px solid #d1d5db;padding:6px 8px"></td>
+            <td style="border:1px solid #d1d5db;padding:6px 8px;text-align:right">${invoice.total_vat.toFixed(2)}</td>
+            <td style="border:1px solid #d1d5db;padding:6px 8px;text-align:right">${invoice.total_gross.toFixed(2)}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div style="display:flex;gap:40px;margin-bottom:20px;font-size:11px">
+        <div style="flex:1">
+          <div style="margin-bottom:4px"><span style="color:#666">Sposób płatności:</span> ${invoice.payment_method || ''}</div>
+          <div style="margin-bottom:4px"><span style="color:#666">Termin płatności:</span> ${new Date(invoice.payment_due_date).toLocaleDateString('pl-PL')}</div>
+          <div style="margin-bottom:4px"><span style="color:#666">Numer konta:</span></div>
+          <div style="font-family:monospace">${invoice.bank_account || ''}</div>
+          ${invoice.bank_name ? `<div style="margin-top:4px"><span style="color:#666">Nazwa banku:</span> ${invoice.bank_name}</div>` : ''}
+        </div>
+        <div style="flex:1">
+          <div><span style="color:#666">Do zapłaty:</span> <span style="font-size:16px;font-weight:700">${invoice.total_gross.toFixed(2)} PLN</span></div>
+        </div>
+      </div>
+
+      <div style="font-size:9px;color:#666;margin-bottom:20px">
+        Niniejsza faktura jest wezwaniem do zapłaty zgodnie z artykułem 455kc.
+        Po przekroczeniu terminu płatności będą naliczane ustawowe odsetki za zwłokę.
+      </div>
+
+      <div style="display:flex;justify-content:flex-end">
+        <div style="width:180px;border-top:1px solid #d1d5db;padding-top:8px;text-align:center">
+          <div style="font-size:11px;margin-bottom:2px">Mateusz Kwiatkowski</div>
+          <div style="font-size:9px;color:#666">Podpis osoby upoważnionej do wystawienia</div>
+        </div>
+      </div>
+
+      <div style="margin-top:20px;text-align:center;font-size:9px;color:#999">www.mavinci.pl</div>
+    </div>
+  `;
+}
+
 export default function SendInvoiceEmailModal({
   invoiceId,
   invoiceNumber,
@@ -24,6 +199,7 @@ export default function SendInvoiceEmailModal({
 }: SendInvoiceEmailModalProps) {
   const { showSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(false);
+  const [pdfReady, setPdfReady] = useState(false);
   const [formData, setFormData] = useState({
     to: clientEmail,
     subject: `Faktura ${invoiceNumber}`,
@@ -39,6 +215,67 @@ W razie pytań proszę o kontakt.`,
       setFormData((prev) => ({ ...prev, to: clientEmail }));
     }
   }, [clientEmail]);
+
+  const generateInvoicePDF = async (): Promise<{ base64: string; filename: string }> => {
+    const [invoiceRes, itemsRes] = await Promise.all([
+      supabase.from('invoices').select('*').eq('id', invoiceId).single(),
+      supabase
+        .from('invoice_items')
+        .select('*')
+        .eq('invoice_id', invoiceId)
+        .order('position_number'),
+    ]);
+
+    if (invoiceRes.error || !invoiceRes.data) {
+      throw new Error('Nie znaleziono faktury');
+    }
+
+    const invoice = invoiceRes.data as InvoiceData;
+    const items = (itemsRes.data || []) as InvoiceItem[];
+
+    const html = buildInvoiceHtml(invoice, items);
+
+    const html2pdf = (await import('html2pdf.js')).default;
+
+    const element = document.createElement('div');
+    element.innerHTML = html;
+    element.style.width = '210mm';
+    element.style.position = 'absolute';
+    element.style.left = '-9999px';
+    document.body.appendChild(element);
+
+    try {
+      const pdfBlob = await html2pdf()
+        .set({
+          margin: 0,
+          filename: `Faktura_${invoiceNumber}.pdf`,
+          html2canvas: { scale: 2, useCORS: true, logging: false },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        })
+        .from(element)
+        .output('blob');
+
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve, reject) => {
+        reader.onloadend = () => {
+          const result = reader.result as string;
+          const base64 = result.split(',')[1];
+          resolve(base64);
+        };
+        reader.onerror = reject;
+      });
+
+      reader.readAsDataURL(pdfBlob);
+      const base64 = await base64Promise;
+
+      return {
+        base64,
+        filename: `Faktura_${invoiceNumber}.pdf`,
+      };
+    } finally {
+      document.body.removeChild(element);
+    }
+  };
 
   const handleSend = async () => {
     if (!formData.to.trim()) {
@@ -63,6 +300,26 @@ W razie pytań proszę o kontakt.`,
         return;
       }
 
+      showSnackbar('Generuję PDF faktury...', 'info');
+
+      let attachments: Array<{ filename: string; content: string; contentType: string }> = [];
+
+      try {
+        const pdfData = await generateInvoicePDF();
+        attachments.push({
+          filename: pdfData.filename,
+          content: pdfData.base64,
+          contentType: 'application/pdf',
+        });
+        showSnackbar('PDF wygenerowany, wysyłam email...', 'info');
+      } catch (pdfError: any) {
+        console.error('Error generating PDF:', pdfError);
+        showSnackbar(
+          `Nie udało się wygenerować PDF: ${pdfError.message}. Wysyłam bez załącznika.`,
+          'warning',
+        );
+      }
+
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-invoice-email`,
         {
@@ -76,16 +333,17 @@ W razie pytań proszę o kontakt.`,
             to: formData.to,
             subject: formData.subject,
             message: formData.message,
+            attachments,
           }),
         },
       );
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.message || 'Błąd podczas wysyłania email');
+        throw new Error(error.error || error.message || 'Błąd podczas wysyłania email');
       }
 
-      showSnackbar('Faktura wysłana przez email', 'success');
+      showSnackbar('Faktura wysłana przez email z załącznikiem PDF', 'success');
       onSent?.();
       onClose();
     } catch (error: any) {
@@ -159,10 +417,12 @@ W razie pytań proszę o kontakt.`,
             <p className="text-sm text-[#d3bb73]">
               <strong>Nadawca:</strong> Systemowa skrzynka email CRM
             </p>
-            <p className="mt-2 text-sm text-[#e5e4e2]/60">
-              <strong>Załącznik:</strong> Faktura {invoiceNumber} zostanie automatycznie
-              wygenerowana w formacie PDF i dołączona do wiadomości.
-            </p>
+            <div className="mt-2 flex items-center gap-2 text-sm text-[#e5e4e2]/60">
+              <Paperclip className="h-4 w-4 text-[#d3bb73]" />
+              <span>
+                <strong>Załącznik:</strong> Faktura_{invoiceNumber}.pdf
+              </span>
+            </div>
           </div>
         </div>
 
