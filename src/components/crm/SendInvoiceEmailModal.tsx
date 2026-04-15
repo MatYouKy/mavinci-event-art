@@ -11,6 +11,7 @@ interface SendInvoiceEmailModalProps {
   invoiceNumber: string;
   clientEmail?: string;
   clientName?: string;
+  pdfStoragePath?: string | null;
   onClose: () => void;
   onSent?: () => void;
 }
@@ -74,12 +75,12 @@ export default function SendInvoiceEmailModal({
   invoiceNumber,
   clientEmail = '',
   clientName = '',
+  pdfStoragePath,
   onClose,
   onSent,
 }: SendInvoiceEmailModalProps) {
   const { showSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(false);
-  const [pdfReady, setPdfReady] = useState(false);
   const [formData, setFormData] = useState({
     to: clientEmail,
     subject: `Faktura ${invoiceNumber}`,
@@ -204,22 +205,44 @@ W razie pytań proszę o kontakt.`,
         return;
       }
 
-      showSnackbar('Generuję PDF faktury...', 'info');
-
       let attachments: Array<{ filename: string; content: string; contentType: string }> = [];
 
       try {
-        const pdfData = await generateInvoicePDF();
+        let base64: string;
+        const filename = `Faktura_${invoiceNumber}.pdf`;
+
+        if (pdfStoragePath) {
+          showSnackbar('Pobieram PDF ze storage...', 'info');
+          const { data: signedData, error: signedErr } = await supabase.storage
+            .from('event-files')
+            .createSignedUrl(pdfStoragePath, 300);
+
+          if (signedErr || !signedData?.signedUrl) {
+            throw new Error('Nie udalo sie pobrac PDF ze storage');
+          }
+
+          const pdfResp = await fetch(signedData.signedUrl);
+          if (!pdfResp.ok) throw new Error('Blad pobierania PDF');
+          const buffer = await pdfResp.arrayBuffer();
+          base64 = btoa(
+            new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), ''),
+          );
+        } else {
+          showSnackbar('Generuje PDF faktury...', 'info');
+          const pdfData = await generateInvoicePDF();
+          base64 = pdfData.base64;
+        }
+
         attachments.push({
-          filename: pdfData.filename,
-          content: pdfData.base64,
+          filename,
+          content: base64,
           contentType: 'application/pdf',
         });
-        showSnackbar('PDF wygenerowany, wysyłam email...', 'info');
+        showSnackbar('PDF gotowy, wysylam email...', 'info');
       } catch (pdfError: any) {
-        console.error('Error generating PDF:', pdfError);
+        console.error('Error preparing PDF:', pdfError);
         showSnackbar(
-          `Nie udało się wygenerować PDF: ${pdfError.message}. Wysyłam bez załącznika.`,
+          `Nie udalo sie przygotowac PDF: ${pdfError.message}. Wysylam bez zalacznika.`,
           'warning',
         );
       }
@@ -324,7 +347,8 @@ W razie pytań proszę o kontakt.`,
             <div className="mt-2 flex items-center gap-2 text-sm text-[#e5e4e2]/60">
               <Paperclip className="h-4 w-4 text-[#d3bb73]" />
               <span>
-                <strong>Załącznik:</strong> Faktura_{invoiceNumber}.pdf
+                <strong>Zalacznik:</strong> Faktura_{invoiceNumber}.pdf
+                {pdfStoragePath ? ' (z zapisanego PDF)' : ' (zostanie wygenerowany)'}
               </span>
             </div>
           </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
 import {
@@ -16,6 +16,9 @@ import {
   FileText,
   Link as LinkIcon,
   FilePlus2,
+  FileDown,
+  Loader,
+  RefreshCw,
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import SendInvoiceEmailModal from '@/components/crm/SendInvoiceEmailModal';
@@ -24,6 +27,8 @@ import PermissionGuard from '@/components/crm/PermissionGuard';
 import { useDialog } from '@/contexts/DialogContext';
 import Image from 'next/image';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
+import { buildInvoicePdfHtml } from '@/components/crm/invoices/helpers/buildInvoicePdfHtml';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface Invoice {
   bank_name: string;
@@ -52,6 +57,7 @@ interface Invoice {
   total_gross: number;
   issue_place: string;
   pdf_url: string | null;
+  pdf_generated_at: string | null;
   event_id: string | null;
   organization_id: string | null;
   related_invoice_id: string | null;
@@ -67,6 +73,9 @@ interface Invoice {
   ksef_status: string | null;
   ksef_error: string | null;
   ksef_sent_at: string | null;
+  footer_note: string;
+  signature_name: string;
+  website: string;
 }
 
 interface RelatedData {
@@ -98,14 +107,16 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
+  const { employee } = useCurrentEmployee();
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [relatedData, setRelatedData] = useState<RelatedData>({});
   const [loading, setLoading] = useState(true);
   const [showSendEmailModal, setShowSendEmailModal] = useState(false);
   const [showKSeFModal, setShowKSeFModal] = useState(false);
-
-  console.log('[INVOICE_DETAIL-invoice] invoice', invoice);
+  const [generating, setGenerating] = useState(false);
+  const [pdfPath, setPdfPath] = useState<string | null>(null);
+  const [emailSentCount, setEmailSentCount] = useState(0);
 
   useEffect(() => {
     fetchInvoice();
@@ -124,6 +135,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
       if (invoiceRes.data) {
         setInvoice(invoiceRes.data);
+        setPdfPath(invoiceRes.data.pdf_url || null);
 
         const promises = [];
 
@@ -189,17 +201,177 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
       if (itemsRes.data) setItems(itemsRes.data);
     } catch (err) {
       console.error('Error fetching invoice:', err);
-      showSnackbar('Błąd podczas ładowania faktury', 'error');
+      showSnackbar('Blad podczas ladowania faktury', 'error');
     } finally {
       setLoading(false);
     }
   };
 
+  useEffect(() => {
+    if (!invoice) return;
+    const checkSentEmails = async () => {
+      const { count } = await supabase
+        .from('sent_emails')
+        .select('id', { count: 'exact', head: true })
+        .ilike('subject', `%${invoice.invoice_number}%`);
+      setEmailSentCount(count || 0);
+    };
+    checkSentEmails();
+  }, [invoice]);
+
+  const buildHtmlForPdf = useCallback(() => {
+    if (!invoice) return '';
+    return buildInvoicePdfHtml({
+      footerNote:
+        invoice.footer_note ||
+        'Niniejsza faktura jest wezwaniem do zaplaty zgodnie z artykulem 455kc. Po przekroczeniu terminu platnosci beda naliczane ustawowe odsetki za zwloke.',
+      signatureName: invoice.signature_name || 'Mateusz Kwiatkowski',
+      website: invoice.website || 'www.mavinci.pl',
+      invoiceNumber: invoice.invoice_number,
+      invoiceType: invoice.invoice_type,
+      issueDate: invoice.issue_date,
+      saleDate: invoice.sale_date,
+      issuePlace: invoice.issue_place,
+      paymentMethod: invoice.payment_method,
+      paymentDueDate: invoice.payment_due_date,
+      bankAccount: invoice.bank_account,
+      bankName: invoice.bank_name,
+      sellerName: invoice.seller_name,
+      sellerNip: invoice.seller_nip,
+      sellerStreet: invoice.seller_street,
+      sellerCity: invoice.seller_city,
+      sellerPostalCode: invoice.seller_postal_code,
+      buyerName: invoice.buyer_name,
+      buyerNip: invoice.buyer_nip,
+      buyerStreet: invoice.buyer_street,
+      buyerCity: invoice.buyer_city,
+      buyerPostalCode: invoice.buyer_postal_code,
+      totalNet: invoice.total_net,
+      totalVat: invoice.total_vat,
+      totalGross: invoice.total_gross,
+      companyLogoUrl: invoice.company_logo_url
+        ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/site-images/${invoice.company_logo_url}`
+        : null,
+      items: items.map((item) => ({
+        positionNumber: item.position_number,
+        name: item.name,
+        unit: item.unit,
+        quantity: item.quantity,
+        priceNet: item.price_net,
+        vatRate: item.vat_rate,
+        valueNet: item.value_net,
+        vatAmount: item.vat_amount,
+        valueGross: item.value_gross,
+      })),
+    });
+  }, [invoice, items]);
+
   const handleGeneratePDF = async () => {
-    window.print();
+    if (!invoice) return;
+    setGenerating(true);
+    try {
+      const html = buildHtmlForPdf();
+      const response = await fetch('/bridge/invoices/invoice-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          html,
+          fileName: `Faktura_${invoice.invoice_number}.pdf`,
+          invoiceId: invoice.id,
+          eventId: invoice.event_id,
+          createdBy: employee?.id ?? null,
+          previousPdfPath: pdfPath,
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => null);
+        throw new Error(err?.error || 'Blad generowania PDF');
+      }
+
+      const result = await response.json();
+      if (result.storagePath) {
+        setPdfPath(result.storagePath);
+        setInvoice((prev) =>
+          prev ? { ...prev, pdf_url: result.storagePath, pdf_generated_at: new Date().toISOString() } : null,
+        );
+        showSnackbar('PDF wygenerowany i zapisany w plikach eventu', 'success');
+      } else {
+        showSnackbar('PDF wygenerowany (brak powiazanego eventu do zapisu)', 'info');
+      }
+    } catch (err: any) {
+      console.error('Error generating PDF:', err);
+      showSnackbar(err.message || 'Blad generowania PDF', 'error');
+    } finally {
+      setGenerating(false);
+    }
   };
 
-  const handleSendEmail = async () => {
+  const getSignedUrl = async (path: string): Promise<string | null> => {
+    const { data, error } = await supabase.storage.from('event-files').createSignedUrl(path, 3600);
+    if (error || !data?.signedUrl) {
+      console.error('Error creating signed URL:', error);
+      return null;
+    }
+    return data.signedUrl;
+  };
+
+  const handleDownloadPDF = async () => {
+    if (!pdfPath) {
+      showSnackbar('Najpierw wygeneruj PDF', 'warning');
+      return;
+    }
+
+    try {
+      const url = await getSignedUrl(pdfPath);
+      if (!url) {
+        showSnackbar('Nie mozna pobrac pliku. Wygeneruj PDF ponownie.', 'error');
+        setPdfPath(null);
+        return;
+      }
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = pdfPath.split('/').pop() || `Faktura_${invoice?.invoice_number}.pdf`;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(blobUrl);
+      }, 100);
+    } catch (err) {
+      console.error('Error downloading PDF:', err);
+      showSnackbar('Blad pobierania PDF', 'error');
+    }
+  };
+
+  const handlePrintPDF = async () => {
+    if (!pdfPath) {
+      window.print();
+      return;
+    }
+
+    try {
+      const url = await getSignedUrl(pdfPath);
+      if (!url) {
+        window.print();
+        return;
+      }
+      const printWindow = window.open(url, '_blank');
+      if (printWindow) {
+        printWindow.addEventListener('load', () => {
+          printWindow.print();
+        });
+      }
+    } catch {
+      window.print();
+    }
+  };
+
+  const handleSendEmail = () => {
     setShowSendEmailModal(true);
   };
 
@@ -213,10 +385,10 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
       if (error) throw error;
 
       setInvoice((prev) => (prev ? { ...prev, status: newStatus } : null));
-      showSnackbar('Status faktury został zmieniony', 'success');
+      showSnackbar('Status faktury zostal zmieniony', 'success');
     } catch (err) {
       console.error('Error updating status:', err);
-      showSnackbar('Błąd podczas zmiany statusu', 'error');
+      showSnackbar('Blad podczas zmiany statusu', 'error');
     }
   };
 
@@ -224,27 +396,19 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
   const handleConvertToVAT = async () => {
     const confirmed = await showConfirm(
-      'Czy na pewno chcesz wystawić fakturę VAT na podstawie tej proformy? Zostanie utworzona nowa faktura.',
-      'Czy na pewno chcesz wystawić fakturę VAT na podstawie tej proformy? Zostanie utworzona nowa faktura?',
+      'Czy na pewno chcesz wystawic fakture VAT na podstawie tej proformy? Zostanie utworzona nowa faktura.',
+      'Czy na pewno chcesz wystawic fakture VAT na podstawie tej proformy? Zostanie utworzona nowa faktura?',
     );
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     try {
       setSendingToKSeF(true);
-
       const { convertProformaToInvoice } = await import('@/lib/invoices/convertProformaToInvoice');
-
       const result = await convertProformaToInvoice(params.id);
 
-      if (!result.success) {
-        throw new Error(result.error || 'Błąd konwersji');
-      }
+      if (!result.success) throw new Error(result.error || 'Blad konwersji');
 
-      showSnackbar('Faktura VAT została utworzona', 'success');
-
-      // Przekieruj na nową fakturę
+      showSnackbar('Faktura VAT zostala utworzona', 'success');
       if (result.invoiceId) {
         router.push(`/crm/invoices/${result.invoiceId}`);
       } else {
@@ -252,7 +416,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
       }
     } catch (err: any) {
       console.error('Error converting to VAT:', err);
-      showSnackbar(err.message || 'Błąd podczas tworzenia faktury VAT', 'error');
+      showSnackbar(err.message || 'Blad podczas tworzenia faktury VAT', 'error');
     } finally {
       setSendingToKSeF(false);
     }
@@ -260,14 +424,14 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
   const handleSendToKSeF = async () => {
     const confirmed = await showConfirm(
-      'Czy na pewno chcesz wysłać tę fakturę do KSeF? Tej operacji nie można cofnąć.',
-      'Tej operacji nie można cofnąć.',
+      'Czy na pewno chcesz wyslac te fakture do KSeF? Tej operacji nie mozna cofnac.',
+      'Tej operacji nie mozna cofnac.',
     );
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
     setShowKSeFModal(true);
   };
+
+  const emailButtonLabel = emailSentCount > 0 ? 'Wyslij email ponownie' : 'Wyslij email';
 
   const actions = useMemo<Action[]>(() => {
     const nextActions: Action[] = [];
@@ -276,29 +440,48 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
       nextActions.push({
         label: 'Edytuj',
         icon: <Edit className="h-4 w-4" />,
-        onClick: () => router.push(`/crm/invoices/${invoice.id}/edit`),
+        onClick: () => router.push(`/crm/invoices/${invoice!.id}/edit`),
         variant: 'default',
       });
     }
 
-    nextActions.push(
-      {
-        label: 'Pobierz PDF',
-        icon: <Download className="h-4 w-4" />,
+    if (!pdfPath) {
+      nextActions.push({
+        label: generating ? 'Generowanie...' : 'Generuj PDF',
+        icon: generating ? <Loader className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />,
         onClick: handleGeneratePDF,
-        variant: 'default',
-      },
-      {
-        label: 'Drukuj',
-        icon: <Printer className="h-4 w-4" />,
-        onClick: handleGeneratePDF,
-        variant: 'default',
-      },
-    );
+        variant: 'primary',
+      });
+    } else {
+      nextActions.push(
+        {
+          label: generating ? 'Regenerowanie...' : 'Regeneruj PDF',
+          icon: generating ? (
+            <Loader className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          ),
+          onClick: handleGeneratePDF,
+          variant: 'default',
+        },
+        {
+          label: 'Pobierz PDF',
+          icon: <Download className="h-4 w-4" />,
+          onClick: handleDownloadPDF,
+          variant: 'default',
+        },
+        {
+          label: 'Drukuj',
+          icon: <Printer className="h-4 w-4" />,
+          onClick: handlePrintPDF,
+          variant: 'default',
+        },
+      );
+    }
 
     if (invoice?.status !== 'cancelled') {
       nextActions.push({
-        label: 'Wyślij email',
+        label: emailButtonLabel,
         icon: <Send className="h-4 w-4" />,
         onClick: handleSendEmail,
         variant: 'default',
@@ -307,7 +490,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
     if (invoice?.status === 'draft' && !invoice?.is_proforma) {
       nextActions.push({
-        label: 'Wyślij do KSeF',
+        label: 'Wyslij do KSeF',
         icon: <Send className="h-4 w-4" />,
         onClick: handleSendToKSeF,
         variant: 'primary',
@@ -319,7 +502,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
       invoice.invoice_type !== 'corrective'
     ) {
       nextActions.push({
-        label: 'Wystaw korektę',
+        label: 'Wystaw korekte',
         icon: <FilePlus2 className="h-4 w-4" />,
         onClick: () => router.push(`/crm/invoices/new?type=corrective&related=${invoice.id}`),
         variant: 'default',
@@ -327,12 +510,12 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     }
 
     return nextActions;
-  }, [invoice, router, handleGeneratePDF, handleSendEmail, handleSendToKSeF, sendingToKSeF]);
+  }, [invoice, router, generating, pdfPath, emailButtonLabel]);
 
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#0a0d1a]">
-        <div className="text-[#e5e4e2]/60">Ładowanie...</div>
+        <div className="text-[#e5e4e2]/60">Ladowanie...</div>
       </div>
     );
   }
@@ -340,7 +523,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   if (!invoice) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#0a0d1a]">
-        <div className="text-[#e5e4e2]/60">Faktura nie została znaleziona</div>
+        <div className="text-[#e5e4e2]/60">Faktura nie zostala znaleziona</div>
       </div>
     );
   }
@@ -350,7 +533,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
       vat: 'Faktura VAT',
       proforma: 'Proforma',
       advance: 'Zaliczkowa',
-      corrective: 'Korygująca',
+      corrective: 'Korygujaca',
     };
     return labels[type] || type;
   };
@@ -364,18 +547,17 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             className="mb-6 flex items-center gap-2 text-[#e5e4e2]/60 hover:text-[#d3bb73]"
           >
             <ArrowLeft className="h-5 w-5" />
-            Powrót
+            Powrot
           </button>
 
-          {/* Proforma Alert */}
           {invoice.is_proforma && (
             <div className="mb-6 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-6">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <h3 className="mb-2 text-lg font-medium text-yellow-400">📋 Faktura Proforma</h3>
+                  <h3 className="mb-2 text-lg font-medium text-yellow-400">Faktura Proforma</h3>
                   <p className="mb-4 text-sm text-[#e5e4e2]/80">
-                    Ta proforma nie zostanie wysłana do KSeF. Aby wystawić prawnie wiążącą fakturę
-                    VAT, użyj przycisku poniżej.
+                    Ta proforma nie zostanie wyslana do KSeF. Aby wystawic prawnie wiazaca fakture
+                    VAT, uzyj przycisku ponizej.
                   </p>
 
                   {!invoice.proforma_converted_to_invoice_id ? (
@@ -385,12 +567,12 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                       className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
                     >
                       <CheckCircle className="h-4 w-4" />
-                      {sendingToKSeF ? 'Tworzenie...' : 'Wystaw fakturę VAT na podstawie proformy'}
+                      {sendingToKSeF ? 'Tworzenie...' : 'Wystaw fakture VAT na podstawie proformy'}
                     </button>
                   ) : (
                     <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3">
                       <div className="mb-2 text-sm font-medium text-green-400">
-                        ✅ Faktura VAT została wystawiona
+                        Faktura VAT zostala wystawiona
                       </div>
                       <button
                         onClick={() =>
@@ -398,7 +580,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                         }
                         className="text-sm text-[#d3bb73] hover:underline"
                       >
-                        Zobacz fakturę VAT →
+                        Zobacz fakture VAT
                       </button>
                     </div>
                   )}
@@ -407,7 +589,6 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             </div>
           )}
 
-          {/* VAT Invoice from Proforma */}
           {!invoice.is_proforma &&
             invoice.related_invoice_id &&
             invoice.invoice_type !== 'corrective' && (
@@ -418,13 +599,12 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                     onClick={() => router.push(`/crm/invoices/${invoice.related_invoice_id}`)}
                     className="ml-2 text-[#d3bb73] hover:underline"
                   >
-                    Zobacz proformę
+                    Zobacz proforme
                   </button>
                 </div>
               </div>
             )}
 
-          {/* Corrective Invoice Info */}
           {invoice.invoice_type === 'corrective' && (
             <div className="mb-6 rounded-xl border border-orange-500/30 bg-orange-500/10 p-6">
               <h3 className="mb-4 text-lg font-medium text-orange-400">Faktura korygujaca</h3>
@@ -477,7 +657,6 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             </div>
           )}
 
-          {/* Relations Section */}
           {(relatedData.event ||
             relatedData.organization ||
             relatedData.relatedInvoice ||
@@ -485,7 +664,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             <div className="mb-6 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
               <h3 className="mb-4 flex items-center gap-2 text-lg font-medium text-[#e5e4e2]">
                 <LinkIcon className="h-5 w-5 text-[#d3bb73]" />
-                Powiązania
+                Powiazania
               </h3>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {relatedData.event && (
@@ -534,9 +713,9 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                     className="cursor-pointer rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4 transition-colors hover:border-[#d3bb73]/40"
                   >
                     <div className="flex items-start gap-3">
-                      <FileText className="mt-0.5 h-5 w-5 text-purple-400" />
+                      <FileText className="mt-0.5 h-5 w-5 text-orange-400" />
                       <div className="flex-1">
-                        <div className="mb-1 text-xs text-[#e5e4e2]/40">Powiązana faktura</div>
+                        <div className="mb-1 text-xs text-[#e5e4e2]/40">Powiazana faktura</div>
                         <div className="font-medium text-[#e5e4e2]">
                           {relatedData.relatedInvoice.invoice_number}
                         </div>
@@ -553,7 +732,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                     <div className="flex items-start gap-3">
                       <FileText className="mt-0.5 h-5 w-5 text-orange-400" />
                       <div className="flex-1">
-                        <div className="mb-2 text-xs text-[#e5e4e2]/40">Faktury korygujące</div>
+                        <div className="mb-2 text-xs text-[#e5e4e2]/40">Faktury korygujace</div>
                         {relatedData.relatedInvoices.map((rel) => (
                           <div
                             key={rel.id}
@@ -574,21 +753,31 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             </div>
           )}
 
-          {/* Header Actions */}
           <div className="mb-6 flex items-center justify-between">
             <div>
               <h1 className="mb-2 text-3xl font-light text-[#e5e4e2]">
                 Faktura {invoice.invoice_number}
               </h1>
-              <p className="text-[#e5e4e2]/60">
-                {getTypeLabel(invoice.invoice_type)}
-                {invoice.is_proforma ? ' (Proforma)' : ''}
-              </p>
+              <div className="flex items-center gap-3">
+                <p className="text-[#e5e4e2]/60">
+                  {getTypeLabel(invoice.invoice_type)}
+                  {invoice.is_proforma ? ' (Proforma)' : ''}
+                </p>
+                {pdfPath && (
+                  <span className="rounded-full bg-green-500/20 px-2.5 py-0.5 text-xs font-medium text-green-400">
+                    PDF wygenerowany
+                  </span>
+                )}
+                {emailSentCount > 0 && (
+                  <span className="rounded-full bg-blue-500/20 px-2.5 py-0.5 text-xs font-medium text-blue-400">
+                    Email wyslany ({emailSentCount}x)
+                  </span>
+                )}
+              </div>
             </div>
             <ResponsiveActionBar disabledBackground actions={actions} mobileBreakpoint={900} />
           </div>
 
-          {/* KSeF Status */}
           {invoice.ksef_status && (
             <div
               className={`mb-6 rounded-xl border p-4 ${
@@ -628,7 +817,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                         : invoice.ksef_status === 'rejected'
                           ? 'Odrzucona'
                           : invoice.ksef_status === 'sent'
-                            ? 'Wysłana'
+                            ? 'Wyslana'
                             : 'Szkic'}
                     </div>
                     {invoice.ksef_reference_number && (
@@ -652,12 +841,10 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             </div>
           )}
 
-          {/* Invoice Preview - A4 Format (210mm x 297mm at 96dpi = 794px x 1123px) */}
           <div
             className="invoice-preview mx-auto mb-6 rounded-xl bg-white text-black"
             style={{ width: '794px', minHeight: '1123px', padding: '60px' }}
           >
-            {/* Header */}
             <div className="mb-12 flex items-start justify-between">
               <div className="flex items-center gap-4">
                 <Image
@@ -680,7 +867,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                   </div>
                 </div>
                 <div>
-                  <div className="text-gray-600">Data sprzedaży</div>
+                  <div className="text-gray-600">Data sprzedazy</div>
                   <div className="font-medium">
                     {new Date(invoice.sale_date).toLocaleDateString('pl-PL')}
                   </div>
@@ -688,7 +875,6 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               </div>
             </div>
 
-            {/* Seller & Buyer */}
             <div className="mb-12 grid grid-cols-2 gap-12">
               <div>
                 <div className="mb-2 text-sm text-gray-600">Sprzedawca</div>
@@ -710,26 +896,24 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               </div>
             </div>
 
-            {/* Invoice Number */}
             <div className="mb-8 text-center">
               <div className="text-2xl font-bold">
                 {getTypeLabel(invoice.invoice_type)} {invoice.invoice_number}
               </div>
             </div>
 
-            {/* Items Table */}
             <table className="mb-8 w-full text-sm">
               <thead className="bg-gray-100">
                 <tr>
                   <th className="border border-gray-300 p-2 text-left">Lp.</th>
-                  <th className="border border-gray-300 p-2 text-left">Nazwa towaru lub usługi</th>
+                  <th className="border border-gray-300 p-2 text-left">Nazwa towaru lub uslugi</th>
                   <th className="border border-gray-300 p-2">Jm.</th>
-                  <th className="border border-gray-300 p-2">Ilość</th>
+                  <th className="border border-gray-300 p-2">Ilosc</th>
                   <th className="border border-gray-300 p-2">Cena netto</th>
-                  <th className="border border-gray-300 p-2">Wartość netto</th>
+                  <th className="border border-gray-300 p-2">Wartosc netto</th>
                   <th className="border border-gray-300 p-2">Stawka VAT</th>
                   <th className="border border-gray-300 p-2">Kwota VAT</th>
-                  <th className="border border-gray-300 p-2">Wartość brutto</th>
+                  <th className="border border-gray-300 p-2">Wartosc brutto</th>
                 </tr>
               </thead>
               <tbody>
@@ -773,14 +957,13 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               </tbody>
             </table>
 
-            {/* Payment Details */}
             <div className="mb-8 grid grid-cols-2 gap-12 text-sm">
               <div>
                 <div className="mb-2">
-                  <span className="text-gray-600">Sposób płatności:</span> {invoice.payment_method}
+                  <span className="text-gray-600">Sposob platnosci:</span> {invoice.payment_method}
                 </div>
                 <div className="mb-2">
-                  <span className="text-gray-600">Termin płatności:</span>{' '}
+                  <span className="text-gray-600">Termin platnosci:</span>{' '}
                   {new Date(invoice.payment_due_date).toLocaleDateString('pl-PL')}
                 </div>
                 <div>
@@ -794,35 +977,31 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               </div>
               <div>
                 <div className="mb-2">
-                  <span className="text-gray-600">Do zapłaty:</span>{' '}
+                  <span className="text-gray-600">Do zaplaty:</span>{' '}
                   <span className="text-lg font-bold">{invoice.total_gross.toFixed(2)} PLN</span>
                 </div>
-                <div className="text-xs text-gray-600">
-                  Słownie: {/* Tu można dodać funkcję zamiany liczby na słowa */}
-                </div>
               </div>
             </div>
 
-            {/* Footer */}
             <div className="mb-8 text-xs text-gray-600">
-              Niniejsza faktura jest wezwaniem do zapłaty zgodnie z artykułem 455kc. po
-              przekroczeniu terminu płatności będą naliczane ustawowe odsetki za zwłokę.
+              {invoice.footer_note ||
+                'Niniejsza faktura jest wezwaniem do zaplaty zgodnie z artykulem 455kc. po przekroczeniu terminu platnosci beda naliczane ustawowe odsetki za zwloke.'}
             </div>
 
-            {/* Signature */}
             <div className="flex justify-end">
               <div className="w-64 border-t border-gray-300 pt-2 text-center">
-                <div className="mb-1 text-sm">Mateusz Kwiatkowski</div>
+                <div className="mb-1 text-sm">{invoice.signature_name || 'Mateusz Kwiatkowski'}</div>
                 <div className="text-xs text-gray-600">
-                  Podpis osoby upoważnionej do wystawienia
+                  Podpis osoby upowazionej do wystawienia
                 </div>
               </div>
             </div>
 
-            <div className="mt-8 text-center text-xs text-gray-500">www.mavinci.pl</div>
+            <div className="mt-8 text-center text-xs text-gray-500">
+              {invoice.website || 'www.mavinci.pl'}
+            </div>
           </div>
 
-          {/* Status Change */}
           {invoice.status !== 'paid' && invoice.status !== 'cancelled' && (
             <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
               <h3 className="mb-4 text-lg font-medium text-[#e5e4e2]">Zmiana statusu</h3>
@@ -830,10 +1009,10 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                 {invoice.status === 'issued' && (
                   <button
                     onClick={() => handleStatusChange('sent')}
-                    className="flex items-center gap-2 rounded-lg border border-purple-500/30 bg-purple-500/20 px-4 py-2 text-purple-400 hover:bg-purple-500/30"
+                    className="flex items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/20 px-4 py-2 text-blue-400 hover:bg-blue-500/30"
                   >
                     <Send className="h-4 w-4" />
-                    Oznacz jako wysłaną
+                    Oznacz jako wyslana
                   </button>
                 )}
                 {(invoice.status === 'issued' || invoice.status === 'sent') && (
@@ -842,7 +1021,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                     className="flex items-center gap-2 rounded-lg border border-green-500/30 bg-green-500/20 px-4 py-2 text-green-400 hover:bg-green-500/30"
                   >
                     <CheckCircle className="h-4 w-4" />
-                    Oznacz jako opłaconą
+                    Oznacz jako oplacona
                   </button>
                 )}
                 <button
@@ -850,7 +1029,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                   className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/20 px-4 py-2 text-red-400 hover:bg-red-500/30"
                 >
                   <XCircle className="h-4 w-4" />
-                  Anuluj fakturę
+                  Anuluj fakture
                 </button>
               </div>
             </div>
@@ -888,16 +1067,20 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           }
         `}</style>
 
-        {/* Modal wysyłania faktury */}
         {showSendEmailModal && invoice && relatedData.organization && (
           <SendInvoiceEmailModal
             invoiceId={invoice.id}
             invoiceNumber={invoice.invoice_number}
             clientEmail={relatedData.organization.email}
             clientName={relatedData.organization.name}
+            pdfStoragePath={pdfPath}
             onClose={() => setShowSendEmailModal(false)}
             onSent={() => {
-              showSnackbar('Faktura wysłana', 'success');
+              showSnackbar('Faktura wyslana', 'success');
+              setEmailSentCount((prev) => prev + 1);
+              if (invoice.status === 'issued' || invoice.status === 'draft') {
+                handleStatusChange('sent');
+              }
             }}
           />
         )}
