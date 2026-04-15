@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
-import { FileText, Plus, Search, Filter, Download, Eye, Trash2, CheckCircle, Clock, Send, XCircle, DollarSign, Calendar, Building, MoreVertical, Settings, RotateCcw, AlertTriangle, RefreshCw, Save } from 'lucide-react';
+import { FileText, Plus, Search, Filter, Download, Eye, Trash2, CheckCircle, Clock, Send, XCircle, DollarSign, Calendar, Building, MoreVertical, Settings, RotateCcw, AlertTriangle, RefreshCw, Save, LayoutGrid, Table2 } from 'lucide-react';
 import KSeFIntegrationPanel from '@/components/crm/KSeFIntegrationPanel';
 import FinancialDashboard from '@/components/crm/FinancialDashboard';
 import KSeFFinancialDashboard from '@/components/crm/KSeFFinancialDashboard';
@@ -385,6 +385,7 @@ export default function InvoicesPage() {
   const [filterCompany, setFilterCompany] = useState<string>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'local' | 'ksef' | 'settings'>('dashboard');
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
   const [myCompanies, setMyCompanies] = useState<any[]>([]);
 
   const { canManageModule, isAdmin } = useCurrentEmployee();
@@ -550,6 +551,22 @@ export default function InvoicesPage() {
     );
   };
 
+  const getRowColor = (invoice: Invoice) => {
+    if (invoice.status === 'paid') return 'bg-green-500/[0.06] hover:bg-green-500/[0.12]';
+    if (invoice.invoice_type === 'corrective') return 'bg-red-500/[0.06] hover:bg-red-500/[0.12]';
+    if (invoice.invoice_type === 'advance') return 'bg-amber-500/[0.06] hover:bg-amber-500/[0.12]';
+    if (invoice.invoice_type === 'proforma') return 'bg-blue-500/[0.04] hover:bg-blue-500/[0.08]';
+    return 'hover:bg-[#0f1119]';
+  };
+
+  const getCardBorderColor = (invoice: Invoice) => {
+    if (invoice.status === 'paid') return 'border-l-green-500';
+    if (invoice.invoice_type === 'corrective') return 'border-l-red-500';
+    if (invoice.invoice_type === 'advance') return 'border-l-amber-500';
+    if (invoice.invoice_type === 'proforma') return 'border-l-blue-400';
+    return 'border-l-[#d3bb73]/30';
+  };
+
   const filteredInvoices = invoices.filter((invoice) => {
     const matchesSearch =
       invoice.invoice_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -702,17 +719,43 @@ export default function InvoicesPage() {
               </div>
             </div>
 
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className={`flex items-center gap-2 rounded-lg border px-4 py-3 transition-colors ${
-                showFilters
-                  ? 'border-[#d3bb73] bg-[#d3bb73] text-[#1c1f33]'
-                  : 'border-[#d3bb73]/20 bg-[#0a0d1a] text-[#e5e4e2] hover:border-[#d3bb73]/40'
-              }`}
-            >
-              <Filter className="h-5 w-5" />
-              Filtry
-            </button>
+            <div className="flex items-center gap-2">
+              <div className="flex overflow-hidden rounded-lg border border-[#d3bb73]/20">
+                <button
+                  onClick={() => setViewMode('table')}
+                  className={`flex items-center gap-1.5 px-3 py-3 text-sm transition-colors ${
+                    viewMode === 'table'
+                      ? 'bg-[#d3bb73]/20 text-[#d3bb73]'
+                      : 'text-[#e5e4e2]/50 hover:text-[#e5e4e2]'
+                  }`}
+                  title="Widok tabeli"
+                >
+                  <Table2 className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => setViewMode('cards')}
+                  className={`flex items-center gap-1.5 border-l border-[#d3bb73]/20 px-3 py-3 text-sm transition-colors ${
+                    viewMode === 'cards'
+                      ? 'bg-[#d3bb73]/20 text-[#d3bb73]'
+                      : 'text-[#e5e4e2]/50 hover:text-[#e5e4e2]'
+                  }`}
+                  title="Widok kart"
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                </button>
+              </div>
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className={`flex items-center gap-2 rounded-lg border px-4 py-3 transition-colors ${
+                  showFilters
+                    ? 'border-[#d3bb73] bg-[#d3bb73] text-[#1c1f33]'
+                    : 'border-[#d3bb73]/20 bg-[#0a0d1a] text-[#e5e4e2] hover:border-[#d3bb73]/40'
+                }`}
+              >
+                <Filter className="h-5 w-5" />
+                Filtry
+              </button>
+            </div>
           </div>
 
           {showFilters && (
@@ -768,24 +811,23 @@ export default function InvoicesPage() {
           )}
         </div>
 
-        {/* List */}
-        <div className="overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
-          {filteredInvoices.length === 0 ? (
-            <div className="py-16 text-center">
-              <FileText className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
-              <p className="mb-4 text-[#e5e4e2]/60">
-                {invoices.length === 0 ? 'Brak faktur' : 'Brak wyników wyszukiwania'}
-              </p>
-              {invoices.length === 0 && (
-                <button
-                  onClick={() => router.push('/crm/invoices/new')}
-                  className="text-[#d3bb73] hover:text-[#d3bb73]/80"
-                >
-                  Wystaw pierwszą fakturę
-                </button>
-              )}
-            </div>
-          ) : (
+        {filteredInvoices.length === 0 ? (
+          <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] py-16 text-center">
+            <FileText className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
+            <p className="mb-4 text-[#e5e4e2]/60">
+              {invoices.length === 0 ? 'Brak faktur' : 'Brak wyników wyszukiwania'}
+            </p>
+            {invoices.length === 0 && (
+              <button
+                onClick={() => router.push('/crm/invoices/new')}
+                className="text-[#d3bb73] hover:text-[#d3bb73]/80"
+              >
+                Wystaw pierwszą fakturę
+              </button>
+            )}
+          </div>
+        ) : viewMode === 'table' ? (
+          <div className="overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="border-b border-[#d3bb73]/10 bg-[#0f1119]">
@@ -799,14 +841,20 @@ export default function InvoicesPage() {
                     <th className="px-6 py-4 text-left text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
                       Nabywca
                     </th>
+                    <th className="hidden px-6 py-4 text-left text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60 lg:table-cell">
+                      Firma
+                    </th>
                     <th className="px-6 py-4 text-left text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
                       Data wystawienia
                     </th>
                     <th className="px-6 py-4 text-left text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
-                      Termin płatności
+                      Termin platnosci
                     </th>
                     <th className="px-6 py-4 text-right text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
-                      Kwota brutto
+                      Netto
+                    </th>
+                    <th className="px-6 py-4 text-right text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
+                      Brutto
                     </th>
                     <th className="px-6 py-4 text-left text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
                       Status
@@ -816,48 +864,59 @@ export default function InvoicesPage() {
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#d3bb73]/10">
+                <tbody className="divide-y divide-[#d3bb73]/5">
                   {filteredInvoices.map((invoice) => (
                     <tr
                       key={invoice.id}
-                      className="cursor-pointer transition-colors hover:bg-[#0f1119]"
+                      className={`cursor-pointer transition-colors ${getRowColor(invoice)}`}
                       onClick={() => router.push(`/crm/invoices/${invoice.id}`)}
                     >
-                      <td className="whitespace-nowrap px-6 py-4">
+                      <td className="whitespace-nowrap px-6 py-3.5">
                         <div className="font-medium text-[#e5e4e2]">{invoice.invoice_number}</div>
                         {invoice.event && (
-                          <div className="mt-1 text-xs text-[#e5e4e2]/40">{invoice.event.name}</div>
+                          <div className="mt-0.5 text-xs text-[#e5e4e2]/40">{invoice.event.name}</div>
                         )}
                       </td>
-                      <td className="whitespace-nowrap px-6 py-4">
+                      <td className="whitespace-nowrap px-6 py-3.5">
                         {getTypeBadge(invoice.invoice_type)}
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="text-[#e5e4e2]">{invoice.buyer_name}</div>
+                      <td className="px-6 py-3.5">
+                        <div className="max-w-[200px] truncate text-[#e5e4e2]">{invoice.buyer_name}</div>
                         {invoice.buyer_nip && (
-                          <div className="mt-1 text-xs text-[#e5e4e2]/40">
+                          <div className="mt-0.5 text-xs text-[#e5e4e2]/40">
                             NIP: {invoice.buyer_nip}
                           </div>
                         )}
                       </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-[#e5e4e2]/80">
+                      <td className="hidden whitespace-nowrap px-6 py-3.5 lg:table-cell">
+                        <div className="text-xs text-[#e5e4e2]/50">
+                          {(invoice as any).my_company?.name || '-'}
+                        </div>
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-3.5 text-sm text-[#e5e4e2]/80">
                         {new Date(invoice.issue_date).toLocaleDateString('pl-PL')}
                       </td>
-                      <td className="whitespace-nowrap px-6 py-4">
-                        <div className="flex items-center gap-2 text-[#e5e4e2]/80">
-                          <Calendar className="h-4 w-4 text-[#e5e4e2]/40" />
+                      <td className="whitespace-nowrap px-6 py-3.5">
+                        <div className="flex items-center gap-1.5 text-sm text-[#e5e4e2]/80">
+                          <Calendar className="h-3.5 w-3.5 text-[#e5e4e2]/30" />
                           {new Date(invoice.payment_due_date).toLocaleDateString('pl-PL')}
                         </div>
                       </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-right">
+                      <td className="whitespace-nowrap px-6 py-3.5 text-right text-sm text-[#e5e4e2]/70">
+                        {Number(invoice.total_net).toLocaleString('pl-PL', {
+                          minimumFractionDigits: 2,
+                        })}{' '}
+                        zl
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-3.5 text-right">
                         <div className="font-medium text-[#d3bb73]">
                           {Number(invoice.total_gross).toLocaleString('pl-PL', {
                             minimumFractionDigits: 2,
                           })}{' '}
-                          zł
+                          zl
                         </div>
                       </td>
-                      <td className="whitespace-nowrap px-6 py-4">
+                      <td className="whitespace-nowrap px-6 py-3.5">
                         <div className="flex items-center gap-2">
                           {getStatusBadge(invoice.status)}
                           {invoice.ksef_status && (
@@ -873,7 +932,7 @@ export default function InvoicesPage() {
                           )}
                         </div>
                       </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-right">
+                      <td className="whitespace-nowrap px-6 py-3.5 text-right">
                         <div className="flex items-center justify-end">
                           <InvoiceContextMenu
                             invoice={invoice}
@@ -890,8 +949,80 @@ export default function InvoicesPage() {
                 </tbody>
               </table>
             </div>
-          )}
-        </div>
+            <div className="border-t border-[#d3bb73]/10 bg-[#0f1119] px-6 py-3">
+              <div className="flex items-center justify-between text-xs text-[#e5e4e2]/40">
+                <span>{filteredInvoices.length} {filteredInvoices.length === 1 ? 'faktura' : filteredInvoices.length < 5 ? 'faktury' : 'faktur'}</span>
+                <div className="flex items-center gap-6">
+                  <span>Netto: <span className="text-[#e5e4e2]/70">{totalNet.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zl</span></span>
+                  <span>Brutto: <span className="font-medium text-[#d3bb73]">{totalGross.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zl</span></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {filteredInvoices.map((invoice) => (
+              <div
+                key={invoice.id}
+                className={`cursor-pointer rounded-xl border border-[#d3bb73]/10 border-l-4 bg-[#1c1f33] p-5 transition-all hover:border-[#d3bb73]/20 hover:shadow-lg ${getCardBorderColor(invoice)}`}
+                onClick={() => router.push(`/crm/invoices/${invoice.id}`)}
+              >
+                <div className="mb-3 flex items-start justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium text-[#e5e4e2]">{invoice.invoice_number}</div>
+                    <div className="mt-0.5 text-xs text-[#e5e4e2]/40">{getTypeBadge(invoice.invoice_type)}</div>
+                  </div>
+                  <div className="ml-3 flex items-center gap-2">
+                    {getStatusBadge(invoice.status)}
+                    {invoice.ksef_status && (
+                      <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                        invoice.ksef_status === 'accepted'
+                          ? 'bg-green-500/20 text-green-400'
+                          : invoice.ksef_status === 'rejected'
+                            ? 'bg-red-500/20 text-red-400'
+                            : 'bg-blue-500/20 text-blue-400'
+                      }`}>
+                        KSeF
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mb-3">
+                  <div className="truncate text-sm text-[#e5e4e2]/80">{invoice.buyer_name}</div>
+                  {invoice.buyer_nip && (
+                    <div className="text-xs text-[#e5e4e2]/40">NIP: {invoice.buyer_nip}</div>
+                  )}
+                </div>
+
+                {invoice.event && (
+                  <div className="mb-3 truncate text-xs text-[#e5e4e2]/40">{invoice.event.name}</div>
+                )}
+
+                <div className="flex items-end justify-between border-t border-[#d3bb73]/10 pt-3">
+                  <div className="space-y-1 text-xs text-[#e5e4e2]/50">
+                    <div className="flex items-center gap-1.5">
+                      <Calendar className="h-3 w-3" />
+                      {new Date(invoice.issue_date).toLocaleDateString('pl-PL')}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Clock className="h-3 w-3" />
+                      Termin: {new Date(invoice.payment_due_date).toLocaleDateString('pl-PL')}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs text-[#e5e4e2]/40">
+                      {Number(invoice.total_net).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zl netto
+                    </div>
+                    <div className="text-lg font-medium text-[#d3bb73]">
+                      {Number(invoice.total_gross).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zl
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         </>
         )}
         </div>
