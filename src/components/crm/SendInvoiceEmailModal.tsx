@@ -90,42 +90,46 @@ function buildInvoiceHtml(invoice: InvoiceData, items: InvoiceItem[]): string {
 
   return `
     <div style="font-family:Arial,Helvetica,sans-serif;width:210mm;padding:15mm;box-sizing:border-box;color:#111;font-size:12px;line-height:1.5">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:30px">
-        <div>
-          <img src="${logoSrc}" alt="Logo" style="height:50px;width:auto;object-fit:contain" crossorigin="anonymous" />
-        </div>
-        <div style="text-align:right;font-size:11px">
-          <div style="margin-bottom:10px">
-            <div style="color:#666">Miejsce wystawienia</div>
-            <div style="font-weight:600">${invoice.issue_place || ''}</div>
-          </div>
-          <div style="margin-bottom:10px">
-            <div style="color:#666">Data wystawienia</div>
-            <div style="font-weight:600">${new Date(invoice.issue_date).toLocaleDateString('pl-PL')}</div>
-          </div>
-          <div>
-            <div style="color:#666">Data sprzedaży</div>
-            <div style="font-weight:600">${new Date(invoice.sale_date).toLocaleDateString('pl-PL')}</div>
-          </div>
-        </div>
-      </div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:30px">
+        <tr>
+          <td style="vertical-align:top">
+            <img src="${logoSrc}" alt="Logo" style="height:50px;width:auto" crossorigin="anonymous" />
+          </td>
+          <td style="text-align:right;font-size:11px;vertical-align:top">
+            <div style="margin-bottom:10px">
+              <div style="color:#666">Miejsce wystawienia</div>
+              <div style="font-weight:600">${invoice.issue_place || ''}</div>
+            </div>
+            <div style="margin-bottom:10px">
+              <div style="color:#666">Data wystawienia</div>
+              <div style="font-weight:600">${new Date(invoice.issue_date).toLocaleDateString('pl-PL')}</div>
+            </div>
+            <div>
+              <div style="color:#666">Data sprzedaży</div>
+              <div style="font-weight:600">${new Date(invoice.sale_date).toLocaleDateString('pl-PL')}</div>
+            </div>
+          </td>
+        </tr>
+      </table>
 
-      <div style="display:flex;gap:40px;margin-bottom:30px">
-        <div style="flex:1">
-          <div style="color:#666;font-size:11px;margin-bottom:4px">Sprzedawca</div>
-          <div style="font-weight:600">${invoice.seller_name}</div>
-          <div>NIP: ${invoice.seller_nip}</div>
-          <div>${invoice.seller_street || ''}</div>
-          <div>${invoice.seller_postal_code || ''} ${invoice.seller_city || ''}</div>
-        </div>
-        <div style="flex:1">
-          <div style="color:#666;font-size:11px;margin-bottom:4px">Nabywca</div>
-          <div style="font-weight:600">${invoice.buyer_name}</div>
-          ${invoice.buyer_nip ? `<div>NIP: ${invoice.buyer_nip}</div>` : ''}
-          <div>${invoice.buyer_street || ''}</div>
-          <div>${invoice.buyer_postal_code || ''} ${invoice.buyer_city || ''}</div>
-        </div>
-      </div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:30px">
+        <tr>
+          <td style="width:50%;vertical-align:top;padding-right:20px">
+            <div style="color:#666;font-size:11px;margin-bottom:4px">Sprzedawca</div>
+            <div style="font-weight:600">${invoice.seller_name}</div>
+            <div>NIP: ${invoice.seller_nip}</div>
+            <div>${invoice.seller_street || ''}</div>
+            <div>${invoice.seller_postal_code || ''} ${invoice.seller_city || ''}</div>
+          </td>
+          <td style="width:50%;vertical-align:top;padding-left:20px">
+            <div style="color:#666;font-size:11px;margin-bottom:4px">Nabywca</div>
+            <div style="font-weight:600">${invoice.buyer_name}</div>
+            ${invoice.buyer_nip ? `<div>NIP: ${invoice.buyer_nip}</div>` : ''}
+            <div>${invoice.buyer_street || ''}</div>
+            <div>${invoice.buyer_postal_code || ''} ${invoice.buyer_city || ''}</div>
+          </td>
+        </tr>
+      </table>
 
       <div style="text-align:center;margin-bottom:20px">
         <div style="font-size:18px;font-weight:700">
@@ -159,30 +163,36 @@ function buildInvoiceHtml(invoice: InvoiceData, items: InvoiceItem[]): string {
         </tbody>
       </table>
 
-      <div style="display:flex;gap:40px;margin-bottom:20px;font-size:11px">
-        <div style="flex:1">
-          <div style="margin-bottom:4px"><span style="color:#666">Sposób płatności:</span> ${invoice.payment_method || ''}</div>
-          <div style="margin-bottom:4px"><span style="color:#666">Termin płatności:</span> ${new Date(invoice.payment_due_date).toLocaleDateString('pl-PL')}</div>
-          <div style="margin-bottom:4px"><span style="color:#666">Numer konta:</span></div>
-          <div style="font-family:monospace">${invoice.bank_account || ''}</div>
-          ${invoice.bank_name ? `<div style="margin-top:4px"><span style="color:#666">Nazwa banku:</span> ${invoice.bank_name}</div>` : ''}
-        </div>
-        <div style="flex:1">
-          <div><span style="color:#666">Do zapłaty:</span> <span style="font-size:16px;font-weight:700">${invoice.total_gross.toFixed(2)} PLN</span></div>
-        </div>
-      </div>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:20px;font-size:11px">
+        <tr>
+          <td style="width:50%;vertical-align:top;padding-right:20px">
+            <div style="margin-bottom:4px"><span style="color:#666">Sposób płatności:</span> ${invoice.payment_method || ''}</div>
+            <div style="margin-bottom:4px"><span style="color:#666">Termin płatności:</span> ${new Date(invoice.payment_due_date).toLocaleDateString('pl-PL')}</div>
+            <div style="margin-bottom:4px"><span style="color:#666">Numer konta:</span></div>
+            <div style="font-family:monospace">${invoice.bank_account || ''}</div>
+            ${invoice.bank_name ? `<div style="margin-top:4px"><span style="color:#666">Nazwa banku:</span> ${invoice.bank_name}</div>` : ''}
+          </td>
+          <td style="width:50%;vertical-align:top;padding-left:20px">
+            <div><span style="color:#666">Do zapłaty:</span> <span style="font-size:16px;font-weight:700">${invoice.total_gross.toFixed(2)} PLN</span></div>
+          </td>
+        </tr>
+      </table>
 
       <div style="font-size:9px;color:#666;margin-bottom:20px">
         Niniejsza faktura jest wezwaniem do zapłaty zgodnie z artykułem 455kc.
         Po przekroczeniu terminu płatności będą naliczane ustawowe odsetki za zwłokę.
       </div>
 
-      <div style="display:flex;justify-content:flex-end">
-        <div style="width:180px;border-top:1px solid #d1d5db;padding-top:8px;text-align:center">
-          <div style="font-size:11px;margin-bottom:2px">Mateusz Kwiatkowski</div>
-          <div style="font-size:9px;color:#666">Podpis osoby upoważnionej do wystawienia</div>
-        </div>
-      </div>
+      <table style="width:100%;border-collapse:collapse">
+        <tr>
+          <td style="text-align:right">
+            <div style="width:180px;border-top:1px solid #d1d5db;padding-top:8px;text-align:center;margin-left:auto">
+              <div style="font-size:11px;margin-bottom:2px">Mateusz Kwiatkowski</div>
+              <div style="font-size:9px;color:#666">Podpis osoby upoważnionej do wystawienia</div>
+            </div>
+          </td>
+        </tr>
+      </table>
 
       <div style="margin-top:20px;text-align:center;font-size:9px;color:#999">www.mavinci.pl</div>
     </div>
