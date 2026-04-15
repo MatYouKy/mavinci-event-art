@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import SendInvoiceEmailModal from '@/components/crm/SendInvoiceEmailModal';
+import KSeFSendModal from '@/components/crm/KSeFSendModal';
 import PermissionGuard from '@/components/crm/PermissionGuard';
 import { useDialog } from '@/contexts/DialogContext';
 import Image from 'next/image';
@@ -102,6 +103,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   const [relatedData, setRelatedData] = useState<RelatedData>({});
   const [loading, setLoading] = useState(true);
   const [showSendEmailModal, setShowSendEmailModal] = useState(false);
+  const [showKSeFModal, setShowKSeFModal] = useState(false);
 
   console.log('[INVOICE_DETAIL-invoice] invoice', invoice);
 
@@ -264,34 +266,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     if (!confirmed) {
       return;
     }
-
-    try {
-      setSendingToKSeF(true);
-
-      const response = await fetch('/bridge/ksef/invoices/send', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ invoiceId: params.id }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Błąd wysyłki do KSeF');
-      }
-
-      showSnackbar(`Faktura została wysłana do KSeF: ${result.ksef_reference_number}`, 'success');
-
-      // Odśwież dane faktury
-      await fetchInvoice();
-    } catch (err: any) {
-      console.error('Error sending to KSeF:', err);
-      showSnackbar(err.message || 'Błąd podczas wysyłania faktury do KSeF', 'error');
-    } finally {
-      setSendingToKSeF(false);
-    }
+    setShowKSeFModal(true);
   };
 
   const actions = useMemo<Action[]>(() => {
@@ -332,11 +307,10 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
     if (invoice?.status === 'draft' && !invoice?.is_proforma) {
       nextActions.push({
-        label: sendingToKSeF ? 'Wysyłanie...' : 'Wyślij do KSeF',
+        label: 'Wyślij do KSeF',
         icon: <Send className="h-4 w-4" />,
         onClick: handleSendToKSeF,
         variant: 'primary',
-        disabled: sendingToKSeF,
       });
     }
 
@@ -925,6 +899,17 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             onSent={() => {
               showSnackbar('Faktura wysłana', 'success');
             }}
+          />
+        )}
+        {showKSeFModal && invoice && (
+          <KSeFSendModal
+            invoiceId={invoice.id}
+            invoiceNumber={invoice.invoice_number}
+            onSuccess={async () => {
+              await fetchInvoice();
+            }}
+            onError={() => {}}
+            onClose={() => setShowKSeFModal(false)}
           />
         )}
       </div>
