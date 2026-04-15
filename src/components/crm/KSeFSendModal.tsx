@@ -22,6 +22,9 @@ interface Step {
   duration: number;
 }
 
+const MAX_POLL_ATTEMPTS = 15;
+const POLL_INTERVAL_MS = 2000;
+
 const STEPS_CONFIG: Omit<Step, 'status'>[] = [
   {
     id: 'validate',
@@ -63,7 +66,7 @@ const STEPS_CONFIG: Omit<Step, 'status'>[] = [
     label: 'Oczekiwanie na potwierdzenie',
     description: 'KSeF przetwarza fakturę i nadaje numer referencyjny',
     icon: <Radio className="h-5 w-5" />,
-    duration: 8000,
+    duration: MAX_POLL_ATTEMPTS * POLL_INTERVAL_MS,
   },
   {
     id: 'save',
@@ -73,8 +76,6 @@ const STEPS_CONFIG: Omit<Step, 'status'>[] = [
     duration: 1500,
   },
 ];
-
-const TOTAL_ESTIMATED_TIME = STEPS_CONFIG.reduce((sum, s) => sum + s.duration, 0);
 
 export default function KSeFSendModal({
   invoiceId,
@@ -91,11 +92,15 @@ export default function KSeFSendModal({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [ksefRef, setKsefRef] = useState<string | null>(null);
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [pollAttempt, setPollAttempt] = useState(0);
   const startTimeRef = useRef<number>(Date.now());
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const requestDone = useRef(false);
   const hasStarted = useRef(false);
+  const pollStepIndex = STEPS_CONFIG.findIndex((s) => s.id === 'poll');
+  const saveStepIndex = STEPS_CONFIG.findIndex((s) => s.id === 'save');
 
   const advanceStep = useCallback(() => {
     setCurrentStepIndex((prev) => {
@@ -119,6 +124,11 @@ export default function KSeFSendModal({
   }, []);
 
   const markAllComplete = useCallback(() => {
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+    setPollAttempt(MAX_POLL_ATTEMPTS);
     setSteps((old) => old.map((s) => ({ ...s, status: 'completed' as StepStatus })));
     setCurrentStepIndex(STEPS_CONFIG.length - 1);
     setFinished(true);
@@ -137,6 +147,30 @@ export default function KSeFSendModal({
     },
     [],
   );
+
+  useEffect(() => {
+    if (currentStepIndex === pollStepIndex && !requestDone.current) {
+      setPollAttempt(1);
+      pollTimerRef.current = setInterval(() => {
+        setPollAttempt((prev) => {
+          if (prev >= MAX_POLL_ATTEMPTS) return prev;
+          return prev + 1;
+        });
+      }, POLL_INTERVAL_MS);
+    } else {
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+    }
+
+    return () => {
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+    };
+  }, [currentStepIndex, pollStepIndex]);
 
   useEffect(() => {
     if (hasStarted.current) return;
@@ -203,6 +237,7 @@ export default function KSeFSendModal({
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     };
   }, []);
 
@@ -325,6 +360,16 @@ export default function KSeFSendModal({
                     }`}
                   >
                     {step.label}
+                    {step.id === 'poll' && step.status === 'active' && pollAttempt > 0 && (
+                      <span className="ml-2 text-xs font-normal text-[#d3bb73]">
+                        ({pollAttempt}/{MAX_POLL_ATTEMPTS})
+                      </span>
+                    )}
+                    {step.id === 'save' && step.status === 'active' && (
+                      <span className="ml-2 text-xs font-normal text-[#d3bb73]">
+                        (3 operacje)
+                      </span>
+                    )}
                   </div>
                   {(step.status === 'active' || step.status === 'error') && (
                     <div
@@ -332,7 +377,19 @@ export default function KSeFSendModal({
                         step.status === 'error' ? 'text-red-400/70' : 'text-[#e5e4e2]/40'
                       }`}
                     >
-                      {step.description}
+                      {step.id === 'poll' && step.status === 'active' && pollAttempt > 0
+                        ? `Sprawdzanie statusu - proba ${pollAttempt} z ${MAX_POLL_ATTEMPTS}`
+                        : step.id === 'save' && step.status === 'active'
+                          ? 'Zapis do KSeF, aktualizacja faktury, historia zmian'
+                          : step.description}
+                    </div>
+                  )}
+                  {step.id === 'poll' && step.status === 'active' && pollAttempt > 0 && (
+                    <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-[#0a0d1a]">
+                      <div
+                        className="h-full rounded-full bg-[#d3bb73]/60 transition-all duration-500 ease-out"
+                        style={{ width: `${(pollAttempt / MAX_POLL_ATTEMPTS) * 100}%` }}
+                      />
                     </div>
                   )}
                 </div>
