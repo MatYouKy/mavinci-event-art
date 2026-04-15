@@ -423,6 +423,7 @@ export async function POST(request: NextRequest) {
 debugFA3PreparedInvoice(preparedInvoice);
 const xmlContent = generateFA3XML(preparedInvoice, { debug: true });
 
+
     // 5. Credentials
     const { data: credentials, error: credError } = await fetchActiveCredentials(
       supabase,
@@ -471,6 +472,7 @@ const xmlContent = generateFA3XML(preparedInvoice, { debug: true });
 
     // 7. Otwarcie sesji
     let sessionResponse;
+
 
     try {
       sessionResponse = await openKSeFOnlineSession(
@@ -526,6 +528,8 @@ const xmlContent = generateFA3XML(preparedInvoice, { debug: true });
 
     // 8. Wysłanie faktury
     const encryptedInvoice = encryptInvoiceXml(xmlContent, keyMaterial);
+
+    
 
     const sendResponse = await sendKSeFInvoiceInSession(
       sessionId,

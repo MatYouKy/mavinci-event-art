@@ -22,8 +22,8 @@ export type FA3PreparedInvoice = {
     postalCode: string;
     city: string;
     countryCode: string;
-    email: string;
-    phone: string;
+    email?: string;
+    phone?: string;
   };
   buyer: {
     isGv: boolean;
@@ -229,48 +229,45 @@ function buildPodmiot2Extra(data: FA3PreparedInvoice): string {
 }
 
 function buildAdnotacjeXml(data: FA3PreparedInvoice): string {
-  const chunks: string[] = [];
+  const p16 = data.invoice.metodaKasowa ? '1' : '2';
+  const p17 = data.invoice.samofakturowanie ? '1' : '2';
+  const p18 = data.invoice.odwrotneObciazenie ? '1' : '2';
+  const p18A = data.invoice.splitPayment ? '1' : '2';
 
-  if (data.invoice.metodaKasowa === true) {
-    chunks.push('<P_16>1</P_16>');
-  } else {
-    chunks.push('<P_16>2</P_16>');
-  }
-  if (data.invoice.samofakturowanie === true) {
-    chunks.push('<P_17>1</P_17>');
-  } else {
-    chunks.push('<P_17>2</P_17>');
-  }
-  if (data.invoice.odwrotneObciazenie === true) {
-    chunks.push('<P_18>1</P_18>');
-  } else {
-    chunks.push('<P_18>2</P_18>');
-  }
+  const zwolnienieXml = `
+    <Zwolnienie>
+      <P_19N>1</P_19N>
+    </Zwolnienie>`;
 
-  if (data.invoice.splitPayment === true) {
-    chunks.push('<P_18A>1</P_18A>');
-  } else {
-    chunks.push('<P_18A>2</P_18A>');
-  }
+  const noweSrodkiTransportuXml = data.invoice.newTransport
+    ? `
+    <NoweSrodkiTransportu>
+      <P_22>1</P_22>
+    </NoweSrodkiTransportu>`
+    : `
+    <NoweSrodkiTransportu>
+      <P_22N>1</P_22N>
+    </NoweSrodkiTransportu>`;
 
-  // opcjonalne struktury (tylko gdy true)
-  if (data.invoice.newTransport === true) {
-    chunks.push(`
-      <NoweSrodkiTransportu>
-        <P_22N>1</P_22N>
-      </NoweSrodkiTransportu>`);
-  }
+  const p23 = '2';
 
-  if (data.invoice.marginProcedure === true) {
-    chunks.push(`
-      <PMarzy>
-        <P_PMarzyN>1</P_PMarzyN>
-      </PMarzy>`);
-  }
+  const pMarzyXml = data.invoice.marginProcedure
+    ? `
+    <PMarzy>
+      <P_PMarzy>1</P_PMarzy>
+    </PMarzy>`
+    : `
+    <PMarzy>
+      <P_PMarzyN>1</P_PMarzyN>
+    </PMarzy>`;
 
   return `
     <Adnotacje>
-      ${chunks.join('')}
+      <P_16>${p16}</P_16>
+      <P_17>${p17}</P_17>
+      <P_18>${p18}</P_18>
+      <P_18A>${p18A}</P_18A>${zwolnienieXml}${noweSrodkiTransportuXml}
+      <P_23>${p23}</P_23>${pMarzyXml}
     </Adnotacje>`;
 }
 
@@ -286,17 +283,28 @@ function buildPaymentXml(data: FA3PreparedInvoice): string {
 
   return `
     <Platnosc>
-      ${data.invoice.paymentDueDate ? `<TerminPlatnosci>${formatDate(data.invoice.paymentDueDate)}</TerminPlatnosci>` : ''}
-      ${data.invoice.paymentMethod ? `<FormaPlatnosci>${getPaymentMethodCode(data.invoice.paymentMethod)}</FormaPlatnosci>` : ''}
+      ${
+        data.invoice.paymentDueDate
+          ? `
+      <TerminPlatnosci>
+        <Termin>${formatDate(data.invoice.paymentDueDate)}</Termin>
+      </TerminPlatnosci>`
+          : ''
+      }
+      ${
+        data.invoice.paymentMethod
+          ? `<FormaPlatnosci>${getPaymentMethodCode(data.invoice.paymentMethod)}</FormaPlatnosci>`
+          : ''
+      }
       ${
         data.invoice.bankAccount
           ? `
       <RachunekBankowy>
         <NrRB>${escapeXml(data.invoice.bankAccount)}</NrRB>
+        ${data.invoice.bankName ? `<NazwaBanku>${escapeXml(data.invoice.bankName)}</NazwaBanku>` : ''}
       </RachunekBankowy>`
           : ''
       }
-      ${data.invoice.bankName ? `<NazwaBanku>${escapeXml(data.invoice.bankName)}</NazwaBanku>` : ''}
     </Platnosc>`;
 }
 
@@ -369,13 +377,16 @@ export function prepareFA3Invoice(invoice: any, organization: any): FA3PreparedI
       totalGross: Number(invoice?.total_gross || 0),
       bankAccount: normalizeBankAccount(invoice?.bank_account),
       bankName: pickFirstNonEmpty(invoice?.bank_name),
-      correction: invoice?.invoice_type === 'corrective' ? {
-        correctedInvoiceNumber: invoice?.corrected_invoice_number || '',
-        correctedInvoiceIssueDate: invoice?.corrected_invoice_issue_date || '',
-        correctedInvoiceKsefNumber: invoice?.corrected_invoice_ksef_number || undefined,
-        correctedInvoiceWasInKsef: invoice?.corrected_invoice_was_in_ksef ?? false,
-        correctionReason: invoice?.correction_reason || '',
-      } : undefined,
+      correction:
+        invoice?.invoice_type === 'corrective'
+          ? {
+              correctedInvoiceNumber: invoice?.corrected_invoice_number || '',
+              correctedInvoiceIssueDate: invoice?.corrected_invoice_issue_date || '',
+              correctedInvoiceKsefNumber: invoice?.corrected_invoice_ksef_number || undefined,
+              correctedInvoiceWasInKsef: invoice?.corrected_invoice_was_in_ksef ?? false,
+              correctionReason: invoice?.correction_reason || '',
+            }
+          : undefined,
       items: (invoice?.invoice_items || []).map((item: any, index: number) => ({
         lineNumber: Number(item?.position_number ?? index + 1),
         name: pickFirstNonEmpty(item?.name) || '',
@@ -491,6 +502,8 @@ export function debugFA3PreparedInvoice(data: FA3PreparedInvoice): void {
       <AdresL2>${escapeXml(data.buyer.postalCode)} ${escapeXml(data.buyer.city)}</AdresL2>
     </Adres>${podmiot2Extra}
   </Podmiot2>`;
+
+  void podmiot2Xml;
 }
 
 function buildDaneFaKorygowanejXml(data: FA3PreparedInvoice): string {
@@ -500,7 +513,9 @@ function buildDaneFaKorygowanejXml(data: FA3PreparedInvoice): string {
   const chunks: string[] = [];
 
   chunks.push(`<DaneFaKorygowanej>`);
-  chunks.push(`  <DataWystFaKorygowanej>${formatDate(correction.correctedInvoiceIssueDate)}</DataWystFaKorygowanej>`);
+  chunks.push(
+    `  <DataWystFaKorygowanej>${formatDate(correction.correctedInvoiceIssueDate)}</DataWystFaKorygowanej>`,
+  );
   chunks.push(`  <NrFaKorygowanej>${escapeXml(correction.correctedInvoiceNumber)}</NrFaKorygowanej>`);
 
   if (correction.correctedInvoiceWasInKsef && correction.correctedInvoiceKsefNumber) {
@@ -540,26 +555,18 @@ export function generateFA3XML(
   const invoiceRowsXml = data.invoice.items
     .map(
       (item) => `
-  <FaWiersz>
-    <NrWierszaFa>${item.lineNumber}</NrWierszaFa>
-    ${item.stanPrzed ? '<StanPrzed>1</StanPrzed>' : ''}
-    <P_7>${escapeXml(item.name)}</P_7>
-    <P_8A>${escapeXml(item.unit)}</P_8A>
-    <P_8B>${formatDecimal(item.quantity)}</P_8B>
-    <P_9A>${formatDecimal(item.priceNet)}</P_9A>
-    <P_11>${formatDecimal(item.valueNet)}</P_11>
-    <P_12>${getVatRateCode(item.vatRate)}</P_12>
-  </FaWiersz>`
+    <FaWiersz>
+      <NrWierszaFa>${item.lineNumber}</NrWierszaFa>
+      ${item.stanPrzed ? '<StanPrzed>1</StanPrzed>' : ''}
+      <P_7>${escapeXml(item.name)}</P_7>
+      <P_8A>${escapeXml(item.unit)}</P_8A>
+      <P_8B>${formatDecimal(item.quantity)}</P_8B>
+      <P_9A>${formatDecimal(item.priceNet)}</P_9A>
+      <P_11>${formatDecimal(item.valueNet)}</P_11>
+      <P_12>${getVatRateCode(item.vatRate)}</P_12>
+    </FaWiersz>`,
     )
-    .join('');
-
-  const rowsCtrlXml = `
-  <FaWierszCtrl>
-    <LiczbaWierszyFaktury>${data.invoice.items.length}</LiczbaWierszyFaktury>
-    <WartoscWierszyFaktury>${formatDecimal(
-      data.invoice.items.reduce((sum, item) => sum + Number(item.valueNet || 0), 0),
-    )}</WartoscWierszyFaktury>
-  </FaWierszCtrl>`;
+    .join('\n');
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Faktura xmlns="http://crd.gov.pl/wzor/2025/06/25/13775/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
@@ -579,8 +586,7 @@ export function generateFA3XML(
       <KodKraju>${escapeXml(data.seller.countryCode)}</KodKraju>
       <AdresL1>${escapeXml(data.seller.street)}</AdresL1>
       <AdresL2>${escapeXml(data.seller.postalCode)} ${escapeXml(data.seller.city)}</AdresL2>
-    </Adres>
-    ${podmiot1Extra}
+    </Adres>${podmiot1Extra}
   </Podmiot1>
 
   <Podmiot2>
@@ -592,9 +598,7 @@ export function generateFA3XML(
       <KodKraju>${escapeXml(data.buyer.countryCode)}</KodKraju>
       <AdresL1>${escapeXml(data.buyer.street)}</AdresL1>
       <AdresL2>${escapeXml(data.buyer.postalCode)} ${escapeXml(data.buyer.city)}</AdresL2>
-    </Adres>
-    ${podmiot2Extra}
-    ${podmiot2Jst}
+    </Adres>${podmiot2Extra}${podmiot2Jst}
   </Podmiot2>
 
   <Fa>
@@ -605,15 +609,17 @@ export function generateFA3XML(
     <P_6>${formatDate(data.invoice.saleDate)}</P_6>
     <P_13_1>${formatDecimal(data.invoice.totalNet)}</P_13_1>
     <P_14_1>${formatDecimal(data.invoice.totalVat)}</P_14_1>
-    <P_15>${formatDecimal(data.invoice.totalGross)}</P_15>
-    ${daneFaKorygowanejXml}
-    ${przyczynaKorektyXml}
-    ${invoiceRowsXml}
-    ${rowsCtrlXml}
-    ${adnotacjeXml}
-    ${paymentXml}
+    <P_15>${formatDecimal(data.invoice.totalGross)}</P_15>${adnotacjeXml}
     <RodzajFaktury>${rodzajFaktury}</RodzajFaktury>
+    ${przyczynaKorektyXml}
+    ${daneFaKorygowanejXml}
+${invoiceRowsXml}${paymentXml}
   </Fa>
 </Faktura>`;
+
+  if (options.debug) {
+    console.log(xml);
+  }
+
   return xml;
 }
