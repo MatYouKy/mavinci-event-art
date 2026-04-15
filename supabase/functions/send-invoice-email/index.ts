@@ -63,19 +63,25 @@ Deno.serve(async (req: Request) => {
       throw new Error("Invoice not found");
     }
 
-    const { data: systemConfig } = await supabase
-      .from("system_email_config")
+    let { data: emailAccount } = await supabase
+      .from("employee_email_accounts")
       .select("*")
-      .eq("config_key", "system")
-      .eq("is_active", true)
+      .eq("employee_id", user.id)
+      .eq("is_default", true)
       .maybeSingle();
 
-    if (!systemConfig) {
-      throw new Error("System email configuration not found or inactive");
-    }
+    if (!emailAccount) {
+      const { data: systemAccount } = await supabase
+        .from("employee_email_accounts")
+        .select("*")
+        .eq("is_system_account", true)
+        .maybeSingle();
 
-    if (!systemConfig.smtp_password) {
-      throw new Error("System email password not configured. Please set SYSTEM_EMAIL_PASSWORD environment variable.");
+      if (!systemAccount) {
+        throw new Error("Nie masz skonfigurowanego domyślnego konta email. Skontaktuj się z administratorem lub skonfiguruj konto w ustawieniach.");
+      }
+
+      emailAccount = systemAccount;
     }
 
     const relayUrl = Deno.env.get("SMTP_RELAY_URL");
@@ -88,20 +94,20 @@ Deno.serve(async (req: Request) => {
     const htmlBody = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <p>${message.replace(/\n/g, '<br>')}</p>
-        ${systemConfig.signature || ''}
+        ${emailAccount.signature || ''}
       </div>
     `;
 
-    console.log('[send-invoice-email] Sending with', attachments.length, 'attachments for invoice:', invoiceId);
+    console.log('[send-invoice-email] Sending from:', emailAccount.email_address, 'with', attachments.length, 'attachments for invoice:', invoiceId);
 
     const relayPayload = {
       smtpConfig: {
-        host: systemConfig.smtp_host,
-        port: systemConfig.smtp_port,
-        username: systemConfig.smtp_username,
-        password: systemConfig.smtp_password,
-        from: systemConfig.from_email,
-        fromName: systemConfig.from_name,
+        host: emailAccount.smtp_host,
+        port: emailAccount.smtp_port,
+        username: emailAccount.smtp_username,
+        password: emailAccount.smtp_password,
+        from: emailAccount.email_address,
+        fromName: emailAccount.from_name,
       },
       to,
       subject,
@@ -129,6 +135,16 @@ Deno.serve(async (req: Request) => {
 
     const relayResult = await relayResponse.json();
     const info = { messageId: relayResult.messageId };
+
+    await supabase.from("sent_emails").insert({
+      employee_id: user.id,
+      email_account_id: emailAccount.id,
+      to_address: to,
+      subject: subject,
+      body: htmlBody,
+      message_id: info.messageId,
+      sent_at: new Date().toISOString(),
+    });
 
     return new Response(
       JSON.stringify({
