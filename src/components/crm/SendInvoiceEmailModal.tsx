@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { X, Send, Mail, Loader, Paperclip } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { buildInvoicePdfHtml } from './invoices/helpers/buildInvoicePdfHtml';
 
 interface SendInvoiceEmailModalProps {
   invoiceId: string;
@@ -41,6 +42,9 @@ interface InvoiceData {
   total_gross: number;
   company_logo_url: string | null;
   status: string;
+  footer_note: string;
+  signature_name: string;
+  website: string;
 }
 
 interface InvoiceItem {
@@ -63,140 +67,6 @@ function getTypeLabel(type: string) {
     corrective: 'Faktura korygująca',
   };
   return labels[type] || 'Faktura VAT';
-}
-
-function buildInvoiceHtml(invoice: InvoiceData, items: InvoiceItem[]): string {
-  const itemsRows = items
-    .map(
-      (item) => `
-    <tr>
-      <td style="border:1px solid #d1d5db;padding:6px 8px">${item.position_number}</td>
-      <td style="border:1px solid #d1d5db;padding:6px 8px">${item.name}</td>
-      <td style="border:1px solid #d1d5db;padding:6px 8px;text-align:center">${item.unit}</td>
-      <td style="border:1px solid #d1d5db;padding:6px 8px;text-align:right">${item.quantity}</td>
-      <td style="border:1px solid #d1d5db;padding:6px 8px;text-align:right">${item.price_net.toFixed(2)}</td>
-      <td style="border:1px solid #d1d5db;padding:6px 8px;text-align:right">${item.value_net.toFixed(2)}</td>
-      <td style="border:1px solid #d1d5db;padding:6px 8px;text-align:center">${item.vat_rate}%</td>
-      <td style="border:1px solid #d1d5db;padding:6px 8px;text-align:right">${item.vat_amount.toFixed(2)}</td>
-      <td style="border:1px solid #d1d5db;padding:6px 8px;text-align:right;font-weight:600">${item.value_gross.toFixed(2)}</td>
-    </tr>`,
-    )
-    .join('');
-
-  const logoUrl = invoice.company_logo_url || '/logo-mavinci-crm.png';
-  const logoSrc = logoUrl.startsWith('http')
-    ? logoUrl
-    : `${window.location.origin}${logoUrl}`;
-
-  return `
-    <div style="font-family:Arial,Helvetica,sans-serif;width:210mm;padding:15mm;box-sizing:border-box;color:#111;font-size:12px;line-height:1.5">
-      <table style="width:100%;border-collapse:collapse;margin-bottom:30px">
-        <tr>
-          <td style="vertical-align:top">
-            <img src="${logoSrc}" alt="Logo" style="height:50px;width:auto" crossorigin="anonymous" />
-          </td>
-          <td style="text-align:right;font-size:11px;vertical-align:top">
-            <div style="margin-bottom:10px">
-              <div style="color:#666">Miejsce wystawienia</div>
-              <div style="font-weight:600">${invoice.issue_place || ''}</div>
-            </div>
-            <div style="margin-bottom:10px">
-              <div style="color:#666">Data wystawienia</div>
-              <div style="font-weight:600">${new Date(invoice.issue_date).toLocaleDateString('pl-PL')}</div>
-            </div>
-            <div>
-              <div style="color:#666">Data sprzedaży</div>
-              <div style="font-weight:600">${new Date(invoice.sale_date).toLocaleDateString('pl-PL')}</div>
-            </div>
-          </td>
-        </tr>
-      </table>
-
-      <table style="width:100%;border-collapse:collapse;margin-bottom:30px">
-        <tr>
-          <td style="width:50%;vertical-align:top;padding-right:20px">
-            <div style="color:#666;font-size:11px;margin-bottom:4px">Sprzedawca</div>
-            <div style="font-weight:600">${invoice.seller_name}</div>
-            <div>NIP: ${invoice.seller_nip}</div>
-            <div>${invoice.seller_street || ''}</div>
-            <div>${invoice.seller_postal_code || ''} ${invoice.seller_city || ''}</div>
-          </td>
-          <td style="width:50%;vertical-align:top;padding-left:20px">
-            <div style="color:#666;font-size:11px;margin-bottom:4px">Nabywca</div>
-            <div style="font-weight:600">${invoice.buyer_name}</div>
-            ${invoice.buyer_nip ? `<div>NIP: ${invoice.buyer_nip}</div>` : ''}
-            <div>${invoice.buyer_street || ''}</div>
-            <div>${invoice.buyer_postal_code || ''} ${invoice.buyer_city || ''}</div>
-          </td>
-        </tr>
-      </table>
-
-      <div style="text-align:center;margin-bottom:20px">
-        <div style="font-size:18px;font-weight:700">
-          ${getTypeLabel(invoice.invoice_type)} ${invoice.invoice_number}
-        </div>
-      </div>
-
-      <table style="width:100%;border-collapse:collapse;margin-bottom:20px;font-size:11px">
-        <thead>
-          <tr style="background:#f3f4f6">
-            <th style="border:1px solid #d1d5db;padding:6px 8px;text-align:left">Lp.</th>
-            <th style="border:1px solid #d1d5db;padding:6px 8px;text-align:left">Nazwa towaru lub usługi</th>
-            <th style="border:1px solid #d1d5db;padding:6px 8px;text-align:center">Jm.</th>
-            <th style="border:1px solid #d1d5db;padding:6px 8px;text-align:center">Ilość</th>
-            <th style="border:1px solid #d1d5db;padding:6px 8px;text-align:center">Cena netto</th>
-            <th style="border:1px solid #d1d5db;padding:6px 8px;text-align:center">Wartość netto</th>
-            <th style="border:1px solid #d1d5db;padding:6px 8px;text-align:center">VAT</th>
-            <th style="border:1px solid #d1d5db;padding:6px 8px;text-align:center">Kwota VAT</th>
-            <th style="border:1px solid #d1d5db;padding:6px 8px;text-align:center">Brutto</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${itemsRows}
-          <tr style="background:#f3f4f6;font-weight:700">
-            <td colspan="5" style="border:1px solid #d1d5db;padding:6px 8px;text-align:right">Razem</td>
-            <td style="border:1px solid #d1d5db;padding:6px 8px;text-align:right">${invoice.total_net.toFixed(2)}</td>
-            <td style="border:1px solid #d1d5db;padding:6px 8px"></td>
-            <td style="border:1px solid #d1d5db;padding:6px 8px;text-align:right">${invoice.total_vat.toFixed(2)}</td>
-            <td style="border:1px solid #d1d5db;padding:6px 8px;text-align:right">${invoice.total_gross.toFixed(2)}</td>
-          </tr>
-        </tbody>
-      </table>
-
-      <table style="width:100%;border-collapse:collapse;margin-bottom:20px;font-size:11px">
-        <tr>
-          <td style="width:50%;vertical-align:top;padding-right:20px">
-            <div style="margin-bottom:4px"><span style="color:#666">Sposób płatności:</span> ${invoice.payment_method || ''}</div>
-            <div style="margin-bottom:4px"><span style="color:#666">Termin płatności:</span> ${new Date(invoice.payment_due_date).toLocaleDateString('pl-PL')}</div>
-            <div style="margin-bottom:4px"><span style="color:#666">Numer konta:</span></div>
-            <div style="font-family:monospace">${invoice.bank_account || ''}</div>
-            ${invoice.bank_name ? `<div style="margin-top:4px"><span style="color:#666">Nazwa banku:</span> ${invoice.bank_name}</div>` : ''}
-          </td>
-          <td style="width:50%;vertical-align:top;padding-left:20px">
-            <div><span style="color:#666">Do zapłaty:</span> <span style="font-size:16px;font-weight:700">${invoice.total_gross.toFixed(2)} PLN</span></div>
-          </td>
-        </tr>
-      </table>
-
-      <div style="font-size:9px;color:#666;margin-bottom:20px">
-        Niniejsza faktura jest wezwaniem do zapłaty zgodnie z artykułem 455kc.
-        Po przekroczeniu terminu płatności będą naliczane ustawowe odsetki za zwłokę.
-      </div>
-
-      <table style="width:100%;border-collapse:collapse">
-        <tr>
-          <td style="text-align:right">
-            <div style="width:180px;border-top:1px solid #d1d5db;padding-top:8px;text-align:center;margin-left:auto">
-              <div style="font-size:11px;margin-bottom:2px">Mateusz Kwiatkowski</div>
-              <div style="font-size:9px;color:#666">Podpis osoby upoważnionej do wystawienia</div>
-            </div>
-          </td>
-        </tr>
-      </table>
-
-      <div style="margin-top:20px;text-align:center;font-size:9px;color:#999">www.mavinci.pl</div>
-    </div>
-  `;
 }
 
 export default function SendInvoiceEmailModal({
@@ -235,56 +105,80 @@ W razie pytań proszę o kontakt.`,
         .eq('invoice_id', invoiceId)
         .order('position_number'),
     ]);
-
+  
     if (invoiceRes.error || !invoiceRes.data) {
       throw new Error('Nie znaleziono faktury');
     }
-
+  
     const invoice = invoiceRes.data as InvoiceData;
     const items = (itemsRes.data || []) as InvoiceItem[];
-
-    const html = buildInvoiceHtml(invoice, items);
-
-    const html2pdf = (await import('html2pdf.js')).default;
-
-    const element = document.createElement('div');
-    element.innerHTML = html;
-    element.style.width = '210mm';
-    element.style.position = 'absolute';
-    element.style.left = '-9999px';
-    document.body.appendChild(element);
-
-    try {
-      const pdfBlob = await html2pdf()
-        .set({
-          margin: 0,
-          filename: `Faktura_${invoiceNumber}.pdf`,
-          html2canvas: { scale: 2, useCORS: true, logging: false },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        })
-        .from(element)
-        .output('blob');
-
-      const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve, reject) => {
-        reader.onloadend = () => {
-          const result = reader.result as string;
-          const base64 = result.split(',')[1];
-          resolve(base64);
-        };
-        reader.onerror = reject;
-      });
-
-      reader.readAsDataURL(pdfBlob);
-      const base64 = await base64Promise;
-
-      return {
-        base64,
-        filename: `Faktura_${invoiceNumber}.pdf`,
-      };
-    } finally {
-      document.body.removeChild(element);
+  
+    const html = buildInvoicePdfHtml({
+      footerNote: invoice.footer_note,
+      signatureName: invoice.signature_name,
+      website: invoice.website,
+      invoiceNumber: invoice.invoice_number,
+      invoiceType: invoice.invoice_type,
+      issueDate: invoice.issue_date,
+      saleDate: invoice.sale_date,
+      issuePlace: invoice.issue_place,
+      paymentMethod: invoice.payment_method,
+      paymentDueDate: invoice.payment_due_date,
+      bankAccount: invoice.bank_account,
+      bankName: invoice.bank_name,
+      sellerName: invoice.seller_name,
+      sellerNip: invoice.seller_nip,
+      sellerStreet: invoice.seller_street,
+      sellerCity: invoice.seller_city,
+      sellerPostalCode: invoice.seller_postal_code,
+      buyerName: invoice.buyer_name,
+      buyerNip: invoice.buyer_nip,
+      buyerStreet: invoice.buyer_street,
+      buyerCity: invoice.buyer_city,
+      buyerPostalCode: invoice.buyer_postal_code,
+      totalNet: invoice.total_net,
+      totalVat: invoice.total_vat,
+      totalGross: invoice.total_gross,
+      companyLogoUrl: invoice.company_logo_url,
+      items: items.map((item) => ({
+        positionNumber: item.position_number,
+        name: item.name,
+        unit: item.unit,
+        quantity: item.quantity,
+        priceNet: item.price_net,
+        vatRate: item.vat_rate,
+        valueNet: item.value_net,
+        vatAmount: item.vat_amount,
+        valueGross: item.value_gross,
+      })),
+    });
+  
+    const response = await fetch('/bridge/invoices/invoice-pdf', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        html,
+        fileName: `Faktura_${invoiceNumber}.pdf`,
+      }),
+    });
+  
+    if (!response.ok) {
+      const error = await response.json().catch(() => null);
+      throw new Error(error?.error || 'Nie udało się wygenerować PDF');
     }
+  
+    const result = await response.json();
+  
+    if (!result?.base64) {
+      throw new Error('Route nie zwrócił zawartości PDF');
+    }
+  
+    return {
+      base64: result.base64,
+      filename: result.filename || `Faktura_${invoiceNumber}.pdf`,
+    };
   };
 
   const handleSend = async () => {

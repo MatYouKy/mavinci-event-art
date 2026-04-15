@@ -49,7 +49,9 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
 
   const [selectedCompanyId, setSelectedCompanyId] = useState('');
   const [invoiceNumber, setInvoiceNumber] = useState('');
-  const [invoiceType, setInvoiceType] = useState<'vat' | 'proforma' | 'advance' | 'corrective'>('vat');
+  const [invoiceType, setInvoiceType] = useState<'vat' | 'proforma' | 'advance' | 'corrective'>(
+    'vat',
+  );
   const [isProforma, setIsProforma] = useState(false);
   const [issueDate, setIssueDate] = useState('');
   const [saleDate, setSaleDate] = useState('');
@@ -57,6 +59,10 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
   const [selectedOrgId, setSelectedOrgId] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('Przelew');
   const [issuePlace, setIssuePlace] = useState('');
+  const [includeDefaultFooterNote, setIncludeDefaultFooterNote] = useState(true);
+  const [customFooterNote, setCustomFooterNote] = useState('');
+  const [website, setWebsite] = useState('');
+  const [signatureName, setSignatureName] = useState('');
 
   const [invoiceStatus, setInvoiceStatus] = useState('draft');
 
@@ -75,27 +81,28 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
 
   const fetchData = async () => {
     try {
-      const [invoiceRes, itemsRes, businessClientsRes, companiesRes, allInvoicesRes] = await Promise.all([
-        supabase.from('invoices').select('*').eq('id', params.id).single(),
-        supabase
-          .from('invoice_items')
-          .select('*')
-          .eq('invoice_id', params.id)
-          .order('position_number'),
-        supabase.rpc('get_business_clients'),
-        supabase
-          .from('my_companies')
-          .select('*')
-          .eq('is_active', true)
-          .order('is_default', { ascending: false }),
-        supabase
-          .from('invoices')
-          .select('id, invoice_number, invoice_type, issue_date, total_gross, buyer_name, status')
-          .neq('id', params.id)
-          .neq('invoice_type', 'corrective')
-          .in('status', ['issued', 'sent', 'paid'])
-          .order('issue_date', { ascending: false }),
-      ]);
+      const [invoiceRes, itemsRes, businessClientsRes, companiesRes, allInvoicesRes] =
+        await Promise.all([
+          supabase.from('invoices').select('*').eq('id', params.id).single(),
+          supabase
+            .from('invoice_items')
+            .select('*')
+            .eq('invoice_id', params.id)
+            .order('position_number'),
+          supabase.rpc('get_business_clients'),
+          supabase
+            .from('my_companies')
+            .select('*')
+            .eq('is_active', true)
+            .order('is_default', { ascending: false }),
+          supabase
+            .from('invoices')
+            .select('id, invoice_number, invoice_type, issue_date, total_gross, buyer_name, status')
+            .neq('id', params.id)
+            .neq('invoice_type', 'corrective')
+            .in('status', ['issued', 'sent', 'paid'])
+            .order('issue_date', { ascending: false }),
+        ]);
 
       if (allInvoicesRes.data) {
         setAvailableInvoices(allInvoicesRes.data);
@@ -113,6 +120,10 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         setIssuePlace(inv.issue_place || '');
         setIsProforma(inv.is_proforma ?? false);
         setInvoiceStatus(inv.status || 'draft');
+        setCustomFooterNote(inv.invoice_footer_text || '');
+        setWebsite(inv.website || 'www.mavinci.pl');
+        setSignatureName(inv.signature_name || '');
+        setIncludeDefaultFooterNote(Boolean(inv.invoice_footer_text));
 
         if (inv.is_proforma) {
           setInvoiceType('proforma');
@@ -163,6 +174,15 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
 
       if (companiesRes.data) {
         setMyCompanies(companiesRes.data);
+        const selectedCompany =
+          companiesRes.data.find((c: MyCompany) => c.id === invoiceRes.data?.my_company_id) ||
+          companiesRes.data.find((c: MyCompany) => c.is_default) ||
+          companiesRes.data[0];
+
+        if (selectedCompany && !invoiceRes.data?.website) {
+          setWebsite(selectedCompany.website || '');
+        }
+
         if (!invoiceRes.data?.my_company_id && companiesRes.data.length > 0) {
           const defaultCompany = companiesRes.data.find((c: MyCompany) => c.is_default);
           setSelectedCompanyId(defaultCompany?.id || companiesRes.data[0].id);
@@ -290,6 +310,27 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
     await fetchData();
   };
 
+  const buildInvoiceFooterText = () => {
+    const selectedCompany = myCompanies.find((c) => c.id === selectedCompanyId);
+
+    if (invoiceType === 'corrective') {
+      const issueDateText = correctedInvoiceIssueDate
+        ? new Date(correctedInvoiceIssueDate).toLocaleDateString('pl-PL')
+        : '-';
+
+      return `Faktura korygująca odnosi się do faktury ${correctedInvoiceNumber || '-'} z dnia ${issueDateText}.<br /> Przyczyna korekty: ${correctionReason || '-'}.`;
+    }
+
+    if (!includeDefaultFooterNote) {
+      return null;
+    }
+
+    return (
+      selectedCompany?.invoice_footer_text ||
+      'Niniejsza faktura jest wezwaniem do zapłaty zgodnie z artykułem 455 kc. Po przekroczeniu terminu płatności będą naliczane ustawowe odsetki za zwłokę.'
+    );
+  };
+
   const handleSubmit = async () => {
     if (!selectedCompanyId) {
       showSnackbar('Wybierz firme wystawiajaca fakture', 'error');
@@ -326,6 +367,15 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
 
       const selectedCompany = myCompanies.find((c) => c.id === selectedCompanyId);
       if (!selectedCompany) throw new Error('Company not found');
+
+      const footerNote =
+        invoiceType === 'corrective'
+          ? buildInvoiceFooterText()
+          : includeDefaultFooterNote
+            ? customFooterNote?.trim() ||
+              selectedCompany.invoice_footer_text ||
+              'Niniejsza faktura jest wezwaniem do zapłaty zgodnie z artykułem 455 kc. Po przekroczeniu terminu płatności będą naliczane ustawowe odsetki za zwłokę.'
+            : null;
 
       const missingSellerFields: string[] = [];
       if (!selectedCompany.legal_name) missingSellerFields.push('nazwa firmy');
@@ -374,6 +424,20 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         return;
       }
 
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      const { data: employee } = await supabase
+        .from('employees')
+        .select('id, name, surname')
+        .eq('email', user?.email)
+        .maybeSingle();
+
+      const signatureName =
+      [employee?.name, employee?.surname].filter(Boolean).join(' ').trim() ||
+      selectedCompany.signature_name ||
+      '';
+
       const invoiceData: Record<string, any> = {
         invoice_number: invoiceNumber,
         invoice_type: invoiceType === 'proforma' ? 'vat' : invoiceType,
@@ -381,6 +445,9 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         status: invoiceStatus,
         issue_date: issueDate,
         sale_date: saleDate,
+        footer_note: footerNote,
+        signature_name: signatureName,
+        website: website,
         payment_due_date: calculatePaymentDueDate(),
         organization_id: selectedOrgId,
         my_company_id: selectedCompanyId,
@@ -453,15 +520,6 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
 
       const { error: itemsError } = await supabase.from('invoice_items').insert(itemsToInsert);
       if (itemsError) throw itemsError;
-
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      const { data: employee } = await supabase
-        .from('employees')
-        .select('id')
-        .eq('email', user?.email)
-        .maybeSingle();
 
       const changes: Record<string, any> = { updated_fields: Object.keys(invoiceData) };
       if (invoiceStatus !== invoice.status) {
@@ -545,33 +603,51 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
 
             {/* KSeF Info (read-only) */}
             {invoice?.ksef_status && (
-              <div className={`rounded-lg border p-4 ${
-                invoice.ksef_status === 'accepted'
-                  ? 'border-green-500/30 bg-green-500/10'
-                  : invoice.ksef_status === 'rejected'
-                    ? 'border-red-500/30 bg-red-500/10'
-                    : 'border-blue-500/30 bg-blue-500/10'
-              }`}>
+              <div
+                className={`rounded-lg border p-4 ${
+                  invoice.ksef_status === 'accepted'
+                    ? 'border-green-500/30 bg-green-500/10'
+                    : invoice.ksef_status === 'rejected'
+                      ? 'border-red-500/30 bg-red-500/10'
+                      : 'border-blue-500/30 bg-blue-500/10'
+                }`}
+              >
                 <label className="mb-2 block text-sm text-[#e5e4e2]/60">Status KSeF</label>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <div className="text-xs text-[#e5e4e2]/40">Status</div>
-                    <div className={`font-medium ${
-                      invoice.ksef_status === 'accepted' ? 'text-green-400' : invoice.ksef_status === 'rejected' ? 'text-red-400' : 'text-blue-400'
-                    }`}>
-                      {invoice.ksef_status === 'accepted' ? 'Zaakceptowana' : invoice.ksef_status === 'rejected' ? 'Odrzucona' : invoice.ksef_status === 'sent' ? 'Wysłana' : 'Szkic'}
+                    <div
+                      className={`font-medium ${
+                        invoice.ksef_status === 'accepted'
+                          ? 'text-green-400'
+                          : invoice.ksef_status === 'rejected'
+                            ? 'text-red-400'
+                            : 'text-blue-400'
+                      }`}
+                    >
+                      {invoice.ksef_status === 'accepted'
+                        ? 'Zaakceptowana'
+                        : invoice.ksef_status === 'rejected'
+                          ? 'Odrzucona'
+                          : invoice.ksef_status === 'sent'
+                            ? 'Wysłana'
+                            : 'Szkic'}
                     </div>
                   </div>
                   {invoice.ksef_reference_number && (
                     <div>
                       <div className="text-xs text-[#e5e4e2]/40">Nr referencyjny KSeF</div>
-                      <div className="font-mono text-sm text-[#e5e4e2]">{invoice.ksef_reference_number}</div>
+                      <div className="font-mono text-sm text-[#e5e4e2]">
+                        {invoice.ksef_reference_number}
+                      </div>
                     </div>
                   )}
                   {invoice.ksef_sent_at && (
                     <div>
                       <div className="text-xs text-[#e5e4e2]/40">Data wysyłki</div>
-                      <div className="text-sm text-[#e5e4e2]">{new Date(invoice.ksef_sent_at).toLocaleString('pl-PL')}</div>
+                      <div className="text-sm text-[#e5e4e2]">
+                        {new Date(invoice.ksef_sent_at).toLocaleString('pl-PL')}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -598,7 +674,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
                   }
                 }}
                 disabled={invoiceType === 'corrective' && !!relatedInvoiceId}
-                className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <option value="">Wybierz firme...</option>
                 {myCompanies.map((company) => (
@@ -665,8 +741,13 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
                     <option value="">Wybierz fakture...</option>
                     {availableInvoices.map((inv) => (
                       <option key={inv.id} value={inv.id}>
-                        {inv.invoice_number} - {inv.buyer_name} ({Number(inv.total_gross).toFixed(2)} zl) -{' '}
-                        {inv.invoice_type === 'advance' ? 'Zaliczkowa' : inv.invoice_type === 'vat' ? 'VAT' : inv.invoice_type}
+                        {inv.invoice_number} - {inv.buyer_name} (
+                        {Number(inv.total_gross).toFixed(2)} zl) -{' '}
+                        {inv.invoice_type === 'advance'
+                          ? 'Zaliczkowa'
+                          : inv.invoice_type === 'vat'
+                            ? 'VAT'
+                            : inv.invoice_type}
                       </option>
                     ))}
                   </select>
@@ -695,7 +776,9 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
                       </div>
                       <div>
                         <span className="text-[#e5e4e2]/40">W KSeF:</span>
-                        <span className={`ml-2 ${correctedInvoiceWasInKsef ? 'text-green-400' : 'text-[#e5e4e2]/60'}`}>
+                        <span
+                          className={`ml-2 ${correctedInvoiceWasInKsef ? 'text-green-400' : 'text-[#e5e4e2]/60'}`}
+                        >
                           {correctedInvoiceWasInKsef ? 'Tak' : 'Nie'}
                         </span>
                       </div>
@@ -746,13 +829,23 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
               </div>
             )}
 
+            {invoiceType === 'corrective' && correctedInvoiceNumber && (
+              <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 p-4">
+                <div className="mb-2 text-sm font-medium text-orange-400">
+                  Nota dla faktury korygującej
+                </div>
+                <div className="text-sm text-[#e5e4e2]/80">{buildInvoiceFooterText()}</div>
+              </div>
+            )}
+
             {/* Nabywca */}
             <div className="grid grid-cols-1 gap-6">
               {invoiceType === 'corrective' && relatedInvoiceId ? (
                 <div>
                   <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nabywca *</label>
                   <div className="rounded-lg border border-orange-500/20 bg-[#0a0d1a]/50 px-4 py-3 text-[#e5e4e2]">
-                    {organizations.find((o) => o.id === selectedOrgId)?.name || 'Nabywca z faktury korygowanej'}
+                    {organizations.find((o) => o.id === selectedOrgId)?.name ||
+                      'Nabywca z faktury korygowanej'}
                     {organizations.find((o) => o.id === selectedOrgId)?.nip && (
                       <span className="ml-2 text-xs text-[#e5e4e2]/40">
                         NIP: {organizations.find((o) => o.id === selectedOrgId)?.nip}
@@ -817,6 +910,35 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
                 />
               </div>
             </div>
+
+            {invoiceType !== 'corrective' && (
+              <div className="rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-4">
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={includeDefaultFooterNote}
+                    onChange={(e) => setIncludeDefaultFooterNote(e.target.checked)}
+                    className="mt-1 h-4 w-4 rounded border-[#d3bb73]/20 text-[#d3bb73]"
+                  />
+                  <div className="flex-1">
+                    <div className="text-sm font-medium text-[#e5e4e2]">Dodaj notę płatniczą</div>
+                    <div className="mt-1 text-xs text-[#e5e4e2]/60">
+                      Nota zostanie zapisana na fakturze i pokazana w PDF.
+                    </div>
+                  </div>
+                </label>
+
+                {includeDefaultFooterNote && (
+                  <textarea
+                    value={customFooterNote}
+                    onChange={(e) => setCustomFooterNote(e.target.value)}
+                    rows={3}
+                    className="mt-3 w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                    placeholder="Treść noty na fakturze"
+                  />
+                )}
+              </div>
+            )}
 
             {/* Metoda platnosci + miejsce */}
             <div className="grid grid-cols-2 gap-6">

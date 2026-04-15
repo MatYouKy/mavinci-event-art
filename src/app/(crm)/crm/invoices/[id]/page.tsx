@@ -661,7 +661,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             <div className="mb-12 flex items-start justify-between">
               <div className="flex items-center gap-4">
                 <Image
-                  src={invoice.company_logo_url || '/logo-mavinci-crm.png'}
+                  src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/site-images/${invoice.company_logo_url || `https://mavinci.pl/shape-mavinci-black.png`}`}
                   alt="Logo firmy"
                   className="h-16 w-auto object-contain"
                   width={128}

@@ -47,6 +47,7 @@ export default function NewInvoicePage() {
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>('');
   const [settings, setSettings] = useState<any>(null);
   const [showAddBuyerModal, setShowAddBuyerModal] = useState(false);
+  const [includeDefaultFooterNote, setIncludeDefaultFooterNote] = useState(true);
 
   const [invoiceType, setInvoiceType] = useState<'vat' | 'proforma' | 'advance' | 'corrective'>(
     urlType === 'corrective' ? 'corrective' : 'vat',
@@ -84,7 +85,14 @@ export default function NewInvoicePage() {
   }, [selectedCompanyId]);
 
   useEffect(() => {
-    if (urlType === 'corrective' && urlRelated && !urlRelatedLoaded && organizations.length > 0 && myCompanies.length > 0 && availableInvoices.length > 0) {
+    if (
+      urlType === 'corrective' &&
+      urlRelated &&
+      !urlRelatedLoaded &&
+      organizations.length > 0 &&
+      myCompanies.length > 0 &&
+      availableInvoices.length > 0
+    ) {
       setUrlRelatedLoaded(true);
       handleSelectOriginalInvoice(urlRelated);
     }
@@ -234,7 +242,8 @@ export default function NewInvoicePage() {
         if (financialInfo?.accepted_offer_id) {
           const { data: offerData } = await supabase
             .from('offers')
-            .select(`
+            .select(
+              `
               tax_percent,
               offer_items (
                 name,
@@ -245,7 +254,8 @@ export default function NewInvoicePage() {
                 total,
                 display_order
               )
-            `)
+            `,
+            )
             .eq('id', financialInfo.accepted_offer_id)
             .maybeSingle();
 
@@ -379,6 +389,25 @@ export default function NewInvoicePage() {
     await fetchData();
   };
 
+  const buildInvoiceFooterText = (selectedCompany: MyCompany) => {
+    if (invoiceType === 'corrective') {
+      const issueDateText = correctedInvoiceIssueDate
+        ? new Date(correctedInvoiceIssueDate).toLocaleDateString('pl-PL')
+        : 'brak daty';
+
+      return `Faktura korygująca odnosi się do faktury ${correctedInvoiceNumber || '-'} z dnia ${issueDateText}. <br />Przyczyna korekty: ${correctionReason || '-'}.`;
+    }
+
+    if (includeDefaultFooterNote) {
+      return (
+        selectedCompany.invoice_footer_text ||
+        'Niniejsza faktura jest wezwaniem do zapłaty zgodnie z artykułem 455 kc. Po przekroczeniu terminu płatności będą naliczane ustawowe odsetki za zwłokę.'
+      );
+    }
+
+    return null;
+  };
+
   const handleSubmit = async () => {
     if (!selectedCompanyId) {
       showSnackbar('Wybierz firmę wystawiającą fakturę', 'error');
@@ -427,15 +456,27 @@ export default function NewInvoicePage() {
       } = await supabase.auth.getUser();
       const { data: employee } = await supabase
         .from('employees')
-        .select('id')
+        .select('id, name, surname')
         .eq('email', user?.email)
         .maybeSingle();
+
+      const signatureName =
+        [employee?.name, employee?.surname].filter(Boolean).join(' ').trim() ||
+        selectedCompany.signature_name ||
+        '';
+
+      const footerNote = buildInvoiceFooterText(selectedCompany);
+
+      const website = selectedCompany.website || 'www.mavinci.pl';
 
       const sellerStreet = [
         selectedCompany.street,
         selectedCompany.building_number,
-        selectedCompany.apartment_number ?`/${selectedCompany.apartment_number}` : '',
-      ].filter(Boolean).join(' ').trim();
+        selectedCompany.apartment_number ? `/${selectedCompany.apartment_number}` : '',
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
 
       const missingSellerFields: string[] = [];
       if (!selectedCompany.legal_name) missingSellerFields.push('nazwa firmy');
@@ -468,6 +509,9 @@ export default function NewInvoicePage() {
         invoice_type: invoiceType === 'proforma' ? 'vat' : invoiceType,
         is_proforma: invoiceType === 'proforma',
         status: invoiceType === 'proforma' ? 'proforma' : 'draft',
+        footer_note: footerNote,
+        signature_name: signatureName,
+        website: website,
         issue_date: issueDate,
         sale_date: saleDate,
         payment_due_date: calculatePaymentDueDate(),
@@ -584,14 +628,14 @@ export default function NewInvoicePage() {
 
   return (
     <div className="min-h-screen bg-[#0a0d1a] p-6">
-        <div className="mx-auto max-w-5xl">
-          <button
-            onClick={() => router.back()}
-            className="mb-6 flex items-center gap-2 text-[#e5e4e2]/60 hover:text-[#d3bb73]"
-          >
-            <ArrowLeft className="h-5 w-5" />
-            Powrót
-          </button>
+      <div className="mx-auto max-w-5xl">
+        <button
+          onClick={() => router.back()}
+          className="mb-6 flex items-center gap-2 text-[#e5e4e2]/60 hover:text-[#d3bb73]"
+        >
+          <ArrowLeft className="h-5 w-5" />
+          Powrót
+        </button>
 
         <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-8">
           <h1 className="mb-8 text-2xl font-light text-[#e5e4e2]">Wystaw fakturę VAT</h1>
@@ -605,7 +649,7 @@ export default function NewInvoicePage() {
                 value={selectedCompanyId}
                 onChange={(e) => setSelectedCompanyId(e.target.value)}
                 disabled={invoiceType === 'corrective' && !!relatedInvoiceId}
-                className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <option value="">Wybierz firmę...</option>
                 {myCompanies.map((company) => (
@@ -671,8 +715,13 @@ export default function NewInvoicePage() {
                     <option value="">Wybierz fakture...</option>
                     {availableInvoices.map((inv) => (
                       <option key={inv.id} value={inv.id}>
-                        {inv.invoice_number} - {inv.buyer_name} ({Number(inv.total_gross).toFixed(2)} zl) -{' '}
-                        {inv.invoice_type === 'advance' ? 'Zaliczkowa' : inv.invoice_type === 'vat' ? 'VAT' : inv.invoice_type}
+                        {inv.invoice_number} - {inv.buyer_name} (
+                        {Number(inv.total_gross).toFixed(2)} zl) -{' '}
+                        {inv.invoice_type === 'advance'
+                          ? 'Zaliczkowa'
+                          : inv.invoice_type === 'vat'
+                            ? 'VAT'
+                            : inv.invoice_type}
                       </option>
                     ))}
                   </select>
@@ -701,7 +750,9 @@ export default function NewInvoicePage() {
                       </div>
                       <div>
                         <span className="text-[#e5e4e2]/40">W KSeF:</span>
-                        <span className={`ml-2 ${correctedInvoiceWasInKsef ? 'text-green-400' : 'text-[#e5e4e2]/60'}`}>
+                        <span
+                          className={`ml-2 ${correctedInvoiceWasInKsef ? 'text-green-400' : 'text-[#e5e4e2]/60'}`}
+                        >
                           {correctedInvoiceWasInKsef ? 'Tak' : 'Nie'}
                         </span>
                       </div>
@@ -757,7 +808,8 @@ export default function NewInvoicePage() {
                 <div>
                   <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nabywca *</label>
                   <div className="rounded-lg border border-orange-500/20 bg-[#0a0d1a]/50 px-4 py-3 text-[#e5e4e2]">
-                    {organizations.find((o) => o.id === selectedOrgId)?.name || 'Nabywca z faktury korygowanej'}
+                    {organizations.find((o) => o.id === selectedOrgId)?.name ||
+                      'Nabywca z faktury korygowanej'}
                     {organizations.find((o) => o.id === selectedOrgId)?.nip && (
                       <span className="ml-2 text-xs text-[#e5e4e2]/40">
                         NIP: {organizations.find((o) => o.id === selectedOrgId)?.nip}
@@ -779,7 +831,6 @@ export default function NewInvoicePage() {
             </div>
 
             <div className="grid grid-cols-2 gap-6">
-
               <div>
                 <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data wystawienia *</label>
                 <input
@@ -822,6 +873,28 @@ export default function NewInvoicePage() {
                 />
               </div>
             </div>
+
+            {invoiceType !== 'corrective' && (
+              <div className="rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-4">
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={includeDefaultFooterNote}
+                    onChange={(e) => setIncludeDefaultFooterNote(e.target.checked)}
+                    className="mt-1 h-4 w-4 rounded border-[#d3bb73]/20 text-[#d3bb73]"
+                  />
+                  <div>
+                    <div className="text-sm font-medium text-[#e5e4e2]">
+                      Dodaj standardową notę płatniczą
+                    </div>
+                    <div className="mt-1 text-xs text-[#e5e4e2]/60">
+                      Niniejsza faktura jest wezwaniem do zapłaty zgodnie z artykułem 455 kc. Po
+                      przekroczeniu terminu płatności będą naliczane ustawowe odsetki za zwłokę.
+                    </div>
+                  </div>
+                </label>
+              </div>
+            )}
 
             <div className="border-t border-[#d3bb73]/10 pt-6">
               <div className="mb-4 flex items-center justify-between">

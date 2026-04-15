@@ -1,13 +1,25 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Building2, Plus, CreditCard as Edit, Trash2, Check, Star, Save, X, Upload } from 'lucide-react';
+import {
+  Building2,
+  Plus,
+  CreditCard as Edit,
+  Trash2,
+  Check,
+  Star,
+  Save,
+  X,
+  Upload,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import Image from 'next/image';
 
 export interface MyCompany {
+  signature_name: string;
+  invoice_footer_text: string;
   id: string;
   name: string;
   legal_name: string;
@@ -23,7 +35,10 @@ export interface MyCompany {
   email: string;
   phone: string;
   bank_account?: string;
-  bank_name: string;
+  bank_name?: string;
+  vat_bank_account?: string;
+  vat_bank_name?: string;
+  website?: string;
   logo_url?: string;
   is_active: boolean;
   is_default: boolean;
@@ -83,10 +98,7 @@ export default function MyCompaniesPage() {
         .eq('id', companyId);
 
       if (error) throw error;
-      showSnackbar(
-        !isActive ? 'Firma aktywowana' : 'Firma dezaktywowana',
-        'success'
-      );
+      showSnackbar(!isActive ? 'Firma aktywowana' : 'Firma dezaktywowana', 'success');
       await loadCompanies();
     } catch (error: any) {
       showSnackbar(error.message || 'Błąd zmiany statusu firmy', 'error');
@@ -106,10 +118,7 @@ export default function MyCompaniesPage() {
     }
 
     try {
-      const { error } = await supabase
-        .from('my_companies')
-        .delete()
-        .eq('id', companyId);
+      const { error } = await supabase.from('my_companies').delete().eq('id', companyId);
 
       if (error) throw error;
       showSnackbar('Firma usunięta', 'success');
@@ -134,9 +143,7 @@ export default function MyCompaniesPage() {
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="mb-2 text-3xl font-light text-[#e5e4e2]">Moje firmy</h1>
-            <p className="text-[#e5e4e2]/60">
-              Zarządzaj swoimi działalnościami i ich danymi
-            </p>
+            <p className="text-[#e5e4e2]/60">Zarządzaj swoimi działalnościami i ich danymi</p>
           </div>
           <button
             onClick={() => {
@@ -178,9 +185,7 @@ export default function MyCompaniesPage() {
                   )}
                   <div>
                     <div className="mb-2 flex items-center gap-3">
-                      <h3 className="text-xl font-medium text-[#e5e4e2]">
-                        {company.name}
-                      </h3>
+                      <h3 className="text-xl font-medium text-[#e5e4e2]">{company.name}</h3>
                       {company.is_default && (
                         <span className="flex items-center gap-1 rounded-lg bg-[#d3bb73]/20 px-2 py-1 text-xs font-medium text-[#d3bb73]">
                           <Star className="h-3 w-3 fill-current" />
@@ -193,9 +198,7 @@ export default function MyCompaniesPage() {
                         </span>
                       )}
                     </div>
-                    <p className="mb-3 text-sm text-[#e5e4e2]/60">
-                      {company.legal_name}
-                    </p>
+                    <p className="mb-3 text-sm text-[#e5e4e2]/60">{company.legal_name}</p>
                     <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
                       <div>
                         <span className="text-[#e5e4e2]/40">NIP:</span>{' '}
@@ -225,13 +228,41 @@ export default function MyCompaniesPage() {
                         <span className="text-[#e5e4e2]/40">Adres:</span>{' '}
                         <span className="text-[#e5e4e2]">
                           {company.street} {company.building_number}
-                          {company.apartment_number && `/${company.apartment_number}`}, {company.postal_code} {company.city}
+                          {company.apartment_number && `/${company.apartment_number}`},{' '}
+                          {company.postal_code} {company.city}
                         </span>
                       </div>
                       {company.bank_account && (
                         <div className="col-span-2">
                           <span className="text-[#e5e4e2]/40">Konto bankowe:</span>{' '}
                           <span className="text-[#e5e4e2]">{company.bank_account}</span>
+                        </div>
+                      )}
+                      {company.bank_name && (
+                        <div className="col-span-2">
+                          <span className="text-[#e5e4e2]/40">Bank:</span>{' '}
+                          <span className="text-[#e5e4e2]">{company.bank_name}</span>
+                        </div>
+                      )}
+
+                      {company.vat_bank_account && (
+                        <div className="col-span-2">
+                          <span className="text-[#e5e4e2]/40">Konto VAT:</span>{' '}
+                          <span className="text-[#e5e4e2]">{company.vat_bank_account}</span>
+                        </div>
+                      )}
+
+                      {company.vat_bank_name && (
+                        <div className="col-span-2">
+                          <span className="text-[#e5e4e2]/40">Bank konta VAT:</span>{' '}
+                          <span className="text-[#e5e4e2]">{company.vat_bank_name}</span>
+                        </div>
+                      )}
+
+                      {company.website && (
+                        <div className="col-span-2">
+                          <span className="text-[#e5e4e2]/40">Strona www:</span>{' '}
+                          <span className="text-[#e5e4e2]">{company.website}</span>
                         </div>
                       )}
                     </div>
@@ -344,6 +375,9 @@ function CompanyModal({
     phone: company?.phone || '',
     bank_account: company?.bank_account || '',
     bank_name: company?.bank_name || '',
+    vat_bank_account: company?.vat_bank_account || '',
+    vat_bank_name: company?.vat_bank_name || '',
+    website: company?.website || '',
     is_default: company?.is_default || false,
   });
   const [loading, setLoading] = useState(false);
@@ -361,10 +395,7 @@ function CompanyModal({
     setLoading(true);
     try {
       if (company) {
-        const { error } = await supabase
-          .from('my_companies')
-          .update(formData)
-          .eq('id', company.id);
+        const { error } = await supabase.from('my_companies').update(formData).eq('id', company.id);
 
         if (error) throw error;
         showSnackbar('Firma zaktualizowana', 'success');
@@ -417,9 +448,7 @@ function CompanyModal({
               <input
                 type="text"
                 value={formData.legal_name}
-                onChange={(e) =>
-                  setFormData({ ...formData, legal_name: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, legal_name: e.target.value })}
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 placeholder="Mavinci Spółka z ograniczoną odpowiedzialnością"
               />
@@ -459,9 +488,7 @@ function CompanyModal({
             </div>
 
             <div className="col-span-2">
-              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-                Adres
-              </label>
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Adres</label>
             </div>
 
             <div>
@@ -491,9 +518,7 @@ function CompanyModal({
             </div>
 
             <div>
-              <label className="mb-2 block text-sm text-[#e5e4e2]">
-                Numer lokalu
-              </label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]">Numer lokalu</label>
               <input
                 type="text"
                 value={formData.apartment_number}
@@ -510,9 +535,7 @@ function CompanyModal({
               <input
                 type="text"
                 value={formData.postal_code}
-                onChange={(e) =>
-                  setFormData({ ...formData, postal_code: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, postal_code: e.target.value })}
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 placeholder="00-001"
               />
@@ -562,9 +585,7 @@ function CompanyModal({
               <input
                 type="text"
                 value={formData.bank_account}
-                onChange={(e) =>
-                  setFormData({ ...formData, bank_account: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, bank_account: e.target.value })}
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 placeholder="PL 12 3456 7890 1234 5678 9012 3456"
               />
@@ -581,14 +602,49 @@ function CompanyModal({
               />
             </div>
 
+            <div className="col-span-2">
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Konto VAT</label>
+            </div>
+
+            <div className="col-span-2">
+              <label className="mb-2 block text-sm text-[#e5e4e2]">Numer konta VAT</label>
+              <input
+                type="text"
+                value={formData.vat_bank_account}
+                onChange={(e) => setFormData({ ...formData, vat_bank_account: e.target.value })}
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                placeholder="PL 12 3456 7890 1234 5678 9012 3456"
+              />
+            </div>
+
+            <div className="col-span-2">
+              <label className="mb-2 block text-sm text-[#e5e4e2]">Nazwa banku konta VAT</label>
+              <input
+                type="text"
+                value={formData.vat_bank_name}
+                onChange={(e) => setFormData({ ...formData, vat_bank_name: e.target.value })}
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                placeholder="PKO BP"
+              />
+            </div>
+
+            <div className="col-span-2">
+              <label className="mb-2 block text-sm text-[#e5e4e2]">Domyślna strona www</label>
+              <input
+                type="text"
+                value={formData.website}
+                onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                placeholder="www.mavinci.pl"
+              />
+            </div>
+
             <div className="col-span-2 flex items-center gap-2">
               <input
                 type="checkbox"
                 id="is_default"
                 checked={formData.is_default}
-                onChange={(e) =>
-                  setFormData({ ...formData, is_default: e.target.checked })
-                }
+                onChange={(e) => setFormData({ ...formData, is_default: e.target.checked })}
                 className="h-4 w-4 rounded border-[#d3bb73]/20"
               />
               <label htmlFor="is_default" className="text-sm text-[#e5e4e2]">
