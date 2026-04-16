@@ -1180,6 +1180,17 @@ function TextFieldsEditorModal({
   const embedRef = useRef<HTMLEmbedElement>(null);
   const gridSize = 10;
 
+  const isPricing = template.type === 'pricing';
+  const existingTableConfig = (template as any).table_config || {};
+  const [tablePosition, setTablePosition] = useState<{ x: number; y: number; width: number; height: number } | null>(
+    existingTableConfig._layout_x != null
+      ? { x: existingTableConfig._layout_x, y: existingTableConfig._layout_y, width: existingTableConfig._layout_width || 495, height: existingTableConfig._layout_height || 200 }
+      : null,
+  );
+  const [tableSelected, setTableSelected] = useState(false);
+  const [showEmbeddedTableConfig, setShowEmbeddedTableConfig] = useState(false);
+  const [tableConfig, setTableConfig] = useState<any>(existingTableConfig);
+
   useEffect(() => {
     const script = document.createElement('script');
     script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
@@ -1292,6 +1303,28 @@ function TextFieldsEditorModal({
     }
   };
 
+  const handleAddTable = () => {
+    if (tablePosition) {
+      showSnackbar('Tabela już istnieje - przesuń ją na PDF', 'info');
+      setTableSelected(true);
+      setSelectedFieldIndex(null);
+      return;
+    }
+    setTablePosition({
+      x: snapToGridIfEnabled(50),
+      y: snapToGridIfEnabled(200),
+      width: snapToGridIfEnabled(pdfDimensions.width - 100),
+      height: snapToGridIfEnabled(200),
+    });
+    setTableSelected(true);
+    setSelectedFieldIndex(null);
+  };
+
+  const handleRemoveTable = () => {
+    setTablePosition(null);
+    setTableSelected(false);
+  };
+
   const handlePdfClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!pendingField || !containerRef.current) return;
 
@@ -1335,14 +1368,35 @@ function TextFieldsEditorModal({
     try {
       setLoading(true);
 
+      const updateData: Record<string, any> = { text_fields_config: textFields };
+
+      if (isPricing) {
+        const updatedTableConfig = { ...tableConfig };
+        if (tablePosition) {
+          updatedTableConfig._layout_x = tablePosition.x;
+          updatedTableConfig._layout_y = tablePosition.y;
+          updatedTableConfig._layout_width = tablePosition.width;
+          updatedTableConfig._layout_height = tablePosition.height;
+          updatedTableConfig.start_y = tablePosition.y;
+          updatedTableConfig.margin_left = tablePosition.x;
+          updatedTableConfig.margin_right = pdfDimensions.width - tablePosition.x - tablePosition.width;
+        } else {
+          delete updatedTableConfig._layout_x;
+          delete updatedTableConfig._layout_y;
+          delete updatedTableConfig._layout_width;
+          delete updatedTableConfig._layout_height;
+        }
+        updateData.table_config = updatedTableConfig;
+      }
+
       const { error } = await supabase
         .from('offer_page_templates')
-        .update({ text_fields_config: textFields })
+        .update(updateData)
         .eq('id', template.id);
 
       if (error) throw error;
 
-      showSnackbar('Konfiguracja pól zapisana', 'success');
+      showSnackbar('Konfiguracja zapisana', 'success');
       onSuccess();
     } catch (err: any) {
       showSnackbar(err.message || 'Błąd zapisu', 'error');
@@ -1404,6 +1458,19 @@ function TextFieldsEditorModal({
               <Plus className="h-4 w-4" />
               {clickToPlaceMode ? 'Kliknij na PDF' : 'Dodaj pole'}
             </button>
+            {isPricing && (
+              <button
+                onClick={handleAddTable}
+                className={`flex items-center gap-2 rounded-lg px-4 py-2 transition-colors ${
+                  tablePosition
+                    ? 'bg-cyan-600/20 text-cyan-400 ring-1 ring-cyan-400/30 hover:bg-cyan-600/30'
+                    : 'bg-cyan-600 text-white hover:bg-cyan-700'
+                }`}
+              >
+                <Table2 className="h-4 w-4" />
+                {tablePosition ? 'Tabela dodana' : 'Dodaj tabelę'}
+              </button>
+            )}
             <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
               <X className="h-5 w-5" />
             </button>
@@ -1481,6 +1548,7 @@ function TextFieldsEditorModal({
                           onClick={(e) => {
                             e.stopPropagation();
                             setSelectedFieldIndex(index);
+                            setTableSelected(false);
                           }}
                           className={`absolute cursor-move border-2 transition-all ${
                             field.is_circular || field.field_name.includes('avatar')
@@ -1516,6 +1584,74 @@ function TextFieldsEditorModal({
                       </Draggable>
                     ))}
 
+                    {/* Tabela wyceny - draggable placeholder */}
+                    {isPricing && tablePosition && (
+                      <Draggable
+                        position={{ x: tablePosition.x, y: tablePosition.y }}
+                        onStop={(e, data) => {
+                          const x = snapToGridIfEnabled(Math.max(0, Math.min(data.x, pdfDimensions.width - tablePosition.width)));
+                          const y = snapToGridIfEnabled(Math.max(0, Math.min(data.y, pdfDimensions.height - 50)));
+                          setTablePosition((prev) => prev ? { ...prev, x, y } : prev);
+                        }}
+                        bounds="parent"
+                        grid={snapToGrid ? [gridSize, gridSize] : undefined}
+                      >
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setTableSelected(true);
+                            setSelectedFieldIndex(null);
+                          }}
+                          className={`absolute cursor-move rounded border-2 border-dashed transition-all ${
+                            tableSelected
+                              ? 'border-cyan-400 bg-cyan-400/15 shadow-lg ring-2 ring-cyan-400/40'
+                              : 'border-cyan-400/60 bg-cyan-400/5 hover:border-cyan-400 hover:bg-cyan-400/10'
+                          }`}
+                          style={{
+                            width: `${tablePosition.width}px`,
+                            height: `${tablePosition.height}px`,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <Table2 className="h-6 w-6 text-cyan-400/70" />
+                          <span className="text-xs font-medium text-cyan-400/80">Tabela wyceny</span>
+                          <span className="text-[10px] text-cyan-400/50">
+                            {Math.round(tablePosition.width)} x {Math.round(tablePosition.height)}px
+                          </span>
+                          {/* Resize handle */}
+                          <div
+                            className="absolute bottom-0 right-0 h-4 w-4 cursor-se-resize"
+                            onMouseDown={(e) => {
+                              e.stopPropagation();
+                              const startX = e.clientX;
+                              const startY = e.clientY;
+                              const startW = tablePosition.width;
+                              const startH = tablePosition.height;
+                              const onMove = (me: MouseEvent) => {
+                                const newW = snapToGridIfEnabled(Math.max(200, startW + (me.clientX - startX)));
+                                const newH = snapToGridIfEnabled(Math.max(80, startH + (me.clientY - startY)));
+                                setTablePosition((prev) => prev ? { ...prev, width: newW, height: newH } : prev);
+                              };
+                              const onUp = () => {
+                                window.removeEventListener('mousemove', onMove);
+                                window.removeEventListener('mouseup', onUp);
+                              };
+                              window.addEventListener('mousemove', onMove);
+                              window.addEventListener('mouseup', onUp);
+                            }}
+                          >
+                            <svg className="h-4 w-4 text-cyan-400/60" viewBox="0 0 16 16">
+                              <path d="M14 14L14 8M14 14L8 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                            </svg>
+                          </div>
+                        </div>
+                      </Draggable>
+                    )}
+
                     {/* Podpowiedź w trybie click-to-place */}
                     {pendingField && (
                       <div className="absolute left-1/2 top-4 z-50 -translate-x-1/2 transform animate-pulse rounded-lg bg-green-600 px-4 py-2 text-white shadow-lg">
@@ -1538,7 +1674,85 @@ function TextFieldsEditorModal({
 
           {/* Panel edycji wybranego pola */}
           <div className="w-80 overflow-y-auto border-l border-[#d3bb73]/10 bg-[#1c1f33]">
-            {selectedField ? (
+            {tableSelected && tablePosition ? (
+              <div className="space-y-4 p-4">
+                <div className="mb-4 flex items-center justify-between">
+                  <h4 className="font-medium text-cyan-400">Tabela wyceny</h4>
+                  <button
+                    onClick={handleRemoveTable}
+                    className="rounded p-2 text-red-400 transition-colors hover:bg-red-400/10"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">X</label>
+                    <input
+                      type="number"
+                      value={Math.round(tablePosition.x)}
+                      onChange={(e) => setTablePosition((prev) => prev ? { ...prev, x: parseInt(e.target.value) || 0 } : prev)}
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-cyan-400 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Y</label>
+                    <input
+                      type="number"
+                      value={Math.round(tablePosition.y)}
+                      onChange={(e) => setTablePosition((prev) => prev ? { ...prev, y: parseInt(e.target.value) || 0 } : prev)}
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-cyan-400 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Szerokość</label>
+                    <input
+                      type="number"
+                      value={Math.round(tablePosition.width)}
+                      onChange={(e) => setTablePosition((prev) => prev ? { ...prev, width: Math.max(200, parseInt(e.target.value) || 200) } : prev)}
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-cyan-400 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wysokość</label>
+                    <input
+                      type="number"
+                      value={Math.round(tablePosition.height)}
+                      onChange={(e) => setTablePosition((prev) => prev ? { ...prev, height: Math.max(80, parseInt(e.target.value) || 80) } : prev)}
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-cyan-400 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/10 p-3">
+                  <p className="text-xs text-cyan-400">
+                    Przeciągnij tabelę na PDF lub edytuj wartości ręcznie. Użyj uchwytu w rogu do zmiany rozmiaru.
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => setShowEmbeddedTableConfig(!showEmbeddedTableConfig)}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-cyan-400/30 bg-cyan-400/10 px-4 py-2.5 text-sm text-cyan-400 transition-colors hover:bg-cyan-400/20"
+                >
+                  <Settings className="h-4 w-4" />
+                  {showEmbeddedTableConfig ? 'Ukryj konfigurację tabeli' : 'Konfiguruj wygląd tabeli'}
+                </button>
+
+                {showEmbeddedTableConfig && (
+                  <div className="rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a] p-3">
+                    <PricingTableConfigEditor
+                      templateId={template.id}
+                      initialConfig={tableConfig}
+                      embedded
+                      onSave={() => {
+                        showSnackbar('Konfiguracja tabeli zapisana', 'success');
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            ) : selectedField ? (
               <div className="space-y-4 p-4">
                 <div className="mb-4 flex items-center justify-between">
                   <h4 className="font-medium text-[#e5e4e2]">Edycja pola</h4>
@@ -1743,13 +1957,37 @@ function TextFieldsEditorModal({
             {/* Lista wszystkich pól */}
             <div className="border-t border-[#d3bb73]/10 p-4">
               <h5 className="mb-3 text-sm font-medium text-[#e5e4e2]">
-                Wszystkie pola ({textFields.length})
+                Wszystkie pola ({textFields.length + (isPricing && tablePosition ? 1 : 0)})
               </h5>
               <div className="space-y-2">
+                {isPricing && tablePosition && (
+                  <button
+                    onClick={() => {
+                      setTableSelected(true);
+                      setSelectedFieldIndex(null);
+                    }}
+                    className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                      tableSelected
+                        ? 'border border-cyan-400/30 bg-cyan-400/20 text-cyan-400'
+                        : 'border border-cyan-400/20 bg-[#0a0d1a] text-cyan-400/70 hover:border-cyan-400/30'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 font-medium">
+                      <Table2 className="h-3.5 w-3.5" />
+                      Tabela wyceny
+                    </div>
+                    <div className="text-xs opacity-60">
+                      X: {Math.round(tablePosition.x)}, Y: {Math.round(tablePosition.y)}, {Math.round(tablePosition.width)}x{Math.round(tablePosition.height)}
+                    </div>
+                  </button>
+                )}
                 {textFields.map((field, index) => (
                   <button
                     key={index}
-                    onClick={() => setSelectedFieldIndex(index)}
+                    onClick={() => {
+                      setSelectedFieldIndex(index);
+                      setTableSelected(false);
+                    }}
                     className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                       selectedFieldIndex === index
                         ? 'border border-[#d3bb73]/30 bg-[#d3bb73]/20 text-[#d3bb73]'
