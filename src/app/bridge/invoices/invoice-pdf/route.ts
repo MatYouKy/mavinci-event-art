@@ -112,8 +112,12 @@ export async function POST(req: Request) {
         const supabase = getSupabaseAdmin();
 
         if (previousPdfPath) {
-          await supabase.storage.from('event-files').remove([previousPdfPath]).catch(() => {});
-          await supabase.from('event_files').delete().eq('file_path', previousPdfPath).catch(() => {});
+          try {
+            await supabase.storage.from('event-files').remove([previousPdfPath]);
+          } catch {}
+          try {
+            await supabase.from('event_files').delete().eq('file_path', previousPdfPath);
+          } catch {}
         }
 
         const folderId = await getOrCreateInvoiceFolderId({
