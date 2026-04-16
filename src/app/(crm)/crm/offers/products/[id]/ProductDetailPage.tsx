@@ -394,7 +394,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
           `
           *,
           category:event_categories(id, name),
-          subcontractor:subcontractors(id, company_name)
+          subcontractor:organizations(id, name)
         `,
         )
         .eq('id', productId)
