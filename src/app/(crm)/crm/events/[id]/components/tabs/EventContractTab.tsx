@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { FileText, Download, Edit, Save, X, Mail, Eye } from 'lucide-react';
+import { FileText, Download, CreditCard as Edit, Save, X, Mail, Eye } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
@@ -434,7 +434,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
 
       const { data: offers } = await supabase
         .from('offers')
-        .select('id, total_amount')
+        .select('id, total_amount, offer_number, valid_until')
         .eq('event_id', eventId)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -582,6 +582,12 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         executor_nip: '1234567890',
         executor_phone: '698-212-279',
         executor_email: 'biuro@eventrulers.pl',
+
+        offer_number: offers?.offer_number || '',
+        offer_valid_until: offers?.valid_until ? formatDateOnly(offers.valid_until) : '',
+        offer_scope: offerItemsArray.length > 0
+          ? offerItemsArray.map((item: any, i: number) => `${i + 1}. ${item.name || 'Produkt'}${item.quantity ? ` (x${item.quantity})` : ''}`).join(', ')
+          : '',
 
         offer_items: offerItemsHtml,
         OFFER_ITEMS_TABLE: offerItemsTable,

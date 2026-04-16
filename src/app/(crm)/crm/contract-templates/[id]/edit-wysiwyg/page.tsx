@@ -54,7 +54,7 @@ export default function EditTemplateWYSIWYGPage() {
   const [historyIndex, setHistoryIndex] = useState(0);
   const [selectedFont, setSelectedFont] = useState<string>('Georgia, serif');
   const [showPlaceholders, setShowPlaceholders] = useState(false);
-  const [placeholderCategory, setPlaceholderCategory] = useState<string>('contact');
+  const [placeholderCategory, setPlaceholderCategory] = useState<string>('offer');
   const [pages, setPages] = useState<string[]>(['']);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -1047,11 +1047,13 @@ export default function EditTemplateWYSIWYGPage() {
               {showPlaceholders ? '✕ Ukryj' : '+ Zmienne'} (
               {
                 {
+                  offer: 'Oferta',
                   contact: 'Kontakt',
                   organization: 'Firma',
                   event: 'Wydarzenie',
                   location: 'Lokalizacja',
                   financial: 'Finanse',
+                  executor: 'Wykonawca',
                 }[placeholderCategory]
               }
               )
@@ -1064,38 +1066,25 @@ export default function EditTemplateWYSIWYGPage() {
       {showPlaceholders && (
         <div className="border-b border-[#d3bb73]/20 bg-[#16171d] px-4 py-3">
           <div className="mx-auto max-w-[230mm]">
-            <div className="mb-3 flex items-center gap-2">
+            <div className="mb-3 flex flex-wrap items-center gap-2">
               <span className="text-xs font-semibold text-[#d3bb73]">Zmienne:</span>
-              <button
-                onClick={() => setPlaceholderCategory('contact')}
-                className={`rounded px-2 py-1 text-xs ${placeholderCategory === 'contact' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#0f1119] text-[#d3bb73] hover:bg-[#d3bb73]/10'}`}
-              >
-                Kontakt
-              </button>
-              <button
-                onClick={() => setPlaceholderCategory('organization')}
-                className={`rounded px-2 py-1 text-xs ${placeholderCategory === 'organization' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#0f1119] text-[#d3bb73] hover:bg-[#d3bb73]/10'}`}
-              >
-                Firma
-              </button>
-              <button
-                onClick={() => setPlaceholderCategory('event')}
-                className={`rounded px-2 py-1 text-xs ${placeholderCategory === 'event' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#0f1119] text-[#d3bb73] hover:bg-[#d3bb73]/10'}`}
-              >
-                Wydarzenie
-              </button>
-              <button
-                onClick={() => setPlaceholderCategory('location')}
-                className={`rounded px-2 py-1 text-xs ${placeholderCategory === 'location' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#0f1119] text-[#d3bb73] hover:bg-[#d3bb73]/10'}`}
-              >
-                Lokalizacja
-              </button>
-              <button
-                onClick={() => setPlaceholderCategory('financial')}
-                className={`rounded px-2 py-1 text-xs ${placeholderCategory === 'financial' ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#0f1119] text-[#d3bb73] hover:bg-[#d3bb73]/10'}`}
-              >
-                Finanse
-              </button>
+              {[
+                { key: 'offer', label: 'Oferta' },
+                { key: 'contact', label: 'Kontakt' },
+                { key: 'organization', label: 'Firma' },
+                { key: 'event', label: 'Wydarzenie' },
+                { key: 'location', label: 'Lokalizacja' },
+                { key: 'financial', label: 'Finanse' },
+                { key: 'executor', label: 'Wykonawca' },
+              ].map((cat) => (
+                <button
+                  key={cat.key}
+                  onClick={() => setPlaceholderCategory(cat.key)}
+                  className={`rounded px-2 py-1 text-xs ${placeholderCategory === cat.key ? 'bg-[#d3bb73] text-[#1c1f33]' : 'bg-[#0f1119] text-[#d3bb73] hover:bg-[#d3bb73]/10'}`}
+                >
+                  {cat.label}
+                </button>
+              ))}
               <button
                 onClick={() => setShowPlaceholders(false)}
                 className="ml-auto text-xs text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
@@ -1104,6 +1093,23 @@ export default function EditTemplateWYSIWYGPage() {
               </button>
             </div>
             <div className="flex flex-wrap gap-2">
+              {placeholderCategory === 'offer' &&
+                [
+                  { key: '{{offer_number}}', label: 'Numer oferty' },
+                  { key: '{{offer_scope}}', label: 'Zakres oferty (lista pozycji)' },
+                  { key: '{{offer_valid_until}}', label: 'Oferta wazna do' },
+                  { key: '{{offer_items}}', label: 'Pozycje z oferty (HTML)' },
+                  { key: '{{OFFER_ITEMS_TABLE}}', label: 'Tabela pozycji (HTML)' },
+                ].map((p) => (
+                  <button
+                    key={p.key}
+                    onClick={() => insertPlaceholder(p.key)}
+                    className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
+                    title={p.key}
+                  >
+                    {p.label}
+                  </button>
+                ))}
               {placeholderCategory === 'contact' &&
                 [
                   { key: '{{contact_first_name}}', label: 'Imię' },
@@ -1191,8 +1197,27 @@ export default function EditTemplateWYSIWYGPage() {
                   { key: '{{budget_words}}', label: 'Budżet słownie' },
                   { key: '{{deposit_amount}}', label: 'Zadatek (liczba)' },
                   { key: '{{deposit_words}}', label: 'Zadatek słownie' },
-                  { key: '{{offer_items}}', label: 'Pozycje z oferty (HTML)' },
-                  { key: '{{OFFER_ITEMS_TABLE}}', label: 'Tabela pozycji (HTML)' },
+                  { key: '{{contract_number}}', label: 'Numer umowy' },
+                  { key: '{{contract_date}}', label: 'Data umowy' },
+                ].map((p) => (
+                  <button
+                    key={p.key}
+                    onClick={() => insertPlaceholder(p.key)}
+                    className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
+                    title={p.key}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              {placeholderCategory === 'executor' &&
+                [
+                  { key: '{{executor_name}}', label: 'Nazwa firmy' },
+                  { key: '{{executor_address}}', label: 'Adres' },
+                  { key: '{{executor_postal_code}}', label: 'Kod pocztowy' },
+                  { key: '{{executor_city}}', label: 'Miasto' },
+                  { key: '{{executor_nip}}', label: 'NIP' },
+                  { key: '{{executor_phone}}', label: 'Telefon' },
+                  { key: '{{executor_email}}', label: 'Email' },
                 ].map((p) => (
                   <button
                     key={p.key}
@@ -1308,8 +1333,8 @@ export default function EditTemplateWYSIWYGPage() {
       )}
 
       {/* A4 Editor */}
-      <div className="min-h-screen bg-[#f5f5f5] py-8">
-        <div className="mx-auto max-w-[230mm] px-4">
+      <div className="min-h-screen bg-[#525659] py-8">
+        <div className="mx-auto" style={{ maxWidth: '230mm' }}>
           {pages.map((pageContent, pageIndex) => (
             <div key={pageIndex} className="contract-a4-page">
               {pageIndex === 0 && (
