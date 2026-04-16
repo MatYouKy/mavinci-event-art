@@ -1,31 +1,14 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import {
-  Plus,
-  Edit,
-  Trash2,
-  Save,
-  X,
-  FileText,
-  Building2,
-  DollarSign,
-  CheckCircle,
-  Upload,
-  Image as ImageIcon,
-  Settings,
-  Move,
-  Type,
-  ChevronDown,
-  ChevronRight,
-  Tag,
-} from 'lucide-react';
+import { Plus, CreditCard as Edit, Trash2, Save, X, FileText, Building2, DollarSign, CheckCircle, Upload, Image as ImageIcon, Settings, Move, Type, ChevronDown, ChevronRight, Tag, Table2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import dynamic from 'next/dynamic';
 import Draggable from 'react-draggable';
+import PricingTableConfigEditor from './PricingTableConfigEditor';
 
 const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
 import 'react-quill/dist/quill.snow.css';
@@ -136,6 +119,7 @@ export default function OfferPageTemplatesEditor() {
   const [showTextFieldsEditor, setShowTextFieldsEditor] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [editingCategory, setEditingCategory] = useState<OfferTemplateCategory | null>(null);
+  const [showTableConfigEditor, setShowTableConfigEditor] = useState(false);
 
   useEffect(() => {
     fetchCategories();
@@ -186,6 +170,11 @@ export default function OfferPageTemplatesEditor() {
   const handleEditTextFields = (template: OfferPageTemplate) => {
     setEditingTemplate(template);
     setShowTextFieldsEditor(true);
+  };
+
+  const handleEditTableConfig = (template: OfferPageTemplate) => {
+    setEditingTemplate(template);
+    setShowTableConfigEditor(true);
   };
 
   const handleCreateTemplate = (categoryId: string, type: string) => {
@@ -515,6 +504,15 @@ export default function OfferPageTemplatesEditor() {
                                         <Type className="h-4 w-4" />
                                       </button>
                                     )}
+                                    {template.type === 'pricing' && (
+                                      <button
+                                        onClick={() => handleEditTableConfig(template)}
+                                        className="rounded p-1.5 text-cyan-400 transition-colors hover:bg-cyan-400/10"
+                                        title="Konfiguruj tabelę wyceny"
+                                      >
+                                        <Table2 className="h-4 w-4" />
+                                      </button>
+                                    )}
                                     <button
                                       onClick={() => handleEditTemplate(template)}
                                       className="rounded p-1.5 text-[#e5e4e2]/60 transition-colors hover:bg-[#d3bb73]/10 hover:text-[#d3bb73]"
@@ -615,6 +613,45 @@ export default function OfferPageTemplatesEditor() {
             fetchTemplates();
           }}
         />
+      )}
+
+      {/* Edytor tabeli wyceny */}
+      {showTableConfigEditor && editingTemplate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="flex h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
+            <div className="flex flex-shrink-0 items-center justify-between border-b border-[#d3bb73]/10 p-4">
+              <div>
+                <h3 className="text-xl font-light text-[#e5e4e2]">
+                  Konfiguracja tabeli wyceny: {editingTemplate.name}
+                </h3>
+                <p className="mt-1 text-sm text-[#e5e4e2]/60">
+                  Ustaw wygląd tabeli generowanej w PDF oferty
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowTableConfigEditor(false);
+                  setEditingTemplate(null);
+                }}
+                className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto">
+              <PricingTableConfigEditor
+                templateId={editingTemplate.id}
+                initialConfig={(editingTemplate as any).table_config || {}}
+                embedded
+                onSave={() => {
+                  setShowTableConfigEditor(false);
+                  setEditingTemplate(null);
+                  fetchTemplates();
+                }}
+              />
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Modal kategorii */}

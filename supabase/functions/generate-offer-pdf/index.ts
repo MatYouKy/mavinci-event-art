@@ -196,12 +196,6 @@ Deno.serve(async (req: Request) => {
       const page = pages[pageIndex];
       const { width, height } = page.getSize();
 
-      const startY = config.start_y || 200;
-      const showUnitPriceNet = config.show_unit_price_net !== false;
-      const showValueNet = config.show_value_net !== false;
-      const showValueGross = config.show_value_gross !== false;
-      const defaultVatRate = config.vat_rate || 23;
-
       const hexToRgb = (hex: string) => {
         const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
         return result ? rgb(
@@ -211,94 +205,128 @@ Deno.serve(async (req: Request) => {
         ) : rgb(0.827, 0.733, 0.451);
       };
 
+      const startY = config.start_y || 200;
+      const marginLeft = config.margin_left ?? 50;
+      const marginRight = config.margin_right ?? 50;
+      const showUnitPriceNet = config.show_unit_price_net !== false;
+      const showValueNet = config.show_value_net !== false;
+      const showValueGross = config.show_value_gross !== false;
+      const showVatColumn = config.show_vat_column === true;
+      const showDescription = config.show_description === true;
+      const defaultVatRate = config.vat_rate || 23;
+      const rowHeight = config.row_height || 25;
+      const headerHeight = config.header_height || 30;
+      const fontSize = config.body_font_size || 10;
+      const headerFontSize = config.header_font_size || 11;
+      const summaryThickness = config.summary_separator_thickness ?? 2;
+
       const headerColor = config.header_color ? hexToRgb(config.header_color) : rgb(0.827, 0.733, 0.451);
+      const headerTextColor = config.header_text_color ? hexToRgb(config.header_text_color) : rgb(1, 1, 1);
       const textColor = config.text_color ? hexToRgb(config.text_color) : rgb(0.11, 0.12, 0.2);
       const rowBgColor = config.row_bg_color ? hexToRgb(config.row_bg_color) : rgb(0.95, 0.95, 0.95);
+      const rowOddBgColor = config.row_odd_bg_color ? hexToRgb(config.row_odd_bg_color) : rgb(1, 1, 1);
+      const summaryColor = config.summary_color ? hexToRgb(config.summary_color) : headerColor;
+      const summaryLabelColor = config.summary_label_color ? hexToRgb(config.summary_label_color) : textColor;
 
-      const margin = 50;
-      const tableWidth = width - 2 * margin;
+      const showBorders = config.show_borders === true;
+      const showHBorders = config.show_horizontal_borders !== false;
+      const showVBorders = config.show_vertical_borders === true;
+      const showOuterBorder = config.show_outer_border === true;
+      const borderWidth = config.border_width ?? 0.5;
+      const borderColor = config.border_color ? hexToRgb(config.border_color) : rgb(0.8, 0.8, 0.8);
 
-      const colWidths = {
-        lp: 30,
-        name: 180,
-        quantity: 50,
-        unit: 45,
-        unitPriceNet: showUnitPriceNet ? 70 : 0,
-        valueNet: showValueNet ? 80 : 0,
-        valueGross: showValueGross ? 80 : 0,
+      const tableWidth = width - marginLeft - marginRight;
+
+      const colWidths: Record<string, number> = {
+        lp: config.col_lp_width || 30,
+        name: 0,
+        quantity: config.col_qty_width || 50,
+        unit: config.col_unit_width || 45,
+        unitPriceNet: showUnitPriceNet ? (config.col_unit_price_width || 70) : 0,
+        vat: showVatColumn ? (config.col_vat_width || 45) : 0,
+        valueNet: showValueNet ? (config.col_value_net_width || 80) : 0,
+        valueGross: showValueGross ? (config.col_value_gross_width || 80) : 0,
       };
 
-      const totalColWidth = colWidths.lp + colWidths.name + colWidths.quantity + colWidths.unit +
-                            colWidths.unitPriceNet + colWidths.valueNet + colWidths.valueGross;
-
-      if (totalColWidth < tableWidth) {
-        colWidths.name = tableWidth - (totalColWidth - colWidths.name);
-      }
+      const fixedWidth = colWidths.lp + colWidths.quantity + colWidths.unit +
+                         colWidths.unitPriceNet + colWidths.vat + colWidths.valueNet + colWidths.valueGross;
+      colWidths.name = Math.max(80, tableWidth - fixedWidth);
 
       let y = height - startY;
-      const rowHeight = 25;
-      const fontSize = 10;
-      const headerFontSize = 11;
+
+      const drawBorderLine = (x1: number, y1: number, x2: number, y2: number) => {
+        if (!showBorders) return;
+        page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: borderWidth, color: borderColor });
+      };
 
       page.drawRectangle({
-        x: margin,
-        y: y - headerFontSize - 10,
+        x: marginLeft,
+        y: y - headerHeight,
         width: tableWidth,
-        height: headerFontSize + 15,
+        height: headerHeight,
         color: headerColor,
       });
 
-      const headers = [
-        { text: 'Lp.', x: margin + 5, width: colWidths.lp },
-        { text: 'Nazwa pozycji', x: margin + colWidths.lp + 5, width: colWidths.name },
-        { text: 'Ilość', x: margin + colWidths.lp + colWidths.name + 5, width: colWidths.quantity },
-        { text: 'Jedn.', x: margin + colWidths.lp + colWidths.name + colWidths.quantity + 5, width: colWidths.unit },
+      const headerDefs: { text: string; colKey: string; align: 'left' | 'right' | 'center' }[] = [
+        { text: 'Lp.', colKey: 'lp', align: 'left' },
+        { text: 'Nazwa pozycji', colKey: 'name', align: 'left' },
+        { text: 'Ilość', colKey: 'quantity', align: 'center' },
+        { text: 'Jedn.', colKey: 'unit', align: 'center' },
       ];
+      if (showUnitPriceNet) headerDefs.push({ text: 'Cena jedn. netto', colKey: 'unitPriceNet', align: 'right' });
+      if (showVatColumn) headerDefs.push({ text: 'VAT', colKey: 'vat', align: 'center' });
+      if (showValueNet) headerDefs.push({ text: 'Wartość netto', colKey: 'valueNet', align: 'right' });
+      if (showValueGross) headerDefs.push({ text: 'Wartość brutto', colKey: 'valueGross', align: 'right' });
 
-      let currentX = margin + colWidths.lp + colWidths.name + colWidths.quantity + colWidths.unit;
-
-      if (showUnitPriceNet) {
-        headers.push({ text: 'Cena jedn. netto', x: currentX + 5, width: colWidths.unitPriceNet });
-        currentX += colWidths.unitPriceNet;
+      let hx = marginLeft;
+      for (let hi = 0; hi < headerDefs.length; hi++) {
+        const hd = headerDefs[hi];
+        const cw = colWidths[hd.colKey];
+        const textY = y - headerHeight / 2 - headerFontSize / 2 + 2;
+        if (hd.align === 'right') {
+          const tw = boldFont.widthOfTextAtSize(hd.text, headerFontSize);
+          page.drawText(hd.text, { x: hx + cw - tw - 5, y: textY, size: headerFontSize, font: boldFont, color: headerTextColor });
+        } else if (hd.align === 'center') {
+          const tw = boldFont.widthOfTextAtSize(hd.text, headerFontSize);
+          page.drawText(hd.text, { x: hx + (cw - tw) / 2, y: textY, size: headerFontSize, font: boldFont, color: headerTextColor });
+        } else {
+          page.drawText(hd.text, { x: hx + 5, y: textY, size: headerFontSize, font: boldFont, color: headerTextColor });
+        }
+        if (showBorders && showVBorders && hi < headerDefs.length - 1) {
+          drawBorderLine(hx + cw, y, hx + cw, y - headerHeight);
+        }
+        hx += cw;
       }
 
-      if (showValueNet) {
-        headers.push({ text: 'Wartość netto', x: currentX + 5, width: colWidths.valueNet });
-        currentX += colWidths.valueNet;
+      if (showBorders && showOuterBorder) {
+        page.drawRectangle({ x: marginLeft, y: y - headerHeight, width: tableWidth, height: headerHeight, borderColor, borderWidth, color: undefined as any });
+      }
+      if (showBorders && showHBorders) {
+        drawBorderLine(marginLeft, y - headerHeight, marginLeft + tableWidth, y - headerHeight);
       }
 
-      if (showValueGross) {
-        headers.push({ text: 'Wartość brutto', x: currentX + 5, width: colWidths.valueGross });
-      }
-
-      for (const header of headers) {
-        page.drawText(header.text, {
-          x: header.x,
-          y: y - headerFontSize - 5,
-          size: headerFontSize,
-          font: boldFont,
-          color: rgb(1, 1, 1),
-        });
-      }
-
-      y -= headerFontSize + 20;
+      y -= headerHeight;
 
       let totalNet = 0;
       let totalGross = 0;
 
       offerItems.forEach((item, index) => {
         const isEven = index % 2 === 0;
-        if (isEven) {
-          page.drawRectangle({
-            x: margin,
-            y: y - rowHeight + 5,
-            width: tableWidth,
-            height: rowHeight,
-            color: rowBgColor,
-          });
-        }
+        const bgColor = isEven ? rowBgColor : rowOddBgColor;
+
+        const descFontSize = Math.max(fontSize - 2, 7);
+        const effectiveRowHeight = showDescription ? rowHeight + descFontSize + 4 : rowHeight;
+
+        page.drawRectangle({
+          x: marginLeft,
+          y: y - effectiveRowHeight,
+          width: tableWidth,
+          height: effectiveRowHeight,
+          color: bgColor,
+        });
 
         const itemName = item.name || item.product?.name || 'Pozycja';
+        const itemDesc = item.description || item.product?.description || '';
         const quantity = item.quantity || 1;
         const unit = item.unit || 'szt';
         const unitPrice = item.unit_price || item.final_price || 0;
@@ -310,124 +338,111 @@ Deno.serve(async (req: Request) => {
         totalNet += valueNet;
         totalGross += valueGross;
 
-        page.drawText(`${index + 1}.`, {
-          x: margin + 5,
-          y: y - fontSize - 5,
-          size: fontSize,
-          font: regularFont,
-          color: textColor,
-        });
+        const textY = y - fontSize - (effectiveRowHeight - fontSize) / 2 + 3;
+        let cx = marginLeft;
 
-        page.drawText(itemName, {
-          x: margin + colWidths.lp + 5,
-          y: y - fontSize - 5,
-          size: fontSize,
-          font: regularFont,
-          color: textColor,
-        });
+        page.drawText(`${index + 1}.`, { x: cx + 5, y: textY, size: fontSize, font: regularFont, color: textColor });
+        if (showBorders && showVBorders) drawBorderLine(cx + colWidths.lp, y, cx + colWidths.lp, y - effectiveRowHeight);
+        cx += colWidths.lp;
 
-        page.drawText(quantity.toString(), {
-          x: margin + colWidths.lp + colWidths.name + 5,
-          y: y - fontSize - 5,
-          size: fontSize,
-          font: regularFont,
-          color: textColor,
-        });
+        const maxNameWidth = colWidths.name - 10;
+        let truncatedName = itemName;
+        while (regularFont.widthOfTextAtSize(truncatedName, fontSize) > maxNameWidth && truncatedName.length > 1) {
+          truncatedName = truncatedName.slice(0, -1);
+        }
+        page.drawText(truncatedName, { x: cx + 5, y: showDescription ? y - fontSize - 4 : textY, size: fontSize, font: regularFont, color: textColor });
+        if (showDescription && itemDesc) {
+          let truncDesc = itemDesc;
+          while (regularFont.widthOfTextAtSize(truncDesc, descFontSize) > maxNameWidth && truncDesc.length > 1) {
+            truncDesc = truncDesc.slice(0, -1);
+          }
+          page.drawText(truncDesc, { x: cx + 5, y: y - fontSize - descFontSize - 6, size: descFontSize, font: regularFont, color: textColor });
+        }
+        if (showBorders && showVBorders) drawBorderLine(cx + colWidths.name, y, cx + colWidths.name, y - effectiveRowHeight);
+        cx += colWidths.name;
 
-        page.drawText(unit, {
-          x: margin + colWidths.lp + colWidths.name + colWidths.quantity + 5,
-          y: y - fontSize - 5,
-          size: fontSize,
-          font: regularFont,
-          color: textColor,
-        });
+        const qtyText = quantity.toString();
+        const qtyW = regularFont.widthOfTextAtSize(qtyText, fontSize);
+        page.drawText(qtyText, { x: cx + (colWidths.quantity - qtyW) / 2, y: textY, size: fontSize, font: regularFont, color: textColor });
+        if (showBorders && showVBorders) drawBorderLine(cx + colWidths.quantity, y, cx + colWidths.quantity, y - effectiveRowHeight);
+        cx += colWidths.quantity;
 
-        let currentX = margin + colWidths.lp + colWidths.name + colWidths.quantity + colWidths.unit;
+        const unitW = regularFont.widthOfTextAtSize(unit, fontSize);
+        page.drawText(unit, { x: cx + (colWidths.unit - unitW) / 2, y: textY, size: fontSize, font: regularFont, color: textColor });
+        if (showBorders && showVBorders) drawBorderLine(cx + colWidths.unit, y, cx + colWidths.unit, y - effectiveRowHeight);
+        cx += colWidths.unit;
 
         if (showUnitPriceNet) {
-          const unitPriceText = `${unitPrice.toFixed(2)}`;
-          const unitPriceWidth = regularFont.widthOfTextAtSize(unitPriceText, fontSize);
-          page.drawText(unitPriceText, {
-            x: currentX + colWidths.unitPriceNet - unitPriceWidth - 5,
-            y: y - fontSize - 5,
-            size: fontSize,
-            font: regularFont,
-            color: textColor,
-          });
-          currentX += colWidths.unitPriceNet;
+          const upText = `${unitPrice.toFixed(2)}`;
+          const upW = regularFont.widthOfTextAtSize(upText, fontSize);
+          page.drawText(upText, { x: cx + colWidths.unitPriceNet - upW - 5, y: textY, size: fontSize, font: regularFont, color: textColor });
+          if (showBorders && showVBorders) drawBorderLine(cx + colWidths.unitPriceNet, y, cx + colWidths.unitPriceNet, y - effectiveRowHeight);
+          cx += colWidths.unitPriceNet;
+        }
+
+        if (showVatColumn) {
+          const vatText = `${vatRate}%`;
+          const vatW = regularFont.widthOfTextAtSize(vatText, fontSize);
+          page.drawText(vatText, { x: cx + (colWidths.vat - vatW) / 2, y: textY, size: fontSize, font: regularFont, color: textColor });
+          if (showBorders && showVBorders) drawBorderLine(cx + colWidths.vat, y, cx + colWidths.vat, y - effectiveRowHeight);
+          cx += colWidths.vat;
         }
 
         if (showValueNet) {
-          const valueNetText = `${valueNet.toFixed(2)}`;
-          const valueNetWidth = regularFont.widthOfTextAtSize(valueNetText, fontSize);
-          page.drawText(valueNetText, {
-            x: currentX + colWidths.valueNet - valueNetWidth - 5,
-            y: y - fontSize - 5,
-            size: fontSize,
-            font: regularFont,
-            color: textColor,
-          });
-          currentX += colWidths.valueNet;
+          const vnText = `${valueNet.toFixed(2)}`;
+          const vnW = regularFont.widthOfTextAtSize(vnText, fontSize);
+          page.drawText(vnText, { x: cx + colWidths.valueNet - vnW - 5, y: textY, size: fontSize, font: regularFont, color: textColor });
+          if (showBorders && showVBorders) drawBorderLine(cx + colWidths.valueNet, y, cx + colWidths.valueNet, y - effectiveRowHeight);
+          cx += colWidths.valueNet;
         }
 
         if (showValueGross) {
-          const valueGrossText = `${valueGross.toFixed(2)}`;
-          const valueGrossWidth = regularFont.widthOfTextAtSize(valueGrossText, fontSize);
-          page.drawText(valueGrossText, {
-            x: currentX + colWidths.valueGross - valueGrossWidth - 5,
-            y: y - fontSize - 5,
-            size: fontSize,
-            font: regularFont,
-            color: textColor,
-          });
+          const vgText = `${valueGross.toFixed(2)}`;
+          const vgW = regularFont.widthOfTextAtSize(vgText, fontSize);
+          page.drawText(vgText, { x: cx + colWidths.valueGross - vgW - 5, y: textY, size: fontSize, font: regularFont, color: textColor });
         }
 
-        y -= rowHeight;
+        if (showBorders && showHBorders) {
+          drawBorderLine(marginLeft, y - effectiveRowHeight, marginLeft + tableWidth, y - effectiveRowHeight);
+        }
+
+        y -= effectiveRowHeight;
       });
+
+      if (showBorders && showOuterBorder) {
+        const tableTop = height - startY;
+        const totalTableHeight = tableTop - y + headerHeight;
+        drawBorderLine(marginLeft, y, marginLeft, tableTop);
+        drawBorderLine(marginLeft + tableWidth, y, marginLeft + tableWidth, tableTop);
+        if (!showHBorders) {
+          drawBorderLine(marginLeft, y, marginLeft + tableWidth, y);
+        }
+      }
 
       y -= 10;
       page.drawLine({
-        start: { x: margin, y: y },
-        end: { x: margin + tableWidth, y: y },
-        thickness: 2,
-        color: headerColor,
+        start: { x: marginLeft, y: y },
+        end: { x: marginLeft + tableWidth, y: y },
+        thickness: summaryThickness,
+        color: summaryColor,
       });
 
       y -= 25;
 
-      const summaryStartX = margin + colWidths.lp + colWidths.name + colWidths.quantity + colWidths.unit;
-
-      if (showUnitPriceNet) {
-        page.drawText('', {
-          x: summaryStartX,
-          y: y,
-          size: headerFontSize,
-          font: boldFont,
-          color: textColor,
-        });
-      }
+      const summaryStartX = marginLeft + colWidths.lp + colWidths.name + colWidths.quantity + colWidths.unit;
 
       let summaryX = summaryStartX;
       if (showUnitPriceNet) summaryX += colWidths.unitPriceNet;
+      if (showVatColumn) summaryX += colWidths.vat;
 
       if (showValueNet) {
-        page.drawText('SUMA NETTO:', {
-          x: summaryX - 60,
-          y: y,
-          size: headerFontSize - 1,
-          font: boldFont,
-          color: textColor,
-        });
+        const labelText = 'SUMA NETTO:';
+        const labelW = boldFont.widthOfTextAtSize(labelText, headerFontSize - 1);
+        page.drawText(labelText, { x: summaryX - labelW - 5, y: y, size: headerFontSize - 1, font: boldFont, color: summaryLabelColor });
 
         const totalNetText = `${totalNet.toFixed(2)} PLN`;
         const totalNetWidth = boldFont.widthOfTextAtSize(totalNetText, headerFontSize);
-        page.drawText(totalNetText, {
-          x: summaryX + colWidths.valueNet - totalNetWidth - 5,
-          y: y,
-          size: headerFontSize,
-          font: boldFont,
-          color: headerColor,
-        });
+        page.drawText(totalNetText, { x: summaryX + colWidths.valueNet - totalNetWidth - 5, y: y, size: headerFontSize, font: boldFont, color: summaryColor });
         summaryX += colWidths.valueNet;
       }
 
@@ -436,26 +451,17 @@ Deno.serve(async (req: Request) => {
           y -= 20;
           summaryX = summaryStartX;
           if (showUnitPriceNet) summaryX += colWidths.unitPriceNet;
+          if (showVatColumn) summaryX += colWidths.vat;
           if (showValueNet) summaryX += colWidths.valueNet;
         }
 
-        page.drawText('SUMA BRUTTO:', {
-          x: summaryX - 65,
-          y: y,
-          size: headerFontSize - 1,
-          font: boldFont,
-          color: textColor,
-        });
+        const labelText = 'SUMA BRUTTO:';
+        const labelW = boldFont.widthOfTextAtSize(labelText, headerFontSize - 1);
+        page.drawText(labelText, { x: summaryX - labelW - 5, y: y, size: headerFontSize - 1, font: boldFont, color: summaryLabelColor });
 
         const totalGrossText = `${totalGross.toFixed(2)} PLN`;
         const totalGrossWidth = boldFont.widthOfTextAtSize(totalGrossText, headerFontSize);
-        page.drawText(totalGrossText, {
-          x: summaryX + colWidths.valueGross - totalGrossWidth - 5,
-          y: y,
-          size: headerFontSize,
-          font: boldFont,
-          color: headerColor,
-        });
+        page.drawText(totalGrossText, { x: summaryX + colWidths.valueGross - totalGrossWidth - 5, y: y, size: headerFontSize, font: boldFont, color: summaryColor });
       }
 
       console.log(`Drew offer items table with ${offerItems.length} items, total net: ${totalNet.toFixed(2)} PLN, total gross: ${totalGross.toFixed(2)} PLN`);
