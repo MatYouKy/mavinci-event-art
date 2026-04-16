@@ -171,8 +171,7 @@ W razie pytań proszę o kontakt.`,
 
           <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-4">
             <p className="text-sm text-blue-400">
-              <strong>Załącznik:</strong> Oferta {offerNumber} zostanie automatycznie wygenerowana w
-              formacie PDF i dołączona do wiadomości.
+              Oferta {offerNumber} zostanie wygenerowana jako PDF, a klient otrzyma link do pobrania (wazny 7 dni).
             </p>
           </div>
         </div>

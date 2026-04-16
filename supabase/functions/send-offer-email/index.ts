@@ -101,17 +101,8 @@ Deno.serve(async (req: Request) => {
       throw new Error("SMTP_RELAY_URL or SMTP_RELAY_SECRET not configured");
     }
 
-    const htmlBody = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <p>${message.replace(/\n/g, '<br>')}</p>
-        ${emailAccount.signature || ''}
-      </div>
-    `;
-
-    // Generate PDF attachment
     console.log('[send-offer-email] Generating PDF for offer:', offerId);
-    let pdfBase64 = null;
-    let pdfFilename = `Oferta_${offer.offer_number || offerId}.pdf`;
+    let pdfDownloadUrl = '';
 
     try {
       const pdfResponse = await fetch(`${supabaseUrl}/functions/v1/generate-offer-pdf`, {
@@ -127,8 +118,15 @@ Deno.serve(async (req: Request) => {
       });
 
       if (pdfResponse.ok) {
-        const pdfBlob = await pdfResponse.arrayBuffer();
-        pdfBase64 = btoa(String.fromCharCode(...new Uint8Array(pdfBlob)));
+        const pdfResult = await pdfResponse.json();
+        if (pdfResult.success && pdfResult.fileName) {
+          const { data: signedUrlData } = await supabase.storage
+            .from('generated-offers')
+            .createSignedUrl(pdfResult.fileName, 60 * 60 * 24 * 7);
+          if (signedUrlData?.signedUrl) {
+            pdfDownloadUrl = signedUrlData.signedUrl;
+          }
+        }
       } else {
         const errorText = await pdfResponse.text();
         console.error('[send-offer-email] PDF generation failed:', errorText);
@@ -137,14 +135,32 @@ Deno.serve(async (req: Request) => {
       console.error('[send-offer-email] Error generating PDF:', pdfError);
     }
 
-    const attachments = [];
-    if (pdfBase64) {
-      attachments.push({
-        filename: pdfFilename,
-        content: pdfBase64,
-        contentType: 'application/pdf',
-      });
+    if (!pdfDownloadUrl && offer.generated_pdf_url) {
+      const { data: signedUrlData } = await supabase.storage
+        .from('generated-offers')
+        .createSignedUrl(offer.generated_pdf_url, 60 * 60 * 24 * 7);
+      if (signedUrlData?.signedUrl) {
+        pdfDownloadUrl = signedUrlData.signedUrl;
+      }
     }
+
+    const pdfLinkHtml = pdfDownloadUrl
+      ? `
+        <div style="margin: 24px 0; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px; background-color: #f9f9f9;">
+          <p style="margin: 0 0 12px 0; font-size: 14px; color: #555;">Oferta do pobrania:</p>
+          <a href="${pdfDownloadUrl}" target="_blank" style="display: inline-block; padding: 12px 24px; background-color: #d3bb73; color: #1c1f33; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px;">Pobierz ofertę PDF</a>
+          <p style="margin: 12px 0 0 0; font-size: 12px; color: #999;">Link jest ważny przez 7 dni.</p>
+        </div>
+      `
+      : '';
+
+    const htmlBody = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <p>${message.replace(/\n/g, '<br>')}</p>
+        ${pdfLinkHtml}
+        ${emailAccount.signature || ''}
+      </div>
+    `;
 
     const relayPayload = {
       smtpConfig: {
@@ -158,7 +174,6 @@ Deno.serve(async (req: Request) => {
       to,
       subject,
       body: htmlBody,
-      attachments,
     };
 
     const relayResponse = await fetch(`${relayUrl}/api/send-email`, {
