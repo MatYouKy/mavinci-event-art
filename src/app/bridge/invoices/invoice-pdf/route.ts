@@ -56,14 +56,38 @@ async function getOrCreateInvoiceFolderId({
   throw rpc.error || new Error('Nie udalo sie uzyskac folderu Faktury');
 }
 
+async function inlineExternalImages(rawHtml: string): Promise<string> {
+  const imgRegex = /<img\s+([^>]*?)src="(https?:\/\/[^"]+)"([^>]*?)>/gi;
+  let result = rawHtml;
+  const matches = Array.from(rawHtml.matchAll(imgRegex));
+
+  for (const match of matches) {
+    const fullTag = match[0];
+    const url = match[2];
+    try {
+      const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      if (!resp.ok) continue;
+      const buf = Buffer.from(await resp.arrayBuffer());
+      const contentType = resp.headers.get('content-type') || 'image/png';
+      const dataUri = `data:${contentType};base64,${buf.toString('base64')}`;
+      result = result.replace(fullTag, fullTag.replace(url, dataUri));
+    } catch {
+      // skip
+    }
+  }
+  return result;
+}
+
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as Body;
-    const { html, fileName, invoiceId, eventId, createdBy, previousPdfPath } = body;
+    const { html: rawHtml, fileName, invoiceId, eventId, createdBy, previousPdfPath } = body;
 
-    if (!html) {
+    if (!rawHtml) {
       return NextResponse.json({ error: 'Brak HTML do wygenerowania PDF' }, { status: 400 });
     }
+
+    const html = await inlineExternalImages(rawHtml);
 
     const browser = await chromium.launch({
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--font-render-hinting=medium'],
@@ -71,7 +95,7 @@ export async function POST(req: Request) {
 
     try {
       const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'networkidle' });
+      await page.setContent(html, { waitUntil: 'load' });
 
       await page.evaluate(async () => {
         // @ts-ignore
