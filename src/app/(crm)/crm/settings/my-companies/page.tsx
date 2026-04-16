@@ -1,17 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import {
-  Building2,
-  Plus,
-  CreditCard as Edit,
-  Trash2,
-  Check,
-  Star,
-  Save,
-  X,
-  Upload,
-} from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Building2, Plus, CreditCard as Edit, Trash2, Check, Star, Save, X, Upload, Image as ImageIcon } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
@@ -171,13 +161,13 @@ export default function MyCompaniesPage() {
               <div className="flex items-start justify-between">
                 <div className="flex gap-4">
                   {company.logo_url ? (
-                    <Image
-                      src={company.logo_url}
-                      alt={company.name}
-                      className="h-16 w-16 rounded-lg object-cover"
-                      width={64}
-                      height={64}
-                    />
+                    <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-lg bg-white p-1">
+                      <img
+                        src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/company-logos/${company.logo_url}`}
+                        alt={company.name}
+                        className="max-h-full max-w-full object-contain"
+                      />
+                    </div>
                   ) : (
                     <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-[#d3bb73]/10">
                       <Building2 className="h-8 w-8 text-[#d3bb73]" />
@@ -381,8 +371,85 @@ function CompanyModal({
     is_default: company?.is_default || false,
   });
   const [loading, setLoading] = useState(false);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(
+    company?.logo_url
+      ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/company-logos/${company.logo_url}`
+      : null,
+  );
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { showSnackbar } = useSnackbar();
+
+  const handleLogoFile = useCallback((file: File) => {
+    if (!file.type.startsWith('image/')) {
+      showSnackbar('Plik musi byc obrazem (PNG, JPG, SVG)', 'error');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      showSnackbar('Maksymalny rozmiar pliku to 5MB', 'error');
+      return;
+    }
+    setLogoFile(file);
+    const reader = new FileReader();
+    reader.onload = (e) => setLogoPreview(e.target?.result as string);
+    reader.readAsDataURL(file);
+  }, [showSnackbar]);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsDragging(false);
+      const file = e.dataTransfer.files[0];
+      if (file) handleLogoFile(file);
+    },
+    [handleLogoFile],
+  );
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  }, []);
+
+  const removeLogo = useCallback(() => {
+    setLogoFile(null);
+    setLogoPreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, []);
+
+  const uploadLogo = async (companyId: string): Promise<string | null> => {
+    if (!logoFile) {
+      if (!logoPreview && company?.logo_url) return null;
+      if (!logoPreview) return null;
+      return company?.logo_url || null;
+    }
+
+    setUploadingLogo(true);
+    try {
+      const ext = logoFile.name.split('.').pop() || 'png';
+      const path = `${companyId}/logo-${Date.now()}.${ext}`;
+
+      if (company?.logo_url) {
+        await supabase.storage.from('company-logos').remove([company.logo_url]);
+      }
+
+      const { error } = await supabase.storage
+        .from('company-logos')
+        .upload(path, logoFile, { contentType: logoFile.type, upsert: false });
+
+      if (error) throw error;
+      return path;
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -394,18 +461,35 @@ function CompanyModal({
 
     setLoading(true);
     try {
+      let savedId = company?.id;
+
       if (company) {
         const { error } = await supabase.from('my_companies').update(formData).eq('id', company.id);
-
         if (error) throw error;
-        showSnackbar('Firma zaktualizowana', 'success');
       } else {
-        const { error } = await supabase.from('my_companies').insert(formData);
-
+        const { data, error } = await supabase
+          .from('my_companies')
+          .insert(formData)
+          .select('id')
+          .single();
         if (error) throw error;
-        showSnackbar('Firma dodana', 'success');
+        savedId = data.id;
       }
 
+      if (savedId) {
+        const logoRemoved = !logoPreview && company?.logo_url;
+        if (logoRemoved) {
+          await supabase.storage.from('company-logos').remove([company!.logo_url!]);
+          await supabase.from('my_companies').update({ logo_url: null }).eq('id', savedId);
+        } else if (logoFile) {
+          const logoPath = await uploadLogo(savedId);
+          if (logoPath) {
+            await supabase.from('my_companies').update({ logo_url: logoPath }).eq('id', savedId);
+          }
+        }
+      }
+
+      showSnackbar(company ? 'Firma zaktualizowana' : 'Firma dodana', 'success');
       onSave();
     } catch (error: any) {
       showSnackbar(error.message || 'Błąd zapisu', 'error');
@@ -637,6 +721,76 @@ function CompanyModal({
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 placeholder="www.mavinci.pl"
               />
+            </div>
+
+            <div className="col-span-2">
+              <label className="mb-2 block text-sm text-[#e5e4e2]">Logotyp firmy (do faktur)</label>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleLogoFile(file);
+                }}
+              />
+              {logoPreview ? (
+                <div className="relative flex items-center gap-4 rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4">
+                  <div className="flex h-20 w-40 items-center justify-center overflow-hidden rounded-lg bg-white p-2">
+                    <img
+                      src={logoPreview}
+                      alt="Logo podglad"
+                      className="max-h-full max-w-full object-contain"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm text-[#e5e4e2] transition-colors hover:border-[#d3bb73]/40"
+                    >
+                      <Upload className="h-4 w-4" />
+                      Zmien
+                    </button>
+                    <button
+                      type="button"
+                      onClick={removeLogo}
+                      className="flex items-center gap-2 rounded-lg border border-red-400/20 px-4 py-2 text-sm text-red-400 transition-colors hover:border-red-400/40"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Usun
+                    </button>
+                  </div>
+                  {uploadingLogo && (
+                    <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/40">
+                      <div className="text-sm text-[#e5e4e2]">Przesylanie...</div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-6 py-8 transition-colors ${
+                    isDragging
+                      ? 'border-[#d3bb73] bg-[#d3bb73]/5'
+                      : 'border-[#d3bb73]/20 bg-[#0a0d1a] hover:border-[#d3bb73]/40'
+                  }`}
+                >
+                  <ImageIcon
+                    className={`mb-3 h-10 w-10 ${isDragging ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/30'}`}
+                  />
+                  <p className="text-sm text-[#e5e4e2]/60">
+                    {isDragging
+                      ? 'Upusc plik tutaj'
+                      : 'Przeciagnij logo lub kliknij aby wybrac'}
+                  </p>
+                  <p className="mt-1 text-xs text-[#e5e4e2]/40">PNG, JPG, SVG (max 5MB)</p>
+                </div>
+              )}
             </div>
 
             <div className="col-span-2 flex items-center gap-2">

@@ -536,6 +536,7 @@ export default function NewInvoicePage() {
         bank_name: selectedCompany.bank_name || '',
         bank_account: selectedCompany.bank_account || '',
         issue_place: selectedCompany.city,
+        company_logo_url: selectedCompany.logo_url || null,
         created_by: employee?.id,
         ...(invoiceType === 'corrective'
           ? {

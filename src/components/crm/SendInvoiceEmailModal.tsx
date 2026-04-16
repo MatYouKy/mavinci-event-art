@@ -140,7 +140,9 @@ W razie pytań proszę o kontakt.`,
       totalNet: invoice.total_net,
       totalVat: invoice.total_vat,
       totalGross: invoice.total_gross,
-      companyLogoUrl: invoice.company_logo_url,
+      companyLogoUrl: invoice.company_logo_url
+        ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/company-logos/${invoice.company_logo_url}`
+        : null,
       items: items.map((item) => ({
         positionNumber: item.position_number,
         name: item.name,

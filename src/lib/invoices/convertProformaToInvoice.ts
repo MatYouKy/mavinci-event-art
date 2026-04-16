@@ -108,6 +108,7 @@ export async function convertProformaToInvoice(proformaId: string): Promise<Conv
       payment_method: proforma.payment_method,
       bank_account: proforma.bank_account,
       issue_place: proforma.issue_place,
+      company_logo_url: proforma.company_logo_url || null,
 
       // Kwoty
       total_net: proforma.total_net,

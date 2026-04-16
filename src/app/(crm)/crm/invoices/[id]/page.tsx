@@ -250,7 +250,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
       totalVat: invoice.total_vat,
       totalGross: invoice.total_gross,
       companyLogoUrl: invoice.company_logo_url
-        ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/site-images/${invoice.company_logo_url}`
+        ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/company-logos/${invoice.company_logo_url}`
         : null,
       items: items.map((item) => ({
         positionNumber: item.position_number,
@@ -847,13 +847,21 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           >
             <div className="mb-12 flex items-start justify-between">
               <div className="flex items-center gap-4">
-                <Image
-                  src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/site-images/${invoice.company_logo_url || `https://mavinci.pl/shape-mavinci-black.png`}`}
-                  alt="Logo firmy"
-                  className="h-16 w-auto object-contain"
-                  width={128}
-                  height={128}
-                />
+                {invoice.company_logo_url ? (
+                  <img
+                    src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/company-logos/${invoice.company_logo_url}`}
+                    alt="Logo firmy"
+                    className="h-16 w-auto object-contain"
+                  />
+                ) : (
+                  <Image
+                    src="https://mavinci.pl/shape-mavinci-black.png"
+                    alt="Logo firmy"
+                    className="h-16 w-auto object-contain"
+                    width={128}
+                    height={128}
+                  />
+                )}
               </div>
               <div className="text-right text-sm">
                 <div className="mb-4">
