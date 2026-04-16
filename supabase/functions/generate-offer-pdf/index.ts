@@ -235,7 +235,8 @@ Deno.serve(async (req: Request) => {
       const borderWidth = config.border_width ?? 0.5;
       const borderColor = config.border_color ? hexToRgb(config.border_color) : rgb(0.8, 0.8, 0.8);
 
-      const tableWidth = width - marginLeft - marginRight;
+      const configTableWidth = config.table_width || 0;
+      const tableWidth = configTableWidth > 0 ? configTableWidth : (width - marginLeft - marginRight);
 
       const colWidths: Record<string, number> = {
         lp: config.col_lp_width || 30,
@@ -427,41 +428,34 @@ Deno.serve(async (req: Request) => {
         color: summaryColor,
       });
 
-      y -= 25;
+      y -= 15;
 
-      const summaryStartX = marginLeft + colWidths.lp + colWidths.name + colWidths.quantity + colWidths.unit;
+      let colX = marginLeft + colWidths.lp + colWidths.name + colWidths.quantity + colWidths.unit;
+      if (showUnitPriceNet) colX += colWidths.unitPriceNet;
+      if (showVatColumn) colX += colWidths.vat;
 
-      let summaryX = summaryStartX;
-      if (showUnitPriceNet) summaryX += colWidths.unitPriceNet;
-      if (showVatColumn) summaryX += colWidths.vat;
+      const labelY = y;
+      const valueY = y - (headerFontSize + 4);
 
       if (showValueNet) {
         const labelText = 'SUMA NETTO:';
         const labelW = boldFont.widthOfTextAtSize(labelText, headerFontSize - 1);
-        page.drawText(labelText, { x: summaryX - labelW - 5, y: y, size: headerFontSize - 1, font: boldFont, color: summaryLabelColor });
+        page.drawText(labelText, { x: colX + colWidths.valueNet - labelW - 5, y: labelY, size: headerFontSize - 1, font: boldFont, color: summaryLabelColor });
 
         const totalNetText = `${totalNet.toFixed(2)} PLN`;
         const totalNetWidth = boldFont.widthOfTextAtSize(totalNetText, headerFontSize);
-        page.drawText(totalNetText, { x: summaryX + colWidths.valueNet - totalNetWidth - 5, y: y, size: headerFontSize, font: boldFont, color: summaryColor });
-        summaryX += colWidths.valueNet;
+        page.drawText(totalNetText, { x: colX + colWidths.valueNet - totalNetWidth - 5, y: valueY, size: headerFontSize, font: boldFont, color: summaryColor });
+        colX += colWidths.valueNet;
       }
 
       if (showValueGross) {
-        if (showValueNet) {
-          y -= 20;
-          summaryX = summaryStartX;
-          if (showUnitPriceNet) summaryX += colWidths.unitPriceNet;
-          if (showVatColumn) summaryX += colWidths.vat;
-          if (showValueNet) summaryX += colWidths.valueNet;
-        }
-
         const labelText = 'SUMA BRUTTO:';
         const labelW = boldFont.widthOfTextAtSize(labelText, headerFontSize - 1);
-        page.drawText(labelText, { x: summaryX - labelW - 5, y: y, size: headerFontSize - 1, font: boldFont, color: summaryLabelColor });
+        page.drawText(labelText, { x: colX + colWidths.valueGross - labelW - 5, y: labelY, size: headerFontSize - 1, font: boldFont, color: summaryLabelColor });
 
         const totalGrossText = `${totalGross.toFixed(2)} PLN`;
         const totalGrossWidth = boldFont.widthOfTextAtSize(totalGrossText, headerFontSize);
-        page.drawText(totalGrossText, { x: summaryX + colWidths.valueGross - totalGrossWidth - 5, y: y, size: headerFontSize, font: boldFont, color: summaryColor });
+        page.drawText(totalGrossText, { x: colX + colWidths.valueGross - totalGrossWidth - 5, y: valueY, size: headerFontSize, font: boldFont, color: summaryColor });
       }
 
       console.log(`Drew offer items table with ${offerItems.length} items, total net: ${totalNet.toFixed(2)} PLN, total gross: ${totalGross.toFixed(2)} PLN`);

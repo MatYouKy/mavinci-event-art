@@ -41,6 +41,7 @@ export interface PricingTableConfig {
   col_value_net_width: number;
   col_value_gross_width: number;
   summary_separator_thickness: number;
+  table_width: number;
 }
 
 const DEFAULT_CONFIG: PricingTableConfig = {
@@ -79,6 +80,7 @@ const DEFAULT_CONFIG: PricingTableConfig = {
   col_value_net_width: 80,
   col_value_gross_width: 80,
   summary_separator_thickness: 2,
+  table_width: 0,
 };
 
 interface PricingTableConfigEditorProps {
@@ -301,6 +303,10 @@ export default function PricingTableConfigEditor({
               <NumberInput label="Margines prawy" value={config.margin_right} onChange={(v) => update({ margin_right: v })} min={10} max={200} suffix="px" />
               <NumberInput label="VAT domyslny" value={config.vat_rate} onChange={(v) => update({ vat_rate: v })} min={0} max={100} suffix="%" />
             </div>
+            <NumberInput label="Szerokosc tabeli (0 = auto)" value={config.table_width} onChange={(v) => update({ table_width: v })} min={0} max={1200} suffix="px" />
+            <p className="text-[10px] text-[#e5e4e2]/30">
+              Ustaw 0 aby tabela wypelniala szerokosc strony minus marginesy
+            </p>
           </Section>
 
           <Section title="Kolory">
@@ -378,7 +384,7 @@ export default function PricingTableConfigEditor({
           <div className="mb-3 flex items-center justify-between">
             <span className="text-xs font-medium text-gray-500">Podglad tabeli</span>
             <span className="text-[10px] text-gray-400">
-              Y: {config.start_y}px | Marginesy: {config.margin_left}-{config.margin_right}px | Kolumny: {visibleCols()}
+              Y: {config.start_y}px | Marginesy: {config.margin_left}-{config.margin_right}px | Kolumny: {visibleCols()}{config.table_width > 0 ? ` | Szer: ${config.table_width}px` : ''}
             </span>
           </div>
 
