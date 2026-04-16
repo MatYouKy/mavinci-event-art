@@ -112,8 +112,8 @@ export async function POST(req: Request) {
         const supabase = getSupabaseAdmin();
 
         if (previousPdfPath) {
-          await supabase.storage.from('event-files').remove([previousPdfPath]);
-          await supabase.from('event_files').delete().eq('file_path', previousPdfPath);
+          await supabase.storage.from('event-files').remove([previousPdfPath]).catch(() => {});
+          await supabase.from('event_files').delete().eq('file_path', previousPdfPath).catch(() => {});
         }
 
         const folderId = await getOrCreateInvoiceFolderId({
@@ -128,11 +128,12 @@ export async function POST(req: Request) {
 
         const upload = await supabase.storage.from('event-files').upload(storagePath, pdfBuffer, {
           contentType: 'application/pdf',
-          upsert: false,
+          upsert: true,
         });
 
         if (upload.error) {
           console.error('Invoice PDF upload error:', upload.error);
+          storagePath = null;
         } else {
           const insertFile = await supabase.from('event_files').insert([
             {

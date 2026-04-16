@@ -116,6 +116,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   const [showKSeFModal, setShowKSeFModal] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [pdfPath, setPdfPath] = useState<string | null>(null);
+  const [lastBase64, setLastBase64] = useState<string | null>(null);
   const [emailSentCount, setEmailSentCount] = useState(0);
 
   useEffect(() => {
@@ -290,12 +291,15 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
       }
 
       const result = await response.json();
+      if (result.base64) {
+        setLastBase64(result.base64);
+      }
       if (result.storagePath) {
         setPdfPath(result.storagePath);
         setInvoice((prev) =>
           prev ? { ...prev, pdf_url: result.storagePath, pdf_generated_at: new Date().toISOString() } : null,
         );
-        showSnackbar('PDF wygenerowany i zapisany w plikach eventu', 'success');
+        showSnackbar('PDF wygenerowany i zapisany', 'success');
       } else {
         showSnackbar('PDF wygenerowany (brak powiazanego eventu do zapisu)', 'info');
       }
@@ -316,7 +320,30 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     return data.signedUrl;
   };
 
+  const downloadFromBase64 = (base64: string) => {
+    const byteChars = atob(base64);
+    const byteNumbers = new Array(byteChars.length);
+    for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
+    const blob = new Blob([new Uint8Array(byteNumbers)], { type: 'application/pdf' });
+    const blobUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = `Faktura_${invoice?.invoice_number}.pdf`;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+    }, 100);
+  };
+
   const handleDownloadPDF = async () => {
+    if (lastBase64) {
+      downloadFromBase64(lastBase64);
+      return;
+    }
+
     if (!pdfPath) {
       showSnackbar('Najpierw wygeneruj PDF', 'warning');
       return;
@@ -349,6 +376,21 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   };
 
   const handlePrintPDF = async () => {
+    if (lastBase64) {
+      const byteChars = atob(lastBase64);
+      const byteNumbers = new Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
+      const blob = new Blob([new Uint8Array(byteNumbers)], { type: 'application/pdf' });
+      const blobUrl = window.URL.createObjectURL(blob);
+      const printWindow = window.open(blobUrl, '_blank');
+      if (printWindow) {
+        printWindow.addEventListener('load', () => {
+          printWindow.print();
+        });
+      }
+      return;
+    }
+
     if (!pdfPath) {
       window.print();
       return;
