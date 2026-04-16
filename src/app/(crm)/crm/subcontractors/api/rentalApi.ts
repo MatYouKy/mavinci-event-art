@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase/browser';
 export const rentalApi = createApi({
   reducerPath: 'rentalApi',
   baseQuery: fakeBaseQuery(),
-  tagTypes: ['RentalEquipment'],
+  tagTypes: ['RentalEquipment', 'ServiceCatalog'],
   endpoints: (builder) => ({
     getRentalEquipmentDetails: builder.query<any, string>({
       async queryFn(id) {
@@ -125,6 +125,69 @@ export const rentalApi = createApi({
         { type: 'RentalEquipment', id: 'LIST' },
       ],
     }),
+
+    getServiceCatalogDetails: builder.query<any, string>({
+      async queryFn(id) {
+        const { data, error } = await supabase
+          .from('subcontractor_service_catalog')
+          .select(
+            `
+            *,
+            subcontractor:subcontractors(
+              id,
+              company_name,
+              organization:organizations(
+                id,
+                name,
+                email,
+                phone
+              )
+            )
+          `,
+          )
+          .eq('id', id)
+          .maybeSingle();
+
+        if (error) return { error: error as any };
+        if (!data) return { error: { message: 'Service not found' } as any };
+        return { data };
+      },
+      providesTags: (_res, _err, id) => [{ type: 'ServiceCatalog', id }],
+    }),
+
+    updateServiceCatalog: builder.mutation<any, { id: string; updates: any }>({
+      async queryFn({ id, updates }) {
+        const { data, error } = await supabase
+          .from('subcontractor_service_catalog')
+          .update(updates)
+          .eq('id', id)
+          .select()
+          .single();
+
+        if (error) return { error: error as any };
+        return { data };
+      },
+      invalidatesTags: (_res, _err, { id }) => [
+        { type: 'ServiceCatalog', id },
+        { type: 'ServiceCatalog', id: 'LIST' },
+      ],
+    }),
+
+    deleteServiceCatalog: builder.mutation<void, string>({
+      async queryFn(id) {
+        const { error } = await supabase
+          .from('subcontractor_service_catalog')
+          .delete()
+          .eq('id', id);
+
+        if (error) return { error: error as any };
+        return { data: undefined };
+      },
+      invalidatesTags: (_res, _err, id) => [
+        { type: 'ServiceCatalog', id },
+        { type: 'ServiceCatalog', id: 'LIST' },
+      ],
+    }),
   }),
 });
 
@@ -133,4 +196,7 @@ export const {
   useUpdateRentalEquipmentMutation,
   useGetAllRentalEquipmentQuery,
   useDeleteRentalEquipmentMutation,
+  useGetServiceCatalogDetailsQuery,
+  useUpdateServiceCatalogMutation,
+  useDeleteServiceCatalogMutation,
 } = rentalApi;

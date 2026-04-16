@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Plus, CreditCard as Edit, Trash2, Package, Truck, Wrench, Save, X } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Plus, Trash2, Package, Truck, Wrench, Save, X, Upload, Star, StarOff, ExternalLink } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useRouter } from 'next/navigation';
@@ -20,6 +20,12 @@ interface SubcontractorService {
   notes: string | null;
 }
 
+interface ServiceImage {
+  url: string;
+  title?: string;
+  isPrimary?: boolean;
+}
+
 interface ServiceCatalogItem {
   id: string;
   name: string;
@@ -36,6 +42,7 @@ interface ServiceCatalogItem {
   price_gross?: number;
   daily_price_net?: number;
   daily_price_gross?: number;
+  images?: ServiceImage[];
   warehouse_categories?: {
     id: string;
     name: string;
@@ -56,22 +63,68 @@ const serviceTypeConfig = {
     catalogRoute: '/crm/contacts',
   },
   services: {
-    label: 'Usługi',
+    label: 'Uslugi',
     icon: Wrench,
     color: 'green',
     catalogRoute: '/crm/offers/products',
   },
   rental: {
-    label: 'Wynajem sprzętu',
+    label: 'Wynajem sprzetu',
     icon: Package,
     color: 'purple',
     catalogRoute: '/crm/equipment',
   },
 };
 
+const compressImage = async (file: File, maxWidth = 1920, maxHeight = 1080, quality = 0.8): Promise<File> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth || height > maxHeight) {
+          if (width > height) {
+            if (width > maxWidth) { height *= maxWidth / width; width = maxWidth; }
+          } else {
+            if (height > maxHeight) { width *= maxHeight / height; height = maxHeight; }
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { reject(new Error('No canvas ctx')); return; }
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) { reject(new Error('Blob failed')); return; }
+            resolve(new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() }));
+          },
+          'image/jpeg',
+          quality,
+        );
+      };
+      img.onerror = (e) => reject(e);
+    };
+    reader.onerror = (e) => reject(e);
+  });
+};
+
+const compressThumbnail = async (file: File): Promise<File> => {
+  return compressImage(file, 400, 400, 0.7);
+};
+
 export default function SubcontractorServicesPanel({ subcontractorId, organizationId }: SubcontractorServicesPanelProps) {
   const { showSnackbar } = useSnackbar();
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [showAddItemModal, setShowAddItemModal] = useState(false);
   const [newItemName, setNewItemName] = useState('');
@@ -86,6 +139,8 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
   const [newItemVatRate, setNewItemVatRate] = useState<number>(23);
   const [newItemPriceNet, setNewItemPriceNet] = useState<number>(0);
   const [newItemPriceGross, setNewItemPriceGross] = useState<number>(0);
+  const [newItemImages, setNewItemImages] = useState<ServiceImage[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   const [services, setServices] = useState<SubcontractorService[]>([]);
   const [loading, setLoading] = useState(true);
@@ -93,22 +148,14 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
   const [selectedServiceType, setSelectedServiceType] = useState<ServiceType | null>(null);
   const [serviceNotes, setServiceNotes] = useState('');
 
-  // Katalogi dla każdego typu
   const [serviceCatalog, setServiceCatalog] = useState<ServiceCatalogItem[]>([]);
   const [equipmentCatalog, setEquipmentCatalog] = useState<ServiceCatalogItem[]>([]);
   const [transportCatalog, setTransportCatalog] = useState<ServiceCatalogItem[]>([]);
 
   const [activeTab, setActiveTab] = useState<ServiceType | null>(null);
 
-  useEffect(() => {
-    fetchServices();
-  }, [subcontractorId]);
-
-  useEffect(() => {
-    if (activeTab) {
-      fetchCatalog(activeTab);
-    }
-  }, [activeTab]);
+  useEffect(() => { fetchServices(); }, [subcontractorId]);
+  useEffect(() => { if (activeTab) fetchCatalog(activeTab); }, [activeTab]);
 
   const fetchServices = async () => {
     try {
@@ -120,16 +167,10 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
         .order('service_type');
 
       if (error) throw error;
-
       setServices(data || []);
-
-      // Auto-select pierwszy aktywny serwis
-      if (data && data.length > 0) {
-        setActiveTab(data[0].service_type as ServiceType);
-      }
+      if (data && data.length > 0) setActiveTab(data[0].service_type as ServiceType);
     } catch (error: any) {
-      console.error('Error fetching services:', error);
-      showSnackbar('Błąd podczas ładowania usług', 'error');
+      showSnackbar('Blad podczas ladowania uslug', 'error');
     } finally {
       setLoading(false);
     }
@@ -141,26 +182,13 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
       let setter: (items: ServiceCatalogItem[]) => void = () => {};
 
       switch (serviceType) {
-        case 'services':
-          tableName = 'subcontractor_service_catalog';
-          setter = setServiceCatalog;
-          break;
-        case 'rental':
-          tableName = 'subcontractor_rental_equipment';
-          setter = setEquipmentCatalog;
-          break;
-        case 'transport':
-          tableName = 'subcontractor_transport_catalog';
-          setter = setTransportCatalog;
-          break;
+        case 'services': tableName = 'subcontractor_service_catalog'; setter = setServiceCatalog; break;
+        case 'rental': tableName = 'subcontractor_rental_equipment'; setter = setEquipmentCatalog; break;
+        case 'transport': tableName = 'subcontractor_transport_catalog'; setter = setTransportCatalog; break;
       }
 
       let selectQuery = '*';
-
-      // Dla sprzętu wynajmu dołącz warehouse_categories
-      if (serviceType === 'rental') {
-        selectQuery = '*, warehouse_categories(id, name, level, parent_id)';
-      }
+      if (serviceType === 'rental') selectQuery = '*, warehouse_categories(id, name, level, parent_id)';
 
       const { data, error } = await supabase
         .from(tableName)
@@ -169,17 +197,14 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
         .order('name');
 
       if (error) throw error;
-
       setter((data as any) || []);
     } catch (error: any) {
-      console.error(`Error fetching ${serviceType} catalog:`, error);
-      showSnackbar(`Błąd podczas ładowania katalogu ${serviceTypeConfig[serviceType].label}`, 'error');
+      showSnackbar(`Blad podczas ladowania katalogu ${serviceTypeConfig[serviceType].label}`, 'error');
     }
   };
 
   const handleAddService = async () => {
     if (!selectedServiceType) return;
-
     try {
       const { error } = await supabase.from('subcontractor_services').insert({
         subcontractor_id: subcontractorId,
@@ -187,40 +212,28 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
         is_active: true,
         notes: serviceNotes || null,
       });
-
       if (error) throw error;
-
-      showSnackbar('Dodano typ usługi', 'success');
+      showSnackbar('Dodano typ uslugi', 'success');
       fetchServices();
       setShowAddService(false);
       setSelectedServiceType(null);
       setServiceNotes('');
       setActiveTab(selectedServiceType);
     } catch (error: any) {
-      console.error('Error adding service:', error);
-      showSnackbar('Błąd podczas dodawania usługi', 'error');
+      showSnackbar('Blad podczas dodawania uslugi', 'error');
     }
   };
 
   const handleRemoveService = async (serviceId: string, serviceType: ServiceType) => {
-    if (!confirm(`Czy na pewno chcesz usunąć typ usługi "${serviceTypeConfig[serviceType].label}"?`)) {
-      return;
-    }
-
+    if (!confirm(`Czy na pewno chcesz usunac typ uslugi "${serviceTypeConfig[serviceType].label}"?`)) return;
     try {
       const { error } = await supabase.from('subcontractor_services').delete().eq('id', serviceId);
-
       if (error) throw error;
-
-      showSnackbar('Usunięto typ usługi', 'success');
+      showSnackbar('Usunieto typ uslugi', 'success');
       fetchServices();
-
-      if (activeTab === serviceType) {
-        setActiveTab(null);
-      }
+      if (activeTab === serviceType) setActiveTab(null);
     } catch (error: any) {
-      console.error('Error removing service:', error);
-      showSnackbar('Błąd podczas usuwania usługi', 'error');
+      showSnackbar('Blad podczas usuwania uslugi', 'error');
     }
   };
 
@@ -230,36 +243,80 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
         .from('subcontractor_services')
         .update({ is_active: !currentActive })
         .eq('id', serviceId);
-
       if (error) throw error;
-
-      showSnackbar(currentActive ? 'Dezaktywowano usługę' : 'Aktywowano usługę', 'success');
+      showSnackbar(currentActive ? 'Dezaktywowano usluge' : 'Aktywowano usluge', 'success');
       fetchServices();
     } catch (error: any) {
-      console.error('Error toggling service:', error);
-      showSnackbar('Błąd podczas zmiany statusu usługi', 'error');
+      showSnackbar('Blad podczas zmiany statusu uslugi', 'error');
     }
   };
 
   const getCatalogItems = () => {
     switch (activeTab) {
-      case 'services':
-        return serviceCatalog;
-      case 'rental':
-        return equipmentCatalog;
-      case 'transport':
-        return transportCatalog;
-      default:
-        return [];
+      case 'services': return serviceCatalog;
+      case 'rental': return equipmentCatalog;
+      case 'transport': return transportCatalog;
+      default: return [];
     }
   };
 
   const handleViewInCatalog = (item: ServiceCatalogItem) => {
     if (activeTab === 'services') {
-      router.push(`/crm/offers/products/${item.id}`);
+      router.push(`/crm/subcontractors/service/${item.id}`);
     } else if (activeTab === 'rental') {
       router.push(`/crm/subcontractors/rental/${item.id}`);
     }
+  };
+
+  const handleUploadImages = async (files: FileList) => {
+    if (!files.length) return;
+    setUploading(true);
+    const tempId = `temp-${Date.now()}`;
+    const uploaded: ServiceImage[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (!file.type.startsWith('image/')) continue;
+      if (file.size > 10 * 1024 * 1024) { showSnackbar(`${file.name} przekracza 10MB`, 'error'); continue; }
+
+      try {
+        const compressed = await compressImage(file);
+        const fileName = `${tempId}/${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('service-catalog-images')
+          .upload(fileName, compressed);
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage.from('service-catalog-images').getPublicUrl(fileName);
+
+        uploaded.push({
+          url: publicUrl,
+          title: file.name,
+          isPrimary: newItemImages.length === 0 && i === 0,
+        });
+      } catch (err: any) {
+        showSnackbar(`Blad przesylania ${file.name}`, 'error');
+      }
+    }
+
+    if (uploaded.length > 0) {
+      setNewItemImages((prev) => [...prev, ...uploaded]);
+    }
+    setUploading(false);
+  };
+
+  const handleRemoveNewImage = async (url: string) => {
+    const fileName = url.split('/service-catalog-images/').pop();
+    if (fileName) {
+      await supabase.storage.from('service-catalog-images').remove([fileName]);
+    }
+    setNewItemImages((prev) => prev.filter((img) => img.url !== url));
+  };
+
+  const handleSetPrimaryNewImage = (url: string) => {
+    setNewItemImages((prev) => prev.map((img) => ({ ...img, isPrimary: img.url === url })));
   };
 
   const handleAddNewItem = async () => {
@@ -283,6 +340,8 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
           insertData.vat_rate = newItemVatRate;
           insertData.price_net = newItemPriceNet;
           insertData.price_gross = newItemPriceGross;
+          insertData.images = newItemImages;
+          insertData.thumbnail_url = newItemImages.find((img) => img.isPrimary)?.url || newItemImages[0]?.url || null;
           break;
         case 'rental':
           tableName = 'subcontractor_rental_equipment';
@@ -303,67 +362,51 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
           break;
       }
 
-      const { data, error } = await supabase
-        .from(tableName)
-        .insert(insertData)
-        .select()
-        .single();
-
+      const { error } = await supabase.from(tableName).insert(insertData).select().single();
       if (error) throw error;
 
-      showSnackbar('Dodano pozycję do katalogu', 'success');
-      setShowAddItemModal(false);
-      setNewItemName('');
-      setNewItemDescription('');
-      setNewItemPrice(0);
-      setNewItemUnit('szt');
-      setNewItemCategory('');
-      setNewItemQuantity(1);
-      setNewItemWeeklyPrice(0);
-      setNewItemMonthlyPrice(0);
-      setNewItemRequiredSkills('');
-      setNewItemVatRate(23);
-      setNewItemPriceNet(0);
-      setNewItemPriceGross(0);
-
-      // Odśwież katalog
+      showSnackbar('Dodano pozycje do katalogu', 'success');
+      resetAddItemForm();
       fetchCatalog(activeTab);
     } catch (error: any) {
-      console.error('Error adding catalog item:', error);
-      showSnackbar(error.message || 'Błąd podczas dodawania pozycji', 'error');
+      showSnackbar(error.message || 'Blad podczas dodawania pozycji', 'error');
     }
+  };
+
+  const resetAddItemForm = () => {
+    setShowAddItemModal(false);
+    setNewItemName('');
+    setNewItemDescription('');
+    setNewItemPrice(0);
+    setNewItemUnit('szt');
+    setNewItemCategory('');
+    setNewItemQuantity(1);
+    setNewItemWeeklyPrice(0);
+    setNewItemMonthlyPrice(0);
+    setNewItemRequiredSkills('');
+    setNewItemVatRate(23);
+    setNewItemPriceNet(0);
+    setNewItemPriceGross(0);
+    setNewItemImages([]);
   };
 
   const handleDeleteCatalogItem = async (itemId: string, itemName: string) => {
     if (!activeTab) return;
-
-    if (!confirm(`Czy na pewno chcesz usunąć "${itemName}"? Ta operacja jest nieodwracalna.`)) {
-      return;
-    }
+    if (!confirm(`Czy na pewno chcesz usunac "${itemName}"? Ta operacja jest nieodwracalna.`)) return;
 
     try {
       let tableName = '';
       switch (activeTab) {
-        case 'services':
-          tableName = 'subcontractor_service_catalog';
-          break;
-        case 'rental':
-          tableName = 'subcontractor_rental_equipment';
-          break;
-        case 'transport':
-          tableName = 'subcontractor_transport_catalog';
-          break;
+        case 'services': tableName = 'subcontractor_service_catalog'; break;
+        case 'rental': tableName = 'subcontractor_rental_equipment'; break;
+        case 'transport': tableName = 'subcontractor_transport_catalog'; break;
       }
-
       const { error } = await supabase.from(tableName).delete().eq('id', itemId);
-
       if (error) throw error;
-
-      showSnackbar('Usunięto pozycję z katalogu', 'success');
+      showSnackbar('Usunieto pozycje z katalogu', 'success');
       fetchCatalog(activeTab);
     } catch (error: any) {
-      console.error('Error deleting catalog item:', error);
-      showSnackbar(error.message || 'Błąd podczas usuwania pozycji', 'error');
+      showSnackbar(error.message || 'Blad podczas usuwania pozycji', 'error');
     }
   };
 
@@ -377,34 +420,30 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
 
   return (
     <div className="space-y-6">
-      {/* Header z przyciskiem dodawania */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-white">Świadczone usługi</h2>
-          <p className="text-sm text-gray-400">Typy usług oferowanych przez podwykonawcę</p>
+          <h2 className="text-xl font-semibold text-white">Swiadczone uslugi</h2>
+          <p className="text-sm text-gray-400">Typy uslug oferowanych przez podwykonawce</p>
         </div>
         <button
           onClick={() => setShowAddService(true)}
           className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#0f1119] hover:bg-[#c4a859]"
         >
           <Plus className="h-4 w-4" />
-          Dodaj typ usługi
+          Dodaj typ uslugi
         </button>
       </div>
 
-      {/* Modal dodawania usługi */}
       {showAddService && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="w-full max-w-md rounded-lg bg-[#1a1d2e] p-6">
-            <h3 className="mb-4 text-lg font-semibold text-white">Dodaj typ usługi</h3>
-
+            <h3 className="mb-4 text-lg font-semibold text-white">Dodaj typ uslugi</h3>
             <div className="mb-4 space-y-3">
               {(Object.keys(serviceTypeConfig) as ServiceType[])
                 .filter((type) => !services.find((s) => s.service_type === type))
                 .map((type) => {
                   const config = serviceTypeConfig[type];
                   const Icon = config.icon;
-
                   return (
                     <button
                       key={type}
@@ -421,7 +460,6 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                   );
                 })}
             </div>
-
             {selectedServiceType && (
               <div className="mb-4">
                 <label className="mb-2 block text-sm text-gray-400">Notatki (opcjonalne)</label>
@@ -434,7 +472,6 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                 />
               </div>
             )}
-
             <div className="flex gap-3">
               <button
                 onClick={handleAddService}
@@ -445,11 +482,7 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                 Dodaj
               </button>
               <button
-                onClick={() => {
-                  setShowAddService(false);
-                  setSelectedServiceType(null);
-                  setServiceNotes('');
-                }}
+                onClick={() => { setShowAddService(false); setSelectedServiceType(null); setServiceNotes(''); }}
                 className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-white hover:bg-gray-600"
               >
                 <X className="h-4 w-4" />
@@ -460,20 +493,17 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
         </div>
       )}
 
-      {/* Lista usług */}
       {services.length === 0 ? (
         <div className="rounded-lg border border-gray-700 bg-[#1a1d2e] p-8 text-center">
           <Package className="mx-auto mb-3 h-12 w-12 text-gray-600" />
-          <p className="text-gray-400">Nie dodano żadnych typów usług</p>
+          <p className="text-gray-400">Nie dodano zadnych typow uslug</p>
         </div>
       ) : (
         <>
-          {/* Zakładki typów usług */}
           <div className="flex gap-2 border-b border-gray-700">
             {services.map((service) => {
               const config = serviceTypeConfig[service.service_type];
               const Icon = config.icon;
-
               return (
                 <button
                   key={service.id}
@@ -487,22 +517,17 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                   <Icon className="h-4 w-4" />
                   {config.label}
                   {!service.is_active && (
-                    <span className="rounded-full bg-red-900/30 px-2 py-0.5 text-xs text-red-400">
-                      Nieaktywny
-                    </span>
+                    <span className="rounded-full bg-red-900/30 px-2 py-0.5 text-xs text-red-400">Nieaktywny</span>
                   )}
                 </button>
               );
             })}
           </div>
 
-          {/* Zawartość aktywnej zakładki */}
           {activeTab && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-medium text-white">
-                  {serviceTypeConfig[activeTab].label}
-                </h3>
+                <h3 className="text-lg font-medium text-white">{serviceTypeConfig[activeTab].label}</h3>
                 <div className="flex gap-2">
                   {services.find((s) => s.service_type === activeTab) && (
                     <>
@@ -513,9 +538,7 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                         }}
                         className="rounded-lg bg-gray-700 px-3 py-1.5 text-sm text-white hover:bg-gray-600"
                       >
-                        {services.find((s) => s.service_type === activeTab)?.is_active
-                          ? 'Dezaktywuj'
-                          : 'Aktywuj'}
+                        {services.find((s) => s.service_type === activeTab)?.is_active ? 'Dezaktywuj' : 'Aktywuj'}
                       </button>
                       <button
                         onClick={() => {
@@ -531,26 +554,21 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                 </div>
               </div>
 
-              {/* Informacja o katalogu */}
               <div className="rounded-lg border border-blue-900/30 bg-blue-900/10 p-4">
                 <p className="text-sm text-blue-400">
-                  {activeTab === 'services' &&
-                    'Dodaj produkty/usługi jakie może świadczyć ten podwykonawca. Podobnie jak w systemie ofert.'}
-                  {activeTab === 'rental' &&
-                    'Dodaj sprzęt który możesz wynająć od tego podwykonawcy. Podobnie jak w magazynie.'}
-                  {activeTab === 'transport' &&
-                    'Dodaj pojazdy transportowe dostępne u tego podwykonawcy. (W przyszłości)'}
+                  {activeTab === 'services' && 'Dodaj produkty/uslugi jakie moze swiadczyc ten podwykonawca. Kliknij w pozycje aby zobaczyc szczegoly.'}
+                  {activeTab === 'rental' && 'Dodaj sprzet ktory mozesz wynajac od tego podwykonawcy. Kliknij w pozycje aby zobaczyc szczegoly.'}
+                  {activeTab === 'transport' && 'Dodaj pojazdy transportowe dostepne u tego podwykonawcy. (W przyszlosci)'}
                 </p>
               </div>
 
-              {/* Lista produktów w katalogu */}
               <div className="space-y-4">
                 <button
                   onClick={() => setShowAddItemModal(true)}
                   className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#0f1119] hover:bg-[#c4a859]"
                 >
                   <Plus className="h-4 w-4" />
-                  Dodaj pozycję do katalogu
+                  Dodaj pozycje do katalogu
                 </button>
 
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -559,55 +577,64 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                       <p className="text-gray-400">Brak pozycji w katalogu</p>
                     </div>
                   ) : (
-                  getCatalogItems().map((item) => (
-                    <div
-                      key={item.id}
-                      className="relative rounded-lg border border-gray-700 bg-[#1a1d2e] p-4 transition-colors hover:border-[#d3bb73]"
-                    >
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteCatalogItem(item.id, item.name);
-                        }}
-                        className="absolute right-2 top-2 z-10 rounded-lg border border-red-500/20 bg-red-900/30 p-2 text-red-400 transition-colors hover:bg-red-900/50"
-                        title="Usuń pozycję"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                    getCatalogItems().map((item) => (
                       <div
-                        onClick={() => handleViewInCatalog(item)}
-                        className="cursor-pointer"
+                        key={item.id}
+                        className="group relative rounded-lg border border-gray-700 bg-[#1a1d2e] transition-colors hover:border-[#d3bb73]"
                       >
-                        {item.thumbnail_url && (
-                          <img
-                            src={item.thumbnail_url}
-                            alt={item.name}
-                            className="mb-3 h-32 w-full rounded-lg object-cover"
-                          />
-                        )}
-                        <h4 className="mb-1 font-medium text-white">{item.name}</h4>
-                        {item.description && (
-                          <p className="mb-2 line-clamp-2 text-sm text-gray-400">{item.description}</p>
-                        )}
-                        {(item.warehouse_categories?.name || item.category) && (
-                          <span className="inline-block rounded-full bg-[#d3bb73]/10 px-2 py-1 text-xs text-[#d3bb73]">
-                            {item.warehouse_categories?.name || item.category}
-                          </span>
-                        )}
-                        <div className="mt-3 flex items-center justify-between border-t border-gray-700 pt-3 text-sm">
-                          {item.unit_price && (
-                            <span className="text-green-400">{item.unit_price} zł / {item.unit}</span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDeleteCatalogItem(item.id, item.name); }}
+                          className="absolute right-2 top-2 z-10 rounded-lg border border-red-500/20 bg-red-900/30 p-2 text-red-400 opacity-0 transition-all hover:bg-red-900/50 group-hover:opacity-100"
+                          title="Usun pozycje"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                        <div
+                          onClick={() => handleViewInCatalog(item)}
+                          className="cursor-pointer"
+                        >
+                          {item.thumbnail_url ? (
+                            <img
+                              src={item.thumbnail_url}
+                              alt={item.name}
+                              className="h-40 w-full rounded-t-lg object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-40 w-full items-center justify-center rounded-t-lg bg-[#252837]">
+                              <Package className="h-12 w-12 text-gray-600" />
+                            </div>
                           )}
-                          {item.daily_rental_price && (
-                            <span className="text-green-400">{item.daily_rental_price} zł / dzień</span>
-                          )}
-                          {!item.is_active && (
-                            <span className="text-xs text-red-400">Nieaktywny</span>
-                          )}
+                          <div className="p-4">
+                            <div className="mb-1 flex items-center gap-2">
+                              <h4 className="font-medium text-white">{item.name}</h4>
+                              <ExternalLink className="h-3.5 w-3.5 text-gray-500 opacity-0 transition-opacity group-hover:opacity-100" />
+                            </div>
+                            {item.description && (
+                              <p className="mb-2 line-clamp-2 text-sm text-gray-400">{item.description}</p>
+                            )}
+                            {(item.warehouse_categories?.name || item.category) && (
+                              <span className="inline-block rounded-full bg-[#d3bb73]/10 px-2 py-1 text-xs text-[#d3bb73]">
+                                {item.warehouse_categories?.name || item.category}
+                              </span>
+                            )}
+                            <div className="mt-3 flex items-center justify-between border-t border-gray-700 pt-3 text-sm">
+                              {item.unit_price != null && item.unit_price > 0 && (
+                                <span className="text-green-400">{item.unit_price} zl / {item.unit}</span>
+                              )}
+                              {item.price_net != null && item.price_net > 0 && !item.unit_price && (
+                                <span className="text-green-400">{item.price_net} zl netto</span>
+                              )}
+                              {item.daily_rental_price != null && item.daily_rental_price > 0 && (
+                                <span className="text-green-400">{item.daily_rental_price} zl / dzien</span>
+                              )}
+                              {!item.is_active && (
+                                <span className="text-xs text-red-400">Nieaktywny</span>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))
+                    ))
                   )}
                 </div>
               </div>
@@ -616,15 +643,14 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
         </>
       )}
 
-      {/* Modal dodawania pozycji do katalogu */}
       {showAddItemModal && activeTab && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md rounded-lg bg-[#1a1d2e] p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-lg bg-[#1a1d2e] p-6">
             <h3 className="mb-4 text-lg font-semibold text-white">
-              Dodaj pozycję do katalogu: {serviceTypeConfig[activeTab].label}
+              Dodaj pozycje do katalogu: {serviceTypeConfig[activeTab].label}
             </h3>
 
-            <div className="space-y-4">
+            <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
               <div>
                 <label className="mb-2 block text-sm text-gray-400">Nazwa *</label>
                 <input
@@ -632,7 +658,7 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                   value={newItemName}
                   onChange={(e) => setNewItemName(e.target.value)}
                   className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
-                  placeholder="Nazwa usługi / sprzętu"
+                  placeholder="Nazwa uslugi / sprzetu"
                 />
               </div>
 
@@ -647,6 +673,69 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                 />
               </div>
 
+              {(activeTab === 'services' || activeTab === 'rental') && (
+                <>
+                  <div>
+                    <label className="mb-2 block text-sm text-gray-400">Zdjecia</label>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={(e) => { if (e.target.files) handleUploadImages(e.target.files); e.target.value = ''; }}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-700 p-4 text-sm text-gray-400 transition-colors hover:border-[#d3bb73] hover:text-[#d3bb73] disabled:opacity-50"
+                    >
+                      <Upload className="h-5 w-5" />
+                      {uploading ? 'Przesylanie...' : 'Kliknij aby dodac zdjecia (maks. 10MB)'}
+                    </button>
+
+                    {newItemImages.length > 0 && (
+                      <div className="mt-3">
+                        <p className="mb-2 text-xs text-gray-500">Kliknij gwiazdke aby ustawic miniature (thumbnail)</p>
+                        <div className="grid grid-cols-4 gap-2">
+                          {newItemImages.map((img, idx) => (
+                            <div key={idx} className="group/img relative aspect-square overflow-hidden rounded-lg border border-gray-700">
+                              <img src={img.url} alt={img.title || ''} className="h-full w-full object-cover" />
+                              {img.isPrimary && (
+                                <div className="absolute left-1 top-1 rounded-full bg-[#d3bb73] p-0.5">
+                                  <Star className="h-3 w-3 fill-[#0f1119] text-[#0f1119]" />
+                                </div>
+                              )}
+                              <div className="absolute inset-0 flex items-center justify-center gap-1 bg-black/60 opacity-0 transition-opacity group-hover/img:opacity-100">
+                                {!img.isPrimary && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSetPrimaryNewImage(img.url)}
+                                    className="rounded bg-[#d3bb73] p-1.5 hover:bg-[#c4a859]"
+                                    title="Ustaw jako miniature"
+                                  >
+                                    <StarOff className="h-3 w-3 text-[#0f1119]" />
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveNewImage(img.url)}
+                                  className="rounded bg-red-600 p-1.5 hover:bg-red-700"
+                                  title="Usun"
+                                >
+                                  <Trash2 className="h-3 w-3 text-white" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
               {activeTab === 'services' && (
                 <>
                   <div>
@@ -659,7 +748,6 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                       placeholder="np. Catering, Animacje, Dekoracje"
                     />
                   </div>
-
                   <div>
                     <label className="mb-2 block text-sm text-gray-400">Stawka VAT (%)</label>
                     <select
@@ -667,9 +755,7 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                       onChange={(e) => {
                         const vat = parseFloat(e.target.value);
                         setNewItemVatRate(vat);
-                        if (newItemPriceNet > 0) {
-                          setNewItemPriceGross(Number((newItemPriceNet * (1 + vat / 100)).toFixed(2)));
-                        }
+                        if (newItemPriceNet > 0) setNewItemPriceGross(Number((newItemPriceNet * (1 + vat / 100)).toFixed(2)));
                       }}
                       className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
                     >
@@ -679,7 +765,6 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                       <option value="23">23%</option>
                     </select>
                   </div>
-
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="mb-2 block text-sm text-gray-400">Cena netto (PLN)</label>
@@ -712,7 +797,6 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                       />
                     </div>
                   </div>
-
                   <div>
                     <label className="mb-2 block text-sm text-gray-400">Jednostka</label>
                     <input
@@ -720,7 +804,7 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                       value={newItemUnit}
                       onChange={(e) => setNewItemUnit(e.target.value)}
                       className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
-                      placeholder="szt, godz, usługa"
+                      placeholder="szt, godz, usluga"
                     />
                   </div>
                 </>
@@ -735,10 +819,9 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                       value={newItemCategory}
                       onChange={(e) => setNewItemCategory(e.target.value)}
                       className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
-                      placeholder="np. Nagłośnienie, Oświetlenie"
+                      placeholder="np. Naglosnienie, Oswietlenie"
                     />
                   </div>
-
                   <div>
                     <label className="mb-2 block text-sm text-gray-400">Stawka VAT (%)</label>
                     <select
@@ -746,9 +829,7 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                       onChange={(e) => {
                         const vat = parseFloat(e.target.value);
                         setNewItemVatRate(vat);
-                        if (newItemPriceNet > 0) {
-                          setNewItemPriceGross(Number((newItemPriceNet * (1 + vat / 100)).toFixed(2)));
-                        }
+                        if (newItemPriceNet > 0) setNewItemPriceGross(Number((newItemPriceNet * (1 + vat / 100)).toFixed(2)));
                       }}
                       className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
                     >
@@ -758,7 +839,6 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                       <option value="23">23%</option>
                     </select>
                   </div>
-
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="mb-2 block text-sm text-gray-400">Cena dzienna netto (PLN)</label>
@@ -793,9 +873,8 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                       />
                     </div>
                   </div>
-
                   <div>
-                    <label className="mb-2 block text-sm text-gray-400">Dostępna ilość</label>
+                    <label className="mb-2 block text-sm text-gray-400">Dostepna ilosc</label>
                     <input
                       type="number"
                       value={newItemQuantity}
@@ -804,15 +883,14 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                       min="1"
                     />
                   </div>
-
                   <div>
-                    <label className="mb-2 block text-sm text-gray-400">Wymagane umiejętności</label>
+                    <label className="mb-2 block text-sm text-gray-400">Wymagane umiejetnosci</label>
                     <input
                       type="text"
                       value={newItemRequiredSkills}
                       onChange={(e) => setNewItemRequiredSkills(e.target.value)}
                       className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
-                      placeholder="np. Operator dźwięku, Technik oświetlenia (oddziel przecinkami)"
+                      placeholder="np. Operator dzwieku, Technik oswietlenia (oddziel przecinkami)"
                     />
                   </div>
                 </>
@@ -822,28 +900,14 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
             <div className="mt-6 flex gap-3">
               <button
                 onClick={handleAddNewItem}
-                disabled={!newItemName.trim()}
+                disabled={!newItemName.trim() || uploading}
                 className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#0f1119] hover:bg-[#c4a859] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Save className="h-4 w-4" />
                 Dodaj
               </button>
               <button
-                onClick={() => {
-                  setShowAddItemModal(false);
-                  setNewItemName('');
-                  setNewItemDescription('');
-                  setNewItemPrice(0);
-                  setNewItemUnit('szt');
-                  setNewItemCategory('');
-                  setNewItemQuantity(1);
-                  setNewItemWeeklyPrice(0);
-                  setNewItemMonthlyPrice(0);
-                  setNewItemRequiredSkills('');
-                  setNewItemVatRate(23);
-                  setNewItemPriceNet(0);
-                  setNewItemPriceGross(0);
-                }}
+                onClick={resetAddItemForm}
                 className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-white hover:bg-gray-600"
               >
                 <X className="h-4 w-4" />
