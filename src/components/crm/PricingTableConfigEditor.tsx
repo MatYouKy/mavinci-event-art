@@ -293,7 +293,7 @@ export default function PricingTableConfigEditor({
       )}
 
       <div className="flex gap-4">
-        <div className="w-[280px] flex-shrink-0 space-y-1 overflow-y-auto" style={{ maxHeight: embedded ? 'calc(90vh - 180px)' : '600px' }}>
+        <div className="w-[300px] flex-shrink-0 space-y-1 overflow-y-auto mx-4" style={{ maxHeight: embedded ? 'calc(90vh - 180px)' : '600px' }}>
           <Section title="Pozycja i marginesy" defaultOpen>
             <div className="grid grid-cols-2 gap-2">
               <NumberInput label="Pozycja Y (px)" value={config.start_y} onChange={(v) => update({ start_y: v })} min={30} max={750} />

@@ -618,7 +618,7 @@ export default function OfferPageTemplatesEditor() {
       {/* Edytor tabeli wyceny */}
       {showTableConfigEditor && editingTemplate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="flex h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
+          <div className="flex h-[90vh] w-full max-w-7xl flex-col overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
             <div className="flex flex-shrink-0 items-center justify-between border-b border-[#d3bb73]/10 p-4">
               <div>
                 <h3 className="text-xl font-light text-[#e5e4e2]">
