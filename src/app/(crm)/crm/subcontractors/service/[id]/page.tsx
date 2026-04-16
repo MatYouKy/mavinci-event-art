@@ -206,7 +206,10 @@ export default function ServiceCatalogDetailPage() {
 
         const { error: uploadError } = await supabase.storage
           .from('service-catalog-images')
-          .upload(fileName, compressed);
+          .upload(fileName, compressed, {
+            contentType: 'image/jpeg',
+            upsert: false,
+          });
 
         if (uploadError) throw uploadError;
 
@@ -220,7 +223,8 @@ export default function ServiceCatalogDetailPage() {
           isPrimary: currentImages.length === 0 && newImages.length === 0,
         });
       } catch (error: any) {
-        showSnackbar(`Blad przesylania ${file.name}`, 'error');
+        console.error(`Upload error for ${file.name}:`, error);
+        showSnackbar(`Blad przesylania ${file.name}: ${error?.message || 'Nieznany blad'}`, 'error');
       } finally {
         setUploadingFiles((prev) => prev.filter((n) => n !== file.name));
       }
