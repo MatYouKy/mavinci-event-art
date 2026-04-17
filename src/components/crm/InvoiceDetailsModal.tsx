@@ -58,6 +58,9 @@ function formatPaymentMethod(raw: string | null | undefined): string {
 function formatBankAccount(value: string | null | undefined): string {
   if (!value) return '';
   const digits = value.replace(/\s+/g, '');
+  if (digits.length === 26) {
+    return `${digits.slice(0, 2)} ${digits.slice(2).replace(/(.{4})/g, '$1 ').trim()}`;
+  }
   return digits.replace(/(.{4})/g, '$1 ').trim();
 }
 
@@ -78,6 +81,7 @@ function buildFullAddress(c: MyCompanyData | null): string {
 
 export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetailsModalProps) {
   const [myCompany, setMyCompany] = useState<MyCompanyData | null>(null);
+  const [dbItems, setDbItems] = useState<any[]>([]);
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -106,6 +110,34 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
     };
   }, [invoice?.my_company_id]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadItems = async () => {
+      const hasJsonItems =
+        Array.isArray(invoice?.invoice_items) && invoice.invoice_items.length > 0;
+      if (hasJsonItems) {
+        setDbItems([]);
+        return;
+      }
+      if (!invoice?.invoice_id) {
+        setDbItems([]);
+        return;
+      }
+      const { data } = await supabase
+        .from('invoice_items')
+        .select(
+          'id,position_number,name,description,unit,quantity,price_net,vat_rate,value_net,vat_amount,value_gross',
+        )
+        .eq('invoice_id', invoice.invoice_id)
+        .order('position_number', { ascending: true });
+      if (!cancelled) setDbItems(Array.isArray(data) ? data : []);
+    };
+    loadItems();
+    return () => {
+      cancelled = true;
+    };
+  }, [invoice?.invoice_id, invoice?.invoice_items]);
+
   const handlePrint = () => {
     window.print();
   };
@@ -133,7 +165,7 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
   const items: any[] =
     Array.isArray(invoice.invoice_items) && invoice.invoice_items.length > 0
       ? invoice.invoice_items
-      : [];
+      : dbItems;
 
   const bankAccount =
     invoice.bank_account_number ||
@@ -451,17 +483,28 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
                             item.unit_price ??
                             item.netPrice ??
                             item.netUnitPrice ??
+                            item.price_net ??
                             null;
                           const netTotal =
                             item.netAmount ??
                             item.net_amount ??
+                            item.value_net ??
                             (netUnit != null ? Number(netUnit) * Number(qty) : null);
+                          const vatRateRaw =
+                            item.vatRate ?? item.vat_rate ?? item.taxRate ?? null;
                           const vatRate =
-                            item.vatRate || item.vat_rate || item.taxRate || displayVatRate;
+                            vatRateRaw == null
+                              ? displayVatRate
+                              : typeof vatRateRaw === 'number'
+                                ? `${vatRateRaw}%`
+                                : String(vatRateRaw).includes('%')
+                                  ? vatRateRaw
+                                  : `${vatRateRaw}%`;
                           const grossTotal =
                             item.grossAmount ??
                             item.gross_amount ??
                             item.grossPrice ??
+                            item.value_gross ??
                             null;
 
                           return (
