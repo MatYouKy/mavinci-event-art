@@ -577,9 +577,15 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
                         <tr className="border-b border-gray-100 last:border-b-0">
                           <td className="px-3 py-3 text-sm text-gray-900">1</td>
                           <td className="px-3 py-3 text-sm text-gray-900">
-                            <div className="font-medium">Faktura zbiorcza</div>
+                            <div className="font-medium">
+                              {isIssued
+                                ? 'Towary/usługi'
+                                : `Faktura od: ${invoice.seller_name || 'dostawcy'}`}
+                            </div>
                             <div className="mt-0.5 text-xs text-gray-500">
-                              Szczegółowe pozycje niedostępne w danych z KSeF
+                              {isIssued
+                                ? 'Szczegółowe pozycje niedostępne'
+                                : 'Szczegóły pozycji dostępne na oryginalnej fakturze sprzedawcy'}
                             </div>
                           </td>
                           <td className="px-3 py-3 text-right text-sm text-gray-900">1</td>
