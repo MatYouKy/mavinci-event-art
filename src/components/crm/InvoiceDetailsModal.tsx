@@ -71,6 +71,43 @@ function formatAmount(value: any, currency = 'PLN'): string {
   return `${n.toFixed(2)} ${currency}`;
 }
 
+function parseItemsFromXml(xml: string | null | undefined): any[] {
+  if (!xml || typeof xml !== 'string') return [];
+  try {
+    const wierszRegex = /<FaWiersz\b[^>]*>([\s\S]*?)<\/FaWiersz>/g;
+    const getTag = (src: string, tag: string): string | null => {
+      const m = src.match(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`));
+      return m ? m[1].trim() : null;
+    };
+    const items: any[] = [];
+    let match: RegExpExecArray | null;
+    while ((match = wierszRegex.exec(xml)) !== null) {
+      const block = match[1];
+      const name = getTag(block, 'P_7') || getTag(block, 'P_7A') || 'Pozycja';
+      const unit = getTag(block, 'P_8A') || 'szt.';
+      const qty = getTag(block, 'P_8B');
+      const unitNet = getTag(block, 'P_9A');
+      const net = getTag(block, 'P_11');
+      const vat = getTag(block, 'P_12');
+      const gross = getTag(block, 'P_11A');
+      const nrWiersza = getTag(block, 'NrWierszaFa');
+      items.push({
+        position_number: nrWiersza ? Number(nrWiersza) : items.length + 1,
+        name,
+        unit,
+        quantity: qty != null ? Number(qty) : 1,
+        price_net: unitNet != null ? Number(unitNet) : null,
+        value_net: net != null ? Number(net) : null,
+        vat_rate: vat != null && !Number.isNaN(Number(vat)) ? Number(vat) : vat,
+        value_gross: gross != null ? Number(gross) : null,
+      });
+    }
+    return items;
+  } catch {
+    return [];
+  }
+}
+
 function buildFullAddress(c: MyCompanyData | null): string {
   if (!c) return '';
   const streetLine = [c.street, c.building_number].filter(Boolean).join(' ');
@@ -162,10 +199,13 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
   };
   const displayVatRate = calculateVatRate();
 
+  const xmlItems = parseItemsFromXml(invoice?.xml_content);
   const items: any[] =
     Array.isArray(invoice.invoice_items) && invoice.invoice_items.length > 0
       ? invoice.invoice_items
-      : dbItems;
+      : dbItems.length > 0
+        ? dbItems
+        : xmlItems;
 
   const bankAccount =
     invoice.bank_account_number ||
