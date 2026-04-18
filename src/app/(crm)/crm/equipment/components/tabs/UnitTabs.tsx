@@ -1093,7 +1093,7 @@ export function UnitsTab({
                               min="1"
                               max="500"
                               value={quantityToAdd}
-                              onChange={(e) => setQuantityToAdd(parseInt(e.target.value) || 1)}
+                              onChange={(e) => setQuantityToAdd(parseInt(e.target.value))}
                               className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                               placeholder="np. 30"
                             />

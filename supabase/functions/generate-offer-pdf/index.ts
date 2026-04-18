@@ -328,7 +328,7 @@ Deno.serve(async (req: Request) => {
 
         const itemName = item.name || item.product?.name || 'Pozycja';
         const itemDesc = item.description || item.product?.description || '';
-        const quantity = item.quantity || 1;
+        const quantity = item.quantity;
         const unit = item.unit || 'szt';
         const unitPrice = item.unit_price || item.final_price || 0;
         const vatRate = item.product?.vat_rate || item.vat_rate || defaultVatRate;

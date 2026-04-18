@@ -69,7 +69,7 @@ export function AddStaffModal({
                 type="number"
                 min={1}
                 value={quantity}
-                onChange={(e) => setQuantity(Math.max(1, Number(e.target.value) || 1))}
+                onChange={(e) => setQuantity(Math.max(1, Number(e.target.value)))}
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
               />
             </div>

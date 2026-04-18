@@ -217,7 +217,7 @@ export function EventEquipmentRow({
                 <input
                   type="number"
                   min={1}
-                  max={maxSet || 1}
+                  max={maxSet}
                   value={draftQuantity}
                   onChange={(e) => setDraftQuantity(Number(e.target.value))}
                   className="w-16 rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-2 py-0.5 text-sm text-[#e5e4e2]"
@@ -225,7 +225,7 @@ export function EventEquipmentRow({
                 />
 
                 <span className="text-[#e5e4e2]/60">szt.</span>
-                <span className="text-[#e5e4e2]/40">max {maxSet || 1}</span>
+                <span className="text-[#e5e4e2]/40">max {maxSet}</span>
               </span>
             ) : (
               <span

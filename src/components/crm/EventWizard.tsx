@@ -45,7 +45,7 @@ const buildEventEquipmentRows = (selectedEquipment: any[], eventId: string) => {
 
       const base = {
         event_id: eventId,
-        quantity: Number(eq.quantity ?? 1) || 1,
+        quantity: Number(eq.quantity ?? 1),
         status: eq.status ?? 'reserved',
         notes: eq.notes ?? null,
         auto_added: !!eq.auto_added,
@@ -705,7 +705,7 @@ export default function EventWizard({
           const equipmentItems = manualEquipment.map((eq) => ({
             id: eq.id,
             type: eq.type || (eq.kit_id ? 'kit' : 'item'),
-            quantity: eq.quantity || 1,
+            quantity: eq.quantity,
             notes: eq.notes || undefined,
           }));
 

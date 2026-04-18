@@ -556,7 +556,7 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                 max={componentType === 'from_warehouse' ? newComponent.maxQuantity : undefined}
                 value={newComponent.quantity}
                 onChange={(e) => {
-                  const val = parseInt(e.target.value) || 1;
+                  const val = parseInt(e.target.value);
                   const maxQty =
                     componentType === 'from_warehouse' ? newComponent.maxQuantity : 999;
                   setNewComponent((p) => ({ ...p, quantity: Math.min(Math.max(val, 1), maxQty) }));

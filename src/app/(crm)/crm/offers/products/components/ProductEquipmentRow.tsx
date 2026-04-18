@@ -209,7 +209,7 @@ export const ProductEquipmentRow = ({
                 />
 
                 <span className="text-[#e5e4e2]/60">szt.</span>
-                {/* <span className="text-[#e5e4e2]/40">max {maxSet || 1}</span> */}
+                {/* <span className="text-[#e5e4e2]/40">max {maxSet}</span> */}
               </span>
             ) : (
               <span

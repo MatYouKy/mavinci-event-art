@@ -139,7 +139,7 @@ export const analyticsApi = createApi({
             analytics
               ?.filter((a) => a.time_on_page > 0)
               .reduce((acc, a) => acc + a.time_on_page, 0) /
-            (analytics?.filter((a) => a.time_on_page > 0).length || 1);
+            (analytics?.filter((a) => a.time_on_page > 0).length);
 
           const pageStats = (analytics || []).reduce((acc: any, curr) => {
             if (!acc[curr.page_url]) {
@@ -185,7 +185,7 @@ export const analyticsApi = createApi({
             return acc;
           }, {});
 
-          const totalDevices = analytics?.length || 1;
+          const totalDevices = analytics?.length;
           const deviceBreakdown = Object.entries(deviceStats)
             .map(([device_type, visits]) => ({
               device_type,
@@ -267,7 +267,7 @@ export const analyticsApi = createApi({
             analytics
               ?.filter((a) => a.time_on_page > 0)
               .reduce((acc, a) => acc + a.time_on_page, 0) /
-            (analytics?.filter((a) => a.time_on_page > 0).length || 1);
+            (analytics?.filter((a) => a.time_on_page > 0).length);
 
           const bounceRate = analytics
             ? (analytics.filter((a) => a.time_on_page < 10).length / visits) * 100

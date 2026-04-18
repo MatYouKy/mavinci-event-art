@@ -878,7 +878,7 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                     <input
                       type="number"
                       value={newItemQuantity}
-                      onChange={(e) => setNewItemQuantity(parseInt(e.target.value) || 1)}
+                      onChange={(e) => setNewItemQuantity(parseInt(e.target.value))}
                       className="w-full rounded-lg border border-gray-700 bg-[#252837] p-3 text-white focus:border-[#d3bb73] focus:outline-none"
                       min="1"
                     />

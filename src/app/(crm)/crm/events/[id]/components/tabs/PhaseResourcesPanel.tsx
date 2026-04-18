@@ -396,7 +396,7 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
                                 {itemName}
                               </p>
                               <p className="text-xs text-[#e5e4e2]/50">
-                                {itemType} • Ilość: {item.quantity || 1}
+                                {itemType} • Ilość: {item.quantity}
                               </p>
                               {item.notes && (
                                 <p className="text-xs text-[#e5e4e2]/50">{item.notes}</p>

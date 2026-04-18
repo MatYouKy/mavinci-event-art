@@ -429,7 +429,7 @@ export function AddEquipmentModal({
         ) : (
           <div className="space-y-1">
             {contents.map((c) => {
-              const totalQty = c.baseQty * Math.max(1, kitQty || 1);
+              const totalQty = c.baseQty * Math.max(1, kitQty);
               const metaParts: string[] = [];
               if (c.brand) metaParts.push(c.brand);
               if (c.model) metaParts.push(c.model);
@@ -537,17 +537,17 @@ export function AddEquipmentModal({
                 <input
                   type="number"
                   min={1}
-                  max={maxAdd || 1}
-                  value={Math.min(qty, maxAdd || 1)}
+                  max={maxAdd}
+                  value={Math.min(qty, maxAdd)}
                   onChange={(e) =>
-                    handleQuantityChange(type, id, parseInt(e.target.value || '1', 10) || 1)
+                    handleQuantityChange(type, id, parseInt(e.target.value || '1', 10))
                   }
                   className="flex-1 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2.5 text-base text-[#e5e4e2] focus:outline-none focus:ring-2 focus:ring-[#d3bb73]/50"
                 />
 
                 <div className="text-right">
                   <div className="text-sm font-medium text-[#d3bb73]">
-                    {Math.min(qty, maxAdd || 1)} / {maxAdd || 1}
+                    {Math.min(qty, maxAdd)} / {maxAdd}
                   </div>
                   <div className="text-xs text-[#e5e4e2]/40">możesz jeszcze dodać</div>
                 </div>
@@ -555,7 +555,7 @@ export function AddEquipmentModal({
             </div>
 
             {/* ✅ 2) ZAWARTOŚĆ KITU (osobno) */}
-            {type === 'kit' && renderKitContents(entity, Math.min(qty, maxAdd || 1))}
+            {type === 'kit' && renderKitContents(entity, Math.min(qty, maxAdd))}
 
             {/* 3) NOTATKI */}
             <input

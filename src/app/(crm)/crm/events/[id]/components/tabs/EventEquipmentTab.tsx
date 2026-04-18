@@ -250,7 +250,7 @@ function getEventEquipmentDisplay(row: any): {
         name: ki?.equipment_items?.name || 'Nieznany',
         brand: ki?.equipment_items?.brand || '', // ✅
         model: ki?.equipment_items?.model || '',
-        quantity: Number(ki?.quantity || 1),
+        quantity: Number(ki?.quantity),
       });
     }
   }
@@ -397,7 +397,7 @@ export const EventEquipmentTab: React.FC<{
   };
 
   const handleUpdateQuantity = async (rowId: string, newQty: number, maxSet: number) => {
-    const safe = Math.max(1, Math.min(newQty, maxSet || 1));
+    const safe = Math.max(1, Math.min(newQty, maxSet));
 
     if (safe !== newQty) {
       showSnackbar(`Maksymalnie możesz ustawić: ${maxSet} szt.`, 'error');
@@ -500,7 +500,7 @@ export const EventEquipmentTab: React.FC<{
             name: d.name,
             brand: d.brand,
             model: d.model,
-            quantity: Number(row?.quantity || 1),
+            quantity: Number(row?.quantity),
             category: d.categoryName,
             cable_length: d.cableLength,
             is_kit: d.isKit,
@@ -691,7 +691,7 @@ export const EventEquipmentTab: React.FC<{
     const key = getKeyForEventRow(row); // "kit-<id>"
     const avail = (availabilityByKey as any)?.[key];
     const limits = getUiLimits(avail);
-    const qty = Number(row?.quantity || 1);
+    const qty = Number(row?.quantity);
     const hasConflict = avail && avail.max_add < 0;
     const badge = getStatusBadge(row?.status, hasConflict);
 
@@ -813,9 +813,9 @@ export const EventEquipmentTab: React.FC<{
                 <input
                   type="number"
                   min={1}
-                  max={limits.maxSet || 1}
+                  max={limits.maxSet}
                   value={draftQuantity}
-                  onChange={(e) => setDraftQuantity(Number(e.target.value || 1))}
+                  onChange={(e) => setDraftQuantity(Number(e.target.value))}
                   className="w-16 rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-2 py-0.5 text-sm text-[#e5e4e2]"
                   autoFocus
                 />
@@ -901,7 +901,7 @@ export const EventEquipmentTab: React.FC<{
                 const name = eq?.name || it?.name;
                 const brand = eq?.brand || it?.brand || '';
                 const model = eq?.model || it?.model || '';
-                const perKit = Number(it?.quantity || 1);
+                const perKit = Number(it?.quantity);
 
                 const meta = [it.brand, it.model].filter(Boolean).join(' • ');
                 const total = perKit * qty;
@@ -982,7 +982,7 @@ export const EventEquipmentTab: React.FC<{
           rental_equipment_id: equipmentId,
           task_type: 'equipment_rental',
           task_name: `Wynajem: ${equipmentName}`,
-          description: `Wynajem od ${subcontractorName} - ${equipmentName} (${row.quantity || row.required_qty || 1} szt.)`,
+          description: `Wynajem od ${subcontractorName} - ${equipmentName} (${row.quantity || row.required_qty} szt.)`,
           status: 'planned',
           payment_type: 'fixed',
           fixed_price: 0,

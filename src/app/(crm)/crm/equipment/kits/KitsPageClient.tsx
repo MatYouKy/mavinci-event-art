@@ -452,7 +452,7 @@ export function KitsPageClient({ viewMode }: { viewMode: ViewMode }) {
     setKitItems((prev) =>
       prev.map((item, i) =>
         i === index
-          ? { ...item, [field]: field === 'quantity' ? parseInt(value) || 1 : value }
+          ? { ...item, [field]: field === 'quantity' ? parseInt(value) : value }
           : item,
       ),
     );

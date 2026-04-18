@@ -238,7 +238,7 @@ export default function KitsManagementModal({
   ) => {
     const updated = [...kitItems];
     if (field === 'quantity') {
-      const newQty = typeof value === 'number' ? value : parseInt(value) || 1;
+      const newQty = typeof value === 'number' ? value : parseInt(value);
 
       if (updated[index].equipment_id) {
         const equipmentItem = equipment.find((e) => e.id === updated[index].equipment_id);

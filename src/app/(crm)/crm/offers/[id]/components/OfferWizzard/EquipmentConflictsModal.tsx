@@ -212,7 +212,7 @@ export default function EquipmentConflictsModal<TOfferItem = any>({
                                   onClick={(e) => e.stopPropagation()}
                                   onChange={(e) => {
                                     e.stopPropagation();
-                                    const nextQty = Math.max(1, parseInt(e.target.value) || 1);
+                                    const nextQty = Math.max(1, parseInt(e.target.value));
                                     setSelectedAlt((prev) => ({
                                       ...prev,
                                       [key]: { item_id: a.item_id, qty: nextQty },

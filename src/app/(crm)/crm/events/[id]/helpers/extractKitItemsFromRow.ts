@@ -11,7 +11,7 @@ export function extractKitItemsFromRow(row: any): KitItemLine[] {
         name: ki?.equipment_items?.name || 'Nieznany',
         brand: ki?.equipment_items?.brand || '',
         model: ki?.equipment_items?.model || '',
-        quantity: Number(ki?.quantity || 1),
+        quantity: Number(ki?.quantity),
       });
     }
     return out;
@@ -26,7 +26,7 @@ export function extractKitItemsFromRow(row: any): KitItemLine[] {
         name: eq?.name || 'Nieznany',
         brand: eq?.brand || '',
         model: eq?.model || '',
-        quantity: Number(it?.quantity || eq?.quantity || 1),
+        quantity: Number(it?.quantity || eq?.quantity),
       });
     }
     return out;
