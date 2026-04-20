@@ -1,5 +1,5 @@
 import { Dispatch, SetStateAction } from 'react';
-import { EquipmentTabsCarouselType } from '../../types/equipment.types';
+import type { EquipmentTabsCarouselType } from '@/app/(crm)/crm/equipment/types/equipment.types';
 
 interface TabCarouselProps {
   activeTab: string;

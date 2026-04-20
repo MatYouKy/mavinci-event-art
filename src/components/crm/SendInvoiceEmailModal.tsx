@@ -115,6 +115,7 @@ W razie pytań proszę o kontakt.`,
     const items = (itemsRes.data || []) as InvoiceItem[];
   
     const html = buildInvoicePdfHtml({
+      isProforma: invoice.is_proforma,
       footerNote: invoice.footer_note,
       signatureName: invoice.signature_name,
       website: invoice.website,

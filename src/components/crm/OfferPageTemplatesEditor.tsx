@@ -1692,7 +1692,7 @@ function TextFieldsEditorModal({
                     <input
                       type="number"
                       value={Math.round(tablePosition.x)}
-                      onChange={(e) => setTablePosition((prev) => prev ? { ...prev, x: parseInt(e.target.value) || 0 } : prev)}
+                      onChange={(e) => setTablePosition((prev) => prev ? { ...prev, x: parseInt(e.target.value) } : prev)}
                       className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-cyan-400 focus:outline-none"
                     />
                   </div>
@@ -1701,7 +1701,7 @@ function TextFieldsEditorModal({
                     <input
                       type="number"
                       value={Math.round(tablePosition.y)}
-                      onChange={(e) => setTablePosition((prev) => prev ? { ...prev, y: parseInt(e.target.value) || 0 } : prev)}
+                      onChange={(e) => setTablePosition((prev) => prev ? { ...prev, y: parseInt(e.target.value) } : prev)}
                       className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-cyan-400 focus:outline-none"
                     />
                   </div>
@@ -1796,7 +1796,7 @@ function TextFieldsEditorModal({
                       type="number"
                       value={Math.round(selectedField.x)}
                       onChange={(e) =>
-                        handleUpdateField(selectedFieldIndex!, { x: parseInt(e.target.value) || 0 })
+                        handleUpdateField(selectedFieldIndex!, { x: parseInt(e.target.value) })
                       }
                       className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                     />
@@ -1807,7 +1807,7 @@ function TextFieldsEditorModal({
                       type="number"
                       value={Math.round(selectedField.y)}
                       onChange={(e) =>
-                        handleUpdateField(selectedFieldIndex!, { y: parseInt(e.target.value) || 0 })
+                        handleUpdateField(selectedFieldIndex!, { y: parseInt(e.target.value) })
                       }
                       className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                     />

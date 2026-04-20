@@ -5,6 +5,7 @@ import { ChevronDown, Package, Trash2, MoreVertical } from 'lucide-react';
 import Popover from '@/components/UI/Tooltip';
 import ResponsiveActionBar, { type Action } from '@/components/crm/ResponsiveActionBar';
 import { RequiredComponentsWarning } from '@/components/crm/RequiredComponentsWarning';
+import NextImage from 'next/image';
 
 type StatusBadge = { label: string; cls: string };
 
@@ -117,15 +118,19 @@ export function EventEquipmentRow({
           ) : row?.equipment?.thumbnail_url ? (
             <Popover
               trigger={
-                <img
+                <NextImage
                   src={row.equipment.thumbnail_url}
+                  width={40}
+                  height={40}
                   alt={row.equipment.name}
                   className="h-10 w-10 rounded border border-[#d3bb73]/20 object-cover"
                 />
               }
               content={
-                <img
+                <NextImage
                   src={row.equipment.thumbnail_url}
+                  width={40}
+                  height={40}
                   alt={row.equipment.name}
                   className="h-auto cursor-pointer rounded-lg object-contain transition-all"
                 />

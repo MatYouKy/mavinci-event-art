@@ -506,7 +506,7 @@ export default function NewInvoicePage() {
 
       const invoiceData = {
         invoice_number: invoiceNumber,
-        invoice_type: invoiceType === 'proforma' ? 'vat' : invoiceType,
+        invoice_type: invoiceType,
         is_proforma: invoiceType === 'proforma',
         status: invoiceType === 'proforma' ? 'proforma' : 'draft',
         footer_note: footerNote,
@@ -626,6 +626,8 @@ export default function NewInvoicePage() {
   };
 
   const totals = calculateTotals();
+
+  
 
   return (
     <div className="min-h-screen bg-[#0a0d1a] p-6">

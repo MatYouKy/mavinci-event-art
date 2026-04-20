@@ -9,6 +9,7 @@ import { Package, Search, Wrench, X } from 'lucide-react';
 import { useManageProduct } from '../hooks/useManageProduct';
 import { useKitByIdLazy } from '@/app/(crm)/crm/equipment/hooks/useKitByIdLazy';
 import Popover from '@/components/UI/Tooltip';
+import Image from 'next/image';
 
 export function AddEquipmentModal({
   productId,
@@ -46,7 +47,7 @@ export function AddEquipmentModal({
     categoryId: null,
     itemType: mode === 'kit' ? 'kits' : 'equipment',
     showCablesOnly: false,
-    limit: 50,
+    limit: 500,
     activeOnly: true,
   });
 
@@ -69,10 +70,7 @@ export function AddEquipmentModal({
   );
 
   const equipmentItems = useMemo(
-    () =>
-      (items ?? []).filter(
-        (x) => x.is_kit === false && !x.is_cable && !existingItemIds.includes(x.id),
-      ),
+    () => (items ?? []).filter((x) => !x.is_kit && !x.is_cable && !existingItemIds.includes(x.id)),
     [items, existingItemIds],
   );
 
@@ -449,7 +447,13 @@ const Thumb = ({
   isKitBadge?: boolean;
 }) => {
   const content = src ? (
-    <img src={src} alt={alt} className="h-auto max-w-[320px] rounded-lg object-contain" />
+    <Image
+      src={src}
+      alt={alt}
+      className="h-auto max-w-[320px] rounded-lg object-contain"
+      width={320}
+      height={320}
+    />
   ) : (
     <div className="flex h-56 w-56 items-center justify-center rounded-lg bg-[#0a0d1a]">
       <Package className="h-10 w-10 text-[#e5e4e2]/30" />
@@ -459,10 +463,12 @@ const Thumb = ({
   const trigger = (
     <div className="relative h-10 w-10 shrink-0">
       {src ? (
-        <img
+        <Image
           src={src}
           alt={alt}
           className="h-10 w-10 cursor-pointer rounded border border-[#d3bb73]/20 object-cover transition-all hover:ring-2 hover:ring-[#d3bb73]"
+          width={40}
+          height={40}
         />
       ) : (
         <div className="flex h-10 w-10 items-center justify-center rounded border border-[#d3bb73]/20 bg-[#1c1f33]">

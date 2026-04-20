@@ -7,7 +7,8 @@ import { PackageOpen, Search, Building2, DollarSign, Package, Eye, Trash2 } from
 import { useGetAllRentalEquipmentQuery, useDeleteRentalEquipmentMutation } from '../../subcontractors/api/rentalApi';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-
+import Image from 'next/image';
+  
 export default function RentalEquipmentListPage() {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
@@ -155,7 +156,9 @@ export default function RentalEquipmentListPage() {
               >
                 {item.thumbnail_url ? (
                   <div className="mb-4 aspect-video overflow-hidden rounded-lg">
-                    <img
+                    <Image
+                      width={100}
+                      height={100}
                       src={item.thumbnail_url}
                       alt={item.name}
                       className="h-full w-full object-cover transition-transform group-hover:scale-110"

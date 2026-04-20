@@ -15,6 +15,11 @@ import {
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
+function unwrapEmbedded<T>(raw: T | T[] | null | undefined): T | null {
+  if (raw == null) return null;
+  return Array.isArray(raw) ? raw[0] ?? null : raw;
+}
+
 interface DrivingLicense {
   id: string;
   license_category_id: string;
@@ -27,6 +32,7 @@ interface DrivingLicense {
     code: string;
     name: string;
     description: string | null;
+    order_index?: number;
   };
 }
 
@@ -87,9 +93,23 @@ export default function EmployeeDrivingLicensesPanel({
 
       if (error) throw error;
 
-      const sorted = (data || []).sort((a, b) => {
-        return (a.license_category.order_index || 0) - (b.license_category.order_index || 0);
+      const normalized: DrivingLicense[] = (data ?? []).map((row) => {
+        const cat = unwrapEmbedded(row.license_category);
+        return {
+          ...row,
+          license_category:
+            cat ?? {
+              id: row.license_category_id,
+              code: '—',
+              name: '—',
+              description: null,
+            },
+        };
       });
+
+      const sorted = [...normalized].sort(
+        (a, b) => (a.license_category.order_index ?? 0) - (b.license_category.order_index ?? 0),
+      );
 
       setLicenses(sorted);
     } catch (error) {

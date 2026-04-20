@@ -5,6 +5,7 @@ import { Plus, Trash2, Package, Truck, Wrench, Save, X, Upload, Star, StarOff, E
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useRouter } from 'next/navigation';
+import NextImage from 'next/image';
 
 interface SubcontractorServicesPanelProps {
   subcontractorId: string;
@@ -594,10 +595,12 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                           className="cursor-pointer"
                         >
                           {item.thumbnail_url ? (
-                            <img
+                            <NextImage
                               src={item.thumbnail_url}
                               alt={item.name}
                               className="h-40 w-full rounded-t-lg object-cover"
+                              width={160}
+                              height={160}
                             />
                           ) : (
                             <div className="flex h-40 w-full items-center justify-center rounded-t-lg bg-[#252837]">
@@ -701,7 +704,7 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                         <div className="grid grid-cols-4 gap-2">
                           {newItemImages.map((img, idx) => (
                             <div key={idx} className="group/img relative aspect-square overflow-hidden rounded-lg border border-gray-700">
-                              <img src={img.url} alt={img.title || ''} className="h-full w-full object-cover" />
+                              <NextImage src={img.url} alt={img.title || ''} className="h-full w-full object-cover" width={160} height={160} />
                               {img.isPrimary && (
                                 <div className="absolute left-1 top-1 rounded-full bg-[#d3bb73] p-0.5">
                                   <Star className="h-3 w-3 fill-[#0f1119] text-[#0f1119]" />
@@ -772,7 +775,7 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                         type="number"
                         value={newItemPriceNet}
                         onChange={(e) => {
-                          const net = parseFloat(e.target.value) || 0;
+                          const net = parseFloat(e.target.value);
                           setNewItemPriceNet(net);
                           setNewItemPriceGross(Number((net * (1 + newItemVatRate / 100)).toFixed(2)));
                           setNewItemPrice(Number((net * (1 + newItemVatRate / 100)).toFixed(2)));
@@ -787,7 +790,7 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                         type="number"
                         value={newItemPriceGross}
                         onChange={(e) => {
-                          const gross = parseFloat(e.target.value) || 0;
+                          const gross = parseFloat(e.target.value);
                           setNewItemPriceGross(gross);
                           setNewItemPriceNet(Number((gross / (1 + newItemVatRate / 100)).toFixed(2)));
                           setNewItemPrice(gross);
@@ -846,7 +849,7 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                         type="number"
                         value={newItemPriceNet}
                         onChange={(e) => {
-                          const net = parseFloat(e.target.value) || 0;
+                          const net = parseFloat(e.target.value);
                           setNewItemPriceNet(net);
                           const gross = Number((net * (1 + newItemVatRate / 100)).toFixed(2));
                           setNewItemPriceGross(gross);
@@ -862,7 +865,7 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                         type="number"
                         value={newItemPriceGross}
                         onChange={(e) => {
-                          const gross = parseFloat(e.target.value) || 0;
+                          const gross = parseFloat(e.target.value);
                           setNewItemPriceGross(gross);
                           const net = Number((gross / (1 + newItemVatRate / 100)).toFixed(2));
                           setNewItemPriceNet(net);

@@ -207,7 +207,7 @@ export default function NewEquipmentPage() {
           .update({
             total_quantity: initialQty,
             available_quantity: initialQty,
-            min_stock_level: parseInt(formData.min_stock_level) || 0,
+            min_stock_level: parseInt(formData.min_stock_level),
           })
           .eq('equipment_id', equipmentData.id);
 

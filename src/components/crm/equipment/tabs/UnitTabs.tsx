@@ -1,12 +1,14 @@
 import { EquipmentUnit } from '@/store/slices/equipmentSlice';
 import { useEffect, useMemo, useState } from 'react';
-import { CreditCard as Edit, X, Plus, Trash2, Upload, Package, History, Copy } from 'lucide-react';
+import {  X, Plus, Trash2, Upload, Package, Copy } from 'lucide-react';
 import { uploadImage } from '@/lib/storage';
 import { supabase } from '@/lib/supabase/browser';
 import { UpdateCableQuantityModal } from '../modals/UpdateCableQuantityModal';
 import { UnitEventsModal } from '../modals/UnitEventsModal';
-import { useUpdateCableQuantityMutation } from '../../store/equipmentApi';
-import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
+import { useUpdateCableQuantityMutation } from '../../../../app/(crm)/crm/equipment/store/equipmentApi';
+import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
+import Image from 'next/image';
+import { EquipmentUnitRow } from '../EquipmentUnitRow';
 
 /** ---------- flag types ---------- */
 type Flags = {
@@ -653,157 +655,21 @@ export function UnitsTab({
       ) : (
         <div className="space-y-3">
           {units.map((unit: EquipmentUnit) => {
-            const isUnavailable = unit.status === 'damaged' || unit.status === 'in_service';
-
-            const unitRowActions = useMemo(() => {
-              const canEdit = canEditHere && !flags.disable_units;
-
-              return (unit: any) => {
-                const items = [];
-
-                if (!flags.hide_events) {
-                  items.push({
-                    key: 'events',
-                    label: 'Historia zdarzeń',
-                    icon: <History className="h-4 w-4" />,
-                    onClick: () => handleShowEvents(unit),
-                    variant: 'default' as const,
-                  });
-                }
-
-                if (canEdit) {
-                  items.push(
-                    {
-                      key: 'duplicate',
-                      label: 'Duplikuj jednostkę',
-                      icon: <Copy className="h-4 w-4" />,
-                      onClick: () => handleDuplicateUnit(unit),
-                      variant: 'default' as const,
-                    },
-                    {
-                      key: 'edit',
-                      label: 'Edytuj',
-                      icon: <Edit className="h-4 w-4" />,
-                      onClick: () => handleOpenModal(unit),
-                      variant: 'primary' as const,
-                    },
-                    {
-                      key: 'delete',
-                      label: 'Usuń',
-                      icon: <Trash2 className="h-4 w-4" />,
-                      onClick: () => handleDeleteUnit(unit.id),
-                      variant: 'danger' as const,
-                    },
-                  );
-                }
-
-                return items;
-              };
-            }, [
-              canEditHere,
-              flags.disable_units,
-              flags.hide_events,
-              handleShowEvents,
-              handleDuplicateUnit,
-              handleOpenModal,
-              handleDeleteUnit,
-            ]);
             return (
-              <div
+              <EquipmentUnitRow
                 key={unit.id}
-                className={`rounded-xl border bg-[#1c1f33] p-4 ${
-                  isUnavailable ? 'border-red-500/20 opacity-60' : 'border-[#d3bb73]/10'
-                } ${selectedUnitIds.has(unit.id) ? 'ring-2 ring-[#d3bb73]' : ''}`}
-              >
-                <div className="flex items-start justify-between gap-4">
-                  {canEditHere && !flags.disable_units && (
-                    <div className="flex items-center pt-1">
-                      <input
-                        type="checkbox"
-                        checked={selectedUnitIds.has(unit.id)}
-                        onChange={() => handleToggleSelectUnit(unit.id)}
-                        className="h-5 w-5 rounded border-[#d3bb73]/20 text-[#d3bb73] focus:ring-[#d3bb73]"
-                      />
-                    </div>
-                  )}
-                  {unit.thumbnail_url && (
-                    <img
-                      src={unit.thumbnail_url}
-                      alt="Miniaturka"
-                      className="h-20 w-20 rounded-lg border border-[#d3bb73]/20 object-cover"
-                    />
-                  )}
-                  <div className="flex-1">
-                    <div className="mb-2 flex flex-wrap items-center gap-3">
-                      {flags.requires_serial ? (
-                        unit.unit_serial_number ? (
-                          <span className="font-mono font-medium text-[#e5e4e2]">
-                            SN: {unit.unit_serial_number}
-                          </span>
-                        ) : (
-                          <span className="italic text-[#e5e4e2]/60">Brak numeru seryjnego</span>
-                        )
-                      ) : unit.unit_serial_number ? (
-                        <span className="font-mono font-medium text-[#e5e4e2]">
-                          SN: {unit.unit_serial_number}
-                        </span>
-                      ) : null}
-
-                      <span className={`rounded px-2 py-1 text-xs ${statusColors[unit.status]}`}>
-                        {statusLabels[unit.status]}
-                      </span>
-
-                      {isUnavailable && (
-                        <span className="rounded border border-red-500/30 bg-red-500/20 px-2 py-1 text-xs text-red-300">
-                          Niedostępny
-                        </span>
-                      )}
-
-                      {unit.estimated_repair_date && isUnavailable && (
-                        <span className="text-xs text-[#e5e4e2]/60">
-                          Szac. dostępność:{' '}
-                          {new Date(unit.estimated_repair_date).toLocaleDateString('pl-PL')}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
-                      {unit.storage_locations && (
-                        <div>
-                          <span className="text-[#e5e4e2]/60">Lokalizacja:</span>{' '}
-                          <span className="text-[#e5e4e2]">{unit.storage_locations.name}</span>
-                        </div>
-                      )}
-                      {unit.purchase_date && (
-                        <div>
-                          <span className="text-[#e5e4e2]/60">Zakup:</span>{' '}
-                          <span className="text-[#e5e4e2]">
-                            {new Date(unit.purchase_date).toLocaleDateString('pl-PL')}
-                          </span>
-                        </div>
-                      )}
-                      {unit.last_service_date && (
-                        <div>
-                          <span className="text-[#e5e4e2]/60">Ostatni serwis:</span>{' '}
-                          <span className="text-[#e5e4e2]">
-                            {new Date(unit.last_service_date).toLocaleDateString('pl-PL')}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {unit.condition_notes && (
-                      <div className="mt-2 text-sm text-[#e5e4e2]/60">
-                        <span className="font-medium">Notatki:</span> {unit.condition_notes}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="ml-4 flex gap-2">
-                    <ResponsiveActionBar actions={unitRowActions(unit)} disabledBackground />
-                  </div>
-                </div>
-              </div>
+                unit={unit}
+                canEditHere={canEditHere}
+                flags={flags}
+                selected={selectedUnitIds.has(unit.id)}
+                onToggleSelect={handleToggleSelectUnit}
+                handleShowEvents={handleShowEvents}
+                handleDuplicateUnit={handleDuplicateUnit}
+                handleOpenModal={handleOpenModal}
+                handleDeleteUnit={handleDeleteUnit}
+                statusColors={statusColors}
+                statusLabels={statusLabels}
+              />
             );
           })}
         </div>
@@ -829,7 +695,7 @@ export function UnitsTab({
                       <input
                         type="number"
                         value={newQuantity}
-                        onChange={(e) => setNewQuantity(parseInt(e.target.value) || 0)}
+                        onChange={(e) => setNewQuantity(parseInt(e.target.value))}
                         min="0"
                         className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-3 text-lg text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                         placeholder="np. 50"
@@ -872,9 +738,11 @@ export function UnitsTab({
                     <div className="space-y-4">
                       {unitForm.thumbnail_url && (
                         <div className="relative mx-auto h-32 w-32">
-                          <img
+                          <Image
                             src={unitForm.thumbnail_url}
                             alt="Miniaturka"
+                            width={128}
+                            height={128}
                             className="h-full w-full rounded-lg border border-[#d3bb73]/20 object-cover"
                           />
                           {canEditHere && !flags.disable_units && (

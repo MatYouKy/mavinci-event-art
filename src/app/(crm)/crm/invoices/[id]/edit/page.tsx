@@ -434,13 +434,13 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         .maybeSingle();
 
       const signatureName =
-      [employee?.name, employee?.surname].filter(Boolean).join(' ').trim() ||
-      selectedCompany.signature_name ||
-      '';
+        [employee?.name, employee?.surname].filter(Boolean).join(' ').trim() ||
+        selectedCompany.signature_name ||
+        '';
 
       const invoiceData: Record<string, any> = {
         invoice_number: invoiceNumber,
-        invoice_type: invoiceType === 'proforma' ? 'vat' : invoiceType,
+        invoice_type: invoiceType,
         is_proforma: invoiceType === 'proforma',
         status: invoiceStatus,
         issue_date: issueDate,
@@ -592,12 +592,22 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
                 onChange={(e) => setInvoiceStatus(e.target.value)}
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
               >
-                <option value="draft">Szkic</option>
-                <option value="issued">Wystawiona</option>
-                <option value="sent">Wysłana</option>
-                <option value="paid">Opłacona</option>
-                <option value="overdue">Przeterminowana</option>
-                <option value="cancelled">Anulowana</option>
+                {invoiceType === 'proforma' ? (
+                  <>
+                    <option value="draft">Szkic</option>
+                    <option value="proforma">Proforma</option>
+                    <option value="cancelled">Anulowana</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="draft">Szkic</option>
+                    <option value="issued">Wystawiona</option>
+                    <option value="sent">Wysłana</option>
+                    <option value="paid">Opłacona</option>
+                    <option value="overdue">Przeterminowana</option>
+                    <option value="cancelled">Anulowana</option>
+                  </>
+                )}
               </select>
             </div>
 
@@ -895,7 +905,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
                 <input
                   type="number"
                   value={paymentDays}
-                  onChange={(e) => setPaymentDays(parseInt(e.target.value) || 0)}
+                  onChange={(e) => setPaymentDays(parseInt(e.target.value))}
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
                 />
               </div>
@@ -1025,7 +1035,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
                               step="0.01"
                               value={item.quantity}
                               onChange={(e) =>
-                                updateItem(index, 'quantity', parseFloat(e.target.value) || 0)
+                                updateItem(index, 'quantity', parseFloat(e.target.value))
                               }
                               className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
                             />
@@ -1040,7 +1050,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
                               step="0.01"
                               value={item.price_net}
                               onChange={(e) =>
-                                updateItem(index, 'price_net', parseFloat(e.target.value) || 0)
+                                updateItem(index, 'price_net', parseFloat(e.target.value))
                               }
                               className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
                             />

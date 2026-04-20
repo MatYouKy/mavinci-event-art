@@ -1,8 +1,12 @@
 import { uploadImage } from '@/lib/storage';
 import { useState } from 'react';
-import { UnitEventRow, UnitEventType } from '../../types/equipment.types';
+import {
+  UnitEventRow,
+  UnitEventType,
+} from '../../../../app/(crm)/crm/equipment/types/equipment.types';
 import { supabase } from '@/lib/supabase/browser';
 import { Plus, Upload, X, History } from 'lucide-react';
+import Image from 'next/image';
 
 interface IEquipmentEventForm {
   event_type: UnitEventType;
@@ -225,12 +229,12 @@ export function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
                     </select>
                     {eventForm.event_type === 'damage' && (
                       <p className="mt-1 text-xs text-red-400">
-                        Status zostanie zmieniony na "Uszkodzony"
+                        Status zostanie zmieniony na &quot;Uszkodzony&quot;
                       </p>
                     )}
                     {eventForm.event_type === 'repair' && (
                       <p className="mt-1 text-xs text-green-400">
-                        Status zostanie zmieniony na "Dostępny"
+                        Status zostanie zmieniony na &quot;Dostępny&quot;
                       </p>
                     )}
                     {eventForm.event_type === 'sold' && (
@@ -267,10 +271,12 @@ export function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
 
                 {eventForm.image_url && (
                   <div className="relative">
-                    <img
+                    <Image
                       src={eventForm.image_url}
                       alt="Preview"
                       className="max-h-48 w-full rounded-lg object-contain"
+                      width={192}
+                      height={192}
                     />
                     <button
                       onClick={() => setEventForm((prev) => ({ ...prev, image_url: '' }))}
@@ -350,10 +356,12 @@ export function UnitEventsModal({ unit, events, onClose, onUpdate }: any) {
                   )}
 
                   {event.image_url && (
-                    <img
+                    <Image
                       src={event.image_url}
                       alt="Zdjęcie zdarzenia"
                       className="mt-3 max-h-64 w-full rounded-lg border border-[#d3bb73]/10 object-contain"
+                      width={192}
+                      height={192}
                     />
                   )}
                 </div>

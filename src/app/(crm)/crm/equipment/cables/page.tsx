@@ -7,6 +7,7 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useGetCablesListQuery, useDeleteCableMutation } from '../store/equipmentApi';
+import Image from 'next/image';
 
 interface CableItem {
   id: string;
@@ -128,7 +129,9 @@ export default function CablesListPage() {
                   {/* Thumbnail */}
                   <div className="w-16 h-16 bg-[#0f1117] rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0">
                     {cable.thumbnail_url ? (
-                      <img
+                      <Image
+                        width={64}
+                        height={64}
                         src={cable.thumbnail_url}
                         alt={cable.name}
                         className="w-full h-full object-cover"

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Popover from '@/components/UI/Tooltip';
 import { useKitByIdLazy } from '@/app/(crm)/crm/equipment/hooks/useKitByIdLazy';
 import { ProductEquipmentMode } from '../../types';
+import NextImage from 'next/image';
 
 export const ProductEquipmentRow = ({
   item,
@@ -83,8 +84,10 @@ export const ProductEquipmentRow = ({
               <Popover
                 trigger={
                   <div className="relative h-10 w-10">
-                    <img
+                    <NextImage
                       src={kit.thumbnail_url}
+                      width={40}
+                      height={40}
                       alt={kit.name}
                       className="h-10 w-10 cursor-pointer rounded border border-[#d3bb73]/20 object-cover transition-all hover:ring-2 hover:ring-[#d3bb73]"
                     />
@@ -96,8 +99,10 @@ export const ProductEquipmentRow = ({
                   </div>
                 }
                 content={
-                  <img
+                  <NextImage
                     src={kit.thumbnail_url}
+                    width={40}
+                    height={40}
                     alt={kit.name}
                     className="h-auto cursor-pointer rounded-lg object-contain transition-all"
                   />
@@ -117,15 +122,19 @@ export const ProductEquipmentRow = ({
           ) : item.item?.thumbnail_url ? (
             <Popover
               trigger={
-                <img
+                <NextImage
                   src={item.item.thumbnail_url}
+                  width={40}
+                  height={40}
                   alt={item.item.name}
                   className="h-10 w-10 cursor-pointer rounded border border-[#d3bb73]/20 object-cover transition-all hover:ring-2 hover:ring-[#d3bb73]"
                 />
               }
               content={
-                <img
+                <NextImage
                   src={item.item.thumbnail_url}
+                  width={40}
+                  height={40}
                   alt={item.item.name}
                   className="h-auto cursor-pointer rounded-lg object-contain transition-all"
                 />

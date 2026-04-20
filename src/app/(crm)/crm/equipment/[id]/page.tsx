@@ -13,6 +13,15 @@ import { supabase } from '@/lib/supabase/browser';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import EquipmentGallery from '@/components/crm/EquipmentGallery';
 
+import { DetailsTab } from '@/components/crm/equipment/tabs/DetailsTab';
+import { HistoryTab } from '@/components/crm/equipment/tabs/HistoryTab';
+import { PurchaseTab } from '@/components/crm/equipment/tabs/PurchaseTab';
+import { TabCarousel } from '@/components/crm/equipment/TabCarousel';
+import { TechnicalTab } from '@/components/crm/equipment/tabs/TechnicalTab';
+import { UnitsTab } from '@/components/crm/equipment/tabs/UnitTabs';
+import { ComponentsTab } from '@/components/crm/equipment/tabs/ComponentsTab';
+
+
 import {
   useGetEquipmentDetailsQuery,
   useGetUnitsByEquipmentQuery,
@@ -38,14 +47,9 @@ import {
 
 import { useAppDispatch } from '@/store/hooks';
 import { equipmentApi } from '../store/equipmentApi';
-import { TabCarousel } from '../components/tabs/TabCarousel';
+
 import { EquipmentTabsCarouselType } from '../types/equipment.types';
-import { ComponentsTab } from '../components/tabs/ComponentsTab';
-import { HistoryTab } from '../components/tabs/HistoryTab';
-import { TechnicalTab } from '../components/tabs/TechnicalTab';
-import { DetailsTab } from '../components/tabs/DetailsTab';
-import { PurchaseTab } from '../components/tabs/PurchaseTab';
-import { UnitsTab } from '../components/tabs/UnitTabs';
+
 
 /* ----------------------------- helpers ----------------------------- */
 const normalizeUuid = (v: unknown): string | null =>
@@ -96,14 +100,14 @@ export default function EquipmentDetailPage() {
     refetchOnMountOrArgChange: true,
   });
 
-  const {
-    data: editHistory = [],
-    isFetching: historyLoading,
-  } = useGetEquipmentEditHistoryQuery(equipmentId, {
-    skip: !equipmentId,
-    refetchOnMountOrArgChange: true,
-    pollingInterval: 5000,
-  });
+  const { data: editHistory = [], isFetching: historyLoading } = useGetEquipmentEditHistoryQuery(
+    equipmentId,
+    {
+      skip: !equipmentId,
+      refetchOnMountOrArgChange: true,
+      pollingInterval: 5000,
+    },
+  );
 
   // RTK Query mutations
   const [updateEquipmentMutation] = useUpdateEquipmentItemMutation();
@@ -124,10 +128,8 @@ export default function EquipmentDetailPage() {
           filter: `equipment_id=eq.${equipmentId}`,
         },
         () => {
-          dispatch(
-            equipmentApi.util.invalidateTags([{ type: 'Equipment', id: equipmentId }])
-          );
-        }
+          dispatch(equipmentApi.util.invalidateTags([{ type: 'Equipment', id: equipmentId }]));
+        },
       )
       .subscribe();
 
@@ -507,9 +509,7 @@ export default function EquipmentDetailPage() {
       )}
 
       {/* HISTORY */}
-      {activeTab === 'history' && (
-        <HistoryTab history={editHistory} loading={historyLoading} />
-      )}
+      {activeTab === 'history' && <HistoryTab history={editHistory} loading={historyLoading} />}
     </div>
   );
 }

@@ -18,6 +18,8 @@ import {
   useUpdateCableMutation,
 } from '../../store/equipmentApi';
 
+import Image from 'next/image';
+
 const normalizeUuid = (v: unknown): string | null =>
   typeof v === 'string' && v.trim() && v !== 'undefined' ? v : null;
 
@@ -202,14 +204,18 @@ export default function CableDetailPage() {
           {cable.thumbnail_url ? (
             <Popover
               trigger={
-                <img
+                <Image
+                  width={128}
+                  height={128}
                   src={cable.thumbnail_url}
                   alt={cable.name}
                   className="h-32 w-32 cursor-pointer rounded-lg object-cover transition-all hover:ring-2 hover:ring-[#d3bb73]"
                 />
               }
               content={
-                <img
+                <Image
+                  width={128}
+                  height={128}
                   src={cable.thumbnail_url}
                   alt={cable.name}
                   className="h-96 w-96 rounded-lg object-cover"
@@ -291,14 +297,18 @@ export default function CableDetailPage() {
                 {cable.connector_in_type?.thumbnail_url ? (
                   <Popover
                     trigger={
-                      <img
+                      <Image
+                        width={32}
+                        height={32}
                         src={cable.connector_in_type.thumbnail_url}
                         alt={cable.connector_in_type.name}
                         className="h-8 w-8 cursor-pointer rounded object-cover transition-all hover:ring-2 hover:ring-[#d3bb73]"
                       />
                     }
                     content={
-                      <img
+                      <Image
+                        width={32}
+                        height={32}
                         src={cable.connector_in_type.thumbnail_url}
                         alt={cable.connector_in_type.name}
                         className="h-64 w-64 rounded-lg object-cover"
@@ -337,14 +347,18 @@ export default function CableDetailPage() {
                 {cable.connector_out_type?.thumbnail_url ? (
                   <Popover
                     trigger={
-                      <img
+                      <Image
+                        width={32}
+                        height={32}
                         src={cable.connector_out_type.thumbnail_url}
                         alt={cable.connector_out_type.name}
-                        className="h-8 w-8 cursor-pointer rounded object-cover transition-all hover:ring-2 hover:ring-[#d3bb73]"
+                        className="rounded object-cover transition-all hover:ring-2 hover:ring-[#d3bb73]"
                       />
                     }
                     content={
-                      <img
+                      <Image
+                        width={32}
+                        height={32}
                         src={cable.connector_out_type.thumbnail_url}
                         alt={cable.connector_out_type.name}
                         className="h-64 w-64 rounded-lg object-cover"
@@ -370,7 +384,7 @@ export default function CableDetailPage() {
             <input
               type="number"
               name="stock_quantity"
-              value={editForm.stock_quantity || 0}
+              value={editForm.stock_quantity}
               onChange={handleInputChange}
               className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
             />

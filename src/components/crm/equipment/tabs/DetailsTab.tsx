@@ -1,5 +1,6 @@
 import EquipmentSkillRequirementsPanel from '@/components/crm/EquipmentSkillRequirementsPanel';
 import { Upload, Package } from 'lucide-react';
+import Image from 'next/image';
 
 export function DetailsTab({
   equipment,
@@ -20,7 +21,9 @@ export function DetailsTab({
               <label className="block text-sm text-[#e5e4e2]/60 mb-2">Miniaturka</label>
               {editForm.thumbnail_url ? (
                 <div className="space-y-2">
-                  <img
+                  <Image
+                    width={100}
+                    height={100}
                     src={editForm.thumbnail_url}
                     alt={equipment.name}
                     className="w-full aspect-square object-cover rounded-lg"
@@ -46,7 +49,13 @@ export function DetailsTab({
               )}
             </div>
           ) : equipment.thumbnail_url ? (
-            <img src={equipment.thumbnail_url} alt={equipment.name} className="w-full aspect-square object-cover rounded-lg" />
+            <Image
+              width={100}
+              height={100}
+              src={equipment.thumbnail_url}
+              alt={equipment.name}
+              className="w-full aspect-square object-cover rounded-lg"
+            />
           ) : (
             <div className="w-full aspect-square bg-[#d3bb73]/20 rounded-lg flex items-center justify-center">
               <Package className="w-16 h-16 text-[#d3bb73]" />

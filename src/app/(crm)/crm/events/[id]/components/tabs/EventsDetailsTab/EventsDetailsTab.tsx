@@ -227,9 +227,9 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
                     <Building2 className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
                     <div>
                       <p className="text-sm text-[#e5e4e2]/60">Klient (Firma)</p>
-                      <p className="text-[#e5e4e2]">
+                      <a href={`/crm/contacts/${organization.id}`} className="text-[#e5e4e2] hover:text-[#d3bb73]">
                         {organization ? organization.alias || organization.name : 'Brak klienta'}
-                      </p>
+                      </a>
                     </div>
                   </div>
                   {contact && (

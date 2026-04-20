@@ -29,6 +29,8 @@ import Popover from '@/components/UI/Tooltip';
 import { useDialog } from '@/contexts/DialogContext';
 import { ISimpleContact } from '../../EventDetailPageClient';
 import SelectRentalEquipmentModal from '@/components/crm/SelectRentalEquipmentModal';
+import NextImage from 'next/image';
+
 
 const KitItemRow = ({
   thumb,
@@ -53,7 +55,7 @@ const KitItemRow = ({
         <Popover
           trigger={
             <div className="relative h-10 w-10">
-              <Image
+              <NextImage
                 src={thumb ?? ''}
                 alt={name}
                 width={36}
@@ -68,7 +70,7 @@ const KitItemRow = ({
             </div>
           }
           content={
-            <Image
+            <NextImage
               src={thumb}
               alt={name}
               width={100}
@@ -276,6 +278,7 @@ export const EventEquipmentTab: React.FC<{
   const [draftQuantity, setDraftQuantity] = useState<number>(1);
   const [showRentalModal, setShowRentalModal] = useState(false);
   const [currentRowForRental, setCurrentRowForRental] = useState<any>(null);
+  const [localChecklistModified, setLocalChecklistModified] = useState(false);
 
   const { showSnackbar } = useSnackbar();
   const { event, refetch: refetchEvent } = useEvent(initialEvent);
@@ -285,6 +288,23 @@ export const EventEquipmentTab: React.FC<{
 
   // Sprawdzenie czy są nierozwiązane konflikty
   const [hasUnresolvedConflicts, setHasUnresolvedConflicts] = useState(false);
+
+  const markChecklistAsModified = async () => {
+    setLocalChecklistModified(true);
+  
+    if (!eventId) return;
+  
+    try {
+      await supabase
+        .from('events')
+        .update({ equipment_checklist_modified: true })
+        .eq('id', eventId);
+    } catch (err) {
+      console.error('Error marking checklist as modified:', err);
+    }
+  };
+
+  
 
   useEffect(() => {
     const checkConflicts = async () => {
@@ -326,7 +346,7 @@ export const EventEquipmentTab: React.FC<{
 
   // Tracking PDF checklisty
   const checklistPdfPath = event?.equipment_checklist_pdf_path || null;
-  const checklistModified = event?.equipment_checklist_modified || false;
+  const checklistModified = Boolean(event?.equipment_checklist_modified || localChecklistModified);
 
   // ✅ guard na start: hook może być wywołany, ale wewnątrz i tak nie robimy fetchy bez ID
   const {
@@ -366,6 +386,7 @@ export const EventEquipmentTab: React.FC<{
       if (result) {
         await refetch();
         await fetchAvailableEquipment();
+        await markChecklistAsModified();
       }
       return;
     }
@@ -375,6 +396,7 @@ export const EventEquipmentTab: React.FC<{
     if (result) {
       await refetch();
       await fetchAvailableEquipment();
+      await markChecklistAsModified();
     } else {
       showSnackbar('Nie udało się usunąć pozycji', 'error');
     }
@@ -393,6 +415,7 @@ export const EventEquipmentTab: React.FC<{
     if (result) {
       await refetch();
       await fetchAvailableEquipment();
+      await markChecklistAsModified();
     }
   };
 
@@ -409,6 +432,7 @@ export const EventEquipmentTab: React.FC<{
       setEditingQuantityId(null);
       await refetch();
       await fetchAvailableEquipment();
+      await markChecklistAsModified();
     }
   };
 
@@ -416,6 +440,7 @@ export const EventEquipmentTab: React.FC<{
     const ok = await updateEquipment(rowId, { expand_kit_in_checklist: expand });
     if (ok) {
       await refetch();
+      await markChecklistAsModified();
     }
   };
 
@@ -463,6 +488,7 @@ export const EventEquipmentTab: React.FC<{
 
     await refetch();
     await fetchAvailableEquipment();
+    await markChecklistAsModified();
   };
 
   const handleGenerateChecklist = async () => {
@@ -470,51 +496,63 @@ export const EventEquipmentTab: React.FC<{
       showSnackbar('Brak sprzętu do wygenerowania checklisty', 'error');
       return;
     }
-
+  
     try {
       setGeneratingPdf(true);
-
+  
       // 0. Usuń poprzedni PDF jeśli istnieje
       if (checklistPdfPath) {
         try {
           // Usuń z storage
           await supabase.storage.from('event-files').remove([checklistPdfPath]);
-
+  
           // Usuń z event_files
           await supabase.from('event_files').delete().eq('file_path', checklistPdfPath);
         } catch (deleteError) {
           console.warn('Błąd podczas usuwania poprzedniego PDF checklisty:', deleteError);
         }
       }
-
+  
       const equipmentData = (equipment as any[])
         .filter((row) => !row?.removed_from_offer)
         .map((row) => {
           const d = getEventEquipmentDisplay(row);
-
+  
           // ✅ klucz: zawartość kitu tylko gdy expand_kit_in_checklist
           const expand = !!row?.expand_kit_in_checklist;
           const kitItems = expand ? extractKitItemsFromRow(row) : [];
-
+  
           return {
-            name: d.name,
-            brand: d.brand,
-            model: d.model,
-            quantity: Number(row?.quantity),
-            category: d.categoryName,
-            cable_length: d.cableLength,
-            is_kit: d.isKit,
-            expand_kit_in_checklist: expand,
-            kit_items: kitItems,
+            sortIsKit: !!d.isKit,
+            sortName: String(d.name || '').toLocaleLowerCase('pl-PL'),
+            data: {
+              name: d.name,
+              brand: d.brand,
+              model: d.model,
+              quantity: Number(row?.quantity),
+              category: d.categoryName,
+              cable_length: d.cableLength,
+              is_kit: d.isKit,
+              expand_kit_in_checklist: expand,
+              kit_items: kitItems,
+            },
           };
-        });
-
+        })
+        .sort((a, b) => {
+          if (a.sortIsKit !== b.sortIsKit) {
+            return a.sortIsKit ? -1 : 1; // zestawy najpierw
+          }
+  
+          return a.sortName.localeCompare(b.sortName, 'pl');
+        })
+        .map((item) => item.data);
+  
       const eventDateFormatted = new Date(eventDate).toLocaleDateString('pl-PL');
-
+  
       // ✅ Pobierz dane kontaktu w zależności od typu klienta
       let contactName = contact?.full_name || '-';
       let contactPhone = contact?.phone || '-';
-
+  
       const html = buildEquipmentChecklistHtml({
         eventName: event?.name || 'Wydarzenie',
         eventDate: eventDateFormatted,
@@ -525,14 +563,14 @@ export const EventEquipmentTab: React.FC<{
         contactName,
         contactPhone,
       });
-
+  
       const { default: html2pdf } = await import('html2pdf.js');
       const html2pdfFn: any = (html2pdf as any) || html2pdf;
-
+  
       // ✅ ważne: w html2pdf najlepiej przekazać element, nie “div wrapper”
       const element = document.createElement('div');
       element.innerHTML = html;
-
+  
       const opt: any = {
         margin: [10, 10, 1, 10],
         filename: `checklista-${String(event?.name || 'event')
@@ -541,38 +579,38 @@ export const EventEquipmentTab: React.FC<{
         image: { type: 'jpeg' as const, quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-
+  
         // ✅ to jest kluczowe przy "nie tnij wierszy"
         pagebreak: { mode: ['css', 'legacy'] },
       };
-
+  
       const worker = html2pdfFn().from(element).set(opt).toPdf();
       const pdfBlob: Blob = await worker.output('blob');
-
+  
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
       const safeEventName = String(event?.name || 'event')
         .replace(/[^a-z0-9]/gi, '-')
         .toLowerCase();
-
+  
       const fileName = `checklista-sprzetu-${safeEventName.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${timestamp}.pdf`;
       const storagePath = `${eventId}/${fileName}`;
-
+  
       const { error: uploadError } = await supabase.storage
         .from('event-files')
         .upload(storagePath, pdfBlob, { contentType: 'application/pdf', upsert: false });
-
+  
       if (uploadError) {
         console.error('Upload error:', uploadError);
         showSnackbar('Błąd podczas zapisywania pliku', 'error');
         return;
       }
-
+  
       const { data: folderId } = await supabase.rpc('get_or_create_documents_subfolder', {
         p_event_id: eventId,
         p_required_permission: null,
         p_created_by: employee?.id ?? null,
       });
-
+  
       await supabase.from('event_files').insert([
         {
           event_id: eventId,
@@ -587,7 +625,7 @@ export const EventEquipmentTab: React.FC<{
           uploaded_by: employee?.id ?? null,
         },
       ]);
-
+  
       // Zapisz ścieżkę PDF w tabeli events
       await supabase
         .from('events')
@@ -597,15 +635,15 @@ export const EventEquipmentTab: React.FC<{
           equipment_checklist_modified: false,
         })
         .eq('id', eventId);
-
+  
       // Odśwież dane wydarzenia
       await refetchEvent();
-
+  
       showSnackbar(
         'Checklista sprzętu została wygenerowana i zapisana w zakładce Pliki',
         'success',
       );
-
+  
       worker.save();
     } catch (error) {
       console.error('Error generating checklist:', error);
@@ -1475,10 +1513,12 @@ export const EventEquipmentTab: React.FC<{
                 >
                   <div className="flex items-center gap-3">
                     {alt.thumbnail_url ? (
-                      <img
+                      <Image
                         src={alt.thumbnail_url}
                         alt={alt.name}
                         className="h-12 w-12 rounded border border-[#d3bb73]/20 object-cover"
+                        width={48}
+                        height={48}
                       />
                     ) : (
                       <div className="flex h-12 w-12 items-center justify-center rounded border border-[#d3bb73]/20 bg-[#1c1f33]">

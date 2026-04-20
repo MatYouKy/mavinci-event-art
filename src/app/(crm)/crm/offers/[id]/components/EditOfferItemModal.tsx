@@ -110,7 +110,7 @@ export default function EditOfferItemModal({ item, offerId, vatRate = 23, onClos
                 min="1"
                 step="1"
                 value={quantity}
-                onChange={(e) => setQuantity(parseFloat(e.target.value) || 0)}
+                onChange={(e) => setQuantity(parseFloat(e.target.value))}
                 className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
               />
             </div>
@@ -124,7 +124,7 @@ export default function EditOfferItemModal({ item, offerId, vatRate = 23, onClos
                 min="0"
                 step="0.01"
                 value={unitPrice}
-                onChange={(e) => setUnitPrice(parseFloat(e.target.value) || 0)}
+                onChange={(e) => setUnitPrice(parseFloat(e.target.value))}
                 className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
               />
             </div>
@@ -137,7 +137,7 @@ export default function EditOfferItemModal({ item, offerId, vatRate = 23, onClos
                 max="100"
                 step="0.1"
                 value={discountPercent}
-                onChange={(e) => setDiscountPercent(parseFloat(e.target.value) || 0)}
+                onChange={(e) => setDiscountPercent(parseFloat(e.target.value))}
                 className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
               />
             </div>

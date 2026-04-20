@@ -13,6 +13,7 @@ import {
   Loader2,
   MessageSquare,
 } from 'lucide-react';
+import { useSnackbar } from '@/contexts/SnackbarContext';
 
 interface Email {
   from: string;
@@ -34,6 +35,7 @@ export default function EmailPage() {
   const [selectedAccount, setSelectedAccount] = useState<string>('contact_form');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'all' | 'contact_form' | 'sent' | 'imap'>('all');
+  const { showSnackbar } = useSnackbar();
 
   useEffect(() => {
     fetchEmailAccounts();
@@ -136,10 +138,10 @@ export default function EmailPage() {
       }
 
       setEmails(result.emails || []);
-      alert(`Pobrano ${result.count || 0} wiadomości`);
+      showSnackbar(`Pobrano ${result.count || 0} wiadomości`, 'success');
     } catch (error) {
       console.error('Error fetching emails:', error);
-      alert(`Błąd: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      showSnackbar(`Błąd: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
     } finally {
       setLoading(false);
     }

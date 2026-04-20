@@ -25,6 +25,7 @@ interface InvoicePdfData {
   totalVat: number;
   totalGross: number;
   companyLogoUrl?: string | null;
+  isProforma: boolean;
   items: Array<{
     positionNumber: number;
     name: string;
@@ -40,8 +41,9 @@ interface InvoicePdfData {
 
 function getTypeLabel(type: string) {
   const labels: Record<string, string> = {
-    standard: 'Faktura VAT',
+    vat: 'Faktura VAT',
     proforma: 'Faktura Proforma',
+    advance: 'Faktura zaliczkowa',
     corrective: 'Faktura korygująca',
   };
 
@@ -81,6 +83,23 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
     `,
     )
     .join('');
+
+    console.log('PDF invoice type:', data.invoiceType, 'is_proforma:', data.isProforma);
+console.log('PDF items raw:', data.items);
+console.log(
+  'PDF items mapped:',
+  data.items.map((item) => ({
+    positionNumber: item.positionNumber,
+    name: item.name,
+    unit: item.unit,
+    quantity: item.quantity,
+    priceNet: item.priceNet,
+    vatRate: item.vatRate,
+    valueNet: item.valueNet,
+    vatAmount: item.vatAmount,
+    valueGross: item.valueGross,
+  })),
+);
 
   return `<!DOCTYPE html>
 <html lang="pl">

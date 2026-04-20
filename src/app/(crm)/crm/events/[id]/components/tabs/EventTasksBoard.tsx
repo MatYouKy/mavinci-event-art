@@ -18,6 +18,8 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useMobile } from '@/hooks/useMobile';
 import TaskCard from '../../../../../../../components/crm/TaskCard';
 import { Task } from '@/components/crm/TaskCard';
+import type { IEmployee } from '@/app/(crm)/crm/employees/type';
+import Image from 'next/image';
 
 type EmployeeLite = {
   id: string;
@@ -155,13 +157,9 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
           const normalizedAssignees = (assigneesData ?? [])
             .map((a: any) => {
               const emp = normalizeEmployee(a.employee);
-              return emp ? { employee: emp } : null;
+              return emp ? { employee: emp as IEmployee } : null;
             })
-            .filter(Boolean) as Array<{
-            employee: ReturnType<typeof normalizeEmployee> extends infer R
-              ? Exclude<R, null>
-              : never;
-          }>;
+            .filter((x): x is { employee: IEmployee } => x !== null);
 
           setTasks((prevTasks: Task[]) => {
             const taskExists = prevTasks.some((t) => t.id === updatedTask.id);
@@ -230,13 +228,9 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
           const normalizedAssignees = (assigneesData ?? [])
             .map((a: any) => {
               const emp = normalizeEmployee(a.employee);
-              return emp ? { employee: emp } : null;
+              return emp ? { employee: emp as IEmployee } : null;
             })
-            .filter(Boolean) as Array<{
-            employee: ReturnType<typeof normalizeEmployee> extends infer R
-              ? Exclude<R, null>
-              : never;
-          }>;
+            .filter((x): x is { employee: IEmployee } => x !== null);
           setTasks((prevTasks: Array<Task>) => {
             return prevTasks.map((task: Task) =>
               task.id === newTask.id
@@ -283,13 +277,14 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
             .eq('id', newAssignee.employee_id)
             .maybeSingle();
 
-          if (employee) {
+          const emp = employee ? normalizeEmployee(employee) : null;
+          if (emp) {
             setTasks((prevTasks: Array<Task>) =>
               prevTasks.map((task) =>
                 task.id === newAssignee.task_id
                   ? {
                       ...task,
-                      assignees: [...(task.assignees || []), { employee }],
+                      assignees: [...(task.assignees || []), { employee: emp as IEmployee }],
                     }
                   : task,
               ),
@@ -1128,7 +1123,9 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
                   >
                     <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#d3bb73]/20">
                       {employee.avatar_url ? (
-                        <img
+                        <Image
+                          width={40}
+                          height={40}
                           src={employee.avatar_url}
                           alt=""
                           className="h-full w-full object-cover"

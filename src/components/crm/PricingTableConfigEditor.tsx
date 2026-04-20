@@ -144,7 +144,7 @@ function NumberInput({
         <input
           type="number"
           value={value}
-          onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+          onChange={(e) => onChange(parseFloat(e.target.value))}
           className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-2.5 py-1.5 text-xs text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
           min={min}
           max={max}

@@ -1480,7 +1480,7 @@ useEffect(() => {
                   <label className="mb-1 block text-sm font-medium text-gray-400">Ocena</label>
                   {editMode ? (
                     <select
-                      value={editedData.rating || 0}
+                      value={editedData.rating}
                       onChange={(e) =>
                         setEditedData({ ...editedData, rating: parseInt(e.target.value) || null })
                       }
@@ -1807,13 +1807,13 @@ useEffect(() => {
                 <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] p-4">
                   <div className="mb-1 text-sm text-gray-400">Wartość brutto</div>
                   <div className="text-2xl font-bold text-[#d3bb73]">
-                    {invoices.reduce((sum, inv) => sum + (inv.total_gross || 0), 0).toFixed(2)} PLN
+                    {invoices.reduce((sum, inv) => sum + (inv.total_gross), 0).toFixed(2)} PLN
                   </div>
                 </div>
                 <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] p-4">
                   <div className="mb-1 text-sm text-gray-400">Wartość netto</div>
                   <div className="text-2xl font-bold text-[#d3bb73]">
-                    {invoices.reduce((sum, inv) => sum + (inv.total_net || 0), 0).toFixed(2)} PLN
+                    {invoices.reduce((sum, inv) => sum + (inv.total_net), 0).toFixed(2)} PLN
                   </div>
                 </div>
               </div>

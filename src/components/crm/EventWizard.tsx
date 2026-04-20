@@ -161,8 +161,8 @@ export default function EventWizard({
     location_id: '' as string | null,
   });
 
-  const [clientType, setClientType] = useState<'business' | 'individual'>(
-    initialClientType || 'business',
+  const [clientType, setClientType] = useState<ClientType>(
+    initialClientType as ClientType,
   );
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);

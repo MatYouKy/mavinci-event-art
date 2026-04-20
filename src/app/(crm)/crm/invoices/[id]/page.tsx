@@ -222,6 +222,12 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
   const buildHtmlForPdf = useCallback(() => {
     if (!invoice) return '';
+
+    const effectiveInvoiceType =
+      invoice.invoice_type === 'proforma' || invoice.is_proforma
+        ? 'proforma'
+        : invoice.invoice_type;
+
     return buildInvoicePdfHtml({
       footerNote:
         invoice.footer_note ||
@@ -229,7 +235,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
       signatureName: invoice.signature_name || 'Mateusz Kwiatkowski',
       website: invoice.website || 'www.mavinci.pl',
       invoiceNumber: invoice.invoice_number,
-      invoiceType: invoice.invoice_type,
+      invoiceType: effectiveInvoiceType,
       issueDate: invoice.issue_date,
       saleDate: invoice.sale_date,
       issuePlace: invoice.issue_place,
@@ -264,6 +270,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
         vatAmount: item.vat_amount,
         valueGross: item.value_gross,
       })),
+      isProforma: false,
     });
   }, [invoice, items]);
 
@@ -297,7 +304,9 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
       if (result.storagePath) {
         setPdfPath(result.storagePath);
         setInvoice((prev) =>
-          prev ? { ...prev, pdf_url: result.storagePath, pdf_generated_at: new Date().toISOString() } : null,
+          prev
+            ? { ...prev, pdf_url: result.storagePath, pdf_generated_at: new Date().toISOString() }
+            : null,
         );
         showSnackbar('PDF wygenerowany i zapisany', 'success');
       } else {
@@ -418,15 +427,32 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   };
 
   const handleStatusChange = async (newStatus: string) => {
+    if (!invoice) return;
+
+    let safeStatus = newStatus;
+
+    if (invoice.is_proforma) {
+      const allowed = ['draft', 'proforma', 'cancelled'];
+
+      if (!allowed.includes(newStatus)) {
+        safeStatus = 'proforma';
+      }
+    } else {
+      // zwykła faktura
+      if (newStatus === 'proforma') {
+        safeStatus = 'draft';
+      }
+    }
+
     try {
       const { error } = await supabase
         .from('invoices')
-        .update({ status: newStatus })
+        .update({ status: safeStatus })
         .eq('id', params.id);
 
       if (error) throw error;
 
-      setInvoice((prev) => (prev ? { ...prev, status: newStatus } : null));
+      setInvoice((prev) => (prev ? { ...prev, status: safeStatus } : null));
       showSnackbar('Status faktury zostal zmieniony', 'success');
     } catch (err) {
       console.error('Error updating status:', err);
@@ -490,7 +516,11 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     if (!pdfPath) {
       nextActions.push({
         label: generating ? 'Generowanie...' : 'Generuj PDF',
-        icon: generating ? <Loader className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />,
+        icon: generating ? (
+          <Loader className="h-4 w-4 animate-spin" />
+        ) : (
+          <FileDown className="h-4 w-4" />
+        ),
         onClick: handleGeneratePDF,
         variant: 'primary',
       });
@@ -573,7 +603,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   const getTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
       vat: 'Faktura VAT',
-      proforma: 'Proforma',
+      proforma: 'Faktura Proforma',
       advance: 'Zaliczkowa',
       corrective: 'Korygujaca',
     };
@@ -803,7 +833,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               <div className="flex items-center gap-3">
                 <p className="text-[#e5e4e2]/60">
                   {getTypeLabel(invoice.invoice_type)}
-                  {invoice.is_proforma ? ' (Proforma)' : ''}
+                  {invoice.is_proforma ? ' (Faktura Proforma)' : ''}
                 </p>
                 {pdfPath && (
                   <span className="rounded-full bg-green-500/20 px-2.5 py-0.5 text-xs font-medium text-green-400">
@@ -890,7 +920,9 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             <div className="mb-12 flex items-start justify-between">
               <div className="flex items-center gap-4">
                 {invoice.company_logo_url ? (
-                  <img
+                  <Image
+                    width={128}
+                    height={128}
                     src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/company-logos/${invoice.company_logo_url}`}
                     alt="Logo firmy"
                     className="h-16 w-auto object-contain"
@@ -1040,10 +1072,10 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
             <div className="flex justify-end">
               <div className="w-64 border-t border-gray-300 pt-2 text-center">
-                <div className="mb-1 text-sm">{invoice.signature_name || 'Mateusz Kwiatkowski'}</div>
-                <div className="text-xs text-gray-600">
-                  Podpis osoby upowazionej do wystawienia
+                <div className="mb-1 text-sm">
+                  {invoice.signature_name || 'Mateusz Kwiatkowski'}
                 </div>
+                <div className="text-xs text-gray-600">Podpis osoby upowazionej do wystawienia</div>
               </div>
             </div>
 
@@ -1128,6 +1160,14 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             onSent={() => {
               showSnackbar('Faktura wyslana', 'success');
               setEmailSentCount((prev) => prev + 1);
+
+              if (invoice.is_proforma) {
+                if (invoice.status === 'draft') {
+                  handleStatusChange('proforma');
+                }
+                return;
+              }
+
               if (invoice.status === 'issued' || invoice.status === 'draft') {
                 handleStatusChange('sent');
               }

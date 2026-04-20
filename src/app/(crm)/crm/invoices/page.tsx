@@ -632,7 +632,7 @@ export default function InvoicesPage() {
   const getTypeBadge = (type: string) => {
     const typeLabels = {
       vat: 'Faktura VAT',
-      proforma: 'Proforma',
+      proforma: 'Faktura Proforma',
       advance: 'Zaliczkowa',
       corrective: 'Korygująca',
     };
