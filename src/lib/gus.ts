@@ -6,6 +6,7 @@ export interface GUSCompanyData {
   city?: string;
   postalCode?: string;
   voivodeship?: string;
+  krs?: string;
 }
 
 export async function fetchCompanyDataFromGUS(nip: string): Promise<GUSCompanyData | null> {
@@ -16,18 +17,22 @@ export async function fetchCompanyDataFromGUS(nip: string): Promise<GUSCompanyDa
       throw new Error('Nieprawidłowy format NIP');
     }
 
-    const response = await fetch(`https://wl-api.mf.gov.pl/api/search/nip/${cleanNip}?date=${new Date().toISOString().split('T')[0]}`);
+    const today = new Date().toISOString().split('T')[0];
+
+    const response = await fetch(
+      `https://wl-api.mf.gov.pl/api/search/nip/${cleanNip}?date=${today}`,
+    );
 
     if (!response.ok) {
       if (response.status === 404) {
         throw new Error('Nie znaleziono firmy o podanym NIP');
       }
-      throw new Error('Błąd podczas pobierania danych z GUS');
+      throw new Error('Błąd podczas pobierania danych firmy');
     }
 
     const data = await response.json();
 
-    if (!data.result || !data.result.subject) {
+    if (!data?.result?.subject) {
       throw new Error('Nie znaleziono danych firmy');
     }
 
@@ -46,16 +51,17 @@ export async function fetchCompanyDataFromGUS(nip: string): Promise<GUSCompanyDa
     }
 
     return {
-      nip: subject.nip,
+      nip: subject.nip || cleanNip,
       name: subject.name || '',
       regon: subject.regon || undefined,
+      krs: subject.krs || undefined,
       address: street || undefined,
       city,
       postalCode,
-      voivodeship: undefined,
+      voivodeship: subject.workingAddress?.province || undefined,
     };
   } catch (error: any) {
-    console.error('GUS API Error:', error);
+    console.error('Company API Error:', error);
     throw error;
   }
 }

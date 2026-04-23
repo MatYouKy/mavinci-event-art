@@ -2,7 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/browser';
-import { Plus, Edit2, Trash2, MapPin, Save, X, Globe } from 'lucide-react';
+import { Plus, Edit2, Trash2, MapPin, Save, X, Globe, BookOpen } from 'lucide-react';
+import { AddPolishCityModal } from '@/components/crm/page/AddPolishCityModal';
+import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
+import { PolishCityCases } from '@/lib/polishCityCases';
+import { CityCasesModal } from '@/components/crm/page/CityCasesModal';
 
 interface SchemaOrgGlobal {
   id: string;
@@ -42,6 +46,9 @@ export default function SchemaOrgManagementPage() {
   const [isEditingGlobal, setIsEditingGlobal] = useState(false);
   const [editGlobalData, setEditGlobalData] = useState<Partial<SchemaOrgGlobal>>({});
   const [isAddingPlace, setIsAddingPlace] = useState(false);
+  const [isAddCityModalOpen, setIsAddCityModalOpen] = useState(false);
+  const [editingPlaceId, setEditingPlaceId] = useState<string | null>(null);
+  const [editPlaceData, setEditPlaceData] = useState<Partial<SchemaOrgPlace>>({});
   const [newPlace, setNewPlace] = useState({
     name: '',
     locality: '',
@@ -51,6 +58,8 @@ export default function SchemaOrgManagementPage() {
   const [citySearch, setCitySearch] = useState('');
   const [citySuggestions, setCitySuggestions] = useState<any[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+
+  const [isCityCasesModalOpen, setIsCityCasesModalOpen] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -78,6 +87,35 @@ export default function SchemaOrgManagementPage() {
 
     if (globalRes.data) setGlobalConfig(globalRes.data);
     if (placesRes.data) setPlaces(placesRes.data);
+  };
+
+  const startEditingPlace = (place: SchemaOrgPlace) => {
+    setEditingPlaceId(place.id);
+    setEditPlaceData(place);
+  };
+
+  const handleUpdatePlace = async () => {
+    if (!editingPlaceId) return;
+
+    const { error } = await supabase
+      .from('schema_org_places')
+      .update({
+        name: editPlaceData.name,
+        locality: editPlaceData.locality,
+        postal_code: editPlaceData.postal_code,
+        region: editPlaceData.region,
+      })
+      .eq('id', editingPlaceId);
+
+    if (error) {
+      alert('Błąd podczas aktualizacji');
+      console.error(error);
+      return;
+    }
+
+    setEditingPlaceId(null);
+    setEditPlaceData({});
+    loadData();
   };
 
   const searchCities = async (query: string) => {
@@ -187,6 +225,30 @@ export default function SchemaOrgManagementPage() {
     setEditGlobalData(globalConfig || {});
     setIsEditingGlobal(true);
   };
+
+  const areaActions: Action[] = [
+    {
+      label: 'Dodaj do obszarów',
+      onClick: () => setIsAddingPlace(true),
+      icon: <Plus className="h-4 w-4" />,
+      variant: 'default' as const,
+      show: true,
+    },
+    {
+      label: 'Dodaj miasto',
+      onClick: () => setIsAddCityModalOpen(true),
+      icon: <MapPin className="h-4 w-4" />,
+      variant: 'primary' as const,
+      show: true,
+    },
+    {
+      label: 'Wyjątki odmiany',
+      onClick: () => setIsCityCasesModalOpen(true),
+      icon: <BookOpen />,
+      variant: 'default' as const,
+      show: true,
+    },
+  ].filter((a) => a.show);
 
   if (!globalConfig) {
     return (
@@ -425,13 +487,11 @@ export default function SchemaOrgManagementPage() {
                 <MapPin className="h-5 w-5" />
                 Obszary obsługi ({places.length})
               </h2>
-              <button
-                onClick={() => setIsAddingPlace(true)}
-                className="flex items-center gap-2 rounded bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
-              >
-                <Plus className="h-4 w-4" />
-                Dodaj
-              </button>
+              <ResponsiveActionBar
+                disabledBackground
+                mobileBreakpoint={4000}
+                actions={areaActions}
+              />
             </div>
 
             <p className="mb-4 text-sm text-[#e5e4e2]/60">
@@ -507,30 +567,114 @@ export default function SchemaOrgManagementPage() {
             )}
 
             <div className="max-h-[60vh] space-y-2 overflow-y-auto">
-              {places.map((place) => (
-                <div
-                  key={place.id}
-                  className="flex items-center justify-between rounded border border-[#d3bb73]/10 bg-[#0f1119] p-3 transition-colors hover:border-[#d3bb73]/30"
-                >
-                  <div>
-                    <p className="font-medium text-[#e5e4e2]">{place.name}</p>
-                    <p className="text-sm text-[#e5e4e2]/60">
-                      {place.locality} {place.postal_code && `· ${place.postal_code}`}
-                    </p>
-                    <p className="text-xs text-[#e5e4e2]/40">{place.region}</p>
-                  </div>
-                  <button
-                    onClick={() => handleDeletePlace(place.id)}
-                    className="p-2 text-[#800020] hover:text-[#800020]/80"
+              {places.map((place) => {
+                const isEditing = editingPlaceId === place.id;
+                return (
+                  <div
+                    key={place.id}
+                    className="flex items-center justify-between rounded border border-[#d3bb73]/10 bg-[#0f1119] p-3"
                   >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
+                    {isEditing ? (
+                      <div className="flex w-full flex-col gap-2">
+                        <input
+                          value={editPlaceData.name || ''}
+                          onChange={(e) =>
+                            setEditPlaceData({ ...editPlaceData, name: e.target.value })
+                          }
+                          className="rounded bg-[#1c1f33] px-2 py-1"
+                        />
+
+                        <div className="flex gap-2">
+                          <input
+                            value={editPlaceData.locality || ''}
+                            onChange={(e) =>
+                              setEditPlaceData({ ...editPlaceData, locality: e.target.value })
+                            }
+                            className="rounded bg-[#1c1f33] px-2 py-1"
+                          />
+
+                          <input
+                            value={editPlaceData.postal_code || ''}
+                            onChange={(e) =>
+                              setEditPlaceData({ ...editPlaceData, postal_code: e.target.value })
+                            }
+                            className="rounded bg-[#1c1f33] px-2 py-1"
+                          />
+                        </div>
+
+                        <input
+                          value={editPlaceData.region || ''}
+                          onChange={(e) =>
+                            setEditPlaceData({ ...editPlaceData, region: e.target.value })
+                          }
+                          className="rounded bg-[#1c1f33] px-2 py-1"
+                        />
+
+                        <div className="flex gap-2">
+                          <button
+                            onClick={handleUpdatePlace}
+                            className="flex items-center gap-1 rounded bg-[#d3bb73] px-3 py-1 text-[#1c1f33]"
+                          >
+                            <Save className="h-4 w-4" />
+                            Zapisz
+                          </button>
+
+                          <button
+                            onClick={() => setEditingPlaceId(null)}
+                            className="flex items-center gap-1 rounded bg-[#800020]/20 px-3 py-1"
+                          >
+                            <X className="h-4 w-4" />
+                            Anuluj
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div>
+                          <p className="font-medium text-[#e5e4e2]">{place.name}</p>
+                          <p className="text-sm text-[#e5e4e2]/60">
+                            {place.locality} {place.postal_code && `· ${place.postal_code}`}
+                          </p>
+                          <p className="text-xs text-[#e5e4e2]/40">{place.region}</p>
+                        </div>
+
+                        <div className="flex gap-2">
+                          <ResponsiveActionBar
+                            disabledBackground
+                            mobileBreakpoint={4000}
+                            actions={[
+                              {
+                                label: 'Edytuj',
+                                onClick: () => startEditingPlace(place),
+                                icon: <Edit2 className="h-4 w-4" />,
+                                variant: 'primary',
+                              },
+                              {
+                                label: 'Usuń',
+                                onClick: () => handleDeletePlace(place.id),
+                                icon: <Trash2 className="h-4 w-4" />,
+                                variant: 'danger',
+                              },
+                            ]}
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
       </div>
+      <AddPolishCityModal
+        open={isAddCityModalOpen}
+        onClose={() => setIsAddCityModalOpen(false)}
+        onSaved={() => {
+          setIsAddCityModalOpen(false);
+        }}
+      />
+      <CityCasesModal open={isCityCasesModalOpen} onClose={() => setIsCityCasesModalOpen(false)} />
     </div>
   );
 }

@@ -431,6 +431,15 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
     let safeStatus = newStatus;
 
+    console.log('[STATUS_CHANGE_BEFORE]', {
+      invoiceId: invoice.id,
+      invoiceNumber: invoice.invoice_number,
+      invoiceType: invoice.invoice_type,
+      isProforma: invoice.is_proforma,
+      currentStatus: invoice.status,
+      requestedStatus: newStatus,
+    });
+
     if (invoice.is_proforma) {
       const allowed = ['draft', 'proforma', 'cancelled'];
 
@@ -438,11 +447,14 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
         safeStatus = 'proforma';
       }
     } else {
-      // zwykła faktura
       if (newStatus === 'proforma') {
         safeStatus = 'draft';
       }
     }
+
+    console.log('[STATUS_CHANGE_AFTER]', {
+      safeStatus,
+    });
 
     try {
       const { error } = await supabase
@@ -1160,17 +1172,6 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             onSent={() => {
               showSnackbar('Faktura wyslana', 'success');
               setEmailSentCount((prev) => prev + 1);
-
-              if (invoice.is_proforma) {
-                if (invoice.status === 'draft') {
-                  handleStatusChange('proforma');
-                }
-                return;
-              }
-
-              if (invoice.status === 'issued' || invoice.status === 'draft') {
-                handleStatusChange('sent');
-              }
             }}
           />
         )}

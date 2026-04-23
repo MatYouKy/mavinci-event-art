@@ -263,7 +263,6 @@ export default function CRMDashboard({
             <div className="space-y-4">
               {filteredActivity.map((activity) => {
                 const href = `/crm/${activity.type}s/${activity.id}`;
-                console.log('href: ', href);
               return (  
                 <div
                   key={activity.id}

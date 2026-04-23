@@ -8,12 +8,14 @@ interface InvoiceNumberInputProps {
   invoiceType: 'vat' | 'proforma' | 'advance' | 'corrective';
   value: string;
   onChange: (value: string) => void;
+  myCompanyId: string;
 }
 
 export default function InvoiceNumberInput({
   invoiceType,
   value,
   onChange,
+  myCompanyId,
 }: InvoiceNumberInputProps) {
   const [loading, setLoading] = useState(false);
   const [lastInvoiceNumber, setLastInvoiceNumber] = useState<string>('');
@@ -28,6 +30,7 @@ export default function InvoiceNumberInput({
 
       const { data: nextNumber, error } = await supabase.rpc('generate_invoice_number', {
         p_invoice_type: invoiceType,
+        p_my_company_id: myCompanyId,
       });
 
       if (error) throw error;
@@ -42,6 +45,8 @@ export default function InvoiceNumberInput({
       setLoading(false);
     }
   };
+
+  console.log('[GUS_DEBUG-lastInvoiceNumber]', lastInvoiceNumber);
 
   const getInvoiceTypeLabel = () => {
     switch (invoiceType) {

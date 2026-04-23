@@ -21,9 +21,9 @@ export const AdvantagesSection: FC<AdvantagesSectionProps> = ({ advantages }) =>
             const Icon = getIconFunction(adv.icon_name);
 
             return isMobile ? (
-              <AdvantageMobileItem title={adv.title} description={adv.description} Icon={Icon} />
+              <AdvantageMobileItem key={adv.id} title={adv.title} description={adv.description} Icon={Icon} />
             ) : (
-              <AdvantageDesktopItem title={adv.title} description={adv.description} Icon={Icon} />
+              <AdvantageDesktopItem key={adv.id} title={adv.title} description={adv.description} Icon={Icon} />
             );
           })}
         </div>

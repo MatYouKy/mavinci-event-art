@@ -2,20 +2,20 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/browser';
 import { canEditWebsite } from '@/lib/permissions';
 
-interface Employee {
+interface WebsiteEditEmployee {
   id: string;
   name: string;
   surname: string;
-  nickname?: string | null;
+  nickname: string | null;
   email: string;
-  role?: string;
-  access_level?: string;
-  permissions?: string[];
+  role: string;
+  access_level: string;
+  permissions: string[] | null;
 }
 
 export function useWebsiteEdit() {
   const [canEdit, setCanEdit] = useState(false);
-  const [employee, setEmployee] = useState<Employee | null>(null);
+  const [employee, setEmployee] = useState<WebsiteEditEmployee | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -56,7 +56,7 @@ export function useWebsiteEdit() {
         return;
       }
 
-      setEmployee(employeeData);
+      setEmployee(employeeData as WebsiteEditEmployee);
       setCanEdit(canEditWebsite(employeeData));
       setLoading(false);
     } catch (error) {

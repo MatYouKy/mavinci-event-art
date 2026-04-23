@@ -6,6 +6,7 @@ import dynamic from 'next/dynamic';
 
 const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
 import 'react-quill/dist/quill.snow.css';
+const ReactQuillWithRef = ReactQuill as React.ComponentType<any>;
 
 interface Props {
   productId: string;
@@ -150,9 +151,6 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
       } else {
         position = quill.getLength() - 1;
       }
-
-      console.log('Inserting at position:', position, 'from selection:', selection, 'stored:', cursorPosition);
-
       // Insert the placeholder text with bold formatting
       quill.insertText(position, placeholder, { bold: true });
 
@@ -367,7 +365,7 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
               )}
             </div>
 
-            <ReactQuill
+            <ReactQuillWithRef
               ref={quillRef}
               theme="snow"
               value={clauses}

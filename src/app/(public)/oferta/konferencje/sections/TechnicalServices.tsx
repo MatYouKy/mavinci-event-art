@@ -4,6 +4,7 @@ import { ConferencesServicesEditor } from '@/components/ConferencesServicesEdito
 import { CheckCircle, Settings } from 'lucide-react';
 import { getIconFunction } from '@/components/ConferencesServicesAccordion';
 import { PolishCityCases } from '@/lib/polishCityCases';
+import { capitalize } from '@/utils/capitalize';
 
 interface TechnicalServicesProps {
   services: any[];
@@ -14,14 +15,16 @@ export const TechnicalServices: FC<TechnicalServicesProps> = ({
   services,
   cityCases,
 }) => {
+  const capitalizedLocative = capitalize(cityCases?.locative || '');
+  const locative = cityCases?.locative ? `${cityCases.locative_preposition ? cityCases.locative_preposition : 'w'} ${capitalizedLocative}` : 'Olsztynie';
   return (
     <section className="py-12 px-4 sm:px-6 lg:py-20">
       <div className="max-w-7xl mx-auto">
         <h2 className="text-3xl sm:text-4xl font-light text-[#e5e4e2] mb-3 sm:mb-4 text-center">
-          Zakres obsługi technicznej Konferencji w {cityCases?.locative ? cityCases.locative : 'Olsztynie'}
+          Zakres obsługi technicznej Konferencji <span className="text-[#d3bb73]">{locative}</span>
         </h2>
         <p className="text-[#e5e4e2]/60 text-center mb-10 sm:mb-16 text-sm sm:text-base">
-          Kompleksowa realizacja audio-video dla Twojej konferencji w {cityCases?.locative ? cityCases.locative : 'Olsztynie'}
+          Kompleksowa realizacja audio-video dla Twojej konferencji {locative}
         </p>
 
           <div className="mb-10">

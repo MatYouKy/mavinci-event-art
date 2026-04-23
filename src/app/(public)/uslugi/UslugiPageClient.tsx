@@ -44,6 +44,7 @@ import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
 import PageLayout from '@/components/Layout/PageLayout';
 import { Metadata } from 'next';
 import { getIconFunction } from '@/components/ConferencesServicesAccordion';
+import Image from 'next/image';
 
 const iconMap: Record<string, any> = {
   Mic,
@@ -431,11 +432,13 @@ export function UslugiPageClient() {
                                     : undefined
                                 }
                               >
-                                <img
-                                  src={item.thumbnail_url}
+                                <Image
+                                  src={item.thumbnail_url as string}
                                   alt={item.name}
                                   className="h-full w-full object-cover"
                                   loading="lazy"
+                                  width={100}
+                                  height={100}
                                 />
                               </div>
                             </div>

@@ -11,6 +11,7 @@ import { uploadOptimizedImage } from '@/lib/storage';
 import { IUploadImage } from '@/types/image';
 import { slugify } from '@/lib/slugify';
 import { IconGridSelector } from './IconGridSelector';
+import Image from 'next/image';
 
 interface AdminServiceEditorProps {
   serviceId: string;
@@ -210,7 +211,7 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
       showSnackbar('Uploading...', 'info');
 
       const folder = showImageUploader === 'hero' ? 'services/hero' : 'services/thumbnails';
-      const result = await uploadOptimizedImage(imageData.file, folder);
+      const result = await uploadOptimizedImage(imageData.file as unknown as File, folder as string);
 
       if (showImageUploader === 'hero') {
         setHeroImageUrl(result.desktop);
@@ -353,7 +354,13 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
                   </label>
                   {heroImageUrl ? (
                     <div className="relative aspect-video overflow-hidden rounded-lg border border-[#d3bb73]/20">
-                      <img src={heroImageUrl} alt="Hero" className="h-full w-full object-cover" />
+                      <Image
+                        src={heroImageUrl}
+                        alt="Hero"
+                        className="h-full w-full object-cover"
+                        width={100}
+                        height={100}
+                      />
                       <button
                         onClick={() => setShowImageUploader('hero')}
                         className="absolute right-2 top-2 rounded-lg bg-[#d3bb73] p-2 text-[#1c1f33] hover:bg-[#d3bb73]/90"
@@ -383,10 +390,12 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
                             transformOrigin: 'center',
                           }}
                         >
-                          <img
+                          <Image
                             src={thumbnailUrl}
                             alt="Thumbnail"
                             className="h-full w-full object-cover"
+                            width={100}
+                            height={100}
                           />
                         </div>
                         <button
@@ -633,10 +642,12 @@ export function AdminServiceEditor({ serviceId, onClose, onSaved }: AdminService
                     transformOrigin: 'center',
                   }}
                 >
-                  <img
+                  <Image
                     src={thumbnailUrl}
                     alt="Thumbnail preview"
                     className="h-full w-full object-cover"
+                    width={100}
+                    height={100}
                   />
                 </div>
               </div>

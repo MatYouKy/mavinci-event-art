@@ -9,7 +9,7 @@ import { useEditMode } from '@/contexts/EditModeContext';
 interface ProcessSectionProps {
   process: any[];
   isEditingProcess: boolean;
-  setIsEditingProcess: (isEditing: boolean) => void;
+  setIsEditingProcess?: (isEditing: boolean) => void;
 }
 
 export const ProcessSection: FC<ProcessSectionProps> = ({
@@ -51,7 +51,7 @@ export const ProcessSection: FC<ProcessSectionProps> = ({
           <h2 className="flex-1 text-center text-4xl font-light text-[#e5e4e2]">
             Proces współpracy
           </h2>
-          {isEditMode && !isEditingProcess && (
+          {isEditMode && !isEditingProcess && setIsEditingProcess && (
             <button
               onClick={() => setIsEditingProcess(true)}
               className="rounded-lg bg-[#d3bb73] px-4 py-2 text-sm text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"

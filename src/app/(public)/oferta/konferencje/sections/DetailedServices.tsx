@@ -2,7 +2,7 @@ import ConferencesServicesAccordion from '@/components/ConferencesServicesAccord
 import React, { FC } from 'react';
 
 interface DetailedServicesProps {
-  setIsContactFormOpen: (isOpen: boolean) => void;
+  setIsContactFormOpen?: (isOpen: boolean) => void;
 }
 
 export const DetailedServices: FC<DetailedServicesProps> = ({ setIsContactFormOpen }) => {
@@ -21,6 +21,7 @@ export const DetailedServices: FC<DetailedServicesProps> = ({ setIsContactFormOp
 
         <ConferencesServicesAccordion />
 
+        {setIsContactFormOpen && (
         <div className="mt-8 rounded-2xl border border-[#d3bb73]/20 bg-[#1c1f33]/50 w-full md:w-auto p-4 md:p-8 text-center md:mt-12">
           <h3 className="mb-4 text-2xl font-light text-[#e5e4e2]">
             Nie znalazłeś tego, czego szukasz?
@@ -33,9 +34,10 @@ export const DetailedServices: FC<DetailedServicesProps> = ({ setIsContactFormOp
             onClick={() => setIsContactFormOpen(true)}
             className="inline-flex transform f items-center gap-2 rounded-full bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-all hover:scale-105 hover:bg-[#d3bb73]/90 md:px-8 md:py-3"
           >
-            Zapytaj o swoją realizację
-          </button>
-        </div>
+              Zapytaj o swoją realizację
+            </button>
+          </div>
+        )}
       </div>
     </section>
   );

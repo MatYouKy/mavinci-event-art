@@ -45,6 +45,8 @@ export interface IImage {
  * { alt, image_metadata: { desktop:{...}, mobile:{...} } }
  */
 export interface IUploadImage {
+  file(file: any, folder: string): unknown;
+  file: any;
   alt?: string;
   image_metadata?: IImageMetadataUpload;
 }

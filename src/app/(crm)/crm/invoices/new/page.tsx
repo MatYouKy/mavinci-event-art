@@ -695,6 +695,7 @@ export default function NewInvoicePage() {
                   invoiceType={invoiceType}
                   value={invoiceNumber}
                   onChange={setInvoiceNumber}
+                  myCompanyId={selectedCompanyId}
                 />
               </div>
             </div>

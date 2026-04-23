@@ -69,7 +69,6 @@ export default function CompanySelector({
         value={value || ''}
         onChange={(e) => {
           const newValue = e.target.value || null;
-          console.log('[CompanySelector] Changed to:', newValue);
           onChange(newValue);
         }}
         disabled={loading}

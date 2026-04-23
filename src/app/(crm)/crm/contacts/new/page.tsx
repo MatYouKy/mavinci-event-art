@@ -21,7 +21,12 @@ import {
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { fetchCompanyDataFromGUS, parseGoogleMapsUrl } from '@/lib/gus';
-import OrganizationLocationPicker from '@/components/crm/OrganizationLocationPicker';
+import OrganizationLocationPicker from '@/components/crm/contacts/organization/OrganizationLocationPicker';
+import {
+  OrganizationFormValues,
+  validateOrganizationForm,
+} from '@/components/crm/contacts/organization/organizationValidation';
+import { formatNip } from '@/components/crm/contacts/organization/organizationForm.helpers';
 
 type ContactType = 'organization' | 'contact' | 'subcontractor' | 'individual';
 type BusinessType = 'company' | 'hotel' | 'restaurant' | 'venue' | 'freelancer' | 'other';
@@ -59,30 +64,7 @@ export default function NewContactPage() {
   const [loading, setLoading] = useState(false);
   const [loadingGUS, setLoadingGUS] = useState(false);
   const [loadingContacts, setLoadingContacts] = useState(false);
-
-  const [formData, setFormData] = useState({
-    name: '',
-    alias: '',
-    businessType: 'company' as BusinessType,
-    nip: '',
-    regon: '',
-    address: '',
-    city: '',
-    postalCode: '',
-    email: '',
-    phone: '',
-    website: '',
-    googleMapsUrl: '',
-    latitude: '',
-    longitude: '',
-    locationNotes: '',
-    notes: '',
-    hourlyRate: '',
-    specialization: [] as string[],
-
-    // ✅ NOWE: wybór lokalizacji z bazy (do organizacji/podwykonawcy)
-    location_id: '' as string,
-  });
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   const [availableContacts, setAvailableContacts] = useState<ExistingContact[]>([]);
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
@@ -101,6 +83,53 @@ export default function NewContactPage() {
     idNumber: '',
     eventType: '',
     eventDetails: '',
+  });
+  interface OrganizationCreateForm {
+    name: string;
+    alias: string;
+    businessType: BusinessType;
+    nip: string;
+    regon: string;
+    krs: string;
+    legalForm: string;
+    address: string;
+    city: string;
+    postalCode: string;
+    email: string;
+    phone: string;
+    website: string;
+    googleMapsUrl: string;
+    latitude: string;
+    longitude: string;
+    locationNotes: string;
+    notes: string;
+    hourlyRate: string;
+    specialization: string[];
+    location_id: string;
+  }
+
+  const [formData, setFormData] = useState<OrganizationCreateForm>({
+    name: '',
+    alias: '',
+    businessType: 'company',
+    nip: '',
+    regon: '',
+    krs: '',
+    legalForm: '',
+    address: '',
+    city: '',
+    postalCode: '',
+    email: '',
+    phone: '',
+    website: '',
+    googleMapsUrl: '',
+    latitude: '',
+    longitude: '',
+    locationNotes: '',
+    notes: '',
+    hourlyRate: '',
+    specialization: [],
+    location_id: '',
   });
 
   const [specializationInput, setSpecializationInput] = useState('');
@@ -199,17 +228,30 @@ export default function NewContactPage() {
     try {
       setLoadingGUS(true);
       const data = await fetchCompanyDataFromGUS(formData.nip);
-      console.log('[GUS_DEBUG-Data] data', data);
 
       if (data) {
-        setFormData({
-          ...formData,
-          name: data.name || formData.name,
-          regon: data.regon || formData.regon,
-          address: data.address || formData.address,
-          city: data.city || formData.city,
-          postalCode: data.postalCode || formData.postalCode,
-        });
+        setFormData((prev) => ({
+          ...prev,
+          nip: data.nip || prev.nip,
+          name: data.name || prev.name,
+          regon: data.regon || prev.regon,
+          krs: data.krs || prev.krs,
+          address: data.address || prev.address,
+          city: data.city || prev.city,
+          postalCode: data.postalCode || prev.postalCode,
+        }));
+
+        setFormErrors((prev) => ({
+          ...prev,
+          nip: '',
+          name: '',
+          regon: '',
+          krs: '',
+          address: '',
+          city: '',
+          postalCode: '',
+        }));
+
         showSnackbar('Dane pobrane z GUS', 'success');
       }
     } catch (error: any) {
@@ -251,49 +293,55 @@ export default function NewContactPage() {
       return;
     }
 
-    if (contactType === 'organization' || contactType === 'subcontractor') {
-      if (!formData.name) {
-        showSnackbar('Wprowadź nazwę organizacji', 'error');
-        return;
-      }
-    }
-
-    if (contactType === 'contact' || contactType === 'individual') {
-      if (!newContact.firstName.trim() || !newContact.lastName.trim()) {
-        showSnackbar('Wprowadź dane osoby kontaktowej', 'error');
-        return;
-      }
-    }
-
     try {
       setLoading(true);
+
+      if (contactType === 'organization' || contactType === 'subcontractor') {
+        const isValid = await validateOrganizationForm(
+          formData as unknown as OrganizationFormValues,
+        );
+
+        if (!isValid) {
+          showSnackbar('Popraw błędy formularza', 'error');
+          setLoading(false);
+          return;
+        }
+      }
+
+      if (contactType === 'contact' || contactType === 'individual') {
+        if (!newContact.firstName.trim() || !newContact.lastName.trim()) {
+          showSnackbar('Wprowadź dane osoby kontaktowej', 'error');
+          setLoading(false);
+          return;
+        }
+      }
 
       if (contactType === 'contact' || contactType === 'individual') {
         const contactData: any = {
           contact_type: contactType,
-          first_name: newContact.firstName,
-          last_name: newContact.lastName,
-          email: newContact.email || formData.email || null,
-          phone: newContact.phone || formData.phone || null,
-          mobile: newContact.mobile || null,
-          city: formData.city || null,
-          address: formData.address || null,
-          postal_code: formData.postalCode || null,
-          notes: formData.notes || null,
+          first_name: newContact.firstName.trim(),
+          last_name: newContact.lastName.trim(),
+          email: newContact.email?.trim() || formData.email?.trim() || null,
+          phone: newContact.phone?.trim() || formData.phone?.trim() || null,
+          mobile: newContact.mobile?.trim() || null,
+          city: formData.city?.trim() || null,
+          address: formData.address?.trim() || null,
+          postal_code: formData.postalCode?.trim() || null,
+          notes: formData.notes?.trim() || null,
           status: 'active' as const,
         };
 
         if (contactType === 'contact') {
-          contactData.nip = newContact.nip || null;
-          contactData.position = newContact.position || null;
-          contactData.business_phone = newContact.businessPhone || null;
+          contactData.nip = newContact.nip?.trim() || null;
+          contactData.position = newContact.position?.trim() || null;
+          contactData.business_phone = newContact.businessPhone?.trim() || null;
         }
 
         if (contactType === 'individual') {
-          contactData.pesel = newContact.pesel || null;
-          contactData.id_number = newContact.idNumber || null;
-          contactData.event_type = newContact.eventType || null;
-          contactData.event_details = newContact.eventDetails || null;
+          contactData.pesel = newContact.pesel?.trim() || null;
+          contactData.id_number = newContact.idNumber?.trim() || null;
+          contactData.event_type = newContact.eventType?.trim() || null;
+          contactData.event_details = newContact.eventDetails?.trim() || null;
         }
 
         const { data: contact, error: contactError } = await supabase
@@ -310,67 +358,70 @@ export default function NewContactPage() {
             : 'Osoba prywatna dodana pomyślnie',
           'success',
         );
+
         router.push(`/crm/contacts/${contact.id}`);
-      } else {
-        const orgData: any = {
-          organization_type: contactType === 'subcontractor' ? 'subcontractor' : 'client',
-          business_type: formData.businessType,
-          name: formData.name.trim(),
-          alias: formData.alias?.trim() || null,
-          nip: formData.nip || null,
-          address: formData.address?.trim() || null,
-          city: formData.city || null,
-          postal_code: formData.postalCode?.trim() || null,
-          email: formData.email?.trim() || null,
-          phone: formData.phone?.trim() || null,
-          website: formData.website?.trim() || null,
-
-          // ✅ NOWE: wybór lokalizacji z bazy (z pickera)
-          location_id: formData.location_id ? formData.location_id : null,
-
-          google_maps_url: formData.googleMapsUrl || null,
-          latitude: formData.latitude ? parseFloat(formData.latitude) : null,
-          longitude: formData.longitude ? parseFloat(formData.longitude) : null,
-          location_notes: formData.locationNotes || null,
-          notes: formData.notes || null,
-          status: 'active' as const,
-          specialization: contactType === 'subcontractor' ? formData.specialization : null,
-          hourly_rate:
-            contactType === 'subcontractor' && formData.hourlyRate
-              ? parseFloat(formData.hourlyRate)
-              : null,
-        };
-
-        const { data: org, error: orgError } = await supabase
-          .from('organizations')
-          .insert([orgData])
-          .select()
-          .single();
-
-        if (orgError) throw orgError;
-
-        if (selectedContactIds.length > 0) {
-          const contactOrgLinks = selectedContactIds.map((contactId) => ({
-            contact_id: contactId,
-            organization_id: org.id,
-            is_current: true,
-          }));
-
-          const { error: linkError } = await supabase
-            .from('contact_organizations')
-            .insert(contactOrgLinks);
-
-          if (linkError) throw linkError;
-        }
-
-        showSnackbar(
-          contactType === 'organization'
-            ? 'Organizacja dodana pomyślnie'
-            : 'Podwykonawca dodany pomyślnie',
-          'success',
-        );
-        router.push(`/crm/contacts/${org.id}`);
+        return;
       }
+
+      const orgData: any = {
+        organization_type: contactType === 'subcontractor' ? 'subcontractor' : 'client',
+        business_type: formData.businessType,
+        name: formData.name.trim(),
+        alias: formData.alias.trim() || null,
+        nip: formatNip(formData.nip) || null,
+        regon: formData.regon.replace(/\D/g, '') || null,
+        krs: formData.krs.replace(/\D/g, '') || null,
+        legal_form: formData.legalForm || null,
+        address: formData.address.trim() || null,
+        city: formData.city.trim() || null,
+        postal_code: formData.postalCode.trim() || null,
+        email: formData.email.trim() || null,
+        phone: formData.phone.trim() || null,
+        website: formData.website.trim() || null,
+        location_id: formData.location_id || null,
+        google_maps_url: formData.googleMapsUrl.trim() || null,
+        latitude: formData.latitude ? parseFloat(formData.latitude) : null,
+        longitude: formData.longitude ? parseFloat(formData.longitude) : null,
+        location_notes: formData.locationNotes.trim() || null,
+        notes: formData.notes.trim() || null,
+        status: 'active' as const,
+        specialization: contactType === 'subcontractor' ? formData.specialization : null,
+        hourly_rate:
+          contactType === 'subcontractor' && formData.hourlyRate
+            ? parseFloat(formData.hourlyRate)
+            : null,
+      };
+
+      const { data: org, error: orgError } = await supabase
+        .from('organizations')
+        .insert([orgData])
+        .select()
+        .single();
+
+      if (orgError) throw orgError;
+
+      if (selectedContactIds.length > 0) {
+        const contactOrgLinks = selectedContactIds.map((contactId) => ({
+          contact_id: contactId,
+          organization_id: org.id,
+          is_current: true,
+        }));
+
+        const { error: linkError } = await supabase
+          .from('contact_organizations')
+          .insert(contactOrgLinks);
+
+        if (linkError) throw linkError;
+      }
+
+      showSnackbar(
+        contactType === 'organization'
+          ? 'Organizacja dodana pomyślnie'
+          : 'Podwykonawca dodany pomyślnie',
+        'success',
+      );
+
+      router.push(`/crm/contacts/${org.id}`);
     } catch (error: any) {
       console.error('Error creating contact:', error);
       showSnackbar(error.message || 'Błąd podczas dodawania kontaktu', 'error');
@@ -539,8 +590,11 @@ export default function NewContactPage() {
                       <div className="flex space-x-2">
                         <input
                           type="text"
-                          value={formData.nip}
-                          onChange={(e) => setFormData({ ...formData, nip: e.target.value })}
+                          value={formatNip(formData.nip)}
+                          onChange={(e) => {
+                            const clean = e.target.value.replace(/\D/g, '');
+                            setFormData({ ...formData, nip: clean });
+                          }}
                           className="flex-1 rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
                           placeholder="0000000000"
                         />
@@ -559,17 +613,37 @@ export default function NewContactPage() {
                         </button>
                       </div>
                     </div>
-                    <div>
-                      <label className="mb-2 block text-sm font-medium text-gray-300">REGON</label>
-                      <input
-                        type="text"
-                        value={formData.regon}
-                        onChange={(e) => setFormData({ ...formData, regon: e.target.value })}
-                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                        readOnly
-                      />
-                    </div>
                   </div>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-gray-300">
+                          REGON
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.regon}
+                          onChange={(e) => setFormData({ ...formData, regon: e.target.value })}
+                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                        />
+                        {formErrors.regon && (
+                          <p className="mt-1 text-sm text-red-400">{formErrors.regon}</p>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-gray-300">KRS</label>
+                        <input
+                          type="text"
+                          value={formData.krs}
+                          onChange={(e) => setFormData({ ...formData, krs: e.target.value })}
+                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                          placeholder="0000000000"
+                        />
+                        {formErrors.krs && (
+                          <p className="mt-1 text-sm text-red-400">{formErrors.krs}</p>
+                        )}
+                      </div>
+                    </div>
 
                   <div>
                     <label className="mb-2 block text-sm font-medium text-gray-300">
@@ -649,9 +723,7 @@ export default function NewContactPage() {
 
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div>
-                      <label className="mb-2 block text-sm font-medium text-gray-300">
-                        Miasto
-                      </label>
+                      <label className="mb-2 block text-sm font-medium text-gray-300">Miasto</label>
                       <input
                         type="text"
                         value={formData.city}
@@ -661,9 +733,7 @@ export default function NewContactPage() {
                       />
                     </div>
                     <div>
-                      <label className="mb-2 block text-sm font-medium text-gray-300">
-                        Email
-                      </label>
+                      <label className="mb-2 block text-sm font-medium text-gray-300">Email</label>
                       <input
                         type="email"
                         value={formData.email}
@@ -1032,9 +1102,7 @@ export default function NewContactPage() {
                       <input
                         type="email"
                         value={newContact.email}
-                        onChange={(e) =>
-                          setNewContact({ ...newContact, email: e.target.value })
-                        }
+                        onChange={(e) => setNewContact({ ...newContact, email: e.target.value })}
                         className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
                       />
                     </div>

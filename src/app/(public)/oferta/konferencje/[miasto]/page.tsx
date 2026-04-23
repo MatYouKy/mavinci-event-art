@@ -5,9 +5,9 @@ import PageLayout from '@/components/Layout/PageLayout';
 import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
 import { getUserPermissions } from '@/lib/serverAuth';
 import EditableHeroSectionServer from '@/components/EditableHeroSectionServer';
-import { getPolishCityCasesSmart } from '@/lib/polishCityCases';
+import { getPolishCityCasesSmart, PolishCityCases } from '@/lib/polishCityCases';
 
-import CityConferenceAdminClient from './CityConferenceClient';
+import CityConferenceAdminClient from './CityConferenceAdminClient';
 import CityConferenceContent from './CityConferenceContent';
 // import CityLocalIntroServer from './CityLocalIntroServer';
 import CityMapEmbed from '@/components/CityMapEmbed/CityMapEmbed';
@@ -21,6 +21,14 @@ import { ProcessSection } from '../sections/ProcessSection';
 import { CaseStudiesSection } from '../sections/CaseStudiesSection';
 import { RelatedServicesSection } from '../sections/RelatedServicesSection';
 import { cookies } from 'next/headers';
+import { FAQSection } from '../sections/FAQ/FAQSection';
+import Stats from '@/components/Stats';
+import { loadCityCasesFromDb } from '@/lib/Pages/polishCityCases.server';
+
+function capitalize(value: string) {
+  if (!value) return value;
+  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+}
 
 async function loadCityData(city: string) {
   noStore();
@@ -54,19 +62,24 @@ async function loadCityData(city: string) {
     .eq('page_slug', `oferta/konferencje/${city}`)
     .maybeSingle();
 
-  if (cityPageSeoError) console.error('SSR SEO error:', cityPageSeoError);
+  if (cityPageSeoError) console.error('SSR SEO error:', cityPageSeoError);  
 
-  const cityCases = getPolishCityCasesSmart(city);
+  const EXCEPTIONS: Record<string, PolishCityCases> = await loadCityCasesFromDb();
+
+  const cityCases = getPolishCityCasesSmart(city, EXCEPTIONS);
 
   const image =
     cityPageSeo?.og_image || cityPageImage?.image_url || 'https://mavinci.pl/logo-mavinci-crm.png';
 
   const canonicalUrl = `https://mavinci.pl/oferta/konferencje/${city}`;
 
-  const defaultTitle = `Obsługa Konferencji w ${cityCases.locative} - Profesjonalne Nagłośnienie i Multimedia | MAVINCI`;
-  const defaultDescription = `Profesjonalna obsługa konferencji w ${cityCases.genitive}: nagłośnienie, multimedia, streaming live, realizacja wideo. Kompleksowe wsparcie techniczne dla wydarzeń biznesowych w ${cityCases.locative} i okolicach.`;
+  const defaultTitle = `Obsługa Konferencji ${cityCases.locative_preposition ? cityCases.locative_preposition : 'w'} ${capitalize(cityCases.locative)}`;
 
-  const title = defaultTitle || cityPageSeo?.title;
+  const defaultDescription = `Profesjonalna obsługa konferencji ${cityCases.locative_preposition ? cityCases.locative_preposition : 'w'} ${capitalize(cityCases.locative)}: nagłośnienie, multimedia, streaming live, realizacja wideo. Kompleksowe wsparcie techniczne dla wydarzeń biznesowych ${cityCases.locative_preposition ? cityCases.locative_preposition : 'w'} ${capitalize(cityCases.locative)} i okolicach.`;
+
+  const title = cityPageSeo?.title || defaultTitle;
+
+  console.log('[cityPageSeo]', cityPageSeo);
   const description = defaultDescription || cityPageSeo?.seo_description;
   const keywords =
     cityPageSeo?.seo_keywords ||
@@ -97,9 +110,10 @@ export async function generateMetadata({
   }
 
   const { title, description, keywords, canonicalUrl, image, cityCases } = data;
+  const metaTitle = `${title} - Profesjonalne Nagłośnienie i Multimedia | MAVINCI`;
 
   return {
-    title,
+    title: metaTitle,
     description,
     keywords,
     alternates: { canonical: canonicalUrl },
@@ -108,7 +122,7 @@ export async function generateMetadata({
       url: canonicalUrl,
       title,
       description,
-      images: [{ url: image, alt: `Obsługa konferencji w ${cityCases.locative}` }],
+      images: [{ url: image, alt: `Obsługa konferencji   ${cityCases.locative}` }],
       siteName: 'MAVINCI Event & ART',
     },
     twitter: {
@@ -124,14 +138,12 @@ export default async function CityConferencePage({ params }: { params: { miasto:
   const data = await loadCityData(params.miasto);
   if (!data) notFound();
 
-  const { city, globalConfig, hasWebsiteEdit, image } = data;
+  const { cityCases, globalConfig, hasWebsiteEdit, image, description, title, city } = data;
 
-  const cityCases = getPolishCityCasesSmart(city.name);
   const canonicalUrl = `https://mavinci.pl/oferta/konferencje/${city.locality}`;
 
   const defaultTitle = `Profesjonalna obsługa techniczna konferencji w ${cityCases.locative} – nagłośnienie, multimedia, streaming, oświetlenie i realizacja wydarzeń biznesowych. Zapytaj o ofertę!`;
-  const defaultDescription = `Profesjonalna obsługa konferencji w ${cityCases.locative}: nagłośnienie, multimedia, streaming live, realizacja wideo. Kompleksowe wsparcie techniczne dla wydarzeń biznesowych w ${cityCases.locative} i okolicach.`;
-  
+
   const pageSlug = `oferta/konferencje/${city.locality}`;
 
   // ✅ Naprawione schema: priceRange NIE w Offer
@@ -140,10 +152,8 @@ export default async function CityConferencePage({ params }: { params: { miasto:
         '@context': 'https://schema.org',
         '@type': 'Service',
 
-        name: `Obsługa Konferencji w ${cityCases.locative}`,
-        description:
-          `Kompleksowa obsługa techniczna konferencji biznesowych w ${cityCases.locative}. ` +
-          `Nagłośnienie, multimedia, streaming live, realizacja wideo oraz pełna koordynacja techniczna wydarzeń.`,
+        name: `Obsługa Konferencji ${cityCases.locative_preposition ? cityCases.locative_preposition : 'w'} ${capitalize(cityCases.locative)}`,
+        description,
 
         url: canonicalUrl,
         image: image,
@@ -191,12 +201,12 @@ export default async function CityConferencePage({ params }: { params: { miasto:
 
         audience: {
           '@type': 'BusinessAudience',
-          audienceType: 'Firmy, instytucje, organizatorzy konferencji',
+          audienceType: `Firmy, instytucje, organizatorzy konferencji ${cityCases.locative_preposition ? cityCases.locative_preposition : 'w'} ${capitalize(cityCases.locative)}`,
         },
 
         hasOfferCatalog: {
           '@type': 'OfferCatalog',
-          name: 'Zakres obsługi technicznej konferencji',
+          name: `Zakres obsługi technicznej konferencji ${cityCases.locative_preposition ? cityCases.locative_preposition : 'w'} ${capitalize(cityCases.locative)}`,
           itemListElement: [
             {
               '@type': 'Offer',
@@ -299,59 +309,58 @@ export default async function CityConferencePage({ params }: { params: { miasto:
         section="konferencje-hero"
         pageSlug={pageSlug}
         initialImageUrl={image}
-        initialTitle={`Obsługa Konferencji w ${cityCases.locative}`}
-        initialDescription={defaultDescription}
+        initialTitle={title}
+        initialDescription={description}
       />
 
-      <div className="min-h-screen bg-[#0f1119] pt-2">
-        <section className="min-h-[50px] px-6">
-          <div className="mx-auto min-h-[50px] max-w-7xl">
-            <CategoryBreadcrumb
-              pageSlug={pageSlug}
-              productName={`Obsługa Konferencji w ${cityCases.locative}`}
-              hideMetadataButton={false}
-            />
+      <div className="left-0 top-0 min-h-screen w-full bg-[transparent]">
+        <section className="relative min-h-[50px]">
+          <div className="absolute left-0 top-0 z-10 w-full border-b border-[#d3bb73]/20">
+            <div className="mx-auto min-h-[50px] max-w-7xl px-6">
+              <CategoryBreadcrumb
+                pageSlug={pageSlug}
+                productName={title}
+                hideMetadataButton={false}
+              />
+            </div>
           </div>
+          <Stats />
         </section>
 
         {/* ✅ tylko admin UI w kliencie */}
         <CityConferenceAdminClient
           isAdmin={hasWebsiteEdit}
-          cityLocality={city.locality}
-          cityName={city.name}
-          defaultTitle={defaultTitle}
-          defaultDescription={defaultDescription}
+          cityLocality={cityCases.locative}
+          cityName={cityCases.nominative}
+          defaultTitle={title}
+          defaultDescription={description}
         />
         <TechnicalServices services={services} cityCases={cityCases} />
         <AdvantagesSection advantages={advantages} />
 
-        {/* {serviceCategories.length > 0 && <DetailedServices setIsContactFormOpen={() => {}} />} */}
+        {serviceCategories.length > 0 && <DetailedServices />}
 
         {portfolio.length > 0 && (
           <PortfolioProjects isEditMode={false} portfolioProjects={portfolio} />
         )}
 
-        {/* <ProcessSection
-          process={process}
-          setIsEditingProcess={() => {}}
-          isEditingProcess={false}
-        /> */}
+        <ProcessSection process={process} isEditingProcess={false} />
 
-        {faq.length > 0 && <CaseStudiesSection caseStudies={caseStudies} />}
+        <CaseStudiesSection caseStudies={caseStudies} />
+        <FAQSection faq={faq} />
 
-        {/* {relatedServices.length > 0 && (
+        {relatedServices.length > 0 && (
           <RelatedServicesSection
             isEditMode={false}
-            selectedServiceIds={new Set(relatedServices.map((service) => service.id))}
-            setSelectedServiceIds={() => {}}
             allServiceItems={allServiceItems}
             relatedServices={relatedServices}
+            cityCases={cityCases}
           />
-        )} */}
+        )}
 
         {/* ✅ CAŁA TREŚĆ jako SERVER (Google widzi 100%) */}
+        <CityMapEmbed query={`${cityCases.nominative}, Polska`} />
         <CityConferenceContent cityName={city.name} />
-        <CityMapEmbed query={`${city.name}, Polska`} />
       </div>
     </PageLayout>
   );

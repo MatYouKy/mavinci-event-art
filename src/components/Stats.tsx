@@ -1,6 +1,5 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
 import { Award, Users, Calendar, Star } from 'lucide-react';
 import { AnimatedCounter } from './UI/AnimatedCounter';
 
@@ -41,7 +40,7 @@ export default function Stats() {
         <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-[#800020] rounded-full blur-3xl"></div>
       </div>
 
-      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16 md:mb-20">
           <div className="inline-block">
             <span className="text-[#d3bb73] text-sm md:text-base font-light tracking-widest uppercase mb-4 block">

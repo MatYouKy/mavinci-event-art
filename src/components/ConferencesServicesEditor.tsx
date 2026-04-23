@@ -107,7 +107,7 @@ export function ConferencesServicesEditor({ services }: Props) {
   if (!isEditMode)
     return (
       <div>
-        <h1>Zakres obsługi technicznej</h1>
+        {/* <h1>Zakres obsługi technicznej</h1> */}
       </div>
     );
 

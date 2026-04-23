@@ -4,6 +4,7 @@ import { useEditMode } from '@/contexts/EditModeContext';
 import { usePathname } from 'next/navigation';
 import { Mail, Phone, MapPin, Facebook, Instagram, Linkedin, ArrowUp } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 
 export default function Footer() {
   const { isEditMode } = useEditMode();
@@ -45,9 +46,11 @@ export default function Footer() {
           <div className="space-y-6">
             <div>
               <Link href="/" className="inline-block">
-                <img
+                <Image
                   src="/logo mavinci.svg"
                   alt="MAVINCI event & art"
+                  width={100}
+                  height={100}
                   className="mb-3 h-10 w-auto sm:mb-4 sm:h-12"
                 />
               </Link>
@@ -150,9 +153,9 @@ export default function Footer() {
               <li className="flex items-start gap-3">
                 <MapPin className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#d3bb73] sm:h-5 sm:w-5" />
                 <span className="text-xs font-light leading-relaxed text-[#e5e4e2]/60 sm:text-sm">
-                  ul. Hugona Kołłątaja 5, p. 320
+                  ul. Towarowa 20b
                   <br />
-                  11-041 Olsztyn
+                  11-417 Olsztyn, Polska
                 </span>
               </li>
             </ul>
@@ -162,7 +165,7 @@ export default function Footer() {
         {/* Dolny pasek */}
         <div className="flex flex-col items-center justify-between gap-3 border-t border-[#d3bb73]/10 pt-6 sm:flex-row sm:gap-4 sm:pt-8">
           <p className="text-center text-xs font-light text-[#e5e4e2]/40 sm:text-left sm:text-sm">
-            © 2024 Mavinci Events. Wszystkie prawa zastrzeżone.
+            © 2026 Mavinci Event & Art. Wszystkie prawa zastrzeżone.
           </p>
           <div className="flex flex-wrap justify-center gap-3 sm:justify-end sm:gap-6">
             <Link

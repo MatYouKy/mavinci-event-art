@@ -111,8 +111,8 @@ export default function Contact() {
                 <div>
                   <h3 className="text-[#e5e4e2] font-light text-lg mb-1">Adres</h3>
                   <p className="text-[#e5e4e2]/70">
-                    ul. Hugona Kołłątaja 5, p. 320<br />
-                    11-041 Olsztyn
+                    ul. Towarowa 20b<br />
+                    11-417 Olsztyn, Polska
                   </p>
                 </div>
               </div>

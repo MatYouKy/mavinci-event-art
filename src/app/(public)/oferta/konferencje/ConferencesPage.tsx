@@ -100,7 +100,6 @@ export default function ConferencesPageClient({
   initialServiceCategories,
   initialRelatedServices,
   initialAllServiceItems,
-  initialSelectedServiceIds,
   localIntro,
 }: Props) {
   const { isEditMode } = useEditMode();
@@ -120,14 +119,11 @@ export default function ConferencesPageClient({
   const [cities, setCities] = useState<any[]>(initialCities);
   const [serviceCategories, setServiceCategories] = useState<any[]>(initialServiceCategories);
 
-  const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
+
   const [isContactFormOpen, setIsContactFormOpen] = useState(false);
 
   const [relatedServices, setRelatedServices] = useState<any[]>(initialRelatedServices);
   const [allServiceItems, setAllServiceItems] = useState<any[]>(initialAllServiceItems);
-
-  const initialSet = useMemo(() => new Set(initialSelectedServiceIds), [initialSelectedServiceIds]);
-  const [selectedServiceIds, setSelectedServiceIds] = useState<Set<string>>(initialSet);
 
   const [isEditingProcess, setIsEditingProcess] = useState(false);
 
@@ -238,13 +234,11 @@ export default function ConferencesPageClient({
 
       {faq.length > 0 && <CaseStudiesSection caseStudies={caseStudies} />}
 
-      <FAQSection faq={faq} setExpandedFaq={setExpandedFaq} expandedFaq={expandedFaq} />
+      <FAQSection faq={faq} />
 
       {(relatedServices.length > 0 || isEditMode) && (
         <RelatedServicesSection
           isEditMode={isEditMode}
-          selectedServiceIds={selectedServiceIds}
-          setSelectedServiceIds={setSelectedServiceIds}
           allServiceItems={allServiceItems}
           relatedServices={relatedServices}
         />

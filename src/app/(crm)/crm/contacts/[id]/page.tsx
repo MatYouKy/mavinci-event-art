@@ -2,16 +2,51 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
+import OrganizationDetailsSection from '@/components/crm/contacts/organization/OrganizationDetailsSection';
+import {
+  validateOrganizationForm,
+  type OrganizationFormErrors,
+} from '@/components/crm/contacts/organization/organizationValidation';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Building2, Mail, Phone, MapPin, Star, DollarSign, FileText, Plus, CreditCard as Edit, Save, X, User, CircleUser as UserCircle, History, Users, Globe, CreditCard, Loader2, ExternalLink, Trash2, StickyNote, Receipt, Calendar, ChevronDown, Check, Wrench, Search } from 'lucide-react';
+import {
+  ArrowLeft,
+  Building2,
+  Mail,
+  Phone,
+  MapPin,
+  Star,
+  DollarSign,
+  FileText,
+  Plus,
+  CreditCard as Edit,
+  Save,
+  X,
+  User,
+  CircleUser as UserCircle,
+  History,
+  Users,
+  Globe,
+  CreditCard,
+  Loader2,
+  ExternalLink,
+  Trash2,
+  StickyNote,
+  Receipt,
+  Calendar,
+  ChevronDown,
+  Check,
+  Wrench,
+  Search,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { parseGoogleMapsUrl, fetchCompanyDataFromGUS } from '@/lib/gus';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import OrganizationLocationPicker from '@/components/crm/OrganizationLocationPicker';
-import OrganizationRepresentatives from '@/components/crm/OrganizationRepresentatives';
+import OrganizationLocationPicker from '@/components/crm/contacts/organization/OrganizationLocationPicker';
+import OrganizationRepresentatives from '@/components/crm/contacts/organization/OrganizationRepresentatives';
 import AddLocationModal from '@/components/crm/AddLocationModal';
 import SubcontractorServicesPanel from '@/components/crm/SubcontractorServicesPanel';
+import { formatNip } from '@/components/crm/contacts/organization/organizationForm.helpers';
 
 interface Organization {
   id: string;
@@ -187,8 +222,11 @@ export default function OrganizationDetailPage() {
   const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
-  const [editedData, setEditedData] = useState<Partial<Organization & Contact>>({});
+  const [editedContactData, setEditedContactData] = useState<Partial<Contact>>({});
+  const [editedOrganizationData, setEditedOrganizationData] = useState<Partial<Organization>>({});
   const [saving, setSaving] = useState(false);
+
+  const [formErrors, setFormErrors] = useState<OrganizationFormErrors>({});
 
   const [loadingGUS, setLoadingGUS] = useState(false);
   const [showAddContactModal, setShowAddContactModal] = useState(false);
@@ -221,47 +259,43 @@ export default function OrganizationDetailPage() {
   //blok search
 
   const [contactQuery, setContactQuery] = useState('');
-const [contactOpen, setContactOpen] = useState(false);
-const contactWrapRef = useRef<HTMLDivElement | null>(null);
+  const [contactOpen, setContactOpen] = useState(false);
+  const contactWrapRef = useRef<HTMLDivElement | null>(null);
 
-const selectedContact = useMemo(() => {
-  return availableContacts.find((c) => c.id === selectedContactId) || null;
-}, [availableContacts, selectedContactId]);
+  const selectedContact = useMemo(() => {
+    return availableContacts.find((c) => c.id === selectedContactId) || null;
+  }, [availableContacts, selectedContactId]);
 
-const contactLabel = (contact: any) => {
-  const name = contact.full_name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
-  return `${name || 'Bez nazwy'}${contact.email ? ` (${contact.email})` : ''}`;
-};
-
-const filteredContacts = useMemo(() => {
-  const q = contactQuery.trim().toLowerCase();
-  if (!q) return availableContacts;
-
-  return availableContacts.filter((c) => {
-    const hay = [
-      c.full_name,
-      c.first_name,
-      c.last_name,
-      c.email,
-    ]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase();
-
-    return hay.includes(q);
-  });
-}, [availableContacts, contactQuery]);
-
-useEffect(() => {
-  const onDocMouseDown = (e: MouseEvent) => {
-    if (!contactWrapRef.current) return;
-    if (!contactWrapRef.current.contains(e.target as Node)) setContactOpen(false);
+  const contactLabel = (contact: any) => {
+    const name =
+      contact.full_name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
+    return `${name || 'Bez nazwy'}${contact.email ? ` (${contact.email})` : ''}`;
   };
-  document.addEventListener('mousedown', onDocMouseDown);
-  return () => document.removeEventListener('mousedown', onDocMouseDown);
-}, []);
 
-//koneic bloku
+  const filteredContacts = useMemo(() => {
+    const q = contactQuery.trim().toLowerCase();
+    if (!q) return availableContacts;
+
+    return availableContacts.filter((c) => {
+      const hay = [c.full_name, c.first_name, c.last_name, c.email]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return hay.includes(q);
+    });
+  }, [availableContacts, contactQuery]);
+
+  useEffect(() => {
+    const onDocMouseDown = (e: MouseEvent) => {
+      if (!contactWrapRef.current) return;
+      if (!contactWrapRef.current.contains(e.target as Node)) setContactOpen(false);
+    };
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, []);
+
+  //koneic bloku
 
   useEffect(() => {
     if (organizationId) {
@@ -290,7 +324,15 @@ useEffect(() => {
 
     if (userIsAdmin) {
       setAllowedContactTabs(['details', 'notes', 'history']);
-      setAllowedOrganizationTabs(['details', 'contacts', 'invoices', 'events', 'notes', 'history', 'services']);
+      setAllowedOrganizationTabs([
+        'details',
+        'contacts',
+        'invoices',
+        'events',
+        'notes',
+        'history',
+        'services',
+      ]);
       return;
     }
 
@@ -312,11 +354,9 @@ useEffect(() => {
   };
 
   useEffect(() => {
-    if (activeTab === 'invoices') {
-      fetchInvoices();
-    } else if (activeTab === 'events') {
-      fetchEvents();
-    }
+    fetchInvoices();
+
+    fetchEvents();
   }, [activeTab, organizationId]);
 
   useEffect(() => {
@@ -512,13 +552,16 @@ useEffect(() => {
   };
 
   const handleEdit = () => {
+    if (!organization) return;
     setEditMode(true);
-    setEditedData({ ...organization });
+    setFormErrors({});
+    setEditedOrganizationData({ ...organization });
   };
 
   const handleCancelEdit = () => {
     setEditMode(false);
-    setEditedData({});
+    setEditedOrganizationData({});
+    setFormErrors({});
   };
 
   const handleSaveContact = async () => {
@@ -528,7 +571,7 @@ useEffect(() => {
       setSaving(true);
 
       // Usuń full_name z editedData bo to kolumna generowana
-      const { full_name, ...dataToUpdate } = editedData;
+      const { full_name, ...dataToUpdate } = editedContactData;
 
       const { error } = await supabase
         .from('contacts')
@@ -577,11 +620,25 @@ useEffect(() => {
 
     try {
       setSaving(true);
+      setFormErrors({});
+
+      const payloadToValidate = {
+        ...organization,
+        ...editedOrganizationData,
+      };
+
+      const { isValid, validatedData, errors } = await validateOrganizationForm(payloadToValidate);
+
+      if (!isValid || !validatedData) {
+        setFormErrors(errors);
+        showSnackbar('Popraw wymagane pola formularza', 'error');
+        return;
+      }
 
       const { error } = await supabase
         .from('organizations')
         .update({
-          ...editedData,
+          ...validatedData,
           updated_at: new Date().toISOString(),
         })
         .eq('id', organization.id);
@@ -590,6 +647,7 @@ useEffect(() => {
 
       showSnackbar('Dane zaktualizowane', 'success');
       setEditMode(false);
+      setEditedOrganizationData({});
       fetchData();
     } catch (error: any) {
       showSnackbar(error.message || 'Błąd podczas zapisywania', 'error');
@@ -599,16 +657,16 @@ useEffect(() => {
   };
 
   const handleParseGoogleMaps = () => {
-    if (!editedData.google_maps_url) {
+    if (!editedOrganizationData.google_maps_url) {
       showSnackbar('Wprowadź URL Google Maps', 'error');
       return;
     }
 
     try {
-      const coords = parseGoogleMapsUrl(editedData.google_maps_url);
+      const coords = parseGoogleMapsUrl(editedOrganizationData.google_maps_url);
       if (coords) {
-        setEditedData({
-          ...editedData,
+        setEditedOrganizationData({
+          ...editedOrganizationData,
           latitude: coords.latitude,
           longitude: coords.longitude,
         });
@@ -622,7 +680,7 @@ useEffect(() => {
   };
 
   const handleFetchFromGUS = async () => {
-    const nip = editedData.nip || organization?.nip;
+    const nip = editedOrganizationData.nip || organization?.nip;
     if (!nip) {
       showSnackbar('Wprowadź NIP', 'error');
       return;
@@ -633,14 +691,24 @@ useEffect(() => {
       const data = await fetchCompanyDataFromGUS(nip);
 
       if (data) {
-        setEditedData({
-          ...editedData,
-          name: data.name || editedData.name,
-          regon: data.regon || editedData.regon,
-          address: data.address || editedData.address,
-          city: data.city || editedData.city,
-          postal_code: data.postalCode || editedData.postal_code,
-        });
+        setEditedOrganizationData((prev) => ({
+          ...prev,
+          name: data.name || prev.name,
+          regon: data.regon || prev.regon,
+          address: data.address || prev.address,
+          city: data.city || prev.city,
+          postal_code: data.postalCode || prev.postal_code,
+        }));
+
+        setFormErrors((prev) => ({
+          ...prev,
+          name: undefined,
+          nip: undefined,
+          address: undefined,
+          city: undefined,
+          postal_code: undefined,
+        }));
+
         showSnackbar('Dane pobrane z GUS', 'success');
       }
     } catch (error: any) {
@@ -802,7 +870,7 @@ useEffect(() => {
   };
 
   const handleLocationAdded = (location: any) => {
-    setEditedData({ ...editedData, location_id: location.id });
+    setEditedOrganizationData({ ...editedOrganizationData, location_id: location.id });
     setShowAddLocationModal(false);
     showSnackbar('Lokalizacja dodana i przypisana', 'success');
     fetchData();
@@ -854,7 +922,7 @@ useEffect(() => {
                   <button
                     onClick={() => {
                       setEditMode(true);
-                      setEditedData(contact);
+                      setEditedContactData(contact);
                     }}
                     className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1a1d2e] transition-colors hover:bg-[#d3bb73]/90"
                   >
@@ -882,7 +950,7 @@ useEffect(() => {
                   <button
                     onClick={() => {
                       setEditMode(false);
-                      setEditedData({});
+                      setEditedContactData({});
                     }}
                     className="flex items-center gap-2 rounded-lg bg-gray-600 px-4 py-2 text-white transition-colors hover:bg-gray-700"
                   >
@@ -903,8 +971,10 @@ useEffect(() => {
                 {editMode ? (
                   <input
                     type="text"
-                    value={editedData.first_name || ''}
-                    onChange={(e) => setEditedData({ ...editedData, first_name: e.target.value })}
+                    value={editedContactData.first_name || ''}
+                    onChange={(e) =>
+                      setEditedContactData({ ...editedContactData, first_name: e.target.value })
+                    }
                     className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-3 py-2 text-white"
                   />
                 ) : (
@@ -917,8 +987,10 @@ useEffect(() => {
                 {editMode ? (
                   <input
                     type="text"
-                    value={editedData.last_name || ''}
-                    onChange={(e) => setEditedData({ ...editedData, last_name: e.target.value })}
+                    value={editedContactData.last_name || ''}
+                    onChange={(e) =>
+                      setEditedContactData({ ...editedContactData, last_name: e.target.value })
+                    }
                     className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-3 py-2 text-white"
                   />
                 ) : (
@@ -931,8 +1003,10 @@ useEffect(() => {
                 {editMode ? (
                   <input
                     type="email"
-                    value={editedData.email || ''}
-                    onChange={(e) => setEditedData({ ...editedData, email: e.target.value })}
+                    value={editedContactData.email || ''}
+                    onChange={(e) =>
+                      setEditedContactData({ ...editedContactData, email: e.target.value })
+                    }
                     className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-3 py-2 text-white"
                   />
                 ) : (
@@ -945,8 +1019,10 @@ useEffect(() => {
                 {editMode ? (
                   <input
                     type="tel"
-                    value={editedData.phone || ''}
-                    onChange={(e) => setEditedData({ ...editedData, phone: e.target.value })}
+                    value={editedContactData.phone || ''}
+                    onChange={(e) =>
+                      setEditedContactData({ ...editedContactData, phone: e.target.value })
+                    }
                     className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-3 py-2 text-white"
                   />
                 ) : (
@@ -959,9 +1035,9 @@ useEffect(() => {
                 {editMode ? (
                   <input
                     type="tel"
-                    value={editedData.business_phone || ''}
+                    value={editedContactData.business_phone || ''}
                     onChange={(e) =>
-                      setEditedData({ ...editedData, business_phone: e.target.value })
+                      setEditedContactData({ ...editedContactData, business_phone: e.target.value })
                     }
                     className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-3 py-2 text-white"
                   />
@@ -975,8 +1051,10 @@ useEffect(() => {
                 {editMode ? (
                   <input
                     type="text"
-                    value={editedData.city || ''}
-                    onChange={(e) => setEditedData({ ...editedData, city: e.target.value })}
+                    value={editedContactData.city || ''}
+                    onChange={(e) =>
+                      setEditedContactData({ ...editedContactData, city: e.target.value })
+                    }
                     className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-3 py-2 text-white"
                   />
                 ) : (
@@ -989,8 +1067,10 @@ useEffect(() => {
                 {editMode ? (
                   <input
                     type="text"
-                    value={editedData.postal_code || ''}
-                    onChange={(e) => setEditedData({ ...editedData, postal_code: e.target.value })}
+                    value={editedContactData.postal_code || ''}
+                    onChange={(e) =>
+                      setEditedContactData({ ...editedContactData, postal_code: e.target.value })
+                    }
                     className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-3 py-2 text-white"
                   />
                 ) : (
@@ -1003,8 +1083,10 @@ useEffect(() => {
                 {editMode ? (
                   <input
                     type="text"
-                    value={editedData.address || ''}
-                    onChange={(e) => setEditedData({ ...editedData, address: e.target.value })}
+                    value={editedContactData.address || ''}
+                    onChange={(e) =>
+                      setEditedContactData({ ...editedContactData, address: e.target.value })
+                    }
                     className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-3 py-2 text-white"
                   />
                 ) : (
@@ -1017,8 +1099,11 @@ useEffect(() => {
                 {editMode ? (
                   <input
                     type="text"
-                    value={editedData.nip || ''}
-                    onChange={(e) => setEditedData({ ...editedData, nip: e.target.value })}
+                    value={formatNip(editedContactData.nip || '')}
+                    onChange={(e) => {
+                      const clean = e.target.value.replace(/\D/g, '');
+                      setEditedContactData({ ...editedContactData, nip: clean });
+                    }}
                     className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-3 py-2 text-white"
                   />
                 ) : (
@@ -1031,8 +1116,10 @@ useEffect(() => {
                 {editMode ? (
                   <input
                     type="text"
-                    value={editedData.pesel || ''}
-                    onChange={(e) => setEditedData({ ...editedData, pesel: e.target.value })}
+                    value={editedContactData.pesel || ''}
+                    onChange={(e) =>
+                      setEditedContactData({ ...editedContactData, pesel: e.target.value })
+                    }
                     className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-3 py-2 text-white"
                   />
                 ) : (
@@ -1045,8 +1132,10 @@ useEffect(() => {
                 {editMode ? (
                   <input
                     type="text"
-                    value={editedData.id_number || ''}
-                    onChange={(e) => setEditedData({ ...editedData, id_number: e.target.value })}
+                    value={editedContactData.id_number || ''}
+                    onChange={(e) =>
+                      setEditedContactData({ ...editedContactData, id_number: e.target.value })
+                    }
                     className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-3 py-2 text-white"
                   />
                 ) : (
@@ -1058,8 +1147,10 @@ useEffect(() => {
                 <label className="mb-2 block text-sm text-gray-400">Rodzaj uroczystości</label>
                 {editMode ? (
                   <select
-                    value={editedData.event_type || ''}
-                    onChange={(e) => setEditedData({ ...editedData, event_type: e.target.value })}
+                    value={editedContactData.event_type || ''}
+                    onChange={(e) =>
+                      setEditedContactData({ ...editedContactData, event_type: e.target.value })
+                    }
                     className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-3 py-2 text-white"
                   >
                     <option value="">Wybierz</option>
@@ -1079,8 +1170,10 @@ useEffect(() => {
               <label className="mb-2 block text-sm text-gray-400">Szczegóły uroczystości</label>
               {editMode ? (
                 <textarea
-                  value={editedData.event_details || ''}
-                  onChange={(e) => setEditedData({ ...editedData, event_details: e.target.value })}
+                  value={editedContactData.event_details || ''}
+                  onChange={(e) =>
+                    setEditedContactData({ ...editedContactData, event_details: e.target.value })
+                  }
                   rows={3}
                   className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-3 py-2 text-white"
                 />
@@ -1093,8 +1186,10 @@ useEffect(() => {
               <label className="mb-2 block text-sm text-gray-400">Notatki</label>
               {editMode ? (
                 <textarea
-                  value={editedData.notes || ''}
-                  onChange={(e) => setEditedData({ ...editedData, notes: e.target.value })}
+                  value={editedContactData.notes || ''}
+                  onChange={(e) =>
+                    setEditedContactData({ ...editedContactData, notes: e.target.value })
+                  }
                   rows={4}
                   className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-3 py-2 text-white"
                 />
@@ -1214,7 +1309,9 @@ useEffect(() => {
               icon: StickyNote,
             },
             { key: 'history' as TabType, label: 'Historia', icon: History },
-            ...(organization?.organization_type === 'subcontractor' ? [{ key: 'services' as TabType, label: 'Usługi', icon: Wrench }] : []),
+            ...(organization?.organization_type === 'subcontractor'
+              ? [{ key: 'services' as TabType, label: 'Usługi', icon: Wrench }]
+              : []),
           ]
             .filter(({ key }) => allowedOrganizationTabs.includes(key))
             .map(({ key, label, icon: Icon }) => (
@@ -1234,418 +1331,26 @@ useEffect(() => {
         </div>
 
         {activeTab === 'details' && (
-          <div className="space-y-6">
-            <div className="rounded-lg border border-gray-700 bg-[#1a1d2e] p-6">
-              <h2 className="mb-4 text-xl font-semibold text-white">Informacje podstawowe</h2>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-400">
-                    Nazwa pełna
-                  </label>
-                  {editMode ? (
-                    <input
-                      type="text"
-                      value={editedData.name || ''}
-                      onChange={(e) => setEditedData({ ...editedData, name: e.target.value })}
-                      className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                    />
-                  ) : (
-                    <p className="text-white">{organization.name}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-400">
-                    Alias (krótka nazwa)
-                  </label>
-                  {editMode ? (
-                    <input
-                      type="text"
-                      value={editedData.alias || ''}
-                      onChange={(e) => setEditedData({ ...editedData, alias: e.target.value })}
-                      className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                      placeholder="np. OMEGA HOTEL"
-                    />
-                  ) : (
-                    <p className="text-white">{organization.alias || '-'}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-400">NIP</label>
-                  {editMode ? (
-                    <div className="flex space-x-2">
-                      <input
-                        type="text"
-                        value={editedData.nip || ''}
-                        onChange={(e) => setEditedData({ ...editedData, nip: e.target.value })}
-                        className="flex-1 rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleFetchFromGUS}
-                        disabled={loadingGUS}
-                        className="flex items-center space-x-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#0f1119] transition-colors hover:bg-[#c4a859] disabled:opacity-50"
-                      >
-                        {loadingGUS ? (
-                          <Loader2 className="h-5 w-5 animate-spin" />
-                        ) : (
-                          <Search className="h-5 w-5" />
-                        )}
-                        <span>GUS</span>
-                      </button>
-                    </div>
-                  ) : (
-                    <p className="text-white">{organization.nip || '-'}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-400">
-                    Forma prawna
-                  </label>
-                  {editMode ? (
-                    <select
-                      value={editedData.legal_form || ''}
-                      onChange={(e) => setEditedData({ ...editedData, legal_form: e.target.value })}
-                      className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                    >
-                      <option value="">-- Wybierz formę prawną --</option>
-                      {Object.entries(legalFormLabels).map(([key, label]) => (
-                        <option key={key} value={key}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <p className="text-white">
-                      {organization.legal_form
-                        ? legalFormLabels[
-                            organization.legal_form as keyof typeof legalFormLabels
-                          ] || organization.legal_form
-                        : '-'}
-                    </p>
-                  )}
-                </div>
-
-                {/* KRS - tylko dla form innych niż JDG */}
-                {(!editMode || (editedData.legal_form || organization.legal_form) !== 'jdg') && (
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-gray-400">
-                      KRS{' '}
-                      {(editedData.legal_form || organization.legal_form) === 'jdg' &&
-                        '(nie dotyczy JDG)'}
-                    </label>
-                    {editMode ? (
-                      <input
-                        type="text"
-                        value={editedData.krs || ''}
-                        onChange={(e) => setEditedData({ ...editedData, krs: e.target.value })}
-                        disabled={(editedData.legal_form || organization.legal_form) === 'jdg'}
-                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
-                      />
-                    ) : (
-                      <p className="text-white">{organization.krs || '-'}</p>
-                    )}
-                  </div>
-                )}
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-400">REGON</label>
-                  {editMode ? (
-                    <input
-                      type="text"
-                      value={editedData.regon || ''}
-                      onChange={(e) => setEditedData({ ...editedData, regon: e.target.value })}
-                      className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                    />
-                  ) : (
-                    <p className="text-white">{organization.regon || '-'}</p>
-                  )}
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="mb-1 block text-sm font-medium text-gray-400">
-                    Adres (ulica)
-                  </label>
-                  {editMode ? (
-                    <input
-                      type="text"
-                      value={editedData.address || ''}
-                      onChange={(e) => setEditedData({ ...editedData, address: e.target.value })}
-                      className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                      placeholder="np. ul. Chmielna 85/87"
-                    />
-                  ) : (
-                    <p className="text-white">{organization.address || '-'}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-400">
-                    Kod pocztowy
-                  </label>
-                  {editMode ? (
-                    <input
-                      type="text"
-                      value={editedData.postal_code || ''}
-                      onChange={(e) => setEditedData({ ...editedData, postal_code: e.target.value })}
-                      className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                      placeholder="00-000"
-                    />
-                  ) : (
-                    <p className="text-white">{organization.postal_code || '-'}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-400">
-                    Miasto
-                  </label>
-                  {editMode ? (
-                    <input
-                      type="text"
-                      value={editedData.city || ''}
-                      onChange={(e) => setEditedData({ ...editedData, city: e.target.value })}
-                      className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                      placeholder="np. Warszawa"
-                    />
-                  ) : (
-                    <p className="text-white">{organization.city || '-'}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="mb-1 flex items-center space-x-1 text-sm font-medium text-gray-400">
-                    <Mail className="h-4 w-4" />
-                    <span>Email</span>
-                  </label>
-                  {editMode ? (
-                    <input
-                      type="email"
-                      value={editedData.email || ''}
-                      onChange={(e) => setEditedData({ ...editedData, email: e.target.value })}
-                      className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                    />
-                  ) : (
-                    <p className="text-white">{organization.email || '-'}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="mb-1 flex items-center space-x-1 text-sm font-medium text-gray-400">
-                    <Phone className="h-4 w-4" />
-                    <span>Telefon</span>
-                  </label>
-                  {editMode ? (
-                    <input
-                      type="tel"
-                      value={editedData.phone || ''}
-                      onChange={(e) => setEditedData({ ...editedData, phone: e.target.value })}
-                      className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                    />
-                  ) : (
-                    <p className="text-white">{organization.phone || '-'}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="mb-1 flex items-center space-x-1 text-sm font-medium text-gray-400">
-                    <Globe className="h-4 w-4" />
-                    <span>Strona www</span>
-                  </label>
-                  {editMode ? (
-                    <input
-                      type="url"
-                      value={editedData.website || ''}
-                      onChange={(e) => setEditedData({ ...editedData, website: e.target.value })}
-                      className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                    />
-                  ) : organization.website ? (
-                    <a
-                      href={organization.website}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center space-x-1 text-[#d3bb73] hover:underline"
-                    >
-                      <span>{organization.website}</span>
-                      <ExternalLink className="h-4 w-4" />
-                    </a>
-                  ) : (
-                    <p className="text-white">-</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-400">Ocena</label>
-                  {editMode ? (
-                    <select
-                      value={editedData.rating}
-                      onChange={(e) =>
-                        setEditedData({ ...editedData, rating: parseInt(e.target.value) || null })
-                      }
-                      className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                    >
-                      <option value="0">Brak oceny</option>
-                      {[1, 2, 3, 4, 5].map((r) => (
-                        <option key={r} value={r}>
-                          {r} ⭐
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <div>{renderRating(organization.rating)}</div>
-                  )}
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-400">Status</label>
-                  {editMode ? (
-                    <select
-                      value={editedData.status || 'active'}
-                      onChange={(e) => setEditedData({ ...editedData, status: e.target.value })}
-                      className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                    >
-                      <option value="active">Aktywny</option>
-                      <option value="inactive">Nieaktywny</option>
-                      <option value="potential">Potencjalny</option>
-                      <option value="archived">Zarchiwizowany</option>
-                    </select>
-                  ) : (
-                    <p className="text-white">{organization.status}</p>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-gray-700 bg-[#1a1d2e] p-6">
-              <div className="mb-6">
-                <OrganizationLocationPicker
-                  organizationId={organization.id}
-                  currentLocationId={organization.location_id}
-                  onLocationChange={(locationId) =>
-                    setEditedData({ ...editedData, location_id: locationId })
-                  }
-                  editMode={editMode}
-                  onOpenAddLocation={() => setShowAddLocationModal(true)}
-                />
-              </div>
-            </div>
-
-            {/* Sekcja reprezentantów i osób decyzyjnych */}
-            <div className="rounded-lg border border-gray-700 bg-[#1a1d2e] p-6">
-              <h2 className="mb-4 text-xl font-semibold text-white">
-                Reprezentanci i osoby decyzyjne
-              </h2>
-              <OrganizationRepresentatives
-                organizationId={organization.id}
-                primaryContact={primaryContact}
-                legalRepresentative={legalRepresentative}
-                editedPrimaryContactId={
-                  (editedData.primary_contact_id as string) ??
-                  organization.primary_contact_id ??
-                  null
-                }
-                editedLegalRepresentativeId={
-                  (editedData.legal_representative_id as string) ??
-                  organization.legal_representative_id ??
-                  null
-                }
-                legalRepresentativeTitle={
-                  (editedData.legal_representative_title as string) ||
-                  organization.legal_representative_title
-                }
-                contactIsRepresentative={
-                  editedData.contact_is_representative !== undefined
-                    ? (editedData.contact_is_representative as boolean)
-                    : organization.contact_is_representative
-                }
-                decisionMakers={decisionMakers}
-                availableContacts={contactPersons.map((cp) => ({
-                  id: cp.id,
-                  full_name: cp.full_name || `${cp.first_name} ${cp.last_name}`,
-                  first_name: cp.first_name,
-                  last_name: cp.last_name,
-                  email: cp.email,
-                  phone: cp.phone,
-                  position: cp.position,
-                }))}
-                editMode={editMode}
-                onUpdate={fetchData}
-                onEditedDataChange={(field, value) =>
-                  setEditedData({ ...editedData, [field]: value })
-                }
-              />
-            </div>
-
-            {organization.organization_type === 'subcontractor' && (
-              <div className="rounded-lg border border-gray-700 bg-[#1a1d2e] p-6">
-                <h2 className="mb-4 text-xl font-semibold text-white">Informacje handlowe</h2>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="mb-1 flex items-center space-x-1 text-sm font-medium text-gray-400 md:block">
-                      <DollarSign className="h-4 w-4" />
-                      <span>Stawka godzinowa</span>
-                    </label>
-                    {editMode ? (
-                      <input
-                        type="number"
-                        value={editedData.hourly_rate || ''}
-                        onChange={(e) =>
-                          setEditedData({
-                            ...editedData,
-                            hourly_rate: parseFloat(e.target.value) || null,
-                          })
-                        }
-                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                      />
-                    ) : (
-                      <p className="text-white">
-                        {organization.hourly_rate ? `${organization.hourly_rate} PLN` : '-'}
-                      </p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-gray-400">
-                      Warunki płatności
-                    </label>
-                    {editMode ? (
-                      <input
-                        type="text"
-                        value={editedData.payment_terms || ''}
-                        onChange={(e) =>
-                          setEditedData({ ...editedData, payment_terms: e.target.value })
-                        }
-                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                      />
-                    ) : (
-                      <p className="text-white">{organization.payment_terms || '-'}</p>
-                    )}
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="mb-1 flex items-center space-x-1 text-sm font-medium text-gray-400">
-                      <CreditCard className="h-4 w-4" />
-                      <span>Numer konta bankowego</span>
-                    </label>
-                    {editMode ? (
-                      <input
-                        type="text"
-                        value={editedData.bank_account || ''}
-                        onChange={(e) =>
-                          setEditedData({ ...editedData, bank_account: e.target.value })
-                        }
-                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                      />
-                    ) : (
-                      <p className="font-mono text-white">{organization.bank_account || '-'}</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+          <OrganizationDetailsSection
+            organization={organization}
+            editedData={editedOrganizationData as Partial<Organization>}
+            setEditedData={
+              setEditedOrganizationData as React.Dispatch<
+                React.SetStateAction<Partial<Organization>>
+              >
+            }
+            editMode={editMode}
+            formErrors={formErrors}
+            setFormErrors={setFormErrors}
+            loadingGUS={loadingGUS}
+            handleFetchFromGUS={handleFetchFromGUS}
+            onOpenAddLocation={() => setShowAddLocationModal(true)}
+            primaryContact={primaryContact}
+            legalRepresentative={legalRepresentative}
+            decisionMakers={decisionMakers}
+            contactPersons={contactPersons}
+            onRepresentativesUpdate={fetchData}
+          />
         )}
 
         {activeTab === 'contacts' && (
@@ -1807,13 +1512,13 @@ useEffect(() => {
                 <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] p-4">
                   <div className="mb-1 text-sm text-gray-400">Wartość brutto</div>
                   <div className="text-2xl font-bold text-[#d3bb73]">
-                    {invoices.reduce((sum, inv) => sum + (inv.total_gross), 0).toFixed(2)} PLN
+                    {invoices.reduce((sum, inv) => sum + inv.total_gross, 0).toFixed(2)} PLN
                   </div>
                 </div>
                 <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] p-4">
                   <div className="mb-1 text-sm text-gray-400">Wartość netto</div>
                   <div className="text-2xl font-bold text-[#d3bb73]">
-                    {invoices.reduce((sum, inv) => sum + (inv.total_net), 0).toFixed(2)} PLN
+                    {invoices.reduce((sum, inv) => sum + inv.total_net, 0).toFixed(2)} PLN
                   </div>
                 </div>
               </div>
@@ -1947,14 +1652,16 @@ useEffect(() => {
           </div>
         )}
 
-        {activeTab === 'services' && organization?.organization_type === 'subcontractor' && organization?.subcontractor_id && (
-          <div className="rounded-lg border border-gray-700 bg-[#1a1d2e] p-6">
-            <SubcontractorServicesPanel
-              subcontractorId={organization.subcontractor_id}
-              organizationId={organization.id}
-            />
-          </div>
-        )}
+        {activeTab === 'services' &&
+          organization?.organization_type === 'subcontractor' &&
+          organization?.subcontractor_id && (
+            <div className="rounded-lg border border-gray-700 bg-[#1a1d2e] p-6">
+              <SubcontractorServicesPanel
+                subcontractorId={organization.subcontractor_id}
+                organizationId={organization.id}
+              />
+            </div>
+          )}
 
         {activeTab === 'history' && (
           <div className="rounded-lg border border-gray-700 bg-[#1a1d2e] p-6">

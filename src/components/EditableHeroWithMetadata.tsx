@@ -11,6 +11,7 @@ import { useMobile } from '@/hooks/useMobile';
 import { useHeroImage } from './PageImage/hooks/useHeroImage';
 import { supabase } from '@/lib/supabase/browser';
 import { IconGridSelector } from './IconGridSelector';
+import Image from 'next/image';
 
 interface EditableHeroWithMetadataProps {
   section: string;
@@ -88,7 +89,7 @@ export default function EditableHeroWithMetadata({
     if (!pathname) return '/';
     const segments = pathname.split('/').filter(Boolean);
     if (segments.length <= 1) return '/';
-    const parent = '/' + segments.slice(0, -1).join('/');
+    const parent = '/' + segments.slice(0, -2).join('/');
     return parent || '/';
   }, [pathname]);
 
@@ -128,6 +129,7 @@ export default function EditableHeroWithMetadata({
   }, [imageUrl]);
 
   const getTableName = () => {
+    console.log('[section]', section);
     const cleanSection = section.replace('-hero', '');
     const dedicatedTables: Record<string, string> = {
       konferencje: 'konferencje_page_images',
@@ -147,6 +149,7 @@ export default function EditableHeroWithMetadata({
 
     try {
       const tableName = getTableName();
+      console.log('[tableName]', tableName);
       const isUniversalTable = tableName === 'service_hero_images';
 
       let query = supabase
@@ -185,6 +188,8 @@ export default function EditableHeroWithMetadata({
       // zawsze dociągnij z bazy dla edycji
       const tableName = getTableName();
       const isUniversalTable = tableName === 'service_hero_images';
+      console.log('[tableName]', tableName);
+      console.log('[isUniversalTable]', isUniversalTable);
 
       let query = supabase
         .from(tableName)
@@ -433,6 +438,7 @@ export default function EditableHeroWithMetadata({
                       >
                         Zapytaj o wycenę
                       </a>
+
                       {buttonText && (
                         <Link
                           href={backHref}
@@ -450,10 +456,12 @@ export default function EditableHeroWithMetadata({
                 <div className="relative">
                   <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-[#d3bb73]/20 to-[#800020]/20 blur-3xl" />
                   <div className="relative overflow-hidden rounded-3xl border border-[#d3bb73]/20">
-                    <img
+                    <Image
                       src={resolvedDefaultImage}
                       alt={title || 'Hero image'}
                       className="h-full max-h-[300px] w-full object-cover"
+                      width={100}
+                      height={100}
                     />
                   </div>
                 </div>

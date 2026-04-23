@@ -4,68 +4,10 @@ type Props = {
 
 export default function CityConferenceContent({ cityName }: Props) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#0f1119] px-6 py-2">
+    <div className="flex items-center justify-center bg-[#0f1119] p-6">
       <div className="w-full max-w-4xl">
-        <div className="mb-12 text-center">
-          <div className="mx-auto mb-12 grid max-w-3xl gap-6 md:grid-cols-3">
-            <div className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
-              <div className="mb-2 text-3xl font-light text-[#d3bb73]">50-5000+</div>
-              <div className="text-sm text-[#e5e4e2]/60">uczestników</div>
-            </div>
-            <div className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
-              <div className="mb-2 text-3xl font-light text-[#d3bb73]">15+</div>
-              <div className="text-sm text-[#e5e4e2]/60">lat doświadczenia</div>
-            </div>
-            <div className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
-              <div className="mb-2 text-3xl font-light text-[#d3bb73]">3700+</div>
-              <div className="text-sm text-[#e5e4e2]/60">zrealizowanych eventów</div>
-            </div>
-          </div>
-        </div>
 
-        <div className="mb-12 grid gap-4 md:grid-cols-2">
-          <div className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
-            <h3 className="mb-3 text-lg font-medium text-[#d3bb73]">Nagłośnienie i Audio</h3>
-            <ul className="space-y-2 text-sm text-[#e5e4e2]/70">
-              <li>• Systemy line-array premium</li>
-              <li>• Mikrofony wieloczęstotliwościowe</li>
-              <li>• Monitory sceniczne</li>
-              <li>• Realizacja dźwięku 5.1</li>
-            </ul>
-          </div>
-
-          <div className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
-            <h3 className="mb-3 text-lg font-medium text-[#d3bb73]">Multimedia i Wizualizacje</h3>
-            <ul className="space-y-2 text-sm text-[#e5e4e2]/70">
-              <li>• Ekrany LED indoor/outdoor</li>
-              <li>• Projekcje HD/4K</li>
-              <li>• Kamery wielokamerowe</li>
-              <li>• Streaming FullHD/4K</li>
-            </ul>
-          </div>
-
-          <div className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
-            <h3 className="mb-3 text-lg font-medium text-[#d3bb73]">Oświetlenie</h3>
-            <ul className="space-y-2 text-sm text-[#e5e4e2]/70">
-              <li>• Oświetlenie konferencyjne</li>
-              <li>• Oświetlenie sceniczne LED</li>
-              <li>• Sterowanie DMX</li>
-              <li>• Efekty specjalne</li>
-            </ul>
-          </div>
-
-          <div className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
-            <h3 className="mb-3 text-lg font-medium text-[#d3bb73]">Scena i Konstrukcje</h3>
-            <ul className="space-y-2 text-sm text-[#e5e4e2]/70">
-              <li>• Sceny modułowe</li>
-              <li>• Konstrukcje kratowe</li>
-              <li>• Blackbox i kurtyny</li>
-              <li>• Bramy wejściowe</li>
-            </ul>
-          </div>
-        </div>
-
-        <div className="relative overflow-hidden rounded-2xl border border-[#d3bb73]/30 bg-gradient-to-br from-[#d3bb73]/10 via-[#d3bb73]/5 to-transparent p-2 text-center md:p-8 lg:p-12">
+        <div className="relative overflow-hidden rounded-2xl border border-[#d3bb73]/30 bg-gradient-to-br from-[#d3bb73]/10 via-[#d3bb73]/5 to-transparent p-2 text-center md:p-3 lg:p-6">
           <div className="absolute right-0 top-0 -z-10 h-64 w-64 rounded-full bg-[#d3bb73]/5 blur-3xl" />
           <div className="absolute bottom-0 left-0 -z-10 h-48 w-48 rounded-full bg-[#d3bb73]/5 blur-3xl" />
 

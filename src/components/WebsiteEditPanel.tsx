@@ -4,9 +4,11 @@ import { useState } from 'react';
 import { useWebsiteEdit } from '@/hooks/useWebsiteEdit';
 import { Edit, X, Home, Briefcase, Users, Image, FileText, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
+import { useEditMode } from '@/contexts/EditModeContext';
 
 export default function WebsiteEditPanel() {
-  const { canEdit, loading, employee } = useWebsiteEdit();
+  const { canEdit, loading, employee,  } = useWebsiteEdit();
+  const { isEditMode } = useEditMode();
   const [isOpen, setIsOpen] = useState(false);
 
   if (loading || !canEdit) {
@@ -16,10 +18,10 @@ export default function WebsiteEditPanel() {
   return (
     <>
       {/* Floating Edit Button */}
-      {!isOpen && (
+      {isEditMode && !isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-[#d3bb73] hover:bg-[#d3bb73]/90 text-[#1c1f33] rounded-full shadow-2xl hover:shadow-3xl transition-all flex items-center justify-center group"
+          className="fixed bottom-6 right-6 w-14 h-14 bg-[#d3bb73] z-50 hover:bg-[#d3bb73]/90 text-[#1c1f33] rounded-full shadow-2xl hover:shadow-3xl transition-all flex items-center justify-center group"
           title="Edytuj stronę WWW"
         >
           <Edit className="w-6 h-6 group-hover:scale-110 transition-transform" />
@@ -73,7 +75,7 @@ export default function WebsiteEditPanel() {
               className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[#d3bb73]/10 transition-colors group"
             >
               <div className="w-8 h-8 bg-blue-500/20 rounded-lg flex items-center justify-center group-hover:bg-blue-500/30 transition-colors">
-                <Image className="w-4 h-4 text-blue-400" />
+                <Image className="w-4 h-4 text-blue-400" aria-label="Obrazy strony" />
               </div>
               <div className="flex-1">
                 <p className="text-sm text-[#e5e4e2] font-medium">Obrazy strony</p>

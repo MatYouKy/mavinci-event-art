@@ -1,19 +1,22 @@
-import React, { FC } from 'react';
+'use client';
+
+import React, { FC, useState } from 'react';
 import { FAQItem } from './FAQItems';
 
 interface FAQSectionProps {
   faq: any[];
-  setExpandedFaq: (idx: number | null) => void;
-  expandedFaq: number | null;
 }
 
 export const FAQSection: FC<FAQSectionProps> = ({
   faq,
-  setExpandedFaq,
-  expandedFaq,
 }) => {
+  const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
+
+  const handleToggle = (idx: number) => {
+    setExpandedFaq(expandedFaq === idx ? null : idx);
+  };
   return (
-    <section className="px-6">
+    <section className="px-2">
       <div className="max-w-4xl mx-auto">
         <h2 className="text-4xl font-light text-[#e5e4e2] mb-16 text-center">
           Najczęściej zadawane pytania
@@ -27,7 +30,7 @@ export const FAQSection: FC<FAQSectionProps> = ({
               answer={item.answer}
               isExpanded={expandedFaq === idx}
               onToggle={() =>
-                setExpandedFaq(expandedFaq === idx ? null : idx)
+                handleToggle(idx)
               }
             />
           ))}

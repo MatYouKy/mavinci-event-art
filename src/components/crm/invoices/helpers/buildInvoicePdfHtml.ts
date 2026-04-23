@@ -66,23 +66,31 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
 
   const formatMoney = (value?: number) => Number(value || 0).toFixed(2);
 
-  const rows = data.items
-    .map(
-      (item) => `
+  console.log('[GUS_DEBUG-buildInvoicePdfHtml-items]', data.items);
+
+  const rows = data.items.length
+  ? data.items
+      .map(
+        (item) => `
+          <tr>
+            <td>${item.positionNumber}</td>
+            <td>${esc(item.name)}</td>
+            <td class="center">${esc(item.unit)}</td>
+            <td class="right">${item.quantity}</td>
+            <td class="right">${formatMoney(item.priceNet)}</td>
+            <td class="right">${formatMoney(item.valueNet)}</td>
+            <td class="center">${item.vatRate}%</td>
+            <td class="right">${formatMoney(item.vatAmount)}</td>
+            <td class="right strong">${formatMoney(item.valueGross)}</td>
+          </tr>
+        `,
+      )
+      .join('')
+  : `
       <tr>
-        <td>${item.positionNumber}</td>
-        <td>${esc(item.name)}</td>
-        <td class="center">${esc(item.unit)}</td>
-        <td class="right">${item.quantity}</td>
-        <td class="right">${formatMoney(item.priceNet)}</td>
-        <td class="right">${formatMoney(item.valueNet)}</td>
-        <td class="center">${item.vatRate}%</td>
-        <td class="right">${formatMoney(item.vatAmount)}</td>
-        <td class="right strong">${formatMoney(item.valueGross)}</td>
+        <td colspan="9" class="center">Brak pozycji</td>
       </tr>
-    `,
-    )
-    .join('');
+    `;
 
     console.log('PDF invoice type:', data.invoiceType, 'is_proforma:', data.isProforma);
 console.log('PDF items raw:', data.items);
