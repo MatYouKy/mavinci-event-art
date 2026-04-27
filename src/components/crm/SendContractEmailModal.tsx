@@ -146,7 +146,7 @@ W razie pytań proszę o kontakt.`,
     }
   };
 
-  const generateContractPDF = async (): Promise<{ base64: string; filename: string }> => {
+  const fetchStoredContractPDF = async (): Promise<{ base64: string; filename: string }> => {
     const { data: contractData, error } = await supabase
       .from('contracts')
       .select('contract_number, generated_pdf_path')
@@ -163,40 +163,27 @@ W razie pytań proszę o kontakt.`,
       );
     }
 
-    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+    const { data: signedData, error: signedErr } = await supabase.storage
       .from('event-files')
-      .createSignedUrl(contractData.generated_pdf_path, 3600);
+      .createSignedUrl(contractData.generated_pdf_path, 300);
 
-    if (signedUrlError || !signedUrlData?.signedUrl) {
-      throw new Error('Nie udało się pobrać pliku PDF umowy z magazynu');
+    if (signedErr || !signedData?.signedUrl) {
+      throw new Error('Nie udało się pobrać PDF ze storage');
     }
 
-    const response = await fetch(signedUrlData.signedUrl);
-    if (!response.ok) {
-      throw new Error('Nie udało się pobrać pliku PDF');
-    }
+    const pdfResp = await fetch(signedData.signedUrl);
+    if (!pdfResp.ok) throw new Error('Błąd pobierania PDF');
 
-    const blob = await response.blob();
-    const reader = new FileReader();
-    const base64Promise = new Promise<string>((resolve, reject) => {
-      reader.onloadend = () => {
-        const base64 = (reader.result as string).split(',')[1];
-        resolve(base64);
-      };
-      reader.onerror = reject;
-    });
+    const buffer = await pdfResp.arrayBuffer();
+    const base64 = btoa(
+      new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), ''),
+    );
 
-    reader.readAsDataURL(blob);
-    const base64 = await base64Promise;
-
-    const storageFilename =
+    const filename =
       contractData.generated_pdf_path.split('/').pop() ||
-      `${contractData.contract_number || 'umowa'}.pdf`;
+      `Umowa_${contractData.contract_number || contractId}.pdf`;
 
-    return {
-      base64,
-      filename: storageFilename,
-    };
+    return { base64, filename };
   };
 
   const fetchEmailAccounts = async () => {
@@ -266,22 +253,17 @@ W razie pytań proszę o kontakt.`,
         return;
       }
 
-      showSnackbar('Generuję PDF umowy...', 'info');
+      showSnackbar('Pobieram PDF umowy...', 'info');
 
-      let attachments: any[] = [];
-
-      try {
-        const pdfData = await generateContractPDF();
-        attachments.push({
+      const pdfData = await fetchStoredContractPDF();
+      const attachments = [
+        {
           filename: pdfData.filename,
           content: pdfData.base64,
-          type: 'application/pdf',
-        });
-        showSnackbar('PDF wygenerowany, wysyłam email...', 'info');
-      } catch (pdfError: any) {
-        console.error('Error generating PDF:', pdfError);
-        showSnackbar(`Ostrzeżenie: Nie udało się wygenerować PDF: ${pdfError.message}. Wysyłam email bez załącznika.`, 'warning');
-      }
+          contentType: 'application/pdf',
+        },
+      ];
+      showSnackbar('PDF gotowy, wysyłam email...', 'info');
 
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-email`,
