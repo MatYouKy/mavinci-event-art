@@ -5,6 +5,7 @@ import OrganizationLocationPicker from '@/components/crm/contacts/organization/O
 import OrganizationRepresentatives from '@/components/crm/contacts/organization/OrganizationRepresentatives';
 import type { OrganizationFormErrors } from './organizationValidation';
 import { getOrganizationInputClassName } from './organizationForm.helpers';
+import { legalFormLabels } from '@/utils/labels/legalFormLabels';
 
 type BusinessType = 'company' | 'hotel' | 'restaurant' | 'venue' | 'freelancer' | 'other';
 type OrganizationType = 'client' | 'subcontractor';
@@ -55,19 +56,6 @@ interface Organization {
   legal_representative_title: string | null;
   contact_is_representative: boolean;
 }
-
-const legalFormLabels = {
-  jdg: 'Jednoosobowa działalność gospodarcza (JDG)',
-  sp_zoo: 'Spółka z ograniczoną odpowiedzialnością (sp. z o.o.)',
-  sp_jawna: 'Spółka jawna',
-  sp_komandytowa: 'Spółka komandytowa',
-  sp_komandytowo_akcyjna: 'Spółka komandytowo-akcyjna',
-  sp_akcyjna: 'Spółka akcyjna (S.A.)',
-  spoldzielnia: 'Spółdzielnia',
-  fundacja: 'Fundacja',
-  stowarzyszenie: 'Stowarzyszenie',
-  other: 'Inna',
-};
 
 const renderRating = (rating: number | null) => {
   if (!rating) return <span className="text-gray-400">Brak oceny</span>;
@@ -344,12 +332,15 @@ export default function OrganizationDetailsSection({
               <span>Telefon</span>
             </label>
             {editMode ? (
-              <input
-                type="tel"
-                value={editedData.phone || ''}
-                onChange={(e) => updateField('phone', e.target.value)}
-                className={getOrganizationInputClassName(formErrors)}
-              />
+              <>
+                <input
+                  type="tel"
+                  value={editedData.phone || ''}
+                  onChange={(e) => updateField('phone', e.target.value)}
+                  className={getOrganizationInputClassName(formErrors, 'phone')}
+                />
+                {renderFieldError('phone')}
+              </>
             ) : (
               <p className="text-white">{organization.phone || '-'}</p>
             )}

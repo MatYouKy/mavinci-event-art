@@ -27,8 +27,20 @@ export interface OrganizationFormValues {
 }
 
 export type OrganizationFormErrors = Partial<
-  Record<'name' | 'nip' | 'address' | 'city' | 'postal_code' | 'email' | 'website', string>
+  Record<
+    'name' | 'nip' | 'address' | 'city' | 'postal_code' | 'email' | 'phone' | 'website',
+    string
+  >
 >;
+
+const normalizePhone = (value: unknown) => {
+  if (typeof value !== 'string') return value;
+
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  return trimmed.replace(/\s+/g, ' ');
+};
 
 const postalCodeRegex = /^\d{2}-\d{3}$/;
 const nipRegex = /^\d{10}$/;
@@ -77,12 +89,27 @@ export const organizationValidationSchema = yup.object({
   country: yup.string().nullable().transform(normalizeOptionalString),
 
   email: yup
-    .string()
-    .nullable()
-    .transform(normalizeOptionalString)
-    .email('Nieprawidłowy adres e-mail'),
+  .string()
+  .nullable()
+  .transform(normalizeOptionalString)
+  .email('Nieprawidłowy adres e-mail')
+  .max(256, 'Adres e-mail może mieć maksymalnie 256 znaków'),
 
-  phone: yup.string().nullable().transform(normalizeOptionalString),
+  phone: yup
+  .string()
+  .nullable()
+  .transform(normalizePhone)
+  .test('phone-length', 'Telefon powinien mieć od 9 do 15 cyfr', (value) => {
+    if (!value) return true;
+
+    const digits = value.replace(/\D/g, '').length;
+    return digits >= 9 && digits <= 15;
+  })
+  .test('phone-characters', 'Telefon może zawierać tylko cyfry, spacje, +, -, nawiasy', (value) => {
+    if (!value) return true;
+
+    return /^[0-9+\-()\s]+$/.test(value);
+  }),
 
   website: yup
     .string()

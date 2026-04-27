@@ -2,6 +2,8 @@
  * Helper functions for processing offer templates and generating documents
  */
 
+import { DecisionMaker } from '@/app/(crm)/crm/events/[id]/components/tabs/EventContractTab';
+
 /**
  * Converts a number to Polish words
  * @param amount - Amount to convert
@@ -144,7 +146,7 @@ export function generateOfferItemsTable(items: OfferItem[]): string {
   }
 
   const listItems = items.map((item) => {
-    let itemHTML = `<li><strong>${item.name}</strong>`;
+    let itemHTML = `<li style="margin-bottom: 5px;"><strong>${item.name}</strong>`;
 
     // if (item.description) {
     //   itemHTML += `<br/><span style="margin-left: 0; font-size: 10pt; color: #333;">${item.description}</span>`;
@@ -152,9 +154,26 @@ export function generateOfferItemsTable(items: OfferItem[]): string {
 
     itemHTML += '</li>';
     return itemHTML;
-  }).join('\n');
+  }).join('');
 
-  return `<ul style="padding-left: 10mm; list-style-type: disc; font-family: Arial, sans-serif; font-size: 10pt;">
+  return `<ul style="padding-left: 10mm; list-style-type: disc; font-size: 10pt; margin-bottom: 0;">
+${listItems}
+</ul>`;
+}
+
+export function generateDecisionMakersListTable(items: DecisionMaker[]): string {
+  // if (!items || items.length === 0) {
+  //   return '<p style="color: #888; font-style: italic;">Brak osób decyzyjnych</p>';
+  // }
+
+  const listItems = items.map((item) => {
+    let itemHTML = `<li style="margin-bottom: 5px;"><strong>${item.contact.full_name}</strong>`;
+
+    itemHTML += '</li>';
+    return itemHTML;
+  }).join('');
+
+  return `<ul style="padding-left: 10mm; list-style-type: disc; font-size: 10pt; margin-bottom: 0;">
 ${listItems}
 </ul>`;
 }

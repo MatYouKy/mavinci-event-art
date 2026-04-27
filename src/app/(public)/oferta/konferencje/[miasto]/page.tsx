@@ -75,9 +75,11 @@ async function loadCityData(city: string) {
 
   const defaultTitle = `Obsługa Konferencji ${cityCases.locative_preposition ? cityCases.locative_preposition : 'w'} ${capitalize(cityCases.locative)}`;
 
+  console.log('[defaultTitle]', defaultTitle);
   const defaultDescription = `Profesjonalna obsługa konferencji ${cityCases.locative_preposition ? cityCases.locative_preposition : 'w'} ${capitalize(cityCases.locative)}: nagłośnienie, multimedia, streaming live, realizacja wideo. Kompleksowe wsparcie techniczne dla wydarzeń biznesowych ${cityCases.locative_preposition ? cityCases.locative_preposition : 'w'} ${capitalize(cityCases.locative)} i okolicach.`;
 
-  const title = cityPageSeo?.title || defaultTitle;
+  const title = defaultTitle;
+  const metaTitle = cityPageSeo?.title || `${title} - Profesjonalne Nagłośnienie i Multimedia | MAVINCI`;
 
   console.log('[cityPageSeo]', cityPageSeo);
   const description = defaultDescription || cityPageSeo?.seo_description;
@@ -95,6 +97,7 @@ async function loadCityData(city: string) {
     description,
     keywords,
     cityCases,
+    metaTitle,
   };
 }
 
@@ -109,8 +112,11 @@ export async function generateMetadata({
     return { title: 'Obsługa Konferencji - MAVINCI Event & ART' };
   }
 
-  const { title, description, keywords, canonicalUrl, image, cityCases } = data;
-  const metaTitle = `${title} - Profesjonalne Nagłośnienie i Multimedia | MAVINCI`;
+  const { title, description, keywords, canonicalUrl, image, cityCases, metaTitle } = data;
+  // const metaTitle = `${title} - Profesjonalne Nagłośnienie i Multimedia | MAVINCI`;
+
+  console.log('[generateMetadata] ->  title', title);
+  console.log('[generateMetadata] ->  metaTitle', metaTitle);
 
   return {
     title: metaTitle,
@@ -120,14 +126,14 @@ export async function generateMetadata({
     openGraph: {
       type: 'website',
       url: canonicalUrl,
-      title,
+      title: metaTitle,
       description,
       images: [{ url: image, alt: `Obsługa konferencji   ${cityCases.locative}` }],
       siteName: 'MAVINCI Event & ART',
     },
     twitter: {
       card: 'summary_large_image',
-      title,
+      title: metaTitle,
       description,
       images: [image],
     },
@@ -301,6 +307,8 @@ export default async function CityConferencePage({ params }: { params: { miasto:
     relatedServices,
     allServiceItems,
   } = await getConferencesData(supabase);
+
+  console.log('[title]', title);
 
   return (
     <PageLayout pageSlug={pageSlug} customSchema={customSchema} cookieStore={cookies()}>

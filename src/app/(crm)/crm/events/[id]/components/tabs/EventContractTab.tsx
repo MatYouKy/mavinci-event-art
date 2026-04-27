@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 /* eslint-disable react-hooks/exhaustive-deps */
 'use client';
 
@@ -12,7 +13,34 @@ import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import SendContractEmailModal from '@/components/crm/SendContractEmailModal';
 import { UnifiedContact } from '@/store/slices/contactsSlice';
 import { ILocation } from '@/app/(crm)/crm/locations/type';
-import { buildContractHtml } from '../../helpers/buildContractHtml';
+import { Organization } from '@/app/(crm)/crm/contacts/[id]/page';
+
+export interface DecisionMaker {
+  id: string;
+  title: string;
+  can_sign_contracts: boolean;
+  notes: string;
+  contact: UnifiedContact;
+}
+
+const getTemplateSettings = (pageSettings: any) => ({
+  logoScale: pageSettings?.logoScale ?? 80,
+  logoPositionX: pageSettings?.logoPositionX ?? 50,
+  logoPositionY: pageSettings?.logoPositionY ?? 0,
+  lineHeight: pageSettings?.lineHeight ?? 1.6,
+  selectedFont: pageSettings?.selectedFont ?? 'Georgia, serif',
+  selectedLogo: pageSettings?.selectedLogo ?? '/erulers_logo_vect.png',
+  selectedFooter: pageSettings?.selectedFooter ?? 'default',
+  footerContent: pageSettings?.footerContent ?? {
+    companyName: 'EVENT RULERS',
+    tagline: 'Więcej niż Wodzireje!',
+    website: 'www.eventrulers.pl',
+    email: 'biuro@eventrulers.pl',
+    phone: '698-212-279',
+    logoUrl: '/erulers_logo_vect.png',
+  },
+  footerLogoScale: pageSettings?.footerLogoScale ?? 80,
+});
 
 export const getContractCssForPrint = () => `
 /* ===== BASE: contractA4.css (Twoje, 1:1) ===== */
@@ -243,6 +271,11 @@ html, body {
 }
 `;
 
+type OrganizationWithRelations = Organization & {
+  legal_representative?: UnifiedContact | null;
+  primary_contact?: UnifiedContact | null;
+};
+
 type ContractStatus =
   | 'draft'
   | 'issued'
@@ -320,8 +353,34 @@ export function EventContractTab({ eventId }: { eventId: string }) {
           location,
           category_id,
           contact_person_id,
+          selected_contract_template_id,
           locations:location_id(name, formatted_address, address, city, postal_code),
-          organizations:organization_id(name, nip, address, city, postal_code, phone, email),
+          organizations:organization_id(
+          *,
+          legal_representative:legal_representative_id(
+            id,
+            first_name,
+            last_name,
+            full_name,
+            email,
+            phone,
+            pesel,
+            address,
+            city,
+            postal_code
+          ),
+          primary_contact:primary_contact_id(
+            id,
+            first_name,
+            last_name,
+            full_name,
+            email,
+            phone,
+            mobile,
+            business_phone,
+            position
+          )
+        ),
           contacts:contact_person_id(first_name, last_name, full_name, email, phone, pesel, address, city, postal_code),
           event_categories:category_id(
             name,
@@ -332,6 +391,33 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         )
         .eq('id', eventId)
         .single();
+
+      if (eventError) throw eventError;
+      if (!event) throw new Error('Nie znaleziono wydarzenia');
+
+      const { data: decisionMakers, error: decisionMakersError } = await supabase
+        .from('organization_decision_makers')
+        .select(
+          `
+            id,
+            title,
+            can_sign_contracts,
+            notes,
+            contact:contact_id(
+              id,
+              first_name,
+              last_name,
+              full_name,
+              email,
+              phone,
+              mobile,
+              position
+            )
+          `,
+        )
+        .eq('organization_id', event.organization_id);
+
+      if (decisionMakersError) throw decisionMakersError;
 
       if (eventError) throw eventError;
 
@@ -345,8 +431,22 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         .limit(1)
         .maybeSingle();
 
+      const organization = event.organizations as unknown as OrganizationWithRelations | null;
+      const legalRepresentative = organization?.legal_representative || null;
+      const primaryContact = organization?.primary_contact || null;
       const contact = event.contacts as unknown as UnifiedContact | null;
-      const organization = event.organizations as unknown as UnifiedContact | null;
+
+      const legalRepresentativeFullName =
+        legalRepresentative?.full_name ||
+        [legalRepresentative?.first_name, legalRepresentative?.last_name].filter(Boolean).join(' ');
+
+      const primaryContactFullName =
+        primaryContact?.full_name ||
+        [primaryContact?.first_name, primaryContact?.last_name].filter(Boolean).join(' ');
+
+      const primaryContactEmail = primaryContact?.email || '';
+      const primaryContactPhone =
+        primaryContact?.phone || primaryContact?.mobile || '' || primaryContact?.business_phone;
 
       setClientEmail(contact?.email || organization?.email || '');
       setClientName(contact?.full_name || organization?.name || '');
@@ -395,11 +495,24 @@ export function EventContractTab({ eventId }: { eventId: string }) {
           })
         : null;
 
-      if (!template) {
+      if (!template && !event.selected_contract_template_id) {
         setTemplateExists(false);
         setLoading(false);
         return;
       }
+
+      const finalTemplateId = event.selected_contract_template_id || template.id;
+
+      const { data: selectedTemplate, error: selectedTemplateError } = await supabase
+        .from('contract_templates')
+        .select('id, name, content, content_html, page_settings')
+        .eq('id', finalTemplateId)
+        .single();
+
+      if (selectedTemplateError) throw selectedTemplateError;
+      if (!selectedTemplate) throw new Error('Nie znaleziono wybranego szablonu');
+
+      template = selectedTemplate;
 
       setTemplateExists(true);
       setTemplateId(template.id);
@@ -513,9 +626,8 @@ export function EventContractTab({ eventId }: { eventId: string }) {
             ${offerItemsArray
               .map(
                 (item: any, index: number) => `
-              <li style="margin-bottom: 8px;">
+              <li style="margin-bottom: 5px;">
                 <strong>${index + 1}. ${item.name || 'Produkt'}</strong>
-                ${item.quantity ? `<br/><span style="margin-left: 20px; font-size: 11pt;">Ilość: ${item.quantity}</span>` : ''}
               </li>
             `,
               )
@@ -523,8 +635,12 @@ export function EventContractTab({ eventId }: { eventId: string }) {
           </ul>`
           : '<p style="font-style: italic; color: #666;">Brak pozycji w ofercie</p>';
 
-      const { generateOfferItemsTable } = await import('@/lib/offerTemplateHelpers');
+      const { generateOfferItemsTable, generateDecisionMakersListTable } =
+        await import('@/lib/offerTemplateHelpers');
       const offerItemsTable = generateOfferItemsTable(offerItemsArray || []);
+      const decisionMakersListHtml = generateDecisionMakersListTable(
+        (decisionMakers as unknown as DecisionMaker[]) || [],
+      );
 
       const varsMap: Record<string, string> = {
         contact_first_name: contact?.first_name || '',
@@ -538,12 +654,19 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         contact_postal_code: contact?.postal_code || '',
 
         organization_name: organization?.name || '',
+        organization_alias: organization?.alias || '',
         organization_nip: organization?.nip || '',
+        organization_krs: organization?.krs || '',
+        organization_regon: organization?.regon || '',
+        organization_legal_form: organization?.legal_form || '',
         organization_address: organization?.address || '',
         organization_city: organization?.city || '',
         organization_postal_code: organization?.postal_code || '',
         organization_phone: organization?.phone || '',
         organization_email: organization?.email || '',
+        organization_country: organization?.country || '',
+        organization_full_address:
+          organization?.address + ', ' + organization?.postal_code + ' ' + organization?.city,
 
         event_name: event.name || '',
         event_date: formatDateOnly(event.event_date),
@@ -558,6 +681,26 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         location_city: location?.city || parsedLocation.city || '',
         location_postal_code: location?.postal_code || parsedLocation.postal || '',
         location_full: location?.formatted_address || locationString || '',
+
+        primary_contact_full_name: primaryContactFullName,
+        primary_contact_first_name: primaryContact?.first_name || '',
+        primary_contact_last_name: primaryContact?.last_name || '',
+        primary_contact_position: primaryContact?.position || '',
+        primary_contact_email: primaryContactEmail || '',
+        primary_contact_phone: primaryContactPhone || '',
+
+        legal_representative_full_name: legalRepresentativeFullName,
+        legal_representative_first_name: legalRepresentative?.first_name || '',
+        legal_representative_last_name: legalRepresentative?.last_name || '',
+        legal_representative_email: legalRepresentative?.email || '',
+        legal_representative_phone: legalRepresentative?.phone || legalRepresentative?.mobile || '',
+        legal_representative_pesel: legalRepresentative?.pesel || '',
+        legal_representative_address: legalRepresentative?.address || '',
+        legal_representative_city: legalRepresentative?.city || '',
+        legal_representative_postal_code: legalRepresentative?.postal_code || '',
+        legal_representative_title: organization?.legal_representative_title || '',
+
+        decision_makers_list: decisionMakersListHtml,
 
         budget:
           totalPrice.toLocaleString('pl-PL', {
@@ -575,19 +718,25 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         contract_number: contractNumber,
         contract_date: new Date().toLocaleDateString('pl-PL'),
 
-        executor_name: 'EVENT RULERS',
-        executor_address: 'ul. Przykładowa 1',
-        executor_postal_code: '30-000',
-        executor_city: 'Kraków',
-        executor_nip: '1234567890',
+        executor_name: 'Mavinci Sp. z o.o.',
+        executor_address: 'ul. Marcina Kasprzaka 15/66',
+        executor_postal_code: '10-057',
+        executor_city: 'Olsztyn',
+        executor_nip: '7394011583',
         executor_phone: '698-212-279',
-        executor_email: 'biuro@eventrulers.pl',
+        executor_email: 'biuro@mavinci.pl',
 
         offer_number: offers?.offer_number || '',
         offer_valid_until: offers?.valid_until ? formatDateOnly(offers.valid_until) : '',
-        offer_scope: offerItemsArray.length > 0
-          ? offerItemsArray.map((item: any, i: number) => `${i + 1}. ${item.name || 'Produkt'}${item.quantity ? ` (x${item.quantity})` : ''}`).join(', ')
-          : '',
+        offer_scope:
+          offerItemsArray.length > 0
+            ? offerItemsArray
+                .map(
+                  (item: any, i: number) =>
+                    `${i + 1}. ${item.name || 'Produkt'}${item.quantity ? ` (x${item.quantity})` : ''}`,
+                )
+                .join(', ')
+            : '',
 
         offer_items: offerItemsHtml,
         OFFER_ITEMS_TABLE: offerItemsTable,
@@ -595,12 +744,24 @@ export function EventContractTab({ eventId }: { eventId: string }) {
 
       setVariables(varsMap);
       setEditedVariables(varsMap);
-
+      const templateSettings = getTemplateSettings(template.page_settings);
       let contentToSet = '';
 
       // Jeśli istnieje zapisana umowa, użyj jej contentu zamiast szablonu
       if (existingContract?.content) {
-        contentToSet = existingContract.content;
+        try {
+          const parsedContract = JSON.parse(existingContract.content);
+          if (parsedContract.pages && Array.isArray(parsedContract.pages)) {
+            contentToSet = JSON.stringify({
+              ...parsedContract,
+              settings: templateSettings,
+            });
+          } else {
+            contentToSet = existingContract.content;
+          }
+        } catch {
+          contentToSet = existingContract.content;
+        }
       } else if (template.page_settings?.pages) {
         // Jeśli nie ma umowy, wygeneruj z szablonu
         const pages = template.page_settings.pages.map((page: string) =>
@@ -608,15 +769,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         );
         contentToSet = JSON.stringify({
           pages,
-          settings: {
-            logoScale: template.page_settings.logoScale || 80,
-            logoPositionX: template.page_settings.logoPositionX || 50,
-            logoPositionY: template.page_settings.logoPositionY || 0,
-            lineHeight: template.page_settings.lineHeight || 1.6,
-            selectedFont: template.page_settings.selectedFont || 'Georgia, serif',
-            selectedLogo: template.page_settings.selectedLogo || '/erulers_logo_vect.png',
-            selectedFooter: template.page_settings.selectedFooter || 'default',
-          },
+          settings: templateSettings,
         });
       } else {
         const templateToUse = template.content_html || template.content;
@@ -690,6 +843,14 @@ export function EventContractTab({ eventId }: { eventId: string }) {
     if (!newTemplateId) return;
 
     try {
+      const { error: eventTemplateError } = await supabase
+        .from('events')
+        .update({
+          selected_contract_template_id: newTemplateId,
+        })
+        .eq('id', eventId);
+
+      if (eventTemplateError) throw eventTemplateError;
       const { data: template, error } = await supabase
         .from('contract_templates')
         .select('id, name, content, content_html, page_settings')
@@ -697,7 +858,6 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         .single();
 
       if (error) throw error;
-
       setSelectedTemplateId(newTemplateId);
       setTemplateId(newTemplateId);
 
@@ -734,30 +894,26 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         );
         contentToSet = JSON.stringify({
           pages,
-          settings: {
-            logoScale: template.page_settings.logoScale || 80,
-            logoPositionX: template.page_settings.logoPositionX || 50,
-            logoPositionY: template.page_settings.logoPositionY || 0,
-            lineHeight: template.page_settings.lineHeight || 1.6,
-            selectedFont: template.page_settings.selectedFont || 'Georgia, serif',
-            selectedLogo: template.page_settings.selectedLogo || '/erulers_logo_vect.png',
-            selectedFooter: template.page_settings.selectedFooter || 'default',
-            footerContent: template.page_settings.footerContent || {
-              companyName: 'EVENT RULERS',
-              tagline: 'Więcej niż Wodzireje!',
-              website: 'www.eventrulers.pl',
-              email: 'biuro@eventrulers.pl',
-              phone: '698-212-279',
-              logoUrl: '/erulers_logo_vect.png',
-            },
-            footerLogoScale: template.page_settings.footerLogoScale || 80,
-          },
+          settings: getTemplateSettings(template.page_settings),
         });
       } else {
         const templateToUse = template.content_html || template.content;
         contentToSet = replaceVariables(templateToUse, variables);
       }
       setContractContent(contentToSet);
+
+      if (contractId) {
+        const { error: contractUpdateError } = await supabase
+          .from('contracts')
+          .update({
+            template_id: newTemplateId,
+            content: contentToSet,
+            modified_after_generation: true,
+          })
+          .eq('id', contractId);
+
+        if (contractUpdateError) throw contractUpdateError;
+      }
 
       showSnackbar(`Zmieniono szablon na: ${template.name}`, 'success');
     } catch (err) {

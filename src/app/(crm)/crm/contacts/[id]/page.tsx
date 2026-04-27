@@ -42,13 +42,13 @@ import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { parseGoogleMapsUrl, fetchCompanyDataFromGUS } from '@/lib/gus';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import OrganizationLocationPicker from '@/components/crm/contacts/organization/OrganizationLocationPicker';
-import OrganizationRepresentatives from '@/components/crm/contacts/organization/OrganizationRepresentatives';
 import AddLocationModal from '@/components/crm/AddLocationModal';
 import SubcontractorServicesPanel from '@/components/crm/SubcontractorServicesPanel';
 import { formatNip } from '@/components/crm/contacts/organization/organizationForm.helpers';
 
-interface Organization {
+export interface Organization {
+  primary_contact: any;
+  legal_representative: any;
   id: string;
   organization_type: 'client' | 'subcontractor';
   business_type: 'company' | 'hotel' | 'restaurant' | 'venue' | 'freelancer' | 'other';
@@ -170,18 +170,7 @@ const businessTypeLabels = {
   other: 'Inne',
 };
 
-const legalFormLabels = {
-  jdg: 'Jednoosobowa działalność gospodarcza (JDG)',
-  sp_zoo: 'Spółka z ograniczoną odpowiedzialnością (sp. z o.o.)',
-  sp_jawna: 'Spółka jawna',
-  sp_komandytowa: 'Spółka komandytowa',
-  sp_komandytowo_akcyjna: 'Spółka komandytowo-akcyjna',
-  sp_akcyjna: 'Spółka akcyjna (S.A.)',
-  spoldzielnia: 'Spółdzielnia',
-  fundacja: 'Fundacja',
-  stowarzyszenie: 'Stowarzyszenie',
-  other: 'Inna',
-};
+
 
 const statusColors = {
   active: 'text-green-400 bg-green-900/30',

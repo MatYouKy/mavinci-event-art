@@ -1138,6 +1138,11 @@ export default function EditTemplateWYSIWYGPage() {
                   { key: '{{organization_legal_form}}', label: 'Forma prawna' },
                   { key: '{{organization_krs}}', label: 'KRS (auto-ukrywa dla JDG)' },
                   { key: '{{organization_regon}}', label: 'REGON' },
+                  { key: '{{organization_full_address}}', label: 'Pełny adres' },
+                  { key: '{{organization_address}}', label: 'Adres (ulica)' },
+                  { key: '{{organization_city}}', label: 'Miasto' },
+                  { key: '{{organization_postal_code}}', label: 'Kod pocztowy' },
+                  { key: '{{organization_country}}', label: 'Kraj' },
                   { key: '{{primary_contact_full_name}}', label: 'Osoba kontaktowa' },
                   { key: '{{primary_contact_position}}', label: 'Stanowisko osoby kont.' },
                   { key: '{{primary_contact_email}}', label: 'Email osoby kont.' },
@@ -1354,10 +1359,12 @@ export default function EditTemplateWYSIWYGPage() {
                     <Image
                       src={selectedLogo}
                       alt="Logo"
-                      width={100}
-                      height={100}
+                      width={300}
+                      height={120}
                       style={{
-                        maxWidth: `${logoScale}%`,
+                        width: `${logoScale * 6}px`,
+                        height: 'auto',
+                        objectFit: 'contain',
                       }}
                     />
                   </div>

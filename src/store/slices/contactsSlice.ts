@@ -1,6 +1,7 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
 export interface UnifiedContact {
+  organization_krs: string;
   nip: string;
   postal_code: string;
   address: string;

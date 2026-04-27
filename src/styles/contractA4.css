@@ -1,9 +1,9 @@
 /* Uniwersalne style dla dokumentów A4 - umowy, kontrakty itp. */
 
 .contract-a4-container {
-  background: #f5f5f5;
   padding: 20px;
   min-height: 100vh;
+  background: rgb(82 86 89 / var(--tw-bg-opacity, 1));
 }
 
 .contract-a4-page {

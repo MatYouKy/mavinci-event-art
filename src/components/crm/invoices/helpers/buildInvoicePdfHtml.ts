@@ -1,3 +1,5 @@
+import { InvoiceItem } from '@/app/(crm)/crm/invoices/[id]/page';
+
 interface InvoicePdfData {
   footerNote: string;
   signatureName: string;
@@ -37,6 +39,7 @@ interface InvoicePdfData {
     vatAmount: number;
     valueGross: number;
   }>;
+  invoice_items?: Array<InvoiceItem>;
 }
 
 function getTypeLabel(type: string) {
@@ -66,10 +69,16 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
 
   const formatMoney = (value?: number) => Number(value || 0).toFixed(2);
 
-  console.log('[GUS_DEBUG-buildInvoicePdfHtml-items]', data.items);
 
-  const rows = data.items.length
-  ? data.items
+  console.log('[buildInvoicePdfHtml] ->  data.items', data.items);
+  console.log('[buildInvoicePdfHtml] ->  data.invoice_items', data.invoice_items);
+
+  const invoiceItems = data.items || data.invoice_items;
+
+  console.log('[buildInvoicePdfHtml] ->  invoiceItems', invoiceItems);
+
+  const rows = invoiceItems.length
+  ? invoiceItems
       .map(
         (item) => `
           <tr>

@@ -76,6 +76,7 @@ interface Invoice {
   footer_note: string;
   signature_name: string;
   website: string;
+  invoice_items?: InvoiceItem[];
 }
 
 interface RelatedData {
@@ -90,7 +91,7 @@ interface RelatedData {
   }>;
 }
 
-interface InvoiceItem {
+export interface InvoiceItem {
   id: string;
   position_number: number;
   name: string;
@@ -123,6 +124,9 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     fetchInvoice();
   }, [params.id]);
 
+  console.log('[InvoiceDetailPage] ->  items', items);
+  console.log('[InvoiceDetailPage] ->  invoice', invoice);
+
   const fetchInvoice = async () => {
     try {
       const [invoiceRes, itemsRes] = await Promise.all([
@@ -135,7 +139,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
       ]);
 
       if (invoiceRes.data) {
-        setInvoice(invoiceRes.data);
+        setInvoice({...invoiceRes.data, invoice_items: itemsRes.data || []});
         setPdfPath(invoiceRes.data.pdf_url || null);
 
         const promises = [];
@@ -220,8 +224,10 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     checkSentEmails();
   }, [invoice]);
 
-  const buildHtmlForPdf = useCallback(() => {
+  const buildHtmlForPdfData  = useCallback(() => {
     if (!invoice) return '';
+
+    console.log('[buildHtmlForPdfData] ->  invoice', invoice);
 
     const effectiveInvoiceType =
       invoice.invoice_type === 'proforma' || invoice.is_proforma
@@ -270,6 +276,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
         vatAmount: item.vat_amount,
         valueGross: item.value_gross,
       })),
+      invoice_items: invoice.invoice_items || [] as any as InvoiceItem[],
       isProforma: false,
     });
   }, [invoice, items]);
@@ -278,7 +285,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     if (!invoice) return;
     setGenerating(true);
     try {
-      const html = buildHtmlForPdf();
+      const html = buildHtmlForPdfData();
       const response = await fetch('/bridge/invoices/invoice-pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
