@@ -1074,6 +1074,24 @@ export function EventContractTab({ eventId }: { eventId: string }) {
     if (!confirmed) return;
 
     try {
+      if (generatedPdfPath) {
+        const { error: storageError } = await supabase.storage
+          .from('event-files')
+          .remove([generatedPdfPath]);
+        if (storageError) {
+          console.error('Error removing PDF from storage:', storageError);
+        }
+
+        const { error: filesError } = await supabase
+          .from('event_files')
+          .delete()
+          .eq('event_id', eventId)
+          .eq('file_path', generatedPdfPath);
+        if (filesError) {
+          console.error('Error removing event_files entry:', filesError);
+        }
+      }
+
       const { error } = await supabase.from('contracts').delete().eq('id', contractId);
 
       if (error) throw error;
@@ -1082,7 +1100,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
       setContractStatus('draft');
       setGeneratedPdfPath(null);
       setModifiedAfterGeneration(false);
-      showSnackbar('Umowa została usunięta', 'success');
+      showSnackbar('Umowa została usunięta wraz z plikiem PDF', 'success');
       await fetchContractData();
     } catch (err) {
       console.error('Error deleting contract:', err);
