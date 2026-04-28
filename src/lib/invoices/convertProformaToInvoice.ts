@@ -10,10 +10,23 @@ interface ConvertResult {
   error?: string;
 }
 
+export interface ConvertProformaOptions {
+  targetType?: 'vat' | 'advance';
+  customNumber?: string;
+  issueDate?: string;
+  saleDate?: string;
+  paymentDueDate?: string;
+}
+
 /**
- * Konwertuje proformę na fakturę VAT
+ * Konwertuje proformę na fakturę VAT lub zaliczkową
  */
-export async function convertProformaToInvoice(proformaId: string): Promise<ConvertResult> {
+export async function convertProformaToInvoice(
+  proformaId: string,
+  options: ConvertProformaOptions = {},
+): Promise<ConvertResult> {
+
+  const targetType = options.targetType ?? 'vat';
 
   try {
     // 1. Pobierz proformę z pozycjami
@@ -40,16 +53,31 @@ export async function convertProformaToInvoice(proformaId: string): Promise<Conv
       };
     }
 
-    // 4. Generuj nowy numer faktury VAT
-    const { data: invoiceNumber, error: numberError } = await supabase.rpc(
-      'generate_invoice_number',
-      {
-        p_invoice_type: 'vat',
+    // 4. Numer faktury - wlasny lub generowany
+    let invoiceNumber: string;
+    if (options.customNumber && options.customNumber.trim()) {
+      const trimmed = options.customNumber.trim();
+      const { data: existing } = await supabase
+        .from('invoices')
+        .select('id')
+        .eq('invoice_number', trimmed)
+        .maybeSingle();
+      if (existing) {
+        return { success: false, error: 'Faktura o tym numerze juz istnieje' };
       }
-    );
+      invoiceNumber = trimmed;
+    } else {
+      const { data: generatedNumber, error: numberError } = await supabase.rpc(
+        'generate_invoice_number',
+        {
+          p_invoice_type: targetType,
+        }
+      );
 
-    if (numberError || !invoiceNumber) {
-      return { success: false, error: 'Błąd generowania numeru faktury' };
+      if (numberError || !generatedNumber) {
+        return { success: false, error: 'Błąd generowania numeru faktury' };
+      }
+      invoiceNumber = generatedNumber as string;
     }
 
     // 5. Pobierz aktualnego użytkownika
@@ -62,10 +90,10 @@ export async function convertProformaToInvoice(proformaId: string): Promise<Conv
       .eq('email', user?.email)
       .maybeSingle();
 
-    // 6. Przygotuj dane faktury VAT
+    // 6. Przygotuj dane faktury
     const today = new Date().toISOString().split('T')[0];
-    const paymentDueDate = new Date();
-    paymentDueDate.setDate(paymentDueDate.getDate() + 14);
+    const defaultDue = new Date();
+    defaultDue.setDate(defaultDue.getDate() + 14);
 
     const invoiceData = {
       // Nowe dane
@@ -73,13 +101,14 @@ export async function convertProformaToInvoice(proformaId: string): Promise<Conv
       is_proforma: false,
       status: 'draft', // Faktura w szkicu, gotowa do wysłania do KSeF
       related_invoice_id: proformaId,
-      issue_date: today,
-      sale_date: today,
-      payment_due_date: paymentDueDate.toISOString().split('T')[0],
+      issue_date: options.issueDate || today,
+      sale_date: options.saleDate || today,
+      payment_due_date:
+        options.paymentDueDate || defaultDue.toISOString().split('T')[0],
       created_by: employee?.id,
 
       // Dane skopiowane z proformy
-      invoice_type: 'vat',
+      invoice_type: targetType,
       my_company_id: proforma.my_company_id,
       event_id: proforma.event_id,
       organization_id: proforma.organization_id,

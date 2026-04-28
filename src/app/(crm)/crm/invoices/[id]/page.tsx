@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import SendInvoiceEmailModal from '@/components/crm/SendInvoiceEmailModal';
+import ConvertProformaModal from '@/components/crm/ConvertProformaModal';
 import KSeFSendModal from '@/components/crm/KSeFSendModal';
 import PermissionGuard from '@/components/crm/PermissionGuard';
 import { useDialog } from '@/contexts/DialogContext';
@@ -120,6 +121,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   const [relatedData, setRelatedData] = useState<RelatedData>({});
   const [loading, setLoading] = useState(true);
   const [showSendEmailModal, setShowSendEmailModal] = useState(false);
+  const [showConvertProformaModal, setShowConvertProformaModal] = useState(false);
   const [showKSeFModal, setShowKSeFModal] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [pdfPath, setPdfPath] = useState<string | null>(null);
@@ -571,32 +573,8 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
   const [sendingToKSeF, setSendingToKSeF] = useState(false);
 
-  const handleConvertToVAT = async () => {
-    const confirmed = await showConfirm(
-      'Czy na pewno chcesz wystawic fakture VAT na podstawie tej proformy? Zostanie utworzona nowa faktura.',
-      'Czy na pewno chcesz wystawic fakture VAT na podstawie tej proformy? Zostanie utworzona nowa faktura?',
-    );
-    if (!confirmed) return;
-
-    try {
-      setSendingToKSeF(true);
-      const { convertProformaToInvoice } = await import('@/lib/invoices/convertProformaToInvoice');
-      const result = await convertProformaToInvoice(params.id);
-
-      if (!result.success) throw new Error(result.error || 'Blad konwersji');
-
-      showSnackbar('Faktura VAT zostala utworzona', 'success');
-      if (result.invoiceId) {
-        router.push(`/crm/invoices/${result.invoiceId}`);
-      } else {
-        await fetchInvoice();
-      }
-    } catch (err: any) {
-      console.error('Error converting to VAT:', err);
-      showSnackbar(err.message || 'Blad podczas tworzenia faktury VAT', 'error');
-    } finally {
-      setSendingToKSeF(false);
-    }
+  const handleConvertToVAT = () => {
+    setShowConvertProformaModal(true);
   };
 
   const handleSendToKSeF = async () => {
@@ -744,11 +722,10 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                   {!invoice.proforma_converted_to_invoice_id ? (
                     <button
                       onClick={handleConvertToVAT}
-                      disabled={sendingToKSeF}
-                      className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
+                      className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
                     >
                       <CheckCircle className="h-4 w-4" />
-                      {sendingToKSeF ? 'Tworzenie...' : 'Wystaw fakture VAT na podstawie proformy'}
+                      Wystaw fakture na podstawie proformy
                     </button>
                   ) : (
                     <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3">
@@ -1258,6 +1235,17 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           }
         `}</style>
 
+        {showConvertProformaModal && invoice && (
+          <ConvertProformaModal
+            proformaId={invoice.id}
+            proformaNumber={invoice.invoice_number}
+            onClose={() => setShowConvertProformaModal(false)}
+            onConverted={(newId) => {
+              setShowConvertProformaModal(false);
+              router.push(`/crm/invoices/${newId}`);
+            }}
+          />
+        )}
         {showSendEmailModal && invoice && (
           <SendInvoiceEmailModal
             invoiceId={invoice.id}
