@@ -411,7 +411,7 @@ export default function NewInvoicePage() {
     if (includeDefaultFooterNote) {
       return (
         selectedCompany.invoice_footer_text ||
-        'Niniejsza faktura jest wezwaniem do zapłaty zgodnie z artykułem 455 kc. Po przekroczeniu terminu płatności będą naliczane ustawowe odsetki za zwłokę.'
+        ''
       );
     }
 
@@ -927,8 +927,7 @@ export default function NewInvoicePage() {
                       Dodaj standardową notę płatniczą
                     </div>
                     <div className="mt-1 text-xs text-[#e5e4e2]/60">
-                      Niniejsza faktura jest wezwaniem do zapłaty zgodnie z artykułem 455 kc. Po
-                      przekroczeniu terminu płatności będą naliczane ustawowe odsetki za zwłokę.
+                      Nota zostanie zapisana na fakturze i pokazana w PDF.
                     </div>
                   </div>
                 </label>

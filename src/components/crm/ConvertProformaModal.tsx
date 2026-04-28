@@ -104,24 +104,47 @@ export default function ConvertProformaModal({
   }, [proformaId]);
 
   const fetchNextNumber = async () => {
-    if (!proforma) return;
+    if (!proforma?.my_company_id) return;
+  
     setPreviewLoading(true);
+  
     try {
       const { data, error } = await supabase
-        .from('invoice_settings')
-        .select('current_year, last_invoice_number')
-        .order('created_at', { ascending: true })
-        .limit(1)
+        .from('my_companies')
+        .select(`
+          invoice_prefix,
+          last_invoice_number,
+          last_advance_number,
+          invoice_numbering_year
+        `)
+        .eq('id', proforma.my_company_id)
         .maybeSingle();
+  
       if (error || !data) {
+        console.error('[NUMBERING ERROR]', error);
         showSnackbar('Nie udalo sie odczytac numeracji', 'error');
         return;
       }
+  
       const year = new Date().getFullYear();
-      const useYear = data.current_year === year ? data.current_year : year;
-      const nextNumber = data.current_year === year ? data.last_invoice_number + 1 : 1;
-      const prefix = form.targetType === 'advance' ? 'ZAL/' : '';
-      setAutoPreview(`${prefix}${nextNumber}/${useYear}`);
+      const numberingYear = data.invoice_numbering_year === year ? data.invoice_numbering_year : year;
+  
+      const lastNumber =
+        form.targetType === 'advance'
+          ? data.last_advance_number || 0
+          : data.last_invoice_number || 0;
+  
+      const nextNumber = data.invoice_numbering_year === year ? lastNumber + 1 : 1;
+  
+      const parts: string[] = [];
+  
+      if (form.targetType === 'advance') parts.push('ZAL');
+      if (data.invoice_prefix) parts.push(data.invoice_prefix);
+  
+      parts.push(String(nextNumber));
+      parts.push(String(numberingYear));
+  
+      setAutoPreview(parts.join('/'));
     } finally {
       setPreviewLoading(false);
     }

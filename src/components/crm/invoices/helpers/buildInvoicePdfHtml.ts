@@ -86,6 +86,11 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
           }))
         : [];
 
+        const paymentMethod = data.paymentMethod?.toLowerCase().trim() || '';
+const isCash = paymentMethod === 'gotówka' || paymentMethod === 'gotowka' || paymentMethod === 'cash';
+
+const label = isCash ? 'Zapłacono:' : 'Do zapłaty:';
+
   const rows = invoiceItems.length
   ? invoiceItems
       .map(
@@ -388,21 +393,35 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
     </tbody>
   </table>
 
-  <div class="summary">
-    <div class="summary-left">
-      <div><span class="meta-label">Sposób płatności:</span> ${esc(data.paymentMethod)}</div>
-      <div><span class="meta-label">Termin płatności:</span> ${esc(formatDate(data.paymentDueDate))}</div>
-      <div><span class="meta-label">Numer konta:</span>
+<div class="summary">
+  <div class="summary-left">
+    <div>
+      <span class="meta-label">Sposób płatności:</span> ${esc(data.paymentMethod)}
+    </div>
+
+    ${!isCash ? `
+      <div>
+        <span class="meta-label">Termin płatności:</span> ${esc(formatDate(data.paymentDueDate))}
+      </div>
+      <div>
+        <span class="meta-label">Numer konta:</span>
         <span class="bank-box">${esc(data.bankAccount)}</span>
       </div>
-      ${data.bankName ? `<div style="margin-top: 4px;"><span class="meta-label">Nazwa banku:</span>
-        ${esc(data.bankName)}</div>` : ''}
-    </div>
-    <div class="summary-right">
-      <div><span class="meta-label">Do zapłaty:</span> <span class="amount">${formatMoney(data.totalGross)} PLN</span>
-      </div>
+      ${data.bankName ? `
+        <div style="margin-top: 4px;">
+          <span class="meta-label">Nazwa banku:</span> ${esc(data.bankName)}
+        </div>
+      ` : ''}
+    ` : ''}
+  </div>
+
+  <div class="summary-right">
+    <div>
+      <span class="meta-label">${esc(label)}</span>
+      <span class="amount">${formatMoney(data.totalGross)} PLN</span>
     </div>
   </div>
+</div>
 
   <div class="footer-note">
     ${esc(data.footerNote)}

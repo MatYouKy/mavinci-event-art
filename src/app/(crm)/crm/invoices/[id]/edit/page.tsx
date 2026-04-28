@@ -327,7 +327,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
 
     return (
       selectedCompany?.invoice_footer_text ||
-      'Niniejsza faktura jest wezwaniem do zapłaty zgodnie z artykułem 455 kc. Po przekroczeniu terminu płatności będą naliczane ustawowe odsetki za zwłokę.'
+      ''
     );
   };
 
@@ -374,7 +374,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
           : includeDefaultFooterNote
             ? customFooterNote?.trim() ||
               selectedCompany.invoice_footer_text ||
-              'Niniejsza faktura jest wezwaniem do zapłaty zgodnie z artykułem 455 kc. Po przekroczeniu terminu płatności będą naliczane ustawowe odsetki za zwłokę.'
+              ''
             : null;
 
       const missingSellerFields: string[] = [];

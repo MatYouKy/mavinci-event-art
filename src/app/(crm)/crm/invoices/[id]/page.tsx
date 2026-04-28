@@ -132,9 +132,6 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     fetchInvoice();
   }, [params.id]);
 
-  console.log('[InvoiceDetailPage] ->  items', items);
-  console.log('[InvoiceDetailPage] ->  invoice', invoice);
-
   const fetchInvoice = async () => {
     try {
       const [invoiceRes, itemsRes] = await Promise.all([
@@ -219,9 +216,6 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               .eq('id', contactPersonId)
               .maybeSingle();
 
-            console.log('[INVOICE CONTACT]', contact);
-            console.log('[INVOICE CONTACT ERROR]', contactError);
-
             if (contact) {
               related.primaryContact = {
                 id: contact.id,
@@ -270,8 +264,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
     return buildInvoicePdfHtml({
       footerNote:
-        invoice.footer_note ||
-        'Niniejsza faktura jest wezwaniem do zaplaty zgodnie z artykulem 455kc. Po przekroczeniu terminu platnosci beda naliczane ustawowe odsetki za zwloke.',
+        invoice.footer_note || '',
       signatureName: invoice.signature_name || 'Mateusz Kwiatkowski',
       website: invoice.website || 'www.mavinci.pl',
       invoiceNumber: invoice.invoice_number,
@@ -332,8 +325,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
       const html = buildInvoicePdfHtml({
         footerNote:
-          invoice.footer_note ||
-          'Niniejsza faktura jest wezwaniem do zaplaty zgodnie z artykulem 455kc. Po przekroczeniu terminu platnosci beda naliczane ustawowe odsetki za zwloke.',
+          invoice.footer_note || '',
         signatureName: invoice.signature_name || 'Mateusz Kwiatkowski',
         website: invoice.website || 'www.mavinci.pl',
         invoiceNumber: invoice.invoice_number,
@@ -691,7 +683,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     const labels: Record<string, string> = {
       vat: 'Faktura VAT',
       proforma: 'Faktura Proforma',
-      advance: 'Zaliczkowa',
+      advance: 'Faktura Zaliczkowa',
       corrective: 'Korygujaca',
     };
     return labels[type] || type;
@@ -1152,8 +1144,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             </div>
 
             <div className="mb-8 text-xs text-gray-600">
-              {invoice.footer_note ||
-                'Niniejsza faktura jest wezwaniem do zaplaty zgodnie z artykulem 455kc. po przekroczeniu terminu platnosci beda naliczane ustawowe odsetki za zwloke.'}
+              {invoice.footer_note || ''}
             </div>
 
             <div className="flex justify-end">
