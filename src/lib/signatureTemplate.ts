@@ -63,7 +63,6 @@ export const DEFAULT_SIGNATURE_TEMPLATE = `<div style="font-family: system-ui, -
   <table cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse;">
     <tr>
       <td style="vertical-align: top; padding-right: 16px;">
-        {{signature_thumb}}
         <img src="{{signature_thumb}}" alt="{{full_name}}" width="120" height="120" style="display: block; border-radius: 8px;" />
       </td>
       <td style="vertical-align: top; border-left: 2px solid {{brand_primary_color}}; padding-left: 16px;">

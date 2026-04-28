@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Save, Eye, Code, Tag } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
@@ -65,6 +65,15 @@ export default function EmailSignatureSettingsPage() {
   const [logos, setLogos] = useState<BrandbookLogo[]>([]);
   const [colors, setColors] = useState<BrandbookColor[]>([]);
 
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const toPublicLogoUrl = (value: string | null | undefined): string => {
+    if (!value) return '';
+    if (/^https?:\/\//i.test(value) || value.startsWith('data:')) return value;
+    const base = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    return `${base}/storage/v1/object/public/company-logos/${value.replace(/^\/+/, '')}`;
+  };
+
   useEffect(() => {
     const load = async () => {
       setLoading(true);
@@ -121,8 +130,9 @@ export default function EmailSignatureSettingsPage() {
     const colorByRole = (role: string) =>
       colors.find((c) => c.role === role)?.hex || '#d3bb73';
 
-    const defaultLogo =
+    const rawDefaultLogo =
       logos.find((l) => l.is_default)?.url || logos[0]?.url || selectedCompany?.logo_url || '';
+    const defaultLogo = toPublicLogoUrl(rawDefaultLogo);
 
     const addressParts = selectedCompany
       ? [
@@ -190,7 +200,23 @@ export default function EmailSignatureSettingsPage() {
   };
 
   const insertPlaceholder = (key: string) => {
-    setTemplate((prev) => `${prev}{{${key}}}`);
+    const token = `{{${key}}}`;
+    const ta = textareaRef.current;
+    if (!ta) {
+      setTemplate((prev) => `${prev}${token}`);
+      return;
+    }
+    const start = ta.selectionStart ?? template.length;
+    const end = ta.selectionEnd ?? template.length;
+    const next = template.slice(0, start) + token + template.slice(end);
+    setTemplate(next);
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      const pos = start + token.length;
+      el.focus();
+      el.setSelectionRange(pos, pos);
+    });
   };
 
   if (employeeLoading || loading) {
@@ -267,6 +293,7 @@ export default function EmailSignatureSettingsPage() {
           <div className="lg:col-span-2 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
             <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Szablon HTML</h2>
             <textarea
+              ref={textareaRef}
               value={template}
               onChange={(e) => setTemplate(e.target.value)}
               rows={22}
@@ -279,7 +306,7 @@ export default function EmailSignatureSettingsPage() {
               <Tag className="h-4 w-4" /> Placeholdery
             </h2>
             <p className="mb-3 text-xs text-[#e5e4e2]/60">
-              Kliknij aby wstawić na końcu szablonu lub skopiuj ręcznie.
+              Kliknij aby wstawić w miejscu kursora w szablonie.
             </p>
             <div className="grid max-h-[480px] grid-cols-1 gap-2 overflow-y-auto pr-1">
               {SIGNATURE_PLACEHOLDERS.map((p) => (
