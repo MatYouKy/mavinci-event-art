@@ -472,6 +472,9 @@ export default function EmployeeDetailPage() {
         objectFit: employee.avatar_metadata?.mobile?.objectFit || 'cover',
       },
     },
+    file: function (file: any, folder: string): unknown {
+      throw new Error('Function not implemented.');
+    }
   };
 
   const backgroundImageData: IImageMetadataUpload = {

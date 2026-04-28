@@ -88,7 +88,7 @@ export function useCurrentEmployee(): CurrentEmployeeData {
       const { data: employeeData, error } = await supabase
         .from('employees')
         .select(
-          'id, name, surname, nickname, email, phone_number, phone_private, avatar_url, role, access_level, permissions, occupation, region',
+          'id, name, surname, nickname, email, phone_number, phone_private, avatar_url, role, access_level, permissions, occupation, region, signature_thumb',
         )
         .eq('id', user.id)
         .maybeSingle();

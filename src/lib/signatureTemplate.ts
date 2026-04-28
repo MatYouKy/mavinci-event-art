@@ -6,7 +6,6 @@ export interface SignaturePlaceholderValues {
   phone?: string;
   email?: string;
   website?: string;
-  avatar_url?: string;
   company_name?: string;
   company_legal_name?: string;
   company_address?: string;
@@ -20,6 +19,7 @@ export interface SignaturePlaceholderValues {
   brand_primary_color?: string;
   brand_secondary_color?: string;
   brand_accent_color?: string;
+  signature_thumb?: string;
 }
 
 export const SIGNATURE_PLACEHOLDERS: { key: keyof SignaturePlaceholderValues; label: string }[] = [
@@ -30,7 +30,7 @@ export const SIGNATURE_PLACEHOLDERS: { key: keyof SignaturePlaceholderValues; la
   { key: 'phone', label: 'Telefon' },
   { key: 'email', label: 'Email' },
   { key: 'website', label: 'Strona WWW' },
-  { key: 'avatar_url', label: 'Miniaturka pracownika (URL)' },
+  { key: 'signature_thumb', label: 'Miniaturka pracownika (base64)' },
   { key: 'company_name', label: 'Nazwa firmy' },
   { key: 'company_legal_name', label: 'Pełna nazwa firmy' },
   { key: 'company_address', label: 'Adres firmy' },
@@ -63,8 +63,8 @@ export const DEFAULT_SIGNATURE_TEMPLATE = `<div style="font-family: system-ui, -
   <table cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse;">
     <tr>
       <td style="vertical-align: top; padding-right: 16px;">
-        {{avatar_url}}
-        <img src="{{avatar_url}}" alt="{{full_name}}" width="120" height="120" style="display: block; border-radius: 8px;" />
+        {{signature_thumb}}
+        <img src="{{signature_thumb}}" alt="{{full_name}}" width="120" height="120" style="display: block; border-radius: 8px;" />
       </td>
       <td style="vertical-align: top; border-left: 2px solid {{brand_primary_color}}; padding-left: 16px;">
         <div style="font-size: 16px; font-weight: 700; color: {{brand_primary_color}};">{{full_name}}</div>

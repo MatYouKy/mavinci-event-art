@@ -138,6 +138,8 @@ export default function EmailSignatureSettingsPage() {
       ? `${addressParts}, ${selectedCompany.postal_code} ${selectedCompany.city}`
       : '';
 
+      console.log('employee', employee);
+
     return {
       full_name: employee ? `${employee.name ?? ''} ${employee.surname ?? ''}`.trim() : 'Jan Kowalski',
       first_name: employee?.name ?? 'Jan',
@@ -146,7 +148,7 @@ export default function EmailSignatureSettingsPage() {
       phone: employee?.phone_number ?? '+48 000 000 000',
       email: employee?.email ?? 'email@example.com',
       website: selectedCompany?.website ?? 'https://mavinci.pl',
-      avatar_url: employee?.avatar_url ?? '',
+      signature_thumb: employee?.signature_thumb || '',
       company_name: selectedCompany?.name ?? '',
       company_legal_name: selectedCompany?.legal_name ?? '',
       company_address: fullAddress,
