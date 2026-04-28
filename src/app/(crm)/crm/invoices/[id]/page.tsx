@@ -285,7 +285,65 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     if (!invoice) return;
     setGenerating(true);
     try {
-      const html = buildHtmlForPdfData();
+      const { data: freshItems } = await supabase
+        .from('invoice_items')
+        .select('*')
+        .eq('invoice_id', invoice.id)
+        .order('position_number', { ascending: true });
+
+      if (freshItems && freshItems.length > 0) {
+        setItems(freshItems);
+        setInvoice((prev) => (prev ? { ...prev, invoice_items: freshItems } : prev));
+      }
+
+      const html = buildInvoicePdfHtml({
+        footerNote:
+          invoice.footer_note ||
+          'Niniejsza faktura jest wezwaniem do zaplaty zgodnie z artykulem 455kc. Po przekroczeniu terminu platnosci beda naliczane ustawowe odsetki za zwloke.',
+        signatureName: invoice.signature_name || 'Mateusz Kwiatkowski',
+        website: invoice.website || 'www.mavinci.pl',
+        invoiceNumber: invoice.invoice_number,
+        invoiceType:
+          invoice.invoice_type === 'proforma' || invoice.is_proforma
+            ? 'proforma'
+            : invoice.invoice_type,
+        issueDate: invoice.issue_date,
+        saleDate: invoice.sale_date,
+        issuePlace: invoice.issue_place,
+        paymentMethod: invoice.payment_method,
+        paymentDueDate: invoice.payment_due_date,
+        bankAccount: invoice.bank_account,
+        bankName: invoice.bank_name,
+        sellerName: invoice.seller_name,
+        sellerNip: invoice.seller_nip,
+        sellerStreet: invoice.seller_street,
+        sellerCity: invoice.seller_city,
+        sellerPostalCode: invoice.seller_postal_code,
+        buyerName: invoice.buyer_name,
+        buyerNip: invoice.buyer_nip,
+        buyerStreet: invoice.buyer_street,
+        buyerCity: invoice.buyer_city,
+        buyerPostalCode: invoice.buyer_postal_code,
+        totalNet: invoice.total_net,
+        totalVat: invoice.total_vat,
+        totalGross: invoice.total_gross,
+        companyLogoUrl: invoice.company_logo_url
+          ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/company-logos/${invoice.company_logo_url}`
+          : null,
+        items: (freshItems || items).map((item: any) => ({
+          positionNumber: item.position_number,
+          name: item.name,
+          unit: item.unit,
+          quantity: item.quantity,
+          priceNet: item.price_net,
+          vatRate: item.vat_rate,
+          valueNet: item.value_net,
+          vatAmount: item.vat_amount,
+          valueGross: item.value_gross,
+        })),
+        invoice_items: (freshItems || invoice.invoice_items || []) as any,
+        isProforma: false,
+      });
       const response = await fetch('/bridge/invoices/invoice-pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

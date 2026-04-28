@@ -69,13 +69,22 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
 
   const formatMoney = (value?: number) => Number(value || 0).toFixed(2);
 
-
-  console.log('[buildInvoicePdfHtml] ->  data.items', data.items);
-  console.log('[buildInvoicePdfHtml] ->  data.invoice_items', data.invoice_items);
-
-  const invoiceItems = data.items || data.invoice_items;
-
-  console.log('[buildInvoicePdfHtml] ->  invoiceItems', invoiceItems);
+  const invoiceItems =
+    data.items && data.items.length > 0
+      ? data.items
+      : data.invoice_items && data.invoice_items.length > 0
+        ? data.invoice_items.map((item: any, idx: number) => ({
+            positionNumber: item.position_number ?? idx + 1,
+            name: item.name,
+            unit: item.unit,
+            quantity: Number(item.quantity),
+            priceNet: Number(item.price_net ?? item.unit_price_net ?? 0),
+            vatRate: Number(item.vat_rate ?? 0),
+            valueNet: Number(item.value_net ?? item.total_net ?? 0),
+            vatAmount: Number(item.vat_amount ?? item.total_vat ?? 0),
+            valueGross: Number(item.value_gross ?? item.total_gross ?? 0),
+          }))
+        : [];
 
   const rows = invoiceItems.length
   ? invoiceItems
@@ -100,23 +109,6 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
         <td colspan="9" class="center">Brak pozycji</td>
       </tr>
     `;
-
-    console.log('PDF invoice type:', data.invoiceType, 'is_proforma:', data.isProforma);
-console.log('PDF items raw:', data.items);
-console.log(
-  'PDF items mapped:',
-  data.items.map((item) => ({
-    positionNumber: item.positionNumber,
-    name: item.name,
-    unit: item.unit,
-    quantity: item.quantity,
-    priceNet: item.priceNet,
-    vatRate: item.vatRate,
-    valueNet: item.valueNet,
-    vatAmount: item.vatAmount,
-    valueGross: item.valueGross,
-  })),
-);
 
   return `<!DOCTYPE html>
 <html lang="pl">
