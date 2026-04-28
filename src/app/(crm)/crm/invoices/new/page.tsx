@@ -56,6 +56,9 @@ export default function NewInvoicePage() {
   const [issueDate, setIssueDate] = useState(new Date().toISOString().split('T')[0]);
   const [saleDate, setSaleDate] = useState(new Date().toISOString().split('T')[0]);
   const [paymentDays, setPaymentDays] = useState(14);
+  const [paymentMethod, setPaymentMethod] = useState<'Przelew' | 'Gotówka' | 'Karta' | 'BLIK'>(
+    'Przelew',
+  );
   const [selectedOrgId, setSelectedOrgId] = useState<string>('');
   const [items, setItems] = useState<InvoiceItem[]>([
     { position_number: 1, name: '', unit: 'szt.', quantity: 1, price_net: 0, vat_rate: 23 },
@@ -186,7 +189,11 @@ export default function NewInvoicePage() {
         );
       }
 
-      if (settingsRes.data && settingsRes.data.length > 0) setSettings(settingsRes.data[0]);
+      if (settingsRes.data && settingsRes.data.length > 0) {
+        setSettings(settingsRes.data[0]);
+        const defaultMethod = settingsRes.data[0]?.default_payment_method;
+        if (defaultMethod) setPaymentMethod(defaultMethod);
+      }
       if (businessClientsRes.data) {
         const formattedClients = businessClientsRes.data.map((client: any) => ({
           id: client.id,
@@ -306,7 +313,10 @@ export default function NewInvoicePage() {
     }
   };
 
+  const isCashPayment = paymentMethod === 'Gotówka' || paymentMethod === 'Karta' || paymentMethod === 'BLIK';
+
   const calculatePaymentDueDate = () => {
+    if (isCashPayment) return issueDate;
     const date = new Date(issueDate);
     date.setDate(date.getDate() + paymentDays);
     return date.toISOString().split('T')[0];
@@ -532,7 +542,7 @@ export default function NewInvoicePage() {
         buyer_postal_code: selectedOrg.postal_code || '',
         buyer_city: selectedOrg.city || '',
         buyer_country: 'Polska',
-        payment_method: settings?.default_payment_method || 'Przelew',
+        payment_method: paymentMethod,
         bank_name: selectedCompany.bank_name || '',
         bank_account: selectedCompany.bank_account || '',
         issue_place: selectedCompany.city,
@@ -856,26 +866,51 @@ export default function NewInvoicePage() {
               </div>
 
               <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">
-                  Termin płatności (dni) *
-                </label>
-                <input
-                  type="number"
-                  value={paymentDays}
-                  onChange={(e) => setPaymentDays(parseInt(e.target.value))}
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Sposób płatności *</label>
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value as any)}
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
-                />
+                >
+                  <option value="Przelew">Przelew</option>
+                  <option value="Gotówka">Gotówka</option>
+                  <option value="Karta">Karta</option>
+                  <option value="BLIK">BLIK</option>
+                </select>
               </div>
 
-              <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data płatności</label>
-                <input
-                  type="text"
-                  value={calculatePaymentDueDate()}
-                  disabled
-                  className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a]/50 px-4 py-3 text-[#e5e4e2]/60"
-                />
-              </div>
+              {!isCashPayment ? (
+                <>
+                  <div>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                      Termin płatności (dni) *
+                    </label>
+                    <input
+                      type="number"
+                      value={paymentDays}
+                      onChange={(e) => setPaymentDays(parseInt(e.target.value))}
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data płatności</label>
+                    <input
+                      type="text"
+                      value={calculatePaymentDueDate()}
+                      disabled
+                      className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a]/50 px-4 py-3 text-[#e5e4e2]/60"
+                    />
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Status płatności</label>
+                  <div className="rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-400">
+                    Zapłacono w dniu wystawienia ({paymentMethod})
+                  </div>
+                </div>
+              )}
             </div>
 
             {invoiceType !== 'corrective' && (
