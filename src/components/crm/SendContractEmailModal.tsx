@@ -101,7 +101,7 @@ W razie pytań proszę o kontakt.`,
       setSignature(sigResult.data);
       setTemplate(templateResult.data);
 
-      const rawAvatarUrl = sigResult.data?.avatar_url || empResult.data?.avatar_url || '';
+      const rawAvatarUrl = empResult.data?.avatar_url || '';
       if (rawAvatarUrl) {
         const dataUri = await fetchAvatarAsDataUri(rawAvatarUrl);
         if (dataUri) setAvatarDataUri(dataUri);
@@ -137,19 +137,22 @@ W razie pytań proszę o kontakt.`,
       phone: employee?.phone_number || '',
       email: employee?.email || '',
       website: 'https://mavinci.pl',
-      avatar_url: employee?.avatar_url || '',
     };
 
+    const employeeAvatar = employee?.avatar_url || '';
+    const finalAvatar = avatarDataUri || employeeAvatar;
+
     if (signature && signature.use_custom_html && signature.custom_html) {
-      if (avatarDataUri && sig.avatar_url) {
-        return signature.custom_html.split(sig.avatar_url).join(avatarDataUri);
+      let html = signature.custom_html;
+      if (signature.avatar_url && finalAvatar) {
+        html = html.split(signature.avatar_url).join(finalAvatar);
       }
-      return signature.custom_html;
+      return html;
     }
 
     return generateEmailSignature({
       ...sig,
-      avatar_url: avatarDataUri || sig.avatar_url,
+      avatar_url: finalAvatar,
     });
   };
 
