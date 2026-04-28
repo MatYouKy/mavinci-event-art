@@ -13,6 +13,7 @@ import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import { useDialog } from '@/contexts/DialogContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { InvoiceSettingsTab } from '@/components/crm/invoices/tabs/InvoiceSettingsTab';
+import FinalInvoiceWizardModal from '@/components/crm/FinalInvoiceWizardModal';
 
 interface Invoice {
   ksef_status: string;
@@ -128,6 +129,7 @@ export default function InvoicesPage() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'local' | 'ksef' | 'settings'>('dashboard');
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
   const [myCompanies, setMyCompanies] = useState<any[]>([]);
+  const [showFinalInvoiceWizard, setShowFinalInvoiceWizard] = useState(false);
 
   const { canManageModule, isAdmin } = useCurrentEmployee();
   const { showConfirm } = useDialog();
@@ -348,6 +350,12 @@ export default function InvoicesPage() {
 
           <ResponsiveActionBar
             actions={canManageInvoices ? [
+              {
+                label: 'Faktura końcowa',
+                onClick: () => setShowFinalInvoiceWizard(true),
+                icon: <FileText className="h-5 w-5" />,
+                variant: 'default',
+              },
               {
                 label: 'Wystaw fakturę',
                 onClick: () => router.push('/crm/invoices/new'),
@@ -768,6 +776,15 @@ export default function InvoicesPage() {
         )}
         </div>
       </div>
+      {showFinalInvoiceWizard && (
+        <FinalInvoiceWizardModal
+          onClose={() => setShowFinalInvoiceWizard(false)}
+          onCreated={(id) => {
+            setShowFinalInvoiceWizard(false);
+            router.push(`/crm/invoices/${id}`);
+          }}
+        />
+      )}
     </PermissionGuard>
   );
 }
