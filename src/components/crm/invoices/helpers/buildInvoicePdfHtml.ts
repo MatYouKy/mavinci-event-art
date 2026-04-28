@@ -163,6 +163,16 @@ console.log(
       width: auto;
     }
 
+    .preview-notice {
+      margin: 2px 0 20px;
+      font-size: 12px;
+      font-weight: 700;
+      text-align: right;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #000;
+    }
+
     .meta {
       text-align: right;
       font-size: 11px;
@@ -324,6 +334,7 @@ console.log(
       ${data.companyLogoUrl ? `<img src="${esc(data.companyLogoUrl)}" alt="Logo" class="logo" />` : ''}
     </div>
     <div class="meta">
+      <div class="preview-notice">Wizualizacja</div>
       <div><span class="meta-label">Miejsce wystawienia:</span> <strong>${esc(data.issuePlace)}</strong></div>
       <div><span class="meta-label">Data wystawienia:</span> <strong>${esc(formatDate(data.issueDate))}</strong></div>
       <div><span class="meta-label">Data sprzedaży:</span> <strong>${esc(formatDate(data.saleDate))}</strong></div>
@@ -346,7 +357,7 @@ console.log(
       <div>${esc(data.buyerPostalCode)} ${esc(data.buyerCity)}</div>
     </div>
   </div>
-
+  
   <div class="title">
     ${esc(getTypeLabel(data.invoiceType))} ${esc(data.invoiceNumber)}
   </div>
