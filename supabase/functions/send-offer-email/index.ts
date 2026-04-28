@@ -212,8 +212,24 @@ Deno.serve(async (req: Request) => {
     let bodyTemplate = DEFAULT_EMAIL_BODY_TEMPLATE;
 
     if (company) {
-      useBodyTemplate = !!company.email_body_use_template;
-      if (company.email_body_template) bodyTemplate = company.email_body_template;
+      const { data: assignmentRows } = await supabase
+        .from("email_body_template_assignments")
+        .select("purpose, template:email_body_templates(template_html, is_active)")
+        .eq("company_id", company.id)
+        .in("purpose", ["offer", "general"]);
+      const findAssigned = (key: string) => {
+        const row = (assignmentRows ?? []).find((r: any) => r.purpose === key);
+        const t = (row as any)?.template;
+        return t?.is_active && t?.template_html ? (t.template_html as string) : null;
+      };
+      const assignedHtml = findAssigned("offer") ?? findAssigned("general");
+      if (assignedHtml) {
+        useBodyTemplate = true;
+        bodyTemplate = assignedHtml;
+      } else {
+        useBodyTemplate = !!company.email_body_use_template;
+        if (company.email_body_template) bodyTemplate = company.email_body_template;
+      }
 
       const [logosRes, colorsRes] = await Promise.all([
         supabase

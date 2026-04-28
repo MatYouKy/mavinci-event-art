@@ -21,12 +21,15 @@ interface BuildResult {
   companyId: string | null;
 }
 
+export type EmailTemplatePurpose = 'general' | 'offer' | 'invoice' | 'contract' | 'link';
+
 interface BuildBodyOptions extends BuildOptions {
   content: string;
   subject?: string;
   recipientName?: string;
   pdfLink?: string;
   signatureHtml?: string;
+  purpose?: EmailTemplatePurpose;
 }
 
 interface BuildBodyResult {
@@ -209,7 +212,37 @@ export async function buildCompanyEmailBody(opts: BuildBodyOptions): Promise<Bui
     pdf_link: opts.pdfLink ?? '',
   };
 
-  if (!ctx.company.email_body_use_template) {
+  const purpose: EmailTemplatePurpose = opts.purpose ?? 'general';
+
+  let assignedTemplateHtml: string | null = null;
+  const { data: assignment } = await supabase
+    .from('email_body_template_assignments')
+    .select('template:email_body_templates(template_html, is_active)')
+    .eq('company_id', ctx.company.id)
+    .eq('purpose', purpose)
+    .maybeSingle();
+
+  const tmpl = (assignment as any)?.template;
+  if (tmpl?.is_active && tmpl?.template_html) {
+    assignedTemplateHtml = tmpl.template_html;
+  }
+
+  if (!assignedTemplateHtml && purpose !== 'general') {
+    const { data: fallback } = await supabase
+      .from('email_body_template_assignments')
+      .select('template:email_body_templates(template_html, is_active)')
+      .eq('company_id', ctx.company.id)
+      .eq('purpose', 'general')
+      .maybeSingle();
+    const fb = (fallback as any)?.template;
+    if (fb?.is_active && fb?.template_html) assignedTemplateHtml = fb.template_html;
+  }
+
+  if (!assignedTemplateHtml && ctx.company.email_body_use_template) {
+    assignedTemplateHtml = ctx.company.email_body_template || null;
+  }
+
+  if (!assignedTemplateHtml) {
     return {
       html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;"><div style="white-space: pre-wrap;">${contentHtml}</div>${opts.pdfLink ?? ''}${signatureHtml}</div>`,
       templateEnabled: false,
@@ -218,9 +251,8 @@ export async function buildCompanyEmailBody(opts: BuildBodyOptions): Promise<Bui
     };
   }
 
-  const template = ctx.company.email_body_template || DEFAULT_EMAIL_BODY_TEMPLATE;
   return {
-    html: renderEmailBodyTemplate(template, values),
+    html: renderEmailBodyTemplate(assignedTemplateHtml, values),
     templateEnabled: true,
     companyId: ctx.company.id,
     signatureHtml,

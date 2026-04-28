@@ -180,6 +180,7 @@ W razie pytań proszę o kontakt.`,
       subject: formData.subject,
       recipientName: clientName,
       signatureHtml,
+      purpose: 'contract',
     });
     setPreviewHtml(result.html);
   };
