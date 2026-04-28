@@ -71,6 +71,8 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
   const [showPasswords, setShowPasswords] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadingThumb, setUploadingThumb] = useState(false);
+  const [pendingThumbFile, setPendingThumbFile] = useState<File | null>(null);
+  const [pendingThumbPreview, setPendingThumbPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -248,20 +250,35 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
     setIsEditingPersonalEmail(false);
   };
 
-  const uploadSignatureThumb = async (file: File) => {
+  const stageThumbFile = (file: File) => {
     if (!file.type.startsWith('image/')) {
       alert('Plik musi być obrazem');
       return;
     }
+    if (pendingThumbPreview) URL.revokeObjectURL(pendingThumbPreview);
+    setPendingThumbFile(file);
+    setPendingThumbPreview(URL.createObjectURL(file));
+  };
+
+  const cancelPendingThumb = () => {
+    if (pendingThumbPreview) URL.revokeObjectURL(pendingThumbPreview);
+    setPendingThumbFile(null);
+    setPendingThumbPreview(null);
+  };
+
+  const saveSignatureThumb = async () => {
+    if (!pendingThumbFile) return;
     try {
       setUploadingThumb(true);
-      const url = await uploadImage(file, 'employee-avatars');
+      const url = await uploadImage(pendingThumbFile, 'employee-avatars');
       const { error } = await supabase
         .from('employees')
         .update({ signature_thumb: url })
         .eq('id', employeeId);
       if (error) throw error;
+      cancelPendingThumb();
       await fetchEmployee();
+      alert('Miniaturka do stopki została zapisana.');
     } catch (err: any) {
       console.error('Error uploading signature thumb:', err);
       alert('Błąd podczas wgrywania zdjęcia: ' + (err?.message || JSON.stringify(err)));
@@ -302,12 +319,12 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
     e.stopPropagation();
     setIsDragging(false);
     const file = e.dataTransfer.files?.[0];
-    if (file) uploadSignatureThumb(file);
+    if (file) stageThumbFile(file);
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) uploadSignatureThumb(file);
+    if (file) stageThumbFile(file);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -567,15 +584,26 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
               </p>
               <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
                 <div className="flex items-start gap-4">
-                  {employee?.signature_thumb ? (
+                  {employee?.signature_thumb && !pendingThumbPreview && (
                     <div className="flex-shrink-0">
+                      <p className="mb-2 text-xs text-[#e5e4e2]/60">Aktualna miniaturka</p>
                       <img
                         src={employee.signature_thumb}
                         alt="Signature thumbnail"
-                        className="h-24 w-24 rounded-lg border border-[#d3bb73]/20 object-cover"
+                        className="h-32 w-32 rounded-lg border border-[#d3bb73]/20 object-cover"
                       />
                     </div>
-                  ) : null}
+                  )}
+                  {pendingThumbPreview && (
+                    <div className="flex-shrink-0">
+                      <p className="mb-2 text-xs text-[#d3bb73]">Podgląd (niezapisana)</p>
+                      <img
+                        src={pendingThumbPreview}
+                        alt="Pending thumbnail"
+                        className="h-32 w-32 rounded-lg border-2 border-[#d3bb73] object-cover"
+                      />
+                    </div>
+                  )}
                   <div className="flex-1">
                     <div
                       onDragOver={handleDragOver}
@@ -597,27 +625,43 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
                       />
                       <Upload className="mb-2 h-8 w-8 text-[#d3bb73]" />
                       <p className="text-center text-sm text-[#e5e4e2]">
-                        {uploadingThumb ? (
-                          'Wgrywanie...'
-                        ) : (
-                          <>
-                            <span className="font-medium text-[#d3bb73]">Kliknij</span> lub przeciągnij i upuść
-                          </>
-                        )}
+                        <span className="font-medium text-[#d3bb73]">Kliknij</span> lub przeciągnij i upuść
                       </p>
                       <p className="mt-1 text-xs text-[#e5e4e2]/50">
                         PNG, JPG lub WebP (max 2MB)
                       </p>
                     </div>
-                    {employee?.signature_thumb && (
-                      <button
-                        onClick={removeSignatureThumb}
-                        className="mt-3 flex items-center gap-2 text-xs text-red-400 hover:text-red-300"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                        Usuń miniaturkę
-                      </button>
-                    )}
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      {pendingThumbFile && (
+                        <>
+                          <button
+                            onClick={saveSignatureThumb}
+                            disabled={uploadingThumb}
+                            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
+                          >
+                            <Save className="h-4 w-4" />
+                            {uploadingThumb ? 'Zapisywanie...' : 'Zapisz miniaturkę'}
+                          </button>
+                          <button
+                            onClick={cancelPendingThumb}
+                            disabled={uploadingThumb}
+                            className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-sm font-medium text-[#e5e4e2] hover:bg-[#1c1f33] disabled:opacity-50"
+                          >
+                            <X className="h-4 w-4" />
+                            Anuluj
+                          </button>
+                        </>
+                      )}
+                      {employee?.signature_thumb && !pendingThumbFile && (
+                        <button
+                          onClick={removeSignatureThumb}
+                          className="flex items-center gap-2 text-xs text-red-400 hover:text-red-300"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                          Usuń miniaturkę
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

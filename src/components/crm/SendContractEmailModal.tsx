@@ -144,8 +144,17 @@ W razie pytań proszę o kontakt.`,
 
     if (signature && signature.use_custom_html && signature.custom_html) {
       let html = signature.custom_html;
-      if (signature.avatar_url && finalAvatar) {
-        html = html.split(signature.avatar_url).join(finalAvatar);
+      if (finalAvatar) {
+        if (signature.avatar_url) {
+          html = html.split(signature.avatar_url).join(finalAvatar);
+        }
+        if (employee?.avatar_url && employee.avatar_url !== signature.avatar_url) {
+          html = html.split(employee.avatar_url).join(finalAvatar);
+        }
+        html = html.replace(
+          /(<img[^>]*src=["'])([^"']*\/employee-avatars\/[^"']*)(["'])/gi,
+          `$1${finalAvatar}$3`,
+        );
       }
       return html;
     }
