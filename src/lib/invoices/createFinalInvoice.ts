@@ -78,9 +78,14 @@ export async function createFinalInvoice(opts: CreateFinalInvoiceOptions): Promi
     } else {
       const { data: generated, error: genErr } = await supabase.rpc('generate_invoice_number', {
         p_invoice_type: 'vat',
+        p_my_company_id: opts.myCompanyId ?? null,
       });
       if (genErr || !generated) {
-        return { success: false, error: 'Blad generowania numeru faktury' };
+        console.error('generate_invoice_number error:', genErr);
+        return {
+          success: false,
+          error: genErr?.message || 'Blad generowania numeru faktury',
+        };
       }
       invoiceNumber = generated as string;
     }

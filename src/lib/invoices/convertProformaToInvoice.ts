@@ -71,11 +71,18 @@ export async function convertProformaToInvoice(
         'generate_invoice_number',
         {
           p_invoice_type: targetType,
+          p_my_company_id: proforma.my_company_id,
         }
       );
 
       if (numberError || !generatedNumber) {
-        return { success: false, error: 'Błąd generowania numeru faktury' };
+        console.error('generate_invoice_number error:', numberError);
+        return {
+          success: false,
+          error:
+            numberError?.message ||
+            'Blad generowania numeru faktury. Sprawdz ustawienia numeracji firmy.',
+        };
       }
       invoiceNumber = generatedNumber as string;
     }

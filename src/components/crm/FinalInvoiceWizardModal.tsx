@@ -105,9 +105,22 @@ export default function FinalInvoiceWizardModal({
 
   const [creating, setCreating] = useState(false);
 
+  const myCompanyId = useMemo(() => {
+    const sel = candidates.find((c) => selectedIds.has(c.id));
+    return sel?.my_company_id ?? null;
+  }, [candidates, selectedIds]);
+
   useEffect(() => {
     (async () => {
-      const { data } = await supabase.rpc('generate_invoice_number', { p_invoice_type: 'vat' });
+      const { data, error } = await supabase.rpc('generate_invoice_number', {
+        p_invoice_type: 'vat',
+        p_my_company_id: myCompanyId,
+      });
+      if (error) {
+        console.error('generate_invoice_number error:', error);
+        setAutoPreview('');
+        return;
+      }
       if (data) {
         const { data: existing } = await supabase
           .from('invoices')
@@ -117,7 +130,7 @@ export default function FinalInvoiceWizardModal({
         setAutoPreview(existing ? `${data} (zajete)` : (data as string));
       }
     })();
-  }, []);
+  }, [myCompanyId]);
 
   useEffect(() => {
     let cancelled = false;
