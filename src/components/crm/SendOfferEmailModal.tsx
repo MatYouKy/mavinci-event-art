@@ -5,6 +5,7 @@ import { X, Send, Mail, Loader } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useUpdateEventOfferMutation } from '@/app/(crm)/crm/events/store/api/eventsApi';
+import { buildCompanySignatureHtml } from '@/lib/buildCompanySignature';
 
 interface SendOfferEmailModalProps {
   offerId: string;
@@ -80,6 +81,7 @@ W razie pytań proszę o kontakt.`,
             to: formData.to,
             subject: formData.subject,
             message: formData.message,
+            signatureHtml: (await buildCompanySignatureHtml()).html,
           }),
         },
       );

@@ -12,6 +12,7 @@ interface SendOfferEmailRequest {
   to: string;
   subject: string;
   message: string;
+  signatureHtml?: string;
 }
 
 Deno.serve(async (req: Request) => {
@@ -23,7 +24,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { offerId, to, subject, message }: SendOfferEmailRequest = await req.json();
+    const { offerId, to, subject, message, signatureHtml }: SendOfferEmailRequest = await req.json();
 
     if (!offerId || !to || !subject) {
       throw new Error("Missing required fields: offerId, to, subject");
@@ -158,7 +159,7 @@ Deno.serve(async (req: Request) => {
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <p>${message.replace(/\n/g, '<br>')}</p>
         ${pdfLinkHtml}
-        ${emailAccount.signature || ''}
+        ${signatureHtml || emailAccount.signature || ''}
       </div>
     `;
 

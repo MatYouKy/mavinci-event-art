@@ -5,6 +5,7 @@ import { X, Send, Mail, Loader, Eye, Code } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { generateEmailSignature } from './EmailSignatureGenerator';
+import { buildCompanySignatureHtml } from '@/lib/buildCompanySignature';
 
 interface SendContractEmailModalProps {
   contractId: string;
@@ -49,6 +50,8 @@ W razie pytań proszę o kontakt.`,
   const [template, setTemplate] = useState<any>(null);
   const [employee, setEmployee] = useState<any>(null);
   const [avatarDataUri, setAvatarDataUri] = useState<string>('');
+  const [companySignatureHtml, setCompanySignatureHtml] = useState<string>('');
+  const [companySignatureEnabled, setCompanySignatureEnabled] = useState<boolean>(false);
   const [showPreview, setShowPreview] = useState(false);
   const [previewHtml, setPreviewHtml] = useState('');
   const [contract, setContract] = useState<any>(null);
@@ -57,6 +60,10 @@ W razie pytań proszę o kontakt.`,
     fetchEmailAccounts();
     fetchSignatureAndTemplate();
     fetchContract();
+    buildCompanySignatureHtml().then((res) => {
+      setCompanySignatureHtml(res.html);
+      setCompanySignatureEnabled(res.enabled);
+    });
   }, []);
 
   useEffect(() => {
@@ -67,7 +74,7 @@ W razie pytań proszę o kontakt.`,
 
   useEffect(() => {
     generatePreview();
-  }, [formData.message, signature, template, avatarDataUri]);
+  }, [formData.message, signature, template, avatarDataUri, companySignatureHtml, companySignatureEnabled]);
 
   const fetchContract = async () => {
     try {
@@ -129,6 +136,7 @@ W razie pytań proszę o kontakt.`,
   };
 
   const generateSignatureHtml = () => {
+    if (companySignatureEnabled && companySignatureHtml) return companySignatureHtml;
     if (!signature && !employee) return '';
 
     const sig = signature || {

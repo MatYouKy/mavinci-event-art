@@ -19,6 +19,7 @@ interface SendInvoiceEmailRequest {
   subject: string;
   message: string;
   attachments?: Attachment[];
+  signatureHtml?: string;
 }
 
 Deno.serve(async (req: Request) => {
@@ -30,7 +31,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { invoiceId, to, subject, message, attachments = [] }: SendInvoiceEmailRequest = await req.json();
+    const { invoiceId, to, subject, message, attachments = [], signatureHtml }: SendInvoiceEmailRequest = await req.json();
 
     if (!invoiceId || !to || !subject) {
       throw new Error("Missing required fields: invoiceId, to, subject");
@@ -94,7 +95,7 @@ Deno.serve(async (req: Request) => {
     const htmlBody = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <p>${message.replace(/\n/g, '<br>')}</p>
-        ${emailAccount.signature || ''}
+        ${signatureHtml || emailAccount.signature || ''}
       </div>
     `;
 

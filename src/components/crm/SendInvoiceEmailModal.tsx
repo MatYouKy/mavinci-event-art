@@ -5,6 +5,7 @@ import { X, Send, Mail, Loader, Paperclip } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { buildInvoicePdfHtml } from './invoices/helpers/buildInvoicePdfHtml';
+import { buildCompanySignatureHtml } from '@/lib/buildCompanySignature';
 
 interface SendInvoiceEmailModalProps {
   invoiceId: string;
@@ -264,6 +265,7 @@ W razie pytań proszę o kontakt.`,
             subject: formData.subject,
             message: formData.message,
             attachments,
+            signatureHtml: (await buildCompanySignatureHtml()).html,
           }),
         },
       );
