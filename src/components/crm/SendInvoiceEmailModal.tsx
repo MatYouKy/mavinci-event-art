@@ -82,6 +82,7 @@ export default function SendInvoiceEmailModal({
 }: SendInvoiceEmailModalProps) {
   const { showSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(false);
+  const [senderEmail, setSenderEmail] = useState<string>('');
   const [formData, setFormData] = useState({
     to: clientEmail,
     subject: `Faktura ${invoiceNumber}`,
@@ -97,6 +98,35 @@ W razie pytań proszę o kontakt.`,
       setFormData((prev) => ({ ...prev, to: clientEmail }));
     }
   }, [clientEmail]);
+
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: defaultAcc } = await supabase
+        .from('employee_email_accounts')
+        .select('email_address')
+        .eq('employee_id', user.id)
+        .eq('is_default', true)
+        .maybeSingle();
+      if (defaultAcc?.email_address) {
+        setSenderEmail(defaultAcc.email_address);
+        return;
+      }
+      const { data: anyAcc } = await supabase
+        .from('employee_email_accounts')
+        .select('email_address')
+        .eq('employee_id', user.id)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (anyAcc?.email_address) {
+        setSenderEmail(anyAcc.email_address);
+      } else {
+        setSenderEmail(user.email ?? '');
+      }
+    })();
+  }, []);
 
   const generateInvoicePDF = async (): Promise<{ base64: string; filename: string }> => {
     const [invoiceRes, itemsRes] = await Promise.all([
@@ -348,7 +378,7 @@ W razie pytań proszę o kontakt.`,
 
           <div className="rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 p-4">
             <p className="text-sm text-[#d3bb73]">
-              <strong>Nadawca:</strong> Systemowa skrzynka email CRM
+              <strong>Nadawca:</strong> {senderEmail || 'Twoje konto email'}
             </p>
             <div className="mt-2 flex items-center gap-2 text-sm text-[#e5e4e2]/60">
               <Paperclip className="h-4 w-4 text-[#d3bb73]" />

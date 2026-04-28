@@ -129,17 +129,19 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (!emailAccount) {
-      const { data: systemAccount } = await supabase
+      const { data: anyOwnAccount } = await supabase
         .from("employee_email_accounts")
         .select("*")
-        .eq("is_system_account", true)
+        .eq("employee_id", user.id)
+        .order("created_at", { ascending: true })
+        .limit(1)
         .maybeSingle();
 
-      if (!systemAccount) {
-        throw new Error("Nie masz skonfigurowanego domyślnego konta email. Skontaktuj się z administratorem lub skonfiguruj konto w ustawieniach.");
+      if (!anyOwnAccount) {
+        throw new Error("Nie masz skonfigurowanego konta email. Skonfiguruj swoje konto w ustawieniach.");
       }
 
-      emailAccount = systemAccount;
+      emailAccount = anyOwnAccount;
     }
 
     const relayUrl = Deno.env.get("SMTP_RELAY_URL");

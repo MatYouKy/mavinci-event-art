@@ -82,6 +82,7 @@ interface Invoice {
 interface RelatedData {
   event?: { id: string; name: string; event_date: string } | null;
   organization?: { id: string; name: string; nip: string; email?: string } | null;
+  primaryContact?: { id: string; name: string; email?: string | null } | null;
   relatedInvoice?: { id: string; invoice_number: string; invoice_type: string } | null;
   relatedInvoices?: Array<{
     id: string;
@@ -198,6 +199,25 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
         if (results[resultIndex]?.data) {
           related.relatedInvoices = results[resultIndex].data;
+        }
+
+        if (invoiceRes.data.event_id) {
+          const { data: contactRows } = await supabase
+            .from('event_contact_persons')
+            .select('is_primary, contact:contacts(id, first_name, last_name, email)')
+            .eq('event_id', invoiceRes.data.event_id)
+            .order('is_primary', { ascending: false });
+
+          const firstWithEmail = (contactRows ?? []).find((row: any) => row.contact?.email);
+          const fallback = (contactRows ?? [])[0];
+          const chosen: any = firstWithEmail ?? fallback;
+          if (chosen?.contact) {
+            related.primaryContact = {
+              id: chosen.contact.id,
+              name: `${chosen.contact.first_name ?? ''} ${chosen.contact.last_name ?? ''}`.trim(),
+              email: chosen.contact.email ?? null,
+            };
+          }
         }
 
         setRelatedData(related);
@@ -1226,12 +1246,12 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           }
         `}</style>
 
-        {showSendEmailModal && invoice && relatedData.organization && (
+        {showSendEmailModal && invoice && (
           <SendInvoiceEmailModal
             invoiceId={invoice.id}
             invoiceNumber={invoice.invoice_number}
-            clientEmail={relatedData.organization.email}
-            clientName={relatedData.organization.name}
+            clientEmail={relatedData.primaryContact?.email || relatedData.organization?.email || ''}
+            clientName={relatedData.primaryContact?.name || relatedData.organization?.name || ''}
             pdfStoragePath={pdfPath}
             onClose={() => setShowSendEmailModal(false)}
             onSent={() => {

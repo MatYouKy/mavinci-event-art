@@ -215,12 +215,30 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
       padding: 6px 8px;
       font-size: 11px;
       vertical-align: top;
+      color: #111;
     }
 
     th {
-      background: #f3f4f6;
-      font-size: 10px;
+      background: #e5e7eb;
+      font-size: 11px;
+      font-weight: 700;
       text-align: left;
+      color: #111;
+    }
+
+    .preview-banner {
+      width: 100%;
+      background: #6b7280;
+      color: #ffffff;
+      text-align: center;
+      letter-spacing: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 6px 0;
+      margin: -10mm -10mm 16px -10mm;
+      width: calc(100% + 20mm);
+      box-sizing: border-box;
+      text-transform: uppercase;
     }
 
     .center {
@@ -311,6 +329,7 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
 </head>
 
 <body>
+  <div class="preview-banner">Wizualizacja</div>
   <div class="top">
     <div>
       ${data.companyLogoUrl ? `<img src="${esc(data.companyLogoUrl)}" alt="Logo" class="logo" />` : ''}
