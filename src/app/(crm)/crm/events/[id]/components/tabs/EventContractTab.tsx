@@ -3,7 +3,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { FileText, Download, CreditCard as Edit, Save, X, Mail, Eye } from 'lucide-react';
+import { FileText, Download, CreditCard as Edit, Save, X, Mail, Eye, Loader } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
@@ -299,6 +299,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
   const [templateId, setTemplateId] = useState<string | null>(null);
   const [contractCreatedBy, setContractCreatedBy] = useState<string | null>(null);
   const [showSendEmailModal, setShowSendEmailModal] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [clientEmail, setClientEmail] = useState('');
   const [clientName, setClientName] = useState('');
   const [statusDates, setStatusDates] = useState<{
@@ -923,6 +924,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
   };
 
   const handlePrint = async () => {
+    setIsGeneratingPdf(true);
     let currentContractId = contractId;
 
     // 1) upewnij się, że contract istnieje (zostawiam jak u Ciebie)
@@ -1011,6 +1013,8 @@ export function EventContractTab({ eventId }: { eventId: string }) {
     } catch (e) {
       console.error(e);
       showSnackbar('Błąd generowania PDF', 'error');
+    } finally {
+      setIsGeneratingPdf(false);
     }
   };
 
@@ -1305,6 +1309,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
     handleShowPdf,
     handleDownloadPdf,
     handleDeleteContract,
+    isGeneratingPdf,
   ]);
 
   if (loading) {
@@ -1351,7 +1356,14 @@ export function EventContractTab({ eventId }: { eventId: string }) {
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <ResponsiveActionBar actions={actions} />
+              {isGeneratingPdf ? (
+                <div className="flex items-center gap-2">
+                  <Loader className="h-4 w-4 animate-spin text-[#d3bb73]" />
+                  <span className="text-sm text-[#e5e4e2]/60">Generowanie PDF...</span>
+                </div>
+              ) : (
+                <ResponsiveActionBar actions={actions} />
+              )}
             </div>
           </div>
 
