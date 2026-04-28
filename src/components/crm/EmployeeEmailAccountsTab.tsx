@@ -5,6 +5,7 @@ import { Mail, Plus, Trash2, Eye, EyeOff, CreditCard as Edit, CheckSquare, Squar
 import { supabase } from '@/lib/supabase/browser';
 import { uploadImage } from '@/lib/storage';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 
 interface EmailAccount {
   id: string;
@@ -587,20 +588,24 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
                   {employee?.signature_thumb && !pendingThumbPreview && (
                     <div className="flex-shrink-0">
                       <p className="mb-2 text-xs text-[#e5e4e2]/60">Aktualna miniaturka</p>
-                      <img
+                      <Image
+                        width={128}
+                        height={128}
                         src={employee.signature_thumb}
                         alt="Signature thumbnail"
-                        className="h-32 w-32 rounded-lg border border-[#d3bb73]/20 object-cover"
+                        className="h-full w-32 rounded-lg border border-[#d3bb73]/20 object-cover"
                       />
                     </div>
                   )}
                   {pendingThumbPreview && (
                     <div className="flex-shrink-0">
                       <p className="mb-2 text-xs text-[#d3bb73]">Podgląd (niezapisana)</p>
-                      <img
+                      <Image
+                        width={128}
+                        height={128}
                         src={pendingThumbPreview}
                         alt="Pending thumbnail"
-                        className="h-32 w-32 rounded-lg border-2 border-[#d3bb73] object-cover"
+                        className="h-full w-32 rounded-lg border-2 border-[#d3bb73] object-cover"
                       />
                     </div>
                   )}
