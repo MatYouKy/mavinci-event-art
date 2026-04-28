@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Building2, Plus, CreditCard as Edit, Trash2, Check, Star, Save, X, Upload, Image as ImageIcon } from 'lucide-react';
+import { Building2, Plus, CreditCard as Edit, Trash2, Check, Star, Save, X, Upload, Image as ImageIcon, Palette } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
@@ -41,6 +42,7 @@ export default function MyCompaniesPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingCompany, setEditingCompany] = useState<MyCompany | null>(null);
 
+  const router = useRouter();
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
 
@@ -280,6 +282,13 @@ export default function MyCompaniesPage() {
                     title={company.is_active ? 'Dezaktywuj' : 'Aktywuj'}
                   >
                     <Check className="h-5 w-5" />
+                  </button>
+                  <button
+                    onClick={() => router.push(`/crm/settings/my-companies/${company.id}/brandbook`)}
+                    className="rounded-lg p-2 text-[#e5e4e2]/60 transition-colors hover:bg-[#d3bb73]/10 hover:text-[#d3bb73]"
+                    title="Brandbook"
+                  >
+                    <Palette className="h-5 w-5" />
                   </button>
                   <button
                     onClick={() => {
