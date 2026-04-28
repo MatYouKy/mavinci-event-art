@@ -510,7 +510,7 @@ export default function EmailTemplateSettingsPage() {
 
             {templates.length === 0 ? (
               <div className="rounded-lg border border-dashed border-[#d3bb73]/20 p-8 text-center text-sm text-[#e5e4e2]/60">
-                Brak szablonów dla tej firmy. Utwórz pierwszy klikając „Nowy szablon".
+                Brak szablonów dla tej firmy. Utwórz pierwszy klikając „Nowy szablon&quot;.
               </div>
             ) : (
               <div className="space-y-2">
@@ -561,7 +561,7 @@ export default function EmailTemplateSettingsPage() {
             <h2 className="mb-1 text-lg font-light text-[#e5e4e2]">Domyślne szablony dla typów</h2>
             <p className="mb-4 text-sm text-[#e5e4e2]/60">
               Wskaż, którego szablonu używać przy konkretnych rodzajach wiadomości. Jeśli żaden nie
-              jest przypisany, używany jest szablon „Wiadomość ogólna" lub fallback.
+              jest przypisany, używany jest szablon „Wiadomość ogólna&quot; lub fallback.
             </p>
 
             <div className="space-y-3">
