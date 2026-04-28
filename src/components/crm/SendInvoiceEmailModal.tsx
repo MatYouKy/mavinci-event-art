@@ -266,6 +266,7 @@ W razie pytań proszę o kontakt.`,
             message: formData.message,
             attachments,
             signatureHtml: (await buildCompanySignatureHtml()).html,
+            recipientName: clientName,
           }),
         },
       );

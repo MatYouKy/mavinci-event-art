@@ -5,7 +5,7 @@ import { X, Send, Mail, Loader, Eye, Code } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { generateEmailSignature } from './EmailSignatureGenerator';
-import { buildCompanySignatureHtml } from '@/lib/buildCompanySignature';
+import { buildCompanySignatureHtml, buildCompanyEmailBody } from '@/lib/buildCompanySignature';
 
 interface SendContractEmailModalProps {
   contractId: string;
@@ -74,7 +74,7 @@ W razie pytań proszę o kontakt.`,
 
   useEffect(() => {
     generatePreview();
-  }, [formData.message, signature, template, avatarDataUri, companySignatureHtml, companySignatureEnabled]);
+  }, [formData.message, formData.subject, clientName, signature, template, avatarDataUri, companySignatureHtml, companySignatureEnabled]);
 
   const fetchContract = async () => {
     try {
@@ -173,27 +173,15 @@ W razie pytań proszę o kontakt.`,
     });
   };
 
-  const generatePreview = () => {
+  const generatePreview = async () => {
     const signatureHtml = generateSignatureHtml();
-    const contentHtml = formData.message.replace(/\n/g, '<br>');
-
-    if (template && template.body_template) {
-      const logoUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/site-images/logo-mavinci.svg`;
-
-      let html = template.body_template
-        .replace('{{LOGO_URL}}', logoUrl || '')
-        .replace('{{CONTENT}}', contentHtml)
-        .replace('{{SIGNATURE}}', signatureHtml);
-
-      setPreviewHtml(html);
-    } else {
-      setPreviewHtml(`
-        <div style="font-family: Arial, sans-serif; padding: 20px;">
-          <div style="white-space: pre-wrap;">${contentHtml}</div>
-          ${signatureHtml}
-        </div>
-      `);
-    }
+    const result = await buildCompanyEmailBody({
+      content: formData.message,
+      subject: formData.subject,
+      recipientName: clientName,
+      signatureHtml,
+    });
+    setPreviewHtml(result.html);
   };
 
   const fetchStoredContractPDF = async (): Promise<{ base64: string; filename: string }> => {

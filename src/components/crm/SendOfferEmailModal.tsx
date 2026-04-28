@@ -82,6 +82,7 @@ W razie pytań proszę o kontakt.`,
             subject: formData.subject,
             message: formData.message,
             signatureHtml: (await buildCompanySignatureHtml()).html,
+            recipientName: clientName,
           }),
         },
       );
