@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Mail, Plus, Trash2, Eye, EyeOff, Edit, CheckSquare, Square, X, Save } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Mail, Plus, Trash2, Eye, EyeOff, CreditCard as Edit, CheckSquare, Square, X, Save, Upload, Image as ImageIcon } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { uploadImage } from '@/lib/storage';
 import { useRouter } from 'next/navigation';
 
 interface EmailAccount {
@@ -35,6 +36,7 @@ interface Employee {
   can_receive_contact_forms: boolean;
   personal_email: string | null;
   notification_email_preference: 'work' | 'personal' | 'both' | 'none';
+  signature_thumb: string | null;
 }
 
 export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, isAdmin }: Props) {
@@ -67,6 +69,9 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
     description: '',
   });
   const [showPasswords, setShowPasswords] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [uploadingThumb, setUploadingThumb] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetchAccountsAndAssignments();
@@ -85,7 +90,7 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
     try {
       const { data, error } = await supabase
         .from('employees')
-        .select('can_receive_contact_forms, personal_email, notification_email_preference')
+        .select('can_receive_contact_forms, personal_email, notification_email_preference, signature_thumb')
         .eq('id', employeeId)
         .maybeSingle();
 
@@ -241,6 +246,69 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
     setPersonalEmailInput(employee?.personal_email || '');
     setNotificationPreference(employee?.notification_email_preference || 'work');
     setIsEditingPersonalEmail(false);
+  };
+
+  const uploadSignatureThumb = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      alert('Plik musi być obrazem');
+      return;
+    }
+    try {
+      setUploadingThumb(true);
+      const url = await uploadImage(file, 'employee-avatars');
+      const { error } = await supabase
+        .from('employees')
+        .update({ signature_thumb: url })
+        .eq('id', employeeId);
+      if (error) throw error;
+      await fetchEmployee();
+    } catch (err: any) {
+      console.error('Error uploading signature thumb:', err);
+      alert('Błąd podczas wgrywania zdjęcia: ' + (err?.message || JSON.stringify(err)));
+    } finally {
+      setUploadingThumb(false);
+    }
+  };
+
+  const removeSignatureThumb = async () => {
+    if (!confirm('Usunąć miniaturkę do stopki email?')) return;
+    try {
+      const { error } = await supabase
+        .from('employees')
+        .update({ signature_thumb: null })
+        .eq('id', employeeId);
+      if (error) throw error;
+      await fetchEmployee();
+    } catch (err: any) {
+      console.error('Error removing signature thumb:', err);
+      alert('Błąd: ' + (err?.message || JSON.stringify(err)));
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) uploadSignatureThumb(file);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) uploadSignatureThumb(file);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const openPersonalAccountModal = (existingAccount?: EmailAccount) => {
@@ -482,6 +550,76 @@ export default function EmployeeEmailAccountsTab({ employeeId, employeeEmail, is
                     </button>
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Miniatura do stopki email */}
+          {isAdmin && (
+            <div className="border-b border-[#d3bb73]/10 pb-6">
+              <h4 className="mb-3 flex items-center gap-2 font-medium text-[#d3bb73]">
+                <ImageIcon className="h-5 w-5" />
+                Miniatura do stopki email
+              </h4>
+              <p className="mb-3 text-xs text-[#e5e4e2]/60">
+                Dedykowane zdjęcie używane w stopkach wszystkich emaili. Niezależne od głównego
+                avatara - dzięki temu można je zoptymalizować pod kątem wyświetlania w mailach.
+              </p>
+              <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
+                <div className="flex items-start gap-4">
+                  {employee?.signature_thumb ? (
+                    <div className="flex-shrink-0">
+                      <img
+                        src={employee.signature_thumb}
+                        alt="Signature thumbnail"
+                        className="h-24 w-24 rounded-lg border border-[#d3bb73]/20 object-cover"
+                      />
+                    </div>
+                  ) : null}
+                  <div className="flex-1">
+                    <div
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                      onClick={() => fileInputRef.current?.click()}
+                      className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 transition-all ${
+                        isDragging
+                          ? 'border-[#d3bb73] bg-[#d3bb73]/10'
+                          : 'border-[#d3bb73]/30 bg-[#0f1119] hover:border-[#d3bb73]/60 hover:bg-[#0f1119]/60'
+                      }`}
+                    >
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFileSelect}
+                        className="hidden"
+                      />
+                      <Upload className="mb-2 h-8 w-8 text-[#d3bb73]" />
+                      <p className="text-center text-sm text-[#e5e4e2]">
+                        {uploadingThumb ? (
+                          'Wgrywanie...'
+                        ) : (
+                          <>
+                            <span className="font-medium text-[#d3bb73]">Kliknij</span> lub przeciągnij i upuść
+                          </>
+                        )}
+                      </p>
+                      <p className="mt-1 text-xs text-[#e5e4e2]/50">
+                        PNG, JPG lub WebP (max 2MB)
+                      </p>
+                    </div>
+                    {employee?.signature_thumb && (
+                      <button
+                        onClick={removeSignatureThumb}
+                        className="mt-3 flex items-center gap-2 text-xs text-red-400 hover:text-red-300"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        Usuń miniaturkę
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           )}

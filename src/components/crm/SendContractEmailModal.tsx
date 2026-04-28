@@ -101,7 +101,7 @@ W razie pytań proszę o kontakt.`,
       setSignature(sigResult.data);
       setTemplate(templateResult.data);
 
-      const rawAvatarUrl = empResult.data?.avatar_url || '';
+      const rawAvatarUrl = empResult.data?.signature_thumb || empResult.data?.avatar_url || '';
       if (rawAvatarUrl) {
         const dataUri = await fetchAvatarAsDataUri(rawAvatarUrl);
         if (dataUri) setAvatarDataUri(dataUri);
@@ -139,7 +139,7 @@ W razie pytań proszę o kontakt.`,
       website: 'https://mavinci.pl',
     };
 
-    const employeeAvatar = employee?.avatar_url || '';
+    const employeeAvatar = employee?.signature_thumb || employee?.avatar_url || '';
     const finalAvatar = avatarDataUri || employeeAvatar;
 
     if (signature && signature.use_custom_html && signature.custom_html) {
