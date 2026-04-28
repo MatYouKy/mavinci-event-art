@@ -80,7 +80,12 @@ interface Invoice {
 }
 
 interface RelatedData {
-  event?: { id: string; name: string; event_date: string } | null;
+  event?: {
+    id: string;
+    name: string;
+    event_date: string;
+    contact_person_id?: string | null;
+  } | null;
   organization?: { id: string; name: string; nip: string; email?: string } | null;
   primaryContact?: { id: string; name: string; email?: string | null } | null;
   relatedInvoice?: { id: string; invoice_number: string; invoice_type: string } | null;
@@ -140,7 +145,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
       ]);
 
       if (invoiceRes.data) {
-        setInvoice({...invoiceRes.data, invoice_items: itemsRes.data || []});
+        setInvoice({ ...invoiceRes.data, invoice_items: itemsRes.data || [] });
         setPdfPath(invoiceRes.data.pdf_url || null);
 
         const promises = [];
@@ -149,7 +154,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           promises.push(
             supabase
               .from('events')
-              .select('id, name, event_date')
+              .select('id, name, event_date, contact_person_id')
               .eq('id', invoiceRes.data.event_id)
               .maybeSingle(),
           );
@@ -202,21 +207,28 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
         }
 
         if (invoiceRes.data.event_id) {
-          const { data: contactRows } = await supabase
-            .from('event_contact_persons')
-            .select('is_primary, contact:contacts(id, first_name, last_name, email)')
-            .eq('event_id', invoiceRes.data.event_id)
-            .order('is_primary', { ascending: false });
+          const contactPersonId =
+            related.event?.contact_person_id || invoiceRes.data.contact_person_id;
 
-          const firstWithEmail = (contactRows ?? []).find((row: any) => row.contact?.email);
-          const fallback = (contactRows ?? [])[0];
-          const chosen: any = firstWithEmail ?? fallback;
-          if (chosen?.contact) {
-            related.primaryContact = {
-              id: chosen.contact.id,
-              name: `${chosen.contact.first_name ?? ''} ${chosen.contact.last_name ?? ''}`.trim(),
-              email: chosen.contact.email ?? null,
-            };
+          if (contactPersonId) {
+            const { data: contact, error: contactError } = await supabase
+              .from('contacts')
+              .select('id, first_name, last_name, full_name, email')
+              .eq('id', contactPersonId)
+              .maybeSingle();
+
+            console.log('[INVOICE CONTACT]', contact);
+            console.log('[INVOICE CONTACT ERROR]', contactError);
+
+            if (contact) {
+              related.primaryContact = {
+                id: contact.id,
+                name:
+                  contact.full_name ||
+                  `${contact.first_name ?? ''} ${contact.last_name ?? ''}`.trim(),
+                email: contact.email ?? null,
+              };
+            }
           }
         }
 
@@ -244,7 +256,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     checkSentEmails();
   }, [invoice]);
 
-  const buildHtmlForPdfData  = useCallback(() => {
+  const buildHtmlForPdfData = useCallback(() => {
     if (!invoice) return '';
 
     console.log('[buildHtmlForPdfData] ->  invoice', invoice);
@@ -296,7 +308,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
         vatAmount: item.vat_amount,
         valueGross: item.value_gross,
       })),
-      invoice_items: invoice.invoice_items || [] as any as InvoiceItem[],
+      invoice_items: invoice.invoice_items || ([] as any as InvoiceItem[]),
       isProforma: false,
     });
   }, [invoice, items]);
