@@ -48,6 +48,7 @@ W razie pytań proszę o kontakt.`,
   const [signature, setSignature] = useState<any>(null);
   const [template, setTemplate] = useState<any>(null);
   const [employee, setEmployee] = useState<any>(null);
+  const [avatarDataUri, setAvatarDataUri] = useState<string>('');
   const [showPreview, setShowPreview] = useState(false);
   const [previewHtml, setPreviewHtml] = useState('');
   const [contract, setContract] = useState<any>(null);
@@ -66,7 +67,7 @@ W razie pytań proszę o kontakt.`,
 
   useEffect(() => {
     generatePreview();
-  }, [formData.message, signature, template]);
+  }, [formData.message, signature, template, avatarDataUri]);
 
   const fetchContract = async () => {
     try {
@@ -99,8 +100,31 @@ W razie pytań proszę o kontakt.`,
       setEmployee(empResult.data);
       setSignature(sigResult.data);
       setTemplate(templateResult.data);
+
+      const rawAvatarUrl = sigResult.data?.avatar_url || empResult.data?.avatar_url || '';
+      if (rawAvatarUrl) {
+        const dataUri = await fetchAvatarAsDataUri(rawAvatarUrl);
+        if (dataUri) setAvatarDataUri(dataUri);
+      }
     } catch (error) {
       console.error('Error fetching signature/template:', error);
+    }
+  };
+
+  const fetchAvatarAsDataUri = async (url: string): Promise<string> => {
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) return '';
+      const blob = await resp.blob();
+      const buffer = await blob.arrayBuffer();
+      const base64 = btoa(
+        new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), ''),
+      );
+      const mime = blob.type || 'image/jpeg';
+      return `data:${mime};base64,${base64}`;
+    } catch (err) {
+      console.error('Error fetching avatar:', err);
+      return '';
     }
   };
 
@@ -117,10 +141,16 @@ W razie pytań proszę o kontakt.`,
     };
 
     if (signature && signature.use_custom_html && signature.custom_html) {
+      if (avatarDataUri && sig.avatar_url) {
+        return signature.custom_html.split(sig.avatar_url).join(avatarDataUri);
+      }
       return signature.custom_html;
     }
 
-    return generateEmailSignature(sig);
+    return generateEmailSignature({
+      ...sig,
+      avatar_url: avatarDataUri || sig.avatar_url,
+    });
   };
 
   const generatePreview = () => {
