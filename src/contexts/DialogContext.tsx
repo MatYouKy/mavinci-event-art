@@ -27,7 +27,7 @@ interface ConfirmOptions {
 interface DialogContextValue {
   showDialog: (config: DialogConfig) => void;
   showAlert: (message: string, title?: string, type?: 'info' | 'success' | 'warning' | 'error') => Promise<void>;
-  showConfirm: (options: string | ConfirmOptions, title?: string) => Promise<boolean>;
+  showConfirm: (options: string | ConfirmOptions, title?: string) => Promise<boolean> | Promise<void>;
   hideDialog: () => void;
 }
 

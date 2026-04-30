@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Calculator,
   Plus,
@@ -19,6 +19,8 @@ import {
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
+import { usePortalDropdown } from '@/hooks/usePortalDropdown';
+import { PortalDropdownMenu } from '@/components/UI/PortalDropdownMenu/PortalDropdownMenu';
 
 type Category = 'equipment' | 'staff' | 'transport' | 'other';
 
@@ -149,15 +151,15 @@ export default function EventCalculationsTab({ eventId }: Props) {
     showConfirm({
       title: 'Usunąć kalkulację?',
       message: 'Tej operacji nie można cofnąć.',
-      onConfirm: async () => {
-        const { error } = await supabase.from('event_calculations').delete().eq('id', id);
-        if (error) {
-          showSnackbar('Nie udało się usunąć kalkulacji', 'error');
-          return;
-        }
-        showSnackbar('Usunięto', 'success');
+      confirmText: 'Usuń',
+      cancelText: 'Anuluj',
+    }).then(async (confirmed: boolean | void) => {
+      if (confirmed) {
+        await supabase.from('event_calculations').delete().eq('id', id);
         fetchList();
-      },
+      } else {
+        showSnackbar('Anulowano usuwanie kalkulacji', 'warning');
+      }
     });
   };
 
@@ -431,10 +433,15 @@ function CalculationEditor({
     showConfirm({
       title: 'Usunąć kalkulację?',
       message: 'Tej operacji nie można cofnąć.',
-      onConfirm: async () => {
+      confirmText: 'Usuń',
+      cancelText: 'Anuluj',
+    }).then(async (confirmed: boolean | void) => {
+      if (confirmed) {
         await supabase.from('event_calculations').delete().eq('id', calculationId);
         onBack();
-      },
+      } else {
+        showSnackbar('Anulowano usuwanie kalkulacji', 'warning');
+      }
     });
   };
 
@@ -524,10 +531,7 @@ function CalculationEditor({
         {(Object.keys(CATEGORY_META) as Category[]).map((cat) => {
           const Icon = CATEGORY_META[cat].icon;
           return (
-            <div
-              key={cat}
-              className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4"
-            >
+            <div key={cat} className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4">
               <div className="mb-2 flex items-center gap-2 text-sm text-[#e5e4e2]/60">
                 <Icon className="h-4 w-4 text-[#d3bb73]" />
                 {CATEGORY_META[cat].label}
@@ -688,9 +692,7 @@ function CategorySection({
                         type="number"
                         step="0.01"
                         value={it.quantity}
-                        onChange={(e) =>
-                          onUpdate(idx, { quantity: Number(e.target.value) || 0 })
-                        }
+                        onChange={(e) => onUpdate(idx, { quantity: Number(e.target.value) || 0 })}
                         className="w-full rounded-md border border-[#d3bb73]/20 bg-[#0a0d1a] px-2 py-1 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                       />
                     </td>
@@ -715,15 +717,11 @@ function CategorySection({
                         type="number"
                         step="0.01"
                         value={it.unit_price}
-                        onChange={(e) =>
-                          onUpdate(idx, { unit_price: Number(e.target.value) || 0 })
-                        }
+                        onChange={(e) => onUpdate(idx, { unit_price: Number(e.target.value) || 0 })}
                         className="w-full rounded-md border border-[#d3bb73]/20 bg-[#0a0d1a] px-2 py-1 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                       />
                     </td>
-                    <td className="px-3 py-2 text-right text-[#d3bb73]">
-                      {fmt(rowTotal(it))}
-                    </td>
+                    <td className="px-3 py-2 text-right text-[#d3bb73]">{fmt(rowTotal(it))}</td>
                     <td className="px-3 py-2 text-right">
                       <button
                         onClick={() => onRemove(idx)}
@@ -759,6 +757,15 @@ function EquipmentNameCell({
   const fromWarehouse = item.source === 'warehouse';
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState(false);
+
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const equipmentMenu = usePortalDropdown({
+    align: 'left',
+    width: 'trigger',
+    offsetY: 4,
+    closeOnScroll: false,
+  });
 
   useEffect(() => {
     if (fromWarehouse) onFocusLoad();
@@ -823,37 +830,65 @@ function EquipmentNameCell({
           ) : (
             <>
               <input
+                ref={inputRef}
                 value={search}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setOpen(true);
+                  equipmentMenu.open('equipment-search', e.currentTarget);
+                }}
                 onChange={(e) => {
                   setSearch(e.target.value);
                   setOpen(true);
+                  equipmentMenu.open('equipment-search', e.currentTarget);
                 }}
-                onFocus={() => setOpen(true)}
-                onBlur={() => setTimeout(() => setOpen(false), 150)}
+                onFocus={(e) => {
+                  setOpen(true);
+                  equipmentMenu.open('equipment-search', e.currentTarget);
+                }}
+                onBlur={() => {
+                  setTimeout(() => {
+                    setOpen(false);
+                    equipmentMenu.close();
+                  }, 150);
+                }}
                 placeholder="Szukaj sprzętu w magazynie..."
                 className="w-full rounded-md border border-[#d3bb73]/30 bg-[#0a0d1a] px-2 py-1 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
               />
               {open && filtered.length > 0 && (
-                <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-60 overflow-auto rounded-md border border-[#d3bb73]/30 bg-[#1c1f33] shadow-lg">
-                  {filtered.map((eq) => (
-                    <button
-                      key={eq.id}
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        selectEquipment(eq);
-                      }}
-                      className="block w-full px-3 py-1.5 text-left text-sm text-[#e5e4e2] hover:bg-[#0a0d1a]"
-                    >
-                      <div className="font-medium">
-                        {[eq.brand, eq.model].filter(Boolean).join(' ') || eq.name}
-                      </div>
-                      {(eq.brand || eq.model) && (
-                        <div className="text-xs text-[#e5e4e2]/50">{eq.name}</div>
-                      )}
-                    </button>
-                  ))}
-                </div>
+                <PortalDropdownMenu
+                  open={open && filtered.length > 0}
+                  position={equipmentMenu.position}
+                  className="max-h-60 overflow-y-auto"
+                  content={
+                    <>
+                      {filtered.map((eq) => (
+                        <button
+                          key={eq.id}
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            selectEquipment(eq);
+                            setOpen(false);
+                            equipmentMenu.close();
+                          }}
+                          className="block w-full px-3 py-1.5 text-left text-sm text-[#e5e4e2] hover:bg-[#0a0d1a]"
+                        >
+                          <div className="font-medium">
+                            {[eq.brand, eq.model].filter(Boolean).join(' ') || eq.name}
+                          </div>
+
+                          {(eq.brand || eq.model) && (
+                            <div className="text-xs text-[#e5e4e2]/50">{eq.name}</div>
+                          )}
+                        </button>
+                      ))}
+                    </>
+                  }
+                />
               )}
               {open && search && filtered.length === 0 && (
                 <div className="absolute left-0 right-0 top-full z-20 mt-1 rounded-md border border-[#d3bb73]/30 bg-[#1c1f33] px-3 py-2 text-xs text-[#e5e4e2]/60">
@@ -1012,7 +1047,7 @@ function ImportFromOfferModal({
         const off = offers.find((o) => o.id === it.offer_id);
         const product = it.product_id ? productMap.get(it.product_id) : null;
         const categoryName =
-          product && product.category_id ? categoryMap.get(product.category_id) ?? null : null;
+          product && product.category_id ? (categoryMap.get(product.category_id) ?? null) : null;
         return {
           id: it.id,
           name: it.name,
@@ -1105,7 +1140,7 @@ function ImportFromOfferModal({
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-[#0a0d1a] text-left text-xs uppercase tracking-wider text-[#e5e4e2]/60">
                 <tr>
-                  <th className="px-3 py-2 w-8"></th>
+                  <th className="w-8 px-3 py-2"></th>
                   <th className="px-3 py-2">Oferta</th>
                   <th className="px-3 py-2">Nazwa</th>
                   <th className="px-3 py-2">Kategoria</th>
@@ -1222,10 +1257,7 @@ function buildCalculationHtml(params: {
     : '';
 
   const esc = (s: string) =>
-    (s ?? '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
+    (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
   const categoryLabel: Record<Category, string> = {
     equipment: 'Sprzęt',

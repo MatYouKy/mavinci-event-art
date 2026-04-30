@@ -28,6 +28,8 @@ import {
 } from '@/components/crm/contacts/organization/organizationValidation';
 import { formatNip } from '@/components/crm/contacts/organization/organizationForm.helpers';
 
+const cleanNip = (value: string) => value.replace(/\D/g, '');
+
 type ContactType = 'organization' | 'contact' | 'subcontractor' | 'individual';
 type BusinessType = 'company' | 'hotel' | 'restaurant' | 'venue' | 'freelancer' | 'other';
 
@@ -220,43 +222,52 @@ export default function NewContactPage() {
   };
 
   const handleFetchFromGUS = async () => {
-    if (!formData.nip) {
+    const nip = cleanNip(formData.nip);
+
+    if (!nip) {
       showSnackbar('Wprowadź NIP', 'error');
       return;
     }
 
     try {
       setLoadingGUS(true);
-      const data = await fetchCompanyDataFromGUS(formData.nip);
 
-      if (data) {
-        setFormData((prev) => ({
-          ...prev,
-          nip: data.nip || prev.nip,
-          name: data.name || prev.name,
-          regon: data.regon || prev.regon,
-          krs: data.krs || prev.krs,
-          address: data.address || prev.address,
-          city: data.city || prev.city,
-          postalCode: data.postalCode || prev.postalCode,
-        }));
+      const response = await fetch('/bridge/gus/company', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ nip }),
+      });
 
-        setFormErrors((prev) => ({
-          ...prev,
-          nip: '',
-          name: '',
-          regon: '',
-          krs: '',
-          address: '',
-          city: '',
-          postalCode: '',
-        }));
+      const data = await response.json();
 
+      if (!response.ok) {
+        showSnackbar(data.error || 'Błąd podczas pobierania danych firmy', 'error');
+        return;
+      }
+
+      setFormData((prev) => ({
+        ...prev,
+        nip: data.nip ? cleanNip(data.nip) : nip,
+        name: data.name || prev.name,
+        regon: data.regon || prev.regon,
+        krs: data.krs || prev.krs,
+        address: data.address || prev.address,
+        city: data.city || prev.city,
+        postalCode: data.postalCode || prev.postalCode,
+      }));
+
+      if (data.source === 'gus') {
         showSnackbar('Dane pobrane z GUS', 'success');
+      } else if (data.source === 'mf_whitelist') {
+        showSnackbar('Dane pobrane z białej listy VAT', 'warning');
+      } else {
+        showSnackbar('Dane firmy pobrane', 'success');
       }
     } catch (error: any) {
       console.error('[GUS_DEBUG] error', error);
-      showSnackbar(error.message || 'Błąd podczas pobierania danych z GUS', 'error');
+      showSnackbar(error.message || 'Błąd podczas pobierania danych firmy', 'error');
     } finally {
       setLoadingGUS(false);
     }
@@ -368,7 +379,7 @@ export default function NewContactPage() {
         business_type: formData.businessType,
         name: formData.name.trim(),
         alias: formData.alias.trim() || null,
-        nip: formatNip(formData.nip) || null,
+        nip: formData.nip.replace(/\D/g, '') || null,
         regon: formData.regon.replace(/\D/g, '') || null,
         krs: formData.krs.replace(/\D/g, '') || null,
         legal_form: formData.legalForm || null,
@@ -614,36 +625,34 @@ export default function NewContactPage() {
                       </div>
                     </div>
                   </div>
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      <div>
-                        <label className="mb-2 block text-sm font-medium text-gray-300">
-                          REGON
-                        </label>
-                        <input
-                          type="text"
-                          value={formData.regon}
-                          onChange={(e) => setFormData({ ...formData, regon: e.target.value })}
-                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                        />
-                        {formErrors.regon && (
-                          <p className="mt-1 text-sm text-red-400">{formErrors.regon}</p>
-                        )}
-                      </div>
-
-                      <div>
-                        <label className="mb-2 block text-sm font-medium text-gray-300">KRS</label>
-                        <input
-                          type="text"
-                          value={formData.krs}
-                          onChange={(e) => setFormData({ ...formData, krs: e.target.value })}
-                          className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                          placeholder="0000000000"
-                        />
-                        {formErrors.krs && (
-                          <p className="mt-1 text-sm text-red-400">{formErrors.krs}</p>
-                        )}
-                      </div>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-gray-300">REGON</label>
+                      <input
+                        type="text"
+                        value={formData.regon}
+                        onChange={(e) => setFormData({ ...formData, regon: e.target.value })}
+                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                      />
+                      {formErrors.regon && (
+                        <p className="mt-1 text-sm text-red-400">{formErrors.regon}</p>
+                      )}
                     </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-gray-300">KRS</label>
+                      <input
+                        type="text"
+                        value={formData.krs}
+                        onChange={(e) => setFormData({ ...formData, krs: e.target.value })}
+                        className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                        placeholder="0000000000"
+                      />
+                      {formErrors.krs && (
+                        <p className="mt-1 text-sm text-red-400">{formErrors.krs}</p>
+                      )}
+                    </div>
+                  </div>
 
                   <div>
                     <label className="mb-2 block text-sm font-medium text-gray-300">
