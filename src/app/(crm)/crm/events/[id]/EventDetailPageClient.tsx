@@ -42,6 +42,7 @@ import EventLogisticsPanel from '@/app/(crm)/crm/events/[id]/components/tabs/Eve
 import OfferWizard from '@/app/(crm)/crm/offers/[id]/components/OfferWizzard/OfferWizard';
 import EventFinancesTab from '@/app/(crm)/crm/events/[id]/components/tabs/EventFinancesTab';
 import EventAgendaTab from '@/app/(crm)/crm/events/[id]/components/tabs/EventAgendaTab';
+import EventCalculationsTab from '@/app/(crm)/crm/events/[id]/components/tabs/EventCalculationsTab';
 import { EventPhasesTimeline } from '@/app/(crm)/crm/events/[id]/components/tabs/EventPhasesTimeline';
 
 import { useDialog } from '@/contexts/DialogContext';
@@ -84,6 +85,7 @@ export const ADMIN_EVENT_TABS = [
   'offer',
   'agenda',
   'finances',
+  'calculations',
   'contract',
   'equipment',
   'team',
@@ -100,6 +102,7 @@ export const CREATOR_EVENT_TABS = [
   'agenda',
   'offer',
   'finances',
+  'calculations',
   'contract',
   'equipment',
   'team',
@@ -357,6 +360,7 @@ export default function EventDetailPageClient({
     | 'finances'
     | 'contract'
     | 'agenda'
+    | 'calculations'
     | 'history'
   >('contract');
 
@@ -743,6 +747,7 @@ export default function EventDetailPageClient({
           { id: 'finances', label: 'Finanse', icon: DollarSign },
           { id: 'contract', label: 'Umowa', icon: FileText },
           { id: 'agenda', label: 'Agenda', icon: ClipboardList },
+          { id: 'calculations', label: 'Kalkulacje', icon: ClipboardList },
           { id: 'equipment', label: 'Sprzęt', icon: Package },
           { id: 'team', label: 'Zespół', icon: Users },
           { id: 'logistics', label: 'Logistyka', icon: Truck },
@@ -1079,6 +1084,8 @@ export default function EventDetailPageClient({
           createdById={event?.created_by ?? ''}
         />
       )}
+
+      {activeTab === 'calculations' && <EventCalculationsTab eventId={eventId} />}
 
       {activeTab === 'history' && (
         <div className="space-y-6">
