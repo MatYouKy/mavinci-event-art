@@ -15,6 +15,7 @@ import {
   Import,
   Save,
   Pencil,
+  Check,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -49,6 +50,7 @@ interface CalcItem {
   source_ref?: string | null;
   position: number;
   vat_rate: number;
+  editing?: boolean;
 }
 
 interface WarehouseEquipment {
@@ -328,6 +330,7 @@ function CalculationEditor({
           source_ref: r.source_ref,
           position: r.position,
           vat_rate: r.vat_rate != null ? Number(r.vat_rate) : DEFAULT_VAT,
+          editing: false,
         })),
       );
     }
@@ -356,6 +359,7 @@ function CalculationEditor({
         source: 'manual',
         position: prev.filter((p) => p.category === category).length,
         vat_rate: DEFAULT_VAT,
+        editing: true,
       },
     ]);
   };
@@ -366,6 +370,10 @@ function CalculationEditor({
 
   const removeItem = (index: number) => {
     setItems((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const toggleEdit = (index: number, editing: boolean) => {
+    setItems((prev) => prev.map((it, i) => (i === index ? { ...it, editing } : it)));
   };
 
   const grouped = useMemo(() => {
@@ -446,6 +454,7 @@ function CalculationEditor({
       }
 
       showSnackbar('Zapisano kalkulację', 'success');
+      setItems((prev) => prev.map((it) => ({ ...it, editing: false })));
       await load();
     } catch (e: any) {
       console.error(e);
@@ -472,7 +481,7 @@ function CalculationEditor({
   };
 
   const appendImportedItems = (imported: CalcItem[]) => {
-    setItems((prev) => [...prev, ...imported]);
+    setItems((prev) => [...prev, ...imported.map((it) => ({ ...it, editing: false }))]);
   };
 
   const handlePrint = () => {
@@ -587,6 +596,7 @@ function CalculationEditor({
           onAdd={() => addEmptyRow(cat)}
           onUpdate={updateItem}
           onRemove={removeItem}
+          onToggleEdit={toggleEdit}
         />
       ))}
 
@@ -642,6 +652,7 @@ function CategorySection({
   onAdd,
   onUpdate,
   onRemove,
+  onToggleEdit,
 }: {
   category: Category;
   items: CalcItem[];
@@ -649,6 +660,7 @@ function CategorySection({
   onAdd: () => void;
   onUpdate: (index: number, patch: Partial<CalcItem>) => void;
   onRemove: (index: number) => void;
+  onToggleEdit: (index: number, editing: boolean) => void;
 }) {
   const Icon = CATEGORY_META[category].icon;
   const indexOfAll = (item: CalcItem) => allItems.indexOf(item);
@@ -705,8 +717,46 @@ function CategorySection({
             <tbody className="divide-y divide-[#d3bb73]/10">
               {items.map((it) => {
                 const idx = indexOfAll(it);
+                const isEditing = !!it.editing;
+                if (!isEditing) {
+                  return (
+                    <tr
+                      key={idx}
+                      className="cursor-pointer hover:bg-[#0a0d1a]/40"
+                      onDoubleClick={() => onToggleEdit(idx, true)}
+                    >
+                      <td className="px-3 py-2 text-[#e5e4e2]">{it.name || <span className="text-[#e5e4e2]/40">—</span>}</td>
+                      <td className="px-3 py-2 text-[#e5e4e2]/70">{it.description || <span className="text-[#e5e4e2]/30">—</span>}</td>
+                      <td className="px-3 py-2 text-[#e5e4e2]/80">{it.quantity}</td>
+                      <td className="px-3 py-2 text-[#e5e4e2]/80">{it.unit}</td>
+                      <td className="px-3 py-2 text-[#e5e4e2]/80">{it.days}</td>
+                      <td className="px-3 py-2 text-[#e5e4e2]/80">{fmt(it.unit_price)}</td>
+                      <td className="px-3 py-2 text-[#e5e4e2]/80">{it.vat_rate}%</td>
+                      <td className="px-3 py-2 text-right text-[#e5e4e2]">{fmt(rowNet(it))}</td>
+                      <td className="px-3 py-2 text-right text-[#d3bb73]">{fmt(rowGross(it))}</td>
+                      <td className="px-3 py-2 text-right">
+                        <div className="flex justify-end gap-1">
+                          <button
+                            onClick={() => onToggleEdit(idx, true)}
+                            className="rounded-md p-1 text-[#d3bb73] hover:bg-[#d3bb73]/10"
+                            title="Edytuj"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => onRemove(idx)}
+                            className="rounded-md p-1 text-red-400 hover:bg-red-500/10"
+                            title="Usuń"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                }
                 return (
-                  <tr key={idx}>
+                  <tr key={idx} className="bg-[#0a0d1a]/30">
                     <td className="px-3 py-2">
                       {category === 'equipment' ? (
                         <EquipmentNameCell
@@ -780,12 +830,22 @@ function CategorySection({
                     <td className="px-3 py-2 text-right text-[#e5e4e2]">{fmt(rowNet(it))}</td>
                     <td className="px-3 py-2 text-right text-[#d3bb73]">{fmt(rowGross(it))}</td>
                     <td className="px-3 py-2 text-right">
-                      <button
-                        onClick={() => onRemove(idx)}
-                        className="rounded-md p-1 text-red-400 hover:bg-red-500/10"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      <div className="flex justify-end gap-1">
+                        <button
+                          onClick={() => onToggleEdit(idx, false)}
+                          className="rounded-md p-1 text-emerald-400 hover:bg-emerald-500/10"
+                          title="Zatwierdź"
+                        >
+                          <Check className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => onRemove(idx)}
+                          className="rounded-md p-1 text-red-400 hover:bg-red-500/10"
+                          title="Usuń"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
