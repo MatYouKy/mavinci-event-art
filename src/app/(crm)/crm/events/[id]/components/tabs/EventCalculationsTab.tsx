@@ -877,6 +877,68 @@ function EquipmentNameCell({
 
 /* -------------------- Import modal -------------------- */
 
+type ImportableItem = {
+  id: string;
+  name: string;
+  description: string | null;
+  quantity: number;
+  unit: string | null;
+  unit_price: number;
+  total: number;
+  offerId: string;
+  offerName: string;
+  categoryName: string | null;
+  autoCategory: Category;
+};
+
+function guessCategory(categoryName: string | null, itemName: string): Category {
+  const hay = `${categoryName ?? ''} ${itemName ?? ''}`.toLowerCase();
+  const staffKeywords = [
+    'dj',
+    'prowadz',
+    'obsług',
+    'kelner',
+    'hostess',
+    'operator',
+    'technik',
+    'ochron',
+    'mc ',
+    'konferansjer',
+    'animator',
+    'muzyk',
+    'artyst',
+    'barmen',
+    'fotograf',
+    'kamerzyst',
+    'ludzi',
+    'staff',
+    'personel',
+  ];
+  const transportKeywords = ['transport', 'logistyk', 'kierowc', 'dojazd', 'przewóz'];
+  const equipmentKeywords = [
+    'nagłośn',
+    'oświetl',
+    'multimedia',
+    'scena',
+    'sprzęt',
+    'projektor',
+    'ekran',
+    'mikrofon',
+    'konsoleta',
+    'głośnik',
+    'led',
+    'kabel',
+    'technika',
+    'światło',
+    'dźwięk',
+  ];
+
+  if (staffKeywords.some((k) => hay.includes(k))) return 'staff';
+  if (transportKeywords.some((k) => hay.includes(k))) return 'transport';
+  if (equipmentKeywords.some((k) => hay.includes(k))) return 'equipment';
+  return 'other';
+}
+
 function ImportFromOfferModal({
   eventId,
   existingRefs,
@@ -888,33 +950,69 @@ function ImportFromOfferModal({
   onClose: () => void;
   onImport: (items: CalcItem[]) => void;
 }) {
-  const [offerItems, setOfferItems] = useState<
-    Array<OfferItem & { offerName: string; offerId: string }>
-  >([]);
+  const [offerItems, setOfferItems] = useState<ImportableItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [defaultCategory, setDefaultCategory] = useState<Category>('equipment');
 
   useEffect(() => {
     (async () => {
-      const { data: offers } = await supabase
+      setLoading(true);
+      const { data: offers, error: offersErr } = await supabase
         .from('offers')
-        .select('id, name, offer_number')
+        .select('id, offer_number')
         .eq('event_id', eventId);
+
+      if (offersErr) {
+        console.error('offers fetch error', offersErr);
+      }
       if (!offers?.length) {
+        setOfferItems([]);
         setLoading(false);
         return;
       }
-      const { data: itemsData } = await supabase
+
+      const offerIds = offers.map((o) => o.id);
+      const { data: itemsData, error: itemsErr } = await supabase
         .from('offer_items')
         .select('*')
-        .in(
-          'offer_id',
-          offers.map((o) => o.id),
-        )
+        .in('offer_id', offerIds)
         .order('display_order');
-      const mapped = (itemsData ?? []).map((it: any) => {
+
+      if (itemsErr) {
+        console.error('offer_items fetch error', itemsErr);
+      }
+
+      const productIds = Array.from(
+        new Set((itemsData ?? []).map((it: any) => it.product_id).filter(Boolean)),
+      );
+
+      let productMap = new Map<string, { category_id: string | null }>();
+      let categoryMap = new Map<string, string>();
+
+      if (productIds.length) {
+        const { data: products } = await supabase
+          .from('offer_products')
+          .select('id, category_id')
+          .in('id', productIds);
+        (products ?? []).forEach((p: any) => productMap.set(p.id, p));
+
+        const catIds = Array.from(
+          new Set((products ?? []).map((p: any) => p.category_id).filter(Boolean)),
+        );
+        if (catIds.length) {
+          const { data: cats } = await supabase
+            .from('event_categories')
+            .select('id, name')
+            .in('id', catIds);
+          (cats ?? []).forEach((c: any) => categoryMap.set(c.id, c.name));
+        }
+      }
+
+      const mapped: ImportableItem[] = (itemsData ?? []).map((it: any) => {
         const off = offers.find((o) => o.id === it.offer_id);
+        const product = it.product_id ? productMap.get(it.product_id) : null;
+        const categoryName =
+          product && product.category_id ? categoryMap.get(product.category_id) ?? null : null;
         return {
           id: it.id,
           name: it.name,
@@ -924,9 +1022,12 @@ function ImportFromOfferModal({
           unit_price: Number(it.unit_price || 0),
           total: Number(it.total || 0),
           offerId: it.offer_id,
-          offerName: off?.offer_number || off?.name || 'Oferta',
+          offerName: off?.offer_number || 'Oferta',
+          categoryName,
+          autoCategory: guessCategory(categoryName, it.name),
         };
       });
+
       setOfferItems(mapped);
       setLoading(false);
     })();
@@ -941,11 +1042,20 @@ function ImportFromOfferModal({
     });
   };
 
+  const toggleAll = () => {
+    const available = offerItems.filter((it) => !existingRefs.has(it.id));
+    if (selected.size === available.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(available.map((it) => it.id)));
+    }
+  };
+
   const handleImport = () => {
     const picked: CalcItem[] = offerItems
       .filter((it) => selected.has(it.id))
       .map((it, idx) => ({
-        category: defaultCategory,
+        category: it.autoCategory,
         name: it.name,
         description: it.description || '',
         unit: it.unit || 'szt.',
@@ -971,19 +1081,17 @@ function ImportFromOfferModal({
             <ArrowLeft className="h-4 w-4" />
           </button>
         </div>
-        <div className="border-b border-[#d3bb73]/10 bg-[#0a0d1a]/60 px-5 py-3">
-          <label className="mr-2 text-sm text-[#e5e4e2]/70">Domyślna kategoria:</label>
-          <select
-            value={defaultCategory}
-            onChange={(e) => setDefaultCategory(e.target.value as Category)}
-            className="rounded-md border border-[#d3bb73]/20 bg-[#1c1f33] px-2 py-1 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+        <div className="flex items-center justify-between gap-3 border-b border-[#d3bb73]/10 bg-[#0a0d1a]/60 px-5 py-3 text-sm text-[#e5e4e2]/70">
+          <span>
+            Zaznacz pozycje z oferty — kalkulacja sama przypisze je do właściwej kategorii.
+          </span>
+          <button
+            type="button"
+            onClick={toggleAll}
+            className="rounded-md border border-[#d3bb73]/30 px-3 py-1 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
           >
-            {(Object.keys(CATEGORY_META) as Category[]).map((c) => (
-              <option key={c} value={c}>
-                {CATEGORY_META[c].label}
-              </option>
-            ))}
-          </select>
+            Zaznacz wszystkie
+          </button>
         </div>
 
         <div className="flex-1 overflow-auto">
@@ -1000,6 +1108,7 @@ function ImportFromOfferModal({
                   <th className="px-3 py-2 w-8"></th>
                   <th className="px-3 py-2">Oferta</th>
                   <th className="px-3 py-2">Nazwa</th>
+                  <th className="px-3 py-2">Kategoria</th>
                   <th className="px-3 py-2">Ilość</th>
                   <th className="px-3 py-2">Cena</th>
                   <th className="px-3 py-2 text-right">Wartość</th>
@@ -1024,12 +1133,36 @@ function ImportFromOfferModal({
                       </td>
                       <td className="px-3 py-2 text-[#e5e4e2]/60">{it.offerName}</td>
                       <td className="px-3 py-2 text-[#e5e4e2]">
-                        {it.name}
+                        <div>{it.name}</div>
+                        {it.categoryName && (
+                          <div className="text-xs text-[#e5e4e2]/40">{it.categoryName}</div>
+                        )}
                         {alreadyImported && (
-                          <span className="ml-2 rounded bg-[#d3bb73]/10 px-1.5 py-0.5 text-xs text-[#d3bb73]">
+                          <span className="mt-1 inline-block rounded bg-[#d3bb73]/10 px-1.5 py-0.5 text-xs text-[#d3bb73]">
                             Już zaimportowano
                           </span>
                         )}
+                      </td>
+                      <td className="px-3 py-2">
+                        <select
+                          value={it.autoCategory}
+                          disabled={alreadyImported}
+                          onChange={(e) => {
+                            const newCat = e.target.value as Category;
+                            setOfferItems((prev) =>
+                              prev.map((p) =>
+                                p.id === it.id ? { ...p, autoCategory: newCat } : p,
+                              ),
+                            );
+                          }}
+                          className="rounded-md border border-[#d3bb73]/20 bg-[#1c1f33] px-2 py-1 text-xs text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                        >
+                          {(Object.keys(CATEGORY_META) as Category[]).map((c) => (
+                            <option key={c} value={c}>
+                              {CATEGORY_META[c].label}
+                            </option>
+                          ))}
+                        </select>
                       </td>
                       <td className="px-3 py-2 text-[#e5e4e2]/80">
                         {it.quantity} {it.unit}
