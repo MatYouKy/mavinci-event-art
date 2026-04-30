@@ -48,6 +48,7 @@ interface CalcItem {
   source: 'manual' | 'offer' | 'warehouse';
   source_ref?: string | null;
   position: number;
+  vat_rate: number;
 }
 
 interface WarehouseEquipment {
@@ -55,6 +56,7 @@ interface WarehouseEquipment {
   name: string;
   brand: string | null;
   model: string | null;
+  rental_price_per_day: number | null;
 }
 
 interface OfferItem {
@@ -81,8 +83,11 @@ const CATEGORY_META: Record<
   other: { label: 'Pozostałe', icon: MoreHorizontal },
 };
 
+const DEFAULT_VAT = 23;
 const round2 = (n: number) => Math.round(n * 100) / 100;
-const rowTotal = (it: CalcItem) => round2(it.quantity * it.unit_price * (it.days || 1));
+const rowNet = (it: CalcItem) => round2(it.quantity * it.unit_price * (it.days || 1));
+const rowGross = (it: CalcItem) => round2(rowNet(it) * (1 + (it.vat_rate ?? DEFAULT_VAT) / 100));
+const rowTotal = rowNet;
 const fmt = (n: number) =>
   n.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -322,6 +327,7 @@ function CalculationEditor({
           source: r.source,
           source_ref: r.source_ref,
           position: r.position,
+          vat_rate: r.vat_rate != null ? Number(r.vat_rate) : DEFAULT_VAT,
         })),
       );
     }
@@ -349,6 +355,7 @@ function CalculationEditor({
         days: 1,
         source: 'manual',
         position: prev.filter((p) => p.category === category).length,
+        vat_rate: DEFAULT_VAT,
       },
     ]);
   };
@@ -380,7 +387,20 @@ function CalculationEditor({
       other: 0,
     };
     items.forEach((it) => {
-      totals[it.category] += rowTotal(it);
+      totals[it.category] += rowNet(it);
+    });
+    return totals;
+  }, [items]);
+
+  const categoryTotalsGross = useMemo(() => {
+    const totals: Record<Category, number> = {
+      equipment: 0,
+      staff: 0,
+      transport: 0,
+      other: 0,
+    };
+    items.forEach((it) => {
+      totals[it.category] += rowGross(it);
     });
     return totals;
   }, [items]);
@@ -388,6 +408,11 @@ function CalculationEditor({
   const grandTotal = useMemo(
     () => round2(Object.values(categoryTotals).reduce((a, b) => a + b, 0)),
     [categoryTotals],
+  );
+
+  const grandTotalGross = useMemo(
+    () => round2(Object.values(categoryTotalsGross).reduce((a, b) => a + b, 0)),
+    [categoryTotalsGross],
   );
 
   const handleSave = async () => {
@@ -414,6 +439,7 @@ function CalculationEditor({
           source: it.source,
           source_ref: it.source_ref ?? null,
           position: idx,
+          vat_rate: Number(it.vat_rate ?? DEFAULT_VAT),
         }));
         const { error: insErr } = await supabase.from('event_calculation_items').insert(payload);
         if (insErr) throw insErr;
@@ -457,7 +483,9 @@ function CalculationEditor({
       eventDate,
       grouped,
       categoryTotals,
+      categoryTotalsGross,
       grandTotal,
+      grandTotalGross,
     });
     const w = window.open('', '_blank');
     if (!w) {
@@ -536,10 +564,15 @@ function CalculationEditor({
                 <Icon className="h-4 w-4 text-[#d3bb73]" />
                 {CATEGORY_META[cat].label}
               </div>
-              <div className="text-xl font-light text-[#e5e4e2]">
-                {fmt(categoryTotals[cat])} <span className="text-sm text-[#d3bb73]">PLN</span>
+              <div className="text-lg font-light text-[#e5e4e2]">
+                {fmt(categoryTotals[cat])}{' '}
+                <span className="text-xs text-[#e5e4e2]/50">netto</span>
               </div>
-              <div className="text-xs text-[#e5e4e2]/50">{grouped[cat].length} pozycji</div>
+              <div className="text-sm font-light text-[#d3bb73]">
+                {fmt(categoryTotalsGross[cat])}{' '}
+                <span className="text-xs text-[#d3bb73]/70">brutto</span>
+              </div>
+              <div className="mt-1 text-xs text-[#e5e4e2]/50">{grouped[cat].length} pozycji</div>
             </div>
           );
         })}
@@ -568,10 +601,20 @@ function CalculationEditor({
         />
       </div>
 
-      <div className="flex items-center justify-end rounded-xl border border-[#d3bb73]/30 bg-[#0a0d1a] p-4">
+      <div className="flex flex-wrap items-center justify-end gap-6 rounded-xl border border-[#d3bb73]/30 bg-[#0a0d1a] p-4">
         <div className="text-right">
-          <div className="text-sm text-[#e5e4e2]/60">Suma całkowita (netto)</div>
-          <div className="text-3xl font-light text-[#d3bb73]">{fmt(grandTotal)} PLN</div>
+          <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/50">Netto</div>
+          <div className="text-xl font-light text-[#e5e4e2]">{fmt(grandTotal)} PLN</div>
+        </div>
+        <div className="text-right">
+          <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/50">VAT</div>
+          <div className="text-xl font-light text-[#e5e4e2]/80">
+            {fmt(round2(grandTotalGross - grandTotal))} PLN
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-xs uppercase tracking-wider text-[#d3bb73]">Brutto</div>
+          <div className="text-3xl font-light text-[#d3bb73]">{fmt(grandTotalGross)} PLN</div>
         </div>
       </div>
 
@@ -617,7 +660,7 @@ function CategorySection({
     if (warehouseLoaded) return;
     const { data } = await supabase
       .from('equipment_items')
-      .select('id, name, brand, model')
+      .select('id, name, brand, model, rental_price_per_day')
       .order('name');
     setWarehouseList((data as WarehouseEquipment[]) ?? []);
     setWarehouseLoaded(true);
@@ -649,11 +692,13 @@ function CategorySection({
               <tr>
                 <th className="px-3 py-2">Nazwa</th>
                 <th className="px-3 py-2">Opis</th>
-                <th className="w-20 px-3 py-2">Ilość</th>
-                <th className="w-20 px-3 py-2">Jedn.</th>
-                <th className="w-20 px-3 py-2">Dni</th>
-                <th className="w-28 px-3 py-2">Cena jedn.</th>
-                <th className="w-28 px-3 py-2 text-right">Razem</th>
+                <th className="w-16 px-3 py-2">Ilość</th>
+                <th className="w-16 px-3 py-2">Jedn.</th>
+                <th className="w-16 px-3 py-2">Dni</th>
+                <th className="w-24 px-3 py-2">Cena jedn.</th>
+                <th className="w-16 px-3 py-2">VAT %</th>
+                <th className="w-28 px-3 py-2 text-right">Netto</th>
+                <th className="w-28 px-3 py-2 text-right">Brutto</th>
                 <th className="w-10 px-3 py-2"></th>
               </tr>
             </thead>
@@ -721,7 +766,19 @@ function CategorySection({
                         className="w-full rounded-md border border-[#d3bb73]/20 bg-[#0a0d1a] px-2 py-1 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                       />
                     </td>
-                    <td className="px-3 py-2 text-right text-[#d3bb73]">{fmt(rowTotal(it))}</td>
+                    <td className="px-3 py-2">
+                      <input
+                        type="number"
+                        step="1"
+                        value={it.vat_rate}
+                        onChange={(e) =>
+                          onUpdate(idx, { vat_rate: Number(e.target.value) || 0 })
+                        }
+                        className="w-full rounded-md border border-[#d3bb73]/20 bg-[#0a0d1a] px-2 py-1 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                      />
+                    </td>
+                    <td className="px-3 py-2 text-right text-[#e5e4e2]">{fmt(rowNet(it))}</td>
+                    <td className="px-3 py-2 text-right text-[#d3bb73]">{fmt(rowGross(it))}</td>
                     <td className="px-3 py-2 text-right">
                       <button
                         onClick={() => onRemove(idx)}
@@ -793,11 +850,16 @@ function EquipmentNameCell({
 
   const selectEquipment = (eq: WarehouseEquipment) => {
     const full = [eq.brand, eq.model, eq.name].filter(Boolean).join(' ') || eq.name;
-    onUpdate({
+    const patch: Partial<CalcItem> = {
       source: 'warehouse',
       source_ref: eq.id,
       name: full,
-    });
+    };
+    const rental = Number(eq.rental_price_per_day ?? 0);
+    if (eq.rental_price_per_day != null && rental > 0) {
+      patch.unit_price = rental;
+    }
+    onUpdate(patch);
     setSearch('');
     setOpen(false);
   };
@@ -924,6 +986,7 @@ type ImportableItem = {
   offerName: string;
   categoryName: string | null;
   autoCategory: Category;
+  vat_rate: number;
 };
 
 function guessCategory(categoryName: string | null, itemName: string): Category {
@@ -1021,13 +1084,13 @@ function ImportFromOfferModal({
         new Set((itemsData ?? []).map((it: any) => it.product_id).filter(Boolean)),
       );
 
-      let productMap = new Map<string, { category_id: string | null }>();
+      let productMap = new Map<string, { category_id: string | null; vat_rate: number | null }>();
       let categoryMap = new Map<string, string>();
 
       if (productIds.length) {
         const { data: products } = await supabase
           .from('offer_products')
-          .select('id, category_id')
+          .select('id, category_id, vat_rate')
           .in('id', productIds);
         (products ?? []).forEach((p: any) => productMap.set(p.id, p));
 
@@ -1048,6 +1111,7 @@ function ImportFromOfferModal({
         const product = it.product_id ? productMap.get(it.product_id) : null;
         const categoryName =
           product && product.category_id ? (categoryMap.get(product.category_id) ?? null) : null;
+        const productVat = product && product.vat_rate != null ? Number(product.vat_rate) : null;
         return {
           id: it.id,
           name: it.name,
@@ -1060,6 +1124,7 @@ function ImportFromOfferModal({
           offerName: off?.offer_number || 'Oferta',
           categoryName,
           autoCategory: guessCategory(categoryName, it.name),
+          vat_rate: productVat ?? DEFAULT_VAT,
         };
       });
 
@@ -1100,6 +1165,7 @@ function ImportFromOfferModal({
         source: 'offer',
         source_ref: it.id,
         position: idx,
+        vat_rate: it.vat_rate,
       }));
     onImport(picked);
   };
@@ -1245,9 +1311,21 @@ function buildCalculationHtml(params: {
   eventDate: string | null;
   grouped: Record<Category, CalcItem[]>;
   categoryTotals: Record<Category, number>;
+  categoryTotalsGross: Record<Category, number>;
   grandTotal: number;
+  grandTotalGross: number;
 }): string {
-  const { name, notes, eventName, eventDate, grouped, categoryTotals, grandTotal } = params;
+  const {
+    name,
+    notes,
+    eventName,
+    eventDate,
+    grouped,
+    categoryTotals,
+    categoryTotalsGross,
+    grandTotal,
+    grandTotalGross,
+  } = params;
   const formattedDate = eventDate
     ? new Date(eventDate).toLocaleDateString('pl-PL', {
         day: '2-digit',
@@ -1278,7 +1356,9 @@ function buildCalculationHtml(params: {
           <td class="num">${esc(it.unit)}</td>
           <td class="num">${it.days}</td>
           <td class="num">${fmt(it.unit_price)}</td>
-          <td class="num strong">${fmt(rowTotal(it))}</td>
+          <td class="num">${it.vat_rate ?? DEFAULT_VAT}%</td>
+          <td class="num strong">${fmt(rowNet(it))}</td>
+          <td class="num strong accent">${fmt(rowGross(it))}</td>
         </tr>
       `,
         )
@@ -1294,14 +1374,17 @@ function buildCalculationHtml(params: {
                 <th class="num">Jedn.</th>
                 <th class="num">Dni</th>
                 <th class="num">Cena jedn.</th>
-                <th class="num">Razem</th>
+                <th class="num">VAT</th>
+                <th class="num">Netto</th>
+                <th class="num">Brutto</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
             <tfoot>
               <tr>
-                <td colspan="5" class="right">Podsuma ${categoryLabel[cat]}:</td>
-                <td class="num strong accent">${fmt(categoryTotals[cat])} PLN</td>
+                <td colspan="6" class="right">Podsuma ${categoryLabel[cat]}:</td>
+                <td class="num strong">${fmt(categoryTotals[cat])} PLN</td>
+                <td class="num strong accent">${fmt(categoryTotalsGross[cat])} PLN</td>
               </tr>
             </tfoot>
           </table>
@@ -1426,8 +1509,18 @@ function buildCalculationHtml(params: {
   </header>
   ${sections || '<p style="color:#888;text-align:center;padding:40px 0;">Brak pozycji</p>'}
   <div class="grand">
-    <span>Suma całkowita (netto)</span>
-    <span class="value">${fmt(grandTotal)} PLN</span>
+    <div>
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#bcbcbc;">Netto</div>
+      <div style="font-size:16px;color:#f5f5f5;">${fmt(grandTotal)} PLN</div>
+    </div>
+    <div>
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#bcbcbc;">VAT</div>
+      <div style="font-size:16px;color:#f5f5f5;">${fmt(round2(grandTotalGross - grandTotal))} PLN</div>
+    </div>
+    <div>
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#d3bb73;">Brutto</div>
+      <div class="value">${fmt(grandTotalGross)} PLN</div>
+    </div>
   </div>
   ${notes ? `<div class="notes">${esc(notes)}</div>` : ''}
   <footer>Mavinci CRM &middot; Kalkulacja wydarzenia</footer>
