@@ -6,6 +6,7 @@ export interface IEmployee {
   years_experience: number;
   position: any;
   permissions: any;
+  my_company_ids?: string[] | null;
   id: string;
   name: string;
   surname: string;

@@ -189,6 +189,8 @@ export default function EmployeePermissionsTab({
   const [eventTabs, setEventTabs] = useState<string[]>([]);
   const [contactTabs, setContactTabs] = useState<string[]>([]);
   const [organizationTabs, setOrganizationTabs] = useState<string[]>([]);
+  const [myCompanyIds, setMyCompanyIds] = useState<string[]>([]);
+  const [myCompanies, setMyCompanies] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
@@ -206,11 +208,14 @@ export default function EmployeePermissionsTab({
     try {
       setLoading(true);
 
-      const { data, error } = await supabase
-        .from('employees')
-        .select('permissions, event_tabs, contact_tabs, organization_tabs')
-        .eq('id', employeeId)
-        .maybeSingle();
+      const [{ data, error }, companiesRes] = await Promise.all([
+        supabase
+          .from('employees')
+          .select('permissions, event_tabs, contact_tabs, organization_tabs, my_company_ids')
+          .eq('id', employeeId)
+          .maybeSingle(),
+        supabase.from('my_companies').select('id, name').order('name'),
+      ]);
 
       if (error) throw error;
 
@@ -218,6 +223,8 @@ export default function EmployeePermissionsTab({
       setEventTabs(data?.event_tabs || []);
       setContactTabs(data?.contact_tabs || []);
       setOrganizationTabs(data?.organization_tabs || []);
+      setMyCompanyIds(data?.my_company_ids || []);
+      setMyCompanies(companiesRes.data || []);
     } catch (err) {
       console.error('Error fetching permissions:', err);
     } finally {
@@ -311,6 +318,14 @@ export default function EmployeePermissionsTab({
     setHasChanges(true);
   };
 
+  const toggleMyCompanyId = (id: string) => {
+    if (!canEditThisEmployee) return;
+    setMyCompanyIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+    setHasChanges(true);
+  };
+
   const handleSave = async () => {
     if (!canEditThisEmployee) {
       if (targetIsAdmin) {
@@ -340,6 +355,7 @@ export default function EmployeePermissionsTab({
           event_tabs: eventTabs.length > 0 ? eventTabs : null,
           contact_tabs: contactTabs.length > 0 ? contactTabs : null,
           organization_tabs: organizationTabs.length > 0 ? organizationTabs : null,
+          my_company_ids: myCompanyIds,
         })
         .eq('id', employeeId);
 
@@ -526,6 +542,38 @@ export default function EmployeePermissionsTab({
                         Uprawnienia do faktur są zarządzane przez checkboxy poniżej (integracja z
                         KSeF)
                       </p>
+                    </div>
+                  )}
+
+                  {category.key === 'invoices' && myCompanies.length > 0 && (
+                    <div className="space-y-3 border-t border-[#d3bb73]/10 pt-3">
+                      <div className="mb-2 text-sm font-medium text-[#e5e4e2]/80">
+                        Dostęp do działalności (my_companies)
+                        <span className="mt-1 block text-xs font-normal text-[#e5e4e2]/60">
+                          Wybierz firmy, których faktury ten pracownik może przeglądać. Brak zaznaczeń = dostęp do wszystkich.
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                        {myCompanies.map((c) => (
+                          <label
+                            key={c.id}
+                            className="group flex cursor-pointer items-start gap-3 rounded border border-[#d3bb73]/20 bg-[#0f1119] p-2 transition-colors hover:border-[#d3bb73]/40"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={myCompanyIds.includes(c.id)}
+                              onChange={() => toggleMyCompanyId(c.id)}
+                              disabled={!canEditThisEmployee}
+                              className="mt-1 h-4 w-4 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50 focus:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
+                            />
+                            <div className="flex-1">
+                              <div className="text-sm font-medium text-[#e5e4e2] transition-colors group-hover:text-[#d3bb73]">
+                                {c.name}
+                              </div>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
                     </div>
                   )}
 

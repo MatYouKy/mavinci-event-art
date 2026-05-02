@@ -131,7 +131,14 @@ export default function InvoicesPage() {
   const [myCompanies, setMyCompanies] = useState<any[]>([]);
   const [showFinalInvoiceWizard, setShowFinalInvoiceWizard] = useState(false);
 
-  const { canManageModule, isAdmin } = useCurrentEmployee();
+  const { canManageModule, isAdmin, employee: currentEmployee } = useCurrentEmployee();
+
+  const allowedCompanyIds = useMemo<string[] | null>(() => {
+    if (isAdmin) return null;
+    const ids = (currentEmployee as any)?.my_company_ids;
+    if (!Array.isArray(ids) || ids.length === 0) return null;
+    return ids as string[];
+  }, [isAdmin, currentEmployee]);
   const { showConfirm } = useDialog();
   const { showSnackbar } = useSnackbar();
 
@@ -188,7 +195,8 @@ export default function InvoicesPage() {
   useEffect(() => {
     fetchInvoices();
     fetchMyCompanies();
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allowedCompanyIds]);
 
   const fetchMyCompanies = async () => {
     try {
@@ -199,7 +207,10 @@ export default function InvoicesPage() {
         .order('is_default', { ascending: false });
 
       if (error) throw error;
-      setMyCompanies(data || []);
+      const filtered = allowedCompanyIds
+        ? (data || []).filter((c: any) => allowedCompanyIds.includes(c.id))
+        : data || [];
+      setMyCompanies(filtered);
     } catch (err) {
       console.error('Error fetching companies:', err);
     }
@@ -207,7 +218,7 @@ export default function InvoicesPage() {
 
   const fetchInvoices = async () => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('invoices')
         .select(
           `
@@ -218,6 +229,12 @@ export default function InvoicesPage() {
         `,
         )
         .order('issue_date', { ascending: false });
+
+      if (allowedCompanyIds) {
+        query = query.in('my_company_id', allowedCompanyIds);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         console.error('Error fetching invoices:', error);

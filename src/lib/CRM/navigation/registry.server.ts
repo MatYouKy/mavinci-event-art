@@ -201,7 +201,7 @@ export const allNavigation: NavigationItemDTO[] = [
     href: '/crm/invoices',
     iconKey: 'invoices',
     module: 'invoices',
-    permissions: ['invoices_view', 'invoices_manage'],
+    permissions: ['invoices_view'],
   },
   {
     key: 'locations',
