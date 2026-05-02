@@ -362,7 +362,7 @@ export default function EventDetailPageClient({
     | 'agenda'
     | 'calculations'
     | 'history'
-  >('contract');
+  >('overview');
 
   const [showAddChecklistModal, setShowAddChecklistModal] = useState(false);
   const [showEditEventModal, setShowEditEventModal] = useState(false);
