@@ -178,7 +178,13 @@ export default function KSeFIntegrationPanel() {
     });
     setShowMatchModal(true);
   };
-  const { canManageModule } = useCurrentEmployee();
+  const { canManageModule, employee: currentEmployee, isAdmin } = useCurrentEmployee();
+  const allowedCompanyIds: string[] | null = (() => {
+    if (isAdmin) return null;
+    const ids = (currentEmployee as any)?.my_company_ids;
+    if (!Array.isArray(ids) || ids.length === 0) return null;
+    return ids as string[];
+  })();
 
   const canManageKSeF = useMemo(() => canManageModule('ksef'), [canManageModule]);
 
@@ -251,10 +257,20 @@ export default function KSeFIntegrationPanel() {
 
       if (error) throw error;
 
-      setAllCredentials(data || []);
+      const filtered = allowedCompanyIds
+        ? (data || []).filter((c: any) => allowedCompanyIds.includes(c.my_company_id))
+        : data || [];
 
-      if (data && data.length > 0 && !selectedCompanyId) {
-        setSelectedCompanyId(data[0].my_company_id);
+      setAllCredentials(filtered);
+
+      if (
+        selectedCompanyId &&
+        allowedCompanyIds &&
+        !allowedCompanyIds.includes(selectedCompanyId)
+      ) {
+        setSelectedCompanyId(filtered[0]?.my_company_id ?? null);
+      } else if (filtered.length > 0 && !selectedCompanyId) {
+        setSelectedCompanyId(filtered[0].my_company_id);
       }
     } catch (error) {
       console.error('Error loading credentials:', error);
@@ -274,6 +290,9 @@ export default function KSeFIntegrationPanel() {
       if (selectedCompanyId) {
         query = query.eq('my_company_id', selectedCompanyId);
         console.log('[KSEF_FRONT] Filtering by company:', selectedCompanyId);
+      } else if (allowedCompanyIds) {
+        query = query.in('my_company_id', allowedCompanyIds);
+        console.log('[KSEF_FRONT] Filtering by allowed companies:', allowedCompanyIds);
       } else {
         console.log('[KSEF_FRONT] Showing all companies');
       }

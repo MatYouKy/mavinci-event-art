@@ -13,6 +13,7 @@ import {
   BarChart3,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface FinancialData {
   totalRevenue: number;
@@ -46,6 +47,14 @@ export default function FinancialDashboard() {
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const { employee: currentEmployee, isAdmin } = useCurrentEmployee();
+  const allowedCompanyIds = useMemo<string[] | null>(() => {
+    if (isAdmin) return null;
+    const ids = (currentEmployee as any)?.my_company_ids;
+    if (!Array.isArray(ids) || ids.length === 0) return null;
+    return ids as string[];
+  }, [isAdmin, currentEmployee]);
+
   useEffect(() => {
     const now = new Date();
     const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -55,13 +64,15 @@ export default function FinancialDashboard() {
 
   useEffect(() => {
     fetchMyCompanies();
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allowedCompanyIds]);
 
   useEffect(() => {
     if (dateFrom && dateTo) {
       fetchFinancialData();
     }
-  }, [dateFrom, dateTo, selectedCompany]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateFrom, dateTo, selectedCompany, allowedCompanyIds]);
 
   const fetchMyCompanies = async () => {
     try {
@@ -72,7 +83,13 @@ export default function FinancialDashboard() {
         .order('is_default', { ascending: false });
 
       if (error) throw error;
-      setMyCompanies(data || []);
+      const filtered = allowedCompanyIds
+        ? (data || []).filter((c: any) => allowedCompanyIds.includes(c.id))
+        : data || [];
+      setMyCompanies(filtered);
+      if (selectedCompany !== 'all' && allowedCompanyIds && !allowedCompanyIds.includes(selectedCompany)) {
+        setSelectedCompany('all');
+      }
     } catch (err) {
       console.error('Error fetching companies:', err);
     }
@@ -90,6 +107,8 @@ export default function FinancialDashboard() {
 
       if (selectedCompany !== 'all') {
         query = query.eq('my_company_id', selectedCompany);
+      } else if (allowedCompanyIds) {
+        query = query.in('my_company_id', allowedCompanyIds);
       }
 
       const { data: invoices, error } = await query;

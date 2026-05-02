@@ -18,6 +18,7 @@ import { parseMT940, parseJPK_WB, findMatchingInvoices } from '@/lib/bankStateme
 import BankTransactionsAnalysis from './BankTransactionsAnalysis';
 import BankMatchingSimple from './BankMatchingSimple';
 import CompanySelector from './CompanySelector';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface MonthlySummary {
   id: string;
@@ -65,6 +66,13 @@ export default function KSeFFinancialDashboard() {
   } | null>(null);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const { showSnackbar } = useSnackbar();
+  const { employee: currentEmployee, isAdmin } = useCurrentEmployee();
+  const allowedCompanyIds: string[] | null = (() => {
+    if (isAdmin) return null;
+    const ids = (currentEmployee as any)?.my_company_ids;
+    if (!Array.isArray(ids) || ids.length === 0) return null;
+    return ids as string[];
+  })();
 
   useEffect(() => {
     loadSummaries();
@@ -106,6 +114,8 @@ export default function KSeFFinancialDashboard() {
 
       if (selectedCompanyId) {
         query = query.eq('my_company_id', selectedCompanyId);
+      } else if (allowedCompanyIds) {
+        query = query.in('my_company_id', allowedCompanyIds);
       } else {
         query = query.is('my_company_id', null);
       }

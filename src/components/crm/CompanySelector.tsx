@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Building2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface MyCompany {
   id: string;
@@ -29,10 +30,12 @@ export default function CompanySelector({
 }: CompanySelectorProps) {
   const [companies, setCompanies] = useState<MyCompany[]>([]);
   const [loading, setLoading] = useState(true);
+  const { employee: currentEmployee, isAdmin } = useCurrentEmployee();
 
   useEffect(() => {
     loadCompanies();
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentEmployee, isAdmin]);
 
   const loadCompanies = async () => {
     try {
@@ -44,10 +47,26 @@ export default function CompanySelector({
         .order('name');
 
       if (error) throw error;
-      setCompanies(data || []);
 
-      if (!value && data && data.length > 0) {
-        const defaultCompany = data.find((c) => c.is_default);
+      const allowed = (() => {
+        if (isAdmin) return null;
+        const ids = (currentEmployee as any)?.my_company_ids;
+        if (!Array.isArray(ids) || ids.length === 0) return null;
+        return ids as string[];
+      })();
+
+      const filtered = allowed
+        ? (data || []).filter((c) => allowed.includes(c.id))
+        : data || [];
+
+      setCompanies(filtered);
+
+      if (value && allowed && !allowed.includes(value)) {
+        onChange(null);
+      }
+
+      if (!value && filtered.length > 0) {
+        const defaultCompany = filtered.find((c) => c.is_default) || filtered[0];
         if (defaultCompany && !showAllOption) {
           onChange(defaultCompany.id);
         }
