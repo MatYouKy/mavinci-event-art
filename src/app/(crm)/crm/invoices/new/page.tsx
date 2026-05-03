@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
 import { ArrowLeft, Plus, Trash2, Save } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import BuyerSearchInput from './components/BuyerSearchInput';
 import AddBuyerModal from './components/AddBuyerModal';
 import InvoiceNumberInput from './components/InvoiceNumberInput';
@@ -35,6 +36,7 @@ interface InvoiceItem {
 
 export default function NewInvoicePage() {
   const router = useRouter();
+  const { employee: currentEmployee, isAdmin } = useCurrentEmployee();
   const searchParams = useSearchParams();
   const { showSnackbar } = useSnackbar();
   const eventId = searchParams.get('event');
@@ -208,12 +210,23 @@ export default function NewInvoicePage() {
       }
 
       if (companiesRes.data) {
-        setMyCompanies(companiesRes.data);
-        const defaultCompany = companiesRes.data.find((c: MyCompany) => c.is_default);
+        let companiesList = companiesRes.data as MyCompany[];
+        if (!isAdmin) {
+          const allowedIds = (currentEmployee as any)?.my_company_ids;
+          const invoicePerms = (currentEmployee as any)?.invoice_company_permissions || {};
+          if (Array.isArray(allowedIds) && allowedIds.length > 0) {
+            companiesList = companiesList.filter((c) => allowedIds.includes(c.id));
+          }
+          companiesList = companiesList.filter(
+            (c) => Array.isArray(invoicePerms[c.id]) && invoicePerms[c.id].includes('issue'),
+          );
+        }
+        setMyCompanies(companiesList);
+        const defaultCompany = companiesList.find((c: MyCompany) => c.is_default);
         if (defaultCompany) {
           setSelectedCompanyId(defaultCompany.id);
-        } else if (companiesRes.data.length > 0) {
-          setSelectedCompanyId(companiesRes.data[0].id);
+        } else if (companiesList.length > 0) {
+          setSelectedCompanyId(companiesList[0].id);
         }
       }
 

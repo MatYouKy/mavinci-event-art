@@ -7,6 +7,7 @@ export interface IEmployee {
   position: any;
   permissions: any;
   my_company_ids?: string[] | null;
+  invoice_company_permissions?: Record<string, string[]> | null;
   id: string;
   name: string;
   surname: string;

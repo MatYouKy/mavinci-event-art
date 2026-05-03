@@ -19,6 +19,7 @@ interface CompanySelectorProps {
   showAllOption?: boolean;
   className?: string;
   label?: string;
+  requireIssue?: boolean;
 }
 
 export default function CompanySelector({
@@ -27,6 +28,7 @@ export default function CompanySelector({
   showAllOption = true,
   className = '',
   label = 'Firma',
+  requireIssue = false,
 }: CompanySelectorProps) {
   const [companies, setCompanies] = useState<MyCompany[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,13 +57,19 @@ export default function CompanySelector({
         return ids as string[];
       })();
 
-      const filtered = allowed
+      let filtered = allowed
         ? (data || []).filter((c) => allowed.includes(c.id))
         : data || [];
 
+      if (requireIssue && !isAdmin) {
+        const perms = (currentEmployee as any)?.invoice_company_permissions || {};
+        filtered = filtered.filter((c) => Array.isArray(perms[c.id]) && perms[c.id].includes('issue'));
+      }
+
       setCompanies(filtered);
 
-      if (value && allowed && !allowed.includes(value)) {
+      const allowedIdsFinal = filtered.map((c) => c.id);
+      if (value && !allowedIdsFinal.includes(value)) {
         onChange(null);
       }
 

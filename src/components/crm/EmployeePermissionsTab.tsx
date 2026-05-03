@@ -27,6 +27,29 @@ interface PermissionCategory {
   extraPermissions?: ExtraPermission[];
 }
 
+const invoiceCompanyScopes: Array<{ key: string; label: string; description: string }> = [
+  {
+    key: 'view_own',
+    label: 'Podgląd faktur',
+    description: 'Może przeglądać faktury dotyczące tej działalności',
+  },
+  {
+    key: 'view_all',
+    label: 'Podgląd wszystkich faktur',
+    description: 'Widzi wszystkie faktury wystawione dla tej działalności',
+  },
+  {
+    key: 'issue',
+    label: 'Wystawianie faktur',
+    description: 'Może wystawiać nowe faktury dla tej działalności',
+  },
+  {
+    key: 'manage',
+    label: 'Zarządzanie fakturami',
+    description: 'Może edytować, usuwać i zmieniać status faktur tej działalności',
+  },
+];
+
 const availableEventTabs = [
   { value: 'overview', label: 'Przegląd', description: 'Podstawowe informacje o wydarzeniu' },
   { value: 'phases', label: 'Timeline', description: 'Zarządzanie fazami wydarzenia' },
@@ -191,6 +214,7 @@ export default function EmployeePermissionsTab({
   const [organizationTabs, setOrganizationTabs] = useState<string[]>([]);
   const [myCompanyIds, setMyCompanyIds] = useState<string[]>([]);
   const [myCompanies, setMyCompanies] = useState<Array<{ id: string; name: string }>>([]);
+  const [invoiceCompanyPerms, setInvoiceCompanyPerms] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
@@ -211,7 +235,9 @@ export default function EmployeePermissionsTab({
       const [{ data, error }, companiesRes] = await Promise.all([
         supabase
           .from('employees')
-          .select('permissions, event_tabs, contact_tabs, organization_tabs, my_company_ids')
+          .select(
+            'permissions, event_tabs, contact_tabs, organization_tabs, my_company_ids, invoice_company_permissions',
+          )
           .eq('id', employeeId)
           .maybeSingle(),
         supabase.from('my_companies').select('id, name').order('name'),
@@ -225,6 +251,9 @@ export default function EmployeePermissionsTab({
       setOrganizationTabs(data?.organization_tabs || []);
       setMyCompanyIds(data?.my_company_ids || []);
       setMyCompanies(companiesRes.data || []);
+      setInvoiceCompanyPerms(
+        (data?.invoice_company_permissions as Record<string, string[]>) || {},
+      );
     } catch (err) {
       console.error('Error fetching permissions:', err);
     } finally {
@@ -320,9 +349,30 @@ export default function EmployeePermissionsTab({
 
   const toggleMyCompanyId = (id: string) => {
     if (!canEditThisEmployee) return;
-    setMyCompanyIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
+    setMyCompanyIds((prev) => {
+      const isOn = prev.includes(id);
+      if (isOn) {
+        setInvoiceCompanyPerms((pp) => {
+          const next = { ...pp };
+          delete next[id];
+          return next;
+        });
+        return prev.filter((x) => x !== id);
+      }
+      return [...prev, id];
+    });
+    setHasChanges(true);
+  };
+
+  const toggleInvoiceCompanyPerm = (companyId: string, permKey: string) => {
+    if (!canEditThisEmployee) return;
+    setInvoiceCompanyPerms((prev) => {
+      const current = prev[companyId] || [];
+      const next = current.includes(permKey)
+        ? current.filter((p) => p !== permKey)
+        : [...current, permKey];
+      return { ...prev, [companyId]: next };
+    });
     setHasChanges(true);
   };
 
@@ -356,6 +406,7 @@ export default function EmployeePermissionsTab({
           contact_tabs: contactTabs.length > 0 ? contactTabs : null,
           organization_tabs: organizationTabs.length > 0 ? organizationTabs : null,
           my_company_ids: myCompanyIds,
+          invoice_company_permissions: invoiceCompanyPerms,
         })
         .eq('id', employeeId);
 
@@ -550,29 +601,67 @@ export default function EmployeePermissionsTab({
                       <div className="mb-2 text-sm font-medium text-[#e5e4e2]/80">
                         Dostęp do działalności (my_companies)
                         <span className="mt-1 block text-xs font-normal text-[#e5e4e2]/60">
-                          Wybierz firmy, których faktury ten pracownik może przeglądać. Brak zaznaczeń = dostęp do wszystkich.
+                          Zaznacz działalność, aby rozwinąć i skonfigurować jej uprawnienia. Brak
+                          zaznaczeń = dostęp do wszystkich działalności bez dodatkowych ograniczeń.
                         </span>
                       </div>
-                      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                        {myCompanies.map((c) => (
-                          <label
-                            key={c.id}
-                            className="group flex cursor-pointer items-start gap-3 rounded border border-[#d3bb73]/20 bg-[#0f1119] p-2 transition-colors hover:border-[#d3bb73]/40"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={myCompanyIds.includes(c.id)}
-                              onChange={() => toggleMyCompanyId(c.id)}
-                              disabled={!canEditThisEmployee}
-                              className="mt-1 h-4 w-4 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50 focus:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
-                            />
-                            <div className="flex-1">
-                              <div className="text-sm font-medium text-[#e5e4e2] transition-colors group-hover:text-[#d3bb73]">
-                                {c.name}
-                              </div>
+                      <div className="space-y-2">
+                        {myCompanies.map((c) => {
+                          const isSelected = myCompanyIds.includes(c.id);
+                          const scopes = invoiceCompanyPerms[c.id] || [];
+                          return (
+                            <div
+                              key={c.id}
+                              className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1119]"
+                            >
+                              <label className="flex cursor-pointer items-center gap-3 p-3">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => toggleMyCompanyId(c.id)}
+                                  disabled={!canEditThisEmployee}
+                                  className="h-4 w-4 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50 focus:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
+                                />
+                                <span className="text-sm font-medium text-[#e5e4e2]">
+                                  {c.name}
+                                </span>
+                                {isSelected && scopes.length > 0 && (
+                                  <span className="ml-auto text-xs text-[#d3bb73]">
+                                    {scopes.length} uprawnień
+                                  </span>
+                                )}
+                              </label>
+                              {isSelected && (
+                                <div className="space-y-2 border-t border-[#d3bb73]/10 p-3">
+                                  {invoiceCompanyScopes.map((scope) => (
+                                    <label
+                                      key={scope.key}
+                                      className="group flex cursor-pointer items-start gap-3"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={scopes.includes(scope.key)}
+                                        onChange={() =>
+                                          toggleInvoiceCompanyPerm(c.id, scope.key)
+                                        }
+                                        disabled={!canEditThisEmployee}
+                                        className="mt-1 h-4 w-4 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50 focus:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
+                                      />
+                                      <div className="flex-1">
+                                        <div className="text-sm font-medium text-[#e5e4e2] transition-colors group-hover:text-[#d3bb73]">
+                                          {scope.label}
+                                        </div>
+                                        <div className="mt-0.5 text-xs text-[#e5e4e2]/60">
+                                          {scope.description}
+                                        </div>
+                                      </div>
+                                    </label>
+                                  ))}
+                                </div>
+                              )}
                             </div>
-                          </label>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}

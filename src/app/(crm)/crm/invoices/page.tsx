@@ -131,7 +131,7 @@ export default function InvoicesPage() {
   const [myCompanies, setMyCompanies] = useState<any[]>([]);
   const [showFinalInvoiceWizard, setShowFinalInvoiceWizard] = useState(false);
 
-  const { canManageModule, isAdmin, employee: currentEmployee } = useCurrentEmployee();
+  const { canManageModule, isAdmin, employee: currentEmployee, sessionUserId } = useCurrentEmployee();
 
   const allowedCompanyIds = useMemo<string[] | null>(() => {
     if (isAdmin) return null;
@@ -139,6 +139,30 @@ export default function InvoicesPage() {
     if (!Array.isArray(ids) || ids.length === 0) return null;
     return ids as string[];
   }, [isAdmin, currentEmployee]);
+
+  const invoiceCompanyPerms = useMemo<Record<string, string[]>>(() => {
+    const raw = (currentEmployee as any)?.invoice_company_permissions;
+    return raw && typeof raw === 'object' ? raw : {};
+  }, [currentEmployee]);
+
+  const companyHasPerm = useCallback(
+    (companyId: string | null | undefined, scope: 'view_own' | 'view_all' | 'issue' | 'manage') => {
+      if (isAdmin) return true;
+      if (!companyId) return false;
+      const scopes = invoiceCompanyPerms[companyId] || [];
+      return scopes.includes(scope);
+    },
+    [isAdmin, invoiceCompanyPerms],
+  );
+
+  const issuableCompanyIds = useMemo<string[]>(() => {
+    if (isAdmin) return (allowedCompanyIds ?? myCompanies.map((c) => c.id));
+    return Object.entries(invoiceCompanyPerms)
+      .filter(([, scopes]) => Array.isArray(scopes) && scopes.includes('issue'))
+      .map(([id]) => id);
+  }, [isAdmin, invoiceCompanyPerms, allowedCompanyIds, myCompanies]);
+
+  const canIssueAny = isAdmin || issuableCompanyIds.length > 0;
   const { showConfirm } = useDialog();
   const { showSnackbar } = useSnackbar();
 
@@ -337,6 +361,16 @@ export default function InvoicesPage() {
     const matchesStatus = filterStatus === 'all' || invoice.status === filterStatus;
     const matchesCompany = filterCompany === 'all' || (invoice as any).my_company_id === filterCompany;
 
+    if (!isAdmin) {
+      const cid = (invoice as any).my_company_id as string | null;
+      if (!cid) return false;
+      const scopes = invoiceCompanyPerms[cid] || [];
+      const canViewAll = scopes.includes('view_all') || scopes.includes('manage');
+      const canViewOwn = canViewAll || scopes.includes('view_own') || scopes.includes('issue');
+      if (!canViewOwn) return false;
+      if (!canViewAll && (invoice as any).created_by !== sessionUserId) return false;
+    }
+
     return matchesSearch && matchesType && matchesStatus && matchesCompany;
   });
 
@@ -366,7 +400,7 @@ export default function InvoicesPage() {
           </div>
 
           <ResponsiveActionBar
-            actions={canManageInvoices ? [
+            actions={(canManageInvoices || canIssueAny) ? [
               {
                 label: 'Faktura końcowa',
                 onClick: () => setShowFinalInvoiceWizard(true),
@@ -705,7 +739,7 @@ export default function InvoicesPage() {
                             onView={() => router.push(`/crm/invoices/${invoice.id}`)}
                             onDelete={() => handleDeleteInvoice(invoice)}
                             onCorrection={() => handleCreateCorrection(invoice)}
-                            canManage={canManageInvoices}
+                            canManage={canManageInvoices || companyHasPerm((invoice as any).my_company_id, 'manage')}
                             isAdmin={isAdmin}
                           />
                         </div>
