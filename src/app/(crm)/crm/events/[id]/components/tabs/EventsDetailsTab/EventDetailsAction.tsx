@@ -86,19 +86,28 @@ interface EventDetailsActionProps {
 export default function EventDetailsAction({
   event,
   categories,
-  canEditStatus = false,
+  canEditStatus,
   hasOffers = false,
   offersCount = 0,
 }: EventDetailsActionProps) {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
-  const [updatingStatus, setUpdatingStatus] = useState(false);
   const [currentStatus, setCurrentStatus] = useState<EventStatus>(event?.status as EventStatus);
   const [isEditingCategory, setIsEditingCategory] = useState(false);
   const [statusEditActive, setStatusEditActive] = useState(false);
   const { employee } = useCurrentEmployee();
   const [agenda, setAgenda] = useState<any | null>(null);
   const [equipmentChecklist, setEquipmentChecklist] = useState<any | null>(null);
+
+  const [draftStatus, setDraftStatus] = useState<EventStatus>(event?.status as EventStatus);
+  const [savingStatus, setSavingStatus] = useState(false);
+
+  useEffect(() => {
+    if (event?.status) {
+      setCurrentStatus(event.status as EventStatus);
+      setDraftStatus(event.status as EventStatus);
+    }
+  }, [event?.status]);
   //Category
   const [category, setCategory] = useState<EventCategoryRow | undefined>(
     categories.find((c) => c.id === event?.category_id) ?? undefined,
@@ -107,7 +116,7 @@ export default function EventDetailsAction({
   useEffect(() => {
     setCategory(categories.find((c) => c.id === event?.category_id) ?? undefined);
   }, [event?.category_id]);
-  
+
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>(event?.category_id ?? '');
   const [savingCategory, setSavingCategory] = useState(false);
 
@@ -221,30 +230,37 @@ export default function EventDetailsAction({
     }
   };
 
-  const handleStatusChange = async (newStatus: EventStatus) => {
+  const handleStatusChange = async () => {
     if (!event?.id) return;
 
     try {
-      setUpdatingStatus(true);
+      setSavingStatus(true);
 
       const { error } = await supabase
         .from('events')
-        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .update({
+          status: draftStatus,
+          updated_at: new Date().toISOString(),
+        })
         .eq('id', event.id);
 
       if (error) throw error;
 
-      setCurrentStatus(newStatus);
-      showSnackbar(`Status eventu: ${eventStatusLabels[newStatus]}`, 'success');
-      router.refresh();
+      setCurrentStatus(draftStatus);
+      showSnackbar(`Status eventu: ${eventStatusLabels[draftStatus]}`, 'success');
       setStatusEditActive(false);
+      router.refresh();
     } catch (err: any) {
       console.error('Error updating status:', err);
       showSnackbar(err?.message || 'Błąd podczas zmiany statusu', 'error');
     } finally {
-      setUpdatingStatus(false);
+      setSavingStatus(false);
     }
   };
+
+  const canManageStatus =
+    canEditStatus ??
+    (employee?.permissions?.includes('events_manage') || employee?.permissions?.includes('admin'));
 
   const handleShowPdf = async () => {
     const { data: agenda, error: agendaError } = await supabase
@@ -285,11 +301,12 @@ export default function EventDetailsAction({
     const base =
       'inline-flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm transition-colors';
     const color = statusBadgeClasses[currentStatus] ?? 'bg-white/5 text-[#e5e4e2] border-white/10';
-    const clickable = canEditStatus
+
+    const clickable = canManageStatus
       ? 'cursor-pointer hover:bg-white/5'
       : 'cursor-default opacity-80';
     return `${base} ${color} ${clickable}`;
-  }, [currentStatus, canEditStatus]);
+  }, [currentStatus, canManageStatus]);
 
   return (
     <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
@@ -424,44 +441,74 @@ export default function EventDetailsAction({
               <button
                 type="button"
                 className={badgeCls}
-                onClick={() => canEditStatus && setStatusEditActive(true)}
-                disabled={!canEditStatus}
-                title={canEditStatus ? 'Kliknij aby zmienić status' : 'Brak uprawnień'}
+                onClick={() => {
+                  if (!canManageStatus) return;
+
+                  setDraftStatus(currentStatus);
+                  setStatusEditActive(true);
+                }}
+                disabled={!canManageStatus}
+                title={canManageStatus ? 'Kliknij aby zmienić status' : 'Brak uprawnień'}
               >
                 <span className="inline-flex items-center gap-2">
                   {statusIcon(currentStatus)}
                   <span className="font-medium">{eventStatusLabels[currentStatus]}</span>
                 </span>
 
-                <span className="inline-flex items-center gap-2">
-                  {updatingStatus ? (
-                    <Loader2 className="h-4 w-4 animate-spin opacity-80" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4 opacity-80" />
-                  )}
-                </span>
+                <ChevronDown className="h-4 w-4 opacity-80" />
               </button>
             ) : (
-              <select
-                value={currentStatus}
-                onChange={(e) => handleStatusChange(e.target.value as EventStatus)}
-                onBlur={() => setStatusEditActive(false)}
-                disabled={updatingStatus}
-                autoFocus
-                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-2 text-sm text-[#e5e4e2] transition-colors focus:border-[#d3bb73] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {Object.entries(eventStatusLabels).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            )}
+              <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="text-xs text-[#e5e4e2]/60">
+                    Aktualnie:{' '}
+                    <span className="text-[#e5e4e2]">{eventStatusLabels[currentStatus]}</span>
+                  </div>
 
-            {canEditStatus && statusEditActive && (
-              <p className="mt-2 text-xs text-[#e5e4e2]/40">
-                Wybierz status. Klik poza polem anuluje edycję.
-              </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDraftStatus(currentStatus);
+                      setStatusEditActive(false);
+                    }}
+                    className="rounded-md px-2 py-1 text-xs text-[#e5e4e2]/60 hover:bg-white/5 hover:text-[#e5e4e2]"
+                  >
+                    Anuluj
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  <select
+                    value={draftStatus}
+                    onChange={(e) => setDraftStatus(e.target.value as EventStatus)}
+                    disabled={savingStatus}
+                    autoFocus
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-2 text-sm text-[#e5e4e2] transition-colors focus:border-[#d3bb73] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {Object.entries(eventStatusLabels).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs text-[#e5e4e2]/40">
+                      {savingStatus ? 'Zapisuję…' : 'Wybierz status i zapisz zmianę'}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleStatusChange}
+                      disabled={savingStatus || draftStatus === currentStatus}
+                      className="inline-flex items-center gap-2 rounded-md border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-3 py-1.5 text-xs font-medium text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {savingStatus && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                      Zapisz
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         )}
