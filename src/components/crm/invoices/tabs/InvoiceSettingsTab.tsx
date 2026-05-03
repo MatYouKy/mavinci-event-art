@@ -1,12 +1,26 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CompanyNumbering, CompanyNumberingCard } from '../CompanyNumberingCard';
 import { supabase } from '@/lib/supabase/browser';
 import { AlertTriangle } from 'lucide-react';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 export function InvoiceSettingsTab() {
   const [companies, setCompanies] = useState<CompanyNumbering[]>([]);
   const [loading, setLoading] = useState(true);
   const [existingNumbers, setExistingNumbers] = useState<string[]>([]);
+  const { employee: currentEmployee, isAdmin, loading: employeeLoading, canManageModule } = useCurrentEmployee();
+
+  const allowedCompanyIds = useMemo<string[] | null>(() => {
+    if (isAdmin) return null;
+    const ids = (currentEmployee as any)?.my_company_ids;
+    if (!Array.isArray(ids) || ids.length === 0) return null;
+    return ids as string[];
+  }, [isAdmin, currentEmployee]);
+
+  const invoiceCompanyPerms = useMemo<Record<string, string[]>>(() => {
+    const raw = (currentEmployee as any)?.invoice_company_permissions;
+    return raw && typeof raw === 'object' ? raw : {};
+  }, [currentEmployee]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -27,7 +41,26 @@ export function InvoiceSettingsTab() {
       const invoicesData = invoicesRes.data || [];
       setExistingNumbers(invoicesData.map((i: any) => i.invoice_number));
 
-      const companiesWithCount = (companiesRes.data || []).map((c: any) => ({
+      let companiesList = companiesRes.data || [];
+
+      if (!isAdmin) {
+        if (allowedCompanyIds) {
+          companiesList = companiesList.filter((c: any) => allowedCompanyIds.includes(c.id));
+        }
+        const hasAnyPerEntry = Object.values(invoiceCompanyPerms).some(
+          (v) => Array.isArray(v) && v.length > 0,
+        );
+        if (hasAnyPerEntry) {
+          companiesList = companiesList.filter((c: any) => {
+            const scopes = invoiceCompanyPerms[c.id] || [];
+            return scopes.includes('manage') || scopes.includes('issue') || scopes.includes('view_all') || scopes.includes('view_own');
+          });
+        } else if (!canManageModule('invoices')) {
+          companiesList = [];
+        }
+      }
+
+      const companiesWithCount = companiesList.map((c: any) => ({
         ...c,
         invoice_count: invoicesData.filter((i: any) => i.my_company_id === c.id).length,
       }));
@@ -38,11 +71,12 @@ export function InvoiceSettingsTab() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isAdmin, allowedCompanyIds, invoiceCompanyPerms, canManageModule]);
 
   useEffect(() => {
+    if (employeeLoading) return;
     fetchData();
-  }, [fetchData]);
+  }, [fetchData, employeeLoading]);
 
   if (loading) {
     return (
