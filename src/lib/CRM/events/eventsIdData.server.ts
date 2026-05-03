@@ -255,6 +255,11 @@ export async function fetchEventByIdServer(
 
   const isCreator = creatorId === currentUserId;
 
+  const hasAcceptedOnlyCalendarView =
+    !isAdmin &&
+    Array.isArray((currentEmployee as any)?.permissions) &&
+    (currentEmployee as any).permissions.includes('calendar_view_accepted_only');
+
   let permissionContext: EventPermissionContext = {
     canManageTeam: false,
     allowedEventTabs: [],
@@ -273,6 +278,16 @@ export async function fetchEventByIdServer(
         (assignment?.status as 'accepted' | 'pending' | 'rejected' | null) ?? null,
       hasLimitedAccess: false,
       isAdmin: true,
+      isCreator,
+      currentUserId,
+    };
+  } else if (hasAcceptedOnlyCalendarView && !isCreator && assignment?.status !== 'accepted') {
+    permissionContext = {
+      canManageTeam: false,
+      allowedEventTabs: ['overview'],
+      userAssignmentStatus: (assignment?.status as any) ?? null,
+      hasLimitedAccess: true,
+      isAdmin: false,
       isCreator,
       currentUserId,
     };

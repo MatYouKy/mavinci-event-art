@@ -126,6 +126,14 @@ const permissionCategories: PermissionCategory[] = [
   {
     key: 'calendar',
     label: 'Kalendarz',
+    extraPermissions: [
+      {
+        key: 'calendar_view_accepted_only',
+        label: 'Tylko zaakceptowane wydarzenia (przegląd)',
+        description:
+          'Pracownik widzi wszystkie zaakceptowane wydarzenia w kalendarzu, ale w szczegółach wydarzenia ma dostęp wyłącznie do zakładki Przegląd. Spotkania oraz inne zakładki są ukryte.',
+      },
+    ],
   },
   {
     key: 'tasks',

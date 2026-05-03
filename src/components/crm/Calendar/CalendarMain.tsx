@@ -125,8 +125,18 @@ export default function CalendarMain({
     }
   };
 
+  const isAcceptedOnlyViewer =
+    !!currentEmployee &&
+    currentEmployee.role !== 'admin' &&
+    !currentEmployee.permissions?.includes('admin') &&
+    !!currentEmployee.permissions?.includes('calendar_view_accepted_only');
+
   const applyFilters = useCallback(() => {
     let filtered = [...allEvents];
+
+    if (isAcceptedOnlyViewer) {
+      filtered = filtered.filter((e: any) => !e.is_meeting && e.status === 'offer_accepted');
+    }
 
     if (filters.statuses.length > 0) {
       filtered = filtered.filter((e) => filters.statuses.includes(e.status));
@@ -180,6 +190,7 @@ export default function CalendarMain({
     filters.assignedToMe,
     filters.employees,
     currentEmployee?.id,
+    isAcceptedOnlyViewer,
   ]);
 
   // ✅ kluczowy fix: NIE nadpisuj initial pustym [] zanim query będzie SUCCESS
@@ -403,7 +414,7 @@ export default function CalendarMain({
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-light text-[#e5e4e2]">Kalendarz</h1>
           <div className="flex items-center gap-2">
-            {canCreateEvents() && (
+            {canCreateEvents() && !isAcceptedOnlyViewer && (
               <button
                 onClick={() => handleNewMeeting()}
                 className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-xs font-medium text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10"
@@ -548,7 +559,7 @@ export default function CalendarMain({
             )}
           </div>
 
-          {canCreateEvents() && (
+          {canCreateEvents() && !isAcceptedOnlyViewer && (
             <button
               onClick={() => handleNewMeeting()}
               className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-xs font-medium text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10 md:px-4 md:text-sm"
@@ -558,6 +569,7 @@ export default function CalendarMain({
             </button>
           )}
 
+          {!isAcceptedOnlyViewer && (
           <button
             onClick={() => handleNewEvent()}
             className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-3 py-2 text-xs font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 md:px-4 md:text-sm"
@@ -574,6 +586,7 @@ export default function CalendarMain({
               </>
             )}
           </button>
+          )}
         </div>
       </div>
 
