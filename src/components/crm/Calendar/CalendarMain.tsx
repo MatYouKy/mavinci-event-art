@@ -24,6 +24,7 @@ import TimelineView from './TimelineView';
 import MobileCalendarView from './MobileCalendarView';
 import EventWizard from '../EventWizard';
 import NewMeetingModal from '../NewMeetingModal';
+import NewInquiryModal from '../NewInquiryModal';
 import EventTypeSelector from './EventTypeSelector';
 import {
   useGetCalendarEventsQuery,
@@ -44,6 +45,7 @@ export default function CalendarMain({
   const [isMobile, setIsMobile] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isMeetingModalOpen, setIsMeetingModalOpen] = useState(false);
+  const [isInquiryModalOpen, setIsInquiryModalOpen] = useState(false);
   const [showTypeSelector, setShowTypeSelector] = useState(false);
   const [selectedClientType, setSelectedClientType] = useState<'business' | 'individual' | null>(
     null,
@@ -275,20 +277,16 @@ export default function CalendarMain({
 
   const handleNewEvent = (date?: Date) => {
     setModalInitialDate(date);
-    const canCreate = canCreateEvents();
-
-    if (!canCreate) {
-      setIsMeetingModalOpen(true);
-    } else {
-      setShowTypeSelector(true);
-    }
+    setShowTypeSelector(true);
   };
 
-  const handleEventTypeSelect = (type: 'business' | 'individual' | 'meeting') => {
+  const handleEventTypeSelect = (type: 'business' | 'individual' | 'meeting' | 'inquiry') => {
     setShowTypeSelector(false);
 
     if (type === 'meeting') {
       setIsMeetingModalOpen(true);
+    } else if (type === 'inquiry') {
+      setIsInquiryModalOpen(true);
     } else {
       setSelectedClientType(type);
       setIsModalOpen(true);
@@ -468,6 +466,12 @@ export default function CalendarMain({
           onSuccess={() => {
             refetchEvents();
           }}
+          initialDate={modalInitialDate}
+        />
+
+        <NewInquiryModal
+          isOpen={isInquiryModalOpen}
+          onClose={() => setIsInquiryModalOpen(false)}
           initialDate={modalInitialDate}
         />
       </div>
@@ -988,6 +992,12 @@ export default function CalendarMain({
         onSuccess={() => {
           refetchEvents();
         }}
+        initialDate={modalInitialDate}
+      />
+
+      <NewInquiryModal
+        isOpen={isInquiryModalOpen}
+        onClose={() => setIsInquiryModalOpen(false)}
         initialDate={modalInitialDate}
       />
     </div>

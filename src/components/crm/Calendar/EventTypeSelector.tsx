@@ -1,11 +1,13 @@
 'use client';
 
-import { Building2, User, Calendar } from 'lucide-react';
+import { Building2, User, Calendar, PhoneCall } from 'lucide-react';
+
+export type EventCreationType = 'business' | 'individual' | 'meeting' | 'inquiry';
 
 interface EventTypeSelectorProps {
   isOpen: boolean;
   onClose: () => void;
-  onSelectType: (type: 'business' | 'individual' | 'meeting') => void;
+  onSelectType: (type: EventCreationType) => void;
   canCreateEvents?: boolean;
 }
 
@@ -21,15 +23,15 @@ export default function EventTypeSelector({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#0f1119] rounded-xl max-w-2xl w-full p-8">
+      <div className="bg-[#0f1119] rounded-xl max-w-3xl w-full p-8">
         <h2 className="text-2xl font-semibold text-[#e5e4e2] mb-2">Co chcesz dodać?</h2>
         <p className="text-[#e5e4e2]/60 mb-6">
           {showOnlyMeetings
-            ? 'Możesz utworzyć nowe spotkanie'
+            ? 'Możesz utworzyć nowe spotkanie lub zapytanie'
             : 'Wybierz typ wydarzenia, które chcesz utworzyć'}
         </p>
 
-        <div className={`grid grid-cols-1 ${showOnlyMeetings ? 'md:grid-cols-1' : 'md:grid-cols-3'} gap-4`}>
+        <div className={`grid grid-cols-1 ${showOnlyMeetings ? 'md:grid-cols-2' : 'md:grid-cols-2 lg:grid-cols-4'} gap-4`}>
           {!showOnlyMeetings && (
             <>
               <button
@@ -80,6 +82,23 @@ export default function EventTypeSelector({
                 <h3 className="text-lg font-medium text-[#e5e4e2] mb-1">Spotkanie</h3>
                 <p className="text-sm text-[#e5e4e2]/60">
                   Szybkie spotkanie lub przypomnienie
+                </p>
+              </div>
+            </div>
+          </button>
+
+          <button
+            onClick={() => onSelectType('inquiry')}
+            className="group relative p-6 bg-[#1c1f33] border-2 border-[#d3bb73]/10 rounded-xl hover:border-[#d3bb73] transition-all hover:scale-105"
+          >
+            <div className="flex flex-col items-center text-center space-y-4">
+              <div className="p-4 bg-[#d3bb73]/10 rounded-full group-hover:bg-[#d3bb73]/20 transition-colors">
+                <PhoneCall className="w-8 h-8 text-[#d3bb73]" />
+              </div>
+              <div>
+                <h3 className="text-lg font-medium text-[#e5e4e2] mb-1">Zapytanie</h3>
+                <p className="text-sm text-[#e5e4e2]/60">
+                  Szybka notatka z rozmowy z klientem
                 </p>
               </div>
             </div>
