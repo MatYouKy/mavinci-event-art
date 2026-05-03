@@ -36,7 +36,8 @@ interface InvoiceItem {
 
 export default function NewInvoicePage() {
   const router = useRouter();
-  const { employee: currentEmployee, isAdmin } = useCurrentEmployee();
+  const { employee: currentEmployee, isAdmin, loading: employeeLoading, canManageModule } = useCurrentEmployee();
+  const canManageInvoices = canManageModule('invoices');
   const searchParams = useSearchParams();
   const { showSnackbar } = useSnackbar();
   const eventId = searchParams.get('event');
@@ -80,8 +81,9 @@ export default function NewInvoicePage() {
   const [urlRelatedLoaded, setUrlRelatedLoaded] = useState(false);
 
   useEffect(() => {
+    if (employeeLoading) return;
     fetchData();
-  }, [eventId]);
+  }, [eventId, employeeLoading]);
 
   useEffect(() => {
     if (selectedCompanyId && !urlRelatedLoaded && !(urlType === 'corrective' && urlRelated)) {
@@ -214,12 +216,20 @@ export default function NewInvoicePage() {
         if (!isAdmin) {
           const allowedIds = (currentEmployee as any)?.my_company_ids;
           const invoicePerms = (currentEmployee as any)?.invoice_company_permissions || {};
-          if (Array.isArray(allowedIds) && allowedIds.length > 0) {
+          const hasAllowedList = Array.isArray(allowedIds) && allowedIds.length > 0;
+          if (hasAllowedList) {
             companiesList = companiesList.filter((c) => allowedIds.includes(c.id));
           }
-          companiesList = companiesList.filter(
-            (c) => Array.isArray(invoicePerms[c.id]) && invoicePerms[c.id].includes('issue'),
+          const hasAnyPerEntry = Object.values(invoicePerms).some(
+            (v) => Array.isArray(v) && v.length > 0,
           );
+          if (hasAnyPerEntry) {
+            companiesList = companiesList.filter(
+              (c) => Array.isArray(invoicePerms[c.id]) && invoicePerms[c.id].includes('issue'),
+            );
+          } else if (!canManageInvoices) {
+            companiesList = [];
+          }
         }
         setMyCompanies(companiesList);
         const defaultCompany = companiesList.find((c: MyCompany) => c.is_default);

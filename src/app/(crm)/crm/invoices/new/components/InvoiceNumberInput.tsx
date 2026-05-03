@@ -21,12 +21,17 @@ export default function InvoiceNumberInput({
   const [lastInvoiceNumber, setLastInvoiceNumber] = useState<string>('');
 
   useEffect(() => {
+    if (!myCompanyId) return;
     fetchNextInvoiceNumber();
-  }, [invoiceType]);
+  }, [invoiceType, myCompanyId]);
 
   const fetchNextInvoiceNumber = async () => {
     try {
       setLoading(true);
+
+      if (!myCompanyId) {
+        return;
+      }
 
       const { data: nextNumber, error } = await supabase.rpc('generate_invoice_number', {
         p_invoice_type: invoiceType,

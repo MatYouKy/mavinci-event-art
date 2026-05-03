@@ -145,6 +145,11 @@ export default function InvoicesPage() {
     return raw && typeof raw === 'object' ? raw : {};
   }, [currentEmployee]);
 
+  const hasAnyInvoiceCompanyPerm = useMemo(
+    () => Object.values(invoiceCompanyPerms).some((v) => Array.isArray(v) && v.length > 0),
+    [invoiceCompanyPerms],
+  );
+
   const companyHasPerm = useCallback(
     (companyId: string | null | undefined, scope: 'view_own' | 'view_all' | 'issue' | 'manage') => {
       if (isAdmin) return true;
@@ -157,10 +162,15 @@ export default function InvoicesPage() {
 
   const issuableCompanyIds = useMemo<string[]>(() => {
     if (isAdmin) return (allowedCompanyIds ?? myCompanies.map((c) => c.id));
-    return Object.entries(invoiceCompanyPerms)
+    const perCompany = Object.entries(invoiceCompanyPerms)
       .filter(([, scopes]) => Array.isArray(scopes) && scopes.includes('issue'))
       .map(([id]) => id);
-  }, [isAdmin, invoiceCompanyPerms, allowedCompanyIds, myCompanies]);
+    if (perCompany.length > 0) return perCompany;
+    if (canManageModule('invoices')) {
+      return allowedCompanyIds ?? myCompanies.map((c) => c.id);
+    }
+    return [];
+  }, [isAdmin, invoiceCompanyPerms, allowedCompanyIds, myCompanies, canManageModule]);
 
   const canIssueAny = isAdmin || issuableCompanyIds.length > 0;
   const { showConfirm } = useDialog();
@@ -363,12 +373,17 @@ export default function InvoicesPage() {
 
     if (!isAdmin) {
       const cid = (invoice as any).my_company_id as string | null;
-      if (!cid) return false;
-      const scopes = invoiceCompanyPerms[cid] || [];
-      const canViewAll = scopes.includes('view_all') || scopes.includes('manage');
-      const canViewOwn = canViewAll || scopes.includes('view_own') || scopes.includes('issue');
-      if (!canViewOwn) return false;
-      if (!canViewAll && (invoice as any).created_by !== sessionUserId) return false;
+      if (allowedCompanyIds && (!cid || !allowedCompanyIds.includes(cid))) return false;
+      if (hasAnyInvoiceCompanyPerm) {
+        if (!cid) return false;
+        const scopes = invoiceCompanyPerms[cid] || [];
+        const canViewAll = scopes.includes('view_all') || scopes.includes('manage');
+        const canViewOwn = canViewAll || scopes.includes('view_own') || scopes.includes('issue');
+        if (!canViewOwn) return false;
+        if (!canViewAll && (invoice as any).created_by !== sessionUserId) return false;
+      } else if (!canManageInvoices) {
+        return false;
+      }
     }
 
     return matchesSearch && matchesType && matchesStatus && matchesCompany;
