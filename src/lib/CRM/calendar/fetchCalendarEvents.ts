@@ -73,10 +73,11 @@ export async function fetchCalendarEventsServer() {
       return {
         id: `inquiry-${task.id}`,
         name: `Zapytanie: ${clientLabel}`,
+        priority: 'urgent',
         event_date: termin,
         event_end_date: termin,
         status: 'inquiry',
-        color: '#d3bb73',
+        color: '#ef4444',
         location: task.inquiry_details?.location_text || '',
         organization: null,
         category: { name: 'Zapytanie', color: '#d3bb73' },

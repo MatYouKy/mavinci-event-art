@@ -179,7 +179,7 @@ export default function NewInquiryModal({ isOpen, onClose, initialDate, onSaved 
         {
           title,
           description: descParts.join('\n'),
-          priority: 'high',
+          priority: 'urgent',
           status: 'todo',
           board_column: 'todo',
           order_index: newOrderIndex,
