@@ -46,8 +46,10 @@ export const calendarApi = createApi({
         try {
           const params = filters || {};
 
+          const { data: { user } } = await supabase.auth.getUser();
+
           // Fetch events and meetings directly - RLS will handle security
-          const [eventsResult, meetingsResult] = await Promise.all([
+          const [eventsResult, meetingsResult, inquiriesResult] = await Promise.all([
             supabase.from('events').select(`
                 id,
                 name,
@@ -93,6 +95,13 @@ export const calendarApi = createApi({
               `,
               )
               .is('deleted_at', null),
+            user
+              ? supabase
+                  .from('tasks')
+                  .select('id, title, description, due_date, inquiry_details, created_by, created_at')
+                  .eq('is_inquiry', true)
+                  .eq('created_by', user.id)
+              : Promise.resolve({ data: [], error: null } as any),
           ]);
 
           if (eventsResult.error) {
@@ -151,7 +160,37 @@ export const calendarApi = createApi({
                     .filter((e: any) => e.id) || [],
               }));
 
-          const allEvents = [...events, ...meetings];
+          const inquiries: CalendarEvent[] = inquiriesResult?.error
+            ? []
+            : ((inquiriesResult?.data || []) as any[])
+                .filter((t: any) => t.due_date || t.inquiry_details?.termin)
+                .map((task: any) => {
+                  const termin = task.due_date || task.inquiry_details?.termin;
+                  const clientLabel =
+                    task.inquiry_details?.client_text ||
+                    task.inquiry_details?.client_phone ||
+                    task.inquiry_details?.client_email ||
+                    'nieznany';
+                  return {
+                    id: `inquiry-${task.id}`,
+                    name: `Zapytanie: ${clientLabel}`,
+                    event_date: termin,
+                    event_end_date: termin,
+                    status: 'inquiry',
+                    color: '#d3bb73',
+                    location: task.inquiry_details?.location_text || '',
+                    organization: null,
+                    category: { name: 'Zapytanie', color: '#d3bb73' },
+                    is_meeting: false,
+                    is_inquiry: true,
+                    inquiry_data: { ...task, task_id: task.id },
+                    assigned_employees: [],
+                    event_vehicles: [],
+                    event_equipment: [],
+                  } as any;
+                });
+
+          const allEvents = [...events, ...meetings, ...inquiries];
 
           let filteredEvents = allEvents;
 
