@@ -1,7 +1,7 @@
 'use client';
 
 import { CalendarViewProps } from './types';
-import { getDaysInMonth, getEventsForDate, isToday } from './utils';
+import { getDaysInMonth, getEventOccurrencesForDate, isToday } from './utils';
 import { STATUS_COLORS } from './constants';
 import { DAYS_OF_WEEK } from './constants';
 import { Plus, Layers } from 'lucide-react';
@@ -40,7 +40,7 @@ export default function MonthView({
             return <div key={index} className="bg-[#1c1f33] h-[130px]" />;
           }
 
-          const dayEvents = getEventsForDate(date, events);
+          const dayEvents = getEventOccurrencesForDate(date, events);
           const today = isToday(date);
           const eventCount = dayEvents.length;
 
@@ -87,14 +87,15 @@ export default function MonthView({
               {eventCount > 0 && (
                 <div className="relative flex-1 flex flex-col">
                   <div className="space-y-1 flex-1 overflow-hidden">
-                    {dayEvents.slice(0, maxVisibleEvents).map((event, idx) => {
+                    {dayEvents.slice(0, maxVisibleEvents).map((occurrence, idx) => {
+                      const { event, dayIndex, totalDays } = occurrence;
                       const isLast = idx === maxVisibleEvents - 1;
                       const remainingCount = eventCount - maxVisibleEvents;
                       const showStack = isLast && remainingCount > 0;
 
                       return (
                         <div
-                          key={event.id}
+                          key={`${event.id}-${dayIndex}`}
                           className="relative"
                           style={{
                             transform: showStack ? `translateY(-${remainingCount * 2}px)` : 'none',
@@ -160,6 +161,11 @@ export default function MonthView({
                                 />
                               )}
                               <span className="truncate">{event.name}</span>
+                              {totalDays > 1 && (
+                                <span className="ml-auto flex-shrink-0 text-[10px] opacity-80 font-semibold">
+                                  {dayIndex}/{totalDays}
+                                </span>
+                              )}
                             </span>
                           </div>
                         </div>

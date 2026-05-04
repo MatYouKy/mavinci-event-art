@@ -49,6 +49,63 @@ export const getEventsForDate = (date: Date, events: CalendarEvent[]): CalendarE
   });
 };
 
+const EARLY_MORNING_CUTOFF_HOUR = 6;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+export const getEventDaySpan = (
+  event: CalendarEvent,
+): { startDay: Date; totalDays: number } => {
+  const start = new Date(event.event_date);
+  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+
+  if (!event.event_end_date) {
+    return { startDay, totalDays: 1 };
+  }
+
+  const end = new Date(event.event_end_date);
+  if (end.getTime() <= start.getTime()) {
+    return { startDay, totalDays: 1 };
+  }
+
+  const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  const isNextDay = endDay.getTime() === startDay.getTime() + MS_PER_DAY;
+
+  if (isNextDay && end.getHours() < EARLY_MORNING_CUTOFF_HOUR) {
+    return { startDay, totalDays: 1 };
+  }
+
+  const totalDays = Math.max(
+    1,
+    Math.round((endDay.getTime() - startDay.getTime()) / MS_PER_DAY) + 1,
+  );
+
+  return { startDay, totalDays };
+};
+
+export interface CalendarEventOccurrence {
+  event: CalendarEvent;
+  dayIndex: number;
+  totalDays: number;
+}
+
+export const getEventOccurrencesForDate = (
+  date: Date,
+  events: CalendarEvent[],
+): CalendarEventOccurrence[] => {
+  const targetDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const occurrences: CalendarEventOccurrence[] = [];
+
+  events.forEach((event) => {
+    const { startDay, totalDays } = getEventDaySpan(event);
+    const diffDays = Math.round((targetDay.getTime() - startDay.getTime()) / MS_PER_DAY);
+    if (diffDays >= 0 && diffDays < totalDays) {
+      occurrences.push({ event, dayIndex: diffDays + 1, totalDays });
+    }
+  });
+
+  return occurrences;
+};
+
 export const getEventsForDateRange = (
   startDate: Date,
   endDate: Date,
