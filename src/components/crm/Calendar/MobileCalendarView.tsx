@@ -84,6 +84,11 @@ export default function MobileCalendarView({
   };
 
   const handleEventClick = (event: CalendarEvent) => {
+    if ((event as any).is_inquiry) {
+      const taskId = (event as any).inquiry_data?.task_id;
+      if (taskId) router.push(`/crm/tasks/${taskId}`);
+      return;
+    }
     if ((event as any).is_meeting) {
       router.push(`/crm/calendar/meeting/${event.id}`);
     } else {
