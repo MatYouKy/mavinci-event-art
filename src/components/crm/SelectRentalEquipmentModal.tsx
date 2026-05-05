@@ -30,7 +30,7 @@ interface RentalEquipment {
   name: string;
   description: string | null;
   category: string | null;
-  daily_rental_price: number | null;
+  rental_price_per_day: number | null;
   quantity_available: number;
   thumbnail_url: string | null;
   specifications: any;
@@ -71,7 +71,7 @@ export default function SelectRentalEquipmentModal({
           id,
           name,
           description,
-          daily_rental_price,
+          rental_price_per_day,
           quantity_available,
           thumbnail_url,
           specifications,
@@ -120,7 +120,7 @@ export default function SelectRentalEquipmentModal({
           id: item.id,
           name: item.name,
           description: item.description,
-          daily_rental_price: item.daily_rental_price,
+          rental_price_per_day: item.rental_price_per_day,
           quantity_available: item.quantity_available,
           thumbnail_url: item.thumbnail_url,
           specifications: item.specifications,
@@ -284,9 +284,9 @@ export default function SelectRentalEquipmentModal({
                     </div>
                   </div>
                   <div className="text-right">
-                    {eq.daily_rental_price && (
+                    {eq.rental_price_per_day && (
                       <div className="mb-1 text-sm font-medium text-green-400">
-                        {eq.daily_rental_price} zł/dzień
+                        {eq.rental_price_per_day.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł/dzień
                       </div>
                     )}
                     <div className="text-xs text-[#e5e4e2]/50">
@@ -340,11 +340,11 @@ export default function SelectRentalEquipmentModal({
                         {selectedEquipment.category || 'Brak'}
                       </div>
                     </div>
-                    {selectedEquipment.daily_rental_price && (
+                    {selectedEquipment.rental_price_per_day && (
                       <div>
                         <div className="mb-1 text-xs text-[#e5e4e2]/50">Cena wypożyczenia</div>
                         <div className="font-medium text-green-400">
-                          {selectedEquipment.daily_rental_price} zł/dzień
+                          {selectedEquipment.rental_price_per_day.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł/dzień
                         </div>
                       </div>
                     )}

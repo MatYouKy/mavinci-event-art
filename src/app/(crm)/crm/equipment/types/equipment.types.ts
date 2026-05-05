@@ -72,7 +72,7 @@ export interface EquipmentItemRow {
   purchase_date: ISODate | null;
   purchase_price: PGNumeric | null; // numeric
   current_value: PGNumeric | null; // numeric
-  rental_price: PGNumeric | null; // numeric
+  rental_price_per_day: PGNumeric | null; // numeric
   warranty_until: ISODate | null;
 
   serial_number: string | null;

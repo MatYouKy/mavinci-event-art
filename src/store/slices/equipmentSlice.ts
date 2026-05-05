@@ -113,6 +113,7 @@ export interface EquipmentItem {
   purchase_date: string | null;
   purchase_price: number | null;
   current_value: number | null;
+  rental_price_per_day: number | null;
   warranty_until: string | null;
   serial_number: string | null;
   barcode: string | null;

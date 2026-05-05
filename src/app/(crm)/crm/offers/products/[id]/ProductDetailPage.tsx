@@ -169,7 +169,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
       if (service) {
         const isEquipment = (service as any)._type === 'equipment';
         const priceGross = isEquipment
-          ? (service as any).daily_price_gross || (service as any).daily_rental_price
+          ? (service as any).daily_price_gross || (service as any).rental_price_per_day
           : (service as any).price_gross || (service as any).unit_price;
         const priceNet = isEquipment
           ? (service as any).daily_price_net
@@ -287,7 +287,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
 
     // Wybierz cenę w zależności od typu
     const price = isEquipment
-      ? (item as any).daily_rental_price || 0
+      ? (item as any).rental_price_per_day || 0
       : (item as any).unit_price || 0;
 
     const unit = isEquipment ? 'dzień' : (item as any).unit || 'szt';
@@ -980,7 +980,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                         {subcontractorServices.map((item) => {
                           const isEquipment = (item as any)._type === 'equipment';
                           const price = isEquipment
-                            ? (item as any).daily_rental_price
+                            ? (item as any).rental_price_per_day
                             : (item as any).unit_price;
                           const unit = isEquipment ? 'dzień' : (item as any).unit || 'szt';
                           const badge = isEquipment ? '[WYNAJEM] ' : '[USŁUGA] ';
@@ -1133,7 +1133,7 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
                         {subcontractorServices.map((item) => {
                           const isEquip = (item as any)._type === 'equipment';
                           const price = isEquip
-                            ? (item as any).daily_rental_price
+                            ? (item as any).rental_price_per_day
                             : (item as any).unit_price;
                           const unit = isEquip ? 'dzień' : (item as any).unit || 'szt';
                           const badge = isEquip ? '[WYNAJEM] ' : '[USŁUGA] ';

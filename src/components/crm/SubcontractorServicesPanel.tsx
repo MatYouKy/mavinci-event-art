@@ -33,7 +33,7 @@ interface ServiceCatalogItem {
   description: string | null;
   category: string | null;
   unit_price?: number;
-  daily_rental_price?: number;
+  rental_price_per_day?: number;
   unit?: string;
   quantity_available?: number;
   thumbnail_url: string | null;
@@ -346,7 +346,7 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
           break;
         case 'rental':
           tableName = 'subcontractor_rental_equipment';
-          insertData.daily_rental_price = newItemPrice;
+          insertData.rental_price_per_day = newItemPrice;
           insertData.weekly_rental_price = newItemWeeklyPrice || null;
           insertData.monthly_rental_price = newItemMonthlyPrice || null;
           insertData.quantity_available = newItemQuantity;
@@ -627,8 +627,8 @@ export default function SubcontractorServicesPanel({ subcontractorId, organizati
                               {item.price_net != null && item.price_net > 0 && !item.unit_price && (
                                 <span className="text-green-400">{item.price_net} zl netto</span>
                               )}
-                              {item.daily_rental_price != null && item.daily_rental_price > 0 && (
-                                <span className="text-green-400">{item.daily_rental_price} zl / dzien</span>
+                              {item.rental_price_per_day != null && item.rental_price_per_day > 0 && (
+                                <span className="text-green-400">{item.rental_price_per_day} zl / dzien</span>
                               )}
                               {!item.is_active && (
                                 <span className="text-xs text-red-400">Nieaktywny</span>

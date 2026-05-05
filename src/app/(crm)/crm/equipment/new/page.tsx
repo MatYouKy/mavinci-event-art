@@ -63,7 +63,7 @@ export default function NewEquipmentPage() {
     purchase_date: '',
     purchase_price: '',
     current_value: '',
-    rental_price: '',
+    rental_price_per_day: '',
     warranty_until: '',
     serial_number: '',
     barcode: '',
@@ -559,12 +559,12 @@ export default function NewEquipmentPage() {
             </div>
 
             <div>
-              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Rentalna cena (zł)</label>
+              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Rentalna cena za dzień (zł)</label>
               <input
                 type="number"
                 step="0.01"
-                name="rental_price"
-                value={formData.rental_price}
+                name="rental_price_per_day"
+                value={formData.rental_price_per_day}
                 onChange={handleInputChange}
                 className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                 placeholder="0.00"

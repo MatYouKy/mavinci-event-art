@@ -195,8 +195,8 @@ export default function RentalEquipmentListPage() {
                   <div className="flex items-center gap-1 text-sm">
                     <DollarSign className="h-4 w-4 text-[#d3bb73]" />
                     <span className="text-[#e5e4e2]">
-                      {item.daily_rental_price
-                        ? `${item.daily_rental_price.toLocaleString('pl-PL')} zł/dzień`
+                      {item.rental_price_per_day
+                        ? `${item.rental_price_per_day.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł/dzień`
                         : 'Cena do ustalenia'}
                     </span>
                   </div>

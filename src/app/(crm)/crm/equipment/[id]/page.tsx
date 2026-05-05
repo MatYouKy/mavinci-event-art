@@ -232,7 +232,7 @@ export default function EquipmentDetailPage() {
         purchase_date: editForm.purchase_date || null,
         purchase_price: toFloat(editForm.purchase_price),
         current_value: toFloat(editForm.current_value),
-        rental_price:  toFloat(editForm.rental_price),
+        rental_price_per_day: toFloat(editForm.rental_price_per_day),
         warranty_until: editForm.warranty_until || null,
         serial_number: editForm.serial_number || null,
         barcode: editForm.barcode || null,
@@ -259,7 +259,7 @@ export default function EquipmentDetailPage() {
           old: equipment?.purchase_price,
           new: toFloat(editForm.purchase_price),
         },
-        { name: 'rental_price', old: equipment?.rental_price, new: toFloat(editForm.rental_price) },
+        { name: 'rental_price_per_day', old: equipment?.rental_price_per_day, new: toFloat(editForm.rental_price_per_day) },
         { name: 'serial_number', old: equipment?.serial_number, new: editForm.serial_number },
       ];
       for (const f of fieldsToLog) await logChange(f.name, f.old, f.new);

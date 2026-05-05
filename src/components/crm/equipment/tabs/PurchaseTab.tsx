@@ -30,7 +30,7 @@ export function PurchaseTab({ equipment, editForm, isEditing, onInputChange }: a
         {[
           { name: 'purchase_price', label: 'Cena zakupu (zł)', step: '0.01' },
           { name: 'current_value', label: 'Wartość bieżąca (zł)', step: '0.01' },
-          { name: 'rental_price', label: 'Rentalna cena (zł)', step: '0.01' },
+          { name: 'rental_price_per_day', label: 'Rentalna cena za dzień (zł)', step: '0.01' },
         ].map(({ name, label, step }) => (
           <div key={name}>
             <label className="block text-sm text-[#e5e4e2]/60 mb-2">{label}</label>
