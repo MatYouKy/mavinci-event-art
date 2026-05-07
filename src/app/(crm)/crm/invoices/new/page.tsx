@@ -58,7 +58,7 @@ export default function NewInvoicePage() {
   const [invoiceNumber, setInvoiceNumber] = useState<string>('');
   const [issueDate, setIssueDate] = useState(new Date().toISOString().split('T')[0]);
   const [saleDate, setSaleDate] = useState(new Date().toISOString().split('T')[0]);
-  const [paymentDays, setPaymentDays] = useState(14);
+  const [paymentDays, setPaymentDays] = useState(7);
   const [paymentMethod, setPaymentMethod] = useState<'Przelew' | 'Gotówka' | 'Karta' | 'BLIK'>(
     'Przelew',
   );

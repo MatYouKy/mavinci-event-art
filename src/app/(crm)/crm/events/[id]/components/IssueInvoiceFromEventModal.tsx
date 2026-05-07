@@ -61,7 +61,7 @@ export default function IssueInvoiceFromEventModal({
   const [invoiceData, setInvoiceData] = useState({
     issue_date: new Date().toISOString().split('T')[0],
     sale_date: new Date().toISOString().split('T')[0],
-    payment_days: 14,
+    payment_days: 7,
   });
 
   useEffect(() => {
