@@ -33,7 +33,7 @@ export default function InvoiceNumberInput({
         return;
       }
 
-      const { data: nextNumber, error } = await supabase.rpc('generate_invoice_number', {
+      const { data: nextNumber, error } = await supabase.rpc('peek_next_invoice_number', {
         p_invoice_type: invoiceType,
         p_my_company_id: myCompanyId,
       });
