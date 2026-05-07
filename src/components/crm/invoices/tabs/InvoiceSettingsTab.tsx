@@ -10,17 +10,32 @@ export function InvoiceSettingsTab() {
   const [existingNumbers, setExistingNumbers] = useState<string[]>([]);
   const { employee: currentEmployee, isAdmin, loading: employeeLoading, canManageModule } = useCurrentEmployee();
 
+  const canManageInvoices = useMemo(() => {
+    return canManageModule('invoices');
+  }, [currentEmployee]);
+
+
+
+  const allowedCompanyIdsKey = JSON.stringify((currentEmployee as any)?.my_company_ids ?? null);
+
   const allowedCompanyIds = useMemo<string[] | null>(() => {
     if (isAdmin) return null;
+  
     const ids = (currentEmployee as any)?.my_company_ids;
+  
     if (!Array.isArray(ids) || ids.length === 0) return null;
+  
     return ids as string[];
-  }, [isAdmin, currentEmployee]);
+  }, [isAdmin, allowedCompanyIdsKey]);
 
+  const invoiceCompanyPermsKey = JSON.stringify(
+    (currentEmployee as any)?.invoice_company_permissions ?? {},
+  );
+  
   const invoiceCompanyPerms = useMemo<Record<string, string[]>>(() => {
     const raw = (currentEmployee as any)?.invoice_company_permissions;
     return raw && typeof raw === 'object' ? raw : {};
-  }, [currentEmployee]);
+  }, [invoiceCompanyPermsKey]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -55,7 +70,7 @@ export function InvoiceSettingsTab() {
             const scopes = invoiceCompanyPerms[c.id] || [];
             return scopes.includes('manage') || scopes.includes('issue') || scopes.includes('view_all') || scopes.includes('view_own');
           });
-        } else if (!canManageModule('invoices')) {
+        } else if (!canManageInvoices) {
           companiesList = [];
         }
       }
@@ -71,7 +86,7 @@ export function InvoiceSettingsTab() {
     } finally {
       setLoading(false);
     }
-  }, [isAdmin, allowedCompanyIds, invoiceCompanyPerms, canManageModule]);
+  }, [isAdmin, allowedCompanyIds, invoiceCompanyPerms, canManageInvoices]);
 
   useEffect(() => {
     if (employeeLoading) return;
