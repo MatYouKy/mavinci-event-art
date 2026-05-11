@@ -351,25 +351,24 @@ function CalculationEditor({
     if (ev) {
       setEventName(ev.name ?? '');
       setEventDate(ev.event_date ?? null);
-      if (ev.my_company_id) {
-        const { data: comp } = await supabase
-          .from('my_companies')
-          .select(
-            'id, name, legal_name, nip, logo_url, street, building_number, apartment_number, postal_code, city, email, phone, website',
-          )
-          .eq('id', ev.my_company_id)
-          .maybeSingle();
-        setCompany(comp || null);
+      const companyQuery = supabase
+        .from('my_companies')
+        .select(
+          'id, name, legal_name, nip, logo_url, street, building_number, apartment_number, postal_code, city, email, phone, website',
+        );
+      const { data: comp } = ev.my_company_id
+        ? await companyQuery.eq('id', ev.my_company_id).maybeSingle()
+        : await companyQuery.eq('is_default', true).eq('is_active', true).maybeSingle();
+      if (comp) {
+        const rawLogo = (comp as any).logo_url as string | null;
+        let resolvedLogo = rawLogo;
+        if (rawLogo && !/^https?:\/\//i.test(rawLogo) && !rawLogo.startsWith('data:')) {
+          const { data: pub } = supabase.storage.from('company-logos').getPublicUrl(rawLogo);
+          resolvedLogo = pub?.publicUrl || rawLogo;
+        }
+        setCompany({ ...comp, logo_url: resolvedLogo });
       } else {
-        const { data: comp } = await supabase
-          .from('my_companies')
-          .select(
-            'id, name, legal_name, nip, logo_url, street, building_number, apartment_number, postal_code, city, email, phone, website',
-          )
-          .eq('is_default', true)
-          .eq('is_active', true)
-          .maybeSingle();
-        setCompany(comp || null);
+        setCompany(null);
       }
     }
     setLoading(false);
