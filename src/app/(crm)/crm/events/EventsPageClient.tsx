@@ -487,9 +487,21 @@ export default function EventsPageClient({
     if (!eventToDelete) return;
 
     try {
-      const { error } = await supabase.from('events').delete().eq('id', eventToDelete.id);
+      const { data, error } = await supabase
+        .from('events')
+        .delete()
+        .eq('id', eventToDelete.id)
+        .select('id');
 
       if (error) throw error;
+
+      if (!data || data.length === 0) {
+        showSnackbar(
+          'Nie masz uprawnień do usunięcia tego eventu lub event nie istnieje',
+          'error',
+        );
+        return;
+      }
 
       showSnackbar('Event został usunięty', 'success');
       setDeleteModalOpen(false);

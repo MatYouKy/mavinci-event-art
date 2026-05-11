@@ -238,11 +238,15 @@ export default function EditEventModalNew({
                     className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                   >
                     <option value="inquiry">Zapytanie</option>
-                    <option value="planning">Planowanie</option>
-                    <option value="confirmed">Potwierdzone</option>
+                    <option value="offer_to_send">Oferta do wysłania</option>
+                    <option value="offer_sent">Oferta wysłana</option>
+                    <option value="offer_accepted">Oferta zaakceptowana</option>
+                    <option value="in_preparation">W przygotowaniu</option>
+                    <option value="ready_for_live">Gotowe do realizacji</option>
                     <option value="in_progress">W trakcie</option>
                     <option value="completed">Zakończone</option>
                     <option value="cancelled">Anulowane</option>
+                    <option value="invoiced">Zafakturowane</option>
                   </select>
                 </div>
               </div>
