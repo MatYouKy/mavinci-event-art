@@ -27,8 +27,10 @@ import { usePortalDropdown } from '@/hooks/usePortalDropdown';
 import { PortalDropdownMenu } from '@/components/UI/PortalDropdownMenu/PortalDropdownMenu';
 import SendCalculationEmailModal from '@/components/crm/SendCalculationEmailModal';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
+import { DEFAULT_VAT, fmt, round2, rowGross, rowNet } from '@/components/crm/events/helpers/calculations/calculations.helper';
+import { buildCalculationHtml } from '@/components/crm/events/pdf/buildCalculationHtml';
 
-type Category = 'equipment' | 'staff' | 'transport' | 'other';
+export type Category = 'equipment' | 'staff' | 'transport' | 'other';
 
 interface CalculationRow {
   id: string;
@@ -41,7 +43,7 @@ interface CalculationRow {
   total?: number;
 }
 
-interface CalcItem {
+export interface CalcItem {
   id?: string;
   calculation_id?: string;
   category: Category;
@@ -90,13 +92,8 @@ const CATEGORY_META: Record<
   other: { label: 'Pozostałe', icon: MoreHorizontal },
 };
 
-const DEFAULT_VAT = 23;
-const round2 = (n: number) => Math.round(n * 100) / 100;
-const rowNet = (it: CalcItem) => round2(it.quantity * it.unit_price * (it.days || 1));
-const rowGross = (it: CalcItem) => round2(rowNet(it) * (1 + (it.vat_rate ?? DEFAULT_VAT) / 100));
-const rowTotal = rowNet;
-const fmt = (n: number) =>
-  n.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// const rowTotal = rowNet;
 
 export default function EventCalculationsTab({ eventId }: Props) {
   const { showSnackbar } = useSnackbar();
@@ -1487,257 +1484,4 @@ function ImportFromOfferModal({
       </div>
     </div>
   );
-}
-
-/* -------------------- Print HTML -------------------- */
-
-function buildCalculationHtml(params: {
-  name: string;
-  notes: string;
-  eventName: string;
-  eventDate: string | null;
-  grouped: Record<Category, CalcItem[]>;
-  categoryTotals: Record<Category, number>;
-  categoryTotalsGross: Record<Category, number>;
-  grandTotal: number;
-  grandTotalGross: number;
-  company?: any;
-}): string {
-  const {
-    name,
-    notes,
-    eventName,
-    eventDate,
-    grouped,
-    categoryTotals,
-    categoryTotalsGross,
-    grandTotal,
-    grandTotalGross,
-    company,
-  } = params;
-  const formattedDate = eventDate
-    ? new Date(eventDate).toLocaleDateString('pl-PL', {
-        day: '2-digit',
-        month: 'long',
-        year: 'numeric',
-      })
-    : '';
-
-  const esc = (s: string) =>
-    (s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-  const categoryLabel: Record<Category, string> = {
-    equipment: 'Sprzęt',
-    staff: 'Ludzie',
-    transport: 'Transport',
-    other: 'Pozostałe',
-  };
-
-  const sections = (Object.keys(categoryLabel) as Category[])
-    .filter((cat) => grouped[cat].length > 0)
-    .map((cat) => {
-      const rows = grouped[cat]
-        .map(
-          (it) => `
-        <tr>
-          <td>${esc(it.name)}${it.description ? `<div class="desc">${esc(it.description)}</div>` : ''}</td>
-          <td class="num">${it.quantity}</td>
-          <td class="num">${esc(it.unit)}</td>
-          <td class="num">${it.days}</td>
-          <td class="num">${fmt(it.unit_price)}</td>
-          <td class="num">${it.vat_rate ?? DEFAULT_VAT}%</td>
-          <td class="num strong">${fmt(rowNet(it))}</td>
-          <td class="num strong accent">${fmt(rowGross(it))}</td>
-        </tr>
-      `,
-        )
-        .join('');
-      return `
-        <section>
-          <h2>${categoryLabel[cat]}</h2>
-          <table class="items">
-            <thead>
-              <tr>
-                <th>Nazwa</th>
-                <th class="num">Ilość</th>
-                <th class="num">Jedn.</th>
-                <th class="num">Dni</th>
-                <th class="num">Cena jedn.</th>
-                <th class="num">VAT</th>
-                <th class="num">Netto</th>
-                <th class="num">Brutto</th>
-              </tr>
-            </thead>
-            <tbody>${rows}</tbody>
-            <tfoot>
-              <tr>
-                <td colspan="6" class="right">Podsuma ${categoryLabel[cat]}:</td>
-                <td class="num strong">${fmt(categoryTotals[cat])} PLN</td>
-                <td class="num strong accent">${fmt(categoryTotalsGross[cat])} PLN</td>
-              </tr>
-            </tfoot>
-          </table>
-        </section>
-      `;
-    })
-    .join('');
-
-  return `<!DOCTYPE html>
-<html lang="pl">
-<head>
-<meta charset="utf-8" />
-<title>${esc(name)}</title>
-<style>
-  * { box-sizing: border-box; }
-  body {
-    font-family: 'Helvetica Neue', Arial, sans-serif;
-    color: #1c1f33;
-    margin: 0;
-    padding: 40px 48px;
-    background: #fff;
-  }
-  header {
-    border-bottom: 2px solid #d3bb73;
-    padding-bottom: 16px;
-    margin-bottom: 24px;
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 24px;
-  }
-  header h1 {
-    margin: 0;
-    font-size: 22px;
-    font-weight: 300;
-    letter-spacing: 0.5px;
-  }
-  header .brand { display: flex; align-items: flex-start; gap: 16px; }
-  header .brand img.logo {
-    max-height: 64px;
-    max-width: 180px;
-    object-fit: contain;
-  }
-  header .meta {
-    font-size: 11px;
-    color: #555;
-    text-align: right;
-    line-height: 1.5;
-  }
-  header .meta strong { color: #1c1f33; }
-  header .meta .company-name { font-size: 13px; color: #1c1f33; font-weight: 600; }
-  section { margin-bottom: 24px; page-break-inside: avoid; }
-  section h2 {
-    font-size: 14px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: #d3bb73;
-    border-bottom: 1px solid #d3bb73;
-    padding-bottom: 4px;
-    margin: 0 0 8px 0;
-  }
-  table.items {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 12px;
-  }
-  table.items th, table.items td {
-    padding: 8px 10px;
-    border-bottom: 1px solid #eee;
-    text-align: left;
-    vertical-align: top;
-  }
-  table.items th {
-    background: #f6f3ea;
-    font-weight: 600;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: #4a4331;
-  }
-  table.items td.num, table.items th.num { text-align: right; white-space: nowrap; }
-  table.items td.strong { font-weight: 600; }
-  table.items td.accent { color: #b1963f; }
-  table.items td.right { text-align: right; font-weight: 500; color: #555; }
-  table.items .desc { font-size: 11px; color: #777; margin-top: 2px; }
-  table.items tfoot td { border-top: 1px solid #d3bb73; border-bottom: none; background: #fafaf3; }
-  .grand {
-    margin-top: 16px;
-    padding: 16px 20px;
-    background: #1c1f33;
-    color: #f5f5f5;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-radius: 4px;
-  }
-  .grand .value { color: #d3bb73; font-size: 22px; font-weight: 300; }
-  .notes {
-    margin-top: 24px;
-    padding: 12px 16px;
-    background: #faf8f2;
-    border-left: 3px solid #d3bb73;
-    font-size: 12px;
-    color: #4a4331;
-    white-space: pre-wrap;
-  }
-  footer {
-    margin-top: 40px;
-    font-size: 10px;
-    color: #999;
-    text-align: center;
-    border-top: 1px solid #eee;
-    padding-top: 8px;
-  }
-  @media print { body { padding: 20px 28px; } }
-</style>
-</head>
-<body>
-  <header>
-    <div class="brand">
-      ${company?.logo_url ? `<img class="logo" src="${esc(company.logo_url)}" alt="${esc(company?.name || '')}" />` : ''}
-      <div>
-        <h1>${esc(name) || 'Kalkulacja'}</h1>
-        <div style="font-size:12px;color:#555;margin-top:4px;">
-          ${eventName ? `Wydarzenie: <strong>${esc(eventName)}</strong>` : ''}
-          ${formattedDate ? ` &middot; ${esc(formattedDate)}` : ''}
-        </div>
-      </div>
-    </div>
-    <div class="meta">
-      ${
-        company
-          ? `<div class="company-name">${esc(company.legal_name || company.name || '')}</div>
-             ${company.nip ? `<div>NIP: ${esc(company.nip)}</div>` : ''}
-             ${company.street ? `<div>${esc(company.street)}${company.building_number ? ` ${esc(company.building_number)}` : ''}${company.apartment_number ? `/${esc(company.apartment_number)}` : ''}</div>` : ''}
-             ${company.postal_code || company.city ? `<div>${esc(company.postal_code || '')} ${esc(company.city || '')}</div>` : ''}
-             <div style="margin-top:6px;color:#888;">Wygenerowano: <strong>${new Date().toLocaleDateString('pl-PL')}</strong></div>`
-          : `<div>Wygenerowano</div><strong>${new Date().toLocaleDateString('pl-PL')}</strong>`
-      }
-    </div>
-  </header>
-  ${sections || '<p style="color:#888;text-align:center;padding:40px 0;">Brak pozycji</p>'}
-  <div class="grand">
-    <div>
-      <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#bcbcbc;">Netto</div>
-      <div style="font-size:16px;color:#f5f5f5;">${fmt(grandTotal)} PLN</div>
-    </div>
-    <div>
-      <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#bcbcbc;">VAT</div>
-      <div style="font-size:16px;color:#f5f5f5;">${fmt(round2(grandTotalGross - grandTotal))} PLN</div>
-    </div>
-    <div>
-      <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#d3bb73;">Brutto</div>
-      <div class="value">${fmt(grandTotalGross)} PLN</div>
-    </div>
-  </div>
-  ${notes ? `<div class="notes">${esc(notes)}</div>` : ''}
-  <footer>
-    ${
-      company
-        ? `${esc(company.legal_name || company.name || '')}${company.nip ? ` &middot; NIP: ${esc(company.nip)}` : ''}${company.email ? ` &middot; ${esc(company.email)}` : ''}${company.phone ? ` &middot; ${esc(company.phone)}` : ''}${company.website ? ` &middot; ${esc(company.website)}` : ''}`
-        : 'Kalkulacja wydarzenia'
-    }
-  </footer>
-</body>
-</html>`;
 }
