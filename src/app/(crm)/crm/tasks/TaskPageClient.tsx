@@ -13,6 +13,7 @@ import {
   GripVertical,
   Play,
   Clock,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -226,6 +227,9 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
 
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [filteredEmployees, setFilteredEmployees] = useState<Employee[]>([]);
+  const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
+  const [thumbnailPreview, setThumbnailPreview] = useState<string | null>(null);
+  const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
   const [dragOverColumn, setDragOverColumn] = useState<TaskBoardColumn | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const autoScrollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -418,6 +422,8 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
         assigned_employees: [],
       });
     }
+    setThumbnailFile(null);
+    setThumbnailPreview(null);
     setShowModal(true);
   };
 
@@ -426,6 +432,49 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
     setEditingTask(null);
     setEmployeeSearch('');
     setFilteredEmployees([]);
+    setThumbnailFile(null);
+    setThumbnailPreview(null);
+  };
+
+  const handleThumbnailSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setThumbnailFile(file);
+    setThumbnailPreview(URL.createObjectURL(file));
+  };
+
+  const handleRemoveThumbnailSelection = () => {
+    setThumbnailFile(null);
+    if (thumbnailPreview) URL.revokeObjectURL(thumbnailPreview);
+    setThumbnailPreview(null);
+  };
+
+  const uploadTaskThumbnail = async (taskId: string, file: File): Promise<string | null> => {
+    try {
+      setUploadingThumbnail(true);
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random()}.${fileExt}`;
+      const filePath = `task-thumbnails/${taskId}/${fileName}`;
+      const { error: uploadError } = await supabase.storage
+        .from('event-files')
+        .upload(filePath, file);
+      if (uploadError) throw uploadError;
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from('event-files').getPublicUrl(filePath);
+      const { error: updateError } = await supabase
+        .from('tasks')
+        .update({ thumbnail_url: publicUrl })
+        .eq('id', taskId);
+      if (updateError) throw updateError;
+      return publicUrl;
+    } catch (error) {
+      console.error('Error uploading thumbnail:', error);
+      showSnackbar('Błąd podczas przesyłania zdjęcia', 'error');
+      return null;
+    } finally {
+      setUploadingThumbnail(false);
+    }
   };
 
   const handleEmployeeSearch = (value: string) => {
@@ -480,9 +529,13 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
           assigned_by: currentEmployee?.id,
         }).unwrap();
 
+        if (thumbnailFile) {
+          await uploadTaskThumbnail(editingTask.id, thumbnailFile);
+        }
+
         showSnackbar('Zadanie zostało zaktualizowane', 'success');
       } else {
-        await createTask({
+        const created = await createTask({
           title: formData.title,
           description: formData.description || null,
           priority: formData.priority,
@@ -493,6 +546,10 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
           owner_id: currentEmployee?.id || null,
           is_private: false,
         }).unwrap();
+
+        if (thumbnailFile && created?.id) {
+          await uploadTaskThumbnail(created.id, thumbnailFile);
+        }
 
         showSnackbar('Zadanie zostało utworzone', 'success');
       }
@@ -832,6 +889,40 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
                   className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
                   placeholder="Wprowadź opis zadania"
                 />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Zdjęcie</label>
+                {thumbnailPreview ? (
+                  <div className="group relative inline-block">
+                    <img
+                      src={thumbnailPreview}
+                      alt="Podgląd zdjęcia"
+                      className="h-32 w-32 rounded-lg border border-[#d3bb73]/20 object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleRemoveThumbnailSelection}
+                      className="absolute right-2 top-2 rounded-lg bg-red-500/90 p-1.5 text-white opacity-0 transition-opacity hover:bg-red-500 group-hover:opacity-100"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex h-32 w-48 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-[#d3bb73]/30 transition-colors hover:bg-[#d3bb73]/5">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleThumbnailSelect}
+                      className="hidden"
+                      disabled={uploadingThumbnail}
+                    />
+                    <ImageIcon className="mb-2 h-8 w-8 text-[#d3bb73]/50" />
+                    <span className="text-xs text-[#e5e4e2]/50">
+                      {uploadingThumbnail ? 'Przesyłanie...' : 'Dodaj zdjęcie'}
+                    </span>
+                  </label>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">

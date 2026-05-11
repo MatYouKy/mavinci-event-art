@@ -903,10 +903,10 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
                   </label>
                   {task?.thumbnail_url ? (
                     <div className="group relative inline-block">
-                      <EmployeeAvatar
-                        employee={task?.creator as unknown as IEmployee}
-                        size={128}
-                        showActivityStatus
+                      <img
+                        src={task.thumbnail_url}
+                        alt={task.title || 'Zdjęcie zadania'}
+                        className="h-32 w-32 rounded-lg border border-[#d3bb73]/20 object-cover"
                       />
                       <button
                         onClick={handleRemoveThumbnail}
@@ -1009,10 +1009,14 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
 
                 {task.thumbnail_url && (
                   <div>
-                    <EmployeeAvatar
-                      employee={task?.creator as unknown as IEmployee}
-                      size={isMobile ? 128 : 256}
-                      showActivityStatus
+                    <img
+                      src={task.thumbnail_url}
+                      alt={task.title || 'Zdjęcie zadania'}
+                      className="rounded-lg border border-[#d3bb73]/20 object-cover"
+                      style={{
+                        width: isMobile ? 128 : 256,
+                        height: isMobile ? 128 : 256,
+                      }}
                     />
                   </div>
                 )}
