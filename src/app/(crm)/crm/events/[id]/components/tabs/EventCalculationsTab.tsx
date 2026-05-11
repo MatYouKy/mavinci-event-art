@@ -574,8 +574,7 @@ function CalculationEditor({
                 {CATEGORY_META[cat].label}
               </div>
               <div className="text-lg font-light text-[#e5e4e2]">
-                {fmt(categoryTotals[cat])}{' '}
-                <span className="text-xs text-[#e5e4e2]/50">netto</span>
+                {fmt(categoryTotals[cat])} <span className="text-xs text-[#e5e4e2]/50">netto</span>
               </div>
               <div className="text-sm font-light text-[#d3bb73]">
                 {fmt(categoryTotalsGross[cat])}{' '}
@@ -678,6 +677,12 @@ function CategorySection({
     setWarehouseLoaded(true);
   }, [warehouseLoaded]);
 
+  const numberInputClass =
+    'w-full min-w-[40px] max-w-[60px] rounded-md border border-[#d3bb73]/20 bg-[#0a0d1a] px-2 py-1 text-right tabular-nums text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none';
+
+  const priceInputClass =
+    'w-full min-w-[80px] max-w-[120px] rounded-md border border-[#d3bb73]/20 bg-[#0a0d1a] px-2 py-1 text-right tabular-nums text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none';
+
   return (
     <div className="overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
       <div className="flex items-center justify-between border-b border-[#d3bb73]/10 bg-[#0a0d1a] px-4 py-3">
@@ -704,11 +709,11 @@ function CategorySection({
               <tr>
                 <th className="px-3 py-2">Nazwa</th>
                 <th className="px-3 py-2">Opis</th>
-                <th className="w-16 px-3 py-2">Ilość</th>
-                <th className="w-16 px-3 py-2">Jedn.</th>
-                <th className="w-16 px-3 py-2">Dni</th>
-                <th className="w-24 px-3 py-2">Cena jedn.</th>
-                <th className="w-16 px-3 py-2">VAT %</th>
+                <th className="min-w-[90px] px-3 py-2">Ilość</th>
+                <th className="min-w-[80px] px-3 py-2">Jedn.</th>
+                <th className="min-w-[80px] px-3 py-2">Dni</th>
+                <th className="min-w-[120px] px-3 py-2">Cena jedn.</th>
+                <th className="min-w-[80px] px-3 py-2">VAT %</th>
                 <th className="w-28 px-3 py-2 text-right">Netto</th>
                 <th className="w-28 px-3 py-2 text-right">Brutto</th>
                 <th className="w-10 px-3 py-2"></th>
@@ -725,8 +730,12 @@ function CategorySection({
                       className="cursor-pointer hover:bg-[#0a0d1a]/40"
                       onDoubleClick={() => onToggleEdit(idx, true)}
                     >
-                      <td className="px-3 py-2 text-[#e5e4e2]">{it.name || <span className="text-[#e5e4e2]/40">—</span>}</td>
-                      <td className="px-3 py-2 text-[#e5e4e2]/70">{it.description || <span className="text-[#e5e4e2]/30">—</span>}</td>
+                      <td className="px-3 py-2 text-[#e5e4e2]">
+                        {it.name || <span className="text-[#e5e4e2]/40">—</span>}
+                      </td>
+                      <td className="px-3 py-2 text-[#e5e4e2]/70">
+                        {it.description || <span className="text-[#e5e4e2]/30">—</span>}
+                      </td>
                       <td className="px-3 py-2 text-[#e5e4e2]/80">{it.quantity}</td>
                       <td className="px-3 py-2 text-[#e5e4e2]/80">{it.unit}</td>
                       <td className="px-3 py-2 text-[#e5e4e2]/80">{it.days}</td>
@@ -787,15 +796,15 @@ function CategorySection({
                         type="number"
                         step="0.01"
                         value={it.quantity}
-                        onChange={(e) => onUpdate(idx, { quantity: Number(e.target.value) || 0 })}
-                        className="w-full rounded-md border border-[#d3bb73]/20 bg-[#0a0d1a] px-2 py-1 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                        onChange={(e) => onUpdate(idx, { quantity: Number(e.target.value)})}
+                        className={numberInputClass}
                       />
                     </td>
                     <td className="px-3 py-2">
                       <input
                         value={it.unit}
                         onChange={(e) => onUpdate(idx, { unit: e.target.value })}
-                        className="w-full rounded-md border border-[#d3bb73]/20 bg-[#0a0d1a] px-2 py-1 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                        className={numberInputClass}
                       />
                     </td>
                     <td className="px-3 py-2">
@@ -803,8 +812,8 @@ function CategorySection({
                         type="number"
                         step="0.5"
                         value={it.days}
-                        onChange={(e) => onUpdate(idx, { days: Number(e.target.value) || 1 })}
-                        className="w-full rounded-md border border-[#d3bb73]/20 bg-[#0a0d1a] px-2 py-1 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                        onChange={(e) => onUpdate(idx, { days: Number(e.target.value)})}
+                        className={numberInputClass}
                       />
                     </td>
                     <td className="px-3 py-2">
@@ -812,8 +821,8 @@ function CategorySection({
                         type="number"
                         step="0.01"
                         value={it.unit_price}
-                        onChange={(e) => onUpdate(idx, { unit_price: Number(e.target.value) || 0 })}
-                        className="w-full rounded-md border border-[#d3bb73]/20 bg-[#0a0d1a] px-2 py-1 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                        onChange={(e) => onUpdate(idx, { unit_price: Number(e.target.value)})}
+                        className={priceInputClass}
                       />
                     </td>
                     <td className="px-3 py-2">
@@ -821,10 +830,8 @@ function CategorySection({
                         type="number"
                         step="1"
                         value={it.vat_rate}
-                        onChange={(e) =>
-                          onUpdate(idx, { vat_rate: Number(e.target.value) || 0 })
-                        }
-                        className="w-full rounded-md border border-[#d3bb73]/20 bg-[#0a0d1a] px-2 py-1 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                        onChange={(e) => onUpdate(idx, { vat_rate: Number(e.target.value)})}
+                        className={numberInputClass}
                       />
                     </td>
                     <td className="px-3 py-2 text-right text-[#e5e4e2]">{fmt(rowNet(it))}</td>

@@ -85,11 +85,9 @@ export default function SendInvoiceEmailModal({
   const [senderEmail, setSenderEmail] = useState<string>('');
   const [formData, setFormData] = useState({
     to: clientEmail,
-    subject: `Faktura ${invoiceNumber}`,
+    subject: `Faktura ${invoiceNumber} wizualizacja`,
     message: `Dzień dobry,
-
-W załączeniu przesyłam fakturę ${invoiceNumber}.
-
+W załączeniu przesyłam wizualizację faktury ${invoiceNumber}.
 W razie pytań proszę o kontakt.`,
   });
 

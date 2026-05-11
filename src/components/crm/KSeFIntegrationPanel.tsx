@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Settings,
   Download,
@@ -17,15 +17,33 @@ import {
   X,
   CreditCard as Edit,
   Link as LinkIcon,
+  LayoutGrid,
+  Table2,
+  ArrowUpDown,
+  Trash2,
+  Star,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import ResponsiveActionBar from './ResponsiveActionBar';
 import InvoiceDetailsModal from './InvoiceDetailsModal';
 import BankMatchingSimple from './BankMatchingSimple';
 import CompanySelector from './CompanySelector';
+import { useDialog } from '@/contexts/DialogContext';
+
+type KSeFViewMode = 'table' | 'list';
+
+type KSeFSortKey =
+  | 'invoice_number'
+  | 'contractor'
+  | 'issue_date'
+  | 'net_amount'
+  | 'gross_amount'
+  | 'payment_status'
+  | 'sync_status';
+
+type SortDirection = 'asc' | 'desc';
 
 interface KSeFCredentials {
   id: string;
@@ -43,16 +61,14 @@ interface KSeFCredentials {
     id: string;
     name: string;
     nip: string;
+    is_default: boolean;
   };
 }
 
 interface KSeFInvoice {
-  payment_status: string;
-  payment_due_date: string;
-  seller_nip: string;
-  buyer_nip: string;
   id: string;
   invoice_id?: string;
+  my_company_id?: string | null;
   ksef_reference_number: string;
   invoice_number?: string | null;
   invoice_type: 'issued' | 'received';
@@ -62,12 +78,17 @@ interface KSeFInvoice {
   issue_date?: string | null;
   seller_name?: string | null;
   buyer_name?: string | null;
+  seller_nip?: string | null;
+  buyer_nip?: string | null;
   net_amount?: number | null;
   gross_amount?: number | null;
   vat_rate?: string | null;
   invoice_items?: any;
   currency?: string | null;
   synced_at: string;
+  payment_status?: string | null;
+  payment_due_date?: string | null;
+  payment_date?: string | null;
 }
 
 interface SyncLog {
@@ -80,7 +101,7 @@ interface SyncLog {
   completed_at?: string;
 }
 
-const getInvoiceTypeLabel = (invoiceNumber: string | null): string => {
+const getInvoiceTypeLabel = (invoiceNumber: string | null | undefined): string => {
   if (!invoiceNumber) return 'VAT';
 
   const upperNumber = invoiceNumber.toUpperCase();
@@ -107,7 +128,7 @@ const getInvoiceTypeBadgeColor = (type: string): string => {
 };
 
 const getPaymentStatus = (
-  invoice: any,
+  invoice: KSeFInvoice,
 ): { status: string; label: string; color: string; icon: any } => {
   if (invoice.payment_status === 'paid') {
     return {
@@ -145,9 +166,29 @@ const getPaymentStatus = (
   };
 };
 
+const getVatRateLabel = (invoice: KSeFInvoice) => {
+  if (invoice.vat_rate) return invoice.vat_rate;
+
+  if (invoice.net_amount != null && invoice.gross_amount != null) {
+    const net = Number(invoice.net_amount);
+    const gross = Number(invoice.gross_amount);
+
+    if (!net) return '—';
+
+    if (Math.abs(gross - net) < 0.01) {
+      return 'zw';
+    }
+
+    const vatPercent = Math.round(((gross - net) / net) * 100);
+    return `${vatPercent}%`;
+  }
+
+  return '23%';
+};
+
 export default function KSeFIntegrationPanel() {
   const [allCredentials, setAllCredentials] = useState<KSeFCredentials[]>([]);
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string>('');
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
@@ -161,53 +202,213 @@ export default function KSeFIntegrationPanel() {
   const [editPaymentInvoice, setEditPaymentInvoice] = useState<KSeFInvoice | null>(null);
   const [paymentDate, setPaymentDate] = useState('');
   const [paymentDueDate, setPaymentDueDate] = useState('');
-
+  const [viewMode, setViewMode] = useState<KSeFViewMode>('table');
+  const [sortKey, setSortKey] = useState<KSeFSortKey>('invoice_number');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [showMatchModal, setShowMatchModal] = useState(false);
   const [matchModalDate, setMatchModalDate] = useState<{ month: number; year: number } | null>(
     null,
   );
   const [matchInvoice, setMatchInvoice] = useState<KSeFInvoice | null>(null);
 
-  const handleOpenMatchPayment = (invoice: KSeFInvoice) => {
-    const baseDate = invoice.issue_date ? new Date(invoice.issue_date) : new Date();
-
-    setMatchInvoice(invoice);
-    setMatchModalDate({
-      month: baseDate.getMonth() + 1,
-      year: baseDate.getFullYear(),
-    });
-    setShowMatchModal(true);
-  };
   const { canManageModule, employee: currentEmployee, isAdmin } = useCurrentEmployee();
-  const allowedCompanyIds: string[] | null = (() => {
+  const { showSnackbar } = useSnackbar();
+  const { showConfirm } = useDialog();
+
+  const allowedCompanyIds = useMemo<string[] | null>(() => {
     if (isAdmin) return null;
+
     const ids = (currentEmployee as any)?.my_company_ids;
+
     if (!Array.isArray(ids) || ids.length === 0) return null;
+
     return ids as string[];
-  })();
+  }, [currentEmployee, isAdmin]);
 
   const canManageKSeF = useMemo(() => canManageModule('ksef'), [canManageModule]);
 
-  const { showSnackbar } = useSnackbar();
-  const { showDialog, hideDialog } = useDialog();
-
-  const selectedCredentials = allCredentials.find((c) => c.my_company_id === selectedCompanyId);
+  const selectedCredentials = allCredentials.find(
+    (c) =>
+      c.my_company_id === selectedCompanyId ||
+      (selectedCompanyId === null && c.my_company?.is_default),
+  );
 
   const currentInvoices = useMemo(() => {
     return activeTab === 'issued' ? issuedInvoices : receivedInvoices;
   }, [activeTab, issuedInvoices, receivedInvoices]);
 
   const totalNetAmount = useMemo(() => {
-    return currentInvoices.reduce((sum, inv) => sum + (inv.net_amount || 0), 0);
+    return currentInvoices.reduce((sum, inv) => sum + Number(inv.net_amount || 0), 0);
   }, [currentInvoices]);
 
   const totalGrossAmount = useMemo(() => {
-    return currentInvoices.reduce((sum, inv) => sum + (inv.gross_amount || 0), 0);
+    return currentInvoices.reduce((sum, inv) => sum + Number(inv.gross_amount || 0), 0);
   }, [currentInvoices]);
+
+  const handleSort = (key: KSeFSortKey) => {
+    if (sortKey === key) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+
+    setSortKey(key);
+    setSortDirection('desc');
+  };
+
+  const getSortIcon = (key: KSeFSortKey) => {
+    if (sortKey !== key) return <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />;
+    return sortDirection === 'asc' ? '↑' : '↓';
+  };
+
+  const sortedInvoices = useMemo(() => {
+    const collator = new Intl.Collator('pl-PL', {
+      numeric: true,
+      sensitivity: 'base',
+    });
+
+    return [...currentInvoices].sort((a, b) => {
+      const direction = sortDirection === 'asc' ? 1 : -1;
+
+      if (sortKey === 'invoice_number') {
+        return collator.compare(a.invoice_number || '', b.invoice_number || '') * direction;
+      }
+
+      if (sortKey === 'contractor') {
+        const aName = activeTab === 'issued' ? a.buyer_name || '' : a.seller_name || '';
+        const bName = activeTab === 'issued' ? b.buyer_name || '' : b.seller_name || '';
+
+        return collator.compare(aName, bName) * direction;
+      }
+
+      if (sortKey === 'issue_date') {
+        const aDate = new Date(a.issue_date || a.ksef_issued_at || 0).getTime();
+        const bDate = new Date(b.issue_date || b.ksef_issued_at || 0).getTime();
+
+        return (aDate - bDate) * direction;
+      }
+
+      if (sortKey === 'net_amount') {
+        return (Number(a.net_amount || 0) - Number(b.net_amount || 0)) * direction;
+      }
+
+      if (sortKey === 'gross_amount') {
+        return (Number(a.gross_amount || 0) - Number(b.gross_amount || 0)) * direction;
+      }
+
+      if (sortKey === 'payment_status') {
+        return collator.compare(a.payment_status || '', b.payment_status || '') * direction;
+      }
+
+      if (sortKey === 'sync_status') {
+        return collator.compare(a.sync_status || '', b.sync_status || '') * direction;
+      }
+
+      return 0;
+    });
+  }, [activeTab, currentInvoices, sortDirection, sortKey]);
+
+  const isSessionActive = useCallback(() => {
+    if (!selectedCredentials?.access_token_valid_until) return false;
+    return new Date(selectedCredentials.access_token_valid_until) > new Date();
+  }, [selectedCredentials]);
+
+  const loadCredentials = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('ksef_credentials')
+        .select(
+          `
+        *,
+        my_company:my_companies(id, name, nip, is_default)
+      `,
+        )
+        .eq('is_active', true);
+
+      if (error) throw error;
+
+      const filtered = (
+        allowedCompanyIds
+          ? (data || []).filter((c: any) => allowedCompanyIds.includes(c.my_company_id))
+          : data || []
+      ).sort((a: any, b: any) => {
+        return (
+          Number(Boolean(b.my_company?.is_default)) - Number(Boolean(a.my_company?.is_default))
+        );
+      });
+
+      setAllCredentials(filtered);
+
+      const defaultCredential = filtered.find((c: any) => c.my_company?.is_default) || filtered[0];
+
+      if (
+        selectedCompanyId &&
+        allowedCompanyIds &&
+        !allowedCompanyIds.includes(selectedCompanyId)
+      ) {
+        setSelectedCompanyId(defaultCredential?.my_company_id ?? null);
+      } else if (filtered.length > 0 && !selectedCompanyId) {
+        setSelectedCompanyId(defaultCredential?.my_company_id ?? null);
+      }
+    } catch (error) {
+      console.error('Error loading credentials:', error);
+      showSnackbar('Błąd wczytywania konfiguracji KSeF', 'error');
+    }
+  }, [allowedCompanyIds, selectedCompanyId, showSnackbar]);
+
+  const loadInvoices = useCallback(async () => {
+    try {
+      let query = supabase
+        .from('ksef_invoices')
+        .select('*')
+        .eq('sync_status', 'synced')
+        .not('ksef_reference_number', 'is', null)
+        .neq('ksef_reference_number', '');
+
+      if (selectedCompanyId) {
+        query = query.eq('my_company_id', selectedCompanyId);
+      } else if (allowedCompanyIds) {
+        query = query.in('my_company_id', allowedCompanyIds);
+      }
+
+      const { data, error } = await query.order('ksef_issued_at', { ascending: false });
+
+      if (error) throw error;
+
+      const normalizedIssued =
+        (data || []).filter((inv) => String(inv.invoice_type || '').toLowerCase() === 'issued') ||
+        [];
+
+      const normalizedReceived =
+        (data || []).filter((inv) => String(inv.invoice_type || '').toLowerCase() === 'received') ||
+        [];
+
+      setIssuedInvoices(normalizedIssued);
+      setReceivedInvoices(normalizedReceived);
+    } catch (error) {
+      console.error('Error loading invoices:', error);
+      showSnackbar('Błąd wczytywania faktur z bazy', 'error');
+    }
+  }, [allowedCompanyIds, selectedCompanyId, showSnackbar]);
+
+  const loadSyncLogs = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('ksef_sync_log')
+        .select('*')
+        .order('started_at', { ascending: false })
+        .limit(20);
+
+      if (error) throw error;
+
+      setSyncLogs(data || []);
+    } catch (error) {
+      console.error('Error loading sync logs:', error);
+    }
+  }, []);
 
   useEffect(() => {
     loadCredentials();
-  }, []);
+  }, [loadCredentials]);
 
   useEffect(() => {
     const now = new Date();
@@ -229,123 +430,19 @@ export default function KSeFIntegrationPanel() {
   }, []);
 
   useEffect(() => {
-    if (selectedCompanyId) {
-      loadCredentials();
-    }
-  }, []);
-
-  useEffect(() => {
     loadInvoices();
     loadSyncLogs();
-  }, [selectedCompanyId]);
+  }, [loadInvoices, loadSyncLogs]);
 
-  const handleAutoSync = async () => {
-    console.log('Auto-sync disabled until migration to Next API is finished');
-  };
+  const handleOpenMatchPayment = (invoice: KSeFInvoice) => {
+    const baseDate = invoice.issue_date ? new Date(invoice.issue_date) : new Date();
 
-  const loadCredentials = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('ksef_credentials')
-        .select(
-          `
-          *,
-          my_company:my_companies(id, name, nip)
-        `,
-        )
-        .eq('is_active', true);
-
-      if (error) throw error;
-
-      const filtered = allowedCompanyIds
-        ? (data || []).filter((c: any) => allowedCompanyIds.includes(c.my_company_id))
-        : data || [];
-
-      setAllCredentials(filtered);
-
-      if (
-        selectedCompanyId &&
-        allowedCompanyIds &&
-        !allowedCompanyIds.includes(selectedCompanyId)
-      ) {
-        setSelectedCompanyId(filtered[0]?.my_company_id ?? null);
-      } else if (filtered.length > 0 && !selectedCompanyId) {
-        setSelectedCompanyId(filtered[0].my_company_id);
-      }
-    } catch (error) {
-      console.error('Error loading credentials:', error);
-      showSnackbar('Błąd wczytywania konfiguracji KSeF', 'error');
-    }
-  };
-
-  const loadInvoices = async () => {
-    try {
-      let query = supabase.from('ksef_invoices').select('*');
-
-      console.log('[KSEF_FRONT] loadInvoices START', {
-        selectedCompanyId,
-        showingAllCompanies: !selectedCompanyId,
-      });
-
-      if (selectedCompanyId) {
-        query = query.eq('my_company_id', selectedCompanyId);
-        console.log('[KSEF_FRONT] Filtering by company:', selectedCompanyId);
-      } else if (allowedCompanyIds) {
-        query = query.in('my_company_id', allowedCompanyIds);
-        console.log('[KSEF_FRONT] Filtering by allowed companies:', allowedCompanyIds);
-      } else {
-        console.log('[KSEF_FRONT] Showing all companies');
-      }
-
-      const { data, error } = await query.order('ksef_issued_at', { ascending: false });
-
-      if (error) throw error;
-
-      console.log('[KSEF_FRONT] loadInvoices raw', {
-        count: data?.length || 0,
-        selectedCompanyId: selectedCompanyId,
-        sample: data?.[0] || null,
-        sampleCompanyId: data?.[0]?.my_company_id || null,
-      });
-
-      const normalizedIssued =
-        (data || []).filter((inv) => {
-          const type = String(inv.invoice_type || '').toLowerCase();
-          return type === 'issued';
-        }) || [];
-
-      const normalizedReceived =
-        (data || []).filter((inv) => {
-          const type = String(inv.invoice_type || '').toLowerCase();
-          return type === 'received';
-        }) || [];
-
-      console.log('[KSEF_FRONT] loadInvoices mapped', {
-        issuedCount: normalizedIssued.length,
-        receivedCount: normalizedReceived.length,
-      });
-
-      setIssuedInvoices(normalizedIssued);
-      setReceivedInvoices(normalizedReceived);
-    } catch (error) {
-      console.error('Error loading invoices:', error);
-      showSnackbar('Błąd wczytywania faktur z bazy', 'error');
-    }
-  };
-
-  const loadSyncLogs = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('ksef_sync_log')
-        .select('*')
-        .order('started_at', { ascending: false })
-        .limit(20);
-
-      if (error) throw error;
-      setSyncLogs(data || []);
-    } catch (error) {
-      console.error('Error loading sync logs:', error);
-    }
+    setMatchInvoice(invoice);
+    setMatchModalDate({
+      month: baseDate.getMonth() + 1,
+      year: baseDate.getFullYear(),
+    });
+    setShowMatchModal(true);
   };
 
   const handleAuthenticate = async () => {
@@ -368,16 +465,12 @@ export default function KSeFIntegrationPanel() {
       const raw = await response.text();
 
       let result: any = null;
+
       try {
         result = raw ? JSON.parse(raw) : null;
       } catch {
         result = { raw };
       }
-
-      console.log('[KSEF_FRONT] auth result', {
-        status: response.status,
-        result,
-      });
 
       if (!response.ok || !result?.success) {
         throw new Error(
@@ -456,16 +549,6 @@ export default function KSeFIntegrationPanel() {
         receivedResult = { raw: receivedRaw };
       }
 
-      console.log('[KSEF_FRONT] sync issued result', {
-        status: issuedResponse.status,
-        result: issuedResult,
-      });
-
-      console.log('[KSEF_FRONT] sync received result', {
-        status: receivedResponse.status,
-        result: receivedResult,
-      });
-
       if (!issuedResponse.ok || !issuedResult?.success) {
         throw new Error(
           issuedResult?.error ||
@@ -505,12 +588,7 @@ export default function KSeFIntegrationPanel() {
     showSnackbar('Podgląd XML nie został jeszcze przepięty na nowe API Next.js', 'error');
   };
 
-  const isSessionActive = () => {
-    if (!selectedCredentials?.access_token_valid_until) return false;
-    return new Date(selectedCredentials.access_token_valid_until) > new Date();
-  };
-
-  const handleMarkAsPaid = async (invoice: any) => {
+  const handleMarkAsPaid = async (invoice: KSeFInvoice) => {
     try {
       const { error } = await supabase
         .from('ksef_invoices')
@@ -530,7 +608,51 @@ export default function KSeFIntegrationPanel() {
     }
   };
 
-  const handleMarkAsUnpaid = async (invoice: any) => {
+  const handleDeleteKsefInvoice = useCallback(
+    async (invoice: KSeFInvoice) => {
+      if (!isAdmin) {
+        showSnackbar('Tylko administrator może usunąć fakturę z lokalnej bazy', 'error');
+        return;
+      }
+
+      const confirmed = await showConfirm(
+        `Czy na pewno chcesz usunąć fakturę ${
+          invoice.invoice_number || invoice.ksef_reference_number
+        } z lokalnej bazy? Nie usuwa to faktury z KSeF.`,
+      );
+
+      if (!confirmed) return;
+
+      try {
+        const { data, error } = await supabase
+          .from('ksef_invoices')
+          .delete()
+          .eq('id', invoice.id)
+          .select('id');
+
+        if (error) throw error;
+
+        if (!data || data.length === 0) {
+          showSnackbar(
+            'Nie usunięto faktury. Rekord nie istnieje albo brak uprawnień RLS do usuwania.',
+            'error',
+          );
+          return;
+        }
+
+        showSnackbar('Faktura została usunięta z lokalnej bazy', 'success');
+
+        await loadInvoices();
+        await loadSyncLogs();
+      } catch (error: any) {
+        console.error('Error deleting KSeF invoice:', error);
+        showSnackbar(error.message || 'Błąd podczas usuwania faktury', 'error');
+      }
+    },
+    [isAdmin, loadInvoices, loadSyncLogs, showSnackbar],
+  );
+
+  const handleMarkAsUnpaid = async (invoice: KSeFInvoice) => {
     try {
       const { error } = await supabase
         .from('ksef_invoices')
@@ -550,7 +672,7 @@ export default function KSeFIntegrationPanel() {
     }
   };
 
-  const handleOpenEditPayment = (invoice: any) => {
+  const handleOpenEditPayment = (invoice: KSeFInvoice) => {
     setEditPaymentInvoice(invoice);
     setPaymentDate(
       invoice.payment_date ? new Date(invoice.payment_date).toISOString().split('T')[0] : '',
@@ -571,6 +693,7 @@ export default function KSeFIntegrationPanel() {
         updates.payment_status = 'paid';
       } else {
         updates.payment_date = null;
+
         if (paymentDueDate && new Date(paymentDueDate) < new Date()) {
           updates.payment_status = 'overdue';
         } else {
@@ -594,44 +717,117 @@ export default function KSeFIntegrationPanel() {
     }
   };
 
+  const getInvoiceActions = useCallback(
+    (invoice: KSeFInvoice) => {
+      const actions = [
+        {
+          label: 'Szczegóły',
+          onClick: () => setSelectedInvoice(invoice),
+          icon: <FileCheck className="h-4 w-4" />,
+          variant: 'default' as const,
+        },
+        {
+          label: 'Edytuj płatność',
+          onClick: () => handleOpenEditPayment(invoice),
+          icon: <Edit className="h-4 w-4" />,
+          variant: 'default' as const,
+        },
+        {
+          label: 'Zobacz XML',
+          onClick: () => handleViewInvoiceXml(invoice),
+          icon: <Eye className="h-4 w-4" />,
+          variant: 'default' as const,
+          disabled: invoice.sync_status !== 'synced',
+        },
+      ];
+
+      if (invoice.payment_status === 'paid') {
+        actions.push({
+          label: 'Oznacz jako nieopłaconą',
+          onClick: () => handleMarkAsUnpaid(invoice),
+          icon: <X className="h-4 w-4" />,
+          variant: 'default' as const,
+        });
+      } else {
+        actions.push(
+          {
+            label: 'Dopasuj płatność',
+            onClick: () => handleOpenMatchPayment(invoice),
+            icon: <LinkIcon className="h-4 w-4" />,
+            variant: 'default' as const,
+          },
+          {
+            label: 'Oznacz jako opłaconą',
+            onClick: () => handleMarkAsPaid(invoice),
+            icon: <CheckCircle className="h-4 w-4" />,
+            variant: 'default' as const,
+          },
+        );
+      }
+
+      if (isAdmin) {
+        actions.push({
+          label: 'Usuń z bazy',
+          onClick: () => handleDeleteKsefInvoice(invoice),
+          icon: <Trash2 className="h-4 w-4" />,
+          variant: 'default' as const,
+        });
+      }
+
+      return actions;
+    },
+    [
+      isAdmin,
+      handleDeleteKsefInvoice,
+      handleMarkAsPaid,
+      handleMarkAsUnpaid,
+      handleOpenMatchPayment,
+      handleOpenEditPayment,
+      handleViewInvoiceXml,
+    ],
+  );
+
+  const renderActions = useCallback(
+    (invoice: KSeFInvoice) => (
+      <ResponsiveActionBar
+        disabledBackground
+        mobileBreakpoint={4000}
+        actions={getInvoiceActions(invoice)}
+      />
+    ),
+    [getInvoiceActions],
+  );
+
+  const SortableHeader = ({
+    label,
+    sort,
+    align = 'left',
+  }: {
+    label: string;
+    sort: KSeFSortKey;
+    align?: 'left' | 'right';
+  }) => (
+    <th
+      onClick={() => handleSort(sort)}
+      className={`cursor-pointer px-4 py-3 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60 transition-colors hover:text-[#d3bb73] ${
+        align === 'right' ? 'text-right' : 'text-left'
+      }`}
+    >
+      <span className={`flex items-center gap-1 ${align === 'right' ? 'justify-end' : ''}`}>
+        {label} {getSortIcon(sort)}
+      </span>
+    </th>
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-light text-[#e5e4e2]">Integracja KSeF</h2>
-          <p className="mt-1 text-sm text-[#e5e4e2]/60">
+          <p className="text-sm text-[#e5e4e2]/60">
             Krajowy System e-Faktur - synchronizacja faktur
           </p>
         </div>
-        <div className="flex gap-3">
-          {canManageKSeF && (
-            <button
-              onClick={() => setShowSetup(true)}
-              className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#252945] px-4 py-2 text-sm text-[#e5e4e2] hover:border-[#d3bb73]/40"
-            >
-              <Settings className="h-4 w-4" />
-              Konfiguracja
-            </button>
-          )}
-          <button
-            onClick={handleAuthenticate}
-            disabled={loading || !selectedCredentials}
-            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
-          >
-            <Key className="h-4 w-4" />
-            {loading ? 'Uwierzytelnianie...' : 'Uwierzytelnij'}
-          </button>
-        </div>
       </div>
-
-      {allCredentials.length > 0 && (
-        <CompanySelector
-          value={selectedCompanyId}
-          onChange={setSelectedCompanyId}
-          showAllOption={true}
-          label="Firma"
-        />
-      )}
 
       {allCredentials.length === 0 && (
         <div className="rounded-xl border border-[#d3bb73]/20 bg-[#252945] p-8 text-center">
@@ -648,56 +844,135 @@ export default function KSeFIntegrationPanel() {
         </div>
       )}
 
-      {selectedCredentials && (
-        <div className="rounded-xl border border-[#d3bb73]/20 bg-[#252945] p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Building2 className="h-5 w-5 text-[#d3bb73]" />
+      {allCredentials.length > 0 && (
+        <div className="rounded-xl border border-[#d3bb73]/20 bg-[#252945] p-3">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="grid flex-1 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[minmax(260px,360px)_auto_auto] xl:items-center">
               <div>
-                <p className="text-sm font-medium text-[#e5e4e2]">NIP: {selectedCredentials.nip}</p>
-                <p className="text-xs text-[#e5e4e2]/60">
-                  Środowisko: {selectedCredentials.is_test_environment ? 'Testowe' : 'Produkcyjne'}
-                </p>
+                <label className="mb-1 block text-xs text-[#e5e4e2]/50">Firma KSeF</label>
+                <select
+                  value={selectedCompanyId ?? ''}
+                  onChange={(e) => setSelectedCompanyId(e.target.value || null)}
+                  className="h-10 w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 text-sm text-[#e5e4e2] outline-none transition-colors focus:border-[#d3bb73]"
+                >
+                  {allCredentials.map((credential) => (
+                    <option key={credential.id} value={credential.my_company_id}>
+                      {credential.my_company?.is_default ? '★ ' : ''}
+                      {credential.my_company?.name || credential.nip}
+                      {credential.my_company?.nip ? ` — ${credential.my_company.nip}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedCredentials && (
+                <div>
+                  <label className="mb-1 block text-xs text-[#e5e4e2]/50">
+                    {' '}
+                    <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/50">
+                      <span>
+                        {selectedCredentials.is_test_environment ? 'Testowe' : 'Produkcyjne'}
+                      </span>
+
+                      {selectedCredentials.my_company?.is_default && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-[#d3bb73]/10 px-2 py-0.5 text-[10px] text-[#d3bb73]">
+                          <Star className="h-3 w-3 fill-current" />
+                          Główna
+                        </span>
+                      )}
+                    </div>
+                  </label>
+                  <div className="flex h-10 items-center gap-2 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-3">
+                    <Building2 className="h-4 w-4 text-[#d3bb73]" />
+
+                    <div className="min-w-0">
+                      <div className="truncate text-sm text-[#e5e4e2]">
+                        NIP: {selectedCredentials.nip}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="mb-1 block text-xs text-[#e5e4e2]/50">Status sesji</label>
+
+                <div className="flex h-10 items-center gap-2 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-3">
+                  {isSessionActive() ? (
+                    <>
+                      <CheckCircle className="h-4 w-4 text-green-400" />
+                      <span className="text-sm text-green-400">Sesja aktywna</span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="h-4 w-4 text-orange-400" />
+                      <span className="text-sm text-orange-400">Wymagana autoryzacja</span>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              {isSessionActive() ? (
-                <>
-                  <CheckCircle className="h-5 w-5 text-green-400" />
-                  <span className="text-sm text-green-400">Sesja aktywna</span>
-                </>
-              ) : (
-                <>
-                  <AlertCircle className="h-5 w-5 text-orange-400" />
-                  <span className="text-sm text-orange-400">Wymagana autoryzacja</span>
-                </>
-              )}
+            <div>
+              <label className="mb-1 block text-xs text-[#e5e4e2]/50">Zakres dat</label>
+              <div className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-3 py-2">
+                <Calendar className="h-4 w-4 text-[#d3bb73]" />
+
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="w-[135px] bg-transparent text-sm text-[#e5e4e2] outline-none"
+                />
+
+                <span className="text-xs text-[#e5e4e2]/40">—</span>
+
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="w-[135px] bg-transparent text-sm text-[#e5e4e2] outline-none"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-[#e5e4e2]/50">Akcje</label>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end xl:items-center">
+                <ResponsiveActionBar
+                  mobileBreakpoint={4000}
+                  actions={[
+                    ...(canManageKSeF
+                      ? [
+                          {
+                            label: 'Konfiguracja',
+                            onClick: () => setShowSetup(true),
+                            icon: <Settings className="h-4 w-4" />,
+                            variant: 'default' as const,
+                          },
+                        ]
+                      : []),
+                    {
+                      label: loading ? 'Uwierzytelnianie...' : 'Uwierzytelnij',
+                      onClick: handleAuthenticate,
+                      icon: <Key className="h-4 w-4" />,
+                      variant: 'primary' as const,
+                      disabled: loading || !selectedCredentials,
+                    },
+                    {
+                      label: syncing ? 'Synchronizacja...' : 'Synchronizuj',
+                      onClick: handleSyncInvoices,
+                      icon: <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />,
+                      variant: 'primary' as const,
+                      disabled: syncing || !isSessionActive(),
+                    },
+                  ]}
+                />
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      <div className="flex items-center gap-4 rounded-xl border border-[#d3bb73]/20 bg-[#252945] p-4">
-        <div className="flex items-center gap-2">
-          <Calendar className="h-4 w-4 text-[#d3bb73]" />
-          <span className="text-sm text-[#e5e4e2]">Okres:</span>
-        </div>
-        <input
-          type="date"
-          value={dateFrom}
-          onChange={(e) => setDateFrom(e.target.value)}
-          className="rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-1.5 text-sm text-[#e5e4e2]"
-        />
-        <span className="text-sm text-[#e5e4e2]/60">do</span>
-        <input
-          type="date"
-          value={dateTo}
-          onChange={(e) => setDateTo(e.target.value)}
-          className="rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-1.5 text-sm text-[#e5e4e2]"
-        />
-      </div>
-
-      <div className="flex gap-1 rounded-lg border border-[#d3bb73]/20 bg-[#252945] p-1">
+      <div className="flex gap-1 rounded-lg border border-[#d3bb73]/20 bg-[#252945]">
         <button
           onClick={() => setActiveTab('issued')}
           className={`flex-1 rounded px-4 py-2 text-sm font-medium transition-colors ${
@@ -709,6 +984,7 @@ export default function KSeFIntegrationPanel() {
           <Upload className="mr-2 inline-block h-4 w-4" />
           Wystawione ({issuedInvoices.length})
         </button>
+
         <button
           onClick={() => setActiveTab('received')}
           className={`flex-1 rounded px-4 py-2 text-sm font-medium transition-colors ${
@@ -720,6 +996,7 @@ export default function KSeFIntegrationPanel() {
           <Download className="mr-2 inline-block h-4 w-4" />
           Otrzymane ({receivedInvoices.length})
         </button>
+
         <button
           onClick={() => setActiveTab('logs')}
           className={`flex-1 rounded px-4 py-2 text-sm font-medium transition-colors ${
@@ -740,243 +1017,186 @@ export default function KSeFIntegrationPanel() {
             {activeTab === 'received' && 'Faktury otrzymane'}
             {activeTab === 'logs' && 'Historia synchronizacji'}
           </h3>
+
           {activeTab !== 'logs' && (
-            <button
-              onClick={handleSyncInvoices}
-              disabled={syncing || !isSessionActive()}
-              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
-            >
-              <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-              {syncing ? 'Synchronizacja...' : 'Synchronizuj'}
-            </button>
+            <div className="flex overflow-hidden rounded-lg border border-[#d3bb73]/20">
+              <button
+                onClick={() => setViewMode('table')}
+                className={`flex items-center gap-1.5 px-3 py-2 text-sm transition-colors ${
+                  viewMode === 'table'
+                    ? 'bg-[#d3bb73]/20 text-[#d3bb73]'
+                    : 'text-[#e5e4e2]/50 hover:text-[#e5e4e2]'
+                }`}
+                title="Widok tabeli"
+              >
+                <Table2 className="h-4 w-4" />
+              </button>
+
+              <button
+                onClick={() => setViewMode('list')}
+                className={`flex items-center gap-1.5 border-l border-[#d3bb73]/20 px-3 py-2 text-sm transition-colors ${
+                  viewMode === 'list'
+                    ? 'bg-[#d3bb73]/20 text-[#d3bb73]'
+                    : 'text-[#e5e4e2]/50 hover:text-[#e5e4e2]'
+                }`}
+                title="Widok listy"
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </button>
+            </div>
           )}
         </div>
 
         {(activeTab === 'issued' || activeTab === 'received') && (
-          <div className="overflow-x-auto">
-            {(activeTab === 'issued' ? issuedInvoices : receivedInvoices).length === 0 ? (
+          <>
+            {sortedInvoices.length === 0 ? (
               <div className="p-8 text-center text-[#e5e4e2]/40">Brak faktur do wyświetlenia</div>
-            ) : (
-              <table className="min-w-full border-collapse">
-                <thead>
-                  <tr className="border-b border-[#d3bb73]/10 bg-[#1c1f33]/40 text-left">
-                    <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
-                      Numer faktury
-                    </th>
-                    <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
-                      Kontrahent
-                    </th>
-                    <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
-                      Data
-                    </th>
-                    <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
-                      Netto
-                    </th>
-                    <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
-                      Brutto
-                    </th>
-                    <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
-                      Stawka VAT
-                    </th>
-                    <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
-                      Typ faktury
-                    </th>
-                    <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
-                      Status płatności
-                    </th>
-                    <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
-                      Status KSeF
-                    </th>
-                    <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
-                      Akcje
-                    </th>
-                  </tr>
-                </thead>
+            ) : viewMode === 'table' ? (
+              <div className="overflow-x-auto">
+                <table className="min-w-full border-collapse">
+                  <thead>
+                    <tr className="border-b border-[#d3bb73]/10 bg-[#1c1f33]/40">
+                      <SortableHeader label="Numer faktury" sort="invoice_number" />
+                      <SortableHeader label="Kontrahent" sort="contractor" />
+                      <SortableHeader label="Data" sort="issue_date" />
+                      <SortableHeader label="Netto" sort="net_amount" align="right" />
+                      <SortableHeader label="Brutto" sort="gross_amount" align="right" />
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
+                        Stawka VAT
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
+                        Typ faktury
+                      </th>
+                      <SortableHeader label="Status płatności" sort="payment_status" />
+                      <SortableHeader label="Status KSeF" sort="sync_status" />
+                      <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
+                        Akcje
+                      </th>
+                    </tr>
+                  </thead>
 
-                <tbody>
-                  {(activeTab === 'issued' ? issuedInvoices : receivedInvoices).map((invoice) => {
-                    const contractorName =
-                      activeTab === 'issued'
-                        ? invoice.buyer_name || 'Brak danych nabywcy'
-                        : invoice.seller_name || 'Brak danych sprzedawcy';
+                  <tbody>
+                    {sortedInvoices.map((invoice) => {
+                      const contractorName =
+                        activeTab === 'issued'
+                          ? invoice.buyer_name || 'Brak danych nabywcy'
+                          : invoice.seller_name || 'Brak danych sprzedawcy';
 
-                    const invoiceDate = invoice.issue_date || invoice.ksef_issued_at;
-                    const invoiceType = getInvoiceTypeLabel(invoice.invoice_number);
-                    const typeBadgeColor = getInvoiceTypeBadgeColor(invoiceType);
-                    const paymentStatus = getPaymentStatus(invoice);
-                    const PaymentIcon = paymentStatus.icon;
+                      const contractorNip =
+                        activeTab === 'issued'
+                          ? invoice.buyer_nip || 'Brak NIP'
+                          : invoice.seller_nip || 'Brak NIP';
 
-                    return (
-                      <tr
-                        key={invoice.id}
-                        className="border-b border-[#d3bb73]/10 transition-colors hover:bg-[#1c1f33]/40"
-                      >
-                        <td className="px-4 py-3 text-sm font-medium text-[#e5e4e2]">
-                          <div>{invoice.invoice_number || 'Brak numeru faktury'}</div>
-                          <div className="mt-1 text-xs text-[#e5e4e2]/40">
-                            KSeF: {invoice.ksef_reference_number}
-                          </div>
-                        </td>
+                      const invoiceDate = invoice.issue_date || invoice.ksef_issued_at;
+                      const invoiceType = getInvoiceTypeLabel(invoice.invoice_number);
+                      const typeBadgeColor = getInvoiceTypeBadgeColor(invoiceType);
+                      const paymentStatus = getPaymentStatus(invoice);
+                      const PaymentIcon = paymentStatus.icon;
 
-                        <td className="px-4 py-3 text-sm text-[#e5e4e2]/80">
-                          <div>{contractorName}</div>
-                          <div className="mt-1 text-xs text-[#e5e4e2]/40">
-                            NIP:{' '}
-                            {activeTab === 'issued'
-                              ? invoice.buyer_nip
-                              : invoice.seller_nip || 'Brak NIP'}
-                          </div>
-                        </td>
+                      return (
+                        <tr
+                          key={invoice.id}
+                          className="border-b border-[#d3bb73]/10 transition-colors hover:bg-[#1c1f33]/40"
+                        >
+                          <td className="px-4 py-3 text-sm font-medium text-[#e5e4e2]">
+                            <div>{invoice.invoice_number || 'Brak numeru faktury'}</div>
+                            <div className="mt-1 text-xs text-[#e5e4e2]/40">
+                              KSeF: {invoice.ksef_reference_number}
+                            </div>
+                          </td>
 
-                        <td className="px-4 py-3 text-sm text-[#e5e4e2]/80">
-                          {invoiceDate ? new Date(invoiceDate).toLocaleDateString('pl-PL') : '—'}
-                        </td>
+                          <td className="px-4 py-3 text-sm text-[#e5e4e2]/80">
+                            <div>{contractorName}</div>
+                            <div className="mt-1 text-xs text-[#e5e4e2]/40">
+                              NIP: {contractorNip}
+                            </div>
+                          </td>
 
-                        <td className="px-4 py-3 text-sm text-[#e5e4e2]/80">
-                          {invoice.net_amount != null
-                            ? `${Number(invoice.net_amount).toFixed(2)} PLN`
-                            : '—'}
-                        </td>
+                          <td className="px-4 py-3 text-sm text-[#e5e4e2]/80">
+                            {invoiceDate ? new Date(invoiceDate).toLocaleDateString('pl-PL') : '—'}
+                          </td>
 
-                        <td className="px-4 py-3 text-sm font-medium text-[#e5e4e2]">
-                          {invoice.gross_amount != null
-                            ? `${Number(invoice.gross_amount).toFixed(2)} PLN`
-                            : '—'}
-                        </td>
+                          <td className="px-4 py-3 text-right text-sm text-[#e5e4e2]/80">
+                            {invoice.net_amount != null
+                              ? `${Number(invoice.net_amount).toFixed(2)} PLN`
+                              : '—'}
+                          </td>
 
-                        <td className="px-4 py-3">
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-400/10 px-3 py-1 text-xs font-medium text-blue-400">
-                            {(() => {
-                              if (invoice.vat_rate) return invoice.vat_rate;
+                          <td className="px-4 py-3 text-right text-sm font-medium text-[#e5e4e2]">
+                            {invoice.gross_amount != null
+                              ? `${Number(invoice.gross_amount).toFixed(2)} PLN`
+                              : '—'}
+                          </td>
 
-                              if (invoice.net_amount != null && invoice.gross_amount != null) {
-                                const net = Number(invoice.net_amount);
-                                const gross = Number(invoice.gross_amount);
+                          <td className="px-4 py-3">
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-400/10 px-3 py-1 text-xs font-medium text-blue-400">
+                              {getVatRateLabel(invoice)}
+                            </span>
+                          </td>
 
-                                if (Math.abs(gross - net) < 0.01) {
-                                  return 'zw';
-                                }
+                          <td className="px-4 py-3">
+                            <span
+                              className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${typeBadgeColor}`}
+                            >
+                              {invoiceType}
+                            </span>
+                          </td>
 
-                                const vatPercent = Math.round(((gross - net) / net) * 100);
-                                return `${vatPercent}%`;
-                              }
-
-                              return '23%';
-                            })()}
-                          </span>
-                        </td>
-
-                        <td className="px-4 py-3">
-                          <span
-                            className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${typeBadgeColor}`}
-                          >
-                            {invoiceType}
-                          </span>
-                        </td>
-
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <PaymentIcon className="h-4 w-4" />
-                            <div>
-                              <div
-                                className={`text-sm font-medium ${paymentStatus.color.split(' ')[0]}`}
-                              >
-                                {paymentStatus.label}
-                              </div>
-                              {invoice.payment_due_date && paymentStatus.status !== 'paid' && (
-                                <div className="mt-1 text-xs text-[#e5e4e2]/40">
-                                  Termin:{' '}
-                                  {new Date(invoice.payment_due_date).toLocaleDateString('pl-PL')}
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <PaymentIcon className="h-4 w-4" />
+                              <div>
+                                <div
+                                  className={`text-sm font-medium ${
+                                    paymentStatus.color.split(' ')[0]
+                                  }`}
+                                >
+                                  {paymentStatus.label}
                                 </div>
+                                {invoice.payment_due_date && paymentStatus.status !== 'paid' && (
+                                  <div className="mt-1 text-xs text-[#e5e4e2]/40">
+                                    Termin:{' '}
+                                    {new Date(invoice.payment_due_date).toLocaleDateString('pl-PL')}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              {invoice.sync_status === 'synced' && (
+                                <>
+                                  <CheckCircle className="h-4 w-4 text-green-400" />
+                                  <span className="text-sm text-green-400">OK</span>
+                                </>
+                              )}
+
+                              {invoice.sync_status === 'error' && (
+                                <>
+                                  <AlertCircle className="h-4 w-4 text-red-400" />
+                                  <span className="text-sm text-red-400">Błąd</span>
+                                </>
+                              )}
+
+                              {invoice.sync_status === 'pending' && (
+                                <>
+                                  <RefreshCw className="h-4 w-4 text-yellow-400" />
+                                  <span className="text-sm text-yellow-400">Pending</span>
+                                </>
                               )}
                             </div>
-                          </div>
-                        </td>
 
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            {invoice.sync_status === 'synced' && (
-                              <>
-                                <CheckCircle className="h-4 w-4 text-green-400" />
-                                <span className="text-sm text-green-400">OK</span>
-                              </>
+                            {invoice.sync_error && (
+                              <div className="mt-1 text-xs text-red-400">{invoice.sync_error}</div>
                             )}
+                          </td>
 
-                            {invoice.sync_status === 'error' && (
-                              <>
-                                <AlertCircle className="h-4 w-4 text-red-400" />
-                                <span className="text-sm text-red-400">Błąd</span>
-                              </>
-                            )}
+                          <td className="px-4 py-3 text-right">{renderActions(invoice)}</td>
+                        </tr>
+                      );
+                    })}
 
-                            {invoice.sync_status === 'pending' && (
-                              <>
-                                <RefreshCw className="h-4 w-4 text-yellow-400" />
-                                <span className="text-sm text-yellow-400">Pending</span>
-                              </>
-                            )}
-                          </div>
-
-                          {invoice.sync_error && (
-                            <div className="mt-1 text-xs text-red-400">{invoice.sync_error}</div>
-                          )}
-                        </td>
-
-                        <td className="px-4 py-3 text-right">
-                          <ResponsiveActionBar
-                            disabledBackground
-                            mobileBreakpoint={4000}
-                            actions={[
-                              {
-                                label: 'Szczegóły',
-                                onClick: () => setSelectedInvoice(invoice),
-                                icon: <FileCheck className="h-4 w-4" />,
-                                variant: 'default',
-                              },
-                              {
-                                label: 'Edytuj płatność',
-                                onClick: () => handleOpenEditPayment(invoice),
-                                icon: <Edit className="h-4 w-4" />,
-                                variant: 'default',
-                              },
-                              {
-                                label: 'Zobacz XML',
-                                onClick: () => handleViewInvoiceXml(invoice),
-                                icon: <Eye className="h-4 w-4" />,
-                                variant: 'default',
-                                disabled: invoice.sync_status !== 'synced',
-                              },
-                              ...(invoice.payment_status === 'paid'
-                                ? [
-                                    {
-                                      label: 'Oznacz jako nieopłaconą',
-                                      onClick: () => handleMarkAsUnpaid(invoice),
-                                      icon: <X className="h-4 w-4" />,
-                                      variant: 'default' as const,
-                                    },
-                                  ]
-                                : [
-                                    {
-                                      label: 'Dopasuj płatność',
-                                      onClick: () => handleOpenMatchPayment(invoice),
-                                      icon: <LinkIcon className="h-4 w-4" />,
-                                      variant: 'primary' as const,
-                                    },
-                                    {
-                                      label: 'Oznacz jako opłaconą',
-                                      onClick: () => handleMarkAsPaid(invoice),
-                                      icon: <CheckCircle className="h-4 w-4" />,
-                                      variant: 'default' as const,
-                                    },
-                                  ]),
-                            ]}
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })}
-
-                  {currentInvoices.length > 0 && (
                     <tr className="border-t-2 border-[#d3bb73]/30 bg-[#d3bb73]/5">
                       <td
                         colSpan={3}
@@ -984,19 +1204,128 @@ export default function KSeFIntegrationPanel() {
                       >
                         SUMA:
                       </td>
-                      <td className="px-4 py-4 text-sm font-medium text-[#e5e4e2]">
+                      <td className="px-4 py-4 text-right text-sm font-medium text-[#e5e4e2]">
                         {totalNetAmount.toFixed(2)} PLN
                       </td>
-                      <td className="px-4 py-4 text-sm font-bold text-[#d3bb73]">
+                      <td className="px-4 py-4 text-right text-sm font-bold text-[#d3bb73]">
                         {totalGrossAmount.toFixed(2)} PLN
                       </td>
-                      <td colSpan={3}></td>
+                      <td colSpan={5}></td>
                     </tr>
-                  )}
-                </tbody>
-              </table>
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2 xl:grid-cols-3">
+                {sortedInvoices.map((invoice) => {
+                  const contractorName =
+                    activeTab === 'issued'
+                      ? invoice.buyer_name || 'Brak danych nabywcy'
+                      : invoice.seller_name || 'Brak danych sprzedawcy';
+
+                  const contractorNip =
+                    activeTab === 'issued'
+                      ? invoice.buyer_nip || 'Brak NIP'
+                      : invoice.seller_nip || 'Brak NIP';
+
+                  const invoiceDate = invoice.issue_date || invoice.ksef_issued_at;
+                  const invoiceType = getInvoiceTypeLabel(invoice.invoice_number);
+                  const typeBadgeColor = getInvoiceTypeBadgeColor(invoiceType);
+                  const paymentStatus = getPaymentStatus(invoice);
+                  const PaymentIcon = paymentStatus.icon;
+
+                  return (
+                    <div
+                      key={invoice.id}
+                      className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4 transition-colors hover:border-[#d3bb73]/30"
+                    >
+                      <div className="mb-3 flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-medium text-[#e5e4e2]">
+                            {invoice.invoice_number || 'Brak numeru faktury'}
+                          </div>
+                          <div className="mt-1 text-xs text-[#e5e4e2]/40">
+                            KSeF: {invoice.ksef_reference_number}
+                          </div>
+                        </div>
+
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-medium ${typeBadgeColor}`}
+                        >
+                          {invoiceType}
+                        </span>
+                      </div>
+
+                      <div className="mb-3 text-sm text-[#e5e4e2]/80">
+                        <div>{contractorName}</div>
+                        <div className="mt-1 text-xs text-[#e5e4e2]/40">NIP: {contractorNip}</div>
+                      </div>
+
+                      <div className="mb-3 grid grid-cols-2 gap-3 border-t border-[#d3bb73]/10 pt-3 text-sm">
+                        <div>
+                          <div className="text-xs text-[#e5e4e2]/40">Data</div>
+                          <div className="text-[#e5e4e2]/80">
+                            {invoiceDate ? new Date(invoiceDate).toLocaleDateString('pl-PL') : '—'}
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <div className="text-xs text-[#e5e4e2]/40">Brutto</div>
+                          <div className="font-medium text-[#d3bb73]">
+                            {invoice.gross_amount != null
+                              ? `${Number(invoice.gross_amount).toFixed(2)} PLN`
+                              : '—'}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-xs text-[#e5e4e2]/40">Netto</div>
+                          <div className="text-[#e5e4e2]/80">
+                            {invoice.net_amount != null
+                              ? `${Number(invoice.net_amount).toFixed(2)} PLN`
+                              : '—'}
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <div className="text-xs text-[#e5e4e2]/40">KSeF</div>
+                          <div className="text-[#e5e4e2]/80">{invoice.sync_status}</div>
+                        </div>
+                      </div>
+
+                      <div className="mb-4 flex items-center gap-2">
+                        <PaymentIcon className="h-4 w-4" />
+                        <span
+                          className={`text-sm font-medium ${paymentStatus.color.split(' ')[0]}`}
+                        >
+                          {paymentStatus.label}
+                        </span>
+                      </div>
+
+                      {renderActions(invoice)}
+                    </div>
+                  );
+                })}
+
+                <div className="rounded-xl border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-4 lg:col-span-2 xl:col-span-3">
+                  <div className="flex flex-wrap items-center justify-end gap-6 text-sm">
+                    <span className="text-[#e5e4e2]/70">
+                      Netto:{' '}
+                      <span className="font-medium text-[#e5e4e2]">
+                        {totalNetAmount.toFixed(2)} PLN
+                      </span>
+                    </span>
+                    <span className="text-[#e5e4e2]/70">
+                      Brutto:{' '}
+                      <span className="font-bold text-[#d3bb73]">
+                        {totalGrossAmount.toFixed(2)} PLN
+                      </span>
+                    </span>
+                  </div>
+                </div>
+              </div>
             )}
-          </div>
+          </>
         )}
 
         {activeTab === 'logs' && (
@@ -1019,6 +1348,7 @@ export default function KSeFIntegrationPanel() {
                           <AlertCircle className="h-4 w-4 text-red-400" />
                         )}
                       </div>
+
                       <div>
                         <p className="font-medium text-[#e5e4e2]">
                           Synchronizacja: {log.sync_type === 'issued' ? 'Wystawione' : 'Otrzymane'}
@@ -1028,6 +1358,7 @@ export default function KSeFIntegrationPanel() {
                         </p>
                       </div>
                     </div>
+
                     <div className="text-right">
                       <p className="font-medium text-[#e5e4e2]">{log.invoices_count} faktur</p>
                       {log.error_message && (
@@ -1042,9 +1373,89 @@ export default function KSeFIntegrationPanel() {
         )}
       </div>
 
+      {editPaymentInvoice && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl">
+            <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-6">
+              <h3 className="text-xl font-medium text-[#e5e4e2]">Edycja płatności</h3>
+              <button
+                onClick={() => setEditPaymentInvoice(null)}
+                className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 p-6">
+              <div>
+                <div className="mb-2 text-sm text-[#e5e4e2]/60">Faktura</div>
+                <div className="text-base font-medium text-[#e5e4e2]">
+                  {editPaymentInvoice.invoice_number || editPaymentInvoice.ksef_reference_number}
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-2 text-sm text-[#e5e4e2]/60">Kwota</div>
+                <div className="text-base font-medium text-[#d3bb73]">
+                  {editPaymentInvoice.gross_amount != null
+                    ? `${Number(editPaymentInvoice.gross_amount).toFixed(2)} PLN`
+                    : 'Brak danych'}
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm text-[#e5e4e2]">Termin płatności</label>
+                <input
+                  type="date"
+                  value={paymentDueDate}
+                  onChange={(e) => setPaymentDueDate(e.target.value)}
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#252945] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm text-[#e5e4e2]">
+                  Data płatności <span className="text-[#e5e4e2]/40">(opcjonalne)</span>
+                </label>
+                <input
+                  type="date"
+                  value={paymentDate}
+                  onChange={(e) => setPaymentDate(e.target.value)}
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#252945] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                />
+                <div className="mt-1 text-xs text-[#e5e4e2]/40">
+                  Wypełnij tylko gdy faktura została już opłacona.
+                </div>
+              </div>
+
+              <div className="rounded border border-[#d3bb73]/10 bg-[#252945] p-3 text-sm text-[#e5e4e2]/60">
+                <strong>Wskazówka:</strong> Jeśli wpiszesz datę płatności, faktura zostanie
+                automatycznie oznaczona jako opłacona.
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 border-t border-[#d3bb73]/10 p-6">
+              <button
+                onClick={() => setEditPaymentInvoice(null)}
+                className="rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#252945]"
+              >
+                Anuluj
+              </button>
+
+              <button
+                onClick={handleSavePaymentEdit}
+                className="rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
+              >
+                Zapisz
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showSetup && (
         <KSeFSetupModal
-          selectedCredentials={selectedCredentials}
+          selectedCredentials={selectedCredentials || null}
           onClose={() => setShowSetup(false)}
           onSave={() => {
             setShowSetup(false);
@@ -1103,6 +1514,7 @@ function KSeFSetupModal({
       .select('id, name, nip')
       .eq('is_active', true)
       .order('is_default', { ascending: false });
+
     setMyCompanies(data || []);
   };
 
@@ -1116,6 +1528,7 @@ function KSeFSetupModal({
     }
 
     setLoading(true);
+
     try {
       const payload = {
         my_company_id: myCompanyId,
@@ -1130,9 +1543,11 @@ function KSeFSetupModal({
           .from('ksef_credentials')
           .update(payload)
           .eq('id', selectedCredentials.id);
+
         if (error) throw error;
       } else {
         const { error } = await supabase.from('ksef_credentials').insert(payload);
+
         if (error) throw error;
       }
 
@@ -1151,6 +1566,7 @@ function KSeFSetupModal({
         <div className="border-b border-[#d3bb73]/10 p-6">
           <h3 className="text-xl font-light text-[#e5e4e2]">Konfiguracja KSeF</h3>
         </div>
+
         <div className="space-y-4 p-6">
           <div>
             <label className="mb-2 block text-sm text-[#e5e4e2]">Moja firma</label>
@@ -1166,6 +1582,7 @@ function KSeFSetupModal({
                 </option>
               ))}
             </select>
+
             {myCompanies.length === 0 && (
               <p className="mt-2 text-xs text-[#e5e4e2]/60">
                 Najpierw dodaj firmę w{' '}
@@ -1175,6 +1592,7 @@ function KSeFSetupModal({
               </p>
             )}
           </div>
+
           <div>
             <label className="mb-2 block text-sm text-[#e5e4e2]">NIP</label>
             <input
@@ -1185,6 +1603,7 @@ function KSeFSetupModal({
               className="w-full rounded border border-[#d3bb73]/20 bg-[#252945] px-3 py-2 text-[#e5e4e2]"
             />
           </div>
+
           <div>
             <label className="mb-2 block text-sm text-[#e5e4e2]">Token autoryzacyjny</label>
             <input
@@ -1195,6 +1614,7 @@ function KSeFSetupModal({
               className="w-full rounded border border-[#d3bb73]/20 bg-[#252945] px-3 py-2 text-[#e5e4e2]"
             />
           </div>
+
           <div className="flex items-center gap-2">
             <input
               type="checkbox"
@@ -1208,6 +1628,7 @@ function KSeFSetupModal({
             </label>
           </div>
         </div>
+
         <div className="flex justify-end gap-3 border-t border-[#d3bb73]/10 p-6">
           <button
             onClick={onClose}
@@ -1215,6 +1636,7 @@ function KSeFSetupModal({
           >
             Anuluj
           </button>
+
           <button
             onClick={handleSave}
             disabled={loading}
@@ -1224,87 +1646,6 @@ function KSeFSetupModal({
           </button>
         </div>
       </div>
-
-      {/* Modal edycji płatności */}
-
-      {/* {editPaymentInvoice && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-lg rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl">
-            <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-6">
-              <h3 className="text-xl font-medium text-[#e5e4e2]">Edycja płatności</h3>
-              <button
-                onClick={() => setEditPaymentInvoice(null)}
-                className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4 p-6">
-              <div>
-                <div className="mb-2 text-sm text-[#e5e4e2]/60">Faktura</div>
-                <div className="text-base font-medium text-[#e5e4e2]">
-                  {selectedInvoice.invoice_number || selectedInvoice.ksef_reference_number}
-                </div>
-              </div>
-
-              <div>
-                <div className="mb-2 text-sm text-[#e5e4e2]/60">Kwota</div>
-                <div className="text-base font-medium text-[#d3bb73]">
-                  {selectedInvoice.gross_amount != null
-                    ? `${Number(editPaymentInvoice.gross_amount).toFixed(2)} PLN`
-                    : 'Brak danych'}
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]">Termin płatności</label>
-                <input
-                  type="date"
-                  value={selectedInvoice.payment_due_date}
-                  onChange={(e) => setPaymentDueDate(e.target.value)}
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#252945] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]">
-                  Data płatności <span className="text-[#e5e4e2]/40">(opcjonalne)</span>
-                </label>
-                <input
-                  type="date"
-                  value={selectedInvoice.payment_date}
-                  onChange={(e) => setPaymentDate(e.target.value)}
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#252945] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-                />
-                <div className="mt-1 text-xs text-[#e5e4e2]/40">
-                  Wypełnij tylko gdy faktura została już opłacona
-                </div>
-              </div>
-
-              <div className="rounded border border-[#d3bb73]/10 bg-[#252945] p-3 text-sm text-[#e5e4e2]/60">
-                <strong>Wskazówka:</strong> Jeśli wpiszesz datę płatności, faktura zostanie
-                automatycznie oznaczona jako opłacona.
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-3 border-t border-[#d3bb73]/10 p-6">
-              <button
-                onClick={onClose}
-                className="rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#252945]"
-              >
-                Anuluj
-              </button>
-              <button
-                onClick={() => handleSavePaymentEdit(selectedInvoice)}
-                className="rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
-              >
-                Zapisz
-              </button>
-            </div>
-          </div>
-        </div>
-      )} */}
     </div>
   );
 }

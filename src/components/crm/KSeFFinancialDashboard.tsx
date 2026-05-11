@@ -13,6 +13,8 @@ import {
   AlertCircle,
   Clock,
   Link as LinkIcon,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 import { parseMT940, parseJPK_WB, findMatchingInvoices } from '@/lib/bankStatementParsers';
 import BankTransactionsAnalysis from './BankTransactionsAnalysis';
@@ -60,6 +62,7 @@ export default function KSeFFinancialDashboard() {
   const [showUnmatchedModal, setShowUnmatchedModal] = useState(false);
   const [showSimpleMatchModal, setShowSimpleMatchModal] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [showYearSummary, setShowYearSummary] = useState(false);
   const [unmatchedModalMonth, setUnmatchedModalMonth] = useState<{
     month: number;
     year: number;
@@ -80,13 +83,13 @@ export default function KSeFFinancialDashboard() {
 
   const handleSelectedFile = async (file: File | null, month: number, year: number) => {
     if (!file) return;
-  
+
     const isPdf = file.name.toLowerCase().endsWith('.pdf');
     if (!isPdf) {
       showSnackbar('Dozwolony jest tylko plik PDF z wyciągiem bankowym', 'error');
       return;
     }
-  
+
     await handleFileUpload(file, month, year);
   };
 
@@ -100,17 +103,14 @@ export default function KSeFFinancialDashboard() {
           supabase.rpc('update_monthly_summary', {
             p_month: month,
             p_year: selectedYear,
-            p_company_id: selectedCompanyId
+            p_company_id: selectedCompanyId,
           }),
         );
       }
 
       await Promise.all(summariesPromises);
 
-      let query = supabase
-        .from('monthly_financial_summaries')
-        .select('*')
-        .eq('year', selectedYear);
+      let query = supabase.from('monthly_financial_summaries').select('*').eq('year', selectedYear);
 
       if (selectedCompanyId) {
         query = query.eq('my_company_id', selectedCompanyId);
@@ -213,25 +213,25 @@ export default function KSeFFinancialDashboard() {
         .eq('statement_month', month)
         .eq('statement_year', year)
         .eq('my_company_id', selectedCompanyId);
-  
+
       if (existingStatementsError) throw existingStatementsError;
-  
+
       const existingStatementIds = (existingStatements || []).map((s) => s.id);
-  
+
       if (existingStatementIds.length > 0) {
         setUploadProgress({ step: 'Czyszczenie starego wyciągu...', current: 3, total: 7 });
-  
+
         const { data: oldTransactions, error: oldTransactionsError } = await supabase
           .from('bank_transactions')
           .select('id, matched_invoice_id')
           .in('statement_id', existingStatementIds);
-  
+
         if (oldTransactionsError) throw oldTransactionsError;
-  
+
         const oldMatchedInvoiceIds = [
           ...new Set((oldTransactions || []).map((t) => t.matched_invoice_id).filter(Boolean)),
         ];
-  
+
         if (oldMatchedInvoiceIds.length > 0) {
           const { error: resetInvoicesError } = await supabase
             .from('ksef_invoices')
@@ -240,31 +240,31 @@ export default function KSeFFinancialDashboard() {
               payment_date: null,
             })
             .in('id', oldMatchedInvoiceIds);
-  
+
           if (resetInvoicesError) throw resetInvoicesError;
         }
-  
+
         const { error: deleteTransactionsError } = await supabase
           .from('bank_transactions')
           .delete()
           .in('statement_id', existingStatementIds);
-  
+
         if (deleteTransactionsError) throw deleteTransactionsError;
-  
+
         const { error: deleteStatementsError } = await supabase
           .from('bank_statements')
           .delete()
           .in('id', existingStatementIds);
-  
+
         if (deleteStatementsError) throw deleteStatementsError;
       }
-  
+
       setUploadProgress({ step: 'Zapisywanie nowego wyciągu...', current: 4, total: 7 });
-  
+
       const {
         data: { user },
       } = await supabase.auth.getUser();
-  
+
       const { data: statement, error: statementError } = await supabase
         .from('bank_statements')
         .insert({
@@ -284,21 +284,21 @@ export default function KSeFFinancialDashboard() {
         })
         .select()
         .single();
-  
+
       if (statementError) throw statementError;
-  
+
       setUploadProgress({
         step: `Przetwarzanie transakcji (0/${parsedStatement.transactions.length})...`,
         current: 5,
         total: 7,
       });
-  
+
       let matchedCount = 0;
       let unmatchedCount = 0;
-  
+
       for (let i = 0; i < parsedStatement.transactions.length; i++) {
         const transaction = parsedStatement.transactions[i];
-  
+
         if (i % 5 === 0) {
           setUploadProgress({
             step: `Przetwarzanie transakcji (${i + 1}/${parsedStatement.transactions.length})...`,
@@ -306,17 +306,17 @@ export default function KSeFFinancialDashboard() {
             total: 7,
           });
         }
-  
+
         const matches = await findMatchingInvoices(transaction, supabase);
-  
+
         let matchedInvoiceId: string | null = null;
         let matchConfidence: number | null = null;
-  
+
         if (matches.length > 0 && matches[0].confidence >= 0.95) {
           matchedInvoiceId = matches[0].invoiceId;
           matchConfidence = matches[0].confidence;
           matchedCount++;
-  
+
           const { error: markPaidError } = await supabase
             .from('ksef_invoices')
             .update({
@@ -324,7 +324,7 @@ export default function KSeFFinancialDashboard() {
               payment_date: transaction.transactionDate,
             })
             .eq('id', matchedInvoiceId);
-  
+
           if (markPaidError) throw markPaidError;
         } else if (matches.length > 0 && matches[0].confidence >= 0.75) {
           matchedInvoiceId = matches[0].invoiceId;
@@ -333,7 +333,7 @@ export default function KSeFFinancialDashboard() {
         } else {
           unmatchedCount++;
         }
-  
+
         const { error: insertTransactionError } = await supabase.from('bank_transactions').insert({
           statement_id: statement.id,
           transaction_date: transaction.transactionDate,
@@ -351,12 +351,12 @@ export default function KSeFFinancialDashboard() {
           raw_description: transaction.rawDescription ?? null,
           raw_counterparty: transaction.rawCounterparty ?? null,
         });
-  
+
         if (insertTransactionError) throw insertTransactionError;
       }
-  
+
       setUploadProgress({ step: 'Finalizowanie importu...', current: 6, total: 7 });
-  
+
       const { error: finalizeStatementError } = await supabase
         .from('bank_statements')
         .update({
@@ -364,11 +364,11 @@ export default function KSeFFinancialDashboard() {
           processed_at: new Date().toISOString(),
         })
         .eq('id', statement.id);
-  
+
       if (finalizeStatementError) throw finalizeStatementError;
-  
+
       await loadSummaries();
-  
+
       setSelectedMonth((prev) =>
         prev
           ? {
@@ -377,7 +377,7 @@ export default function KSeFFinancialDashboard() {
             }
           : prev,
       );
-  
+
       showSnackbar(
         `Wyciąg PDF został podmieniony. Transakcji: ${parsedStatement.transactions.length}, automatycznie dopasowanych: ${matchedCount}, do weryfikacji: ${unmatchedCount}`,
         'success',
@@ -451,53 +451,109 @@ export default function KSeFFinancialDashboard() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-[#d3bb73]/20 bg-gradient-to-br from-[#d3bb73]/10 to-[#d3bb73]/5 p-6">
-        <h3 className="mb-4 text-lg font-medium text-[#e5e4e2]">
-          Podsumowanie {selectedYear} roku
-        </h3>
-        <div className="grid gap-4 md:grid-cols-4">
-          <div>
-            <div className="text-sm text-[#e5e4e2]/60">Przychody</div>
-            <div className="text-xl font-bold text-green-400">
-              {yearTotals.income.toFixed(2)} PLN
+      <div className="overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
+        <button
+          type="button"
+          onClick={() => setShowYearSummary((prev) => !prev)}
+          className="flex w-full items-center justify-between px-5 py-3 text-left transition-colors hover:bg-[#d3bb73]/5"
+        >
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-green-400" />
+              <span className="text-sm text-[#e5e4e2]/60">Przychody:</span>
+              <span className="text-sm font-medium text-green-400">
+                {yearTotals.income.toFixed(2)} PLN
+              </span>
             </div>
-            <div className="text-xs text-[#e5e4e2]/40">{yearTotals.issued} faktur</div>
-          </div>
-          <div>
-            <div className="text-sm text-[#e5e4e2]/60">Wydatki</div>
-            <div className="text-xl font-bold text-red-400">
-              {yearTotals.expenses.toFixed(2)} PLN
-            </div>
-            <div className="text-xs text-[#e5e4e2]/40">{yearTotals.received} faktur</div>
-          </div>
-          <div>
-            <div className="text-sm text-[#e5e4e2]/60">Bilans</div>
-            <div
-              className={`text-xl font-bold ${
-                yearTotals.income - yearTotals.expenses >= 0 ? 'text-green-400' : 'text-red-400'
-              }`}
-            >
-              {(yearTotals.income - yearTotals.expenses).toFixed(2)} PLN
-            </div>
-          </div>
-          <div>
-            <div className="text-sm text-[#e5e4e2]/60">Status płatności</div>
-            <div className="mt-1 flex gap-2 text-xs">
-              <span className="text-green-400">{yearTotals.paid} opł.</span>
-              <span className="text-orange-400">{yearTotals.unpaid} nieop.</span>
-              <span className="text-red-400">{yearTotals.overdue} przet.</span>
-            </div>
-          </div>
-        </div>
-      </div>
 
-      {monthsWithData.length > 0 && monthsWithData.length < 12 && (
-        <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-4 text-sm text-blue-400">
-          <strong>Uwaga:</strong> W roku {selectedYear} masz faktury tylko w {monthsWithData.length}{' '}
-          {monthsWithData.length === 1 ? 'miesiącu' : 'miesiącach'}. Poniżej wyświetlane są tylko
-          miesiące z danymi.
-        </div>
-      )}
+            <div className="hidden items-center gap-2 sm:flex">
+              <TrendingDown className="h-4 w-4 text-red-400" />
+              <span className="text-sm text-[#e5e4e2]/60">Wydatki:</span>
+              <span className="text-sm font-medium text-red-400">
+                {yearTotals.expenses.toFixed(2)} PLN
+              </span>
+            </div>
+
+            <div className="hidden items-center gap-2 lg:flex">
+              <FileText className="h-4 w-4 text-[#d3bb73]" />
+              <span className="text-sm text-[#e5e4e2]/60">Bilans:</span>
+              <span
+                className={`text-sm font-medium ${
+                  yearTotals.income - yearTotals.expenses >= 0 ? 'text-green-400' : 'text-red-400'
+                }`}
+              >
+                {(yearTotals.income - yearTotals.expenses).toFixed(2)} PLN
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/50">
+            <span>{showYearSummary ? 'Ukryj podsumowanie' : 'Pokaż podsumowanie'}</span>
+            {showYearSummary ? (
+              <ChevronUp className="h-4 w-4 text-[#d3bb73]" />
+            ) : (
+              <ChevronDown className="h-4 w-4 text-[#d3bb73]" />
+            )}
+          </div>
+        </button>
+
+        {showYearSummary && (
+          <div className="grid gap-4 border-t border-[#d3bb73]/10 p-5 md:grid-cols-4">
+            <div className="rounded-lg border border-green-500/20 bg-green-500/10 p-4">
+              <div className="text-sm text-[#e5e4e2]/60">Przychody</div>
+              <div className="mt-1 text-xl font-bold text-green-400">
+                {yearTotals.income.toFixed(2)} PLN
+              </div>
+              <div className="text-xs text-[#e5e4e2]/40">{yearTotals.issued} faktur</div>
+            </div>
+
+            <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-4">
+              <div className="text-sm text-[#e5e4e2]/60">Wydatki</div>
+              <div className="mt-1 text-xl font-bold text-red-400">
+                {yearTotals.expenses.toFixed(2)} PLN
+              </div>
+              <div className="text-xs text-[#e5e4e2]/40">{yearTotals.received} faktur</div>
+            </div>
+
+            <div className="rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-4">
+              <div className="text-sm text-[#e5e4e2]/60">Bilans</div>
+              <div
+                className={`mt-1 text-xl font-bold ${
+                  yearTotals.income - yearTotals.expenses >= 0 ? 'text-green-400' : 'text-red-400'
+                }`}
+              >
+                {(yearTotals.income - yearTotals.expenses).toFixed(2)} PLN
+              </div>
+              <div className="text-xs text-[#e5e4e2]/40">Rok {selectedYear}</div>
+            </div>
+
+            <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4">
+              <div className="text-sm text-[#e5e4e2]/60">Status płatności</div>
+              <div className="mt-3 space-y-1 text-sm">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-400" />
+                  <span className="text-green-400">{yearTotals.paid} opłacone</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-orange-400" />
+                  <span className="text-orange-400">{yearTotals.unpaid} nieopłacone</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 text-red-400" />
+                  <span className="text-red-400">{yearTotals.overdue} po terminie</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        {monthsWithData.length > 0 && monthsWithData.length < 12 && (
+          <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-4 text-sm text-blue-400">
+            <strong>Uwaga:</strong> W roku {selectedYear} masz faktury tylko w{' '}
+            {monthsWithData.length} {monthsWithData.length === 1 ? 'miesiącu' : 'miesiącach'}.
+            Poniżej wyświetlane są tylko miesiące z danymi.
+          </div>
+        )}
+      </div>
 
       {false && currentMonth && (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -759,15 +815,15 @@ export default function KSeFFinancialDashboard() {
                   e.preventDefault();
                   e.stopPropagation();
                   setIsDragOver(false);
-                
+
                   if (uploadingFile) return;
-                
+
                   const file = e.dataTransfer.files?.[0] ?? null;
                   if (file && !file.name.toLowerCase().endsWith('.pdf')) {
                     showSnackbar('Możesz upuścić tylko plik PDF', 'error');
                     return;
                   }
-                
+
                   await handleSelectedFile(file, selectedMonth.month, selectedMonth.year);
                 }}
                 className={`rounded-lg border-2 border-dashed p-6 transition-all ${
@@ -787,9 +843,7 @@ export default function KSeFFinancialDashboard() {
                     {isDragOver ? 'Upuść plik tutaj' : 'Prześlij wyciąg bankowy'}
                   </h4>
 
-                  <p className="mt-1 text-xs text-[#e5e4e2]/60">
-                    Format PDF (.pdf)
-                  </p>
+                  <p className="mt-1 text-xs text-[#e5e4e2]/60">Format PDF (.pdf)</p>
 
                   <label className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#252945] px-4 py-2 text-sm text-[#e5e4e2] hover:border-[#d3bb73]/40 hover:bg-[#2d3254]">
                     <Upload className="h-4 w-4" />

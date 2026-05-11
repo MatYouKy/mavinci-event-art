@@ -164,7 +164,9 @@ export default function MyCompaniesPage() {
                 <div className="flex gap-4">
                   {company.logo_url ? (
                     <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-lg bg-white p-1">
-                      <img
+                      <Image
+                        width={64}
+                        height={64}
                         src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/company-logos/${company.logo_url}`}
                         alt={company.name}
                         className="max-h-full max-w-full object-contain"
@@ -747,7 +749,9 @@ function CompanyModal({
               {logoPreview ? (
                 <div className="relative flex items-center gap-4 rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4">
                   <div className="flex h-20 w-40 items-center justify-center overflow-hidden rounded-lg bg-white p-2">
-                    <img
+                    <Image
+                      width={80}
+                      height={80} 
                       src={logoPreview}
                       alt="Logo podglad"
                       className="max-h-full max-w-full object-contain"
