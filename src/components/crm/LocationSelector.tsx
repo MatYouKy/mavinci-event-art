@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { MapPin, Plus, Search, Building2, X } from 'lucide-react';
-import { supabase } from '@/lib/supabase/browser';
+import { useMemo, useState } from 'react';
+import { MapPin, Plus, Building2, X } from 'lucide-react';
 import AddLocationModal from './AddLocationModal';
 import { ILocation } from '@/app/(crm)/crm/locations/type';
 import { useLocations } from '@/app/(crm)/crm/locations/useLocations';
@@ -18,61 +17,86 @@ export default function LocationSelector({
   onChange,
   placeholder = 'Wybierz lub wyszukaj lokalizację...',
 }: LocationSelectorProps) {
-  const [savedLocations, setSavedLocations] = useState<ILocation[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [addedLocations, setAddedLocations] = useState<ILocation[]>([]);
 
-  const { list: locations, loading: isLoading } = useLocations();
+  const { list: locations = [], loading: isLoading } = useLocations();
 
-  useEffect(() => {
-    if (locations) {
-      setSavedLocations(locations);
-    }
-  }, [locations]);
+  const allLocations = useMemo(() => {
+    const map = new Map<string, ILocation>();
 
-  const filteredLocations = savedLocations.filter((loc) => {
-    const query = searchQuery.toLowerCase();
-    return (
-      loc.name?.toLowerCase().includes(query) ||
-      loc.city?.toLowerCase().includes(query) ||
-      loc.address?.toLowerCase().includes(query)
-    );
-  });
+    locations.forEach((loc) => {
+      if (loc.id) map.set(loc.id, loc);
+    });
+
+    addedLocations.forEach((loc) => {
+      if (loc.id) map.set(loc.id, loc);
+    });
+
+    return Array.from(map.values());
+  }, [locations, addedLocations]);
+
+  const filteredLocations = useMemo(() => {
+    const query = searchQuery.toLowerCase().trim();
+
+    if (!query) return allLocations;
+
+    return allLocations.filter((loc) => {
+      return (
+        loc.name?.toLowerCase().includes(query) ||
+        loc.city?.toLowerCase().includes(query) ||
+        loc.address?.toLowerCase().includes(query) ||
+        loc.formatted_address?.toLowerCase().includes(query)
+      );
+    });
+  }, [allLocations, searchQuery]);
 
   const handleSelectLocation = (location: ILocation) => {
-    const locationString = `${location.name}${location.city ? ', ' + location.city : ''}${location.postal_code ? ', ' + location.postal_code : ''}`;
+    const locationString = `${location.name}${location.city ? ', ' + location.city : ''}${
+      location.postal_code ? ', ' + location.postal_code : ''
+    }`;
+
     onChange(locationString, location);
     setShowDropdown(false);
     setSearchQuery('');
   };
 
   const handleLocationAdded = (location: ILocation) => {
-    // Dodaj nową lokalizację do listy
-    setSavedLocations((prev) => [...prev, location]);
-    // Wybierz ją
+    setAddedLocations((prev) => {
+      if (prev.some((loc) => loc.id === location.id)) return prev;
+      return [...prev, location];
+    });
+
     handleSelectLocation(location);
     setShowAddModal(false);
   };
 
+  const inputValue = showDropdown ? searchQuery : value;
+
   return (
     <div className="relative">
-      {/* Search input */}
       <div className="relative">
         <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[#e5e4e2]/50">
           <MapPin className="h-5 w-5" />
         </div>
+
         <input
           type="text"
-          value={showDropdown ? searchQuery : value}
+          value={inputValue}
           onChange={(e) => {
             setSearchQuery(e.target.value);
-            if (!showDropdown) setShowDropdown(true);
+            setShowDropdown(true);
           }}
-          onFocus={() => setShowDropdown(true)}
+          onFocus={() => {
+            setSearchQuery('');
+            setShowDropdown(true);
+          }}
           placeholder={placeholder}
           className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33] py-3 pl-10 pr-10 text-[#e5e4e2] transition-colors focus:border-[#d3bb73] focus:outline-none"
         />
+
         {(showDropdown || value) && (
           <button
             type="button"
@@ -88,15 +112,14 @@ export default function LocationSelector({
         )}
       </div>
 
-      {/* Dropdown with saved locations */}
       {showDropdown && (
         <div className="absolute z-50 mt-2 max-h-80 w-full overflow-hidden rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33] shadow-xl">
-          {/* Header */}
           <div className="border-b border-[#d3bb73]/20 bg-[#0f1117] px-4 py-3">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-[#e5e4e2]">
                 Twoje lokalizacje ({filteredLocations.length})
               </span>
+
               <button
                 type="button"
                 onClick={() => {
@@ -111,7 +134,6 @@ export default function LocationSelector({
             </div>
           </div>
 
-          {/* Locations list */}
           <div className="max-h-64 overflow-y-auto">
             {isLoading ? (
               <div className="px-4 py-8 text-center text-[#e5e4e2]/50">
@@ -121,11 +143,13 @@ export default function LocationSelector({
             ) : filteredLocations.length === 0 ? (
               <div className="px-4 py-8 text-center">
                 <Building2 className="mx-auto mb-3 h-12 w-12 text-[#e5e4e2]/30" />
+
                 <p className="mb-3 text-sm text-[#e5e4e2]/50">
                   {searchQuery
                     ? `Nie znaleziono lokalizacji "${searchQuery}" w Twojej liście`
                     : 'Brak zapisanych lokalizacji'}
                 </p>
+
                 <div className="flex flex-col gap-2">
                   <button
                     type="button"
@@ -138,6 +162,7 @@ export default function LocationSelector({
                     <Plus className="h-4 w-4" />
                     Dodaj nową lokalizację
                   </button>
+
                   {searchQuery && (
                     <button
                       type="button"
@@ -165,8 +190,10 @@ export default function LocationSelector({
                   >
                     <div className="flex items-start gap-3">
                       <MapPin className="mt-1 h-4 w-4 flex-shrink-0 text-[#d3bb73]" />
+
                       <div className="min-w-0 flex-1">
                         <div className="mb-1 font-medium text-[#e5e4e2]">{location.name}</div>
+
                         {(location.address || location.city) && (
                           <div className="text-sm text-[#e5e4e2]/60">
                             {location.address}
@@ -175,6 +202,7 @@ export default function LocationSelector({
                             {location.postal_code && ` ${location.postal_code}`}
                           </div>
                         )}
+
                         {location.formatted_address && (
                           <div className="mt-1 text-xs text-[#e5e4e2]/40">
                             {location.formatted_address}
@@ -185,10 +213,10 @@ export default function LocationSelector({
                   </button>
                 ))}
 
-                {/* Button to add new location when results exist but user wants more */}
                 {searchQuery && (
                   <div className="border-t border-[#d3bb73]/10 bg-[#0f1117] px-4 py-3">
                     <p className="mb-2 text-xs text-[#e5e4e2]/40">Nie znalazłeś czego szukasz?</p>
+
                     <button
                       type="button"
                       onClick={() => {
@@ -206,12 +234,12 @@ export default function LocationSelector({
             )}
           </div>
 
-          {/* Footer */}
           <div className="border-t border-[#d3bb73]/20 bg-[#0f1117] px-4 py-3">
             <button
               type="button"
               onClick={() => {
                 setShowDropdown(false);
+                setSearchQuery('');
               }}
               className="w-full text-center text-xs text-[#e5e4e2]/50 transition-colors hover:text-[#e5e4e2]"
             >
@@ -221,7 +249,6 @@ export default function LocationSelector({
         </div>
       )}
 
-      {/* Add Location Modal */}
       <AddLocationModal
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}

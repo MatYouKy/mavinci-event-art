@@ -869,7 +869,7 @@ export default function EventDetailPageClient({
               </div>
             )}
             <EventsDetailsTab
-              initialEvent={initialData}
+              initialEvent={event}
               location={location}
               organization={organization}
               contact={contact}
@@ -915,19 +915,29 @@ export default function EventDetailPageClient({
                           <div>
                             Netto:{' '}
                             <span className="text-[#e5e4e2]/70">
-                              {Number(latestOffer.subtotal || latestOffer.total_amount || 0).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                              {Number(
+                                latestOffer.subtotal || latestOffer.total_amount || 0,
+                              ).toLocaleString('pl-PL', { minimumFractionDigits: 2 })}{' '}
+                              zł
                             </span>
                           </div>
                           <div>
                             VAT ({latestOffer.tax_percent ?? 23}%):{' '}
                             <span className="text-[#e5e4e2]/70">
-                              {Number(latestOffer.tax_amount || 0).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                              {Number(latestOffer.tax_amount || 0).toLocaleString('pl-PL', {
+                                minimumFractionDigits: 2,
+                              })}{' '}
+                              zł
                             </span>
                           </div>
                           <div>
                             Brutto:{' '}
                             <span className="text-[#e5e4e2]/70">
-                              {(Number(latestOffer.subtotal || latestOffer.total_amount || 0) + Number(latestOffer.tax_amount || 0)).toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zł
+                              {(
+                                Number(latestOffer.subtotal || latestOffer.total_amount || 0) +
+                                Number(latestOffer.tax_amount || 0)
+                              ).toLocaleString('pl-PL', { minimumFractionDigits: 2 })}{' '}
+                              zł
                             </span>
                           </div>
                         </div>
@@ -1480,6 +1490,16 @@ export default function EventDetailPageClient({
                 console.error('Error updating event:', error);
                 showSnackbar('Błąd podczas aktualizacji eventu', 'error');
                 return;
+              }
+
+              setEvent((prev) => ({
+                ...prev,
+                ...updatedData,
+              }));
+
+              if (updatedData.location_id !== event.location_id) {
+                const newLocation = await getById(updatedData.location_id);
+                setLocation(newLocation as ISimpleLocation);
               }
 
               // 1) instant UI (cache update)

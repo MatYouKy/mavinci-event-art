@@ -30,7 +30,7 @@ interface EventsDetailsTabProps {
   isAdmin: boolean;
   canEventManage: boolean;
   contact: ISimpleContact | null;
-  organization: OrganizationRow | null;  
+  organization: OrganizationRow | null;
   location: ISimpleLocation | null;
   initialEvent: IEvent;
 }
@@ -47,6 +47,10 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
   const { updateEvent, refetch } = useEvent();
 
   const [event, setEvent] = useState<IEvent>(initialEvent);
+  
+  useEffect(() => {
+    setEvent(initialEvent);
+  }, [initialEvent]);
 
   const [showEditClientModal, setShowEditClientModal] = useState(false);
   const router = useRouter();
@@ -54,7 +58,7 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
   const handleUpdateDescription = async (description: string) => {
     // optimistic UI
     setEvent((prev) => ({ ...prev, description }));
-  
+
     try {
       await updateEvent({ description });
       await refetch(); // opcjonalnie, jak chcesz dociągnąć całość z bazy
@@ -67,7 +71,7 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
 
   const handleUpdateNotes = async (notes: string) => {
     setEvent((prev) => ({ ...prev, notes }));
-  
+
     try {
       await updateEvent({ notes });
       await refetch();
@@ -227,7 +231,10 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
                     <Building2 className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
                     <div>
                       <p className="text-sm text-[#e5e4e2]/60">Klient (Firma)</p>
-                      <a href={`/crm/contacts/${organization.id}`} className="text-[#e5e4e2] hover:text-[#d3bb73]">
+                      <a
+                        href={`/crm/contacts/${organization.id}`}
+                        className="text-[#e5e4e2] hover:text-[#d3bb73]"
+                      >
                         {organization ? organization.alias || organization.name : 'Brak klienta'}
                       </a>
                     </div>
@@ -257,16 +264,16 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
                           </div>
                         )}
                         {(contact.business_phone || contact.phone) && (
-                            <div className="mt-1 flex items-center gap-2 text-sm text-[#e5e4e2]/60">
-                              <Phone className="h-3 w-3" />
-                              <a
-                                href={`tel:${contact.business_phone || contact.phone}`}
-                                className="text-[#e5e4e2] hover:text-[#d3bb73]"
-                              >
-                                {contact.business_phone || contact.phone}
-                              </a>
-                            </div>
-                          )}
+                          <div className="mt-1 flex items-center gap-2 text-sm text-[#e5e4e2]/60">
+                            <Phone className="h-3 w-3" />
+                            <a
+                              href={`tel:${contact.business_phone || contact.phone}`}
+                              className="text-[#e5e4e2] hover:text-[#d3bb73]"
+                            >
+                              {contact.business_phone || contact.phone}
+                            </a>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -299,16 +306,16 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
                         )}
                         {contact.business_phone ||
                           (contact.phone && (
-                          <div className="mt-1 flex items-center gap-2 text-sm text-[#e5e4e2]/60">
-                            <Phone className="h-3 w-3" />
-                            <a
-                              href={`tel:${contact.business_phone || contact.phone}`}
-                              className="text-[#e5e4e2] hover:text-[#d3bb73]"
-                            >
-                              {contact.business_phone || contact.phone}
-                            </a>
-                          </div>
-                        ))}
+                            <div className="mt-1 flex items-center gap-2 text-sm text-[#e5e4e2]/60">
+                              <Phone className="h-3 w-3" />
+                              <a
+                                href={`tel:${contact.business_phone || contact.phone}`}
+                                className="text-[#e5e4e2] hover:text-[#d3bb73]"
+                              >
+                                {contact.business_phone || contact.phone}
+                              </a>
+                            </div>
+                          ))}
                       </>
                     ) : (
                       <p className="text-[#e5e4e2]">Brak klienta</p>
@@ -330,13 +337,13 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
             currentContactPersonId={event.contact_person_id}
             onSuccess={async () => {
               setShowEditClientModal(false);
-            
+
               const { data, error } = await supabase
                 .from('events')
                 .select('*')
                 .eq('id', event.id)
                 .single();
-            
+
               if (!error && data) setEvent(data as IEvent);
             }}
           />
