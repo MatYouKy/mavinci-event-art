@@ -16,12 +16,16 @@ import {
   Save,
   Pencil,
   Check,
+  FileText,
+  Mail,
+  Loader2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { usePortalDropdown } from '@/hooks/usePortalDropdown';
 import { PortalDropdownMenu } from '@/components/UI/PortalDropdownMenu/PortalDropdownMenu';
+import SendCalculationEmailModal from '@/components/crm/SendCalculationEmailModal';
 
 type Category = 'equipment' | 'staff' | 'transport' | 'other';
 
@@ -297,6 +301,9 @@ function CalculationEditor({
   const [eventName, setEventName] = useState('');
   const [eventDate, setEventDate] = useState<string | null>(null);
   const [showImport, setShowImport] = useState(false);
+  const [generatedPdfPath, setGeneratedPdfPath] = useState<string | null>(null);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [showSendEmail, setShowSendEmail] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -313,6 +320,7 @@ function CalculationEditor({
     if (calc) {
       setName(calc.name);
       setNotes(calc.notes ?? '');
+      setGeneratedPdfPath(calc.generated_pdf_path ?? null);
     }
     if (itemsData) {
       setItems(
@@ -507,6 +515,64 @@ function CalculationEditor({
     setTimeout(() => w.print(), 300);
   };
 
+  const handleGeneratePdf = async () => {
+    if (!items.length) {
+      showSnackbar('Kalkulacja nie zawiera pozycji', 'warning');
+      return;
+    }
+    setGeneratingPdf(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+
+      const html = buildCalculationHtml({
+        name,
+        notes,
+        eventName,
+        eventDate,
+        grouped,
+        categoryTotals,
+        categoryTotalsGross,
+        grandTotal,
+        grandTotalGross,
+      });
+
+      const res = await fetch('/bridge/events/calculations-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventId,
+          calculationId,
+          eventName,
+          calculationName: name,
+          html,
+          createdBy: user?.id ?? null,
+          previousPdfPath: generatedPdfPath,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error || 'Błąd generowania PDF');
+      }
+
+      setGeneratedPdfPath(data.storagePath);
+      showSnackbar('PDF kalkulacji zapisany w plikach wydarzenia', 'success');
+    } catch (e: any) {
+      console.error(e);
+      showSnackbar(e.message || 'Błąd generowania PDF', 'error');
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
+
+  const handleOpenSendEmail = async () => {
+    if (!generatedPdfPath) {
+      showSnackbar('Najpierw wygeneruj PDF kalkulacji', 'warning');
+      return;
+    }
+    setShowSendEmail(true);
+  };
+
   if (loading) {
     return (
       <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-8 text-center text-[#e5e4e2]/60">
@@ -544,7 +610,29 @@ function CalculationEditor({
             className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-3 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/10"
           >
             <Printer className="h-4 w-4" />
-            Drukuj / PDF
+            Drukuj
+          </button>
+          <button
+            onClick={handleGeneratePdf}
+            disabled={generatingPdf}
+            className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-3 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/10 disabled:opacity-50"
+            title="Wygeneruj PDF i zapisz w plikach wydarzenia"
+          >
+            {generatingPdf ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FileText className="h-4 w-4" />
+            )}
+            {generatingPdf ? 'Generuję...' : 'Generuj PDF'}
+          </button>
+          <button
+            onClick={handleOpenSendEmail}
+            disabled={!generatedPdfPath}
+            className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-3 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/10 disabled:cursor-not-allowed disabled:opacity-40"
+            title={generatedPdfPath ? 'Wyślij kalkulację przez email' : 'Najpierw wygeneruj PDF'}
+          >
+            <Mail className="h-4 w-4" />
+            Wyślij email
           </button>
           <button
             onClick={handleSave}
@@ -636,6 +724,16 @@ function CalculationEditor({
             appendImportedItems(picked);
             setShowImport(false);
           }}
+        />
+      )}
+
+      {showSendEmail && (
+        <SendCalculationEmailModal
+          calculationId={calculationId}
+          eventId={eventId}
+          calculationName={name}
+          eventName={eventName}
+          onClose={() => setShowSendEmail(false)}
         />
       )}
     </div>
