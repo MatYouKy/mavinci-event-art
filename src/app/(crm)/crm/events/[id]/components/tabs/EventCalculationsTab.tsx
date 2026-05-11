@@ -26,6 +26,7 @@ import { useDialog } from '@/contexts/DialogContext';
 import { usePortalDropdown } from '@/hooks/usePortalDropdown';
 import { PortalDropdownMenu } from '@/components/UI/PortalDropdownMenu/PortalDropdownMenu';
 import SendCalculationEmailModal from '@/components/crm/SendCalculationEmailModal';
+import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 
 type Category = 'equipment' | 'staff' | 'transport' | 'other';
 
@@ -522,7 +523,9 @@ function CalculationEditor({
     }
     setGeneratingPdf(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
       const html = buildCalculationHtml({
         name,
@@ -591,65 +594,58 @@ function CalculationEditor({
           >
             <ArrowLeft className="h-4 w-4" />
           </button>
+
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-lg font-light text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
           />
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setShowImport(true)}
-            className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-3 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/10"
-          >
-            <Import className="h-4 w-4" />
-            Importuj z oferty
-          </button>
-          <button
-            onClick={handlePrint}
-            className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-3 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/10"
-          >
-            <Printer className="h-4 w-4" />
-            Drukuj
-          </button>
-          <button
-            onClick={handleGeneratePdf}
-            disabled={generatingPdf}
-            className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-3 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/10 disabled:opacity-50"
-            title="Wygeneruj PDF i zapisz w plikach wydarzenia"
-          >
-            {generatingPdf ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <FileText className="h-4 w-4" />
-            )}
-            {generatingPdf ? 'Generuję...' : 'Generuj PDF'}
-          </button>
-          <button
-            onClick={handleOpenSendEmail}
-            disabled={!generatedPdfPath}
-            className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-3 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/10 disabled:cursor-not-allowed disabled:opacity-40"
-            title={generatedPdfPath ? 'Wyślij kalkulację przez email' : 'Najpierw wygeneruj PDF'}
-          >
-            <Mail className="h-4 w-4" />
-            Wyślij email
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
-          >
-            <Save className="h-4 w-4" />
-            {saving ? 'Zapisywanie...' : 'Zapisz'}
-          </button>
-          <button
-            onClick={handleDeleteCalc}
-            className="rounded-lg border border-red-500/30 p-2 text-red-400 hover:bg-red-500/10"
-            title="Usuń kalkulację"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
-        </div>
+
+        <ResponsiveActionBar
+          mobileBreakpoint={4000}
+          actions={[
+            {
+              label: 'Importuj z oferty',
+              onClick: () => setShowImport(true),
+              icon: <Import className="h-4 w-4" />,
+            },
+            {
+              label: 'Drukuj',
+              onClick: handlePrint,
+              icon: <Printer className="h-4 w-4" />,
+            },
+            {
+              label: generatingPdf ? 'Generuję...' : 'Generuj PDF',
+              onClick: handleGeneratePdf,
+              disabled: generatingPdf,
+              icon: generatingPdf ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <FileText className="h-4 w-4" />
+              ),
+            },
+            {
+              label: 'Wyślij email',
+              onClick: handleOpenSendEmail,
+              disabled: !generatedPdfPath,
+              icon: <Mail className="h-4 w-4" />,
+            },
+            {
+              label: saving ? 'Zapisywanie...' : 'Zapisz',
+              onClick: handleSave,
+              disabled: saving,
+              variant: 'primary',
+              icon: <Save className="h-4 w-4" />,
+            },
+            {
+              label: 'Usuń kalkulację',
+              onClick: handleDeleteCalc,
+              variant: 'danger',
+              icon: <Trash2 className="h-4 w-4" />,
+            },
+          ]}
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
@@ -894,7 +890,7 @@ function CategorySection({
                         type="number"
                         step="0.01"
                         value={it.quantity}
-                        onChange={(e) => onUpdate(idx, { quantity: Number(e.target.value)})}
+                        onChange={(e) => onUpdate(idx, { quantity: Number(e.target.value) })}
                         className={numberInputClass}
                       />
                     </td>
@@ -910,7 +906,7 @@ function CategorySection({
                         type="number"
                         step="0.5"
                         value={it.days}
-                        onChange={(e) => onUpdate(idx, { days: Number(e.target.value)})}
+                        onChange={(e) => onUpdate(idx, { days: Number(e.target.value) })}
                         className={numberInputClass}
                       />
                     </td>
@@ -919,7 +915,7 @@ function CategorySection({
                         type="number"
                         step="0.01"
                         value={it.unit_price}
-                        onChange={(e) => onUpdate(idx, { unit_price: Number(e.target.value)})}
+                        onChange={(e) => onUpdate(idx, { unit_price: Number(e.target.value) })}
                         className={priceInputClass}
                       />
                     </td>
@@ -928,7 +924,7 @@ function CategorySection({
                         type="number"
                         step="1"
                         value={it.vat_rate}
-                        onChange={(e) => onUpdate(idx, { vat_rate: Number(e.target.value)})}
+                        onChange={(e) => onUpdate(idx, { vat_rate: Number(e.target.value) })}
                         className={numberInputClass}
                       />
                     </td>
