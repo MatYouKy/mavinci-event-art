@@ -305,6 +305,7 @@ function CalculationEditor({
   const [generatedPdfPath, setGeneratedPdfPath] = useState<string | null>(null);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [showSendEmail, setShowSendEmail] = useState(false);
+  const [company, setCompany] = useState<any>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -316,7 +317,11 @@ function CalculationEditor({
         .eq('calculation_id', calculationId)
         .order('category')
         .order('position'),
-      supabase.from('events').select('name, event_date').eq('id', eventId).maybeSingle(),
+      supabase
+        .from('events')
+        .select('name, event_date, my_company_id')
+        .eq('id', eventId)
+        .maybeSingle(),
     ]);
     if (calc) {
       setName(calc.name);
@@ -346,6 +351,26 @@ function CalculationEditor({
     if (ev) {
       setEventName(ev.name ?? '');
       setEventDate(ev.event_date ?? null);
+      if (ev.my_company_id) {
+        const { data: comp } = await supabase
+          .from('my_companies')
+          .select(
+            'id, name, legal_name, nip, logo_url, street, building_number, apartment_number, postal_code, city, email, phone, website',
+          )
+          .eq('id', ev.my_company_id)
+          .maybeSingle();
+        setCompany(comp || null);
+      } else {
+        const { data: comp } = await supabase
+          .from('my_companies')
+          .select(
+            'id, name, legal_name, nip, logo_url, street, building_number, apartment_number, postal_code, city, email, phone, website',
+          )
+          .eq('is_default', true)
+          .eq('is_active', true)
+          .maybeSingle();
+        setCompany(comp || null);
+      }
     }
     setLoading(false);
   }, [calculationId, eventId]);
@@ -504,6 +529,7 @@ function CalculationEditor({
       categoryTotalsGross,
       grandTotal,
       grandTotalGross,
+      company,
     });
     const w = window.open('', '_blank');
     if (!w) {
@@ -537,6 +563,7 @@ function CalculationEditor({
         categoryTotalsGross,
         grandTotal,
         grandTotalGross,
+        company,
       });
 
       const res = await fetch('/bridge/events/calculations-pdf', {
@@ -1475,6 +1502,7 @@ function buildCalculationHtml(params: {
   categoryTotalsGross: Record<Category, number>;
   grandTotal: number;
   grandTotalGross: number;
+  company?: any;
 }): string {
   const {
     name,
@@ -1486,6 +1514,7 @@ function buildCalculationHtml(params: {
     categoryTotalsGross,
     grandTotal,
     grandTotalGross,
+    company,
   } = params;
   const formattedDate = eventDate
     ? new Date(eventDate).toLocaleDateString('pl-PL', {
@@ -1574,7 +1603,8 @@ function buildCalculationHtml(params: {
     margin-bottom: 24px;
     display: flex;
     justify-content: space-between;
-    align-items: flex-end;
+    align-items: flex-start;
+    gap: 24px;
   }
   header h1 {
     margin: 0;
@@ -1582,12 +1612,20 @@ function buildCalculationHtml(params: {
     font-weight: 300;
     letter-spacing: 0.5px;
   }
+  header .brand { display: flex; align-items: flex-start; gap: 16px; }
+  header .brand img.logo {
+    max-height: 64px;
+    max-width: 180px;
+    object-fit: contain;
+  }
   header .meta {
-    font-size: 12px;
+    font-size: 11px;
     color: #555;
     text-align: right;
+    line-height: 1.5;
   }
   header .meta strong { color: #1c1f33; }
+  header .meta .company-name { font-size: 13px; color: #1c1f33; font-weight: 600; }
   section { margin-bottom: 24px; page-break-inside: avoid; }
   section h2 {
     font-size: 14px;
@@ -1656,16 +1694,26 @@ function buildCalculationHtml(params: {
 </head>
 <body>
   <header>
-    <div>
-      <h1>${esc(name) || 'Kalkulacja'}</h1>
-      <div style="font-size:12px;color:#555;margin-top:4px;">
-        ${eventName ? `Wydarzenie: <strong>${esc(eventName)}</strong>` : ''}
-        ${formattedDate ? ` &middot; ${esc(formattedDate)}` : ''}
+    <div class="brand">
+      ${company?.logo_url ? `<img class="logo" src="${esc(company.logo_url)}" alt="${esc(company?.name || '')}" />` : ''}
+      <div>
+        <h1>${esc(name) || 'Kalkulacja'}</h1>
+        <div style="font-size:12px;color:#555;margin-top:4px;">
+          ${eventName ? `Wydarzenie: <strong>${esc(eventName)}</strong>` : ''}
+          ${formattedDate ? ` &middot; ${esc(formattedDate)}` : ''}
+        </div>
       </div>
     </div>
     <div class="meta">
-      <div>Wygenerowano</div>
-      <strong>${new Date().toLocaleDateString('pl-PL')}</strong>
+      ${
+        company
+          ? `<div class="company-name">${esc(company.legal_name || company.name || '')}</div>
+             ${company.nip ? `<div>NIP: ${esc(company.nip)}</div>` : ''}
+             ${company.street ? `<div>${esc(company.street)}${company.building_number ? ` ${esc(company.building_number)}` : ''}${company.apartment_number ? `/${esc(company.apartment_number)}` : ''}</div>` : ''}
+             ${company.postal_code || company.city ? `<div>${esc(company.postal_code || '')} ${esc(company.city || '')}</div>` : ''}
+             <div style="margin-top:6px;color:#888;">Wygenerowano: <strong>${new Date().toLocaleDateString('pl-PL')}</strong></div>`
+          : `<div>Wygenerowano</div><strong>${new Date().toLocaleDateString('pl-PL')}</strong>`
+      }
     </div>
   </header>
   ${sections || '<p style="color:#888;text-align:center;padding:40px 0;">Brak pozycji</p>'}
@@ -1684,7 +1732,13 @@ function buildCalculationHtml(params: {
     </div>
   </div>
   ${notes ? `<div class="notes">${esc(notes)}</div>` : ''}
-  <footer>Mavinci CRM &middot; Kalkulacja wydarzenia</footer>
+  <footer>
+    ${
+      company
+        ? `${esc(company.legal_name || company.name || '')}${company.nip ? ` &middot; NIP: ${esc(company.nip)}` : ''}${company.email ? ` &middot; ${esc(company.email)}` : ''}${company.phone ? ` &middot; ${esc(company.phone)}` : ''}${company.website ? ` &middot; ${esc(company.website)}` : ''}`
+        : 'Kalkulacja wydarzenia'
+    }
+  </footer>
 </body>
 </html>`;
 }

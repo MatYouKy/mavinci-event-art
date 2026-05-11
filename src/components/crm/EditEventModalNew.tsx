@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import LocationSelector from './LocationSelector';
 import ClientSelectorTabs, { Contact } from './ClientSelectorTabs';
+import CompanySelector from './CompanySelector';
 import { useEventCategories } from '@/app/(crm)/crm/event-categories/hook/useEventCategories';
 import { useDialog } from '@/contexts/DialogContext';
 import { ISimpleContact, ISimpleLocation } from '@/app/(crm)/crm/events/[id]/EventDetailPageClient';
@@ -55,6 +56,7 @@ export default function EditEventModalNew({
     location_id: null as string | null,
     budget: '',
     status: '',
+    my_company_id: null as string | null,
   });
 
   // ✅ reset stanu przy otwarciu / zmianie propsów
@@ -78,6 +80,7 @@ export default function EditEventModalNew({
       location_id: event?.location_id || null,
       budget: event?.budget != null ? String(event.budget) : '',
       status: event?.status || 'inquiry',
+      my_company_id: event?.my_company_id || null,
     });
   }, [isOpen, event, contact, location]);
 
@@ -107,6 +110,7 @@ export default function EditEventModalNew({
       location_id: formData.location_id || null,
       budget: formData.budget ? parseFloat(formData.budget) : null,
       status: formData.status,
+      my_company_id: formData.my_company_id,
     };
 
     onSave(dataToSave);
@@ -168,6 +172,13 @@ export default function EditEventModalNew({
                   ))}
                 </select>
               </div>
+
+              <CompanySelector
+                value={formData.my_company_id}
+                onChange={(id) => setFormData({ ...formData, my_company_id: id })}
+                showAllOption={false}
+                label="Firma realizująca"
+              />
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
