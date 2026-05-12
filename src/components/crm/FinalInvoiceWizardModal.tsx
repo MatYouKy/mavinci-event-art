@@ -49,6 +49,12 @@ interface CandidateInvoice {
   seller_country: string | null;
   event?: { name: string | null } | null;
   organization?: { id: string; name: string } | null;
+  invoice_items?: {
+    name: string;
+    quantity: number;
+    price_net: number;
+    vat_rate: number;
+  }[];
 }
 
 interface EventOpt {
@@ -173,15 +179,22 @@ export default function FinalInvoiceWizardModal({
     setLoadingCandidates(true);
     try {
       const select = `
-        id, invoice_number, invoice_type, status, issue_date,
-        total_net, total_vat, total_gross,
-        event_id, organization_id,
-        buyer_name, buyer_nip, buyer_street, buyer_postal_code, buyer_city, buyer_country,
-        buyer_email, buyer_phone, buyer_contact_person,
-        payment_method, bank_account, issue_place, my_company_id,
-        seller_name, seller_nip, seller_street, seller_postal_code, seller_city, seller_country,
-        event:events(name), organization:organizations(id, name)
-      `;
+      id, invoice_number, invoice_type, status, issue_date,
+      total_net, total_vat, total_gross,
+      event_id, organization_id,
+      buyer_name, buyer_nip, buyer_street, buyer_postal_code, buyer_city, buyer_country,
+      buyer_email, buyer_phone, buyer_contact_person,
+      payment_method, bank_account, issue_place, my_company_id,
+      seller_name, seller_nip, seller_street, seller_postal_code, seller_city, seller_country,
+      invoice_items (
+        name,
+        quantity,
+        price_net,
+        vat_rate
+      ),
+      event:events(name),
+      organization:organizations(id, name)
+    `;
       let query = supabase
         .from('invoices')
         .select(select)
@@ -252,19 +265,25 @@ export default function FinalInvoiceWizardModal({
   useEffect(() => {
     if (!locked) return;
     if (!offerNet && !candidates.length) return;
-    const settledNet = round2(
-      candidates
-        .filter((c) => selectedIds.has(c.id))
-        .reduce((s, i) => s + Number(i.total_net), 0),
+
+    const selectedAdvanceNet = round2(
+      candidates.filter((c) => selectedIds.has(c.id)).reduce((s, i) => s + Number(i.total_net), 0),
     );
-    const remainingNet = round2(offerNet - settledNet);
-    const priceNet = remainingNet > 0 ? remainingNet : 0;
+
+    const priceNet = offerNet > 0 ? offerNet : 0;
+    const remainingNet = round2(offerNet - selectedAdvanceNet);
+    const firstSelected = candidates.find((c) => selectedIds.has(c.id));
+
+    const sourceItemName =
+      firstSelected?.invoice_items?.[0]?.name ||
+      'Rozliczenie usługi zgodnie z umową';
+    
     setItems([
       {
         name:
-          priceNet > 0
-            ? 'Rozliczenie usługi zgodnie z umową'
-            : 'Rozliczenie końcowe zaliczek (bez dopłaty)',
+          remainingNet > 0
+            ? sourceItemName
+            : `Rozliczenie końcowe: ${sourceItemName}`,
         unit: 'szt.',
         quantity: 1,
         price_net: priceNet,
@@ -310,13 +329,32 @@ export default function FinalInvoiceWizardModal({
     () => round2(selectedInvoices.reduce((s, i) => s + Number(i.total_gross), 0)),
     [selectedInvoices],
   );
+  const settledNet = useMemo(
+    () => round2(selectedInvoices.reduce((s, i) => s + Number(i.total_net), 0)),
+    [selectedInvoices],
+  );
+  
+  const settledVat = useMemo(
+    () => round2(selectedInvoices.reduce((s, i) => s + Number(i.total_vat), 0)),
+    [selectedInvoices],
+  );
+  
+  const remainingNet = round2(totals.net - settledNet);
+  const remainingVat = round2(totals.vat - settledVat);
+  const remainingGross = round2(totals.gross - settledGross);
   const remaining = round2(totals.gross - settledGross);
 
-  const fillItemsFromAdvance = () => {
-    const sumNet = round2(selectedInvoices.reduce((s, i) => s + Number(i.total_net), 0));
-    if (!sumNet) return;
+  const fillItemsFromOffer = () => {
+    if (!offerNet) return;
+  
     setItems([
-      { name: 'Usluga zgodnie z umowa', unit: 'szt.', quantity: 1, price_net: sumNet, vat_rate: 23 },
+      {
+        name: 'Rozliczenie usługi zgodnie z umową',
+        unit: 'szt.',
+        quantity: 1,
+        price_net: offerNet,
+        vat_rate: 23,
+      },
     ]);
   };
 
@@ -433,7 +471,8 @@ export default function FinalInvoiceWizardModal({
                 )}
                 {offerNet > 0 && (
                   <span className="ml-auto text-xs text-[#e5e4e2]/70">
-                    Suma z oferty (netto): <strong className="text-[#d3bb73]">{offerNet.toFixed(2)} PLN</strong>
+                    Suma z oferty (netto):{' '}
+                    <strong className="text-[#d3bb73]">{offerNet.toFixed(2)} PLN</strong>
                     {offerVatAmount > 0 && (
                       <span className="ml-2 text-[#e5e4e2]/50">
                         (brutto: {round2(offerNet + offerVatAmount).toFixed(2)} PLN)
@@ -444,134 +483,134 @@ export default function FinalInvoiceWizardModal({
               </div>
             </div>
           ) : (
-          <>
-          <div>
-            <div className="mb-2 text-sm text-[#e5e4e2]/60">Kontekst wyszukiwania faktur</div>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('event');
-                  setOrganizationId(null);
-                }}
-                className={`flex items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors ${
-                  mode === 'event'
-                    ? 'border-[#d3bb73] bg-[#d3bb73]/10'
-                    : 'border-[#d3bb73]/20 bg-[#0a0d1a] hover:border-[#d3bb73]/50'
-                }`}
-              >
-                <Calendar className="h-5 w-5 text-[#d3bb73]" />
-                <div>
-                  <div
-                    className={`text-sm font-medium ${
-                      mode === 'event' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]'
+            <>
+              <div>
+                <div className="mb-2 text-sm text-[#e5e4e2]/60">Kontekst wyszukiwania faktur</div>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('event');
+                      setOrganizationId(null);
+                    }}
+                    className={`flex items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors ${
+                      mode === 'event'
+                        ? 'border-[#d3bb73] bg-[#d3bb73]/10'
+                        : 'border-[#d3bb73]/20 bg-[#0a0d1a] hover:border-[#d3bb73]/50'
                     }`}
                   >
-                    Wedlug eventu
-                  </div>
-                  <div className="text-xs text-[#e5e4e2]/50">
-                    Pobierz wszystkie faktury wystawione dla wybranego eventu
-                  </div>
-                </div>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('organization');
-                  setEventId(null);
-                }}
-                className={`flex items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors ${
-                  mode === 'organization'
-                    ? 'border-[#d3bb73] bg-[#d3bb73]/10'
-                    : 'border-[#d3bb73]/20 bg-[#0a0d1a] hover:border-[#d3bb73]/50'
-                }`}
-              >
-                <Building className="h-5 w-5 text-[#d3bb73]" />
-                <div>
-                  <div
-                    className={`text-sm font-medium ${
-                      mode === 'organization' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]'
+                    <Calendar className="h-5 w-5 text-[#d3bb73]" />
+                    <div>
+                      <div
+                        className={`text-sm font-medium ${
+                          mode === 'event' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]'
+                        }`}
+                      >
+                        Wedlug eventu
+                      </div>
+                      <div className="text-xs text-[#e5e4e2]/50">
+                        Pobierz wszystkie faktury wystawione dla wybranego eventu
+                      </div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('organization');
+                      setEventId(null);
+                    }}
+                    className={`flex items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors ${
+                      mode === 'organization'
+                        ? 'border-[#d3bb73] bg-[#d3bb73]/10'
+                        : 'border-[#d3bb73]/20 bg-[#0a0d1a] hover:border-[#d3bb73]/50'
                     }`}
                   >
-                    Wedlug podmiotu
-                  </div>
-                  <div className="text-xs text-[#e5e4e2]/50">
-                    Fallback gdy nie ma powiazania z eventem
-                  </div>
+                    <Building className="h-5 w-5 text-[#d3bb73]" />
+                    <div>
+                      <div
+                        className={`text-sm font-medium ${
+                          mode === 'organization' ? 'text-[#d3bb73]' : 'text-[#e5e4e2]'
+                        }`}
+                      >
+                        Wedlug podmiotu
+                      </div>
+                      <div className="text-xs text-[#e5e4e2]/50">
+                        Fallback gdy nie ma powiazania z eventem
+                      </div>
+                    </div>
+                  </button>
                 </div>
-              </button>
-            </div>
-          </div>
+              </div>
 
-          {mode === 'event' ? (
-            <div>
-              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wybierz event</label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#e5e4e2]/40" />
-                <input
-                  value={eventQuery}
-                  onChange={(e) => setEventQuery(e.target.value)}
-                  placeholder="Szukaj eventu..."
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] py-2 pl-10 pr-4 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-                />
-              </div>
-              <div className="mt-2 max-h-48 overflow-y-auto rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a]">
-                {eventOptions.map((ev) => (
-                  <button
-                    key={ev.id}
-                    type="button"
-                    onClick={() => setEventId(ev.id)}
-                    className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors hover:bg-[#d3bb73]/10 ${
-                      eventId === ev.id ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'text-[#e5e4e2]'
-                    }`}
-                  >
-                    <span>{ev.name || '(bez nazwy)'}</span>
-                    <span className="text-xs text-[#e5e4e2]/40">{ev.event_date || ''}</span>
-                  </button>
-                ))}
-                {eventOptions.length === 0 && (
-                  <div className="px-3 py-4 text-center text-sm text-[#e5e4e2]/40">
-                    Brak wynikow
+              {mode === 'event' ? (
+                <div>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wybierz event</label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#e5e4e2]/40" />
+                    <input
+                      value={eventQuery}
+                      onChange={(e) => setEventQuery(e.target.value)}
+                      placeholder="Szukaj eventu..."
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] py-2 pl-10 pr-4 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                    />
                   </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div>
-              <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wybierz podmiot</label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#e5e4e2]/40" />
-                <input
-                  value={orgQuery}
-                  onChange={(e) => setOrgQuery(e.target.value)}
-                  placeholder="Szukaj podmiotu..."
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] py-2 pl-10 pr-4 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-                />
-              </div>
-              <div className="mt-2 max-h-48 overflow-y-auto rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a]">
-                {orgOptions.map((o) => (
-                  <button
-                    key={o.id}
-                    type="button"
-                    onClick={() => setOrganizationId(o.id)}
-                    className={`flex w-full px-3 py-2 text-left text-sm transition-colors hover:bg-[#d3bb73]/10 ${
-                      organizationId === o.id
-                        ? 'bg-[#d3bb73]/15 text-[#d3bb73]'
-                        : 'text-[#e5e4e2]'
-                    }`}
-                  >
-                    {o.name}
-                  </button>
-                ))}
-                {orgOptions.length === 0 && (
-                  <div className="px-3 py-4 text-center text-sm text-[#e5e4e2]/40">
-                    Brak wynikow
+                  <div className="mt-2 max-h-48 overflow-y-auto rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a]">
+                    {eventOptions.map((ev) => (
+                      <button
+                        key={ev.id}
+                        type="button"
+                        onClick={() => setEventId(ev.id)}
+                        className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors hover:bg-[#d3bb73]/10 ${
+                          eventId === ev.id ? 'bg-[#d3bb73]/15 text-[#d3bb73]' : 'text-[#e5e4e2]'
+                        }`}
+                      >
+                        <span>{ev.name || '(bez nazwy)'}</span>
+                        <span className="text-xs text-[#e5e4e2]/40">{ev.event_date || ''}</span>
+                      </button>
+                    ))}
+                    {eventOptions.length === 0 && (
+                      <div className="px-3 py-4 text-center text-sm text-[#e5e4e2]/40">
+                        Brak wynikow
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            </div>
-          )}
-          </>
+                </div>
+              ) : (
+                <div>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wybierz podmiot</label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#e5e4e2]/40" />
+                    <input
+                      value={orgQuery}
+                      onChange={(e) => setOrgQuery(e.target.value)}
+                      placeholder="Szukaj podmiotu..."
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] py-2 pl-10 pr-4 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                    />
+                  </div>
+                  <div className="mt-2 max-h-48 overflow-y-auto rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a]">
+                    {orgOptions.map((o) => (
+                      <button
+                        key={o.id}
+                        type="button"
+                        onClick={() => setOrganizationId(o.id)}
+                        className={`flex w-full px-3 py-2 text-left text-sm transition-colors hover:bg-[#d3bb73]/10 ${
+                          organizationId === o.id
+                            ? 'bg-[#d3bb73]/15 text-[#d3bb73]'
+                            : 'text-[#e5e4e2]'
+                        }`}
+                      >
+                        {o.name}
+                      </button>
+                    ))}
+                    {orgOptions.length === 0 && (
+                      <div className="px-3 py-4 text-center text-sm text-[#e5e4e2]/40">
+                        Brak wynikow
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
           <div>
@@ -582,7 +621,7 @@ export default function FinalInvoiceWizardModal({
               {settledGross > 0 && (
                 <button
                   type="button"
-                  onClick={fillItemsFromAdvance}
+                  onClick={fillItemsFromOffer}
                   className="rounded-md border border-[#d3bb73]/30 px-3 py-1 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
                 >
                   Wypelnij pozycje na podstawie zaliczek
@@ -746,38 +785,65 @@ export default function FinalInvoiceWizardModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4 md:grid-cols-3">
-            <div>
-              <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/40">
-                Wartosc faktury (brutto)
-              </div>
-              <div className="mt-1 text-lg font-medium text-[#e5e4e2]">
-                {totals.gross.toFixed(2)} PLN
-              </div>
-            </div>
-            <div>
-              <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/40">
-                Rozliczone zaliczki (brutto)
-              </div>
-              <div className="mt-1 text-lg font-medium text-[#e5e4e2]">
-                {settledGross.toFixed(2)} PLN
-              </div>
-            </div>
-            <div>
-              <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/40">Do doplaty</div>
-              <div
-                className={`mt-1 text-lg font-medium ${
-                  remaining > 0
-                    ? 'text-[#d3bb73]'
-                    : remaining < 0
-                      ? 'text-red-400'
-                      : 'text-green-400'
-                }`}
-              >
-                {remaining.toFixed(2)} PLN
-              </div>
-            </div>
-          </div>
+          <div className="overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a]">
+  <table className="w-full text-sm">
+    <thead className="bg-[#1c1f33] text-xs uppercase tracking-wider text-[#e5e4e2]/40">
+      <tr>
+        <th className="px-4 py-3 text-left">Rozliczenie</th>
+        <th className="px-4 py-3 text-right">Netto</th>
+        <th className="px-4 py-3 text-right">VAT</th>
+        <th className="px-4 py-3 text-right">Brutto</th>
+      </tr>
+    </thead>
+
+    <tbody className="divide-y divide-[#d3bb73]/10">
+      <tr>
+        <td className="px-4 py-3 font-medium text-[#e5e4e2]">
+          Wartość faktury końcowej
+        </td>
+        <td className="px-4 py-3 text-right text-[#e5e4e2]">
+          {totals.net.toFixed(2)} PLN
+        </td>
+        <td className="px-4 py-3 text-right text-[#e5e4e2]/70">
+          {totals.vat.toFixed(2)} PLN
+        </td>
+        <td className="px-4 py-3 text-right font-semibold text-[#e5e4e2]">
+          {totals.gross.toFixed(2)} PLN
+        </td>
+      </tr>
+
+      <tr>
+        <td className="px-4 py-3 font-medium text-[#e5e4e2]">
+          Rozliczone zaliczki
+        </td>
+        <td className="px-4 py-3 text-right text-[#e5e4e2]">
+          {settledNet.toFixed(2)} PLN
+        </td>
+        <td className="px-4 py-3 text-right text-[#e5e4e2]/70">
+          {settledVat.toFixed(2)} PLN
+        </td>
+        <td className="px-4 py-3 text-right font-semibold text-[#e5e4e2]">
+          {settledGross.toFixed(2)} PLN
+        </td>
+      </tr>
+
+      <tr className="bg-[#d3bb73]/5">
+        <td className="px-4 py-4 font-semibold text-[#d3bb73]">
+          Do dopłaty
+        </td>
+        <td className="px-4 py-4 text-right font-semibold text-[#d3bb73]">
+          {remainingNet.toFixed(2)} PLN
+        </td>
+        <td className="px-4 py-4 text-right font-semibold text-[#d3bb73]">
+          {remainingVat.toFixed(2)} PLN
+        </td>
+        <td className="px-4 py-4 text-right text-lg font-bold text-[#d3bb73]">
+          {remainingGross.toFixed(2)} PLN
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
