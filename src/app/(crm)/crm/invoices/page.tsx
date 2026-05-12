@@ -21,6 +21,7 @@ import {
   MoreVertical,
   Settings,
   RotateCcw,
+  FilePlus,
   AlertTriangle,
   RefreshCw,
   Save,
@@ -85,6 +86,7 @@ function InvoiceContextMenu({
   onView,
   onDelete,
   onCorrection,
+  onIssueFinal,
   canManage,
   isAdmin,
 }: {
@@ -92,9 +94,13 @@ function InvoiceContextMenu({
   onView: () => void;
   onDelete: () => void;
   onCorrection: () => void;
+  onIssueFinal: () => void;
   canManage: boolean;
   isAdmin: boolean;
 }) {
+  const canIssueFinal =
+    (invoice.invoice_type === 'proforma' || invoice.invoice_type === 'advance') &&
+    (canManage || isAdmin);
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -148,6 +154,19 @@ function InvoiceContextMenu({
             <Eye className="h-4 w-4 text-[#e5e4e2]/40" />
             Zobacz fakture
           </button>
+          {canIssueFinal && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onIssueFinal();
+                setOpen(false);
+              }}
+              className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10"
+            >
+              <FilePlus className="h-4 w-4 text-[#d3bb73]/80" />
+              <span className="text-[#d3bb73]">Wystaw fakture koncowa</span>
+            </button>
+          )}
           {(canManage || isAdmin) && invoice.invoice_type !== 'corrective' && (
             <button
               onClick={(e) => {
@@ -195,6 +214,10 @@ export default function InvoicesPage() {
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
   const [myCompanies, setMyCompanies] = useState<any[]>([]);
   const [showFinalInvoiceWizard, setShowFinalInvoiceWizard] = useState(false);
+  const [finalWizardContext, setFinalWizardContext] = useState<{
+    eventId: string | null;
+    organizationId: string | null;
+  }>({ eventId: null, organizationId: null });
   const [sortKey, setSortKey] = useState<SortKey>('invoice_number');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [showSummaryDrawer, setShowSummaryDrawer] = useState(false);
@@ -966,6 +989,13 @@ export default function InvoicesPage() {
                                   onView={() => router.push(`/crm/invoices/${invoice.id}`)}
                                   onDelete={() => handleDeleteInvoice(invoice)}
                                   onCorrection={() => handleCreateCorrection(invoice)}
+                                  onIssueFinal={() => {
+                                    setFinalWizardContext({
+                                      eventId: invoice.event_id,
+                                      organizationId: invoice.organization_id,
+                                    });
+                                    setShowFinalInvoiceWizard(true);
+                                  }}
                                   canManage={
                                     canManageInvoices ||
                                     companyHasPerm((invoice as any).my_company_id, 'manage')
@@ -1091,6 +1121,8 @@ export default function InvoicesPage() {
       {showFinalInvoiceWizard && (
         <FinalInvoiceWizardModal
           onClose={() => setShowFinalInvoiceWizard(false)}
+          initialEventId={finalWizardContext.eventId}
+          initialOrganizationId={finalWizardContext.organizationId}
           onCreated={(id) => {
             setShowFinalInvoiceWizard(false);
             router.push(`/crm/invoices/${id}`);
