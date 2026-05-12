@@ -77,7 +77,7 @@ export async function createFinalInvoice(opts: CreateFinalInvoiceOptions): Promi
       invoiceNumber = trimmed;
     } else {
       const { data: generated, error: genErr } = await supabase.rpc('generate_invoice_number', {
-        p_invoice_type: 'vat',
+        p_invoice_type: 'final',
         p_my_company_id: opts.myCompanyId ?? null,
       });
       if (genErr || !generated) {

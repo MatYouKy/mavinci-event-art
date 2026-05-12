@@ -117,7 +117,7 @@ export default function FinalInvoiceWizardModal({
   useEffect(() => {
     (async () => {
       const { data, error } = await supabase.rpc('generate_invoice_number', {
-        p_invoice_type: 'vat',
+        p_invoice_type: 'final',
         p_my_company_id: myCompanyId,
       });
       if (error) {
@@ -184,7 +184,7 @@ export default function FinalInvoiceWizardModal({
       let query = supabase
         .from('invoices')
         .select(select)
-        .in('invoice_type', ['proforma', 'advance'])
+        .eq('invoice_type', 'advance')
         .order('issue_date', { ascending: false });
       if (mode === 'event' && eventId) query = query.eq('event_id', eventId);
       else if (mode === 'organization' && organizationId)
@@ -589,7 +589,7 @@ export default function FinalInvoiceWizardModal({
                 <div className="px-4 py-6 text-center text-sm text-[#e5e4e2]/50">Ladowanie...</div>
               ) : candidates.length === 0 ? (
                 <div className="px-4 py-6 text-center text-sm text-[#e5e4e2]/50">
-                  Brak faktur proforma/zaliczkowych w tym kontekscie
+                  Brak faktur zaliczkowych w tym kontekscie
                 </div>
               ) : (
                 <table className="w-full text-sm">
@@ -623,9 +623,7 @@ export default function FinalInvoiceWizardModal({
                             />
                           </td>
                           <td className="px-3 py-2 text-[#e5e4e2]">{c.invoice_number}</td>
-                          <td className="px-3 py-2 text-[#e5e4e2]/70">
-                            {c.invoice_type === 'proforma' ? 'Proforma' : 'Zaliczkowa'}
-                          </td>
+                          <td className="px-3 py-2 text-[#e5e4e2]/70">Zaliczkowa</td>
                           <td className="px-3 py-2 text-[#e5e4e2]/70">{c.status}</td>
                           <td className="px-3 py-2 text-[#e5e4e2]/70">{c.issue_date}</td>
                           <td className="px-3 py-2 text-right font-medium text-[#e5e4e2]">

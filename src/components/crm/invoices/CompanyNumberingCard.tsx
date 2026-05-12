@@ -13,6 +13,7 @@ export interface CompanyNumbering {
   last_proforma_number: number;
   last_advance_number: number;
   last_corrective_number: number;
+  last_final_number: number;
   invoice_numbering_year: number;
   is_default: boolean;
   invoice_count: number;
@@ -35,6 +36,7 @@ export function CompanyNumberingCard({
     last_proforma_number: company.last_proforma_number,
     last_advance_number: company.last_advance_number,
     last_corrective_number: company.last_corrective_number,
+    last_final_number: company.last_final_number ?? 0,
     invoice_prefix: company.invoice_prefix || '',
   });
 
@@ -44,6 +46,7 @@ export function CompanyNumberingCard({
       last_proforma_number: company.last_proforma_number,
       last_advance_number: company.last_advance_number,
       last_corrective_number: company.last_corrective_number,
+      last_final_number: company.last_final_number ?? 0,
       invoice_prefix: company.invoice_prefix || '',
     });
   }, [company]);
@@ -67,6 +70,7 @@ export function CompanyNumberingCard({
           last_proforma_number: editValues.last_proforma_number,
           last_advance_number: editValues.last_advance_number,
           last_corrective_number: editValues.last_corrective_number,
+          last_final_number: editValues.last_final_number,
           invoice_prefix: editValues.invoice_prefix || null,
           updated_at: new Date().toISOString(),
         })
@@ -88,6 +92,7 @@ export function CompanyNumberingCard({
     editValues.last_proforma_number !== company.last_proforma_number ||
     editValues.last_advance_number !== company.last_advance_number ||
     editValues.last_corrective_number !== company.last_corrective_number ||
+    editValues.last_final_number !== (company.last_final_number ?? 0) ||
     (editValues.invoice_prefix || '') !== (company.invoice_prefix || '');
 
   const prefix = editValues.invoice_prefix || '';
@@ -97,6 +102,7 @@ export function CompanyNumberingCard({
     { key: 'last_invoice_number' as const, label: 'Faktura VAT', typePrefix: '', color: 'text-[#d3bb73]' },
     { key: 'last_proforma_number' as const, label: 'Proforma', typePrefix: 'PRO', color: 'text-blue-400' },
     { key: 'last_advance_number' as const, label: 'Zaliczkowa', typePrefix: 'ZAL', color: 'text-amber-400' },
+    { key: 'last_final_number' as const, label: 'Koncowa', typePrefix: 'FIN', color: 'text-green-400' },
     { key: 'last_corrective_number' as const, label: 'Korygujaca', typePrefix: 'KOR', color: 'text-red-400' },
   ];
 
@@ -162,7 +168,7 @@ export function CompanyNumberingCard({
             </div>
           </div>
 
-          <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
             {counters.map((c) => {
               const currentVal = editValues[c.key];
               const nextNum = currentVal + 1;
@@ -197,7 +203,7 @@ export function CompanyNumberingCard({
 
           <div className="mb-4 rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a] p-4">
             <div className="mb-2 text-xs text-[#e5e4e2]/50">Podglad nastepnych numerow</div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
               {counters.map((c) => {
                 const nextNum = editValues[c.key] + 1;
                 const preview = buildPreview(prefix, c.typePrefix, nextNum, year);
@@ -220,6 +226,7 @@ export function CompanyNumberingCard({
                     last_proforma_number: company.last_proforma_number,
                     last_advance_number: company.last_advance_number,
                     last_corrective_number: company.last_corrective_number,
+                    last_final_number: company.last_final_number ?? 0,
                     invoice_prefix: company.invoice_prefix || '',
                   })
                 }
