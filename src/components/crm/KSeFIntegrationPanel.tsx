@@ -91,6 +91,15 @@ interface KSeFInvoice {
   payment_date?: string | null;
 }
 
+interface KSeFInvoicePayment {
+  id: string;
+  ksef_invoice_id: string;
+  amount: number;
+  payment_date: string;
+  notes?: string | null;
+  created_at?: string | null;
+}
+
 interface SyncLog {
   id: string;
   sync_type: string;
@@ -129,6 +138,7 @@ const getInvoiceTypeBadgeColor = (type: string): string => {
 
 const getPaymentStatus = (
   invoice: KSeFInvoice,
+  paidSum?: number,
 ): { status: string; label: string; color: string; icon: any } => {
   if (invoice.payment_status === 'paid') {
     return {
@@ -138,6 +148,21 @@ const getPaymentStatus = (
         : 'Opłacona',
       color: 'text-green-400 bg-green-400/10',
       icon: CheckCircle,
+    };
+  }
+
+  if (invoice.payment_status === 'partially_paid') {
+    const gross = Number(invoice.gross_amount || 0);
+    const paid = Number(paidSum ?? 0);
+    const label =
+      paid > 0 && gross > 0
+        ? `Częściowo opłacona (${paid.toFixed(2)} / ${gross.toFixed(2)} PLN)`
+        : 'Częściowo opłacona';
+    return {
+      status: 'partially_paid',
+      label,
+      color: 'text-yellow-400 bg-yellow-400/10',
+      icon: RefreshCw,
     };
   }
 
@@ -202,6 +227,11 @@ export default function KSeFIntegrationPanel() {
   const [editPaymentInvoice, setEditPaymentInvoice] = useState<KSeFInvoice | null>(null);
   const [paymentDate, setPaymentDate] = useState('');
   const [paymentDueDate, setPaymentDueDate] = useState('');
+  const [paymentsMap, setPaymentsMap] = useState<Record<string, KSeFInvoicePayment[]>>({});
+  const [editingPayments, setEditingPayments] = useState<KSeFInvoicePayment[]>([]);
+  const [newPaymentAmount, setNewPaymentAmount] = useState('');
+  const [newPaymentDate, setNewPaymentDate] = useState('');
+  const [newPaymentNotes, setNewPaymentNotes] = useState('');
   const [viewMode, setViewMode] = useState<KSeFViewMode>('table');
   const [sortKey, setSortKey] = useState<KSeFSortKey>('invoice_number');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
@@ -384,6 +414,25 @@ export default function KSeFIntegrationPanel() {
 
       setIssuedInvoices(normalizedIssued);
       setReceivedInvoices(normalizedReceived);
+
+      const allIds = [...normalizedIssued, ...normalizedReceived].map((inv) => inv.id);
+      if (allIds.length > 0) {
+        const { data: paymentsData, error: paymentsErr } = await supabase
+          .from('ksef_invoice_payments')
+          .select('*')
+          .in('ksef_invoice_id', allIds)
+          .order('payment_date', { ascending: true });
+
+        if (!paymentsErr && paymentsData) {
+          const map: Record<string, KSeFInvoicePayment[]> = {};
+          for (const p of paymentsData as KSeFInvoicePayment[]) {
+            (map[p.ksef_invoice_id] = map[p.ksef_invoice_id] || []).push(p);
+          }
+          setPaymentsMap(map);
+        }
+      } else {
+        setPaymentsMap({});
+      }
     } catch (error) {
       console.error('Error loading invoices:', error);
       showSnackbar('Błąd wczytywania faktur z bazy', 'error');
@@ -678,6 +727,66 @@ export default function KSeFIntegrationPanel() {
       invoice.payment_date ? new Date(invoice.payment_date).toISOString().split('T')[0] : '',
     );
     setPaymentDueDate(invoice.payment_due_date || '');
+    setEditingPayments(paymentsMap[invoice.id] || []);
+    setNewPaymentAmount('');
+    setNewPaymentDate(new Date().toISOString().split('T')[0]);
+    setNewPaymentNotes('');
+  };
+
+  const handleAddPartialPayment = async () => {
+    if (!editPaymentInvoice) return;
+    const amount = parseFloat(newPaymentAmount.replace(',', '.'));
+    if (!amount || amount <= 0) {
+      showSnackbar('Podaj poprawną kwotę wpłaty', 'error');
+      return;
+    }
+    if (!newPaymentDate) {
+      showSnackbar('Podaj datę wpłaty', 'error');
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('ksef_invoice_payments')
+        .insert({
+          ksef_invoice_id: editPaymentInvoice.id,
+          amount,
+          payment_date: newPaymentDate,
+          notes: newPaymentNotes || null,
+          created_by: currentEmployee?.id ?? null,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setEditingPayments((prev) => [...prev, data as KSeFInvoicePayment]);
+      setNewPaymentAmount('');
+      setNewPaymentNotes('');
+      showSnackbar('Wpłata dodana', 'success');
+      await loadInvoices();
+    } catch (error: any) {
+      console.error('Error adding payment:', error);
+      showSnackbar(error.message || 'Błąd dodawania wpłaty', 'error');
+    }
+  };
+
+  const handleRemovePartialPayment = async (paymentId: string) => {
+    try {
+      const { error } = await supabase
+        .from('ksef_invoice_payments')
+        .delete()
+        .eq('id', paymentId);
+
+      if (error) throw error;
+
+      setEditingPayments((prev) => prev.filter((p) => p.id !== paymentId));
+      showSnackbar('Wpłata usunięta', 'success');
+      await loadInvoices();
+    } catch (error: any) {
+      console.error('Error removing payment:', error);
+      showSnackbar(error.message || 'Błąd usuwania wpłaty', 'error');
+    }
   };
 
   const handleSavePaymentEdit = async () => {
@@ -688,17 +797,26 @@ export default function KSeFIntegrationPanel() {
         payment_due_date: paymentDueDate || null,
       };
 
-      if (paymentDate) {
-        updates.payment_date = paymentDate;
+      const hasPayments = editingPayments.length > 0;
+      const paidSum = editingPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
+      const gross = Number(editPaymentInvoice.gross_amount || 0);
+
+      if (!hasPayments) {
+        if (paymentDate) {
+          updates.payment_date = paymentDate;
+          updates.payment_status = 'paid';
+        } else {
+          updates.payment_date = null;
+          if (paymentDueDate && new Date(paymentDueDate) < new Date()) {
+            updates.payment_status = 'overdue';
+          } else {
+            updates.payment_status = 'unpaid';
+          }
+        }
+      } else if (gross > 0 && paidSum >= gross) {
         updates.payment_status = 'paid';
       } else {
-        updates.payment_date = null;
-
-        if (paymentDueDate && new Date(paymentDueDate) < new Date()) {
-          updates.payment_status = 'overdue';
-        } else {
-          updates.payment_status = 'unpaid';
-        }
+        updates.payment_status = 'partially_paid';
       }
 
       const { error } = await supabase
@@ -1090,7 +1208,11 @@ export default function KSeFIntegrationPanel() {
                       const invoiceDate = invoice.issue_date || invoice.ksef_issued_at;
                       const invoiceType = getInvoiceTypeLabel(invoice.invoice_number);
                       const typeBadgeColor = getInvoiceTypeBadgeColor(invoiceType);
-                      const paymentStatus = getPaymentStatus(invoice);
+                      const paidSum = (paymentsMap[invoice.id] || []).reduce(
+                        (s, p) => s + Number(p.amount || 0),
+                        0,
+                      );
+                      const paymentStatus = getPaymentStatus(invoice, paidSum);
                       const PaymentIcon = paymentStatus.icon;
 
                       return (
@@ -1231,7 +1353,11 @@ export default function KSeFIntegrationPanel() {
                   const invoiceDate = invoice.issue_date || invoice.ksef_issued_at;
                   const invoiceType = getInvoiceTypeLabel(invoice.invoice_number);
                   const typeBadgeColor = getInvoiceTypeBadgeColor(invoiceType);
-                  const paymentStatus = getPaymentStatus(invoice);
+                  const paidSumList = (paymentsMap[invoice.id] || []).reduce(
+                    (s, p) => s + Number(p.amount || 0),
+                    0,
+                  );
+                  const paymentStatus = getPaymentStatus(invoice, paidSumList);
                   const PaymentIcon = paymentStatus.icon;
 
                   return (
@@ -1413,24 +1539,109 @@ export default function KSeFIntegrationPanel() {
                 />
               </div>
 
-              <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]">
-                  Data płatności <span className="text-[#e5e4e2]/40">(opcjonalne)</span>
-                </label>
-                <input
-                  type="date"
-                  value={paymentDate}
-                  onChange={(e) => setPaymentDate(e.target.value)}
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#252945] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-                />
-                <div className="mt-1 text-xs text-[#e5e4e2]/40">
-                  Wypełnij tylko gdy faktura została już opłacona.
+              {editingPayments.length === 0 && (
+                <div>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]">
+                    Data płatności (pełna){' '}
+                    <span className="text-[#e5e4e2]/40">(opcjonalne)</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={paymentDate}
+                    onChange={(e) => setPaymentDate(e.target.value)}
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#252945] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                  />
+                  <div className="mt-1 text-xs text-[#e5e4e2]/40">
+                    Wypełnij, jeśli faktura została opłacona w całości jedną wpłatą.
+                  </div>
                 </div>
+              )}
+
+              <div className="border-t border-[#d3bb73]/10 pt-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <h4 className="text-sm font-medium text-[#e5e4e2]">Wpłaty częściowe</h4>
+                  {(() => {
+                    const paid = editingPayments.reduce(
+                      (s, p) => s + Number(p.amount || 0),
+                      0,
+                    );
+                    const gross = Number(editPaymentInvoice.gross_amount || 0);
+                    const remaining = Math.max(gross - paid, 0);
+                    return (
+                      <div className="text-xs text-[#e5e4e2]/60">
+                        Opłacono: <span className="text-[#d3bb73]">{paid.toFixed(2)} PLN</span> /{' '}
+                        {gross.toFixed(2)} PLN · pozostało{' '}
+                        <span className="text-yellow-400">{remaining.toFixed(2)} PLN</span>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {editingPayments.length > 0 ? (
+                  <div className="mb-3 max-h-40 space-y-2 overflow-y-auto">
+                    {editingPayments.map((p) => (
+                      <div
+                        key={p.id}
+                        className="flex items-center justify-between rounded border border-[#d3bb73]/10 bg-[#252945] px-3 py-2 text-sm"
+                      >
+                        <div>
+                          <div className="text-[#e5e4e2]">
+                            {Number(p.amount).toFixed(2)} PLN
+                          </div>
+                          <div className="text-xs text-[#e5e4e2]/50">
+                            {new Date(p.payment_date).toLocaleDateString('pl-PL')}
+                            {p.notes ? ` · ${p.notes}` : ''}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleRemovePartialPayment(p.id)}
+                          className="text-red-400 hover:text-red-300"
+                          title="Usuń wpłatę"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mb-3 text-xs text-[#e5e4e2]/40">Brak zarejestrowanych wpłat.</div>
+                )}
+
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="Kwota PLN"
+                    value={newPaymentAmount}
+                    onChange={(e) => setNewPaymentAmount(e.target.value)}
+                    className="rounded-lg border border-[#d3bb73]/20 bg-[#252945] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                  />
+                  <input
+                    type="date"
+                    value={newPaymentDate}
+                    onChange={(e) => setNewPaymentDate(e.target.value)}
+                    className="rounded-lg border border-[#d3bb73]/20 bg-[#252945] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                  />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Notatka (opcjonalnie)"
+                  value={newPaymentNotes}
+                  onChange={(e) => setNewPaymentNotes(e.target.value)}
+                  className="mt-2 w-full rounded-lg border border-[#d3bb73]/20 bg-[#252945] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                />
+                <button
+                  onClick={handleAddPartialPayment}
+                  className="mt-2 w-full rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-3 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/20"
+                >
+                  Dodaj wpłatę
+                </button>
               </div>
 
-              <div className="rounded border border-[#d3bb73]/10 bg-[#252945] p-3 text-sm text-[#e5e4e2]/60">
-                <strong>Wskazówka:</strong> Jeśli wpiszesz datę płatności, faktura zostanie
-                automatycznie oznaczona jako opłacona.
+              <div className="rounded border border-[#d3bb73]/10 bg-[#252945] p-3 text-xs text-[#e5e4e2]/60">
+                Status płatności aktualizuje się automatycznie: suma wpłat równa kwocie brutto oznacza
+                fakturę jako opłaconą, częściowe wpłaty oznaczają ją jako częściowo opłaconą.
               </div>
             </div>
 
