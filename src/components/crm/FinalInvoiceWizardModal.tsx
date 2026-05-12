@@ -84,7 +84,8 @@ export default function FinalInvoiceWizardModal({
   const [mode, setMode] = useState<ContextMode>(initialEventId ? 'event' : 'organization');
   const [eventId, setEventId] = useState<string | null>(initialEventId);
   const [organizationId, setOrganizationId] = useState<string | null>(initialOrganizationId);
-  const [offerGross, setOfferGross] = useState<number>(0);
+  const [offerNet, setOfferNet] = useState<number>(0);
+  const [offerVatAmount, setOfferVatAmount] = useState<number>(0);
   const [lockedEventName, setLockedEventName] = useState<string | null>(null);
   const [lockedOrgName, setLockedOrgName] = useState<string | null>(null);
 
@@ -231,10 +232,10 @@ export default function FinalInvoiceWizardModal({
           .limit(1)
           .maybeSingle();
         if (offer) {
-          const gross = Number(offer.total_amount ?? 0) > 0
-            ? Number(offer.total_amount)
-            : round2(Number(offer.subtotal ?? 0) + Number(offer.tax_amount ?? 0));
-          setOfferGross(gross);
+          const net = Number(offer.subtotal ?? 0);
+          const vat = Number(offer.tax_amount ?? 0);
+          setOfferNet(net);
+          setOfferVatAmount(vat);
         }
       }
       if (initialOrganizationId) {
@@ -250,19 +251,18 @@ export default function FinalInvoiceWizardModal({
 
   useEffect(() => {
     if (!locked) return;
-    if (!offerGross && !candidates.length) return;
-    const settled = round2(
+    if (!offerNet && !candidates.length) return;
+    const settledNet = round2(
       candidates
         .filter((c) => selectedIds.has(c.id))
-        .reduce((s, i) => s + Number(i.total_gross), 0),
+        .reduce((s, i) => s + Number(i.total_net), 0),
     );
-    const remaining = round2(offerGross - settled);
-    const targetGross = remaining > 0 ? remaining : 0;
-    const priceNet = targetGross > 0 ? round2(targetGross / 1.23) : 0;
+    const remainingNet = round2(offerNet - settledNet);
+    const priceNet = remainingNet > 0 ? remainingNet : 0;
     setItems([
       {
         name:
-          targetGross > 0
+          priceNet > 0
             ? 'Rozliczenie usługi zgodnie z umową'
             : 'Rozliczenie końcowe zaliczek (bez dopłaty)',
         unit: 'szt.',
@@ -271,7 +271,7 @@ export default function FinalInvoiceWizardModal({
         vat_rate: 23,
       },
     ]);
-  }, [locked, offerGross, candidates, selectedIds]);
+  }, [locked, offerNet, candidates, selectedIds]);
 
   const selectedInvoices = useMemo(
     () => candidates.filter((c) => selectedIds.has(c.id)),
@@ -313,10 +313,10 @@ export default function FinalInvoiceWizardModal({
   const remaining = round2(totals.gross - settledGross);
 
   const fillItemsFromAdvance = () => {
-    const sum = settledGross;
-    if (!sum) return;
+    const sumNet = round2(selectedInvoices.reduce((s, i) => s + Number(i.total_net), 0));
+    if (!sumNet) return;
     setItems([
-      { name: 'Usluga zgodnie z umowa', unit: 'szt.', quantity: 1, price_net: round2(sum / 1.23), vat_rate: 23 },
+      { name: 'Usluga zgodnie z umowa', unit: 'szt.', quantity: 1, price_net: sumNet, vat_rate: 23 },
     ]);
   };
 
@@ -431,9 +431,14 @@ export default function FinalInvoiceWizardModal({
                     Podmiot: <strong>{lockedOrgName ?? '...'}</strong>
                   </span>
                 )}
-                {offerGross > 0 && (
+                {offerNet > 0 && (
                   <span className="ml-auto text-xs text-[#e5e4e2]/70">
-                    Suma z oferty: <strong className="text-[#d3bb73]">{offerGross.toFixed(2)} PLN</strong>
+                    Suma z oferty (netto): <strong className="text-[#d3bb73]">{offerNet.toFixed(2)} PLN</strong>
+                    {offerVatAmount > 0 && (
+                      <span className="ml-2 text-[#e5e4e2]/50">
+                        (brutto: {round2(offerNet + offerVatAmount).toFixed(2)} PLN)
+                      </span>
+                    )}
                   </span>
                 )}
               </div>
