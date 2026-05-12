@@ -80,9 +80,13 @@ export default function FinalInvoiceWizardModal({
 }: FinalInvoiceWizardModalProps) {
   const { showSnackbar } = useSnackbar();
 
+  const locked = Boolean(initialEventId || initialOrganizationId);
   const [mode, setMode] = useState<ContextMode>(initialEventId ? 'event' : 'organization');
   const [eventId, setEventId] = useState<string | null>(initialEventId);
   const [organizationId, setOrganizationId] = useState<string | null>(initialOrganizationId);
+  const [offerGross, setOfferGross] = useState<number>(0);
+  const [lockedEventName, setLockedEventName] = useState<string | null>(null);
+  const [lockedOrgName, setLockedOrgName] = useState<string | null>(null);
 
   const [eventOptions, setEventOptions] = useState<EventOpt[]>([]);
   const [orgOptions, setOrgOptions] = useState<OrgOpt[]>([]);
@@ -191,8 +195,13 @@ export default function FinalInvoiceWizardModal({
         return;
       }
       const { data } = await query;
-      setCandidates((data ?? []) as unknown as CandidateInvoice[]);
-      setSelectedIds(new Set());
+      const list = (data ?? []) as unknown as CandidateInvoice[];
+      setCandidates(list);
+      if (locked && list.length) {
+        setSelectedIds(new Set(list.map((c) => c.id)));
+      } else {
+        setSelectedIds(new Set());
+      }
     } finally {
       setLoadingCandidates(false);
     }
@@ -201,6 +210,68 @@ export default function FinalInvoiceWizardModal({
   useEffect(() => {
     fetchCandidates();
   }, [mode, eventId, organizationId]);
+
+  useEffect(() => {
+    if (!locked) return;
+    (async () => {
+      if (initialEventId) {
+        const { data: ev } = await supabase
+          .from('events')
+          .select('name')
+          .eq('id', initialEventId)
+          .maybeSingle();
+        setLockedEventName(ev?.name ?? null);
+
+        const { data: offer } = await supabase
+          .from('offers')
+          .select('subtotal, tax_amount, total_amount')
+          .eq('event_id', initialEventId)
+          .eq('status', 'accepted')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (offer) {
+          const gross = Number(offer.total_amount ?? 0) > 0
+            ? Number(offer.total_amount)
+            : round2(Number(offer.subtotal ?? 0) + Number(offer.tax_amount ?? 0));
+          setOfferGross(gross);
+        }
+      }
+      if (initialOrganizationId) {
+        const { data: org } = await supabase
+          .from('organizations')
+          .select('name')
+          .eq('id', initialOrganizationId)
+          .maybeSingle();
+        setLockedOrgName(org?.name ?? null);
+      }
+    })();
+  }, [locked, initialEventId, initialOrganizationId]);
+
+  useEffect(() => {
+    if (!locked) return;
+    if (!offerGross && !candidates.length) return;
+    const settled = round2(
+      candidates
+        .filter((c) => selectedIds.has(c.id))
+        .reduce((s, i) => s + Number(i.total_gross), 0),
+    );
+    const remaining = round2(offerGross - settled);
+    const targetGross = remaining > 0 ? remaining : 0;
+    const priceNet = targetGross > 0 ? round2(targetGross / 1.23) : 0;
+    setItems([
+      {
+        name:
+          targetGross > 0
+            ? 'Rozliczenie usługi zgodnie z umową'
+            : 'Rozliczenie końcowe zaliczek (bez dopłaty)',
+        unit: 'szt.',
+        quantity: 1,
+        price_net: priceNet,
+        vat_rate: 23,
+      },
+    ]);
+  }, [locked, offerGross, candidates, selectedIds]);
 
   const selectedInvoices = useMemo(
     () => candidates.filter((c) => selectedIds.has(c.id)),
@@ -342,6 +413,33 @@ export default function FinalInvoiceWizardModal({
         </div>
 
         <div className="space-y-6 p-6">
+          {locked ? (
+            <div className="rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/5 p-4">
+              <div className="mb-1 text-xs uppercase tracking-wider text-[#d3bb73]">
+                Kontekst faktury końcowej
+              </div>
+              <div className="flex flex-wrap items-center gap-4 text-sm text-[#e5e4e2]">
+                {initialEventId && (
+                  <span className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-[#d3bb73]" />
+                    Event: <strong>{lockedEventName ?? '...'}</strong>
+                  </span>
+                )}
+                {initialOrganizationId && (
+                  <span className="flex items-center gap-2">
+                    <Building className="h-4 w-4 text-[#d3bb73]" />
+                    Podmiot: <strong>{lockedOrgName ?? '...'}</strong>
+                  </span>
+                )}
+                {offerGross > 0 && (
+                  <span className="ml-auto text-xs text-[#e5e4e2]/70">
+                    Suma z oferty: <strong className="text-[#d3bb73]">{offerGross.toFixed(2)} PLN</strong>
+                  </span>
+                )}
+              </div>
+            </div>
+          ) : (
+          <>
           <div>
             <div className="mb-2 text-sm text-[#e5e4e2]/60">Kontekst wyszukiwania faktur</div>
             <div className="grid grid-cols-2 gap-3">
@@ -467,6 +565,8 @@ export default function FinalInvoiceWizardModal({
                 )}
               </div>
             </div>
+          )}
+          </>
           )}
 
           <div>
