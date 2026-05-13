@@ -1085,8 +1085,6 @@ export const EventEquipmentTab: React.FC<{
 
   const handleSuggestAlternative = async (row: any) => {
     try {
-      console.log('[handleSuggestAlternative] row:', row);
-
       let currentEquipmentId = row?.equipment?.id || row?.equipment_id || row?.item_id || null;
 
       let warehouseCategoryId =
@@ -1113,9 +1111,6 @@ export const EventEquipmentTab: React.FC<{
         warehouseCategoryId = equipmentItem?.warehouse_category_id ?? null;
         currentEquipmentId = equipmentItem?.id ?? currentEquipmentId;
       }
-
-      console.log('[handleSuggestAlternative] currentEquipmentId:', currentEquipmentId);
-      console.log('[handleSuggestAlternative] warehouseCategoryId:', warehouseCategoryId);
 
       if (!warehouseCategoryId) {
         showSnackbar('Nie można znaleźć kategorii sprzętu', 'error');

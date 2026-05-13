@@ -1345,19 +1345,20 @@ export function EventContractTab({ eventId }: { eventId: string }) {
   return (
     <>
       <div className="space-y-6">
-        <div className="no-print rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-          <div className="mb-6 flex items-center justify-between">
-            <div>
-              <h2 className="mb-1 text-2xl font-light text-[#e5e4e2]">
+        <div className="no-print rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4 md:p-6">
+          <div className="mb-5 flex flex-col gap-4 md:mb-6 md:flex-row md:items-start md:justify-between">
+            <div className="min-w-0">
+              <h2 className="text-xl font-light leading-tight text-[#e5e4e2] md:text-2xl">
                 Umowa na realizację wydarzenia
               </h2>
-              <p className="text-sm text-[#e5e4e2]/60">
+              <p className="mt-1 text-sm text-[#e5e4e2]/50">
                 Automatycznie wygenerowana z danych wydarzenia
               </p>
             </div>
-            <div className="flex items-center gap-3">
+
+            <div className="flex shrink-0 justify-start md:justify-end">
               {isGeneratingPdf ? (
-                <div className="flex items-center gap-2">
+                <div className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 md:w-auto">
                   <Loader className="h-4 w-4 animate-spin text-[#d3bb73]" />
                   <span className="text-sm text-[#e5e4e2]/60">Generowanie PDF...</span>
                 </div>
@@ -1367,19 +1368,17 @@ export function EventContractTab({ eventId }: { eventId: string }) {
             </div>
           </div>
 
-          <div className="flex flex-col gap-6">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             {!generatedPdfPath && availableTemplates.length > 0 && (
-              <div className="max-w-md">
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+              <div className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-3 md:p-4">
+                <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-[#e5e4e2]/50">
                   Szablon umowy
-                  <span className="ml-2 text-xs text-amber-400">
-                    (zmiana możliwa tylko przed generacją PDF)
-                  </span>
                 </label>
+
                 <select
                   value={selectedTemplateId || ''}
                   onChange={(e) => handleTemplateChange(e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-base text-[#e5e4e2] transition-all hover:border-[#d3bb73]/40 focus:outline-none focus:ring-2 focus:ring-[#d3bb73]"
+                  className="w-full cursor-pointer rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2.5 text-sm text-[#e5e4e2] transition-all hover:border-[#d3bb73]/40 focus:outline-none focus:ring-2 focus:ring-[#d3bb73]"
                 >
                   {availableTemplates.map((template) => (
                     <option
@@ -1391,58 +1390,63 @@ export function EventContractTab({ eventId }: { eventId: string }) {
                     </option>
                   ))}
                 </select>
+
+                <p className="mt-2 text-xs text-amber-400/80">
+                  Zmiana możliwa tylko przed generacją PDF
+                </p>
               </div>
             )}
 
-            <div className="flex items-center gap-6">
-              <div className="max-w-md flex-1">
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">
-                  Wybierz status
-                  {!canEdit && contractStatus === 'issued' && (
-                    <span className="ml-2 text-xs text-amber-400">
-                      (🔒 Tylko admin może anulować)
-                    </span>
-                  )}
-                </label>
-                <select
-                  value={contractStatus}
-                  onChange={(e) => handleStatusChange(e.target.value as ContractStatus)}
-                  disabled={!canEdit && contractStatus !== 'draft'}
-                  className="w-full cursor-pointer rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-base text-[#e5e4e2] transition-all hover:border-[#d3bb73]/40 focus:outline-none focus:ring-2 focus:ring-[#d3bb73] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {(
-                    [
-                      'draft',
-                      'issued',
-                      'sent',
-                      'signed_by_client',
-                      'signed_returned',
-                      'cancelled',
-                    ] as ContractStatus[]
-                  ).map((status) => {
-                    const isDisabled =
-                      !isAdmin &&
-                      ((contractStatus === 'issued' && status !== 'issued') ||
-                        (status === 'cancelled' && contractStatus !== 'cancelled') ||
-                        (status === 'draft' && contractStatus !== 'draft'));
+            <div className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-3 md:p-4">
+              <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-[#e5e4e2]/50">
+                Status umowy
+              </label>
 
-                    return (
-                      <option
-                        key={status}
-                        value={status}
-                        disabled={isDisabled}
-                        className="bg-[#1c1f33] text-[#e5e4e2]"
-                      >
-                        {getStatusLabel(status)}
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
+              <select
+                value={contractStatus}
+                onChange={(e) => handleStatusChange(e.target.value as ContractStatus)}
+                disabled={!canEdit && contractStatus !== 'draft'}
+                className="w-full cursor-pointer rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2.5 text-sm text-[#e5e4e2] transition-all hover:border-[#d3bb73]/40 focus:outline-none focus:ring-2 focus:ring-[#d3bb73] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {(
+                  [
+                    'draft',
+                    'issued',
+                    'sent',
+                    'signed_by_client',
+                    'signed_returned',
+                    'cancelled',
+                  ] as ContractStatus[]
+                ).map((status) => {
+                  const isDisabled =
+                    !isAdmin &&
+                    ((contractStatus === 'issued' && status !== 'issued') ||
+                      (status === 'cancelled' && contractStatus !== 'cancelled') ||
+                      (status === 'draft' && contractStatus !== 'draft'));
+
+                  return (
+                    <option
+                      key={status}
+                      value={status}
+                      disabled={isDisabled}
+                      className="bg-[#1c1f33] text-[#e5e4e2]"
+                    >
+                      {getStatusLabel(status)}
+                    </option>
+                  );
+                })}
+              </select>
+
+              {!canEdit && contractStatus === 'issued' && (
+                <p className="mt-2 text-xs text-amber-400/80">
+                  Tylko admin może anulować wystawioną umowę
+                </p>
+              )}
+
               {getStatusDate(contractStatus) && (
-                <div className="flex-1">
-                  <div className="mb-1 text-sm text-[#e5e4e2]/60">Data zmiany statusu</div>
-                  <div className="text-base font-medium text-[#d3bb73]">
+                <div className="mt-4 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]/70 px-3 py-2">
+                  <div className="text-xs text-[#e5e4e2]/50">Data zmiany statusu</div>
+                  <div className="mt-0.5 text-sm font-medium text-[#d3bb73]">
                     {getStatusDate(contractStatus)}
                   </div>
                 </div>

@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
-import { GripVertical, Pencil, Trash2, Eye, Plus } from 'lucide-react';
+import { GripVertical, Pencil, Trash2, Eye, Plus, Package } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
 
 const isHttpUrl = (v?: string) => !!v && /^https?:\/\//i.test(v);
 
@@ -106,87 +107,115 @@ export default function OfferItems({
 
   const [orderedItems, setOrderedItems] = useState<OfferItem[]>([]);
 
-useEffect(() => {
-  // zawsze trzymaj kolejność wg display_order jako bazę
-  setOrderedItems([...items].sort((a, b) => a.display_order - b.display_order));
-}, [items]);
-
-const handleDragEnd = async (result: DropResult) => {
-  if (!result.destination) return;
-
-  const sourceIndex = result.source.index;
-  const destinationIndex = result.destination.index;
-
-  if (sourceIndex === destinationIndex) return;
-
-  // ✅ optimistic reorder w UI
-  const next = Array.from(orderedItems);
-  const [moved] = next.splice(sourceIndex, 1);
-  next.splice(destinationIndex, 0, moved);
-
-  // nadaj nowe display_order lokalnie
-  const nextWithOrder = next.map((it, idx) => ({
-    ...it,
-    display_order: idx,
-  }));
-
-  setOrderedItems(nextWithOrder);
-  setUpdating(true);
-
-  try {
-    // zapis do bazy
-    // (możesz też zrobić batch RPC, ale na razie zostawiamy 1:1)
-    for (const it of nextWithOrder) {
-      const { error } = await supabase
-        .from('offer_items')
-        .update({ display_order: it.display_order })
-        .eq('id', it.id);
-
-      if (error) throw error;
-    }
-
-    showSnackbar('Kolejność pozycji zaktualizowana', 'success');
-    onItemsReordered(); // jeśli parent robi refetch - ok
-  } catch (error: any) {
-    console.error('Error reordering items:', error);
-    showSnackbar('Błąd podczas zmiany kolejności', 'error');
-
-    // ✅ rollback: wróć do kolejności z propsów
+  useEffect(() => {
+    // zawsze trzymaj kolejność wg display_order jako bazę
     setOrderedItems([...items].sort((a, b) => a.display_order - b.display_order));
-  } finally {
-    setUpdating(false);
-  }
-};
+  }, [items]);
+
+  const handleDragEnd = async (result: DropResult) => {
+    if (!result.destination) return;
+
+    const sourceIndex = result.source.index;
+    const destinationIndex = result.destination.index;
+
+    if (sourceIndex === destinationIndex) return;
+
+    // ✅ optimistic reorder w UI
+    const next = Array.from(orderedItems);
+    const [moved] = next.splice(sourceIndex, 1);
+    next.splice(destinationIndex, 0, moved);
+
+    // nadaj nowe display_order lokalnie
+    const nextWithOrder = next.map((it, idx) => ({
+      ...it,
+      display_order: idx,
+    }));
+
+    setOrderedItems(nextWithOrder);
+    setUpdating(true);
+
+    try {
+      // zapis do bazy
+      // (możesz też zrobić batch RPC, ale na razie zostawiamy 1:1)
+      for (const it of nextWithOrder) {
+        const { error } = await supabase
+          .from('offer_items')
+          .update({ display_order: it.display_order })
+          .eq('id', it.id);
+
+        if (error) throw error;
+      }
+
+      showSnackbar('Kolejność pozycji zaktualizowana', 'success');
+      onItemsReordered(); // jeśli parent robi refetch - ok
+    } catch (error: any) {
+      console.error('Error reordering items:', error);
+      showSnackbar('Błąd podczas zmiany kolejności', 'error');
+
+      // ✅ rollback: wróć do kolejności z propsów
+      setOrderedItems([...items].sort((a, b) => a.display_order - b.display_order));
+    } finally {
+      setUpdating(false);
+    }
+  };
 
   return (
-    <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-light text-[#e5e4e2]">Pozycje Oferty</h2>
-        <div className="flex items-center gap-3">
-          <p className="text-xs text-[#e5e4e2]/60">Przeciągnij aby zmienić kolejność</p>
-          {onAddItem && (
-            <button
-              onClick={onAddItem}
-              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-3 py-1.5 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
-            >
-              <Plus className="h-4 w-4" />
-              Dodaj pozycję
-            </button>
-          )}
+    <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4 md:p-6">
+      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 className="text-lg font-light text-[#e5e4e2]">Pozycje Oferty</h2>
+          <p className="mt-1 text-xs text-[#e5e4e2]/50">
+            Przeciągnij uchwyt, aby zmienić kolejność
+          </p>
         </div>
+
+        {onAddItem && (
+          <button
+            onClick={onAddItem}
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-3 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 sm:w-auto"
+          >
+            <Plus className="h-4 w-4" />
+            Dodaj pozycję
+          </button>
+        )}
       </div>
 
       {items.length === 0 ? (
-        <div className="py-8 text-center text-[#e5e4e2]/60">Brak pozycji w ofercie</div>
+        <div className="rounded-lg border border-dashed border-[#d3bb73]/20 bg-[#0d0f1a] py-10 text-center text-sm text-[#e5e4e2]/60">
+          Brak pozycji w ofercie
+        </div>
       ) : (
         <DragDropContext onDragEnd={handleDragEnd}>
           <Droppable droppableId="offer-items">
             {(provided) => (
-              <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-2">
+              <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-3">
                 {[...orderedItems]
                   .sort((a, b) => a.display_order - b.display_order)
                   .map((item, index) => {
-                    const thumbUrl = thumbUrls[item.id]; // ✅ gotowy display url
+                    const thumbUrl = thumbUrls[item.id];
+
+                    const actions: Action[] = [
+                      {
+                        label: 'Produkt',
+                        icon: <Eye className="h-4 w-4" />,
+                        onClick: () => router.push(`/crm/offers/products/${item.product_id}`),
+                        show: Boolean(item.product?.pdf_page_url),
+                      },
+                      {
+                        label: 'Edytuj',
+                        icon: <Pencil className="h-4 w-4" />,
+                        onClick: () => onEditItem(item),
+                        variant: 'primary',
+                      },
+                      {
+                        label: 'Usuń',
+                        icon: <Trash2 className="h-4 w-4" />,
+                        onClick: () => onDeleteItem(item.id),
+                        variant: 'danger',
+                      },
+                    ];
+
+                    const grossValue = item.total * (1 + vatRate / 100);
 
                     return (
                       <Draggable
@@ -199,109 +228,104 @@ const handleDragEnd = async (result: DropResult) => {
                           <div
                             ref={provided.innerRef}
                             {...provided.draggableProps}
-                            className={`flex items-center gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0d0f1a] p-4 transition-all ${
+                            className={`relative rounded-xl border border-[#d3bb73]/10 bg-[#0d0f1a] p-3 transition-all md:p-5 ${
                               snapshot.isDragging ? 'shadow-lg shadow-[#d3bb73]/20' : ''
                             }`}
                           >
-                            <div
-                              {...provided.dragHandleProps}
-                              className="cursor-grab text-[#e5e4e2]/40 hover:text-[#d3bb73] active:cursor-grabbing"
-                            >
-                              <GripVertical className="h-5 w-5" />
+                            <div className="absolute right-2 top-2 z-20">
+                              <ResponsiveActionBar actions={actions} disabledBackground mobileBreakpoint={4000} />
                             </div>
 
-                            {/* ✅ Miniatura – klik preview otwiera już URL, nie path */}
-                            {thumbUrl && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onPreviewImage(thumbUrl);
-                                }}
-                                className="h-16 w-auto flex-shrink-0 overflow-hidden rounded border border-[#d3bb73]/10 transition-colors hover:border-[#d3bb73]/30"
-                                title="Podgląd"
+                            <div className="flex gap-3 pr-10">
+                              <div
+                                {...provided.dragHandleProps}
+                                className="flex w-6 flex-shrink-0 cursor-grab items-center justify-center text-[#e5e4e2]/35 hover:text-[#d3bb73] active:cursor-grabbing"
                               >
-                                <Image
-                                  width={44}
-                                  height={62}
-                                  sizes="44px 62px"
-                                  src={thumbUrl}
-                                  alt={item.product?.name ?? 'Miniatura'}
-                                  className="h-full w-auto object-contain"
-                                />
-                              </button>
-                            )}
+                                <GripVertical className="h-5 w-5" />
+                              </div>
 
-                            <div className="min-w-0 flex-1">
-                              <h3 className="truncate text-sm font-medium text-[#e5e4e2]">
-                                {item.product?.name || 'Produkt'}
-                              </h3>
-                              <p className="truncate text-xs text-[#e5e4e2]/60">
-                                {item.product?.description}
-                              </p>
-                              <div className="mt-1 flex items-center gap-4">
-                                <span className="text-xs text-[#e5e4e2]/60">Ilość: {item.quantity}</span>
-                                <span className="text-xs text-[#e5e4e2]/60">
-                                  Netto: {item.unit_price.toFixed(2)} PLN
-                                </span>
+                              {thumbUrl ? (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onPreviewImage(thumbUrl);
+                                  }}
+                                  className="h-16 w-12 flex-shrink-0 overflow-hidden rounded-md border border-[#d3bb73]/10 bg-black/20 transition-colors hover:border-[#d3bb73]/30 md:h-24 md:w-20"
+                                  title="Podgląd"
+                                >
+                                  <Image
+                                    width={80}
+                                    height={96}
+                                    sizes="80px"
+                                    src={thumbUrl}
+                                    alt={item.product?.name ?? 'Miniatura'}
+                                    className="h-full w-full object-contain"
+                                  />
+                                </button>
+                              ) : (
+                                <div className="flex h-16 w-12 flex-shrink-0 items-center justify-center rounded-md border border-[#d3bb73]/10 bg-[#1c1f33] text-[#d3bb73]/60 md:h-24 md:w-20">
+                                  <Package className="h-6 w-6" />
+                                </div>
+                              )}
+
+                              <div className="min-w-0 flex-1">
+                                <h3 className="line-clamp-1 text-sm font-semibold text-[#e5e4e2] md:text-base">
+                                  {item.product?.name || 'Produkt'}
+                                </h3>
+
+                                {item.product?.description && (
+                                  <p className="mt-0.5 line-clamp-2 text-xs leading-snug text-[#e5e4e2]/55 md:text-sm">
+                                    {item.product.description}
+                                  </p>
+                                )}
+
+                                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#e5e4e2]/55">
+                                  <span>
+                                    Ilość:{' '}
+                                    <strong className="text-[#e5e4e2]">{item.quantity}</strong>
+                                  </span>
+                                  <span>
+                                    Netto:{' '}
+                                    <strong className="text-[#e5e4e2]">
+                                      {item.total.toFixed(2)} PLN
+                                    </strong>
+                                  </span>
+                                  <span>
+                                    Cena:{' '}
+                                    <strong className="text-[#e5e4e2]">
+                                      {item.unit_price.toFixed(2)} PLN
+                                    </strong>
+                                  </span>
+                                </div>
+
                                 {item.discount_percent > 0 && (
-                                  <span className="text-xs text-green-400">Rabat: {item.discount_percent}%</span>
+                                  <div className="mt-1 text-xs text-green-400">
+                                    Rabat: {item.discount_percent}%
+                                  </div>
                                 )}
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-2">
-                              <div className="mr-4 text-right">
-                                <div className="text-sm font-medium text-[#d3bb73]">
-                                  {(item.total * (1 + vatRate / 100)).toFixed(2)} PLN
-                                </div>
-                                <div className="text-xs text-[#e5e4e2]/60">
-                                  netto: {item.total.toFixed(2)} PLN
+                            <div className="mt-3 flex items-end justify-between border-t border-[#d3bb73]/10 pt-2 md:mt-4">
+                              <div className="text-xs text-[#e5e4e2]/40">brutto</div>
+
+                              <div className="text-right">
+                                <div className="text-lg font-bold leading-none text-[#d3bb73] md:text-xl">
+                                  {grossValue.toFixed(2)} PLN
                                 </div>
                                 {item.discount_amount > 0 && (
-                                  <div className="text-xs text-[#e5e4e2]/40 line-through">
+                                  <div className="mt-1 text-xs text-[#e5e4e2]/35 line-through">
                                     {item.subtotal.toFixed(2)} PLN
                                   </div>
                                 )}
                               </div>
-
-                              {item.product?.pdf_page_url && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    router.push(`/crm/offers/products/${item.product_id}`);
-                                  }}
-                                  className="rounded p-2 text-[#e5e4e2]/60 transition-colors hover:bg-blue-500/10 hover:text-blue-400"
-                                  title="Przejdź do produktu"
-                                >
-                                  <Eye className="h-4 w-4" />
-                                </button>
-                              )}
-
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onEditItem(item);
-                                }}
-                                className="rounded p-2 text-[#e5e4e2]/60 transition-colors hover:bg-[#d3bb73]/10 hover:text-[#d3bb73]"
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </button>
-
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onDeleteItem(item.id);
-                                }}
-                                className="rounded p-2 text-[#e5e4e2]/60 transition-colors hover:bg-red-500/10 hover:text-red-400"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
                             </div>
                           </div>
                         )}
                       </Draggable>
                     );
                   })}
+
                 {provided.placeholder}
               </div>
             )}

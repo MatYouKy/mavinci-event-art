@@ -129,7 +129,6 @@ export default function EditableHeroWithMetadata({
   }, [imageUrl]);
 
   const getTableName = () => {
-    console.log('[section]', section);
     const cleanSection = section.replace('-hero', '');
     const dedicatedTables: Record<string, string> = {
       konferencje: 'konferencje_page_images',
@@ -149,7 +148,6 @@ export default function EditableHeroWithMetadata({
 
     try {
       const tableName = getTableName();
-      console.log('[tableName]', tableName);
       const isUniversalTable = tableName === 'service_hero_images';
 
       let query = supabase
@@ -188,8 +186,6 @@ export default function EditableHeroWithMetadata({
       // zawsze dociągnij z bazy dla edycji
       const tableName = getTableName();
       const isUniversalTable = tableName === 'service_hero_images';
-      console.log('[tableName]', tableName);
-      console.log('[isUniversalTable]', isUniversalTable);
 
       let query = supabase
         .from(tableName)

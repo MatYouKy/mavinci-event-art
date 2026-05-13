@@ -521,7 +521,6 @@ export default function EventDetailPageClient({
 
       try {
         const result = await deleteOfferMutation({ eventId, offerId }).unwrap();
-        console.log('deleteOfferMutation result:', result);
         showSnackbar('Oferta została usunięta', 'success');
       } catch (error: any) {
         console.error('Error deleting offer FULL:', error);

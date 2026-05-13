@@ -28,7 +28,10 @@ import PermissionGuard from '@/components/crm/PermissionGuard';
 import { useDialog } from '@/contexts/DialogContext';
 import Image from 'next/image';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
-import { buildInvoicePdfHtml } from '@/components/crm/invoices/helpers/buildInvoicePdfHtml';
+import {
+  buildInvoicePdfHtml,
+  SettledInvoicePdfRef,
+} from '@/components/crm/invoices/helpers/buildInvoicePdfHtml';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface Invoice {
@@ -78,6 +81,18 @@ interface Invoice {
   signature_name: string;
   website: string;
   invoice_items?: InvoiceItem[];
+  settled_invoices?: SettledInvoicePdfRef[];
+  settlement_summary?: {
+    invoiceTotalNet: number;
+    invoiceTotalVat: number;
+    invoiceTotalGross: number;
+    settledNet: number;
+    settledVat: number;
+    settledGross: number;
+    remainingNet: number;
+    remainingVat: number;
+    remainingGross: number;
+  };
 }
 
 interface RelatedData {
@@ -127,6 +142,12 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   const [pdfPath, setPdfPath] = useState<string | null>(null);
   const [lastBase64, setLastBase64] = useState<string | null>(null);
   const [emailSentCount, setEmailSentCount] = useState(0);
+  const [showRelations, setShowRelations] = useState(false);
+
+  const [finalSettlementPreview, setFinalSettlementPreview] = useState<{
+    settledInvoices?: SettledInvoicePdfRef[];
+    settlementSummary?: Invoice['settlement_summary'];
+  } | null>(null);
 
   useEffect(() => {
     fetchInvoice();
@@ -242,71 +263,94 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
   useEffect(() => {
     if (!invoice) return;
-    const checkSentEmails = async () => {
-      const { count } = await supabase
-        .from('sent_emails')
-        .select('id', { count: 'exact', head: true })
-        .ilike('subject', `%${invoice.invoice_number}%`);
-      setEmailSentCount(count || 0);
+
+    const relatedLoaded =
+      Boolean(invoice.related_invoice_id) || Boolean(relatedData.relatedInvoices);
+
+    if (!relatedLoaded) return;
+
+    (async () => {
+      const data = await buildFinalSettlementData(invoice);
+      setFinalSettlementPreview(data);
+    })();
+  }, [invoice?.id, invoice?.related_invoice_id, relatedData.relatedInvoices?.length]);
+
+  const isFinalInvoice = (invoice?: Invoice | null) =>
+    Boolean(invoice?.invoice_type === 'final' || invoice?.invoice_number?.startsWith('FKO/'));
+
+  const buildFinalSettlementData = async (currentInvoice: Invoice) => {
+    if (!isFinalInvoice(currentInvoice)) {
+      return {
+        settledInvoices: undefined,
+        settlementSummary: undefined,
+      };
+    }
+
+    const relatedAdvanceIds = Array.from(
+      new Set(
+        [
+          currentInvoice.related_invoice_id,
+          ...(relatedData.relatedInvoices ?? []).map((rel) => rel.id),
+        ].filter(Boolean),
+      ),
+    ) as string[];
+
+    if (!relatedAdvanceIds.length) {
+      return {
+        settledInvoices: undefined,
+        settlementSummary: undefined,
+      };
+    }
+
+    const { data: advanceInvoices, error } = await supabase
+      .from('invoices')
+      .select('id, invoice_number, invoice_type, issue_date, total_net, total_vat, total_gross')
+      .in('id', relatedAdvanceIds)
+      .in('invoice_type', ['advance']);
+    // .eq('invoice_type', 'advance');
+
+    if (error) {
+      console.error('Error fetching settled advance invoices:', error);
+    }
+
+    const settledInvoices: SettledInvoicePdfRef[] = (advanceInvoices ?? []).map((inv) => ({
+      id: inv.id,
+      invoiceNumber: inv.invoice_number,
+      invoiceType: inv.invoice_type,
+      issueDate: inv.issue_date,
+      totalNet: Number(inv.total_net ?? 0),
+      totalVat: Number(inv.total_vat ?? 0),
+      totalGross: Number(inv.total_gross ?? 0),
+    }));
+
+    const settledNet = settledInvoices.reduce((sum, inv) => sum + inv.totalNet, 0);
+    const settledVat = settledInvoices.reduce((sum, inv) => sum + inv.totalVat, 0);
+    const settledGross = settledInvoices.reduce((sum, inv) => sum + inv.totalGross, 0);
+
+    return {
+      settledInvoices,
+      settlementSummary: {
+        invoiceTotalNet: Number(currentInvoice.total_net ?? 0),
+        invoiceTotalVat: Number(currentInvoice.total_vat ?? 0),
+        invoiceTotalGross: Number(currentInvoice.total_gross ?? 0),
+        settledNet,
+        settledVat,
+        settledGross,
+        remainingNet: Number(currentInvoice.total_net ?? 0) - settledNet,
+        remainingVat: Number(currentInvoice.total_vat ?? 0) - settledVat,
+        remainingGross: Number(currentInvoice.total_gross ?? 0) - settledGross,
+      },
     };
-    checkSentEmails();
-  }, [invoice]);
+  };
 
-  const buildHtmlForPdfData = useCallback(() => {
-    if (!invoice) return '';
+  useEffect(() => {
+    if (!invoice) return;
 
-    console.log('[buildHtmlForPdfData] ->  invoice', invoice);
-
-    const effectiveInvoiceType =
-      invoice.invoice_type === 'proforma' || invoice.is_proforma
-        ? 'proforma'
-        : invoice.invoice_type;
-
-    return buildInvoicePdfHtml({
-      footerNote:
-        invoice.footer_note || '',
-      signatureName: invoice.signature_name || 'Mateusz Kwiatkowski',
-      website: invoice.website || 'www.mavinci.pl',
-      invoiceNumber: invoice.invoice_number,
-      invoiceType: effectiveInvoiceType,
-      issueDate: invoice.issue_date,
-      saleDate: invoice.sale_date,
-      issuePlace: invoice.issue_place,
-      paymentMethod: invoice.payment_method,
-      paymentDueDate: invoice.payment_due_date,
-      bankAccount: invoice.bank_account,
-      bankName: invoice.bank_name,
-      sellerName: invoice.seller_name,
-      sellerNip: invoice.seller_nip,
-      sellerStreet: invoice.seller_street,
-      sellerCity: invoice.seller_city,
-      sellerPostalCode: invoice.seller_postal_code,
-      buyerName: invoice.buyer_name,
-      buyerNip: invoice.buyer_nip,
-      buyerStreet: invoice.buyer_street,
-      buyerCity: invoice.buyer_city,
-      buyerPostalCode: invoice.buyer_postal_code,
-      totalNet: invoice.total_net,
-      totalVat: invoice.total_vat,
-      totalGross: invoice.total_gross,
-      companyLogoUrl: invoice.company_logo_url
-        ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/company-logos/${invoice.company_logo_url}`
-        : null,
-      items: items.map((item) => ({
-        positionNumber: item.position_number,
-        name: item.name,
-        unit: item.unit,
-        quantity: item.quantity,
-        priceNet: item.price_net,
-        vatRate: item.vat_rate,
-        valueNet: item.value_net,
-        vatAmount: item.vat_amount,
-        valueGross: item.value_gross,
-      })),
-      invoice_items: invoice.invoice_items || ([] as any as InvoiceItem[]),
-      isProforma: false,
-    });
-  }, [invoice, items]);
+    (async () => {
+      const data = await buildFinalSettlementData(invoice);
+      setFinalSettlementPreview(data);
+    })();
+  }, [invoice, relatedData.relatedInvoices]);
 
   const handleGeneratePDF = async () => {
     if (!invoice) return;
@@ -320,12 +364,14 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
       if (freshItems && freshItems.length > 0) {
         setItems(freshItems);
+
         setInvoice((prev) => (prev ? { ...prev, invoice_items: freshItems } : prev));
       }
 
+      const finalSettlementData = await buildFinalSettlementData(invoice);
+
       const html = buildInvoicePdfHtml({
-        footerNote:
-          invoice.footer_note || '',
+        footerNote: invoice.footer_note || '',
         signatureName: invoice.signature_name || 'Mateusz Kwiatkowski',
         website: invoice.website || 'www.mavinci.pl',
         invoiceNumber: invoice.invoice_number,
@@ -369,6 +415,8 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
         })),
         invoice_items: (freshItems || invoice.invoice_items || []) as any,
         isProforma: false,
+        settledInvoices: invoice.settled_invoices ?? finalSettlementData.settledInvoices,
+        settlementSummary: invoice.settlement_summary ?? finalSettlementData.settlementSummary,
       });
       const response = await fetch('/bridge/invoices/invoice-pdf', {
         method: 'POST',
@@ -522,15 +570,6 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
     let safeStatus = newStatus;
 
-    console.log('[STATUS_CHANGE_BEFORE]', {
-      invoiceId: invoice.id,
-      invoiceNumber: invoice.invoice_number,
-      invoiceType: invoice.invoice_type,
-      isProforma: invoice.is_proforma,
-      currentStatus: invoice.status,
-      requestedStatus: newStatus,
-    });
-
     if (invoice.is_proforma) {
       const allowed = ['draft', 'proforma', 'cancelled'];
 
@@ -542,11 +581,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
         safeStatus = 'draft';
       }
     }
-
-    console.log('[STATUS_CHANGE_AFTER]', {
-      safeStatus,
-    });
-
+    
     try {
       const { error } = await supabase
         .from('invoices')
@@ -679,15 +714,34 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     );
   }
 
-  const getTypeLabel = (type: string) => {
+  function getTypeLabel(type: string, invoiceNumber?: string) {
+    if (type === 'final' || invoiceNumber?.startsWith('FKO/')) {
+      return 'Faktura końcowa';
+    }
+
     const labels: Record<string, string> = {
       vat: 'Faktura VAT',
       proforma: 'Faktura Proforma',
-      advance: 'Faktura Zaliczkowa',
-      corrective: 'Korygujaca',
+      advance: 'Faktura zaliczkowa',
+      corrective: 'Faktura korygująca',
+      final: 'Faktura końcowa',
     };
-    return labels[type] || type;
-  };
+
+    return labels[type] || 'Faktura VAT';
+  }
+
+  const previewSettlementSummary =
+    invoice.settlement_summary ?? finalSettlementPreview?.settlementSummary;
+
+  const previewSettledInvoices =
+    invoice.settled_invoices ?? finalSettlementPreview?.settledInvoices ?? [];
+
+  const isFinalInvoicePreview =
+    invoice.invoice_type === 'final' || invoice.invoice_number?.startsWith('FKO/');
+
+  const previewAmountToPay = isFinalInvoicePreview
+    ? Number(previewSettlementSummary?.remainingGross ?? invoice.total_gross ?? 0)
+    : Number(invoice.total_gross ?? 0);
 
   return (
     <PermissionGuard module="invoices">
@@ -755,151 +809,202 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               </div>
             )}
 
-          {invoice.invoice_type === 'corrective' && (
-            <div className="mb-6 rounded-xl border border-orange-500/30 bg-orange-500/10 p-6">
-              <h3 className="mb-4 text-lg font-medium text-orange-400">Faktura korygujaca</h3>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <div className="mb-1 text-xs text-[#e5e4e2]/40">Faktura korygowana</div>
-                  {invoice.corrected_invoice_number ? (
-                    <button
-                      onClick={() =>
-                        invoice.related_invoice_id &&
-                        router.push(`/crm/invoices/${invoice.related_invoice_id}`)
-                      }
-                      className="font-medium text-[#d3bb73] hover:underline"
-                    >
-                      {invoice.corrected_invoice_number}
-                    </button>
-                  ) : (
-                    <div className="text-[#e5e4e2]/60">-</div>
-                  )}
-                </div>
-                <div>
-                  <div className="mb-1 text-xs text-[#e5e4e2]/40">Data wystawienia korygowanej</div>
-                  <div className="text-[#e5e4e2]">
-                    {invoice.corrected_invoice_issue_date
-                      ? new Date(invoice.corrected_invoice_issue_date).toLocaleDateString('pl-PL')
-                      : '-'}
-                  </div>
-                </div>
-                <div>
-                  <div className="mb-1 text-xs text-[#e5e4e2]/40">Nr KSeF korygowanej</div>
-                  <div className="text-[#e5e4e2]">
-                    {invoice.corrected_invoice_ksef_number || 'Nie wyslano do KSeF'}
-                  </div>
-                </div>
-                <div>
-                  <div className="mb-1 text-xs text-[#e5e4e2]/40">Zakres korekty</div>
-                  <div className="text-[#e5e4e2]">
-                    {invoice.correction_scope === 'full' ? 'Calosc faktury' : 'Czesc faktury'}
-                  </div>
-                </div>
-              </div>
-              {invoice.correction_reason && (
-                <div className="mt-4">
-                  <div className="mb-1 text-xs text-[#e5e4e2]/40">Przyczyna korekty</div>
-                  <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-3 text-sm text-[#e5e4e2]">
-                    {invoice.correction_reason}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
           {(relatedData.event ||
             relatedData.organization ||
             relatedData.relatedInvoice ||
             (relatedData.relatedInvoices && relatedData.relatedInvoices.length > 0)) && (
-            <div className="mb-6 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-              <h3 className="mb-4 flex items-center gap-2 text-lg font-medium text-[#e5e4e2]">
-                <LinkIcon className="h-5 w-5 text-[#d3bb73]" />
-                Powiazania
-              </h3>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {relatedData.event && (
-                  <div
-                    onClick={() => router.push(`/crm/events/${relatedData.event!.id}`)}
-                    className="cursor-pointer rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4 transition-colors hover:border-[#d3bb73]/40"
-                  >
-                    <div className="flex items-start gap-3">
-                      <Calendar className="mt-0.5 h-5 w-5 text-blue-400" />
-                      <div className="flex-1">
-                        <div className="mb-1 text-xs text-[#e5e4e2]/40">Event</div>
-                        <div className="font-medium text-[#e5e4e2]">{relatedData.event.name}</div>
-                        <div className="mt-1 text-xs text-[#e5e4e2]/60">
-                          {new Date(relatedData.event.event_date).toLocaleDateString('pl-PL')}
+            <div className="mb-6 overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
+              <button
+                type="button"
+                onClick={() => setShowRelations((prev) => !prev)}
+                className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-[#d3bb73]/5"
+              >
+                <div className="flex items-center gap-2">
+                  <LinkIcon className="h-4 w-4 text-[#d3bb73]" />
+                  <span className="text-sm font-medium text-[#e5e4e2]">Powiązania</span>
+
+                  <span className="rounded-full border border-[#d3bb73]/20 px-2 py-0.5 text-xs text-[#e5e4e2]/50">
+                    {
+                      [
+                        relatedData.event,
+                        relatedData.organization,
+                        relatedData.relatedInvoice,
+                        ...(relatedData.relatedInvoices ?? []),
+                      ].filter(Boolean).length
+                    }
+                  </span>
+                </div>
+
+                <span className="text-xs text-[#d3bb73]">{showRelations ? 'Ukryj' : 'Pokaż'}</span>
+              </button>
+
+              {showRelations && (
+                <div className="border-t border-[#d3bb73]/10 p-4">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    {relatedData.event && (
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/crm/events/${relatedData.event!.id}`)}
+                        className="flex items-center gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a] p-3 text-left transition-colors hover:border-[#d3bb73]/40"
+                      >
+                        <Calendar className="h-4 w-4 shrink-0 text-blue-400" />
+                        <div className="min-w-0">
+                          <div className="text-[11px] uppercase tracking-wide text-[#e5e4e2]/40">
+                            Event
+                          </div>
+                          <div className="truncate text-sm font-medium text-[#e5e4e2]">
+                            {relatedData.event.name}
+                          </div>
+                          <div className="text-xs text-[#e5e4e2]/50">
+                            {new Date(relatedData.event.event_date).toLocaleDateString('pl-PL')}
+                          </div>
+                        </div>
+                      </button>
+                    )}
+
+                    {relatedData.organization && (
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/crm/contacts/${relatedData.organization!.id}`)}
+                        className="flex items-center gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a] p-3 text-left transition-colors hover:border-[#d3bb73]/40"
+                      >
+                        <Building2 className="h-4 w-4 shrink-0 text-[#d3bb73]" />
+                        <div className="min-w-0">
+                          <div className="text-[11px] uppercase tracking-wide text-[#e5e4e2]/40">
+                            Organizacja
+                          </div>
+                          <div className="truncate text-sm font-medium text-[#e5e4e2]">
+                            {relatedData.organization.name}
+                          </div>
+                          {relatedData.organization.nip && (
+                            <div className="text-xs text-[#e5e4e2]/50">
+                              NIP: {relatedData.organization.nip}
+                            </div>
+                          )}
+                        </div>
+                      </button>
+                    )}
+
+                    {relatedData.relatedInvoice && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          router.push(`/crm/invoices/${relatedData.relatedInvoice!.id}`)
+                        }
+                        className="flex items-center gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a] p-3 text-left transition-colors hover:border-[#d3bb73]/40"
+                      >
+                        <FileText className="h-4 w-4 shrink-0 text-orange-400" />
+                        <div className="min-w-0">
+                          <div className="text-[11px] uppercase tracking-wide text-[#e5e4e2]/40">
+                            Powiązana faktura
+                          </div>
+                          <div className="truncate text-sm font-medium text-[#e5e4e2]">
+                            {relatedData.relatedInvoice.invoice_number}
+                          </div>
+                          <div className="text-xs text-[#e5e4e2]/50">
+                            {getTypeLabel(
+                              relatedData.relatedInvoice.invoice_type,
+                              relatedData.relatedInvoice.invoice_number,
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    )}
+
+                    {relatedData.relatedInvoices && relatedData.relatedInvoices.length > 0 && (
+                      <div className="rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a] p-3">
+                        <div className="mb-2 flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-orange-400" />
+                          <div className="text-[11px] uppercase tracking-wide text-[#e5e4e2]/40">
+                            Powiązane faktury
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          {relatedData.relatedInvoices.map((rel) => (
+                            <button
+                              key={rel.id}
+                              type="button"
+                              onClick={() => router.push(`/crm/invoices/${rel.id}`)}
+                              className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-[#d3bb73]/10"
+                            >
+                              <span className="truncate text-sm font-medium text-[#e5e4e2]">
+                                {rel.invoice_number}
+                              </span>
+                              <span className="shrink-0 text-xs text-[#e5e4e2]/50">
+                                {getTypeLabel(rel.invoice_type, rel.invoice_number)}
+                              </span>
+                            </button>
+                          ))}
                         </div>
                       </div>
-                    </div>
+                    )}
                   </div>
-                )}
-
-                {relatedData.organization && (
-                  <div
-                    onClick={() => router.push(`/crm/contacts/${relatedData.organization!.id}`)}
-                    className="cursor-pointer rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4 transition-colors hover:border-[#d3bb73]/40"
-                  >
-                    <div className="flex items-start gap-3">
-                      <Building2 className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
-                      <div className="flex-1">
-                        <div className="mb-1 text-xs text-[#e5e4e2]/40">Organizacja</div>
-                        <div className="font-medium text-[#e5e4e2]">
-                          {relatedData.organization.name}
+                  <div className="mt-4">
+                    {invoice.invoice_type === 'corrective' && (
+                      <div className="mb-6 rounded-xl border border-orange-500/30 bg-orange-500/10 p-6">
+                        <h3 className="mb-4 text-lg font-medium text-orange-400">
+                          Faktura korygujaca
+                        </h3>
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                          <div>
+                            <div className="mb-1 text-xs text-[#e5e4e2]/40">Faktura korygowana</div>
+                            {invoice.corrected_invoice_number ? (
+                              <button
+                                onClick={() =>
+                                  invoice.related_invoice_id &&
+                                  router.push(`/crm/invoices/${invoice.related_invoice_id}`)
+                                }
+                                className="font-medium text-[#d3bb73] hover:underline"
+                              >
+                                {invoice.corrected_invoice_number}
+                              </button>
+                            ) : (
+                              <div className="text-[#e5e4e2]/60">-</div>
+                            )}
+                          </div>
+                          <div>
+                            <div className="mb-1 text-xs text-[#e5e4e2]/40">
+                              Data wystawienia korygowanej
+                            </div>
+                            <div className="text-[#e5e4e2]">
+                              {invoice.corrected_invoice_issue_date
+                                ? new Date(invoice.corrected_invoice_issue_date).toLocaleDateString(
+                                    'pl-PL',
+                                  )
+                                : '-'}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="mb-1 text-xs text-[#e5e4e2]/40">
+                              Nr KSeF korygowanej
+                            </div>
+                            <div className="text-[#e5e4e2]">
+                              {invoice.corrected_invoice_ksef_number || 'Nie wyslano do KSeF'}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="mb-1 text-xs text-[#e5e4e2]/40">Zakres korekty</div>
+                            <div className="text-[#e5e4e2]">
+                              {invoice.correction_scope === 'full'
+                                ? 'Calosc faktury'
+                                : 'Czesc faktury'}
+                            </div>
+                          </div>
                         </div>
-                        {relatedData.organization.nip && (
-                          <div className="mt-1 text-xs text-[#e5e4e2]/60">
-                            NIP: {relatedData.organization.nip}
+                        {invoice.correction_reason && (
+                          <div className="mt-4">
+                            <div className="mb-1 text-xs text-[#e5e4e2]/40">Przyczyna korekty</div>
+                            <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-3 text-sm text-[#e5e4e2]">
+                              {invoice.correction_reason}
+                            </div>
                           </div>
                         )}
                       </div>
-                    </div>
+                    )}
                   </div>
-                )}
-
-                {relatedData.relatedInvoice && (
-                  <div
-                    onClick={() => router.push(`/crm/invoices/${relatedData.relatedInvoice!.id}`)}
-                    className="cursor-pointer rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4 transition-colors hover:border-[#d3bb73]/40"
-                  >
-                    <div className="flex items-start gap-3">
-                      <FileText className="mt-0.5 h-5 w-5 text-orange-400" />
-                      <div className="flex-1">
-                        <div className="mb-1 text-xs text-[#e5e4e2]/40">Powiazana faktura</div>
-                        <div className="font-medium text-[#e5e4e2]">
-                          {relatedData.relatedInvoice.invoice_number}
-                        </div>
-                        <div className="mt-1 text-xs text-[#e5e4e2]/60">
-                          {getTypeLabel(relatedData.relatedInvoice.invoice_type)}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {relatedData.relatedInvoices && relatedData.relatedInvoices.length > 0 && (
-                  <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4">
-                    <div className="flex items-start gap-3">
-                      <FileText className="mt-0.5 h-5 w-5 text-orange-400" />
-                      <div className="flex-1">
-                        <div className="mb-2 text-xs text-[#e5e4e2]/40">Faktury korygujace</div>
-                        {relatedData.relatedInvoices.map((rel) => (
-                          <div
-                            key={rel.id}
-                            onClick={() => router.push(`/crm/invoices/${rel.id}`)}
-                            className="mb-1 cursor-pointer text-[#e5e4e2] hover:text-[#d3bb73]"
-                          >
-                            {rel.invoice_number}{' '}
-                            <span className="text-xs text-[#e5e4e2]/60">
-                              ({getTypeLabel(rel.invoice_type)})
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -910,7 +1015,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               </h1>
               <div className="flex items-center gap-3">
                 <p className="text-[#e5e4e2]/60">
-                  {getTypeLabel(invoice.invoice_type)}
+                  {getTypeLabel(invoice.invoice_type, invoice.invoice_number)}
                   {invoice.is_proforma ? ' (Faktura Proforma)' : ''}
                 </p>
                 {pdfPath && (
@@ -1058,7 +1163,8 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
             <div className="mb-8 text-center">
               <div className="text-2xl font-bold">
-                {getTypeLabel(invoice.invoice_type)} {invoice.invoice_number}
+                {getTypeLabel(invoice.invoice_type, invoice.invoice_number)}{' '}
+                {invoice.invoice_number}
               </div>
             </div>
 
@@ -1117,6 +1223,88 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               </tbody>
             </table>
 
+            {previewSettledInvoices.length > 0 && (
+              <div className="mb-4 text-sm">
+                <div className="mb-2 font-bold">Rozliczane faktury zaliczkowe</div>
+
+                <div className="overflow-hidden border border-gray-300">
+                  {previewSettledInvoices.map((inv) => (
+                    <div
+                      key={inv.id || inv.invoiceNumber}
+                      className="flex justify-between border-b border-gray-300 px-2 py-1 last:border-b-0"
+                    >
+                      <span>
+                        {inv.invoiceNumber}
+                        {inv.issueDate
+                          ? ` z dnia ${new Date(inv.issueDate).toLocaleDateString('pl-PL')}`
+                          : ''}
+                      </span>
+                      <span className="font-medium">
+                        {Number(inv.totalGross || 0).toFixed(2)} PLN brutto
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {previewSettlementSummary && (
+              <div className="mb-8 text-sm">
+                <div className="mb-2 font-bold">Rozliczenie zaliczek</div>
+
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="border border-gray-300 p-2 text-left">Opis</th>
+                      <th className="border border-gray-300 p-2 text-right">Netto</th>
+                      <th className="border border-gray-300 p-2 text-right">VAT</th>
+                      <th className="border border-gray-300 p-2 text-right">Brutto</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td className="border border-gray-300 p-2">Wartość faktury końcowej</td>
+                      <td className="border border-gray-300 p-2 text-right">
+                        {previewSettlementSummary.invoiceTotalNet.toFixed(2)}
+                      </td>
+                      <td className="border border-gray-300 p-2 text-right">
+                        {previewSettlementSummary.invoiceTotalVat.toFixed(2)}
+                      </td>
+                      <td className="border border-gray-300 p-2 text-right font-medium">
+                        {previewSettlementSummary.invoiceTotalGross.toFixed(2)}
+                      </td>
+                    </tr>
+
+                    <tr>
+                      <td className="border border-gray-300 p-2">Rozliczone zaliczki</td>
+                      <td className="border border-gray-300 p-2 text-right">
+                        {previewSettlementSummary.settledNet.toFixed(2)}
+                      </td>
+                      <td className="border border-gray-300 p-2 text-right">
+                        {previewSettlementSummary.settledVat.toFixed(2)}
+                      </td>
+                      <td className="border border-gray-300 p-2 text-right font-medium">
+                        {previewSettlementSummary.settledGross.toFixed(2)}
+                      </td>
+                    </tr>
+
+                    <tr className="bg-gray-100 font-bold">
+                      <td className="border border-gray-300 p-2">Pozostało do zapłaty</td>
+                      <td className="border border-gray-300 p-2 text-right">
+                        {previewSettlementSummary.remainingNet.toFixed(2)}
+                      </td>
+                      <td className="border border-gray-300 p-2 text-right">
+                        {previewSettlementSummary.remainingVat.toFixed(2)}
+                      </td>
+                      <td className="border border-gray-300 p-2 text-right">
+                        {previewSettlementSummary.remainingGross.toFixed(2)}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+
             <div className="mb-8 grid grid-cols-2 gap-12 text-sm">
               <div>
                 <div className="mb-2">
@@ -1138,14 +1326,12 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               <div>
                 <div className="mb-2">
                   <span className="text-gray-600">Do zaplaty:</span>{' '}
-                  <span className="text-lg font-bold">{invoice.total_gross.toFixed(2)} PLN</span>
+                  <span className="text-lg font-bold">{previewAmountToPay.toFixed(2)} PLN</span>
                 </div>
               </div>
             </div>
 
-            <div className="mb-8 text-xs text-gray-600">
-              {invoice.footer_note || ''}
-            </div>
+            <div className="mb-8 text-xs text-gray-600">{invoice.footer_note || ''}</div>
 
             <div className="flex justify-end">
               <div className="w-64 border-t border-gray-300 pt-2 text-center">

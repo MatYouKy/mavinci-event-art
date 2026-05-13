@@ -27,12 +27,6 @@ export async function POST(req: Request) {
     const companyId =
       typeof body?.companyId === "string" ? body.companyId.trim() : "";
 
-    console.log(`${KSEF_LOG_PREFIX} auth token route start`, {
-      requestId,
-      hasBody: !!body,
-      companyId: mask(companyId),
-    });
-
     if (!companyId) {
       return NextResponse.json(
         {
@@ -97,29 +91,11 @@ export async function POST(req: Request) {
       );
     }
 
-    console.log(`${KSEF_LOG_PREFIX} credentials loaded`, {
-      requestId,
-      credentialsId: mask(credentials.id),
-      companyId: mask(credentials.my_company_id),
-      nip: credentials.nip,
-      hasToken: !!credentials.token,
-      tokenLength: credentials.token.length,
-      environment: credentials.is_test_environment ? "test" : "production",
-    });
-
     const challenge = await getKSeFChallenge(credentials.is_test_environment, {
       requestId,
       stage: "challenge",
       companyId: mask(credentials.my_company_id),
       nip: credentials.nip,
-    });
-
-    console.log(`${KSEF_LOG_PREFIX} challenge received`, {
-      requestId,
-      challenge: challenge.challenge,
-      timestamp: challenge.timestamp,
-      timestampMs: challenge.timestampMs,
-      clientIp: challenge.clientIp ?? null,
     });
 
     const publicKeyCertificates = await getKSeFPublicKeyCertificates(
@@ -131,12 +107,6 @@ export async function POST(req: Request) {
         nip: credentials.nip,
       }
     );
-
-    console.log(`${KSEF_LOG_PREFIX} public key certificates received`, {
-      requestId,
-      count: publicKeyCertificates.length,
-      usages: publicKeyCertificates.map((c) => c.usage),
-    });
 
     const encryptionCertificate = publicKeyCertificates.find((cert) =>
       cert.usage?.includes("KsefTokenEncryption")
@@ -157,42 +127,12 @@ export async function POST(req: Request) {
       );
     }
 
-    console.log(`${KSEF_LOG_PREFIX} selected encryption certificate`, {
-      requestId,
-      validFrom: encryptionCertificate.validFrom,
-      validTo: encryptionCertificate.validTo,
-      usage: encryptionCertificate.usage,
-      certificateLength: encryptionCertificate.certificate?.length ?? 0,
-    });
-
     const plainToEncrypt = `${credentials.token}|${challenge.timestampMs}`;
-
-    console.log(`${KSEF_LOG_PREFIX} plain payload prepared`, {
-      requestId,
-      companyId: mask(credentials.my_company_id),
-      nip: credentials.nip,
-      plainLength: plainToEncrypt.length,
-    });
 
     const encryptedToken = encryptKSeFTokenPayloadFromCertificate(
       plainToEncrypt,
       encryptionCertificate.certificate
     );
-
-    console.log(`${KSEF_LOG_PREFIX} encrypted token prepared`, {
-      requestId,
-      encryptedLength: encryptedToken.length,
-    });
-
-    console.log(`${KSEF_LOG_PREFIX} auth request payload prepared`, {
-      requestId,
-      companyId: mask(credentials.my_company_id),
-      nip: credentials.nip,
-      challenge: challenge.challenge,
-      hasEncryptedToken: !!encryptedToken,
-      encryptedLength: encryptedToken.length,
-      contextIdentifier: { type: "Nip", value: credentials.nip },
-    });
 
     const authStart = await authenticateWithKSeFToken(
       {
@@ -208,14 +148,6 @@ export async function POST(req: Request) {
         nip: credentials.nip,
       }
     );
-
-    console.log(`${KSEF_LOG_PREFIX} auth start response`, {
-      requestId,
-      referenceNumber: authStart.referenceNumber,
-      hasAuthenticationToken: !!authStart.authenticationToken?.token,
-      authenticationTokenValidUntil:
-        authStart.authenticationToken?.validUntil ?? null,
-    });
 
     if (!authStart.authenticationToken?.token) {
       return NextResponse.json(
@@ -241,13 +173,6 @@ export async function POST(req: Request) {
       }
     );
 
-    console.log(`${KSEF_LOG_PREFIX} auth status response`, {
-      requestId,
-      statusCode: authStatus.status?.code,
-      statusDescription: authStatus.status?.description,
-      statusDetails: authStatus.status?.details ?? [],
-    });
-
     if (authStatus.status?.code !== 200) {
       return NextResponse.json({
         success: true,
@@ -269,14 +194,6 @@ export async function POST(req: Request) {
         nip: credentials.nip,
       }
     );
-
-    console.log(`${KSEF_LOG_PREFIX} redeem success`, {
-      requestId,
-      hasAccessToken: !!redeemedTokens.accessToken?.token,
-      hasRefreshToken: !!redeemedTokens.refreshToken?.token,
-      accessTokenValidUntil: redeemedTokens.accessToken?.validUntil ?? null,
-      refreshTokenValidUntil: redeemedTokens.refreshToken?.validUntil ?? null,
-    });
 
     const updatePayload = {
       access_token: redeemedTokens.accessToken?.token ?? null,
@@ -311,12 +228,6 @@ export async function POST(req: Request) {
         { status: 500 }
       );
     }
-
-    console.log(`${KSEF_LOG_PREFIX} tokens persisted`, {
-      requestId,
-      credentialsId: mask(credentials.id),
-      companyId: mask(credentials.my_company_id),
-    });
 
     return NextResponse.json({
       success: true,

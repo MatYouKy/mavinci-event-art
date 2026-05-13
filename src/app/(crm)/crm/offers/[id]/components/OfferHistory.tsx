@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { History, User, Clock } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { EmployeeAvatar } from '@/components/EmployeeAvatar';
+import { IEmployee } from '../../../employees/type';
 
 interface HistoryEntry {
   id: string;
@@ -114,31 +116,28 @@ export default function OfferHistory({ offerId }: OfferHistoryProps) {
               key={entry.id}
               className="flex gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0d0f1a] p-3"
             >
-              {entry.changed_by_employee?.avatar_url ? (
-                <img
-                  src={entry.changed_by_employee.avatar_url}
-                  alt="Avatar"
-                  className="h-10 w-10 rounded-full object-cover"
+              {entry.changed_by_employee?.avatar_url && (
+                <EmployeeAvatar
+                  avatarUrl={entry.changed_by_employee.avatar_url as string}
+                  employeeName={entry.changed_by_employee.name}
+                  employee={entry.changed_by_employee as IEmployee}
+                  size={40}
                 />
-              ) : (
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#d3bb73]/10">
-                  <User className="h-5 w-5 text-[#d3bb73]" />
-                </div>
               )}
 
               <div className="min-w-0 flex-1">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1">
-                    <p className={`text-sm font-medium ${getChangeTypeColor(entry.change_type)}`}>
-                      {entry.change_description}
-                    </p>
-                    {entry.changed_by_employee && (
-                      <p className="mt-0.5 text-xs text-[#e5e4e2]/60">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    {entry.changed_by_employee ? (
+                      <p className="truncate text-sm font-medium text-[#e5e4e2]">
                         {entry.changed_by_employee.name} {entry.changed_by_employee.surname}
                       </p>
+                    ) : (
+                      <p className="text-sm font-medium text-[#e5e4e2]/50">System</p>
                     )}
                   </div>
-                  <div className="flex items-center gap-1 whitespace-nowrap text-xs text-[#e5e4e2]/60">
+
+                  <div className="flex items-center gap-1 text-xs text-[#e5e4e2]/45">
                     <Clock className="h-3 w-3" />
                     {new Date(entry.created_at).toLocaleString('pl-PL', {
                       day: '2-digit',
@@ -149,6 +148,12 @@ export default function OfferHistory({ offerId }: OfferHistoryProps) {
                     })}
                   </div>
                 </div>
+
+                <p
+                  className={`mt-1 text-sm leading-relaxed ${getChangeTypeColor(entry.change_type)}`}
+                >
+                  {entry.change_description}
+                </p>
               </div>
             </div>
           ))}

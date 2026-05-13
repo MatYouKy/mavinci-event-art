@@ -40,9 +40,6 @@ export function CityCasesModal({ open, onClose }: { open: boolean; onClose: () =
       .eq('is_active', true)
       .order('city_key');
   
-    console.log('LOAD data', data);
-    console.log('LOAD error', error);
-  
     if (error) {
       console.error(error);
       return;
@@ -73,9 +70,6 @@ export function CityCasesModal({ open, onClose }: { open: boolean; onClose: () =
         .from('polish_city_cases')
         .insert(payload)
         .select();
-  
-      console.log('INSERT data', data);
-      console.log('INSERT error', error);
   
       if (error) throw error;
   

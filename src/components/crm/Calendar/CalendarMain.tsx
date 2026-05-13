@@ -785,22 +785,6 @@ export default function CalendarMain({
             </div>
           ) : (
             <>
-              {console.log('CalendarMain Timeline Debug:', {
-                timelineResources,
-                hasData: !!timelineResources,
-                vehicles: timelineResources?.vehicles?.length || 0,
-                employees: timelineResources?.employees?.length || 0,
-                equipment: timelineResources?.equipment?.length || 0,
-                eventsWithAssignments: timelineResources?.eventsWithAssignments?.length || 0,
-                sampleEvent: timelineResources?.eventsWithAssignments?.[0],
-                eventDates: timelineResources?.eventsWithAssignments?.map((e: any) => ({
-                  name: e.name,
-                  date: e.event_date,
-                  hasVehicles: e.event_vehicles?.length || 0,
-                  hasEmployees: e.employee_assignments?.length || 0,
-                  hasEquipment: e.event_equipment?.length || 0,
-                })),
-              })}
               <TimelineView
                 currentDate={currentDate}
                 events={events}

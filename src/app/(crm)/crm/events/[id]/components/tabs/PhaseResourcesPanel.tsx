@@ -66,7 +66,6 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
           filter: `phase_id=eq.${phase.id}`,
         },
         (payload) => {
-          console.log('[PhaseResourcesPanel] Realtime update:', payload);
           refetchAssignments();
         }
       )
@@ -88,11 +87,6 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
       alert('Nie udało się usunąć pracownika z fazy');
     }
   };
-
-  // Debug logging
-  console.log('[PhaseResourcesPanel] Phase:', phase.name, phase.id);
-  console.log('[PhaseResourcesPanel] Phase assignments:', phaseAssignments);
-  console.log('[PhaseResourcesPanel] Event employees:', eventEmployees);
 
   // Filter event data to show only items in this phase's timeframe
   const filteredEquipment = useMemo(() => {
@@ -124,14 +118,6 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
     }
 
     const result = Array.from(employeeMap.values()).filter((emp: any) => emp);
-
-    console.log('[PhaseResourcesPanel] filteredEmployees:', result.map(e => `${e.name} ${e.surname} (${e.id})`));
-    console.log('[PhaseResourcesPanel] phaseAssignments:', phaseAssignments.map((a: any) => ({
-      id: a.id,
-      employee_id: a.employee_id,
-      employee_name: a.employee ? `${a.employee.name} ${a.employee.surname}` : 'no employee',
-      status: a.invitation_status
-    })));
 
     return result;
   }, [eventEmployees, phaseAssignments]);
@@ -277,13 +263,7 @@ export const PhaseResourcesPanel: React.FC<PhaseResourcesPanelProps> = ({
                   <div className="divide-y divide-[#d3bb73]/10">
                     {filteredEmployees.map((employee) => {
                       const assignment = phaseAssignments.find(a => a.employee_id === employee.id);
-
-                      console.log(`[PhaseResourcesPanel] Matching employee ${employee.name} ${employee.surname} (${employee.id}) with assignments:`, {
-                        found: !!assignment,
-                        assignmentId: assignment?.id,
-                        phaseAssignmentsCount: phaseAssignments.length
-                      });
-
+                      
                       return (
                         <div key={employee.id} className="p-4">
                           <div className="mb-2 flex items-center gap-2">

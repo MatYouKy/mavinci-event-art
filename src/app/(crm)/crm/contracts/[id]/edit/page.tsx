@@ -112,7 +112,7 @@ export default function EditContractPage() {
               content = `<div>${content}</div>`;
             }
           } catch (e) {
-            console.log('Content is not JSON, using as-is');
+            console.error('Content is not JSON, using as-is', e);
           }
         } else if (data.template?.content) {
           content = fillPlaceholders(data.template.content, data);

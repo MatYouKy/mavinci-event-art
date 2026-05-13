@@ -1,10 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Faktura xmlns="http://crd.gov.pl/wzor/2025/06/25/13775/"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<Faktura xmlns="http://crd.gov.pl/wzor/2025/06/25/13775/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <Naglowek>
     <KodFormularza kodSystemowy="FA (3)" wersjaSchemy="1-0E">FA</KodFormularza>
     <WariantFormularza>3</WariantFormularza>
-    <DataWytworzeniaFa>2026-04-15T09:43:45.342Z</DataWytworzeniaFa>
+    <DataWytworzeniaFa>2026-05-13T11:47:41.480Z</DataWytworzeniaFa>
     <SystemInfo>Mavinci CRM v1.0</SystemInfo>
   </Naglowek>
 
@@ -18,85 +17,86 @@
       <AdresL1>Marcina Kasprzaka 15 /66</AdresL1>
       <AdresL2>10-057 Olsztyn</AdresL2>
     </Adres>
-    <DaneKontaktowe>
-      <Email>biuro@mavinci.pl</Email>
-      <Telefon>+48698212279</Telefon>
-    </DaneKontaktowe>
   </Podmiot1>
 
   <Podmiot2>
     <DaneIdentyfikacyjne>
-      <NIP>9542573300</NIP>
-      <Nazwa>ELAMED SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ</Nazwa>
+      <NIP>5272780836</NIP>
+      <Nazwa>WECO-TRAVEL SERVICES SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ</Nazwa>
     </DaneIdentyfikacyjne>
     <Adres>
       <KodKraju>PL</KodKraju>
-      <AdresL1>ALEJA WALENTEGO ROŹDZIEŃSKIEGO 188C</AdresL1>
-      <AdresL2>40-203 KATOWICE</AdresL2>
+      <AdresL1>ALEJA JANA PAWŁA II 19</AdresL1>
+      <AdresL2>00-854 WARSZAWA</AdresL2>
     </Adres>
     <DaneKontaktowe>
-      <Email>elamed@elamed.pl</Email>
-      <Telefon>32 788 51 01</Telefon>
+      
+      <Telefon>+48 22 439 68 00</Telefon>
     </DaneKontaktowe>
-    <NrKlienta>ELAMED</NrKlienta>
-    <IDNabywcy>ELAMED</IDNabywcy>
+    <NrKlienta>WECO-TRAVEL</NrKlienta>
+    <IDNabywcy>WECO-TRAVEL</IDNabywcy>
     <JST>2</JST>
     <GV>2</GV>
   </Podmiot2>
 
   <Fa>
     <KodWaluty>PLN</KodWaluty>
-    <P_1>2026-04-14</P_1>
+    <P_1>2026-05-13</P_1>
     <P_1M>Olsztyn</P_1M>
-    <P_2>KOR/71/2026</P_2>
-    <P_6>2026-04-14</P_6>
-    <P_13_1>-3500.00</P_13_1>
-    <P_14_1>-805.00</P_14_1>
-    <P_15>-4305.00</P_15>
+    <P_2>FKO/2/2026</P_2>
+    <P_6>2026-05-13</P_6>
+    <P_13_1>32100.00</P_13_1>
+    <P_14_1>7383.00</P_14_1>
+    <P_15>39483.00</P_15>
+    
     <Adnotacje>
       <P_16>2</P_16>
       <P_17>2</P_17>
       <P_18>2</P_18>
       <P_18A>2</P_18A>
-      <Zwolnienie>
-        <P_19N>1</P_19N>
-      </Zwolnienie>
-      <NoweSrodkiTransportu>
-        <P_22N>1</P_22N>
-      </NoweSrodkiTransportu>
+    <Zwolnienie>
+      <P_19N>1</P_19N>
+    </Zwolnienie>
+    <NoweSrodkiTransportu>
+      <P_22N>1</P_22N>
+    </NoweSrodkiTransportu>
       <P_23>2</P_23>
-      <PMarzy>
-        <P_PMarzyN>1</P_PMarzyN>
-      </PMarzy>
+    <PMarzy>
+      <P_PMarzyN>1</P_PMarzyN>
+    </PMarzy>
     </Adnotacje>
-    <RodzajFaktury>KOR</RodzajFaktury>
-    <PrzyczynaKorekty>błędnie wygenerowana faktura</PrzyczynaKorekty>
-    <DaneFaKorygowanej>
-      <DataWystFaKorygowanej>2026-04-09</DataWystFaKorygowanej>
-      <NrFaKorygowanej>17/2026</NrFaKorygowanej>
-      <NrKSeFN>1</NrKSeFN>
-    </DaneFaKorygowanej>
-
+    <RodzajFaktury>ROZ</RodzajFaktury>
+    
+    <DodatkowyOpis>
+      <Klucz>Rozliczenie zaliczek</Klucz>
+      <Wartosc>Rozliczono faktury zaliczkowe: ZAL/3/2026 (12300.00 PLN brutto). Do dopłaty: 27183.00 PLN brutto.</Wartosc>
+    </DodatkowyOpis>
+    
+    
+    
+    <FakturaZaliczkowa>
+      <NrKSeFFaZaliczkowej>7394011583-20260511-7C7651400001-3E</NrKSeFFaZaliczkowej>
+    </FakturaZaliczkowa>
+    
     <FaWiersz>
       <NrWierszaFa>1</NrWierszaFa>
-
-      <P_7>Obsługa muzyczna</P_7>
-      <P_8A>szt</P_8A>
+      <P_7>Obsługa techniczna konferencji</P_7>
+      <P_8A>szt.</P_8A>
       <P_8B>1.00</P_8B>
-      <P_9A>-3500.00</P_9A>
-      <P_11>-3500.00</P_11>
+      <P_9A>32100.00</P_9A>
+      <P_11>32100.00</P_11>
       <P_12>23</P_12>
     </FaWiersz>
     <Platnosc>
-
+      
       <TerminPlatnosci>
-        <Termin>2026-04-28</Termin>
+        <Termin>2026-05-27</Termin>
       </TerminPlatnosci>
       <FormaPlatnosci>6</FormaPlatnosci>
-
+      
       <RachunekBankowy>
         <NrRB>12102035410000550204086815</NrRB>
-        <NazwaBanku>PKO BP</NazwaBanku>
+        
       </RachunekBankowy>
     </Platnosc>
   </Fa>

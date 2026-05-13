@@ -63,8 +63,6 @@ export function AddEventEmployeeModal({
           table: 'event_phase_assignments',
         },
         (payload) => {
-          console.log('[AddEventEmployeeModal] Phase assignment update:', payload);
-          // Refetch to update available employees list
           fetchEmployeesInPhases();
         }
       )

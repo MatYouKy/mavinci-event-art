@@ -35,10 +35,6 @@ export function encryptKSeFTokenPayloadFromCertificate(
   plainText: string,
   certificateBase64Der: string
 ): string {
-  console.log(`${KSEF_LOG_PREFIX} crypto import certificate`, {
-    plainTextLength: plainText.length,
-    hasCertificate: !!certificateBase64Der,
-  });
 
   const certPem = derBase64ToPemCertificate(certificateBase64Der);
   const x509 = new X509Certificate(certPem);
@@ -54,12 +50,6 @@ export function encryptKSeFTokenPayloadFromCertificate(
   );
 
   const base64 = encrypted.toString("base64");
-
-  console.log(`${KSEF_LOG_PREFIX} crypto encrypted payload`, {
-    plainTextLength: plainText.length,
-    encryptedLength: base64.length,
-  });
-
   return base64;
 }
 

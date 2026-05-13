@@ -230,9 +230,6 @@ export const uploadOptimizedImage = async (
 }> => {
   const baseFileName = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
 
-  console.log(`[uploadOptimizedImage] Starting upload for: ${file.name}`);
-  console.log(`[uploadOptimizedImage] Original size: ${(file.size / 1024 / 1024).toFixed(2)}MB`);
-
   // Generate all versions in parallel
   const [desktopBlob, mobileBlob, thumbnailBlob] = await Promise.all([
     compressAndResizeImage(file, {
@@ -251,11 +248,6 @@ export const uploadOptimizedImage = async (
       format: 'webp',
     }),
   ]);
-
-  console.log(`[uploadOptimizedImage] Generated versions:`);
-  console.log(`  - Desktop: ${(desktopBlob.size / 1024).toFixed(0)}KB`);
-  console.log(`  - Mobile: ${(mobileBlob.size / 1024).toFixed(0)}KB`);
-  console.log(`  - Thumbnail: ${(thumbnailBlob.size / 1024).toFixed(0)}KB`);
 
   // Upload all versions in parallel
   const uploadPromises = [
@@ -306,11 +298,6 @@ export const uploadOptimizedImage = async (
     .from('site-images')
     .getPublicUrl(thumbnailData.path).data.publicUrl;
 
-  console.log(`[uploadOptimizedImage] Upload complete!`);
-  console.log(`  - Desktop: ${desktopUrl}`);
-  console.log(`  - Mobile: ${mobileUrl}`);
-  console.log(`  - Thumbnail: ${thumbnailUrl}`);
-
   return {
     desktop: desktopUrl,
     mobile: mobileUrl,
@@ -326,9 +313,7 @@ export const uploadImage = async (file: File, folder: string = 'site-images'): P
   let fileToUpload = file;
 
   if (file.size > 2 * 1024 * 1024) {
-    console.log('Image too large, compressing...');
     fileToUpload = await compressImage(file, 2);
-    console.log(`Compressed from ${(file.size / 1024 / 1024).toFixed(2)}MB to ${(fileToUpload.size / 1024 / 1024).toFixed(2)}MB`);
   }
 
   const fileExt = 'jpg';

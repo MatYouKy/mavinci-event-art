@@ -102,7 +102,7 @@ export function CompanyNumberingCard({
     { key: 'last_invoice_number' as const, label: 'Faktura VAT', typePrefix: '', color: 'text-[#d3bb73]' },
     { key: 'last_proforma_number' as const, label: 'Proforma', typePrefix: 'PRO', color: 'text-blue-400' },
     { key: 'last_advance_number' as const, label: 'Zaliczkowa', typePrefix: 'ZAL', color: 'text-amber-400' },
-    { key: 'last_final_number' as const, label: 'Koncowa', typePrefix: 'FIN', color: 'text-green-400' },
+    { key: 'last_final_number' as const, label: 'Koncowa', typePrefix: 'FKO', color: 'text-green-400' },
     { key: 'last_corrective_number' as const, label: 'Korygujaca', typePrefix: 'KOR', color: 'text-red-400' },
   ];
 

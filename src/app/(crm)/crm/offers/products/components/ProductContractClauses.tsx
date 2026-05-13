@@ -118,8 +118,6 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
   };
 
   const insertPlaceholder = (placeholder: string) => {
-    console.log('insertPlaceholder called with:', placeholder);
-
     // Small delay to ensure React has updated the DOM
     setTimeout(() => {
       // Get the Quill instance
@@ -158,7 +156,6 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
         const newPosition = position + placeholder.length;
         quill.setSelection(newPosition, 0);
 
-        console.log('Successfully inserted placeholder');
       } catch (error) {
         console.error('Error inserting placeholder:', error);
         // Fallback
@@ -337,13 +334,10 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
                   <select
                     value=""
                     onChange={(e) => {
-                      console.log('Select onChange triggered:', e.target.value);
                       const value = e.target.value;
                       if (value) {
-                        console.log('Calling insertPlaceholder with:', value);
                         insertPlaceholder(value);
                       } else {
-                        console.log('Empty value, skipping insert');
                       }
                     }}
                     className="flex-1 min-w-[300px] rounded-md border border-gray-600 bg-gray-700 px-3 py-1.5 text-sm text-gray-200 hover:bg-gray-600 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -371,14 +365,12 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
               value={clauses}
               onChange={(content, delta, source, editor) => {
                 setClauses(content);
-                // Track cursor position
                 try {
                   const selection = editor.getSelection();
                   if (selection) {
                     setCursorPosition(selection.index);
                   }
                 } catch (e) {
-                  // Ignore errors
                 }
               }}
               onChangeSelection={(range) => {

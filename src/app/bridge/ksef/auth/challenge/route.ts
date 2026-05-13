@@ -10,23 +10,10 @@ export async function POST() {
   const requestId = crypto.randomUUID();
 
   try {
-    console.log(`${KSEF_LOG_PREFIX} challenge route start`, {
-      requestId,
-    });
-
     const challenge = await getKSeFChallenge(true, {
       requestId,
       stage: "challenge",
     });
-
-    console.log(`${KSEF_LOG_PREFIX} challenge route success`, {
-      requestId,
-      challenge: challenge.challenge,
-      timestamp: challenge.timestamp,
-      timestampMs: challenge.timestampMs,
-      clientIp: challenge.clientIp ?? null,
-    });
-
     return NextResponse.json({
       success: true,
       data: challenge,

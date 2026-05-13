@@ -51,8 +51,6 @@ export default function InvoiceNumberInput({
     }
   };
 
-  console.log('[GUS_DEBUG-lastInvoiceNumber]', lastInvoiceNumber);
-
   const getInvoiceTypeLabel = () => {
     switch (invoiceType) {
       case 'proforma':

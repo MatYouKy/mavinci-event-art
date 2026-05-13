@@ -1,5 +1,6 @@
 'use client';
 
+import { supabase } from '@/lib/supabase/browser';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Search, User, Lock, LayoutGrid, List, ListTree, Clock } from 'lucide-react';
@@ -16,18 +17,28 @@ import EmployeesTimelineView from '@/components/crm/EmployeesTimelineView';
 import { IEmployee } from './type';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import { ViewMode } from '../settings/page';
+import { useDialog } from '@/contexts/DialogContext';
 
-export default function EmployeesPageClient({ employees, viewMode }: { employees: IEmployee[], viewMode: ViewMode }) {
+export default function EmployeesPageClient({
+  employees,
+  viewMode,
+}: {
+  employees: IEmployee[];
+  viewMode: ViewMode;
+}) {
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [resetPasswordEmployee, setResetPasswordEmployee] = useState<IEmployee | null>(null);
+  const [deletingEmployeeId, setDeletingEmployeeId] = useState<string | null>(null);
 
+  const { showConfirm } = useDialog();
   const { canCreateInModule, canViewModule, employee: currentEmployee } = useCurrentEmployee();
   const canAddEmployee = canCreateInModule('employees');
-  const isAdmin = currentEmployee?.access_level === 'admin' ||
-                  currentEmployee?.permissions?.includes('admin') ||
-                  currentEmployee?.permissions?.includes('employees_manage');
+  const isAdmin =
+    currentEmployee?.access_level === 'admin' ||
+    currentEmployee?.permissions?.includes('admin') ||
+    currentEmployee?.permissions?.includes('employees_manage');
 
   const canViewEmployees = canViewModule('employees');
 
@@ -91,14 +102,43 @@ export default function EmployeesPageClient({ employees, viewMode }: { employees
     return colors[level] || 'bg-gray-500/20 text-gray-400';
   };
 
+  const handleDeleteEmployee = async (employee: IEmployee) => {
+    if (!isAdmin) return;
+    if (deletingEmployeeId) return;
+
+    const confirmed = await showConfirm(
+      `Czy na pewno chcesz TRWALE usunąć pracownika:\n\n${employee.name} ${employee.surname}?\n\nTa operacja jest nieodwracalna.`,
+      'Usuń pracownika',
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setDeletingEmployeeId(employee.id);
+
+      const { error } = await supabase.rpc('delete_employee_hard', {
+        p_employee_id: employee.id,
+      });
+
+      if (error) throw error;
+
+      router.refresh();
+    } catch (err: any) {
+      console.error('Error deleting employee:', err);
+      alert(err?.message || 'Nie udało się usunąć pracownika.');
+    } finally {
+      setDeletingEmployeeId(null);
+    }
+  };
+
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="mx-auto max-w-7xl space-y-6">
       <div className="flex items-center justify-between">
         <div className="mt-3">
           <h2 className="text-2xl font-light text-[#e5e4e2]">Pracownicy</h2>
           <p className="mt-1 text-sm text-[#e5e4e2]/60">Zarządzaj zespołem i uprawnieniami</p>
         </div>
-        <div className="flex gap-3 ">
+        <div className="flex gap-3">
           {canAddEmployee && (
             <ResponsiveActionBar
               actions={[
@@ -113,7 +153,7 @@ export default function EmployeesPageClient({ employees, viewMode }: { employees
                   icon: <Plus className="h-4 w-4" />,
                 },
               ]}
-            />  
+            />
           )}
         </div>
       </div>
@@ -164,17 +204,19 @@ export default function EmployeesPageClient({ employees, viewMode }: { employees
           >
             <ListTree className="h-5 w-5" />
           </button>
-          {isAdmin && <button
-            onClick={() => handleViewModeChange('timeline')}
-            className={`rounded p-2 transition-colors ${
-              localViewMode === 'timeline'
-                ? 'bg-[#d3bb73] text-[#1c1f33]'
-                : 'text-[#e5e4e2]/60 hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]'
-            }`}
-            title="Oś czasu"
-          >
-            <Clock className="h-5 w-5" />
-          </button>}
+          {isAdmin && (
+            <button
+              onClick={() => handleViewModeChange('timeline')}
+              className={`rounded p-2 transition-colors ${
+                localViewMode === 'timeline'
+                  ? 'bg-[#d3bb73] text-[#1c1f33]'
+                  : 'text-[#e5e4e2]/60 hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]'
+              }`}
+              title="Oś czasu"
+            >
+              <Clock className="h-5 w-5" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -197,6 +239,8 @@ export default function EmployeesPageClient({ employees, viewMode }: { employees
               canAddEmployee={canAddEmployee}
               isAdmin={isAdmin}
               onResetPassword={setResetPasswordEmployee}
+              onDeleteEmployee={handleDeleteEmployee}
+              deletingEmployeeId={deletingEmployeeId}
             />
           )}
           {localViewMode === 'list' && (
@@ -209,6 +253,8 @@ export default function EmployeesPageClient({ employees, viewMode }: { employees
               canAddEmployee={canAddEmployee}
               isAdmin={isAdmin}
               onResetPassword={setResetPasswordEmployee}
+              onDeleteEmployee={handleDeleteEmployee}
+              deletingEmployeeId={deletingEmployeeId}
             />
           )}
           {localViewMode === 'table' && (
@@ -221,6 +267,8 @@ export default function EmployeesPageClient({ employees, viewMode }: { employees
               canAddEmployee={canAddEmployee}
               isAdmin={isAdmin}
               onResetPassword={setResetPasswordEmployee}
+              onDeleteEmployee={handleDeleteEmployee}
+              deletingEmployeeId={deletingEmployeeId}
             />
           )}
           {localViewMode === 'timeline' && isAdmin && (

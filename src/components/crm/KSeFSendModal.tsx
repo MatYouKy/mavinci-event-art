@@ -1,7 +1,18 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
-import { CheckCircle, XCircle, Loader, Shield, FileText, Lock, Send, Radio, Database, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import {
+  CheckCircle,
+  XCircle,
+  Loader,
+  Shield,
+  FileText,
+  Lock,
+  Send,
+  Radio,
+  Database,
+  X,
+} from 'lucide-react';
 
 interface KSeFSendModalProps {
   invoiceId: string;
@@ -11,6 +22,14 @@ interface KSeFSendModalProps {
   onClose: () => void;
 }
 
+type KsefProgressEvent = {
+  step: string;
+  status: 'active' | 'completed' | 'error';
+  message?: string;
+  attempt?: number;
+  maxAttempts?: number;
+};
+
 type StepStatus = 'pending' | 'active' | 'completed' | 'error';
 
 interface Step {
@@ -19,11 +38,9 @@ interface Step {
   description: string;
   icon: React.ReactNode;
   status: StepStatus;
-  duration: number;
 }
 
 const MAX_POLL_ATTEMPTS = 15;
-const POLL_INTERVAL_MS = 2000;
 
 const STEPS_CONFIG: Omit<Step, 'status'>[] = [
   {
@@ -31,49 +48,42 @@ const STEPS_CONFIG: Omit<Step, 'status'>[] = [
     label: 'Walidacja faktury',
     description: 'Sprawdzanie danych faktury i organizacji',
     icon: <FileText className="h-5 w-5" />,
-    duration: 1500,
   },
   {
     id: 'xml',
     label: 'Generowanie dokumentu XML',
     description: 'Przygotowanie struktury FA(3) dla KSeF',
     icon: <FileText className="h-5 w-5" />,
-    duration: 2000,
   },
   {
     id: 'auth',
     label: 'Autoryzacja sesji KSeF',
     description: 'Weryfikacja uprawnień i pobieranie certyfikatów',
     icon: <Shield className="h-5 w-5" />,
-    duration: 3000,
   },
   {
     id: 'session',
     label: 'Otwieranie sesji szyfrowanej',
     description: 'Nawiązywanie bezpiecznego połączenia z KSeF',
     icon: <Lock className="h-5 w-5" />,
-    duration: 3000,
   },
   {
     id: 'encrypt',
     label: 'Szyfrowanie i wysyłka faktury',
     description: 'Szyfrowanie dokumentu kluczem symetrycznym',
     icon: <Send className="h-5 w-5" />,
-    duration: 2000,
   },
   {
     id: 'poll',
     label: 'Oczekiwanie na potwierdzenie',
     description: 'KSeF przetwarza fakturę i nadaje numer referencyjny',
     icon: <Radio className="h-5 w-5" />,
-    duration: MAX_POLL_ATTEMPTS * POLL_INTERVAL_MS,
   },
   {
     id: 'save',
     label: 'Zapisywanie wyniku',
     description: 'Aktualizacja statusu faktury w systemie',
     icon: <Database className="h-5 w-5" />,
-    duration: 1500,
   },
 ];
 
@@ -85,172 +95,171 @@ export default function KSeFSendModal({
   onClose,
 }: KSeFSendModalProps) {
   const [steps, setSteps] = useState<Step[]>(
-    STEPS_CONFIG.map((s) => ({ ...s, status: 'pending' as StepStatus })),
+    STEPS_CONFIG.map((step) => ({ ...step, status: 'pending' as StepStatus })),
   );
+
   const [currentStepIndex, setCurrentStepIndex] = useState(-1);
   const [finished, setFinished] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [ksefRef, setKsefRef] = useState<string | null>(null);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [pollAttempt, setPollAttempt] = useState(0);
-  const startTimeRef = useRef<number>(Date.now());
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const stepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const requestDone = useRef(false);
+  const [pollMaxAttempts, setPollMaxAttempts] = useState(MAX_POLL_ATTEMPTS);
+
   const hasStarted = useRef(false);
-  const pollStepIndex = STEPS_CONFIG.findIndex((s) => s.id === 'poll');
-  const saveStepIndex = STEPS_CONFIG.findIndex((s) => s.id === 'save');
-
-  const advanceStep = useCallback(() => {
-    setCurrentStepIndex((prev) => {
-      const next = prev + 1;
-      if (next >= STEPS_CONFIG.length) return prev;
-
-      setSteps((old) =>
-        old.map((s, i) => {
-          if (i < next) return { ...s, status: 'completed' as StepStatus };
-          if (i === next) return { ...s, status: 'active' as StepStatus };
-          return s;
-        }),
-      );
-
-      if (!requestDone.current && next < STEPS_CONFIG.length - 1) {
-        stepTimerRef.current = setTimeout(advanceStep, STEPS_CONFIG[next].duration);
-      }
-
-      return next;
-    });
-  }, []);
-
-  const markAllComplete = useCallback(() => {
-    if (pollTimerRef.current) {
-      clearInterval(pollTimerRef.current);
-      pollTimerRef.current = null;
-    }
-    setPollAttempt(MAX_POLL_ATTEMPTS);
-    setSteps((old) => old.map((s) => ({ ...s, status: 'completed' as StepStatus })));
-    setCurrentStepIndex(STEPS_CONFIG.length - 1);
-    setFinished(true);
-  }, []);
-
-  const markError = useCallback(
-    (atStepIndex: number) => {
-      setSteps((old) =>
-        old.map((s, i) => {
-          if (i < atStepIndex) return { ...s, status: 'completed' as StepStatus };
-          if (i === atStepIndex) return { ...s, status: 'error' as StepStatus };
-          return { ...s, status: 'pending' as StepStatus };
-        }),
-      );
-      setFinished(true);
-    },
-    [],
-  );
-
-  useEffect(() => {
-    if (currentStepIndex === pollStepIndex && !requestDone.current) {
-      setPollAttempt(1);
-      pollTimerRef.current = setInterval(() => {
-        setPollAttempt((prev) => {
-          if (prev >= MAX_POLL_ATTEMPTS) return prev;
-          return prev + 1;
-        });
-      }, POLL_INTERVAL_MS);
-    } else {
-      if (pollTimerRef.current) {
-        clearInterval(pollTimerRef.current);
-        pollTimerRef.current = null;
-      }
-    }
-
-    return () => {
-      if (pollTimerRef.current) {
-        clearInterval(pollTimerRef.current);
-        pollTimerRef.current = null;
-      }
-    };
-  }, [currentStepIndex, pollStepIndex]);
+  const startTimeRef = useRef(Date.now());
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (hasStarted.current) return;
     hasStarted.current = true;
 
+    const controller = new AbortController();
+    const jobId = crypto.randomUUID();
+
     startTimeRef.current = Date.now();
+
     timerRef.current = setInterval(() => {
       setElapsedTime(Math.floor((Date.now() - startTimeRef.current) / 1000));
     }, 500);
 
-    advanceStep();
+    const eventSource = new EventSource(
+      `/bridge/ksef/invoices/send/progress?jobId=${encodeURIComponent(jobId)}`,
+    );
 
-    const controller = new AbortController();
+    const markProgress = (progress: KsefProgressEvent) => {
+      const progressIndex = STEPS_CONFIG.findIndex((step) => step.id === progress.step);
+
+      if (progressIndex === -1) return;
+
+      setCurrentStepIndex(progressIndex);
+
+      setSteps((old) =>
+        old.map((step, index) => {
+          if (index < progressIndex) {
+            return { ...step, status: 'completed' as StepStatus };
+          }
+
+          if (index === progressIndex) {
+            return { ...step, status: progress.status };
+          }
+
+          return step;
+        }),
+      );
+
+      if (progress.step === 'poll') {
+        if (progress.attempt) setPollAttempt(progress.attempt);
+        if (progress.maxAttempts) setPollMaxAttempts(progress.maxAttempts);
+      }
+
+      if (progress.status === 'error') {
+        const message = progress.message || 'Błąd wysyłki do KSeF';
+        setErrorMessage(message);
+        setFinished(true);
+        onError(message);
+        eventSource.close();
+      }
+    };
+
+    eventSource.onmessage = (event) => {
+      try {
+        const progress = JSON.parse(event.data) as KsefProgressEvent;
+        markProgress(progress);
+      } catch (err) {
+        console.warn('[KSEF_PROGRESS] Invalid SSE message:', err);
+      }
+    };
+
+    eventSource.onerror = () => {
+      console.warn('[KSEF_PROGRESS] SSE connection error');
+    };
 
     fetch('/bridge/ksef/invoices/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ invoiceId }),
+      body: JSON.stringify({ invoiceId, jobId }),
       signal: controller.signal,
     })
       .then(async (res) => {
-        requestDone.current = true;
-        if (stepTimerRef.current) clearTimeout(stepTimerRef.current);
-
         const result = await res.json();
 
         if (!res.ok) {
-          const msg = result.error || result.details || 'Nieznany błąd KSeF';
+          const details = Array.isArray(result.details)
+            ? result.details.join(', ')
+            : result.details;
+
+          const msg = result.error || details || 'Nieznany błąd KSeF';
+
           setErrorMessage(msg);
-          setCurrentStepIndex((cur) => {
-            markError(Math.max(cur, 0));
-            return cur;
-          });
+          setFinished(true);
+
+          setSteps((old) =>
+            old.map((step, index) => {
+              if (index < Math.max(currentStepIndex, 0)) {
+                return { ...step, status: 'completed' as StepStatus };
+              }
+
+              if (index === Math.max(currentStepIndex, 0)) {
+                return { ...step, status: 'error' as StepStatus };
+              }
+
+              return step;
+            }),
+          );
+
           onError(msg);
+          eventSource.close();
           return;
         }
 
-        setKsefRef(result.ksef_reference_number);
-        markAllComplete();
+        setKsefRef(result.ksef_reference_number ?? null);
+
+        setSteps((old) => old.map((step) => ({ ...step, status: 'completed' as StepStatus })));
+        setCurrentStepIndex(STEPS_CONFIG.length - 1);
+        setFinished(true);
+
         onSuccess({
           ksef_reference_number: result.ksef_reference_number,
           ksef_timestamp: result.ksef_timestamp,
         });
+
+        eventSource.close();
       })
       .catch((err) => {
         if (err.name === 'AbortError') return;
-        requestDone.current = true;
-        if (stepTimerRef.current) clearTimeout(stepTimerRef.current);
+
         const msg = err.message || 'Nieznany błąd';
+
         setErrorMessage(msg);
-        setCurrentStepIndex((cur) => {
-          markError(Math.max(cur, 0));
-          return cur;
-        });
+        setFinished(true);
         onError(msg);
+
+        eventSource.close();
       });
 
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-      if (stepTimerRef.current) clearTimeout(stepTimerRef.current);
-    };
-  }, [invoiceId, advanceStep, markAllComplete, markError, onError, onSuccess]);
+      controller.abort();
+      eventSource.close();
 
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
     };
-  }, []);
+  }, [invoiceId, onError, onSuccess]);
 
   const formatTime = (seconds: number) => {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return m > 0 ? `${m}m ${s}s` : `${s}s`;
+    const minutes = Math.floor(seconds / 60);
+    const rest = seconds % 60;
+
+    return minutes > 0 ? `${minutes}m ${rest}s` : `${rest}s`;
   };
 
-  const completedCount = steps.filter((s) => s.status === 'completed').length;
+  const completedCount = steps.filter((step) => step.status === 'completed').length;
   const progressPercent = (completedCount / steps.length) * 100;
 
-  const isError = !!errorMessage;
+  const isError = Boolean(errorMessage);
   const isSuccess = finished && !isError;
 
   return (
@@ -276,17 +285,19 @@ export default function KSeFSendModal({
                   <Send className="h-5 w-5 text-[#d3bb73]" />
                 )}
               </div>
+
               <div>
                 <h2 className="text-lg font-semibold text-[#e5e4e2]">
                   {isError
-                    ? 'Wysylka nieudana'
+                    ? 'Wysyłka nieudana'
                     : isSuccess
-                      ? 'Wyslano do KSeF'
-                      : 'Wysylanie do KSeF'}
+                      ? 'Wysłano do KSeF'
+                      : 'Wysyłanie do KSeF'}
                 </h2>
                 <p className="text-sm text-[#e5e4e2]/50">Faktura {invoiceNumber}</p>
               </div>
             </div>
+
             {finished && (
               <button
                 onClick={onClose}
@@ -301,10 +312,12 @@ export default function KSeFSendModal({
             <div className="mt-4">
               <div className="mb-1 flex items-center justify-between text-xs text-[#e5e4e2]/40">
                 <span>
-                  Krok {Math.min(currentStepIndex + 1, steps.length)} z {steps.length}
+                  Krok {Math.max(Math.min(currentStepIndex + 1, steps.length), 1)} z{' '}
+                  {steps.length}
                 </span>
                 <span>{formatTime(elapsedTime)}</span>
               </div>
+
               <div className="h-1.5 overflow-hidden rounded-full bg-[#0a0d1a]">
                 <div
                   className="h-full rounded-full bg-[#d3bb73] transition-all duration-700 ease-out"
@@ -317,7 +330,7 @@ export default function KSeFSendModal({
 
         <div className="max-h-[420px] overflow-y-auto px-6 py-4">
           <div className="space-y-1">
-            {steps.map((step, idx) => (
+            {steps.map((step) => (
               <div
                 key={step.id}
                 className={`flex items-start gap-3 rounded-lg px-3 py-2.5 transition-all duration-300 ${
@@ -347,6 +360,7 @@ export default function KSeFSendModal({
                     </div>
                   )}
                 </div>
+
                 <div className="min-w-0 flex-1">
                   <div
                     className={`text-sm font-medium transition-colors duration-300 ${
@@ -360,17 +374,20 @@ export default function KSeFSendModal({
                     }`}
                   >
                     {step.label}
+
                     {step.id === 'poll' && step.status === 'active' && pollAttempt > 0 && (
                       <span className="ml-2 text-xs font-normal text-[#d3bb73]">
-                        ({pollAttempt}/{MAX_POLL_ATTEMPTS})
+                        ({pollAttempt}/{pollMaxAttempts})
                       </span>
                     )}
+
                     {step.id === 'save' && step.status === 'active' && (
                       <span className="ml-2 text-xs font-normal text-[#d3bb73]">
                         (3 operacje)
                       </span>
                     )}
                   </div>
+
                   {(step.status === 'active' || step.status === 'error') && (
                     <div
                       className={`mt-0.5 text-xs ${
@@ -378,17 +395,20 @@ export default function KSeFSendModal({
                       }`}
                     >
                       {step.id === 'poll' && step.status === 'active' && pollAttempt > 0
-                        ? `Sprawdzanie statusu - proba ${pollAttempt} z ${MAX_POLL_ATTEMPTS}`
+                        ? `Sprawdzanie statusu - próba ${pollAttempt} z ${pollMaxAttempts}`
                         : step.id === 'save' && step.status === 'active'
                           ? 'Zapis do KSeF, aktualizacja faktury, historia zmian'
                           : step.description}
                     </div>
                   )}
+
                   {step.id === 'poll' && step.status === 'active' && pollAttempt > 0 && (
                     <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-[#0a0d1a]">
                       <div
                         className="h-full rounded-full bg-[#d3bb73]/60 transition-all duration-500 ease-out"
-                        style={{ width: `${(pollAttempt / MAX_POLL_ATTEMPTS) * 100}%` }}
+                        style={{
+                          width: `${(pollAttempt / pollMaxAttempts) * 100}%`,
+                        }}
                       />
                     </div>
                   )}
@@ -408,12 +428,14 @@ export default function KSeFSendModal({
                 <div className="mt-1 font-mono text-sm text-[#e5e4e2]">{ksefRef}</div>
               </div>
             )}
+
             {isError && errorMessage && (
               <div className="mb-4 rounded-lg border border-red-500/20 bg-red-500/10 p-3">
-                <div className="text-sm font-medium text-red-400">Szczegoly bledu</div>
+                <div className="text-sm font-medium text-red-400">Szczegóły błędu</div>
                 <div className="mt-1 text-sm text-[#e5e4e2]/70">{errorMessage}</div>
               </div>
             )}
+
             <button
               onClick={onClose}
               className={`w-full rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${

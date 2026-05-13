@@ -259,15 +259,6 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
 
       const allItems = [...servicesWithType, ...equipmentWithType];
 
-      console.log(
-        'Fetched items for subcontractor:',
-        orgData.subcontractor_id,
-        'services:',
-        services?.length || 0,
-        'equipment:',
-        equipment?.length || 0,
-      );
-
       setSubcontractorServices(allItems);
     } catch (err: any) {
       showSnackbar(err.message || 'Błąd pobierania usług podwykonawcy', 'error');

@@ -197,16 +197,6 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
         throw error;
       }
 
-      console.log('Timeline data received:', {
-        totalItems: data?.length || 0,
-        employeeIds,
-        dateRange: {
-          start: timelineBounds.start.toISOString(),
-          end: timelineBounds.end.toISOString(),
-        },
-        sampleItems: data?.slice(0, 3),
-      });
-
       const grouped: Record<string, TimelineItem[]> = {};
       (data || []).forEach((item: TimelineItem) => {
         if (!grouped[item.employee_id]) {
@@ -220,15 +210,6 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
         }
 
         grouped[item.employee_id].push(item);
-      });
-
-      console.log('Grouped timeline data:', {
-        employeeCount: Object.keys(grouped).length,
-        itemsPerEmployee: Object.entries(grouped).map(([id, items]) => ({
-          employeeId: id,
-          itemCount: items.length,
-          types: items.map((i) => i.item_type),
-        })),
       });
 
       setTimelineData(grouped);
@@ -924,16 +905,6 @@ const EmployeesTimelineView: React.FC<EmployeesTimelineViewProps> = ({ employees
                       {items.map((item, idx) => {
                         const pos = getItemPosition(item);
                         if (!pos) {
-                          console.log('Item out of range:', {
-                            title: item.item_title,
-                            type: item.item_type,
-                            start: item.item_start,
-                            end: item.item_end,
-                            timelineBounds: {
-                              start: timelineBounds.start.toISOString(),
-                              end: timelineBounds.end.toISOString(),
-                            },
-                          });
                           return null;
                         }
                         return (

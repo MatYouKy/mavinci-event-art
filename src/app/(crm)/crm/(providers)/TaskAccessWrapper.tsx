@@ -101,9 +101,6 @@ export function TaskAccessWrapper({
               .maybeSingle();
 
             if (cancelled) return;
-
-            console.log('assignee', assignee);
-
             setAccessState(assignee ? 'granted' : 'denied');
             return;
           }
@@ -125,15 +122,10 @@ export function TaskAccessWrapper({
             .maybeSingle();
 
           if (cancelled) return;
-          console.log('assignment', assignment);
 
           setAccessState(assignment ? 'granted' : 'denied');
           return;
         }
-
-        console.log('syncAccess', syncAccess);
-        console.log('pathname', pathname);
-
         setAccessState('denied');
       } catch {
         if (!cancelled) setAccessState('denied');

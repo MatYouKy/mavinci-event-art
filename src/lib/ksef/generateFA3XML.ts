@@ -1,17 +1,33 @@
-/**
- * Generator XML FA(3) dla KSeF
- * Wersja uporządkowana:
- * - prepareFA3Invoice() przygotowuje dane
- * - validatePreparedFA3Invoice() waliduje dane gotowe do XML
- * - generateFA3XML() buduje XML wyłącznie z przygotowanego modelu
- */
-
 export type FA3CorrectionData = {
   correctedInvoiceNumber: string;
   correctedInvoiceIssueDate: string;
   correctedInvoiceKsefNumber?: string;
   correctedInvoiceWasInKsef: boolean;
   correctionReason: string;
+};
+
+export type FA3SettledInvoice = {
+  id?: string;
+  invoiceNumber: string;
+  invoiceType: string;
+  issueDate?: string;
+  totalNet: number;
+  totalVat: number;
+  totalGross: number;
+  ksefReferenceNumber?: string | null;
+  ksef_reference_number?: string | null;
+};
+
+export type FA3SettlementSummary = {
+  invoiceTotalNet: number;
+  invoiceTotalVat: number;
+  invoiceTotalGross: number;
+  settledNet: number;
+  settledVat: number;
+  settledGross: number;
+  remainingNet: number;
+  remainingVat: number;
+  remainingGross: number;
 };
 
 export type FA3PreparedInvoice = {
@@ -47,7 +63,10 @@ export type FA3PreparedInvoice = {
     odwrotneObciazenie: boolean;
     splitPayment: boolean;
     number: string;
-    type: 'VAT' | 'ZAL' | 'KON' | 'KOR' | 'KOR_ZAL' | 'KOR_ROZ';
+    type: 'VAT' | 'ZAL' | 'ROZ' | 'KOR' | 'KOR_ZAL' | 'KOR_ROZ';
+    isFinalInvoice: boolean;
+    settledInvoices: FA3SettledInvoice[];
+    settlementSummary?: FA3SettlementSummary;
     issueDate: string;
     saleDate: string;
     paymentDueDate: string;
@@ -308,11 +327,25 @@ function buildPaymentXml(data: FA3PreparedInvoice): string {
     </Platnosc>`;
 }
 
-function getFa3RodzajFaktury(invoice: any): 'VAT' | 'ZAL' | 'KON' | 'KOR' | 'KOR_ZAL' | 'KOR_ROZ' {
+function getFa3RodzajFaktury(invoice: any): 'VAT' | 'ZAL' | 'ROZ' | 'KOR' | 'KOR_ZAL' | 'KOR_ROZ' {
+  const isFinalInvoice =
+    invoice?.is_final_invoice === true ||
+    invoice?.is_final === true ||
+    invoice?.invoice_type === 'final' ||
+    String(invoice?.invoice_number || '').startsWith('FKO/');
+
   if (invoice?.invoice_type === 'corrective') {
     const relatedType = invoice?.corrected_invoice_type;
+
     if (relatedType === 'advance') return 'KOR_ZAL';
-    if (relatedType === 'final') return 'KOR_ROZ';
+
+    if (
+      relatedType === 'final' ||
+      String(invoice?.corrected_invoice_number || '').startsWith('FKO/')
+    ) {
+      return 'KOR_ROZ';
+    }
+
     return 'KOR';
   }
 
@@ -320,14 +353,50 @@ function getFa3RodzajFaktury(invoice: any): 'VAT' | 'ZAL' | 'KON' | 'KOR' | 'KOR
     return 'ZAL';
   }
 
-  if (invoice?.is_final === true || invoice?.invoice_type === 'final') {
-    return 'KON';
+  if (isFinalInvoice) {
+    return 'ROZ';
   }
 
   return 'VAT';
 }
 
 export function prepareFA3Invoice(invoice: any, organization: any): FA3PreparedInvoice {
+  const isFinalInvoice =
+    invoice?.is_final_invoice === true ||
+    invoice?.is_final === true ||
+    invoice?.invoice_type === 'final' ||
+    String(invoice?.invoice_number || '').startsWith('FKO/');
+
+    const settledInvoices: FA3SettledInvoice[] = Array.isArray(invoice?.settled_invoices)
+    ? invoice.settled_invoices.map((inv: any) => ({
+        id: inv.id,
+        invoiceNumber: inv.invoiceNumber ?? inv.invoice_number ?? '',
+        invoiceType: inv.invoiceType ?? inv.invoice_type ?? 'advance',
+        issueDate: inv.issueDate ?? inv.issue_date,
+        totalNet: Number(inv.totalNet ?? inv.total_net ?? 0),
+        totalVat: Number(inv.totalVat ?? inv.total_vat ?? 0),
+        totalGross: Number(inv.totalGross ?? inv.total_gross ?? 0),
+        ksefReferenceNumber:
+          inv.ksefReferenceNumber ??
+          inv.ksef_reference_number ??
+          null,
+      }))
+    : [];
+
+  const settlementSummary: FA3SettlementSummary | undefined = invoice?.settlement_summary
+    ? {
+        invoiceTotalNet: Number(invoice.settlement_summary.invoiceTotalNet ?? 0),
+        invoiceTotalVat: Number(invoice.settlement_summary.invoiceTotalVat ?? 0),
+        invoiceTotalGross: Number(invoice.settlement_summary.invoiceTotalGross ?? 0),
+        settledNet: Number(invoice.settlement_summary.settledNet ?? 0),
+        settledVat: Number(invoice.settlement_summary.settledVat ?? 0),
+        settledGross: Number(invoice.settlement_summary.settledGross ?? 0),
+        remainingNet: Number(invoice.settlement_summary.remainingNet ?? 0),
+        remainingVat: Number(invoice.settlement_summary.remainingVat ?? 0),
+        remainingGross: Number(invoice.settlement_summary.remainingGross ?? 0),
+      }
+    : undefined;
+
   return {
     seller: {
       nip: normalizeNip(invoice?.seller_nip) || '',
@@ -368,6 +437,9 @@ export function prepareFA3Invoice(invoice: any, organization: any): FA3PreparedI
       samofakturowanie: invoice?.samofakturowanie ?? false,
       odwrotneObciazenie: invoice?.odwrotne_obciazenie ?? false,
       type: getFa3RodzajFaktury(invoice),
+      isFinalInvoice,
+      settledInvoices,
+      settlementSummary,
       issueDate: invoice?.issue_date || '',
       saleDate: invoice?.sale_date || '',
       paymentDueDate: invoice?.payment_due_date || '',
@@ -407,6 +479,8 @@ export function validatePreparedFA3Invoice(
 ): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
+  const isCorrectiveType = ['KOR', 'KOR_ZAL', 'KOR_ROZ'].includes(data.invoice.type);
+
   if (!data.invoice.number) errors.push('Brak numeru faktury');
   if (!data.invoice.issueDate) errors.push('Brak daty wystawienia');
   if (!data.invoice.saleDate) errors.push('Brak daty sprzedaży');
@@ -419,8 +493,6 @@ export function validatePreparedFA3Invoice(
   if (!data.seller.street) errors.push('Brak ulicy sprzedawcy');
   if (!data.seller.postalCode) errors.push('Brak kodu pocztowego sprzedawcy');
   if (!data.seller.city) errors.push('Brak miasta sprzedawcy');
-  if (!data.seller.email) errors.push('Brak email sprzedawcy');
-  if (!data.seller.phone) errors.push('Brak telefonu sprzedawcy');
 
   if (!data.buyer.name) errors.push('Brak nazwy nabywcy');
   if (!data.buyer.street) errors.push('Brak ulicy nabywcy');
@@ -434,30 +506,49 @@ export function validatePreparedFA3Invoice(
   data.invoice.items.forEach((item, index) => {
     if (!item.name) errors.push(`Pozycja ${index + 1}: brak nazwy`);
     if (item.quantity <= 0) errors.push(`Pozycja ${index + 1}: nieprawidłowa ilość`);
-    if (item.priceNet < 0) errors.push(`Pozycja ${index + 1}: nieprawidłowa cena netto`);
-    if (item.valueNet < 0) errors.push(`Pozycja ${index + 1}: nieprawidłowa wartość netto`);
-  });
 
-  const isCorrectiveType = ['KOR', 'KOR_ZAL', 'KOR_ROZ'].includes(data.invoice.type);
+    if (!isCorrectiveType) {
+      if (item.priceNet < 0) errors.push(`Pozycja ${index + 1}: nieprawidłowa cena netto`);
+      if (item.valueNet < 0) errors.push(`Pozycja ${index + 1}: nieprawidłowa wartość netto`);
+    }
+  });
 
   if (!isCorrectiveType && data.invoice.totalGross <= 0) {
     errors.push('Nieprawidłowa suma brutto');
   }
 
+  if (data.invoice.type === 'ROZ') {
+    if (!data.invoice.settlementSummary) {
+      errors.push('Faktura końcowa: brak settlementSummary');
+    }
+
+    if (!data.invoice.settledInvoices.length) {
+      errors.push('Faktura końcowa: brak listy rozliczonych zaliczek');
+    }
+
+    if (data.invoice.settlementSummary?.remainingGross === undefined) {
+      errors.push('Faktura końcowa: brak remainingGross');
+    }
+  }
+
   if (isCorrectiveType) {
     const correction = data.invoice.correction;
+
     if (!correction) {
       errors.push('Brak danych faktury korygowanej (DaneFaKorygowanej)');
     } else {
       if (!correction.correctedInvoiceNumber) {
         errors.push('Brak numeru faktury korygowanej');
       }
+
       if (!correction.correctedInvoiceIssueDate) {
         errors.push('Brak daty wystawienia faktury korygowanej');
       }
+
       if (!correction.correctionReason) {
         errors.push('Brak przyczyny korekty');
       }
+
       if (correction.correctedInvoiceWasInKsef && !correction.correctedInvoiceKsefNumber) {
         errors.push('Brak numeru KSeF faktury korygowanej');
       }
@@ -536,12 +627,93 @@ function buildPrzyczynaKorektyXml(data: FA3PreparedInvoice): string {
   return `<PrzyczynaKorekty>${escapeXml(correction.correctionReason)}</PrzyczynaKorekty>`;
 }
 
+function buildFinalInvoiceSettlementXml(data: FA3PreparedInvoice): string {
+  if (!data.invoice.isFinalInvoice) return '';
+  if (!data.invoice.settledInvoices.length) return '';
+
+  return data.invoice.settledInvoices
+    .map((inv) => {
+      if (inv.ksefReferenceNumber) {
+        return `
+    <FakturaZaliczkowa>
+      <NrKSeFFaZaliczkowej>${escapeXml(inv.ksefReferenceNumber)}</NrKSeFFaZaliczkowej>
+    </FakturaZaliczkowa>`;
+      }
+
+      return `
+    <FakturaZaliczkowa>
+      <NrKSeFZN>1</NrKSeFZN>
+      <NrFaZaliczkowej>${escapeXml(inv.invoiceNumber)}</NrFaZaliczkowej>
+    </FakturaZaliczkowa>`;
+    })
+    .join('');
+}
+
+function buildFinalInvoiceItems(
+  data: FA3PreparedInvoice,
+): FA3PreparedInvoice['invoice']['items'] {
+  if (
+    data.invoice.type !== 'ROZ' ||
+    !data.invoice.settlementSummary
+  ) {
+    return data.invoice.items;
+  }
+
+  const originalNet = data.invoice.totalNet;
+  const remainingNet = data.invoice.settlementSummary.remainingNet;
+
+  if (originalNet <= 0) {
+    return data.invoice.items;
+  }
+
+  const ratio = remainingNet / originalNet;
+
+  return data.invoice.items.map((item) => {
+    const valueNet = Number((item.valueNet * ratio).toFixed(2));
+    const vatAmount = Number((item.vatAmount * ratio).toFixed(2));
+    const valueGross = Number((item.valueGross * ratio).toFixed(2));
+
+    return {
+      ...item,
+      priceNet: Number((item.priceNet * ratio).toFixed(2)),
+      valueNet,
+      vatAmount,
+      valueGross,
+    };
+  });
+}
+
+function buildDodatkowyOpisXml(data: FA3PreparedInvoice): string {
+  if (
+    data.invoice.type !== 'ROZ' ||
+    !data.invoice.settlementSummary ||
+    !data.invoice.settledInvoices.length
+  ) {
+    return '';
+  }
+
+  const advanceText = data.invoice.settledInvoices
+    .map((inv) => `${inv.invoiceNumber} (${formatDecimal(inv.totalGross)} PLN brutto)`)
+    .join(', ');
+
+  const value = `Rozliczono faktury zaliczkowe: ${advanceText}. Do dopłaty: ${formatDecimal(
+    data.invoice.settlementSummary.remainingGross,
+  )} PLN brutto.`;
+
+  return `
+    <DodatkowyOpis>
+      <Klucz>Rozliczenie zaliczek</Klucz>
+      <Wartosc>${escapeXml(value)}</Wartosc>
+    </DodatkowyOpis>`;
+}
+
+
+
 export function generateFA3XML(
   data: FA3PreparedInvoice,
   options: GenerateFA3XMLOptions = {},
 ): string {
   const currentDateTime = new Date().toISOString();
-
   const podmiot1Extra = buildPodmiot1Extra(data);
   const podmiot2Extra = buildPodmiot2Extra(data);
   const podmiot2Jst = buildPodmiot2Jst(data);
@@ -551,13 +723,21 @@ export function generateFA3XML(
   const isCorrectiveType = ['KOR', 'KOR_ZAL', 'KOR_ROZ'].includes(rodzajFaktury);
   const daneFaKorygowanejXml = isCorrectiveType ? buildDaneFaKorygowanejXml(data) : '';
   const przyczynaKorektyXml = isCorrectiveType ? buildPrzyczynaKorektyXml(data) : '';
+  const finalInvoiceSettlementXml = buildFinalInvoiceSettlementXml(data);
+  const faTotalNet = data.invoice.totalNet;
+  const faTotalVat = data.invoice.totalVat;
+  const faTotalGross = data.invoice.totalGross;
+  const dodatkowyOpisXml = buildDodatkowyOpisXml(data);
+
+
+  
+  const effectiveItems = data.invoice.items;
 
   const invoiceRowsXml = data.invoice.items
-    .map(
-      (item) => `
+  .map(
+    (item) => `
     <FaWiersz>
       <NrWierszaFa>${item.lineNumber}</NrWierszaFa>
-      ${item.stanPrzed ? '<StanPrzed>1</StanPrzed>' : ''}
       <P_7>${escapeXml(item.name)}</P_7>
       <P_8A>${escapeXml(item.unit)}</P_8A>
       <P_8B>${formatDecimal(item.quantity)}</P_8B>
@@ -565,8 +745,8 @@ export function generateFA3XML(
       <P_11>${formatDecimal(item.valueNet)}</P_11>
       <P_12>${getVatRateCode(item.vatRate)}</P_12>
     </FaWiersz>`,
-    )
-    .join('\n');
+  )
+  .join('\n');
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Faktura xmlns="http://crd.gov.pl/wzor/2025/06/25/13775/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
@@ -607,13 +787,16 @@ export function generateFA3XML(
     <P_1M>${escapeXml(data.seller.city)}</P_1M>
     <P_2>${escapeXml(data.invoice.number)}</P_2>
     <P_6>${formatDate(data.invoice.saleDate)}</P_6>
-    <P_13_1>${formatDecimal(data.invoice.totalNet)}</P_13_1>
-    <P_14_1>${formatDecimal(data.invoice.totalVat)}</P_14_1>
-    <P_15>${formatDecimal(data.invoice.totalGross)}</P_15>${adnotacjeXml}
+    <P_13_1>${formatDecimal(faTotalNet)}</P_13_1>
+    <P_14_1>${formatDecimal(faTotalVat)}</P_14_1>
+    <P_15>${formatDecimal(faTotalGross)}</P_15>
+    ${adnotacjeXml}
     <RodzajFaktury>${rodzajFaktury}</RodzajFaktury>
+    ${dodatkowyOpisXml}
     ${przyczynaKorektyXml}
     ${daneFaKorygowanejXml}
-${invoiceRowsXml}${paymentXml}
+    ${finalInvoiceSettlementXml}
+    ${invoiceRowsXml}${paymentXml}
   </Fa>
 </Faktura>`;
 

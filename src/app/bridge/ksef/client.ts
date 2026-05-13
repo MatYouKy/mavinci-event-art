@@ -35,13 +35,6 @@ export async function ksefFetch<T>(
   const url = `${baseUrl}${path}`;
   const context = options.context ?? {};
 
-  console.log(`${KSEF_LOG_PREFIX} fetch start`, {
-    url,
-    method: init.method ?? 'GET',
-    environment: options.isTestEnvironment ? 'test' : 'production',
-    ...context,
-  });
-
   let response: Response;
 
   try {
@@ -63,16 +56,6 @@ export async function ksefFetch<T>(
   }
 
   const contentType = response.headers.get('content-type') || '';
-
-  console.log(`${KSEF_LOG_PREFIX} fetch response`, {
-    url,
-    method: init.method ?? 'GET',
-    status: response.status,
-    ok: response.ok,
-    contentType,
-    environment: options.isTestEnvironment ? 'test' : 'production',
-    ...context,
-  });
 
   if (!response.ok) {
     const raw = await response.text();

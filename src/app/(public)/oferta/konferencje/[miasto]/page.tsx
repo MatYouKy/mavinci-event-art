@@ -75,13 +75,11 @@ async function loadCityData(city: string) {
 
   const defaultTitle = `Obsługa Konferencji ${cityCases.locative_preposition ? cityCases.locative_preposition : 'w'} ${capitalize(cityCases.locative)}`;
 
-  console.log('[defaultTitle]', defaultTitle);
   const defaultDescription = `Profesjonalna obsługa konferencji ${cityCases.locative_preposition ? cityCases.locative_preposition : 'w'} ${capitalize(cityCases.locative)}: nagłośnienie, multimedia, streaming live, realizacja wideo. Kompleksowe wsparcie techniczne dla wydarzeń biznesowych ${cityCases.locative_preposition ? cityCases.locative_preposition : 'w'} ${capitalize(cityCases.locative)} i okolicach.`;
 
   const title = defaultTitle;
   const metaTitle = cityPageSeo?.title || `${title} - Profesjonalne Nagłośnienie i Multimedia | MAVINCI`;
 
-  console.log('[cityPageSeo]', cityPageSeo);
   const description = defaultDescription || cityPageSeo?.seo_description;
   const keywords =
     cityPageSeo?.seo_keywords ||
@@ -114,9 +112,6 @@ export async function generateMetadata({
 
   const { title, description, keywords, canonicalUrl, image, cityCases, metaTitle } = data;
   // const metaTitle = `${title} - Profesjonalne Nagłośnienie i Multimedia | MAVINCI`;
-
-  console.log('[generateMetadata] ->  title', title);
-  console.log('[generateMetadata] ->  metaTitle', metaTitle);
 
   return {
     title: metaTitle,
@@ -307,8 +302,6 @@ export default async function CityConferencePage({ params }: { params: { miasto:
     relatedServices,
     allServiceItems,
   } = await getConferencesData(supabase);
-
-  console.log('[title]', title);
 
   return (
     <PageLayout pageSlug={pageSlug} customSchema={customSchema} cookieStore={cookies()}>

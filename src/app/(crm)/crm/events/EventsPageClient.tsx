@@ -310,9 +310,12 @@ export default function EventsPageClient({
     return isUserAdmin ? base : base.filter((k) => k !== 'budget');
   });
 
-  const canViewEventStatus =
-    isUserAdmin ||
-    hasScope('events_manage', currentEmployee);
+  const canViewEventStatus = isUserAdmin || hasScope('events_manage', currentEmployee);
+  const canDeleteEvents =
+  isUserAdmin ||
+  hasScope('events_manage', currentEmployee) ||
+  currentEmployee.permissions?.includes('admin') ||
+  currentEmployee.permissions?.includes('events_manage');
 
   const canViewEventBudget =
     isUserAdmin ||
@@ -351,9 +354,9 @@ export default function EventsPageClient({
       if (k === 'actions' && !canViewEventStatus) return false;
       return true;
     });
-  
+
     setColOrder(sanitized);
-  
+
     await setModulePrefs?.('events', {
       table: {
         ...(modulePrefs?.table ?? {}),
@@ -487,19 +490,15 @@ export default function EventsPageClient({
     if (!eventToDelete) return;
 
     try {
-      const { data, error } = await supabase
+      const { data, error, status, statusText } = await supabase
         .from('events')
         .delete()
         .eq('id', eventToDelete.id)
-        .select('id');
-
+        .select('id, name');
       if (error) throw error;
 
       if (!data || data.length === 0) {
-        showSnackbar(
-          'Nie masz uprawnień do usunięcia tego eventu lub event nie istnieje',
-          'error',
-        );
+        showSnackbar('Nie masz uprawnień do usunięcia tego eventu lub event nie istnieje', 'error');
         return;
       }
 
@@ -721,7 +720,7 @@ export default function EventsPageClient({
     ),
 
     actions: (event) =>
-      canViewCommercials ? (
+      canDeleteEvents ? (
         <ResponsiveActionBar
           disabledBackground
           mobileBreakpoint={2000}
@@ -739,7 +738,7 @@ export default function EventsPageClient({
 
   const actions = useMemo<Action[]>(() => {
     const arr: Action[] = [];
-  
+
     if (canViewEventStatus) {
       arr.push({
         label: 'Kategorie',
@@ -747,7 +746,7 @@ export default function EventsPageClient({
         icon: <Tag className="h-4 w-4" />,
         variant: 'default',
       });
-  
+
       arr.push({
         label: 'Nowy event',
         onClick: () => setIsModalOpen(true),
@@ -755,7 +754,7 @@ export default function EventsPageClient({
         variant: 'primary',
       });
     }
-  
+
     return arr;
   }, [router, setIsModalOpen, canViewEventStatus]);
 
@@ -1123,7 +1122,6 @@ export default function EventsPageClient({
                     if (key === 'status' && !canViewEventStatus) return null;
                     if (key === 'actions' && !canViewEventStatus) return null;
 
-
                     const labelMap: Record<EventsTableColKey, React.ReactNode> = {
                       name: 'Nazwa',
                       client: 'Klient',
@@ -1241,11 +1239,11 @@ export default function EventsPageClient({
                   canViewEventBudget
                     ? DEFAULT_COL_ORDER
                     : DEFAULT_COL_ORDER.filter((k) => {
-                      if (k === 'budget' && !canViewEventBudget) return false;
-                      if (k === 'status' && !canViewEventStatus) return false;
-                      if (k === 'actions' && !canViewEventStatus) return false;
-                      return true;
-                    }),
+                        if (k === 'budget' && !canViewEventBudget) return false;
+                        if (k === 'status' && !canViewEventStatus) return false;
+                        if (k === 'actions' && !canViewEventStatus) return false;
+                        return true;
+                      }),
                 );
                 // szerokości też:
                 setColWidths(DEFAULT_EVENTS_COL_WIDTHS);
@@ -1255,11 +1253,11 @@ export default function EventsPageClient({
                     colOrder: canViewEventBudget
                       ? DEFAULT_COL_ORDER
                       : DEFAULT_COL_ORDER.filter((k) => {
-                        if (k === 'budget' && !canViewEventBudget) return false;
-                        if (k === 'status' && !canViewEventStatus) return false;
-                        if (k === 'actions' && !canViewEventStatus) return false;
-                        return true;
-                      }),
+                          if (k === 'budget' && !canViewEventBudget) return false;
+                          if (k === 'status' && !canViewEventStatus) return false;
+                          if (k === 'actions' && !canViewEventStatus) return false;
+                          return true;
+                        }),
                     colWidths: DEFAULT_EVENTS_COL_WIDTHS,
                   },
                 });
@@ -1366,7 +1364,8 @@ export default function EventsPageClient({
                   </div>
 
                   <div className="mt-4 flex flex-wrap items-center gap-2">
-                    {canViewEventStatus && (<div>
+                    {canViewEventStatus && (
+                      <div>
                         <EventStatusBadge status={event.status} />
                       </div>
                     )}
@@ -1388,10 +1387,11 @@ export default function EventsPageClient({
                   )}
 
                   <div className="mt-3 hidden md:block">
-                    {canViewEventStatus && <div>
+                    {canViewEventStatus && (
+                      <div>
                         <EventStatusBadge status={event.status} />
                       </div>
-                    }
+                    )}
                   </div>
                 </div>
               );
@@ -1464,10 +1464,11 @@ export default function EventsPageClient({
 
                   <div className="flex items-center gap-2">
                     <div className="hidden items-center gap-2 md:flex">
-                      {canViewEventStatus && <div>
+                      {canViewEventStatus && (
+                        <div>
                           <EventStatusBadge status={event.status} />
                         </div>
-                      }
+                      )}
                       {event.event_categories && (
                         <div className="flex items-center gap-1 rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-3 py-1 text-xs text-[#d3bb73]">
                           <Tag className="h-3 w-3" />

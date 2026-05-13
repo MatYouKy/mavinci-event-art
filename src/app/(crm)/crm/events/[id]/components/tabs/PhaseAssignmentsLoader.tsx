@@ -85,7 +85,6 @@ const SinglePhaseLoader: React.FC<{
           filter: `phase_id=eq.${phase.id}`,
         },
         () => {
-          console.log('[SinglePhaseLoader] Assignment update for phase:', phase.name);
           refetchAssignments();
         }
       )

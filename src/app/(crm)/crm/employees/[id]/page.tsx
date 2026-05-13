@@ -19,6 +19,8 @@ import {
   X,
   Lock,
   Award,
+  Trash2,
+  Loader2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import EmployeeEmailAccountsTab from '@/components/crm/EmployeeEmailAccountsTab';
@@ -39,6 +41,7 @@ import { AddDocumentModal } from '@/components/crm/employee/modal/AddDocumentMod
 import EmployeeEventsTab from '@/components/crm/employee/tabs/EmployeeEventsTab';
 import { EmployeeDocumentsTab } from '@/components/crm/employee/tabs/EmployeeDocumentsTab';
 import EmployeeOverviewTab from '@/components/crm/employee/tabs/EmployeeOverviewTab';
+import { useDialog } from '@/contexts/DialogContext';
 
 interface ImagePosition {
   posX: number;
@@ -149,9 +152,12 @@ export default function EmployeeDetailPage() {
   const [showAddDocumentModal, setShowAddDocumentModal] = useState(false);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
   const [showAvatarPositionEditor, setShowAvatarPositionEditor] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [accessLevels, setAccessLevels] = useState<
     Array<{ id: string; name: string; description: string }>
   >([]);
+
+  const { showConfirm } = useDialog();
 
   const {
     employee: currentEmployee,
@@ -288,13 +294,49 @@ export default function EmployeeDetailPage() {
     }
   };
 
+  const handleDeleteEmployee = async () => {
+    if (!employee || isDeleting) return;
+
+    if (canEdit !== true) {
+      alert('Nie masz uprawnień do usuwania pracowników.');
+      return;
+    }
+
+    const confirmed = await showConfirm(
+      `Czy na pewno chcesz TRWALE usunąć pracownika:\n\n${employee.name} ${employee.surname}?\n\nTa operacja jest nieodwracalna.`,
+      'Usuń pracownika',
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setIsDeleting(true);
+
+      const { error } = await supabase.rpc('delete_employee_hard', {
+        p_employee_id: employeeId,
+      });
+
+      if (error) {
+        console.error('RPC delete_employee_hard error:', error);
+        throw error;
+      }
+
+      router.push('/crm/employees');
+    } catch (err: any) {
+      console.error('Error deleting employee:', err);
+
+      alert(err?.message || 'Nie udało się usunąć pracownika. Sprawdź powiązania w bazie danych.');
+
+      setIsDeleting(false);
+    }
+  };
+
   const profileActions = useMemo<Action[]>(() => {
     const canEditHere = (canEdit || isOwnProfile) === true;
 
-    // nie ma uprawnień -> brak akcji
     if (!canEditHere) return [];
 
-    // tryb podglądu
+    // TRYB PODGLĄDU
     if (!isEditing) {
       return [
         {
@@ -307,7 +349,7 @@ export default function EmployeeDetailPage() {
       ];
     }
 
-    // tryb edycji
+    // TRYB EDYCJI
     return [
       {
         label: 'Zapisz',
@@ -317,17 +359,29 @@ export default function EmployeeDetailPage() {
         show: true,
       },
       {
+        label: isDeleting ? 'Usuwanie...' : 'Usuń',
+        onClick: handleDeleteEmployee,
+        icon: isDeleting ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Trash2 className="h-4 w-4" />
+        ),
+        variant: 'danger',
+        show: canEdit === true && !isOwnProfile,
+        disabled: isDeleting,
+      },
+      {
         label: 'Anuluj',
         onClick: () => {
           setIsEditing(false);
           setEditedData(employee);
         },
         icon: <X className="h-4 w-4" />,
-        variant: 'danger',
+        variant: 'default',
         show: true,
       },
     ];
-  }, [canEdit, isOwnProfile, isEditing, handleSave, employee]);
+  }, [canEdit, isOwnProfile, isEditing, handleSave, handleDeleteEmployee, employee, isDeleting]);
 
   const handleSaveImage = async (
     imageType: 'avatar' | 'background',
@@ -474,7 +528,7 @@ export default function EmployeeDetailPage() {
     },
     file: function (file: any, folder: string): unknown {
       throw new Error('Function not implemented.');
-    }
+    },
   };
 
   const backgroundImageData: IImageMetadataUpload = {
@@ -492,6 +546,19 @@ export default function EmployeeDetailPage() {
 
   return (
     <div className="mx-auto max-w-[1400px] space-y-6">
+      {isDeleting && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-4 rounded-xl border border-red-500/30 bg-[#1c1f33] p-6 shadow-2xl">
+            <Loader2 className="h-8 w-8 animate-spin text-red-400" />
+            <div className="text-center">
+              <div className="text-base font-medium text-[#e5e4e2]">Usuwanie pracownika...</div>
+              <div className="mt-1 text-sm text-[#e5e4e2]/60">
+                Trwa usuwanie powiązanych rekordów. Nie zamykaj strony.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex items-center gap-4">
         <button
           onClick={() => router.push('/crm/employees')}

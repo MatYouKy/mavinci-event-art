@@ -148,8 +148,6 @@ export default function EmailSignatureSettingsPage() {
       ? `${addressParts}, ${selectedCompany.postal_code} ${selectedCompany.city}`
       : '';
 
-      console.log('employee', employee);
-
     return {
       full_name: employee ? `${employee.name ?? ''} ${employee.surname ?? ''}`.trim() : 'Jan Kowalski',
       first_name: employee?.name ?? 'Jan',

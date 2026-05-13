@@ -15,6 +15,7 @@ export interface FinalInvoiceItemInput {
 export interface SettledInvoiceRef {
   id: string;
   invoice_number: string;
+  issue_date?: string | null;
   total_net: number;
   total_vat: number;
   total_gross: number;
@@ -63,23 +64,32 @@ export async function createFinalInvoice(opts: CreateFinalInvoiceOptions): Promi
       return { success: false, error: 'Faktura koncowa musi miec co najmniej jedna pozycje' };
     }
 
+    if (!opts.settledInvoices.length) {
+      return { success: false, error: 'Faktura koncowa musi rozliczac co najmniej jedna fakture' };
+    }
+
     let invoiceNumber: string;
+
     if (opts.customNumber && opts.customNumber.trim()) {
       const trimmed = opts.customNumber.trim();
+
       const { data: existing } = await supabase
         .from('invoices')
         .select('id')
         .eq('invoice_number', trimmed)
         .maybeSingle();
+
       if (existing) {
         return { success: false, error: 'Faktura o tym numerze juz istnieje' };
       }
+
       invoiceNumber = trimmed;
     } else {
       const { data: generated, error: genErr } = await supabase.rpc('generate_invoice_number', {
         p_invoice_type: 'final',
         p_my_company_id: opts.myCompanyId ?? null,
       });
+
       if (genErr || !generated) {
         console.error('generate_invoice_number error:', genErr);
         return {
@@ -87,6 +97,7 @@ export async function createFinalInvoice(opts: CreateFinalInvoiceOptions): Promi
           error: genErr?.message || 'Blad generowania numeru faktury',
         };
       }
+
       invoiceNumber = generated as string;
     }
 
@@ -95,16 +106,17 @@ export async function createFinalInvoice(opts: CreateFinalInvoiceOptions): Promi
     defaultDue.setDate(defaultDue.getDate() + 14);
 
     const computedItems = opts.items.map((it, idx) => {
-      const valueNet = round2(it.quantity * it.price_net);
-      const vatAmount = round2((valueNet * it.vat_rate) / 100);
+      const valueNet = round2(Number(it.quantity) * Number(it.price_net));
+      const vatAmount = round2((valueNet * Number(it.vat_rate)) / 100);
       const valueGross = round2(valueNet + vatAmount);
+
       return {
         position_number: idx + 1,
         name: it.name,
         unit: it.unit,
-        quantity: it.quantity,
-        price_net: it.price_net,
-        vat_rate: it.vat_rate,
+        quantity: Number(it.quantity),
+        price_net: Number(it.price_net),
+        vat_rate: Number(it.vat_rate),
         value_net: valueNet,
         vat_amount: vatAmount,
         value_gross: valueGross,
@@ -115,10 +127,37 @@ export async function createFinalInvoice(opts: CreateFinalInvoiceOptions): Promi
     const totalVat = round2(computedItems.reduce((s, i) => s + i.vat_amount, 0));
     const totalGross = round2(computedItems.reduce((s, i) => s + i.value_gross, 0));
 
-    const settledNet = round2(opts.settledInvoices.reduce((s, i) => s + Number(i.total_net), 0));
-    const settledVat = round2(opts.settledInvoices.reduce((s, i) => s + Number(i.total_vat), 0));
-    const settledGross = round2(opts.settledInvoices.reduce((s, i) => s + Number(i.total_gross), 0));
+    const settledNet = round2(opts.settledInvoices.reduce((s, i) => s + Number(i.total_net ?? 0), 0));
+    const settledVat = round2(opts.settledInvoices.reduce((s, i) => s + Number(i.total_vat ?? 0), 0));
+    const settledGross = round2(
+      opts.settledInvoices.reduce((s, i) => s + Number(i.total_gross ?? 0), 0),
+    );
+
+    const remainingNet = round2(totalNet - settledNet);
+    const remainingVat = round2(totalVat - settledVat);
     const remainingGross = round2(totalGross - settledGross);
+
+    const settledInvoicesJson = opts.settledInvoices.map((i) => ({
+      id: i.id,
+      invoiceNumber: i.invoice_number,
+      invoiceType: i.invoice_type,
+      issueDate: i.issue_date ?? null,
+      totalNet: Number(i.total_net ?? 0),
+      totalVat: Number(i.total_vat ?? 0),
+      totalGross: Number(i.total_gross ?? 0),
+    }));
+
+    const settlementSummaryJson = {
+      invoiceTotalNet: totalNet,
+      invoiceTotalVat: totalVat,
+      invoiceTotalGross: totalGross,
+      settledNet,
+      settledVat,
+      settledGross,
+      remainingNet,
+      remainingVat,
+      remainingGross,
+    };
 
     const settlementLines = opts.settledInvoices
       .map(
@@ -128,32 +167,37 @@ export async function createFinalInvoice(opts: CreateFinalInvoiceOptions): Promi
       .join('\n');
 
     const settlementText = opts.settledInvoices.length
-      ? `Rozliczone wpłaty / zaliczki:\n${settlementLines}\nSuma rozliczonych: ${settledGross.toFixed(2)} PLN brutto.\nDo dopłaty: ${remainingGross.toFixed(2)} PLN brutto.`
+      ? `Rozliczone wpłaty / zaliczki:\n${settlementLines}\nSuma rozliczonych: ${settledGross.toFixed(
+          2,
+        )} PLN brutto.\nDo dopłaty: ${remainingGross.toFixed(2)} PLN brutto.`
       : '';
 
     const finalNotes = [opts.notes, settlementText].filter(Boolean).join('\n\n');
 
     const internalMarker = JSON.stringify({
       kind: 'final_invoice',
-      settled: opts.settledInvoices.map((i) => ({
-        id: i.id,
-        invoice_number: i.invoice_number,
-        total_gross: Number(i.total_gross),
-      })),
-      total_settled_gross: settledGross,
-      remaining_gross: remainingGross,
+      settled: settledInvoicesJson,
+      settlementSummary: settlementSummaryJson,
     });
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
     const { data: employee } = await supabase
       .from('employees')
       .select('id')
       .eq('email', user?.email)
       .maybeSingle();
 
+      
+
     const insertPayload: Record<string, any> = {
       invoice_number: invoiceNumber,
-      invoice_type: 'vat',
+
+      // WAŻNE: to musi być final, nie vat
+      invoice_type: 'final',
+
       status: 'draft',
       is_proforma: false,
       issue_date: opts.issueDate || today,
@@ -163,23 +207,29 @@ export async function createFinalInvoice(opts: CreateFinalInvoiceOptions): Promi
       organization_id: opts.organizationId || null,
       my_company_id: opts.myCompanyId || null,
       created_by: employee?.id ?? null,
+
       total_net: totalNet,
       total_vat: totalVat,
       total_gross: totalGross,
+
       payment_method: opts.paymentMethod ?? null,
       bank_account: opts.bankAccount ?? null,
       issue_place: opts.issuePlace ?? null,
       notes: finalNotes || null,
       internal_notes: internalMarker,
+
+      // WAŻNE: snapshot rozliczenia dla PDF/KSeF
+      settled_invoices: settledInvoicesJson,
+      settlement_summary: settlementSummaryJson,
+
+      // pierwsza zaliczka jako główne powiązanie
+      related_invoice_id: opts.settledInvoices[0]?.id ?? null,
+
       ...opts.buyerData,
     };
 
     if (opts.sellerData) {
       Object.assign(insertPayload, opts.sellerData);
-    }
-
-    if (opts.settledInvoices[0]?.id) {
-      insertPayload.related_invoice_id = opts.settledInvoices[0].id;
     }
 
     const { data: created, error: insertErr } = await supabase
@@ -193,8 +243,13 @@ export async function createFinalInvoice(opts: CreateFinalInvoiceOptions): Promi
       return { success: false, error: insertErr?.message || 'Blad tworzenia faktury' };
     }
 
-    const itemsToInsert = computedItems.map((it) => ({ ...it, invoice_id: created.id }));
+    const itemsToInsert = computedItems.map((it) => ({
+      ...it,
+      invoice_id: created.id,
+    }));
+
     const { error: itemsErr } = await supabase.from('invoice_items').insert(itemsToInsert);
+
     if (itemsErr) {
       await supabase.from('invoices').delete().eq('id', created.id);
       return { success: false, error: 'Blad zapisu pozycji faktury' };
@@ -206,10 +261,8 @@ export async function createFinalInvoice(opts: CreateFinalInvoiceOptions): Promi
       changed_by: employee?.id ?? null,
       changes: {
         settled_invoice_ids: opts.settledInvoices.map((i) => i.id),
-        settled_gross: settledGross,
-        settled_vat: settledVat,
-        settled_net: settledNet,
-        remaining_gross: remainingGross,
+        settled_invoices: settledInvoicesJson,
+        settlement_summary: settlementSummaryJson,
       },
     });
 

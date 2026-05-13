@@ -1002,6 +1002,21 @@ export default function OrganizationDetailPage() {
                   <p className="text-white">{contact.email || '-'}</p>
                 )}
               </div>
+              <div>
+                <label className="mb-2 block text-sm text-gray-400">Stanowisko</label>
+                {editMode ? (
+                  <input
+                    type="text"
+                    value={editedContactData.position || ''}
+                    onChange={(e) =>
+                      setEditedContactData({ ...editedContactData, position: e.target.value })
+                    }
+                    className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-3 py-2 text-white"
+                  />
+                ) : (
+                  <p className="text-white">{contact.position || '-'}</p>
+                )}
+              </div>
 
               <div>
                 <label className="mb-2 block text-sm text-gray-400">Telefon prywatny</label>

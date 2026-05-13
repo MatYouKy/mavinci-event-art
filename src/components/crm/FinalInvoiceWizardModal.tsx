@@ -20,7 +20,7 @@ interface FinalInvoiceWizardModalProps {
 interface CandidateInvoice {
   id: string;
   invoice_number: string;
-  invoice_type: 'vat' | 'proforma' | 'advance' | 'corrective';
+  invoice_type: 'vat' | 'proforma' | 'advance' | 'corrective' | 'final';
   status: string;
   issue_date: string;
   total_net: number;
@@ -123,7 +123,7 @@ export default function FinalInvoiceWizardModal({
 
   useEffect(() => {
     (async () => {
-      const { data, error } = await supabase.rpc('generate_invoice_number', {
+      const { data, error } = await supabase.rpc('preview_invoice_number', {
         p_invoice_type: 'final',
         p_my_company_id: myCompanyId,
       });

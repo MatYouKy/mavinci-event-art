@@ -20,6 +20,7 @@ import { usePrefetchOffer } from '../hooks/usePrefetchOffer';
 import { useOfferById } from '../hooks/useOfferById';
 import { IOfferItem } from '../types';
 import { deleteOfferWithFiles } from '@/lib/CRM/Offers/deleteOfferWithFiles';
+import Image from 'next/image';
 
 const statusColors: Record<string, string> = {
   draft: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
@@ -249,7 +250,7 @@ export default function OfferDetailPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 mt-4">
           <button
             onClick={() => router.push('/crm/offers')}
             className="rounded-lg p-2 text-[#e5e4e2] transition-colors hover:bg-[#1c1f33]"
@@ -262,50 +263,7 @@ export default function OfferDetailPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
           {canSendManage && <ResponsiveActionBar actions={actions} />}
-
-          {canSendManage && isEditingStatus ? (
-            <div className="flex items-center gap-2">
-              <select
-                value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value)}
-                className="rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33] px-4 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-              >
-                <option value="draft">Szkic</option>
-                <option value="sent">Wysłana</option>
-                <option value="accepted">Zaakceptowana</option>
-                <option value="rejected">Odrzucona</option>
-                <option value="expired">Wygasła</option>
-              </select>
-              <button
-                onClick={handleUpdateStatus}
-                className="rounded-lg bg-[#d3bb73] px-3 py-2 text-sm text-[#1c1f33] hover:bg-[#d3bb73]/90"
-              >
-                <Check className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => {
-                  setIsEditingStatus(false);
-                  setSelectedStatus(offer.status);
-                }}
-                className="rounded-lg border border-red-500/30 bg-red-500/20 px-3 py-2 text-sm text-red-400 hover:bg-red-500/30"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => canSendManage && setIsEditingStatus(true)}
-              disabled={!canSendManage}
-              className={`rounded-lg border px-4 py-2 text-sm transition-opacity ${
-                statusColors[offer.status] || 'bg-gray-500/20 text-gray-400'
-              } ${canSendManage ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
-            >
-              {statusLabels[offer.status] || offer.status}
-            </button>
-          )}
-        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -380,7 +338,9 @@ export default function OfferDetailPage() {
           onClick={() => setPreviewImage(null)}
         >
           <div className="relative max-h-[90vh] max-w-4xl">
-            <img
+            <Image
+              width={1000}
+              height={1000}
               src={previewImage}
               alt="Preview"
               className="max-h-full max-w-full object-contain"

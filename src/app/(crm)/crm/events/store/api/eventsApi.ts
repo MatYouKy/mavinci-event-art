@@ -608,15 +608,10 @@ export const eventsApi = createApi({
     deleteEventOffer: builder.mutation<{ success: true }, { eventId: string; offerId: string }>({
       async queryFn({ offerId, eventId }) {
         try {
-          console.log('[DELETE OFFER] Attempting to delete offer:', offerId, 'for event:', eventId);
-
           const {
             data: { user },
             error: userError,
           } = await supabase.auth.getUser();
-
-          console.log('[DELETE OFFER] auth user:', user);
-          console.log('[DELETE OFFER] auth user error:', userError);
 
           const { data: employeeMatch, error: employeeMatchError } = await supabase
             .from('employees')
@@ -624,21 +619,13 @@ export const eventsApi = createApi({
             .eq('auth_user_id', user?.id)
             .maybeSingle();
 
-          console.log('[DELETE OFFER] employee by auth_user_id:', employeeMatch);
-          console.log('[DELETE OFFER] employee by auth_user_id error:', employeeMatchError);
-
           const { data: offerBefore, error: offerBeforeError } = await supabase
             .from('offers')
             .select('id, status, created_by')
             .eq('id', offerId)
             .maybeSingle();
 
-          console.log('[DELETE OFFER] offer before delete:', offerBefore);
-          console.log('[DELETE OFFER] offer before delete error:', offerBeforeError);
-
           const { error } = await supabase.from('offers').delete().eq('id', offerId);
-
-          console.log('[DELETE OFFER] delete error:', error);
 
           if (error) {
             console.error('[DELETE OFFER] Supabase delete error:', error);
@@ -651,9 +638,6 @@ export const eventsApi = createApi({
             .eq('id', offerId)
             .maybeSingle();
 
-          console.log('[DELETE OFFER] existing after delete:', existing);
-          console.log('[DELETE OFFER] existing after delete error:', existingError);
-
           if (existingError) {
             console.error('[DELETE OFFER] Verification error:', existingError);
             throw existingError;
@@ -665,7 +649,6 @@ export const eventsApi = createApi({
             );
           }
 
-          console.log('[DELETE OFFER] Successfully deleted offer:', offerId);
           return { data: { success: true } };
         } catch (error: any) {
           console.error('[DELETE OFFER] Final error:', error);

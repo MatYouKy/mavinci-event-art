@@ -1,5 +1,15 @@
 import { InvoiceItem } from '@/app/(crm)/crm/invoices/[id]/page';
 
+export interface SettledInvoicePdfRef {
+  id?: string;
+  invoiceNumber: string;
+  invoiceType: string;
+  issueDate?: string;
+  totalNet: number;
+  totalVat: number;
+  totalGross: number;
+}
+
 interface InvoicePdfData {
   footerNote: string;
   signatureName: string;
@@ -40,14 +50,31 @@ interface InvoicePdfData {
     valueGross: number;
   }>;
   invoice_items?: Array<InvoiceItem>;
+  settledInvoices?: SettledInvoicePdfRef[];
+  settlementSummary?: {
+    invoiceTotalNet: number;
+    invoiceTotalVat: number;
+    invoiceTotalGross: number;
+    settledNet: number;
+    settledVat: number;
+    settledGross: number;
+    remainingNet: number;
+    remainingVat: number;
+    remainingGross: number;
+  };
 }
 
-function getTypeLabel(type: string) {
+function getTypeLabel(type: string, invoiceNumber?: string) {
+  if (type === 'final' || invoiceNumber?.startsWith('FKO/')) {
+    return 'Faktura końcowa';
+  }
+
   const labels: Record<string, string> = {
     vat: 'Faktura VAT',
     proforma: 'Faktura Proforma',
     advance: 'Faktura zaliczkowa',
     corrective: 'Faktura korygująca',
+    final: 'Faktura końcowa',
   };
 
   return labels[type] || 'Faktura VAT';
@@ -91,6 +118,73 @@ const isCash = paymentMethod === 'gotówka' || paymentMethod === 'gotowka' || pa
 
 const label = isCash ? 'Zapłacono:' : 'Do zapłaty:';
 
+const isFinalInvoice =
+  data.invoiceType === 'final' || data.invoiceNumber?.startsWith('FKO/');
+
+  const amountToPay = isFinalInvoice && data.settlementSummary
+  ? data.settlementSummary.remainingGross
+  : data.totalGross;
+
+  const finalSettlementHtml =
+  isFinalInvoice && data.settlementSummary
+    ? `
+      <div class="settlement-box">
+        <div class="settlement-title">Rozliczenie zaliczek</div>
+
+        <table class="settlement-table">
+          <thead>
+            <tr>
+              <th>Opis</th>
+              <th>Netto</th>
+              <th>VAT</th>
+              <th>Brutto</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Wartość faktury końcowej</td>
+              <td class="right">${formatMoney(data.settlementSummary.invoiceTotalNet)}</td>
+              <td class="right">${formatMoney(data.settlementSummary.invoiceTotalVat)}</td>
+              <td class="right strong">${formatMoney(data.settlementSummary.invoiceTotalGross)}</td>
+            </tr>
+            <tr>
+              <td>Rozliczone zaliczki</td>
+              <td class="right">${formatMoney(data.settlementSummary.settledNet)}</td>
+              <td class="right">${formatMoney(data.settlementSummary.settledVat)}</td>
+              <td class="right strong">${formatMoney(data.settlementSummary.settledGross)}</td>
+            </tr>
+            <tr>
+              <td class="strong">Pozostało do zapłaty</td>
+              <td class="right strong">${formatMoney(data.settlementSummary.remainingNet)}</td>
+              <td class="right strong">${formatMoney(data.settlementSummary.remainingVat)}</td>
+              <td class="right strong">${formatMoney(data.settlementSummary.remainingGross)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    `
+    : '';
+
+    const settledInvoicesHtml =
+  isFinalInvoice && data.settledInvoices?.length
+    ? `
+      <div class="advance-list">
+        <div class="settlement-title">Rozliczane faktury zaliczkowe</div>
+        ${data.settledInvoices
+          .map(
+            (inv) => `
+              <div class="advance-row">
+                ${esc(inv.invoiceNumber)}
+                ${inv.issueDate ? ` z dnia ${esc(formatDate(inv.issueDate))}` : ''}
+                — ${formatMoney(inv.totalGross)} PLN brutto
+              </div>
+            `,
+          )
+          .join('')}
+      </div>
+    `
+    : '';
+
   const rows = invoiceItems.length
   ? invoiceItems
       .map(
@@ -120,7 +214,7 @@ const label = isCash ? 'Zapłacono:' : 'Do zapłaty:';
 
 <head>
   <meta charset="UTF-8" />
-  <title>${esc(getTypeLabel(data.invoiceType))} ${esc(data.invoiceNumber)}</title>
+    <title>${esc(getTypeLabel(data.invoiceType, data.invoiceNumber))} ${esc(data.invoiceNumber)}</title>
      <style>
     @page {
       size: A4;
@@ -330,6 +424,41 @@ const label = isCash ? 'Zapłacono:' : 'Do zapłaty:';
       color: #999;
       padding-top: 12px;
     }
+
+    .settlement-box {
+  margin-top: 16px;
+  }
+
+  .settlement-title {
+    font-size: 12px;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+
+  .settlement-table th,
+  .settlement-table td {
+    font-size: 10.5px;
+    padding: 5px 7px;
+  }
+
+  .settlement-table th:first-child,
+  .settlement-table td:first-child {
+    width: 46%;
+  }
+      .advance-list {
+    margin-top: 14px;
+    font-size: 11px;
+  }
+
+  .advance-row {
+    border: 1px solid #d1d5db;
+    border-bottom: 0;
+    padding: 5px 7px;
+  }
+
+  .advance-row:last-child {
+    border-bottom: 1px solid #d1d5db;
+  }
   </style>
 </head>
 
@@ -364,7 +493,7 @@ const label = isCash ? 'Zapłacono:' : 'Do zapłaty:';
   </div>
 
   <div class="title">
-    ${esc(getTypeLabel(data.invoiceType))} ${esc(data.invoiceNumber)}
+  ${esc(getTypeLabel(data.invoiceType, data.invoiceNumber))} ${esc(data.invoiceNumber)}
   </div>
 
   <table>
@@ -392,6 +521,10 @@ const label = isCash ? 'Zapłacono:' : 'Do zapłaty:';
       </tr>
     </tbody>
   </table>
+    </table>
+
+  ${settledInvoicesHtml}
+  ${finalSettlementHtml}
 
 <div class="summary">
   <div class="summary-left">
@@ -418,7 +551,7 @@ const label = isCash ? 'Zapłacono:' : 'Do zapłaty:';
   <div class="summary-right">
     <div>
       <span class="meta-label">${esc(label)}</span>
-      <span class="amount">${formatMoney(data.totalGross)} PLN</span>
+      <span class="amount">${formatMoney(amountToPay)} PLN</span>
     </div>
   </div>
 </div>

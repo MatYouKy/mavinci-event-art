@@ -57,7 +57,7 @@ interface Invoice {
   ksef_status: string;
   id: string;
   invoice_number: string;
-  invoice_type: 'vat' | 'proforma' | 'advance' | 'corrective';
+  invoice_type: 'vat' | 'proforma' | 'advance' | 'corrective' | 'final';
   status: 'draft' | 'issued' | 'sent' | 'paid' | 'overdue' | 'cancelled';
   issue_date: string;
   sale_date: string;

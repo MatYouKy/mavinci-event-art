@@ -30,6 +30,12 @@ import { formatNip } from '@/components/crm/contacts/organization/organizationFo
 
 const cleanNip = (value: string) => value.replace(/\D/g, '');
 
+const normalizePhone = (value?: string | null) => (value || '').replace(/\D/g, '');
+
+const normalizeEmail = (value?: string | null) => (value || '').trim().toLowerCase();
+
+const hasValue = (v?: string | null) => !!v && v.trim().length > 0;
+
 type ContactType = 'organization' | 'contact' | 'subcontractor' | 'individual';
 type BusinessType = 'company' | 'hotel' | 'restaurant' | 'venue' | 'freelancer' | 'other';
 
@@ -296,98 +302,159 @@ export default function NewContactPage() {
     }
   };
 
+  const findExistingContact = async () => {
+    const email = normalizeEmail(newContact.email || formData.email);
+    const phone = normalizePhone(newContact.phone || formData.phone);
+    const mobile = normalizePhone(newContact.mobile);
+    const businessPhone = normalizePhone(newContact.businessPhone);
+    const nip = cleanNip(newContact.nip || formData.nip);
+
+    const orConditions: string[] = [];
+
+    if (email) {
+      orConditions.push(`email.ilike.${email}`);
+    }
+
+    if (phone) {
+      orConditions.push(`phone.eq.${phone}`);
+      orConditions.push(`mobile.eq.${phone}`);
+      orConditions.push(`business_phone.eq.${phone}`);
+    }
+
+    if (mobile) {
+      orConditions.push(`phone.eq.${mobile}`);
+      orConditions.push(`mobile.eq.${mobile}`);
+      orConditions.push(`business_phone.eq.${mobile}`);
+    }
+
+    if (businessPhone) {
+      orConditions.push(`phone.eq.${businessPhone}`);
+      orConditions.push(`mobile.eq.${businessPhone}`);
+      orConditions.push(`business_phone.eq.${businessPhone}`);
+    }
+
+    if (nip) {
+      orConditions.push(`nip.eq.${nip}`);
+    }
+
+    if (!orConditions.length) return null;
+
+    const { data, error } = await supabase
+      .from('contacts')
+      .select('id, full_name, first_name, last_name, email, phone, mobile, business_phone, nip')
+      .or(orConditions.join(','))
+      .limit(1)
+      .maybeSingle();
+
+    if (error) throw error;
+
+    return data;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
+  
     if (!contactType) {
       showSnackbar('Wybierz typ kontaktu', 'error');
       return;
     }
-
+  
     try {
       setLoading(true);
-
+  
       if (contactType === 'organization' || contactType === 'subcontractor') {
         const isValid = await validateOrganizationForm(
           formData as unknown as OrganizationFormValues,
         );
-
+  
         if (!isValid) {
           showSnackbar('Popraw błędy formularza', 'error');
           setLoading(false);
           return;
         }
       }
-
+  
       if (contactType === 'contact' || contactType === 'individual') {
         if (!newContact.firstName.trim() || !newContact.lastName.trim()) {
           showSnackbar('Wprowadź dane osoby kontaktowej', 'error');
           setLoading(false);
           return;
         }
-      }
-
-      if (contactType === 'contact' || contactType === 'individual') {
+  
+        const existingContact = await findExistingContact();
+  
+        if (existingContact) {
+          showSnackbar(
+            `Taki kontakt prawdopodobnie już istnieje: ${
+              existingContact.full_name ||
+              `${existingContact.first_name} ${existingContact.last_name}`
+            }`,
+            'error',
+          );
+          setLoading(false);
+          return;
+        }
+  
         const contactData: any = {
           contact_type: contactType,
           first_name: newContact.firstName.trim(),
           last_name: newContact.lastName.trim(),
-          email: newContact.email?.trim() || formData.email?.trim() || null,
-          phone: newContact.phone?.trim() || formData.phone?.trim() || null,
-          mobile: newContact.mobile?.trim() || null,
+          email: normalizeEmail(newContact.email || formData.email) || null,
+          phone: normalizePhone(newContact.phone || formData.phone) || null,
+          mobile: normalizePhone(newContact.mobile) || null,
           city: formData.city?.trim() || null,
           address: formData.address?.trim() || null,
           postal_code: formData.postalCode?.trim() || null,
           notes: formData.notes?.trim() || null,
           status: 'active' as const,
         };
-
+  
         if (contactType === 'contact') {
-          contactData.nip = newContact.nip?.trim() || null;
+          contactData.nip = cleanNip(newContact.nip) || null;
           contactData.position = newContact.position?.trim() || null;
-          contactData.business_phone = newContact.businessPhone?.trim() || null;
+          contactData.business_phone = normalizePhone(newContact.businessPhone) || null;
         }
-
+  
         if (contactType === 'individual') {
           contactData.pesel = newContact.pesel?.trim() || null;
           contactData.id_number = newContact.idNumber?.trim() || null;
           contactData.event_type = newContact.eventType?.trim() || null;
           contactData.event_details = newContact.eventDetails?.trim() || null;
         }
-
+  
         const { data: contact, error: contactError } = await supabase
           .from('contacts')
           .insert([contactData])
           .select()
           .single();
-
+  
         if (contactError) throw contactError;
-
+  
         showSnackbar(
           contactType === 'contact'
             ? 'Kontakt dodany pomyślnie'
             : 'Osoba prywatna dodana pomyślnie',
           'success',
         );
-
+  
         router.push(`/crm/contacts/${contact.id}`);
         return;
       }
-
+  
       const orgData: any = {
         organization_type: contactType === 'subcontractor' ? 'subcontractor' : 'client',
         business_type: formData.businessType,
         name: formData.name.trim(),
         alias: formData.alias.trim() || null,
-        nip: formData.nip.replace(/\D/g, '') || null,
+        nip: cleanNip(formData.nip) || null,
         regon: formData.regon.replace(/\D/g, '') || null,
         krs: formData.krs.replace(/\D/g, '') || null,
         legal_form: formData.legalForm || null,
         address: formData.address.trim() || null,
         city: formData.city.trim() || null,
         postal_code: formData.postalCode.trim() || null,
-        email: formData.email.trim() || null,
-        phone: formData.phone.trim() || null,
+        email: normalizeEmail(formData.email) || null,
+        phone: normalizePhone(formData.phone) || null,
         website: formData.website.trim() || null,
         location_id: formData.location_id || null,
         google_maps_url: formData.googleMapsUrl.trim() || null,
@@ -402,36 +469,36 @@ export default function NewContactPage() {
             ? parseFloat(formData.hourlyRate)
             : null,
       };
-
+  
       const { data: org, error: orgError } = await supabase
         .from('organizations')
         .insert([orgData])
         .select()
         .single();
-
+  
       if (orgError) throw orgError;
-
+  
       if (selectedContactIds.length > 0) {
         const contactOrgLinks = selectedContactIds.map((contactId) => ({
           contact_id: contactId,
           organization_id: org.id,
           is_current: true,
         }));
-
+  
         const { error: linkError } = await supabase
           .from('contact_organizations')
           .insert(contactOrgLinks);
-
+  
         if (linkError) throw linkError;
       }
-
+  
       showSnackbar(
         contactType === 'organization'
           ? 'Organizacja dodana pomyślnie'
           : 'Podwykonawca dodany pomyślnie',
         'success',
       );
-
+  
       router.push(`/crm/contacts/${org.id}`);
     } catch (error: any) {
       console.error('Error creating contact:', error);
@@ -1133,21 +1200,38 @@ export default function NewContactPage() {
                         />
                       </div>
                       {contactType === 'contact' && (
-                        <div>
-                          <label className="mb-2 block text-sm font-medium text-gray-300">
-                            Telefon firmowy{' '}
-                            <span className="text-xs text-gray-500">(opcjonalne)</span>
-                          </label>
-                          <input
-                            type="tel"
-                            value={newContact.businessPhone}
-                            onChange={(e) =>
-                              setNewContact({ ...newContact, businessPhone: e.target.value })
-                            }
-                            className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
-                            placeholder="22 123 4567"
-                          />
-                        </div>
+                        <>
+                          <div>
+                            <label className="mb-2 block text-sm font-medium text-gray-300">
+                              Telefon firmowy{' '}
+                              <span className="text-xs text-gray-500">(opcjonalne)</span>
+                            </label>
+                            <input
+                              type="tel"
+                              value={newContact.businessPhone}
+                              onChange={(e) =>
+                                setNewContact({ ...newContact, businessPhone: e.target.value })
+                              }
+                              className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                              placeholder="22 123 4567"
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-2 block text-sm font-medium text-gray-300">
+                              Pozycja w organizacja
+                              <span className="text-xs text-gray-500">(opcjonalne)</span>
+                            </label>
+                            <input
+                              type="tel"
+                              value={newContact.position}
+                              onChange={(e) =>
+                                setNewContact({ ...newContact, position: e.target.value })
+                              }
+                              className="w-full rounded-lg border border-gray-700 bg-[#0f1119] px-4 py-2 text-white focus:border-[#d3bb73] focus:outline-none"
+                              placeholder="np. Kierownik sprzedaży"
+                            />
+                          </div>
+                        </>
                       )}
                     </div>
                   </div>
