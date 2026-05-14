@@ -423,6 +423,12 @@ function CalculationEditor({
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [showSendEmail, setShowSendEmail] = useState(false);
   const [company, setCompany] = useState<any>(null);
+  const [defaultEmail, setDefaultEmail] = useState<string | null>(null);
+  const [primaryContact, setPrimaryContact] = useState<{
+    id: string;
+    name: string;
+    email: string | null;
+  } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -436,7 +442,7 @@ function CalculationEditor({
         .order('position'),
       supabase
         .from('events')
-        .select('name, event_date, my_company_id')
+        .select('name, event_date, my_company_id, contact_person_id')
         .eq('id', eventId)
         .maybeSingle(),
     ]);
@@ -486,6 +492,33 @@ function CalculationEditor({
         setCompany({ ...comp, logo_url: resolvedLogo });
       } else {
         setCompany(null);
+      }
+
+      if (ev.contact_person_id) {
+        const { data: contact } = await supabase
+          .from('contacts')
+          .select('id, first_name, last_name, full_name, email')
+          .eq('id', ev.contact_person_id)
+          .maybeSingle();
+
+        if (contact) {
+          const contactName =
+            contact.full_name || `${contact.first_name ?? ''} ${contact.last_name ?? ''}`.trim();
+
+          setPrimaryContact({
+            id: contact.id,
+            name: contactName || 'Kontakt bez nazwy',
+            email: contact.email ?? null,
+          });
+
+          setDefaultEmail(contact.email ?? '');
+        } else {
+          setPrimaryContact(null);
+          setDefaultEmail('');
+        }
+      } else {
+        setPrimaryContact(null);
+        setDefaultEmail('');
       }
     }
     setLoading(false);
@@ -870,6 +903,9 @@ function CalculationEditor({
         <SendCalculationEmailModal
           calculationId={calculationId}
           eventId={eventId}
+          contactPerson={primaryContact}
+          defaultEmail={defaultEmail ?? ''}
+          recipientName={primaryContact?.name ?? ''}
           calculationName={name}
           eventName={eventName}
           onClose={() => setShowSendEmail(false)}
@@ -921,7 +957,7 @@ function CategorySection({
     'w-full min-w-[80px] max-w-[120px] rounded-md border border-[#d3bb73]/20 bg-[#0a0d1a] px-2 py-1 text-right tabular-nums text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none';
 
   return (
-    <div className="overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
+    <div className="relative rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
       <div className="flex items-center justify-between border-b border-[#d3bb73]/10 bg-[#0a0d1a] px-4 py-3">
         <div className="flex items-center gap-2 text-sm font-medium text-[#e5e4e2]">
           <Icon className="h-4 w-4 text-[#d3bb73]" />
@@ -981,13 +1017,12 @@ function CategorySection({
                       <td className="px-3 py-2 text-right text-[#e5e4e2]">{fmt(rowNet(it))}</td>
                       <td className="px-3 py-2 text-right text-[#d3bb73]">{fmt(rowGross(it))}</td>
                       <td
-                        className="px-3 py-2 text-right"
+                        className="relative z-20 px-3 py-2 text-right"
                         onClick={(e) => e.stopPropagation()}
-                        onMouseDown={(e) => e.stopPropagation()}
                       >
                         <ResponsiveActionBar
                           disabledBackground
-                          mobileBreakpoint={4000}
+                          mobileBreakpoint={2000}
                           actions={[
                             {
                               label: 'Edytuj',

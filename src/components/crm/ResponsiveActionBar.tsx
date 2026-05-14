@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { MoreVertical } from 'lucide-react';
+import { PortalDropdownMenu } from '@/components/UI/PortalDropdownMenu/PortalDropdownMenu';
 
 export interface Action {
   label: string;
@@ -25,9 +26,19 @@ export default function ResponsiveActionBar({
 }: ResponsiveActionBarProps) {
   const [isMobile, setIsMobile] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
-  const [openUpward, setOpenUpward] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{
+    top: number;
+    left: number;
+    width?: number;
+  } | null>(null);
+
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const portalMenuRef = useRef<HTMLDivElement | null>(null);
+
+  const filteredActions = useMemo(
+    () => actions.filter((action) => action.show !== false),
+    [actions],
+  );
 
   useEffect(() => {
     const checkMobile = () => {
@@ -41,36 +52,43 @@ export default function ResponsiveActionBar({
   }, [mobileBreakpoint]);
 
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setShowMenu(false);
+    if (!showMenu) return;
+
+    const handleScroll = (event: Event) => {
+      const target = event.target as Node | null;
+
+      if (target && portalMenuRef.current && portalMenuRef.current.contains(target)) {
+        return;
       }
+
+      setShowMenu(false);
     };
 
-    if (showMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('scroll', handleScroll, true);
 
-      // Sprawdź czy menu powinno otworzyć się do góry
-      if (buttonRef.current) {
-        const buttonRect = buttonRef.current.getBoundingClientRect();
-        const spaceBelow = window.innerHeight - buttonRect.bottom;
-        const menuHeight = 200; // Szacowana wysokość menu
-
-        setOpenUpward(spaceBelow < menuHeight && buttonRect.top > menuHeight);
-      }
-    }
-
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    return () => {
+      window.removeEventListener('scroll', handleScroll, true);
+    };
   }, [showMenu]);
 
-  const filteredActions = actions.filter(action => action.show !== false);
+  useEffect(() => {
+    if (!showMenu) return;
 
-  if (filteredActions.length === 0) {
-    return null;
-  }
+    const close = () => setShowMenu(false);
+
+    window.addEventListener('resize', close);
+    document.addEventListener('mousedown', close);
+
+    return () => {
+      window.removeEventListener('resize', close);
+      document.removeEventListener('mousedown', close);
+    };
+  }, [showMenu]);
+
+  if (filteredActions.length === 0) return null;
 
   const getButtonClasses = (variant?: string) => {
-    const baseClasses = 'flex items-center gap-2 px-4 py-2 rounded-lg transition-colors';
+    const baseClasses = 'flex items-center gap-2 rounded-lg px-4 py-2 transition-colors';
 
     switch (variant) {
       case 'primary':
@@ -83,11 +101,14 @@ export default function ResponsiveActionBar({
   };
 
   const getMenuItemClasses = (variant?: string) => {
-    const baseClasses = 'w-full flex items-center gap-3 px-4 py-3 text-left transition-colors';
+    const baseClasses =
+      'flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition-colors';
 
     switch (variant) {
       case 'danger':
         return `${baseClasses} text-red-400 hover:bg-red-500/10`;
+      case 'primary':
+        return `${baseClasses} text-[#d3bb73] hover:bg-[#d3bb73]/10`;
       default:
         return `${baseClasses} text-[#e5e4e2] hover:bg-[#d3bb73]/10`;
     }
@@ -95,49 +116,80 @@ export default function ResponsiveActionBar({
 
   const shouldUseDropdown = isMobile || filteredActions.length > 4;
 
+  const openMenu = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const menuWidth = 224;
+    const menuHeight = Math.min(filteredActions.length * 44 + 8, 260);
+
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const openUpward = spaceBelow < menuHeight && rect.top > menuHeight;
+
+    setPosition({
+      top: openUpward ? rect.top - menuHeight - 8 : rect.bottom + 8,
+      left: Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8)),
+      width: menuWidth,
+    });
+
+    setShowMenu((prev) => !prev);
+  };
+
   if (shouldUseDropdown) {
     return (
-      <div className="relative" ref={menuRef}>
+      <>
         <button
           ref={buttonRef}
-          onClick={() => setShowMenu(!showMenu)}
+          type="button"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onClick={openMenu}
           className={
             disabledBackground
-              ? "flex items-center justify-center w-10 h-10 rounded-lg bg-transparent text-[#e5e4e2]/70 hover:text-[#e5e4e2] transition-colors"
-              : "flex items-center justify-center w-10 h-10 bg-[#d3bb73]/10 text-[#d3bb73] rounded-lg hover:bg-[#d3bb73]/20 transition-colors"
+              ? 'flex h-10 w-10 items-center justify-center rounded-lg bg-transparent text-[#e5e4e2]/70 transition-colors hover:text-[#e5e4e2]'
+              : 'flex h-10 w-10 items-center justify-center rounded-lg bg-[#d3bb73]/10 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20'
           }
           aria-label="Akcje"
         >
-          <MoreVertical className="w-5 h-5" />
+          <MoreVertical className="h-5 w-5" />
         </button>
 
-        {showMenu && (
-          <div className={`absolute right-0 w-56 bg-[#1c1f33] border border-[#d3bb73]/20 rounded-xl shadow-xl z-[9999] overflow-hidden ${
-            openUpward ? 'bottom-full mb-2' : 'top-full mt-2'
-          }`}>
-            {filteredActions.map((action, index) => (
-              <button
-                key={index}
-                onClick={() => {
-                  if (!action.disabled) {
+        <PortalDropdownMenu
+          open={showMenu}
+          position={position}
+          className="rounded-xl"
+          content={
+            <div
+              ref={portalMenuRef}
+              className="max-h-[260px] overflow-y-auto"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {filteredActions.map((action, index) => (
+                <button
+                  key={`${action.label}-${index}`}
+                  type="button"
+                  disabled={action.disabled}
+                  onClick={() => {
+                    if (action.disabled) return;
                     action.onClick();
                     setShowMenu(false);
-                  }
-                }}
-                disabled={action.disabled}
-                className={`${getMenuItemClasses(action.variant)} ${action.disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                {action.icon && (
-                  <span className="flex-shrink-0 w-5 h-5">
-                    {action.icon}
-                  </span>
-                )}
-                <span>{action.label}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+                  }}
+                  className={`${getMenuItemClasses(action.variant)} ${
+                    action.disabled ? 'cursor-not-allowed opacity-50' : ''
+                  }`}
+                >
+                  {action.icon && <span className="h-5 w-5 flex-shrink-0">{action.icon}</span>}
+                  <span>{action.label}</span>
+                </button>
+              ))}
+            </div>
+          }
+        />
+      </>
     );
   }
 
@@ -145,10 +197,16 @@ export default function ResponsiveActionBar({
     <div className="flex items-center gap-3">
       {filteredActions.map((action, index) => (
         <button
-          key={index}
-          onClick={action.onClick}
+          key={`${action.label}-${index}`}
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            action.onClick();
+          }}
           disabled={action.disabled}
-          className={`${getButtonClasses(action.variant)} ${action.disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+          className={`${getButtonClasses(action.variant)} ${
+            action.disabled ? 'cursor-not-allowed opacity-50' : ''
+          }`}
         >
           {action.icon}
           {action.label}

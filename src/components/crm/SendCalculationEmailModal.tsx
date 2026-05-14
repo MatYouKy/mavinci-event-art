@@ -14,6 +14,11 @@ interface SendCalculationEmailModalProps {
   eventName?: string;
   defaultEmail?: string;
   recipientName?: string;
+  contactPerson?: {
+    id: string;
+    name: string;
+    email: string | null;
+  } | null;
   onClose: () => void;
   onSent?: () => void;
 }
@@ -23,6 +28,15 @@ interface EmailAccount {
   email_address: string;
   from_name: string;
 }
+interface EventAttachment {
+  id: string;
+  name: string;
+  original_name: string;
+  file_path: string;
+  mime_type: string | null;
+  file_size: number | null;
+  created_at: string;
+}
 
 export default function SendCalculationEmailModal({
   calculationId,
@@ -31,6 +45,7 @@ export default function SendCalculationEmailModal({
   eventName = '',
   defaultEmail = '',
   recipientName = '',
+  contactPerson = null,
   onClose,
   onSent,
 }: SendCalculationEmailModalProps) {
@@ -38,6 +53,9 @@ export default function SendCalculationEmailModal({
   const [loading, setLoading] = useState(false);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
+  const [eventFiles, setEventFiles] = useState<EventAttachment[]>([]);
+  const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
+  const [loadingFiles, setLoadingFiles] = useState(false);
   const [formData, setFormData] = useState({
     to: defaultEmail,
     subject: calculationName
@@ -60,15 +78,7 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
   const [companySignatureEnabled, setCompanySignatureEnabled] = useState<boolean>(false);
   const [showPreview, setShowPreview] = useState(false);
   const [previewHtml, setPreviewHtml] = useState('');
-
-  useEffect(() => {
-    fetchEmailAccounts();
-    fetchSignatureAndTemplate();
-    buildCompanySignatureHtml().then((res) => {
-      setCompanySignatureHtml(res.html);
-      setCompanySignatureEnabled(res.enabled);
-    });
-  }, []);
+  const [includeEventFiles, setIncludeEventFiles] = useState(false);
 
   useEffect(() => {
     if (defaultEmail) {
@@ -113,6 +123,37 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
       }
     } catch (error) {
       console.error('Error fetching signature/template:', error);
+    }
+  };
+
+  const fetchEventFiles = async () => {
+    try {
+      setLoadingFiles(true);
+
+      const { data, error } = await supabase
+        .from('event_files')
+        .select('id, name, original_name, file_path, file_size, mime_type, created_at')
+        .eq('event_id', eventId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      setEventFiles(
+        (data || []).map((file) => ({
+          id: file.id,
+          name: file.name || file.original_name,
+          original_name: file.original_name,
+          file_path: file.file_path,
+          file_size: file.file_size,
+          mime_type: file.mime_type,
+          created_at: file.created_at,
+        })),
+      );
+    } catch (error) {
+      console.error('Error fetching event files:', error);
+      showSnackbar('Nie udało się pobrać plików wydarzenia', 'error');
+    } finally {
+      setLoadingFiles(false);
     }
   };
 
@@ -217,8 +258,7 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
     );
 
     const filename =
-      data.generated_pdf_path.split('/').pop() ||
-      `Kalkulacja_${data.name || calculationId}.pdf`;
+      data.generated_pdf_path.split('/').pop() || `Kalkulacja_${data.name || calculationId}.pdf`;
 
     return { base64, filename };
   };
@@ -257,6 +297,34 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
     }
   };
 
+  const fetchEventFileAsAttachment = async (file: EventAttachment) => {
+    const { data: signedData, error } = await supabase.storage
+      .from('event-files')
+      .createSignedUrl(file.file_path, 300);
+
+    if (error || !signedData?.signedUrl) {
+      throw new Error(`Nie udało się pobrać pliku: ${file.name}`);
+    }
+
+    const resp = await fetch(signedData.signedUrl);
+    if (!resp.ok) {
+      throw new Error(`Błąd pobierania pliku: ${file.name}`);
+    }
+
+    const blob = await resp.blob();
+    const buffer = await blob.arrayBuffer();
+
+    const base64 = btoa(
+      new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), ''),
+    );
+
+    return {
+      filename: file.name,
+      content: base64,
+      contentType: file.mime_type || blob.type || 'application/octet-stream',
+    };
+  };
+
   const handleSend = async () => {
     if (!formData.to.trim()) {
       showSnackbar('Wprowadź adres email odbiorcy', 'error');
@@ -284,15 +352,16 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
       const {
         data: { session },
       } = await supabase.auth.getSession();
+
       if (!session) {
         showSnackbar('Brak sesji użytkownika', 'error');
-        setLoading(false);
         return;
       }
 
       showSnackbar('Pobieram PDF kalkulacji...', 'info');
 
       const pdfData = await fetchStoredCalculationPDF();
+
       const attachments = [
         {
           filename: pdfData.filename,
@@ -300,7 +369,19 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
           contentType: 'application/pdf',
         },
       ];
-      showSnackbar('PDF gotowy, wysyłam email...', 'info');
+
+      const selectedFiles = eventFiles.filter((file) => selectedFileIds.includes(file.id));
+
+      if (selectedFiles.length > 0) {
+        showSnackbar(`Pobieram dodatkowe załączniki (${selectedFiles.length})...`, 'info');
+
+        for (const file of selectedFiles) {
+          const attachment = await fetchEventFileAsAttachment(file);
+          attachments.push(attachment);
+        }
+      }
+
+      showSnackbar('Załączniki gotowe, wysyłam email...', 'info');
 
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-email`,
@@ -312,8 +393,8 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
           },
           body: JSON.stringify({
             emailAccountId: formData.fromAccountId,
-            to: formData.to,
-            subject: formData.subject,
+            to: formData.to.trim(),
+            subject: formData.subject.trim(),
             body: previewHtml,
             attachments,
           }),
@@ -321,9 +402,10 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
       );
 
       if (!response.ok) {
-        const error = await response.json();
+        const error = await response.json().catch(() => null);
         console.error('[SendCalculation] Error response:', error);
-        throw new Error(error.error || error.message || 'Błąd podczas wysyłania email');
+
+        throw new Error(error?.error || error?.message || 'Błąd podczas wysyłania email');
       }
 
       showSnackbar('Kalkulacja wysłana przez email', 'success');
@@ -336,6 +418,25 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!includeEventFiles) {
+      setSelectedFileIds([]);
+      return;
+    }
+
+    fetchEventFiles();
+  }, [includeEventFiles, eventId]);
+
+  useEffect(() => {
+    fetchEmailAccounts();
+    fetchSignatureAndTemplate();
+
+    buildCompanySignatureHtml().then((res) => {
+      setCompanySignatureHtml(res.html);
+      setCompanySignatureEnabled(res.enabled);
+    });
+  }, []);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -419,6 +520,11 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
               <div>
                 <label className="mb-2 block text-sm text-[#e5e4e2]/60">
                   Do (email odbiorcy) <span className="text-red-400">*</span>
+                  {contactPerson?.email ? (
+                    <span className="mt-1 text-xs text-[#e5e4e2]/40 ml-3">Kontakt główny: {contactPerson.name}</span>
+                  ) : recipientName ? (
+                    <span className="mt-1 text-xs text-[#e5e4e2]/40 ml-3">Kontakt główny: {recipientName}</span>
+                  ) : null}
                 </label>
                 <input
                   type="email"
@@ -428,9 +534,6 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
                   placeholder="klient@example.com"
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
                 />
-                {recipientName && (
-                  <p className="mt-1 text-xs text-[#e5e4e2]/40">Odbiorca: {recipientName}</p>
-                )}
               </div>
 
               <div>
@@ -460,6 +563,101 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
                   Stopka zostanie dodana automatycznie
                 </p>
               </div>
+              <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4">
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={includeEventFiles}
+                    onChange={(e) => setIncludeEventFiles(e.target.checked)}
+                    disabled={loading}
+                    className="mt-1 h-4 w-4 rounded border-[#d3bb73]/40 bg-[#0a0d1a]"
+                  />
+
+                  <div>
+                    <p className="text-sm font-medium text-[#e5e4e2]">
+                      Dołącz dodatkowe pliki z eventu
+                    </p>
+                    <p className="mt-1 text-xs text-[#e5e4e2]/50">
+                      Zobaczysz tylko pliki, do których masz dostęp zgodnie z uprawnieniami.
+                    </p>
+                  </div>
+                </label>
+              </div>
+              {includeEventFiles && (
+                <div className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-[#e5e4e2]">
+                        Dodatkowe załączniki z eventu
+                      </p>
+                      <p className="text-xs text-[#e5e4e2]/50">
+                        Wybierz pliki, które chcesz dołączyć do wiadomości
+                      </p>
+                    </div>
+
+                    {eventFiles.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (selectedFileIds.length === eventFiles.length) {
+                            setSelectedFileIds([]);
+                          } else {
+                            setSelectedFileIds(eventFiles.map((f) => f.id));
+                          }
+                        }}
+                        className="text-xs text-[#d3bb73] hover:underline"
+                      >
+                        {selectedFileIds.length === eventFiles.length
+                          ? 'Odznacz wszystkie'
+                          : 'Zaznacz wszystkie'}
+                      </button>
+                    )}
+                  </div>
+
+                  {loadingFiles ? (
+                    <div className="py-4 text-sm text-[#e5e4e2]/50">Ładowanie plików...</div>
+                  ) : eventFiles.length === 0 ? (
+                    <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-3 py-3 text-sm text-[#e5e4e2]/50">
+                      Brak dostępnych plików lub nie masz uprawnień do ich odczytu.
+                    </div>
+                  ) : (
+                    <div className="max-h-48 space-y-2 overflow-y-auto">
+                      {eventFiles.map((file) => {
+                        const checked = selectedFileIds.includes(file.id);
+
+                        return (
+                          <label
+                            key={file.id}
+                            className="flex cursor-pointer items-center gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-3 py-2 hover:border-[#d3bb73]/30"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => {
+                                setSelectedFileIds((prev) =>
+                                  prev.includes(file.id)
+                                    ? prev.filter((id) => id !== file.id)
+                                    : [...prev, file.id],
+                                );
+                              }}
+                              className="h-4 w-4 rounded border-[#d3bb73]/40 bg-[#0a0d1a]"
+                            />
+
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm text-[#e5e4e2]">{file.name}</p>
+                              {file.file_size && (
+                                <p className="text-xs text-[#e5e4e2]/40">
+                                  {(file.file_size / 1024 / 1024).toFixed(2)} MB
+                                </p>
+                              )}
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3">
                 <p className="text-xs text-amber-400">
