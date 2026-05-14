@@ -19,6 +19,7 @@ import {
   FileText,
   Mail,
   Loader2,
+  Copy,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -27,7 +28,13 @@ import { usePortalDropdown } from '@/hooks/usePortalDropdown';
 import { PortalDropdownMenu } from '@/components/UI/PortalDropdownMenu/PortalDropdownMenu';
 import SendCalculationEmailModal from '@/components/crm/SendCalculationEmailModal';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
-import { DEFAULT_VAT, fmt, round2, rowGross, rowNet } from '@/components/crm/events/helpers/calculations/calculations.helper';
+import {
+  DEFAULT_VAT,
+  fmt,
+  round2,
+  rowGross,
+  rowNet,
+} from '@/components/crm/events/helpers/calculations/calculations.helper';
 import { buildCalculationHtml } from '@/components/crm/events/pdf/buildCalculationHtml';
 
 export type Category = 'equipment' | 'staff' | 'transport' | 'other';
@@ -92,7 +99,6 @@ const CATEGORY_META: Record<
   other: { label: 'Pozostałe', icon: MoreHorizontal },
 };
 
-
 // const rowTotal = rowNet;
 
 export default function EventCalculationsTab({ eventId }: Props) {
@@ -102,41 +108,50 @@ export default function EventCalculationsTab({ eventId }: Props) {
   const [list, setList] = useState<CalculationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
 
-  const fetchList = useCallback(async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from('event_calculations')
-      .select('*, event_calculation_items(quantity, unit_price, days)')
-      .eq('event_id', eventId)
-      .order('created_at', { ascending: false });
-    if (error) {
-      console.error(error);
-      showSnackbar('Nie udało się pobrać kalkulacji', 'error');
-      setLoading(false);
-      return;
-    }
-    const rows: CalculationRow[] = (data ?? []).map((r: any) => {
-      const items = r.event_calculation_items ?? [];
-      const total = items.reduce(
-        (s: number, it: any) =>
-          s + Number(it.quantity || 0) * Number(it.unit_price || 0) * Number(it.days || 1),
-        0,
-      );
-      return {
-        id: r.id,
-        event_id: r.event_id,
-        name: r.name,
-        notes: r.notes,
-        created_at: r.created_at,
-        updated_at: r.updated_at,
-        items_count: items.length,
-        total: round2(total),
-      };
-    });
-    setList(rows);
-    setLoading(false);
-  }, [eventId, showSnackbar]);
+  const fetchList = useCallback(
+    async (showLoader = true) => {
+      if (showLoader) setLoading(true);
+
+      const { data, error } = await supabase
+        .from('event_calculations')
+        .select('*, event_calculation_items(quantity, unit_price, days)')
+        .eq('event_id', eventId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error(error);
+        showSnackbar('Nie udało się pobrać kalkulacji', 'error');
+        if (showLoader) setLoading(false);
+        return;
+      }
+
+      const rows: CalculationRow[] = (data ?? []).map((r: any) => {
+        const items = r.event_calculation_items ?? [];
+        const total = items.reduce(
+          (s: number, it: any) =>
+            s + Number(it.quantity || 0) * Number(it.unit_price || 0) * Number(it.days || 1),
+          0,
+        );
+
+        return {
+          id: r.id,
+          event_id: r.event_id,
+          name: r.name,
+          notes: r.notes,
+          created_at: r.created_at,
+          updated_at: r.updated_at,
+          items_count: items.length,
+          total: round2(total),
+        };
+      });
+
+      setList(rows);
+      if (showLoader) setLoading(false);
+    },
+    [eventId, showSnackbar],
+  );
 
   useEffect(() => {
     fetchList();
@@ -165,11 +180,102 @@ export default function EventCalculationsTab({ eventId }: Props) {
     }).then(async (confirmed: boolean | void) => {
       if (confirmed) {
         await supabase.from('event_calculations').delete().eq('id', id);
-        fetchList();
+        setList((prev) => prev.filter((item) => item.id !== id));
       } else {
         showSnackbar('Anulowano usuwanie kalkulacji', 'warning');
       }
     });
+  };
+
+  const handleDuplicate = async (id: string) => {
+    try {
+      setDuplicatingId(id);
+
+      const { data: calc, error: calcError } = await supabase
+        .from('event_calculations')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (calcError) throw calcError;
+
+      if (!calc) {
+        showSnackbar('Nie znaleziono kalkulacji do duplikowania', 'error');
+        return;
+      }
+
+      const { data: calcItems, error: itemsError } = await supabase
+        .from('event_calculation_items')
+        .select('*')
+        .eq('calculation_id', id)
+        .order('position');
+
+      if (itemsError) throw itemsError;
+
+      const { data: newCalc, error: insertCalcError } = await supabase
+        .from('event_calculations')
+        .insert({
+          event_id: calc.event_id,
+          name: `${calc.name} — kopia`,
+          notes: calc.notes,
+        })
+        .select()
+        .single();
+
+      if (insertCalcError) throw insertCalcError;
+
+      if (calcItems?.length) {
+        const payload = calcItems.map((item: any, index: number) => ({
+          calculation_id: newCalc.id,
+          category: item.category,
+          name: item.name,
+          description: item.description,
+          unit: item.unit,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          days: item.days,
+          source: item.source,
+          source_ref: item.source_ref,
+          position: index,
+          vat_rate: item.vat_rate ?? DEFAULT_VAT,
+        }));
+
+        const { error: insertItemsError } = await supabase
+          .from('event_calculation_items')
+          .insert(payload);
+
+        if (insertItemsError) throw insertItemsError;
+      }
+
+      const duplicatedTotal =
+        calcItems?.reduce(
+          (sum: number, item: any) =>
+            sum +
+            Number(item.quantity || 0) * Number(item.unit_price || 0) * Number(item.days || 1),
+          0,
+        ) ?? 0;
+
+      setList((prev) => [
+        {
+          id: newCalc.id,
+          event_id: newCalc.event_id,
+          name: newCalc.name,
+          notes: newCalc.notes,
+          created_at: newCalc.created_at,
+          updated_at: newCalc.updated_at,
+          items_count: calcItems?.length ?? 0,
+          total: round2(duplicatedTotal),
+        },
+        ...prev,
+      ]);
+
+      showSnackbar('Kalkulacja została zduplikowana', 'success');
+    } catch (error: any) {
+      console.error('Error duplicating calculation:', error);
+      showSnackbar(error.message || 'Nie udało się zduplikować kalkulacji', 'error');
+    } finally {
+      setDuplicatingId(null);
+    }
   };
 
   if (activeId) {
@@ -219,7 +325,7 @@ export default function EventCalculationsTab({ eventId }: Props) {
           </p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
           <table className="w-full text-sm">
             <thead className="bg-[#0a0d1a] text-left text-xs uppercase tracking-wider text-[#e5e4e2]/60">
               <tr>
@@ -243,28 +349,42 @@ export default function EventCalculationsTab({ eventId }: Props) {
                   <td className="px-4 py-3 text-[#e5e4e2]/60">
                     {new Date(c.updated_at).toLocaleString('pl-PL')}
                   </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="inline-flex gap-2">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveId(c.id);
-                        }}
-                        className="rounded-lg border border-[#d3bb73]/30 p-1.5 text-[#d3bb73] hover:bg-[#d3bb73]/10"
-                        title="Edytuj"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDelete(c.id);
-                        }}
-                        className="rounded-lg border border-red-500/30 p-1.5 text-red-400 hover:bg-red-500/10"
-                        title="Usuń"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                  <td
+                    className="px-4 py-3"
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                  >
+                    <div className="flex justify-end">
+                      <ResponsiveActionBar
+                        disabledBackground
+                        mobileBreakpoint={4000}
+                        actions={[
+                          {
+                            label: 'Edytuj',
+                            onClick: () => setActiveId(c.id),
+                            icon: <Pencil className="h-4 w-4" />,
+                            variant: 'default',
+                          },
+                          {
+                            label: duplicatingId === c.id ? 'Duplikuję...' : 'Duplikuj',
+                            onClick: () => handleDuplicate(c.id),
+                            disabled: duplicatingId === c.id,
+                            icon:
+                              duplicatingId === c.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Copy className="h-4 w-4" />
+                              ),
+                            variant: 'default',
+                          },
+                          {
+                            label: 'Usuń',
+                            onClick: () => handleDelete(c.id),
+                            icon: <Trash2 className="h-4 w-4" />,
+                            variant: 'danger',
+                          },
+                        ]}
+                      />
                     </div>
                   </td>
                 </tr>
@@ -860,23 +980,29 @@ function CategorySection({
                       <td className="px-3 py-2 text-[#e5e4e2]/80">{it.vat_rate}%</td>
                       <td className="px-3 py-2 text-right text-[#e5e4e2]">{fmt(rowNet(it))}</td>
                       <td className="px-3 py-2 text-right text-[#d3bb73]">{fmt(rowGross(it))}</td>
-                      <td className="px-3 py-2 text-right">
-                        <div className="flex justify-end gap-1">
-                          <button
-                            onClick={() => onToggleEdit(idx, true)}
-                            className="rounded-md p-1 text-[#d3bb73] hover:bg-[#d3bb73]/10"
-                            title="Edytuj"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            onClick={() => onRemove(idx)}
-                            className="rounded-md p-1 text-red-400 hover:bg-red-500/10"
-                            title="Usuń"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
+                      <td
+                        className="px-3 py-2 text-right"
+                        onClick={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => e.stopPropagation()}
+                      >
+                        <ResponsiveActionBar
+                          disabledBackground
+                          mobileBreakpoint={4000}
+                          actions={[
+                            {
+                              label: 'Edytuj',
+                              onClick: () => onToggleEdit(idx, true),
+                              icon: <Pencil className="h-4 w-4" />,
+                              variant: 'default',
+                            },
+                            {
+                              label: 'Usuń',
+                              onClick: () => onRemove(idx),
+                              icon: <Trash2 className="h-4 w-4" />,
+                              variant: 'danger',
+                            },
+                          ]}
+                        />
                       </td>
                     </tr>
                   );
