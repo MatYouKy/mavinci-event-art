@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Plus, Trash2, Upload, Package } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Upload, Package, FileText, X, File as FileIcon } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { uploadImage } from '@/lib/storage';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
@@ -30,7 +30,7 @@ interface Component {
 
 export default function NewEquipmentPage() {
   const router = useRouter();
-  const { canCreateInModule, loading: employeeLoading } = useCurrentEmployee();
+  const { canCreateInModule, loading: employeeLoading, currentEmployee } = useCurrentEmployee();
 
   const canCreate = canCreateInModule('equipment');
 
@@ -74,6 +74,40 @@ export default function NewEquipmentPage() {
   });
 
   const [components, setComponents] = useState<Component[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+
+  const formatBytes = (bytes: number) => {
+    if (!bytes) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+  };
+
+  const handleFilesPicked = (list: FileList | File[]) => {
+    const arr = Array.from(list).filter((f) => {
+      if (f.size > 50 * 1024 * 1024) {
+        alert(`${f.name} przekracza 50MB`);
+        return false;
+      }
+      return true;
+    });
+    setPendingFiles((prev) => [...prev, ...arr]);
+  };
+
+  const handleFileDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingFiles(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFilesPicked(e.dataTransfer.files);
+    }
+  };
+
+  const removePendingFile = (index: number) => {
+    setPendingFiles((prev) => prev.filter((_, i) => i !== index));
+  };
 
   useEffect(() => {
     fetchCategories();
@@ -253,6 +287,43 @@ export default function NewEquipmentPage() {
             .insert(componentsToInsert);
 
           if (componentsError) throw componentsError;
+        }
+      }
+
+      if (pendingFiles.length > 0) {
+        for (const file of pendingFiles) {
+          try {
+            const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const path = `${equipmentData.id}/${Date.now()}-${Math.random()
+              .toString(36)
+              .substring(7)}-${safeName}`;
+
+            const { error: upErr } = await supabase.storage
+              .from('equipment-files')
+              .upload(path, file, { contentType: file.type || undefined });
+
+            if (upErr) {
+              console.error('File upload error:', upErr);
+              continue;
+            }
+
+            const {
+              data: { publicUrl },
+            } = supabase.storage.from('equipment-files').getPublicUrl(path);
+
+            const ext = file.name.split('.').pop() || 'bin';
+            await supabase.from('equipment_files').insert({
+              equipment_id: equipmentData.id,
+              file_name: file.name,
+              file_path: path,
+              file_url: publicUrl,
+              file_size: file.size,
+              mime_type: file.type || `application/${ext}`,
+              uploaded_by: currentEmployee?.id ?? null,
+            });
+          } catch (e) {
+            console.error('Error uploading file:', e);
+          }
         }
       }
 
@@ -681,6 +752,80 @@ export default function NewEquipmentPage() {
                     className="p-2 text-red-400 transition-colors hover:text-red-300"
                   >
                     <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-lg font-medium text-[#e5e4e2]">Pliki sprzętu</h3>
+            <label className="flex cursor-pointer items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90">
+              <input
+                type="file"
+                multiple
+                onChange={(e) => {
+                  if (e.target.files && e.target.files.length > 0) {
+                    handleFilesPicked(e.target.files);
+                    e.target.value = '';
+                  }
+                }}
+                className="hidden"
+              />
+              <Upload className="h-4 w-4" />
+              Dodaj pliki
+            </label>
+          </div>
+
+          <div
+            onDragEnter={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsDraggingFiles(true);
+            }}
+            onDragLeave={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsDraggingFiles(false);
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onDrop={handleFileDrop}
+            className={`rounded-lg border-2 border-dashed p-6 text-center transition-colors ${
+              isDraggingFiles
+                ? 'border-[#d3bb73] bg-[#d3bb73]/5'
+                : 'border-[#d3bb73]/20 bg-[#0f1119]'
+            }`}
+          >
+            <FileText className="mx-auto mb-2 h-10 w-10 text-[#e5e4e2]/30" />
+            <p className="text-sm text-[#e5e4e2]/60">
+              {isDraggingFiles ? 'Upuść pliki tutaj' : 'Przeciągnij i upuść pliki lub użyj przycisku'}
+            </p>
+            <p className="mt-1 text-xs text-[#e5e4e2]/30">Maksymalny rozmiar: 50MB</p>
+          </div>
+
+          {pendingFiles.length > 0 && (
+            <div className="mt-4 space-y-2">
+              {pendingFiles.map((file, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-3 py-2"
+                >
+                  <FileIcon className="h-4 w-4 flex-shrink-0 text-[#d3bb73]" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm text-[#e5e4e2]">{file.name}</div>
+                    <div className="text-xs text-[#e5e4e2]/40">{formatBytes(file.size)}</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removePendingFile(i)}
+                    className="rounded p-1 text-[#e5e4e2]/60 transition-colors hover:bg-red-500/20 hover:text-red-400"
+                  >
+                    <X className="h-4 w-4" />
                   </button>
                 </div>
               ))}
