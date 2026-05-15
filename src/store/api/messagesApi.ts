@@ -1,9 +1,18 @@
 import { FetchBaseQueryError } from '@reduxjs/toolkit/query';
 import { api } from './api';
 
+export type MessageType = 'contact_form' | 'sent' | 'received' | 'draft';
+export type MessageFolder =
+  | 'all'
+  | 'contact_form'
+  | 'sent'
+  | 'received'
+  | 'drafts'
+  | 'trash';
+
 export interface MessageListItem {
   id: string;
-  type: 'contact_form' | 'sent' | 'received';
+  type: MessageType;
   from: string;
   to: string;
   subject: string;
@@ -15,6 +24,7 @@ export interface MessageListItem {
   assigned_to?: string | null;
   assigned_employee?: { name: string; surname: string } | null;
   email_account_id?: string;
+  isDeleted?: boolean;
 }
 
 export interface EmailAttachment {
@@ -36,7 +46,7 @@ export interface FetchMessagesParams {
   emailAccountId: string;
   offset?: number;
   limit?: number;
-  filterType?: 'all' | 'contact_form' | 'sent' | 'received';
+  filterType?: MessageFolder;
   includeBody?: boolean;
   showOnlyOpened?: boolean;
 }
@@ -73,10 +83,30 @@ export const messagesApi = api.injectEndpoints({
           const canViewContactForm =
             isAdmin || hasMessagesManage || currentEmployee?.can_receive_contact_forms;
 
-          if (
-            (emailAccountId === 'all' || emailAccountId === 'contact_form') &&
-            canViewContactForm
-          ) {
+          const isTrash = filterType === 'trash';
+          const isDrafts = filterType === 'drafts';
+          const isSentOnly = filterType === 'sent';
+          const isReceivedOnly = filterType === 'received';
+          const isContactFormOnly = filterType === 'contact_form';
+
+          const includeContactForm =
+            !isDrafts &&
+            !isSentOnly &&
+            !isReceivedOnly &&
+            (filterType === 'all' || isContactFormOnly || isTrash) &&
+            (emailAccountId === 'all' || emailAccountId === 'contact_form');
+          const includeSent =
+            !isDrafts &&
+            !isReceivedOnly &&
+            !isContactFormOnly &&
+            emailAccountId !== 'contact_form';
+          const includeReceived =
+            !isDrafts &&
+            !isSentOnly &&
+            !isContactFormOnly &&
+            emailAccountId !== 'contact_form';
+
+          if (includeContactForm && canViewContactForm) {
             let contactMessagesQuery = supabase
               .from('contact_messages')
               .select(
@@ -89,11 +119,18 @@ export const messagesApi = api.injectEndpoints({
                 created_at,
                 status,
                 assigned_to,
+                deleted_at,
                 assigned_employee:employees!assigned_to(name, surname)
               `,
               )
               .order('created_at', { ascending: false })
               .range(offset, offset + limit);
+
+            if (isTrash) {
+              contactMessagesQuery = contactMessagesQuery.not('deleted_at', 'is', null);
+            } else {
+              contactMessagesQuery = contactMessagesQuery.is('deleted_at', null);
+            }
 
             if (showOnlyOpened) {
               contactMessagesQuery = contactMessagesQuery.neq('status', 'new');
@@ -121,14 +158,20 @@ export const messagesApi = api.injectEndpoints({
             }
           }
 
-          if (emailAccountId !== 'contact_form') {
+          if (includeSent) {
             let sentQuery = supabase
               .from('sent_emails')
               .select(
-                'id, to_address, subject, body, sent_at, email_account_id, employees!employee_id(name, surname, email, id)',
+                'id, to_address, subject, body, sent_at, email_account_id, deleted_at, employees!employee_id(name, surname, email, id)',
               )
               .order('sent_at', { ascending: false })
               .range(offset, offset + limit);
+
+            if (isTrash) {
+              sentQuery = sentQuery.not('deleted_at', 'is', null);
+            } else {
+              sentQuery = sentQuery.is('deleted_at', null);
+            }
 
             if (emailAccountId !== 'all') {
               sentQuery = sentQuery.eq('email_account_id', emailAccountId);
@@ -161,7 +204,7 @@ export const messagesApi = api.injectEndpoints({
                 ...sentEmails.map((msg: any) => {
                   const employee = msg.employees as any;
                   const fromName = employee ? `${employee.name} ${employee.surname}` : 'System';
-                  const bodyText = msg.body.replace(/<[^>]*>/g, '');
+                  const bodyText = (msg.body || '').replace(/<[^>]*>/g, '');
                   return {
                     id: msg.id,
                     type: 'sent' as const,
@@ -173,11 +216,14 @@ export const messagesApi = api.injectEndpoints({
                     isRead: true,
                     isStarred: false,
                     email_account_id: msg.email_account_id,
+                    isDeleted: !!msg.deleted_at,
                   };
                 }),
               );
             }
+          }
 
+          if (includeReceived) {
             let receivedQuery = supabase
               .from('received_emails')
               .select(
@@ -191,11 +237,18 @@ export const messagesApi = api.injectEndpoints({
                 is_starred,
                 assigned_to,
                 email_account_id,
+                deleted_at,
                 assigned_employee:employees!assigned_to(name, surname)
               `,
               )
               .order('received_date', { ascending: false })
               .range(offset, offset + limit);
+
+            if (isTrash) {
+              receivedQuery = receivedQuery.not('deleted_at', 'is', null);
+            } else {
+              receivedQuery = receivedQuery.is('deleted_at', null);
+            }
 
             if (showOnlyOpened) {
               receivedQuery = receivedQuery.eq('is_read', true);
@@ -247,12 +300,66 @@ export const messagesApi = api.injectEndpoints({
             }
           }
 
+          if (isDrafts && user) {
+            let draftsQuery = supabase
+              .from('email_drafts')
+              .select(
+                'id, to_address, subject, body, reply_to, email_account_id, created_at, updated_at, deleted_at',
+              )
+              .eq('employee_id', user.id)
+              .order('updated_at', { ascending: false })
+              .range(offset, offset + limit)
+              .is('deleted_at', null);
+
+            if (emailAccountId !== 'all') {
+              draftsQuery = draftsQuery.eq('email_account_id', emailAccountId);
+            }
+
+            const { data: drafts } = await draftsQuery;
+            if (drafts) {
+              allMessages.push(
+                ...drafts.map((msg: any) => {
+                  const bodyText = (msg.body || '').replace(/<[^>]*>/g, '');
+                  return {
+                    id: msg.id,
+                    type: 'draft' as const,
+                    from: 'Wersja robocza',
+                    to: msg.to_address || '',
+                    subject: msg.subject || '(Brak tematu)',
+                    preview:
+                      bodyText.substring(0, 100) + (bodyText.length > 100 ? '...' : ''),
+                    date: msg.updated_at || msg.created_at,
+                    isRead: true,
+                    isStarred: false,
+                    email_account_id: msg.email_account_id,
+                  };
+                }),
+              );
+            }
+          }
+
           allMessages.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-          const filteredMessages =
-            filterType === 'all'
-              ? allMessages
-              : allMessages.filter((msg) => msg.type === filterType);
+          const folderMatchesType = (msg: MessageListItem): boolean => {
+            switch (filterType) {
+              case 'all':
+                return true;
+              case 'contact_form':
+                return msg.type === 'contact_form';
+              case 'sent':
+                return msg.type === 'sent';
+              case 'received':
+                return msg.type === 'received';
+              case 'drafts':
+                return msg.type === 'draft';
+              case 'trash':
+                return true;
+              default:
+                return true;
+            }
+          };
+
+          const filteredMessages = allMessages.filter(folderMatchesType);
 
           const hasMore = filteredMessages.length > limit;
           const messages = hasMore ? filteredMessages.slice(0, limit) : filteredMessages;
@@ -480,8 +587,39 @@ export const messagesApi = api.injectEndpoints({
 
     deleteMessage: builder.mutation<
       void,
-      { id: string; type: 'contact_form' | 'sent' | 'received' }
+      { id: string; type: MessageType; permanent?: boolean }
     >({
+      queryFn: async ({ id, type, permanent = false }) => {
+        try {
+          const { supabase } = await import('@/lib/supabase/browser');
+
+          const tableName =
+            type === 'contact_form'
+              ? 'contact_messages'
+              : type === 'received'
+                ? 'received_emails'
+                : type === 'draft'
+                  ? 'email_drafts'
+                  : 'sent_emails';
+
+          if (permanent) {
+            await supabase.from(tableName).delete().eq('id', id);
+          } else {
+            await supabase
+              .from(tableName)
+              .update({ deleted_at: new Date().toISOString() })
+              .eq('id', id);
+          }
+
+          return { data: undefined };
+        } catch (error) {
+          return { error: { status: 'CUSTOM_ERROR', error: String(error) } };
+        }
+      },
+      invalidatesTags: [{ type: 'Message', id: 'LIST' }],
+    }),
+
+    restoreMessage: builder.mutation<void, { id: string; type: MessageType }>({
       queryFn: async ({ id, type }) => {
         try {
           const { supabase } = await import('@/lib/supabase/browser');
@@ -491,9 +629,11 @@ export const messagesApi = api.injectEndpoints({
               ? 'contact_messages'
               : type === 'received'
                 ? 'received_emails'
-                : 'sent_emails';
+                : type === 'draft'
+                  ? 'email_drafts'
+                  : 'sent_emails';
 
-          await supabase.from(tableName).delete().eq('id', id);
+          await supabase.from(tableName).update({ deleted_at: null }).eq('id', id);
 
           return { data: undefined };
         } catch (error) {
@@ -917,6 +1057,7 @@ export const {
   useMarkMessageAsReadMutation,
   useToggleStarMessageMutation,
   useDeleteMessageMutation,
+  useRestoreMessageMutation,
   useGetEmailAccountsQuery,
   useGetUnreadCountQuery,
 } = messagesApi;

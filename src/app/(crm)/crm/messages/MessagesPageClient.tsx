@@ -27,10 +27,12 @@ import {
   useToggleStarMessageMutation,
   useLazySearchMessagesQuery,
   useGetEmailAccountsQuery,
+  type MessageFolder,
 } from '@/store/api/messagesApi';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import { MessageMobileFilteredModal } from './components/MessageMobileFilteredModal';
 import { MobileSearchModal } from './components/MobileSearchModal';
+import { MessagesSidebar } from './components/MessagesSidebar';
 import type { EmailAccount } from '@/lib/CRM/messages/getEmailAccounts.server';
 import type { Message } from '@/lib/CRM/messages/getMessages.server';
 import { revalidateMessages } from './actions';
@@ -79,7 +81,7 @@ export default function MessagesPageClient({
 
   const [selectedAccount, setSelectedAccount] = useState<string>('');
   const [showNewMessageModal, setShowNewMessageModal] = useState(false);
-  const [filterType, setFilterType] = useState<'all' | 'contact_form' | 'sent' | 'received'>('all');
+  const [filterType, setFilterType] = useState<MessageFolder>('all');
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [messageToAssign, setMessageToAssign] = useState<{
     id: string;
@@ -540,6 +542,8 @@ export default function MessagesPageClient({
         return { label: 'Wysłane', color: 'bg-green-500' };
       case 'received':
         return { label: 'Odebrane', color: 'bg-purple-500' };
+      case 'draft':
+        return { label: 'Wersja robocza', color: 'bg-yellow-500' };
       default:
         return { label: type, color: 'bg-gray-500' };
     }
@@ -622,8 +626,17 @@ export default function MessagesPageClient({
   }
 
   return (
-    <div className="min-h-screen bg-[#0f1119]">
-      <div className="mx-auto max-w-7xl p-3 sm:p-6">
+    <div className="flex min-h-screen bg-[#0f1119]">
+      <MessagesSidebar
+        emailAccounts={emailAccounts}
+        selectedAccount={selectedAccount}
+        setSelectedAccount={setSelectedAccount}
+        filterType={filterType}
+        setFilterType={setFilterType}
+        hasContactFormAccess={hasContactFormAccess}
+        canManage={canManage}
+      />
+      <div className="min-w-0 flex-1 p-3 sm:p-6">
         <div className="overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl">
           <div className="border-b border-[#d3bb73]/20 p-3 sm:p-6">
             <div className="mb-4 flex items-center justify-between sm:mb-6">
@@ -939,9 +952,7 @@ export default function MessagesPageClient({
           setSelectedAccount={setSelectedAccount}
           emailAccounts={emailAccounts}
           filterType={filterType}
-          setFilterType={(type: string) =>
-            setFilterType(type as 'contact_form' | 'received' | 'all' | 'sent')
-          }
+          setFilterType={(type: string) => setFilterType(type as MessageFolder)}
           hasContactFormAccess={hasContactFormAccess}
           canManage={canManage}
         />

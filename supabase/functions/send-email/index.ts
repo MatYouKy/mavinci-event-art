@@ -154,15 +154,33 @@ Deno.serve(async (req: Request) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const authHeader = req.headers.get("Authorization");
-    if (authHeader && emailAccountId) {
-      const { data: { user } } = await supabase.auth.getUser(
-        authHeader.replace("Bearer ", "")
-      );
+    if (emailAccountId) {
+      let employeeId: string | null = null;
 
-      if (user) {
-        await supabase.from("sent_emails").insert({
-          employee_id: user.id,
+      const authHeader = req.headers.get("Authorization");
+      if (authHeader) {
+        try {
+          const { data: { user } } = await supabase.auth.getUser(
+            authHeader.replace("Bearer ", "")
+          );
+          if (user) employeeId = user.id;
+        } catch (e) {
+          console.warn('[send-email] Could not resolve user from auth header:', e);
+        }
+      }
+
+      if (!employeeId) {
+        const { data: accountRow } = await supabase
+          .from("employee_email_accounts")
+          .select("employee_id")
+          .eq("id", emailAccountId)
+          .maybeSingle();
+        if (accountRow?.employee_id) employeeId = accountRow.employee_id;
+      }
+
+      if (employeeId) {
+        const { error: insertError } = await supabase.from("sent_emails").insert({
+          employee_id: employeeId,
           email_account_id: emailAccountId,
           to_address: to,
           subject: subject,
@@ -171,6 +189,11 @@ Deno.serve(async (req: Request) => {
           message_id: info.messageId,
           sent_at: new Date().toISOString(),
         });
+        if (insertError) {
+          console.error('[send-email] Failed to insert sent_emails record:', insertError);
+        }
+      } else {
+        console.warn('[send-email] No employee_id resolved; skipping sent_emails persistence');
       }
     }
 

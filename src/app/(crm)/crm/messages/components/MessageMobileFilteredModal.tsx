@@ -64,6 +64,8 @@ export const MessageMobileFilteredModal: FC<MessageMobileFilteredModalProps> = (
               )}
               <option value="received">Odebrane</option>
               <option value="sent">Wysłane</option>
+              <option value="drafts">Wersje robocze</option>
+              <option value="trash">Kosz</option>
             </select>
           </div>
         </div>
