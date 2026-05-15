@@ -1,4 +1,4 @@
-import { CalcItem } from '@/app/(crm)/crm/events/[id]/components/tabs/EventCalculationsTab';
+import { CalcItem } from '@/components/crm/events/calculations/EventCalculationsTab';
 
 export const fmt = (n: number) =>
   n.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

@@ -33,8 +33,9 @@ interface EventAttachment {
   name: string;
   original_name: string;
   file_path: string;
-  mime_type: string | null;
-  file_size: number | null;
+  file_type?: string | null;
+  mime_type?: string | null;
+  file_size?: number | null;
   created_at: string;
 }
 
@@ -58,16 +59,18 @@ export default function SendCalculationEmailModal({
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [formData, setFormData] = useState({
     to: defaultEmail,
+    cc: '',
+    bcc: '',
     subject: calculationName
       ? `Kalkulacja: ${calculationName}`
       : eventName
         ? `Kalkulacja - ${eventName}`
         : 'Kalkulacja wydarzenia',
     message: `Dzień dobry,
-
-W załączeniu przesyłam kalkulację wydarzenia.
-
-Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dyspozycji.`,
+  
+  W załączeniu przesyłam kalkulację wydarzenia.
+  
+  Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dyspozycji.`,
     fromAccountId: '',
   });
   const [signature, setSignature] = useState<any>(null);
@@ -132,23 +135,35 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
 
       const { data, error } = await supabase
         .from('event_files')
-        .select('id, name, original_name, file_path, file_size, mime_type, created_at')
+        .select('id, name, original_name, file_path, file_size, mime_type, created_at, uploaded_by')
         .eq('event_id', eventId)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
-      setEventFiles(
-        (data || []).map((file) => ({
-          id: file.id,
-          name: file.name || file.original_name,
-          original_name: file.original_name,
-          file_path: file.file_path,
-          file_size: file.file_size,
-          mime_type: file.mime_type,
-          created_at: file.created_at,
-        })),
-      );
+      const { data: currentCalc } = await supabase
+        .from('event_calculations')
+        .select('generated_pdf_path')
+        .eq('id', calculationId)
+        .maybeSingle();
+
+      const currentPdfPath = currentCalc?.generated_pdf_path ?? null;
+
+      const files =
+        data
+          ?.filter((file) => file.file_path !== currentPdfPath)
+          .map((file) => ({
+            id: file.id,
+            name: file.name || file.original_name || file.file_path.split('/').pop() || 'Plik',
+            file_path: file.file_path,
+            file_type: file.mime_type,
+            file_size: file.file_size,
+            created_at: file.created_at,
+            original_name: file.original_name,
+            uploaded_by: file.uploaded_by,
+          })) || [];
+
+      setEventFiles(files);
     } catch (error) {
       console.error('Error fetching event files:', error);
       showSnackbar('Nie udało się pobrać plików wydarzenia', 'error');
@@ -224,7 +239,11 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
     setPreviewHtml(result.html);
   };
 
-  const fetchStoredCalculationPDF = async (): Promise<{ base64: string; filename: string }> => {
+  const fetchStoredCalculationPDF = async (): Promise<{
+    base64: string;
+    filename: string;
+    storagePath: string;
+  }> => {
     const { data, error } = await supabase
       .from('event_calculations')
       .select('name, generated_pdf_path')
@@ -254,13 +273,17 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
 
     const buffer = await pdfResp.arrayBuffer();
     const base64 = btoa(
-      new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), ''),
+      new Uint8Array(buffer).reduce((acc, byte) => acc + String.fromCharCode(byte), ''),
     );
 
     const filename =
       data.generated_pdf_path.split('/').pop() || `Kalkulacja_${data.name || calculationId}.pdf`;
 
-    return { base64, filename };
+    return {
+      base64,
+      filename,
+      storagePath: data.generated_pdf_path,
+    };
   };
 
   const fetchEmailAccounts = async () => {
@@ -306,22 +329,26 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
       throw new Error(`Nie udało się pobrać pliku: ${file.name}`);
     }
 
-    const resp = await fetch(signedData.signedUrl);
-    if (!resp.ok) {
+    const response = await fetch(signedData.signedUrl);
+
+    if (!response.ok) {
       throw new Error(`Błąd pobierania pliku: ${file.name}`);
     }
 
-    const blob = await resp.blob();
+    const blob = await response.blob();
     const buffer = await blob.arrayBuffer();
 
     const base64 = btoa(
-      new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), ''),
+      new Uint8Array(buffer).reduce((acc, byte) => acc + String.fromCharCode(byte), ''),
     );
 
     return {
-      filename: file.name,
+      filename: file.original_name || file.name,
       content: base64,
-      contentType: file.mime_type || blob.type || 'application/octet-stream',
+      contentType: file.mime_type || file.file_type || blob.type || 'application/octet-stream',
+
+      // TO JEST KLUCZOWE
+      contentDisposition: 'attachment',
     };
   };
 
@@ -367,17 +394,26 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
           filename: pdfData.filename,
           content: pdfData.base64,
           contentType: 'application/pdf',
+          contentDisposition: 'attachment',
         },
       ];
 
-      const selectedFiles = eventFiles.filter((file) => selectedFileIds.includes(file.id));
+      const selectedFiles = eventFiles
+        .filter((file) => selectedFileIds.includes(file.id))
+        .filter((file) => file.file_path !== pdfData.storagePath);
 
       if (selectedFiles.length > 0) {
         showSnackbar(`Pobieram dodatkowe załączniki (${selectedFiles.length})...`, 'info');
 
         for (const file of selectedFiles) {
           const attachment = await fetchEventFileAsAttachment(file);
-          attachments.push(attachment);
+
+          attachments.push({
+            filename: attachment.filename,
+            content: attachment.content,
+            contentType: attachment.contentType,
+            contentDisposition: 'attachment',
+          });
         }
       }
 
@@ -397,6 +433,8 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
             subject: formData.subject.trim(),
             body: previewHtml,
             attachments,
+            cc: formData.cc.trim(),
+            bcc: formData.bcc.trim(),
           }),
         },
       );
@@ -404,7 +442,6 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
       if (!response.ok) {
         const error = await response.json().catch(() => null);
         console.error('[SendCalculation] Error response:', error);
-
         throw new Error(error?.error || error?.message || 'Błąd podczas wysyłania email');
       }
 
@@ -521,9 +558,13 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
                 <label className="mb-2 block text-sm text-[#e5e4e2]/60">
                   Do (email odbiorcy) <span className="text-red-400">*</span>
                   {contactPerson?.email ? (
-                    <span className="mt-1 text-xs text-[#e5e4e2]/40 ml-3">Kontakt główny: {contactPerson.name}</span>
+                    <span className="ml-3 mt-1 text-xs text-[#e5e4e2]/40">
+                      Kontakt główny: {contactPerson.name}
+                    </span>
                   ) : recipientName ? (
-                    <span className="mt-1 text-xs text-[#e5e4e2]/40 ml-3">Kontakt główny: {recipientName}</span>
+                    <span className="ml-3 mt-1 text-xs text-[#e5e4e2]/40">
+                      Kontakt główny: {recipientName}
+                    </span>
                   ) : null}
                 </label>
                 <input
@@ -532,6 +573,29 @@ Proszę o zapoznanie się z treścią. W razie pytań lub uwag pozostaję do dys
                   onChange={(e) => setFormData({ ...formData, to: e.target.value })}
                   disabled={loading}
                   placeholder="klient@example.com"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">DW / CC</label>
+                <input
+                  type="text"
+                  value={formData.cc}
+                  onChange={(e) => setFormData({ ...formData, cc: e.target.value })}
+                  disabled={loading}
+                  placeholder="adres1@email.pl, adres2@email.pl"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">UDW / BCC</label>
+                <input
+                  type="text"
+                  value={formData.bcc}
+                  onChange={(e) => setFormData({ ...formData, bcc: e.target.value })}
+                  disabled={loading}
+                  placeholder="ukryty1@email.pl, ukryty2@email.pl"
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
                 />
               </div>

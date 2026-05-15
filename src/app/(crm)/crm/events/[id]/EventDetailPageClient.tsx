@@ -42,7 +42,7 @@ import EventLogisticsPanel from '@/app/(crm)/crm/events/[id]/components/tabs/Eve
 import OfferWizard from '@/app/(crm)/crm/offers/[id]/components/OfferWizzard/OfferWizard';
 import EventFinancesTab from '@/app/(crm)/crm/events/[id]/components/tabs/EventFinancesTab';
 import EventAgendaTab from '@/app/(crm)/crm/events/[id]/components/tabs/EventAgendaTab';
-import EventCalculationsTab from '@/app/(crm)/crm/events/[id]/components/tabs/EventCalculationsTab';
+import EventCalculationsTab from '@/components/crm/events/calculations/EventCalculationsTab';
 import { EventPhasesTimeline } from '@/app/(crm)/crm/events/[id]/components/tabs/EventPhasesTimeline';
 
 import { useDialog } from '@/contexts/DialogContext';
@@ -52,7 +52,6 @@ import EditEventModalNew from '@/components/crm/EditEventModalNew';
 import SendOfferEmailModal from '@/components/crm/SendOfferEmailModal';
 import EventTabOffer from './components/tabs/EventTabOffer';
 import { EventsDetailsTab } from './components/tabs/EventsDetailsTab/EventsDetailsTab';
-import { EventContractTab } from './components/tabs/EventContractTab';
 import { AddChecklistModal } from './components/Modals/AddChecklistModal';
 import { TeamMembersList } from './components/AddMembersList';
 import { EventEquipmentTab } from './components/tabs/EventEquipmentTab';
@@ -78,6 +77,7 @@ import { useEventAuditLog } from '@/app/(crm)/crm/events/hooks/useEventAuditLog'
 import { IEmployee } from '../../employees/type';
 import { hasScope } from './helpers/hasScope';
 import { EventCategoryRow } from '@/lib/CRM/events/eventsData.server';
+import { EventContractTab } from '@/components/crm/events/contract/EventContractTab';
 
 export const ADMIN_EVENT_TABS = [
   'overview',

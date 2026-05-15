@@ -20,11 +20,14 @@ export function TabCarousel({ activeTab, setActiveTab, equipment, units }: TabCa
     { id: 'details', label: 'Podstawowe' },
     { id: 'technical', label: 'Parametry techniczne' },
     { id: 'purchase', label: 'Informacje zakupowe' },
-    { id: 'components', label: `Skład zestawu (${equipment?.equipment_components?.length || 0})` },
+    { id: 'components', label: `Skład zestawu (${equipment?.equipment_compatible_items?.length || 0})` },
     { id: 'units', label: `Jednostki (${units || 0})` },
     { id: 'gallery', label: `Galeria (${equipment?.equipment_images?.length || 0})` },
+    { id: 'files', label: `Pliki (${equipment?.equipment_files?.length || 0})` },
     { id: 'history', label: 'Historia' },
   ];
+
+  console.log('equipment', equipment);
 
   const tabs = isCable ? allTabs.filter(tab => tab.id !== 'components') : allTabs;
 

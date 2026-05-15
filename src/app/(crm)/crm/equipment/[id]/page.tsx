@@ -21,7 +21,6 @@ import { TechnicalTab } from '@/components/crm/equipment/tabs/TechnicalTab';
 import { UnitsTab } from '@/components/crm/equipment/tabs/UnitTabs';
 import { ComponentsTab } from '@/components/crm/equipment/tabs/ComponentsTab';
 
-
 import {
   useGetEquipmentDetailsQuery,
   useGetUnitsByEquipmentQuery,
@@ -49,7 +48,7 @@ import { useAppDispatch } from '@/store/hooks';
 import { equipmentApi } from '../store/equipmentApi';
 
 import { EquipmentTabsCarouselType } from '../types/equipment.types';
-
+import { FilesTab } from '@/components/crm/equipment/tabs/FilesTab';
 
 /* ----------------------------- helpers ----------------------------- */
 const normalizeUuid = (v: unknown): string | null =>
@@ -141,6 +140,7 @@ export default function EquipmentDetailPage() {
   const loading = eqLoading || unitsLoading;
 
   const unitsCount = equipment?.cable_specs ? equipment.cable_stock_quantity || 0 : units.length;
+  
   const stock = useMemo(() => equipment?.equipment_stock?.[0] ?? null, [equipment]);
   const availableUnits = units.filter((u) => u.status === 'available').length;
   const totalUnits = units.length;
@@ -259,7 +259,11 @@ export default function EquipmentDetailPage() {
           old: equipment?.purchase_price,
           new: toFloat(editForm.purchase_price),
         },
-        { name: 'rental_price_per_day', old: equipment?.rental_price_per_day, new: toFloat(editForm.rental_price_per_day) },
+        {
+          name: 'rental_price_per_day',
+          old: equipment?.rental_price_per_day,
+          new: toFloat(editForm.rental_price_per_day),
+        },
         { name: 'serial_number', old: equipment?.serial_number, new: editForm.serial_number },
       ];
       for (const f of fieldsToLog) await logChange(f.name, f.old, f.new);
@@ -509,6 +513,9 @@ export default function EquipmentDetailPage() {
       {activeTab === 'gallery' && (
         <EquipmentGallery equipmentId={equipment.id} canManage={canEdit} />
       )}
+
+      {/* FILES */}
+      {activeTab === 'files' && <FilesTab equipmentId={equipment.id} canManage={canEdit} />}
 
       {/* HISTORY */}
       {activeTab === 'history' && <HistoryTab history={editHistory} loading={historyLoading} />}

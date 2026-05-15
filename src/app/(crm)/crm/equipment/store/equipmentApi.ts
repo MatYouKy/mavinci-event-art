@@ -283,8 +283,11 @@ export const equipmentApi = createApi({
           .select(
             `
             *,
+    
             warehouse_categories:warehouse_categories(*),
+    
             equipment_stock:equipment_stock(*),
+    
             equipment_components:equipment_components!equipment_components_equipment_id_fkey(
               *,
               equipment_items:equipment_items!equipment_components_component_equipment_id_fkey(
@@ -295,24 +298,64 @@ export const equipmentApi = createApi({
                 thumbnail_url
               )
             ),
-            equipment_images:equipment_images(*)
+    
+            equipment_images:equipment_images(
+              id
+            ),
+    
+            equipment_files:equipment_files(
+              id
+            ),
+    
+            equipment_compatible_items:equipment_compatible_items!equipment_compatible_items_equipment_id_fkey(
+              compatibility_group
+            ),
+    
+            equipment_compatible_as_component:equipment_compatible_items!equipment_compatible_items_compatible_equipment_id_fkey(
+              compatibility_group
+            )
           `,
           )
           .eq('id', id)
           .is('deleted_at', null)
           .maybeSingle();
-
+    
         if (error) {
           console.error('getEquipmentDetails - error:', error);
           return { error: error as any };
         }
-
+    
         if (!data) {
           return { error: { message: 'Equipment not found' } as any };
         }
-
-        return { data };
+    
+        const compatibilityGroups = Array.from(
+          new Set(
+            [
+              ...(data.equipment_compatible_items || []).map(
+                (item: any) => item.compatibility_group,
+              ),
+    
+              ...(data.equipment_compatible_as_component || []).map(
+                (item: any) => item.compatibility_group,
+              ),
+            ].filter(Boolean),
+          ),
+        );
+    
+        return {
+          data: {
+            ...data,
+    
+            files_count: data.equipment_files?.length || 0,
+    
+            images_count: data.equipment_images?.length || 0,
+    
+            compatibility_groups_count: compatibilityGroups.length,
+          },
+        };
       },
+    
       providesTags: (_res, _err, id) => [{ type: 'Equipment', id }],
     }),
 

@@ -1,4 +1,4 @@
-import { CalcItem, Category } from '@/app/(crm)/crm/events/[id]/components/tabs/EventCalculationsTab';
+import { CalcItem, Category } from '@/components/crm/events/calculations/EventCalculationsTab';
 import { DEFAULT_VAT, fmt, round2, rowGross, rowNet } from '../helpers/calculations/calculations.helper';
 
 export function buildCalculationHtml(params: {

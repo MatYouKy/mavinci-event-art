@@ -598,7 +598,9 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
 
               {newComponent.thumbnail_url && (
                 <div className="relative h-32 w-32">
-                  <img
+                  <Image
+                    width={128}
+                    height={128}
                     src={newComponent.thumbnail_url}
                     alt="Miniaturka"
                     className="h-full w-full rounded-lg border border-[#d3bb73]/20 object-cover"
@@ -856,7 +858,9 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                         className="flex-shrink-0 transition-opacity hover:opacity-80"
                       >
                         {thumbnailUrl ? (
-                          <img
+                          <Image
+                            width={80}
+                            height={80}
                             src={thumbnailUrl}
                             alt={c.component_name}
                             className="h-20 w-20 rounded-lg border border-[#d3bb73]/20 object-cover"
@@ -985,7 +989,9 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                             >
                               {displayItem.thumbnail_url ? (
                                 <div className="relative">
-                                  <img
+                                  <Image
+                                    width={64}
+                                    height={64}
                                     src={displayItem.thumbnail_url}
                                     alt={displayItem.name}
                                     className="h-16 w-16 rounded-lg border border-[#d3bb73]/20 object-cover"
@@ -1078,7 +1084,9 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                       <div className="flex items-start gap-4">
                         {displayItem.thumbnail_url ? (
                           <div className="relative">
-                            <img
+                            <Image
+                              width={80}
+                              height={80}
                               src={displayItem.thumbnail_url}
                               alt={displayItem.name}
                               className="h-20 w-20 rounded-lg border border-[#d3bb73]/20 object-cover"
@@ -1379,7 +1387,9 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                         <div className="flex gap-4">
                           {item.thumbnail_url ? (
                             <div className="relative">
-                              <img
+                              <Image
+                                width={80}
+                                height={80}
                                 src={item.thumbnail_url}
                                 alt={item.name}
                                 className="h-20 w-20 rounded-lg object-cover"
@@ -1506,7 +1516,9 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
                       >
                         <div className="flex gap-4">
                           {item.thumbnail_url ? (
-                            <img
+                            <Image
+                              width={80}
+                              height={80}
                               src={item.thumbnail_url}
                               alt={item.name}
                               className="h-20 w-20 rounded-lg object-cover"
@@ -1576,7 +1588,9 @@ export function ComponentsTab({ equipment, isEditing, onAdd, onDelete }: any) {
               {(selectedComponent.thumbnail_url ||
                 selectedComponent.equipment_items?.thumbnail_url) && (
                 <div className="flex justify-center">
-                  <img
+                  <Image
+                    width={128}
+                    height={128}
                     src={
                       selectedComponent.thumbnail_url ||
                       selectedComponent.equipment_items?.thumbnail_url

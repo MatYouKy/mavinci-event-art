@@ -2,7 +2,7 @@
  * Helper functions for processing offer templates and generating documents
  */
 
-import { DecisionMaker } from '@/app/(crm)/crm/events/[id]/components/tabs/EventContractTab';
+import { DecisionMaker } from '@/components/crm/events/calculations/EventContractTab';
 
 /**
  * Converts a number to Polish words

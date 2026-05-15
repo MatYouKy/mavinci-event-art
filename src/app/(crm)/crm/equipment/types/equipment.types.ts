@@ -10,6 +10,7 @@ export type EquipmentTabsCarouselType =
   | 'components'
   | 'units'
   | 'gallery'
+  | 'files'
   | 'history';
 
 /** =========================

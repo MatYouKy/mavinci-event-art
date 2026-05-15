@@ -19,14 +19,16 @@ function verifyAuth(req, res, next) {
   const authHeader = req.headers.authorization;
 
   console.log('🔐 Authorization check:');
-  console.log(`   Received header: ${authHeader ? authHeader.substring(0, 20) + '...' : 'MISSING'}`);
+  console.log(
+    `   Received header: ${authHeader ? authHeader.substring(0, 20) + '...' : 'MISSING'}`,
+  );
   console.log(`   Expected: Bearer ${RELAY_SECRET.substring(0, 10)}...`);
 
   if (!authHeader) {
     console.log('❌ No authorization header provided');
     return res.status(401).json({
       success: false,
-      error: 'Unauthorized: No authorization header'
+      error: 'Unauthorized: No authorization header',
     });
   }
 
@@ -34,7 +36,7 @@ function verifyAuth(req, res, next) {
     console.log('❌ Invalid authorization format (should be "Bearer <token>")');
     return res.status(401).json({
       success: false,
-      error: 'Unauthorized: Invalid authorization format'
+      error: 'Unauthorized: Invalid authorization format',
     });
   }
 
@@ -45,10 +47,12 @@ function verifyAuth(req, res, next) {
     console.log('❌ Secret mismatch');
     console.log(`   Provided length: ${providedSecret.length}`);
     console.log(`   Expected length: ${expectedSecret.length}`);
-    console.log(`   First 10 chars match: ${providedSecret.substring(0, 10) === expectedSecret.substring(0, 10)}`);
+    console.log(
+      `   First 10 chars match: ${providedSecret.substring(0, 10) === expectedSecret.substring(0, 10)}`,
+    );
     return res.status(401).json({
       success: false,
-      error: 'Unauthorized: Invalid relay secret'
+      error: 'Unauthorized: Invalid relay secret',
     });
   }
 
@@ -61,16 +65,18 @@ app.post('/api/send-email', verifyAuth, async (req, res) => {
     const {
       smtpConfig,
       to,
+      cc,
+      bcc,
       subject,
       body,
       replyTo,
-      attachments = []
+      attachments = [],
     } = req.body;
 
     if (!smtpConfig || !to || !subject || !body) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required fields: smtpConfig, to, subject, body'
+        error: 'Missing required fields: smtpConfig, to, subject, body',
       });
     }
 
@@ -88,7 +94,7 @@ app.post('/api/send-email', verifyAuth, async (req, res) => {
         pass: smtpConfig.password,
       },
       tls: {
-        rejectUnauthorized: false
+        rejectUnauthorized: false,
       },
       connectionTimeout: 30000,
       greetingTimeout: 30000,
@@ -103,17 +109,36 @@ app.post('/api/send-email', verifyAuth, async (req, res) => {
       console.error('❌ SMTP verification failed:', verifyError.message);
       return res.status(500).json({
         success: false,
-        error: `SMTP connection failed: ${verifyError.message}`
+        error: `SMTP connection failed: ${verifyError.message}`,
       });
     }
 
-    const mailOptions = {
-      from: `${smtpConfig.fromName} <${smtpConfig.from}>`,
-      to: to,
-      subject: subject,
-      html: body,
+    const normalizeEmailList = (value) => {
+      if (!value || typeof value !== 'string') return undefined;
+    
+      const emails = value
+        .split(/[;,]/)
+        .map((email) => email.trim())
+        .filter(Boolean);
+    
+      return emails.length ? emails.join(', ') : undefined;
     };
-
+    
+    const mailOptions = {
+      from: `"${smtpConfig.fromName}" <${smtpConfig.from}>`,
+      to: normalizeEmailList(to),
+      cc: normalizeEmailList(cc),
+      bcc: normalizeEmailList(bcc),
+      subject,
+      html: body,
+      attachments: attachments.map((att) => ({
+        filename: att.filename,
+        content: Buffer.from(att.content, 'base64'),
+        contentType: att.contentType || 'application/octet-stream',
+        contentDisposition: att.contentDisposition || 'attachment',
+      })),
+    };
+    
     if (replyTo) {
       mailOptions.replyTo = replyTo;
     }
@@ -134,14 +159,13 @@ app.post('/api/send-email', verifyAuth, async (req, res) => {
     return res.json({
       success: true,
       messageId: info.messageId,
-      message: 'Email sent successfully'
+      message: 'Email sent successfully',
     });
-
   } catch (error) {
     console.error('❌ Error sending email:', error.message);
     return res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message,
     });
   }
 });
@@ -150,7 +174,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'smtp-relay-worker',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   });
 });
 

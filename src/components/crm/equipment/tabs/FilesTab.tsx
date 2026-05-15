@@ -11,11 +11,13 @@ import {
   FileImage,
   FileSpreadsheet,
   FileArchive,
+  Pencil,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import ResponsiveActionBar from '../../ResponsiveActionBar';
 
 interface EquipmentFile {
   id: string;
@@ -40,6 +42,22 @@ interface FilesTabProps {
   canManage: boolean;
   onCountChange?: (n: number) => void;
 }
+
+const splitFileName = (fileName: string) => {
+  const lastDot = fileName.lastIndexOf('.');
+
+  if (lastDot <= 0) {
+    return {
+      name: fileName,
+      extension: '',
+    };
+  }
+
+  return {
+    name: fileName.slice(0, lastDot),
+    extension: fileName.slice(lastDot),
+  };
+};
 
 const formatBytes = (bytes: number) => {
   if (!bytes) return '0 B';
@@ -69,6 +87,10 @@ export function FilesTab({ equipmentId, canManage, onCountChange }: FilesTabProp
   const [uploading, setUploading] = useState<UploadingItem[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [dragCounter, setDragCounter] = useState(0);
+  const [renameFile, setRenameFile] = useState<EquipmentFile | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameExtension, setRenameExtension] = useState('');
+  const [renaming, setRenaming] = useState(false);
 
   const fetchFiles = useCallback(async () => {
     try {
@@ -113,9 +135,7 @@ export function FilesTab({ equipmentId, canManage, onCountChange }: FilesTabProp
           .toString(36)
           .substring(7)}-${safeName}`;
 
-        setUploading((prev) =>
-          prev.map((u) => (u.id === tempId ? { ...u, progress: 40 } : u)),
-        );
+        setUploading((prev) => prev.map((u) => (u.id === tempId ? { ...u, progress: 40 } : u)));
 
         const { error: upErr } = await supabase.storage
           .from('equipment-files')
@@ -127,9 +147,7 @@ export function FilesTab({ equipmentId, canManage, onCountChange }: FilesTabProp
           data: { publicUrl },
         } = supabase.storage.from('equipment-files').getPublicUrl(path);
 
-        setUploading((prev) =>
-          prev.map((u) => (u.id === tempId ? { ...u, progress: 80 } : u)),
-        );
+        setUploading((prev) => prev.map((u) => (u.id === tempId ? { ...u, progress: 80 } : u)));
 
         const { error: dbErr } = await supabase.from('equipment_files').insert({
           equipment_id: equipmentId,
@@ -143,13 +161,8 @@ export function FilesTab({ equipmentId, canManage, onCountChange }: FilesTabProp
 
         if (dbErr) throw dbErr;
 
-        setUploading((prev) =>
-          prev.map((u) => (u.id === tempId ? { ...u, progress: 100 } : u)),
-        );
-        setTimeout(
-          () => setUploading((prev) => prev.filter((u) => u.id !== tempId)),
-          500,
-        );
+        setUploading((prev) => prev.map((u) => (u.id === tempId ? { ...u, progress: 100 } : u)));
+        setTimeout(() => setUploading((prev) => prev.filter((u) => u.id !== tempId)), 500);
       } catch (e: any) {
         console.error('Upload error:', e);
         showSnackbar(`Błąd przesyłania ${file.name}`, 'error');
@@ -159,6 +172,62 @@ export function FilesTab({ equipmentId, canManage, onCountChange }: FilesTabProp
 
     showSnackbar('Pliki przesłane', 'success');
     fetchFiles();
+  };
+
+  const handleOpenRename = (file: EquipmentFile) => {
+    const split = splitFileName(file.file_name);
+
+    setRenameFile(file);
+    setRenameValue(split.name);
+    setRenameExtension(split.extension);
+  };
+
+  const handleRename = async () => {
+    if (!renameFile) return;
+
+    const baseName = renameValue.trim();
+
+    if (!baseName) {
+      showSnackbar('Nazwa pliku nie może być pusta', 'error');
+      return;
+    }
+
+    const nextName = `${baseName}${renameExtension}`;
+
+    if (!nextName) {
+      showSnackbar('Nazwa pliku nie może być pusta', 'error');
+      return;
+    }
+
+    if (nextName === renameFile.file_name) {
+      setRenameFile(null);
+      setRenameValue('');
+      return;
+    }
+
+    try {
+      setRenaming(true);
+
+      const { error } = await supabase
+        .from('equipment_files')
+        .update({ file_name: nextName })
+        .eq('id', renameFile.id);
+
+      if (error) throw error;
+
+      setFiles((prev) =>
+        prev.map((file) => (file.id === renameFile.id ? { ...file, file_name: nextName } : file)),
+      );
+
+      showSnackbar('Nazwa pliku została zmieniona', 'success');
+      setRenameFile(null);
+      setRenameValue('');
+    } catch (e: any) {
+      console.error('Rename file error:', e);
+      showSnackbar('Błąd zmiany nazwy pliku', 'error');
+    } finally {
+      setRenaming(false);
+    }
   };
 
   const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -319,26 +388,38 @@ export function FilesTab({ equipmentId, canManage, onCountChange }: FilesTabProp
                       {new Date(file.created_at).toLocaleDateString('pl-PL')}
                     </div>
                   </div>
-                  <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                    <a
-                      href={file.file_url}
-                      download={file.file_name}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="rounded p-2 text-[#e5e4e2]/60 transition-colors hover:bg-[#d3bb73]/20 hover:text-[#d3bb73]"
-                      title="Pobierz"
-                    >
-                      <Download className="h-4 w-4" />
-                    </a>
-                    {canManage && (
-                      <button
-                        onClick={() => handleDelete(file)}
-                        className="rounded p-2 text-[#e5e4e2]/60 transition-colors hover:bg-red-500/20 hover:text-red-400"
-                        title="Usuń"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    )}
+                  <div
+                    className="flex items-center justify-end"
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                  >
+                    <ResponsiveActionBar
+                      disabledBackground
+                      mobileBreakpoint={2000}
+                      actions={[
+                        {
+                          label: 'Pobierz',
+                          onClick: () =>
+                            window.open(file.file_url, '_blank', 'noopener,noreferrer'),
+                          icon: <Download className="h-4 w-4" />,
+                          variant: 'default',
+                        },
+                        {
+                          label: 'Zmień nazwę',
+                          onClick: () => handleOpenRename(file),
+                          icon: <Pencil className="h-4 w-4" />,
+                          variant: 'default',
+                          show: canManage,
+                        },
+                        {
+                          label: 'Usuń',
+                          onClick: () => handleDelete(file),
+                          icon: <Trash2 className="h-4 w-4" />,
+                          variant: 'danger',
+                          show: canManage,
+                        },
+                      ]}
+                    />
                   </div>
                 </div>
               );
@@ -364,6 +445,62 @@ export function FilesTab({ equipmentId, canManage, onCountChange }: FilesTabProp
           </div>
         )}
       </div>
+      {renameFile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-5">
+            <h3 className="mb-4 text-lg font-light text-[#e5e4e2]">Zmień nazwę pliku</h3>
+
+            <div className="flex overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#0f1119]">
+              <input
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleRename();
+                  if (e.key === 'Escape') {
+                    setRenameFile(null);
+                    setRenameValue('');
+                    setRenameExtension('');
+                  }
+                }}
+                autoFocus
+                disabled={renaming}
+                className="flex-1 bg-transparent px-4 py-3 text-[#e5e4e2] focus:outline-none disabled:opacity-50"
+              />
+
+              {renameExtension && (
+                <div className="flex items-center border-l border-[#d3bb73]/10 bg-[#d3bb73]/5 px-3 text-sm text-[#d3bb73]">
+                  {renameExtension}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setRenameFile(null);
+                  setRenameValue('');
+                  setRenameExtension('');
+                }}
+                disabled={renaming}
+                className="rounded-lg px-4 py-2 text-[#e5e4e2]/70 hover:bg-[#d3bb73]/10 disabled:opacity-50"
+              >
+                Anuluj
+              </button>
+
+              <button
+                type="button"
+                onClick={handleRename}
+                disabled={renaming}
+                className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
+              >
+                {renaming && <Loader2 className="h-4 w-4 animate-spin" />}
+                Zapisz
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
