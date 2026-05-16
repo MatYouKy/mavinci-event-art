@@ -15,19 +15,22 @@ async function resolveStorageDisplayUrl(
   pathOrUrl: string,
   bucket: ReturnType<typeof supabase.storage.from>,
 ) {
-  // 1) jeśli w DB masz już pełny URL (public albo signed) -> użyj wprost
   if (isHttpUrl(pathOrUrl)) return pathOrUrl;
 
-  // 2) jeśli to jest ścieżka w buckecie -> zrób signed URL (skoro public daje 400)
   const { data, error } = await bucket.createSignedUrl(pathOrUrl, 3600);
   if (error) throw error;
+
   return data?.signedUrl ?? null;
 }
 
 interface OfferItem {
   id: string;
+  offer_id?: string;
   product_id: string;
+  name: string;
+  description?: string | null;
   quantity: number;
+  unit?: string | null;
   unit_price: number;
   discount_percent: number;
   discount_amount: number;
@@ -37,7 +40,7 @@ interface OfferItem {
   product?: {
     id: string;
     name: string;
-    description: string;
+    description?: string | null;
     pdf_page_url?: string;
     pdf_thumbnail_url?: string;
   };
@@ -54,6 +57,14 @@ interface OfferItemsProps {
   onAddItem?: () => void;
 }
 
+const getOfferItemName = (item: OfferItem) => {
+  return item.name?.trim() || item.product?.name || 'Pozycja oferty';
+};
+
+const getOfferItemDescription = (item: OfferItem) => {
+  return item.description?.trim() || item.product?.description || '';
+};
+
 export default function OfferItems({
   items,
   offerId,
@@ -66,12 +77,12 @@ export default function OfferItems({
 }: OfferItemsProps) {
   const { showSnackbar } = useSnackbar();
   const router = useRouter();
+
   const [updating, setUpdating] = useState(false);
+  const [thumbUrls, setThumbUrls] = useState<Record<string, string>>({});
+  const [orderedItems, setOrderedItems] = useState<OfferItem[]>([]);
 
   const bucket = useMemo(() => supabase.storage.from('offer-product-pages'), []);
-
-  // ✅ mapka: item.id -> displayUrl (signed lub pełny url)
-  const [thumbUrls, setThumbUrls] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -95,7 +106,6 @@ export default function OfferItems({
         const next = Object.fromEntries(entries.filter(Boolean) as Array<[string, string]>);
         setThumbUrls(next);
       } catch (e: any) {
-        // nie spamuj snackbarami za każdym itemem – wystarczy console
         console.warn('Thumbnail resolve error:', e?.message ?? e);
       }
     })();
@@ -105,10 +115,7 @@ export default function OfferItems({
     };
   }, [items, bucket]);
 
-  const [orderedItems, setOrderedItems] = useState<OfferItem[]>([]);
-
   useEffect(() => {
-    // zawsze trzymaj kolejność wg display_order jako bazę
     setOrderedItems([...items].sort((a, b) => a.display_order - b.display_order));
   }, [items]);
 
@@ -120,12 +127,10 @@ export default function OfferItems({
 
     if (sourceIndex === destinationIndex) return;
 
-    // ✅ optimistic reorder w UI
     const next = Array.from(orderedItems);
     const [moved] = next.splice(sourceIndex, 1);
     next.splice(destinationIndex, 0, moved);
 
-    // nadaj nowe display_order lokalnie
     const nextWithOrder = next.map((it, idx) => ({
       ...it,
       display_order: idx,
@@ -135,8 +140,6 @@ export default function OfferItems({
     setUpdating(true);
 
     try {
-      // zapis do bazy
-      // (możesz też zrobić batch RPC, ale na razie zostawiamy 1:1)
       for (const it of nextWithOrder) {
         const { error } = await supabase
           .from('offer_items')
@@ -147,12 +150,11 @@ export default function OfferItems({
       }
 
       showSnackbar('Kolejność pozycji zaktualizowana', 'success');
-      onItemsReordered(); // jeśli parent robi refetch - ok
+      onItemsReordered();
     } catch (error: any) {
       console.error('Error reordering items:', error);
       showSnackbar('Błąd podczas zmiany kolejności', 'error');
 
-      // ✅ rollback: wróć do kolejności z propsów
       setOrderedItems([...items].sort((a, b) => a.display_order - b.display_order));
     } finally {
       setUpdating(false);
@@ -193,6 +195,9 @@ export default function OfferItems({
                   .sort((a, b) => a.display_order - b.display_order)
                   .map((item, index) => {
                     const thumbUrl = thumbUrls[item.id];
+                    const itemName = getOfferItemName(item);
+                    const itemDescription = getOfferItemDescription(item);
+                    const grossValue = item.total * (1 + vatRate / 100);
 
                     const actions: Action[] = [
                       {
@@ -215,8 +220,6 @@ export default function OfferItems({
                       },
                     ];
 
-                    const grossValue = item.total * (1 + vatRate / 100);
-
                     return (
                       <Draggable
                         key={item.id}
@@ -233,7 +236,11 @@ export default function OfferItems({
                             }`}
                           >
                             <div className="absolute right-2 top-2 z-20">
-                              <ResponsiveActionBar actions={actions} disabledBackground mobileBreakpoint={4000} />
+                              <ResponsiveActionBar
+                                actions={actions}
+                                disabledBackground
+                                mobileBreakpoint={4000}
+                              />
                             </div>
 
                             <div className="flex gap-3 pr-10">
@@ -258,7 +265,7 @@ export default function OfferItems({
                                     height={96}
                                     sizes="80px"
                                     src={thumbUrl}
-                                    alt={item.product?.name ?? 'Miniatura'}
+                                    alt={itemName}
                                     className="h-full w-full object-contain"
                                   />
                                 </button>
@@ -270,12 +277,18 @@ export default function OfferItems({
 
                               <div className="min-w-0 flex-1">
                                 <h3 className="line-clamp-1 text-sm font-semibold text-[#e5e4e2] md:text-base">
-                                  {item.product?.name || 'Produkt'}
+                                  {itemName}
                                 </h3>
 
-                                {item.product?.description && (
+                                {item.product?.name && item.product.name !== getOfferItemName(item) && (
+                                  <p className="mt-0.5 line-clamp-1 text-xs text-[#e5e4e2]/35">
+                                    Produkt bazowy: {getOfferItemName(item)}
+                                  </p>
+                                )}
+
+                                {itemDescription && (
                                   <p className="mt-0.5 line-clamp-2 text-xs leading-snug text-[#e5e4e2]/55 md:text-sm">
-                                    {item.product.description}
+                                    {itemDescription}
                                   </p>
                                 )}
 
@@ -313,6 +326,7 @@ export default function OfferItems({
                                 <div className="text-lg font-bold leading-none text-[#d3bb73] md:text-xl">
                                   {grossValue.toFixed(2)} PLN
                                 </div>
+
                                 {item.discount_amount > 0 && (
                                   <div className="mt-1 text-xs text-[#e5e4e2]/35 line-through">
                                     {item.subtotal.toFixed(2)} PLN

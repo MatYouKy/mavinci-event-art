@@ -182,6 +182,11 @@ export default function OfferDetailPage() {
     }
   };
 
+  const handleOfferItemUpdated = async () => {
+    await refetch();
+    setEditingItem(null);
+  };
+
   const actions = useMemo(() => {
     if (!canSendManage) return [] as Action[];
 
@@ -250,7 +255,7 @@ export default function OfferDetailPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4 mt-4">
+        <div className="mt-4 flex items-center gap-4">
           <button
             onClick={() => router.push('/crm/offers')}
             className="rounded-lg p-2 text-[#e5e4e2] transition-colors hover:bg-[#1c1f33]"
@@ -263,7 +268,7 @@ export default function OfferDetailPage() {
           </div>
         </div>
 
-          {canSendManage && <ResponsiveActionBar actions={actions} />}
+        {canSendManage && <ResponsiveActionBar actions={actions} />}
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -328,7 +333,7 @@ export default function OfferDetailPage() {
           offerId={offer.id}
           vatRate={offer.tax_percent ?? 23}
           onClose={() => setEditingItem(null)}
-          onSuccess={refetch}
+          onSuccess={handleOfferItemUpdated}
         />
       )}
 

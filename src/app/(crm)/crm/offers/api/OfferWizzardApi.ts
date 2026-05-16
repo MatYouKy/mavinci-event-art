@@ -316,8 +316,12 @@ export const offerWizardApi = createApi({
               ),
               offer_items(
                 id,
+                offer_id,
                 product_id,
+                name,
+                description,
                 quantity,
+                unit,
                 unit_price,
                 discount_percent,
                 discount_amount,
@@ -336,9 +340,10 @@ export const offerWizardApi = createApi({
             )
             .eq('id', offerId)
             .maybeSingle();
-
+    
           if (error) return { error: toRtkError(error) };
           if (!data) return { error: toRtkError({ message: 'Nie znaleziono oferty' }) as any };
+    
           return { data };
         } catch (e) {
           return { error: toRtkError(e) };
@@ -374,6 +379,9 @@ export const offerWizardApi = createApi({
               ),
               offer_items(
                 id,
+                offer_id,
+                name,
+                description,
                 product_id,
                 quantity,
                 unit_price,

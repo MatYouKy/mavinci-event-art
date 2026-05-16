@@ -13,7 +13,7 @@ interface EditOfferItemModalProps {
   offerId?: string;
   vatRate?: number;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (updatedItem?: Partial<IOfferItem>) => void | Promise<void>;
 }
 
 export default function EditOfferItemModal({
@@ -26,11 +26,12 @@ export default function EditOfferItemModal({
   const { showSnackbar } = useSnackbar();
 
   const [loading, setLoading] = useState(false);
-  const [quantity, setQuantity] = useState(item?.quantity ?? 1);
-  const [unitPrice, setUnitPrice] = useState(item?.unit_price ?? 0);
-  const [discountPercent, setDiscountPercent] = useState(item?.discount_percent ?? 0);
-  const [itemVatRate, setItemVatRate] = useState(vatRate);
 
+  const [quantity, setQuantity] = useState(item.quantity ?? 1);
+  const [unitPrice, setUnitPrice] = useState(item.unit_price ?? 0);
+  const [discountPercent, setDiscountPercent] = useState(item.discount_percent ?? 0);
+  const [itemVatRate, setItemVatRate] = useState(vatRate);
+  const [name, setName] = useState(item.name || item.product?.name || '');
   if (!item) return null;
 
   const safeQuantity = Number.isFinite(quantity) ? quantity : 0;
@@ -43,7 +44,16 @@ export default function EditOfferItemModal({
   const vatAmount = (nettoAfterDiscount * itemVatRate) / 100;
   const brutto = nettoAfterDiscount + vatAmount;
 
+  const displayName = name || item.name || item.product?.name || 'Pozycja oferty';
+
   const handleSave = async () => {
+    const safeName = name.trim();
+
+    if (!safeName) {
+      showSnackbar('Nazwa pozycji nie może być pusta', 'error');
+      return;
+    }
+
     if (safeQuantity <= 0) {
       showSnackbar('Ilość musi być większa od 0', 'error');
       return;
@@ -62,14 +72,17 @@ export default function EditOfferItemModal({
     setLoading(true);
 
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('offer_items')
         .update({
+          name: safeName,
           quantity: safeQuantity,
           unit_price: safeUnitPrice,
           discount_percent: safeDiscountPercent,
         })
-        .eq('id', item.id);
+        .eq('id', item.id)
+        .select('id, name')
+        .single();
 
       if (error) throw error;
 
@@ -79,15 +92,24 @@ export default function EditOfferItemModal({
           .update({ tax_percent: itemVatRate })
           .eq('id', offerId);
 
-        if (offerError) console.error('Error updating VAT rate:', offerError);
+        if (offerError) {
+          console.error('Error updating VAT rate:', offerError);
+        }
       }
-
       showSnackbar('Pozycja zaktualizowana', 'success');
-      onSuccess();
+
+      await onSuccess({
+        id: item.id,
+        name: safeName,
+        quantity: safeQuantity,
+        unit_price: safeUnitPrice,
+        discount_percent: safeDiscountPercent,
+      });
+
       onClose();
     } catch (error: any) {
       console.error('Error updating item:', error);
-      showSnackbar('Błąd podczas aktualizacji pozycji', 'error');
+      showSnackbar(error?.message || 'Błąd podczas aktualizacji pozycji', 'error');
     } finally {
       setLoading(false);
     }
@@ -102,9 +124,7 @@ export default function EditOfferItemModal({
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#d3bb73]/20 bg-[#0f1119] px-4 py-4 md:px-6">
           <div>
             <h2 className="text-lg font-light text-[#e5e4e2] md:text-xl">Edytuj pozycję</h2>
-            <p className="mt-0.5 line-clamp-1 text-xs text-[#e5e4e2]/50">
-              {item.product?.name || item.name}
-            </p>
+            <p className="mt-0.5 line-clamp-1 text-xs text-[#e5e4e2]/50">{displayName}</p>
           </div>
 
           <button
@@ -119,13 +139,24 @@ export default function EditOfferItemModal({
 
         <div className="flex-1 space-y-5 overflow-y-auto px-4 py-5 md:space-y-6 md:px-6">
           <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]/60 p-4">
-            <h3 className="line-clamp-2 text-base font-medium text-[#e5e4e2]">
-              {item.product?.name || item.name}
-            </h3>
+            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-[#e5e4e2]/55">
+              Nazwa pozycji w tej ofercie
+            </label>
+
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className={inputClass}
+            />
+
+            {item.product?.name && item.product.name !== name && (
+              <p className="mt-2 text-xs text-[#e5e4e2]/40">Produkt bazowy: {item.product.name}</p>
+            )}
 
             {(item.product?.description || item.description) && (
-              <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-[#e5e4e2]/60">
-                {item.product?.description || item.description}
+              <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-[#e5e4e2]/60">
+                {item.description || item.product?.description}
               </p>
             )}
           </div>
@@ -203,7 +234,10 @@ export default function EditOfferItemModal({
                     value={`-${discountAmount.toFixed(2)} PLN`}
                     valueClassName="text-green-400"
                   />
-                  <SummaryRow label="Netto po rabacie" value={`${nettoAfterDiscount.toFixed(2)} PLN`} />
+                  <SummaryRow
+                    label="Netto po rabacie"
+                    value={`${nettoAfterDiscount.toFixed(2)} PLN`}
+                  />
                 </>
               )}
 
@@ -211,9 +245,7 @@ export default function EditOfferItemModal({
 
               <div className="mt-3 flex items-center justify-between border-t border-[#d3bb73]/10 pt-3">
                 <span className="text-sm font-medium text-[#e5e4e2]">Brutto</span>
-                <span className="text-xl font-bold text-[#d3bb73]">
-                  {brutto.toFixed(2)} PLN
-                </span>
+                <span className="text-xl font-bold text-[#d3bb73]">{brutto.toFixed(2)} PLN</span>
               </div>
             </div>
           </div>
