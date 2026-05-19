@@ -18,6 +18,7 @@ import {
   Download,
   Trash2,
   List,
+  Pencil,
 } from 'lucide-react';
 import { parseMT940, parseJPK_WB, findMatchingInvoices } from '@/lib/bankStatementParsers';
 import BankTransactionsAnalysis from './BankTransactionsAnalysis';
@@ -73,11 +74,13 @@ const MONTHS = [
 function MonthActions({
   summary,
   selectedCompanyId,
+  onUpload,
   onDetails,
   onDownload,
 }: {
   summary: MonthlySummary;
   selectedCompanyId: string | null;
+  onUpload: () => void;
   onDetails: () => void;
   onDownload: (accountType: 'regular' | 'vat') => void;
 }) {
@@ -107,6 +110,7 @@ function MonthActions({
   }, [summary.month, summary.year, selectedCompanyId, summary.bank_statement_uploaded]);
 
   const actions = [
+    { label: 'Wgraj wyciag', onClick: onUpload, icon: <Upload className="h-4 w-4" /> },
     { label: 'Szczegoly', onClick: onDetails, icon: <FileText className="h-4 w-4" /> },
     {
       label: 'Pobierz wyciag',
@@ -143,9 +147,11 @@ export default function KSeFFinancialDashboard() {
   } | null>(null);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [uploadAccountType, setUploadAccountType] = useState<'regular' | 'vat'>('regular');
+  const [uploadMonth, setUploadMonth] = useState<MonthlySummary | null>(null);
   const [showStatementsListModal, setShowStatementsListModal] = useState(false);
   const [allStatements, setAllStatements] = useState<BankStatementRecord[]>([]);
   const [loadingStatements, setLoadingStatements] = useState(false);
+  const [renamingStatement, setRenamingStatement] = useState<{ id: string; name: string } | null>(null);
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
   const { employee: currentEmployee, isAdmin } = useCurrentEmployee();
@@ -354,6 +360,33 @@ export default function KSeFFinancialDashboard() {
     } catch (error: any) {
       console.error('Delete error:', error);
       showSnackbar(error.message || 'Błąd usuwania wyciągu', 'error');
+    }
+  };
+
+  const handleRenameStatement = async () => {
+    if (!renamingStatement) return;
+    const newName = renamingStatement.name.trim();
+    if (!newName) {
+      showSnackbar('Nazwa pliku nie moze byc pusta', 'error');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('bank_statements')
+        .update({ file_name: newName })
+        .eq('id', renamingStatement.id);
+
+      if (error) throw error;
+
+      setAllStatements((prev) =>
+        prev.map((s) => (s.id === renamingStatement.id ? { ...s, file_name: newName } : s)),
+      );
+      setRenamingStatement(null);
+      showSnackbar('Nazwa wyciagu zostala zmieniona', 'success');
+    } catch (error: any) {
+      console.error('Rename error:', error);
+      showSnackbar(error.message || 'Blad zmiany nazwy', 'error');
     }
   };
 
@@ -983,6 +1016,7 @@ export default function KSeFFinancialDashboard() {
                         <MonthActions
                           summary={summary}
                           selectedCompanyId={selectedCompanyId}
+                          onUpload={() => setUploadMonth(summary)}
                           onDetails={() => setSelectedMonth(summary)}
                           onDownload={(accountType) => handleDownloadForMonth(summary.month, summary.year, accountType)}
                         />
@@ -1001,22 +1035,25 @@ export default function KSeFFinancialDashboard() {
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl">
             <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-6">
               <h3 className="text-xl font-medium text-[#e5e4e2]">
-                {MONTHS[selectedMonth.month - 1]} {selectedMonth.year}
+                Podsumowanie: {MONTHS[selectedMonth.month - 1]} {selectedMonth.year}
               </h3>
               <button
                 onClick={() => setSelectedMonth(null)}
                 className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
               >
-                ×
+                x
               </button>
             </div>
 
             <div className="space-y-6 p-6">
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 md:grid-cols-3">
                 <div className="rounded-lg bg-[#252945] p-4">
                   <div className="text-sm text-[#e5e4e2]/60">Przychody</div>
                   <div className="mt-1 text-xl font-bold text-green-400">
                     {selectedMonth.total_income.toFixed(2)} PLN
+                  </div>
+                  <div className="mt-1 text-xs text-[#e5e4e2]/40">
+                    {selectedMonth.invoices_issued_count} faktur
                   </div>
                 </div>
                 <div className="rounded-lg bg-[#252945] p-4">
@@ -1024,18 +1061,125 @@ export default function KSeFFinancialDashboard() {
                   <div className="mt-1 text-xl font-bold text-red-400">
                     {selectedMonth.total_expenses.toFixed(2)} PLN
                   </div>
+                  <div className="mt-1 text-xs text-[#e5e4e2]/40">
+                    {selectedMonth.invoices_received_count} faktur
+                  </div>
+                </div>
+                <div className="rounded-lg bg-[#252945] p-4">
+                  <div className="text-sm text-[#e5e4e2]/60">Bilans</div>
+                  <div className={`mt-1 text-xl font-bold ${
+                    selectedMonth.total_income - selectedMonth.total_expenses >= 0
+                      ? 'text-green-400'
+                      : 'text-red-400'
+                  }`}>
+                    {(selectedMonth.total_income - selectedMonth.total_expenses).toFixed(2)} PLN
+                  </div>
                 </div>
               </div>
 
               <div className="rounded-lg border border-[#d3bb73]/20 bg-[#252945] p-4">
+                <h4 className="mb-3 text-sm font-medium text-[#e5e4e2]">Status platnosci</h4>
+                <div className="flex gap-6">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4 text-green-400" />
+                    <span className="text-sm text-green-400">{selectedMonth.invoices_paid_count} oplacone</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-orange-400" />
+                    <span className="text-sm text-orange-400">{selectedMonth.invoices_unpaid_count} nieoplacone</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 text-red-400" />
+                    <span className="text-sm text-red-400">{selectedMonth.invoices_overdue_count} po terminie</span>
+                  </div>
+                </div>
+              </div>
+
+              {selectedMonth.bank_statement_uploaded && (
+                <div className="rounded-lg border border-green-500/20 bg-green-500/10 p-4 text-sm text-green-400">
+                  Wyciag bankowy zostal przeslany dla tego miesiaca
+                </div>
+              )}
+
+              {selectedMonth.bank_statement_uploaded && (
+                <div className="rounded-lg border border-[#d3bb73]/20 bg-[#252945] p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-sm font-medium text-[#e5e4e2]">Analiza transakcji</h4>
+                      <p className="mt-1 text-xs text-[#e5e4e2]/60">
+                        Przejrzyj wszystkie transakcje z wyciagu i zarzadzaj dopasowaniami
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setUnmatchedModalMonth({
+                            month: selectedMonth.month,
+                            year: selectedMonth.year,
+                          });
+                          setShowSimpleMatchModal(true);
+                        }}
+                        className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
+                      >
+                        <LinkIcon className="h-4 w-4" />
+                        Dopasuj platnosci
+                      </button>
+                      <button
+                        onClick={() => {
+                          setUnmatchedModalMonth({
+                            month: selectedMonth.month,
+                            year: selectedMonth.year,
+                          });
+                          setShowUnmatchedModal(true);
+                        }}
+                        className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm font-medium text-[#e5e4e2] hover:bg-[#252945]"
+                      >
+                        <FileText className="h-4 w-4" />
+                        Szczegolowa analiza
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end border-t border-[#d3bb73]/10 p-6">
+              <button
+                onClick={() => setSelectedMonth(null)}
+                className="rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#252945]"
+              >
+                Zamknij
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {uploadMonth && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl">
+            <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-6">
+              <h3 className="text-xl font-medium text-[#e5e4e2]">
+                Wgraj wyciag: {MONTHS[uploadMonth.month - 1]} {uploadMonth.year}
+              </h3>
+              <button
+                onClick={() => setUploadMonth(null)}
+                className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
+              >
+                x
+              </button>
+            </div>
+
+            <div className="space-y-6 p-6">
+              <div className="rounded-lg border border-[#d3bb73]/20 bg-[#252945] p-4">
                 <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-                  Typ wyciągu
+                  Typ wyciagu
                 </label>
                 <div className="flex gap-4">
                   <label className="flex cursor-pointer items-center gap-2">
                     <input
                       type="radio"
-                      name="accountType"
+                      name="uploadAccountType"
                       value="regular"
                       checked={uploadAccountType === 'regular'}
                       onChange={() => setUploadAccountType('regular')}
@@ -1046,7 +1190,7 @@ export default function KSeFFinancialDashboard() {
                   <label className="flex cursor-pointer items-center gap-2">
                     <input
                       type="radio"
-                      name="accountType"
+                      name="uploadAccountType"
                       value="vat"
                       checked={uploadAccountType === 'vat'}
                       onChange={() => setUploadAccountType('vat')}
@@ -1095,11 +1239,11 @@ export default function KSeFFinancialDashboard() {
 
                   const file = e.dataTransfer.files?.[0] ?? null;
                   if (file && !file.name.toLowerCase().endsWith('.pdf')) {
-                    showSnackbar('Możesz upuścić tylko plik PDF', 'error');
+                    showSnackbar('Mozesz upuscic tylko plik PDF', 'error');
                     return;
                   }
 
-                  await handleSelectedFile(file, selectedMonth.month, selectedMonth.year);
+                  await handleSelectedFile(file, uploadMonth.month, uploadMonth.year);
                 }}
                 className={`rounded-lg border-2 border-dashed p-6 transition-all ${
                   isDragOver
@@ -1115,7 +1259,7 @@ export default function KSeFFinancialDashboard() {
                   />
 
                   <h4 className="mt-2 text-sm font-medium text-[#e5e4e2]">
-                    {isDragOver ? 'Upuść plik tutaj' : 'Prześlij wyciąg bankowy'}
+                    {isDragOver ? 'Upusc plik tutaj' : 'Przeslij wyciag bankowy'}
                   </h4>
 
                   <p className="mt-1 text-xs text-[#e5e4e2]/60">Format PDF (.pdf)</p>
@@ -1130,7 +1274,7 @@ export default function KSeFFinancialDashboard() {
                       className="hidden"
                       onChange={async (e) => {
                         const file = e.target.files?.[0] ?? null;
-                        await handleSelectedFile(file, selectedMonth.month, selectedMonth.year);
+                        await handleSelectedFile(file, uploadMonth.month, uploadMonth.year);
                         e.currentTarget.value = '';
                       }}
                     />
@@ -1138,7 +1282,7 @@ export default function KSeFFinancialDashboard() {
 
                   {isDragOver && (
                     <div className="mt-3 text-sm font-medium text-[#d3bb73]">
-                      Puść plik, aby rozpocząć import
+                      Pusc plik, aby rozpoczac import
                     </div>
                   )}
 
@@ -1166,58 +1310,11 @@ export default function KSeFFinancialDashboard() {
                   )}
                 </div>
               </div>
-
-              {selectedMonth.bank_statement_uploaded && (
-                <div className="rounded-lg border border-green-500/20 bg-green-500/10 p-4 text-sm text-green-400">
-                  ✓ Wyciąg bankowy został przesłany
-                </div>
-              )}
-
-              {selectedMonth.bank_statement_uploaded && (
-                <div className="rounded-lg border border-[#d3bb73]/20 bg-[#252945] p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="text-sm font-medium text-[#e5e4e2]">Analiza transakcji</h4>
-                      <p className="mt-1 text-xs text-[#e5e4e2]/60">
-                        Przejrzyj wszystkie transakcje z wyciągu i zarządzaj dopasowaniami
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => {
-                          setUnmatchedModalMonth({
-                            month: selectedMonth.month,
-                            year: selectedMonth.year,
-                          });
-                          setShowSimpleMatchModal(true);
-                        }}
-                        className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
-                      >
-                        <LinkIcon className="h-4 w-4" />
-                        Dopasuj płatności
-                      </button>
-                      <button
-                        onClick={() => {
-                          setUnmatchedModalMonth({
-                            month: selectedMonth.month,
-                            year: selectedMonth.year,
-                          });
-                          setShowUnmatchedModal(true);
-                        }}
-                        className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm font-medium text-[#e5e4e2] hover:bg-[#252945]"
-                      >
-                        <FileText className="h-4 w-4" />
-                        Szczegółowa analiza
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
 
             <div className="flex justify-end border-t border-[#d3bb73]/10 p-6">
               <button
-                onClick={() => setSelectedMonth(null)}
+                onClick={() => setUploadMonth(null)}
                 className="rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#252945]"
               >
                 Zamknij
@@ -1308,7 +1405,37 @@ export default function KSeFFinancialDashboard() {
                         className="border-b border-[#d3bb73]/10 transition-colors hover:bg-[#252945]/50"
                       >
                         <td className="px-4 py-3">
-                          <span className="text-sm text-[#e5e4e2]">{stmt.file_name}</span>
+                          {renamingStatement?.id === stmt.id ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                value={renamingStatement.name}
+                                onChange={(e) =>
+                                  setRenamingStatement({ ...renamingStatement, name: e.target.value })
+                                }
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleRenameStatement();
+                                  if (e.key === 'Escape') setRenamingStatement(null);
+                                }}
+                                autoFocus
+                                className="w-full rounded border border-[#d3bb73]/30 bg-[#0f1119] px-2 py-1 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                              />
+                              <button
+                                onClick={handleRenameStatement}
+                                className="rounded px-2 py-1 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
+                              >
+                                OK
+                              </button>
+                              <button
+                                onClick={() => setRenamingStatement(null)}
+                                className="rounded px-2 py-1 text-xs text-[#e5e4e2]/60 hover:bg-white/5"
+                              >
+                                x
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-sm text-[#e5e4e2]">{stmt.file_name}</span>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <span className="text-sm text-[#e5e4e2]/70">
@@ -1354,6 +1481,13 @@ export default function KSeFFinancialDashboard() {
                                 <Download className="h-4 w-4" />
                               </button>
                             )}
+                            <button
+                              onClick={() => setRenamingStatement({ id: stmt.id, name: stmt.file_name })}
+                              className="rounded p-1.5 text-[#e5e4e2]/70 transition-colors hover:bg-white/5"
+                              title="Zmien nazwe"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
                             <button
                               onClick={() => handleDeleteStatement(stmt.id)}
                               className="rounded p-1.5 text-red-400 transition-colors hover:bg-red-500/10"
