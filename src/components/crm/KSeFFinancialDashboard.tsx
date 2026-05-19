@@ -15,12 +15,17 @@ import {
   Link as LinkIcon,
   ChevronUp,
   ChevronDown,
+  Download,
+  Trash2,
+  List,
 } from 'lucide-react';
 import { parseMT940, parseJPK_WB, findMatchingInvoices } from '@/lib/bankStatementParsers';
 import BankTransactionsAnalysis from './BankTransactionsAnalysis';
 import BankMatchingSimple from './BankMatchingSimple';
 import CompanySelector from './CompanySelector';
+import ResponsiveActionBar from './ResponsiveActionBar';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { useDialog } from '@/contexts/DialogContext';
 
 interface MonthlySummary {
   id: string;
@@ -34,6 +39,20 @@ interface MonthlySummary {
   invoices_unpaid_count: number;
   invoices_overdue_count: number;
   bank_statement_uploaded: boolean;
+}
+
+interface BankStatementRecord {
+  id: string;
+  file_name: string;
+  account_type: 'regular' | 'vat';
+  statement_month: number;
+  statement_year: number;
+  my_company_id: string;
+  file_storage_path: string | null;
+  transactions_count: number;
+  processed: boolean;
+  created_at: string;
+  my_companies?: { name: string } | null;
 }
 
 const MONTHS = [
@@ -50,6 +69,61 @@ const MONTHS = [
   'Listopad',
   'Grudzień',
 ];
+
+function MonthActions({
+  summary,
+  selectedCompanyId,
+  onDetails,
+  onDownload,
+}: {
+  summary: MonthlySummary;
+  selectedCompanyId: string | null;
+  onDetails: () => void;
+  onDownload: (accountType: 'regular' | 'vat') => void;
+}) {
+  const [hasRegular, setHasRegular] = useState<boolean>(false);
+  const [hasVat, setHasVat] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!selectedCompanyId || !summary.bank_statement_uploaded) {
+      setHasRegular(false);
+      setHasVat(false);
+      return;
+    }
+
+    const check = async () => {
+      const { data } = await supabase
+        .from('bank_statements')
+        .select('account_type')
+        .eq('statement_month', summary.month)
+        .eq('statement_year', summary.year)
+        .eq('my_company_id', selectedCompanyId);
+
+      const types = (data || []).map((d) => d.account_type);
+      setHasRegular(types.includes('regular'));
+      setHasVat(types.includes('vat'));
+    };
+    check();
+  }, [summary.month, summary.year, selectedCompanyId, summary.bank_statement_uploaded]);
+
+  const actions = [
+    { label: 'Szczegoly', onClick: onDetails, icon: <FileText className="h-4 w-4" /> },
+    {
+      label: 'Pobierz wyciag',
+      onClick: () => onDownload('regular'),
+      icon: <Download className="h-4 w-4" />,
+      show: hasRegular,
+    },
+    {
+      label: 'Wyciag VAT',
+      onClick: () => onDownload('vat'),
+      icon: <Download className="h-4 w-4" />,
+      show: hasVat,
+    },
+  ];
+
+  return <ResponsiveActionBar actions={actions} />;
+}
 
 export default function KSeFFinancialDashboard() {
   const [summaries, setSummaries] = useState<MonthlySummary[]>([]);
@@ -68,7 +142,12 @@ export default function KSeFFinancialDashboard() {
     year: number;
   } | null>(null);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
+  const [uploadAccountType, setUploadAccountType] = useState<'regular' | 'vat'>('regular');
+  const [showStatementsListModal, setShowStatementsListModal] = useState(false);
+  const [allStatements, setAllStatements] = useState<BankStatementRecord[]>([]);
+  const [loadingStatements, setLoadingStatements] = useState(false);
   const { showSnackbar } = useSnackbar();
+  const { showConfirm } = useDialog();
   const { employee: currentEmployee, isAdmin } = useCurrentEmployee();
   const allowedCompanyIds: string[] | null = (() => {
     if (isAdmin) return null;
@@ -168,6 +247,141 @@ export default function KSeFFinancialDashboard() {
     }
   };
 
+  const loadAllStatements = async () => {
+    try {
+      setLoadingStatements(true);
+      let query = supabase
+        .from('bank_statements')
+        .select('id, file_name, account_type, statement_month, statement_year, my_company_id, file_storage_path, transactions_count, processed, created_at, my_companies(name)')
+        .order('statement_year', { ascending: false })
+        .order('statement_month', { ascending: false });
+
+      if (selectedCompanyId) {
+        query = query.eq('my_company_id', selectedCompanyId);
+      } else if (allowedCompanyIds) {
+        query = query.in('my_company_id', allowedCompanyIds);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      setAllStatements((data || []) as unknown as BankStatementRecord[]);
+    } catch (error: any) {
+      console.error('Error loading statements:', error);
+      showSnackbar('Błąd ładowania listy wyciągów', 'error');
+    } finally {
+      setLoadingStatements(false);
+    }
+  };
+
+  const handleDownloadStatement = async (statementId: string, accountType: 'regular' | 'vat', month: number, year: number) => {
+    try {
+      const { data: stmt } = await supabase
+        .from('bank_statements')
+        .select('file_storage_path, file_name')
+        .eq('id', statementId)
+        .maybeSingle();
+
+      if (!stmt?.file_storage_path) {
+        showSnackbar('Plik wyciągu nie jest dostępny do pobrania', 'warning');
+        return;
+      }
+
+      const { data: signedUrl, error } = await supabase.storage
+        .from('bank-statements')
+        .createSignedUrl(stmt.file_storage_path, 60);
+
+      if (error || !signedUrl?.signedUrl) {
+        throw new Error('Nie udało się wygenerować linku do pobrania');
+      }
+
+      const link = document.createElement('a');
+      link.href = signedUrl.signedUrl;
+      link.download = stmt.file_name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error: any) {
+      console.error('Download error:', error);
+      showSnackbar(error.message || 'Błąd pobierania wyciągu', 'error');
+    }
+  };
+
+  const handleDeleteStatement = async (statementId: string) => {
+    const confirmed = await showConfirm({
+      title: 'Usuń wyciąg bankowy',
+      message: 'Czy na pewno chcesz usunąć ten wyciąg? Wszystkie powiązane transakcje i dopasowania zostaną usunięte.',
+      confirmText: 'Usuń',
+      cancelText: 'Anuluj',
+    });
+
+    if (!confirmed) return;
+
+    try {
+      const { data: stmt } = await supabase
+        .from('bank_statements')
+        .select('file_storage_path, my_company_id, statement_month, statement_year')
+        .eq('id', statementId)
+        .maybeSingle();
+
+      if (stmt?.file_storage_path) {
+        await supabase.storage.from('bank-statements').remove([stmt.file_storage_path]);
+      }
+
+      const { data: transactions } = await supabase
+        .from('bank_transactions')
+        .select('id, matched_invoice_id')
+        .eq('statement_id', statementId);
+
+      const matchedInvoiceIds = [...new Set((transactions || []).map((t) => t.matched_invoice_id).filter(Boolean))];
+
+      if (matchedInvoiceIds.length > 0) {
+        await supabase
+          .from('ksef_invoices')
+          .update({ payment_status: 'unpaid', payment_date: null })
+          .in('id', matchedInvoiceIds);
+      }
+
+      const { error } = await supabase
+        .from('bank_statements')
+        .delete()
+        .eq('id', statementId);
+
+      if (error) throw error;
+
+      showSnackbar('Wyciąg bankowy został usunięty', 'success');
+      setAllStatements((prev) => prev.filter((s) => s.id !== statementId));
+      await loadSummaries();
+    } catch (error: any) {
+      console.error('Delete error:', error);
+      showSnackbar(error.message || 'Błąd usuwania wyciągu', 'error');
+    }
+  };
+
+  const getStatementsForMonth = async (month: number, year: number, accountType: 'regular' | 'vat') => {
+    let query = supabase
+      .from('bank_statements')
+      .select('id, file_storage_path, file_name, account_type')
+      .eq('statement_month', month)
+      .eq('statement_year', year)
+      .eq('account_type', accountType);
+
+    if (selectedCompanyId) {
+      query = query.eq('my_company_id', selectedCompanyId);
+    }
+
+    const { data } = await query.maybeSingle();
+    return data;
+  };
+
+  const handleDownloadForMonth = async (month: number, year: number, accountType: 'regular' | 'vat') => {
+    const stmt = await getStatementsForMonth(month, year, accountType);
+    if (!stmt) {
+      showSnackbar(`Brak wyciągu ${accountType === 'vat' ? 'VAT' : 'bieżącego'} dla tego miesiąca`, 'warning');
+      return;
+    }
+    await handleDownloadStatement(stmt.id, accountType, month, year);
+  };
+
   const handleFileUpload = async (file: File, month: number, year: number) => {
     try {
       if (!selectedCompanyId) {
@@ -176,7 +390,7 @@ export default function KSeFFinancialDashboard() {
       }
 
       setUploadingFile(true);
-      setUploadProgress({ step: 'Wczytywanie pliku PDF...', current: 0, total: 7 });
+      setUploadProgress({ step: 'Wczytywanie pliku PDF...', current: 0, total: 8 });
 
       const lowerName = file.name.toLowerCase();
 
@@ -186,7 +400,7 @@ export default function KSeFFinancialDashboard() {
 
       const fileType: 'MT940' = 'MT940';
 
-      setUploadProgress({ step: 'Parsowanie PDF...', current: 1, total: 7 });
+      setUploadProgress({ step: 'Parsowanie PDF...', current: 1, total: 8 });
 
       const formData = new FormData();
       formData.append('file', file);
@@ -205,21 +419,29 @@ export default function KSeFFinancialDashboard() {
       const parsedStatement = result.data;
       const fileContent = parsedStatement?.rawText || '[PDF parsed]';
 
-      setUploadProgress({ step: 'Wyszukiwanie poprzedniego wyciągu...', current: 2, total: 7 });
+      setUploadProgress({ step: 'Wyszukiwanie poprzedniego wyciągu...', current: 2, total: 8 });
 
       const { data: existingStatements, error: existingStatementsError } = await supabase
         .from('bank_statements')
-        .select('id')
+        .select('id, file_storage_path')
         .eq('statement_month', month)
         .eq('statement_year', year)
-        .eq('my_company_id', selectedCompanyId);
+        .eq('my_company_id', selectedCompanyId)
+        .eq('account_type', uploadAccountType);
 
       if (existingStatementsError) throw existingStatementsError;
 
       const existingStatementIds = (existingStatements || []).map((s) => s.id);
 
       if (existingStatementIds.length > 0) {
-        setUploadProgress({ step: 'Czyszczenie starego wyciągu...', current: 3, total: 7 });
+        setUploadProgress({ step: 'Czyszczenie starego wyciągu...', current: 3, total: 8 });
+
+        const oldStoragePaths = (existingStatements || [])
+          .map((s) => s.file_storage_path)
+          .filter(Boolean) as string[];
+        if (oldStoragePaths.length > 0) {
+          await supabase.storage.from('bank-statements').remove(oldStoragePaths);
+        }
 
         const { data: oldTransactions, error: oldTransactionsError } = await supabase
           .from('bank_transactions')
@@ -259,7 +481,18 @@ export default function KSeFFinancialDashboard() {
         if (deleteStatementsError) throw deleteStatementsError;
       }
 
-      setUploadProgress({ step: 'Zapisywanie nowego wyciągu...', current: 4, total: 7 });
+      setUploadProgress({ step: 'Przesyłanie pliku do magazynu...', current: 4, total: 8 });
+
+      const storagePath = `${selectedCompanyId}/${year}/${month}_${uploadAccountType}_${Date.now()}.pdf`;
+      const { error: storageError } = await supabase.storage
+        .from('bank-statements')
+        .upload(storagePath, file, { contentType: 'application/pdf', upsert: true });
+
+      if (storageError) {
+        console.error('Storage upload error:', storageError);
+      }
+
+      setUploadProgress({ step: 'Zapisywanie nowego wyciągu...', current: 5, total: 8 });
 
       const {
         data: { user },
@@ -274,6 +507,8 @@ export default function KSeFFinancialDashboard() {
           statement_month: month,
           statement_year: year,
           my_company_id: selectedCompanyId,
+          account_type: uploadAccountType,
+          file_storage_path: storageError ? null : storagePath,
           account_number: parsedStatement.accountNumber,
           opening_balance: parsedStatement.openingBalance,
           closing_balance: parsedStatement.closingBalance,
@@ -289,8 +524,8 @@ export default function KSeFFinancialDashboard() {
 
       setUploadProgress({
         step: `Przetwarzanie transakcji (0/${parsedStatement.transactions.length})...`,
-        current: 5,
-        total: 7,
+        current: 6,
+        total: 8,
       });
 
       let matchedCount = 0;
@@ -302,8 +537,8 @@ export default function KSeFFinancialDashboard() {
         if (i % 5 === 0) {
           setUploadProgress({
             step: `Przetwarzanie transakcji (${i + 1}/${parsedStatement.transactions.length})...`,
-            current: 5,
-            total: 7,
+            current: 6,
+            total: 8,
           });
         }
 
@@ -355,7 +590,7 @@ export default function KSeFFinancialDashboard() {
         if (insertTransactionError) throw insertTransactionError;
       }
 
-      setUploadProgress({ step: 'Finalizowanie importu...', current: 6, total: 7 });
+      setUploadProgress({ step: 'Finalizowanie importu...', current: 7, total: 8 });
 
       const { error: finalizeStatementError } = await supabase
         .from('bank_statements')
@@ -448,6 +683,16 @@ export default function KSeFFinancialDashboard() {
               ))}
             </select>
           </div>
+          <button
+            onClick={() => {
+              loadAllStatements();
+              setShowStatementsListModal(true);
+            }}
+            className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm text-[#e5e4e2] transition-colors hover:border-[#d3bb73]/40 hover:bg-[#252945]"
+          >
+            <List className="h-4 w-4 text-[#d3bb73]" />
+            Lista wyciagow
+          </button>
         </div>
       </div>
 
@@ -735,12 +980,12 @@ export default function KSeFFinancialDashboard() {
                         )}
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <button
-                          onClick={() => setSelectedMonth(summary)}
-                          className="text-sm text-[#d3bb73] hover:text-[#d3bb73]/80"
-                        >
-                          Szczegóły
-                        </button>
+                        <MonthActions
+                          summary={summary}
+                          selectedCompanyId={selectedCompanyId}
+                          onDetails={() => setSelectedMonth(summary)}
+                          onDownload={(accountType) => handleDownloadForMonth(summary.month, summary.year, accountType)}
+                        />
                       </td>
                     </tr>
                   );
@@ -779,6 +1024,36 @@ export default function KSeFFinancialDashboard() {
                   <div className="mt-1 text-xl font-bold text-red-400">
                     {selectedMonth.total_expenses.toFixed(2)} PLN
                   </div>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-[#d3bb73]/20 bg-[#252945] p-4">
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                  Typ wyciągu
+                </label>
+                <div className="flex gap-4">
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input
+                      type="radio"
+                      name="accountType"
+                      value="regular"
+                      checked={uploadAccountType === 'regular'}
+                      onChange={() => setUploadAccountType('regular')}
+                      className="h-4 w-4 accent-[#d3bb73]"
+                    />
+                    <span className="text-sm text-[#e5e4e2]">Konto biezace</span>
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input
+                      type="radio"
+                      name="accountType"
+                      value="vat"
+                      checked={uploadAccountType === 'vat'}
+                      onChange={() => setUploadAccountType('vat')}
+                      className="h-4 w-4 accent-[#d3bb73]"
+                    />
+                    <span className="text-sm text-[#e5e4e2]">Konto VAT</span>
+                  </label>
                 </div>
               </div>
 
@@ -976,6 +1251,135 @@ export default function KSeFFinancialDashboard() {
             loadSummaries();
           }}
         />
+      )}
+
+      {showStatementsListModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[90vh] w-full max-w-4xl overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl">
+            <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-6">
+              <h3 className="text-xl font-medium text-[#e5e4e2]">
+                Wszystkie wyciagi bankowe
+              </h3>
+              <button
+                onClick={() => setShowStatementsListModal(false)}
+                className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
+              >
+                x
+              </button>
+            </div>
+
+            <div className="max-h-[70vh] overflow-y-auto p-6">
+              {loadingStatements ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="text-[#e5e4e2]/60">Ladowanie...</div>
+                </div>
+              ) : allStatements.length === 0 ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="text-[#e5e4e2]/60">Brak dodanych wyciagow</div>
+                </div>
+              ) : (
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-[#d3bb73]/10">
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
+                        Plik
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
+                        Firma
+                      </th>
+                      <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
+                        Typ
+                      </th>
+                      <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
+                        Okres
+                      </th>
+                      <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
+                        Transakcje
+                      </th>
+                      <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
+                        Akcje
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allStatements.map((stmt) => (
+                      <tr
+                        key={stmt.id}
+                        className="border-b border-[#d3bb73]/10 transition-colors hover:bg-[#252945]/50"
+                      >
+                        <td className="px-4 py-3">
+                          <span className="text-sm text-[#e5e4e2]">{stmt.file_name}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-sm text-[#e5e4e2]/70">
+                            {stmt.my_companies?.name || '-'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <span
+                            className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${
+                              stmt.account_type === 'vat'
+                                ? 'bg-blue-500/20 text-blue-400'
+                                : 'bg-[#d3bb73]/20 text-[#d3bb73]'
+                            }`}
+                          >
+                            {stmt.account_type === 'vat' ? 'VAT' : 'Biezace'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <span className="text-sm text-[#e5e4e2]/70">
+                            {MONTHS[stmt.statement_month - 1]} {stmt.statement_year}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <span className="text-sm text-[#e5e4e2]/70">
+                            {stmt.transactions_count}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            {stmt.file_storage_path && (
+                              <button
+                                onClick={() =>
+                                  handleDownloadStatement(
+                                    stmt.id,
+                                    stmt.account_type,
+                                    stmt.statement_month,
+                                    stmt.statement_year,
+                                  )
+                                }
+                                className="rounded p-1.5 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
+                                title="Pobierz"
+                              >
+                                <Download className="h-4 w-4" />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDeleteStatement(stmt.id)}
+                              className="rounded p-1.5 text-red-400 transition-colors hover:bg-red-500/10"
+                              title="Usun"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div className="flex justify-end border-t border-[#d3bb73]/10 p-6">
+              <button
+                onClick={() => setShowStatementsListModal(false)}
+                className="rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#252945]"
+              >
+                Zamknij
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
