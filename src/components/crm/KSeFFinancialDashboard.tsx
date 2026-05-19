@@ -1330,6 +1330,7 @@ export default function KSeFFinancialDashboard() {
         <BankTransactionsAnalysis
           month={unmatchedModalMonth.month}
           year={unmatchedModalMonth.year}
+          companyId={selectedCompanyId}
           onClose={() => {
             setShowUnmatchedModal(false);
             setUnmatchedModalMonth(null);
