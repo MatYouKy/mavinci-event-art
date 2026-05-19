@@ -761,12 +761,7 @@ export default function KSeFFinancialDashboard() {
     summaries[0] ||
     null;
 
-  const monthsWithData = summaries.filter(
-    (s) => s.invoices_issued_count > 0 || s.invoices_received_count > 0,
-  );
-
-  const displayedSummaries =
-    monthsWithData.length > 0 && monthsWithData.length < 12 ? monthsWithData : summaries;
+  const displayedSummaries = summaries;
 
   const yearTotals = summaries.reduce(
     (acc, s) => ({
