@@ -453,7 +453,7 @@ export async function POST(request: NextRequest) {
   let jobId: string | undefined;
 
   let invoiceId: string | undefined;
-  
+  let currentStep = 'validate';
 
   try {
     const body = await request.json();
@@ -584,6 +584,7 @@ const preparedInvoice = prepareFA3Invoice(invoiceForXml, organization);
       status: 'completed',
     });
     
+    currentStep = 'xml';
     emitKsefProgress(jobId, {
       step: 'xml',
       status: 'active',
@@ -596,6 +597,7 @@ const preparedInvoice = prepareFA3Invoice(invoiceForXml, organization);
       status: 'completed',
     });
 
+    currentStep = 'auth';
     emitKsefProgress(jobId, {
       step: 'auth',
       status: 'active',
@@ -652,6 +654,7 @@ const preparedInvoice = prepareFA3Invoice(invoiceForXml, organization);
     }
 
     const keyMaterial = createSymmetricKeyMaterial(symmetricKeyCert.certificate);
+    currentStep = 'session';
     emitKsefProgress(jobId, {
       step: 'session',
       status: 'active',
@@ -717,6 +720,7 @@ const preparedInvoice = prepareFA3Invoice(invoiceForXml, organization);
     });
 
 
+    currentStep = 'encrypt';
     emitKsefProgress(jobId, {
       step: 'encrypt',
       status: 'active',
@@ -742,6 +746,7 @@ const preparedInvoice = prepareFA3Invoice(invoiceForXml, organization);
       status: 'completed',
     });
     
+    currentStep = 'poll';
     emitKsefProgress(jobId, {
       step: 'poll',
       status: 'active',
@@ -835,6 +840,7 @@ const preparedInvoice = prepareFA3Invoice(invoiceForXml, organization);
       }
     }
 
+    currentStep = 'save';
     emitKsefProgress(jobId, {
       step: 'save',
       status: 'active',
@@ -907,7 +913,7 @@ const preparedInvoice = prepareFA3Invoice(invoiceForXml, organization);
   } catch (error: any) {
     console.error('Error sending invoice to KSeF:', error);
     emitKsefProgress(jobId, {
-      step: 'validate',
+      step: currentStep,
       status: 'error',
       message: error.message || String(error),
     });

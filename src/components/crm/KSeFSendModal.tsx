@@ -109,6 +109,7 @@ export default function KSeFSendModal({
   const hasStarted = useRef(false);
   const startTimeRef = useRef(Date.now());
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const currentStepRef = useRef(-1);
 
   useEffect(() => {
     if (hasStarted.current) return;
@@ -124,7 +125,7 @@ export default function KSeFSendModal({
     }, 500);
 
     const eventSource = new EventSource(
-      `/bridge/ksef/invoices/send/progress?jobId=${encodeURIComponent(jobId)}`,
+      `/bridge/ksef/invoices/progress?jobId=${encodeURIComponent(jobId)}`,
     );
 
     const markProgress = (progress: KsefProgressEvent) => {
@@ -133,6 +134,7 @@ export default function KSeFSendModal({
       if (progressIndex === -1) return;
 
       setCurrentStepIndex(progressIndex);
+      currentStepRef.current = progressIndex;
 
       setSteps((old) =>
         old.map((step, index) => {
@@ -196,11 +198,12 @@ export default function KSeFSendModal({
 
           setSteps((old) =>
             old.map((step, index) => {
-              if (index < Math.max(currentStepIndex, 0)) {
+              const failedAt = Math.max(currentStepRef.current, 0);
+              if (index < failedAt) {
                 return { ...step, status: 'completed' as StepStatus };
               }
 
-              if (index === Math.max(currentStepIndex, 0)) {
+              if (index === failedAt) {
                 return { ...step, status: 'error' as StepStatus };
               }
 
