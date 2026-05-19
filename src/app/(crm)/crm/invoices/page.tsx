@@ -626,13 +626,7 @@ export default function InvoicesPage() {
           </div>
 
           {activeTab === 'dashboard' ? (
-            <>
-              <KSeFFinancialDashboard />
-              <div className="mt-8">
-                <h3 className="mb-6 text-xl font-light text-[#e5e4e2]">Faktury lokalne</h3>
-                <FinancialDashboard />
-              </div>
-            </>
+            <KSeFFinancialDashboard />
           ) : activeTab === 'ksef' ? (
             <KSeFIntegrationPanel />
           ) : activeTab === 'settings' ? (

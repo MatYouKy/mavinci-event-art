@@ -363,8 +363,6 @@ export default function KSeFFinancialDashboard() {
       }
 
       window.open(signedUrl.signedUrl, '_blank', 'noopener,noreferrer');
-
-
     } catch (error: any) {
       console.error('Download error:', error);
       showSnackbar(error.message || 'Błąd pobierania wyciągu', 'error');
@@ -761,9 +759,18 @@ export default function KSeFFinancialDashboard() {
     summaries[0] ||
     null;
 
-  const displayedSummaries = summaries;
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonthNumber = now.getMonth() + 1;
 
-  const yearTotals = summaries.reduce(
+  const displayedSummaries = summaries.filter((summary) => {
+    if (selectedYear < currentYear) return true;
+    if (selectedYear > currentYear) return false;
+
+    return summary.month <= currentMonthNumber;
+  });
+
+  const yearTotals = displayedSummaries.reduce(
     (acc, s) => ({
       income: acc.income + s.total_income,
       expenses: acc.expenses + s.total_expenses,
@@ -773,6 +780,7 @@ export default function KSeFFinancialDashboard() {
       unpaid: acc.unpaid + s.invoices_unpaid_count,
       overdue: acc.overdue + s.invoices_overdue_count,
     }),
+
     { income: 0, expenses: 0, issued: 0, received: 0, paid: 0, unpaid: 0, overdue: 0 },
   );
 
@@ -913,13 +921,6 @@ export default function KSeFFinancialDashboard() {
                 </div>
               </div>
             </div>
-          </div>
-        )}
-        {monthsWithData.length > 0 && monthsWithData.length < 12 && (
-          <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-4 text-sm text-blue-400">
-            <strong>Uwaga:</strong> W roku {selectedYear} masz faktury tylko w{' '}
-            {monthsWithData.length} {monthsWithData.length === 1 ? 'miesiącu' : 'miesiącach'}.
-            Poniżej wyświetlane są tylko miesiące z danymi.
           </div>
         )}
       </div>

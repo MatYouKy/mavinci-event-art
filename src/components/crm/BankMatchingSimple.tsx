@@ -215,33 +215,21 @@ export default function BankMatchingSimple({ month, year, companyId, onClose }: 
     try {
       setLoading(true);
   
-      const monthsToCheck = [
-        { month: month === 1 ? 12 : month - 1, year: month === 1 ? year - 1 : year },
-        { month, year },
-        { month: month === 12 ? 1 : month + 1, year: month === 12 ? year + 1 : year },
-      ];
+      // 1. Pobierz wszystkie wyciągi z danego roku
+      let statementsQuery = supabase
+        .from('bank_statements')
+        .select('id')
+        .eq('statement_year', year);
   
-      const allStatementIds: string[] = [];
-  
-      for (const range of monthsToCheck) {
-        let statementsQuery = supabase
-          .from('bank_statements')
-          .select('id')
-          .eq('statement_month', range.month)
-          .eq('statement_year', range.year);
-  
-        if (companyId) {
-          statementsQuery = statementsQuery.eq('my_company_id', companyId);
-        }
-  
-        const { data: statements, error: statementsError } = await statementsQuery;
-  
-        if (statementsError) throw statementsError;
-  
-        if (statements?.length) {
-          allStatementIds.push(...statements.map((statement) => statement.id));
-        }
+      if (companyId) {
+        statementsQuery = statementsQuery.eq('my_company_id', companyId);
       }
+  
+      const { data: statements, error: statementsError } = await statementsQuery;
+  
+      if (statementsError) throw statementsError;
+  
+      const allStatementIds = (statements || []).map((statement) => statement.id);
   
       if (!allStatementIds.length) {
         setTransactions([]);
@@ -259,11 +247,9 @@ export default function BankMatchingSimple({ month, year, companyId, onClose }: 
         setTransactions((transactionsData || []) as Transaction[]);
       }
   
-      const monthStart = `${year}-${String(month).padStart(2, '0')}-01`;
-      const monthEnd =
-        month === 12
-          ? `${year + 1}-01-01`
-          : `${year}-${String(month + 1).padStart(2, '0')}-01`;
+      // 2. Pobierz nieopłacone faktury kosztowe z całego roku
+      const yearStart = `${year}-01-01`;
+      const yearEnd = `${year + 1}-01-01`;
   
       let invoicesQuery = supabase
         .from('ksef_invoices')
@@ -284,8 +270,8 @@ export default function BankMatchingSimple({ month, year, companyId, onClose }: 
         `)
         .eq('invoice_type', 'received')
         .neq('payment_status', 'paid')
-        .gte('issue_date', monthStart)
-        .lt('issue_date', monthEnd);
+        .gte('issue_date', yearStart)
+        .lt('issue_date', yearEnd);
   
       if (companyId) {
         invoicesQuery = invoicesQuery.eq('my_company_id', companyId);
