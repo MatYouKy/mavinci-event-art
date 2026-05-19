@@ -31,7 +31,7 @@ interface Transaction {
   manual_match?: boolean;
 }
 
-interface KSeFInvoice {
+export interface KSeFInvoice {
   id: string;
   invoice_number?: string | null;
   ksef_reference_number: string;
@@ -56,7 +56,7 @@ interface MatchScore {
 interface Props {
   month: number;
   year: number;
-  invoice: KSeFInvoice;
+  invoice: KSeFInvoice | null;
   companyId: string | null;
   onClose: () => void;
 }
@@ -84,7 +84,10 @@ function formatDate(value?: string | null) {
 }
 
 function calculateMatchScore(transaction: Transaction, invoice: KSeFInvoice): MatchScore | null {
+  if (!invoice) return null;
+
   const reasons: string[] = [];
+
   let score = 0;
 
   const transactionAmount = Math.abs(Number(transaction.amount || 0));
@@ -207,8 +210,14 @@ export default function BankMatchingSimple({ month, year, invoice, companyId, on
   const { showSnackbar } = useSnackbar();
 
   useEffect(() => {
+    if (!invoice) {
+      setTransactions([]);
+      setLoading(false);
+      return;
+    }
+
     void loadData();
-  }, [month, year, invoice.id]);
+  }, [month, year, invoice?.id, companyId]);
 
   const loadData = async () => {
     try {
@@ -267,10 +276,12 @@ export default function BankMatchingSimple({ month, year, invoice, companyId, on
   };
 
   const matchScores = useMemo(() => {
+    if (!invoice) return [];
+
     return transactions
       .map((transaction) => calculateMatchScore(transaction, invoice))
-      .filter(Boolean)
-      .sort((a, b) => b!.score - a!.score) as MatchScore[];
+      .filter((match): match is MatchScore => Boolean(match))
+      .sort((a, b) => b.score - a.score);
   }, [transactions, invoice]);
 
   const handleMatch = async (match: MatchScore) => {
@@ -307,6 +318,29 @@ export default function BankMatchingSimple({ month, year, invoice, companyId, on
       setMatchingId(null);
     }
   };
+
+  if (!invoice) {
+    return (
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4">
+        <div className="w-full max-w-lg rounded-2xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6 shadow-xl">
+          <div className="mb-4 text-xl font-medium text-[#e5e4e2]">Brak wybranej faktury</div>
+
+          <p className="text-sm text-[#e5e4e2]/60">
+            Ten modal wymaga konkretnej faktury do dopasowania płatności.
+          </p>
+
+          <div className="mt-6 flex justify-end">
+            <button
+              onClick={onClose}
+              className="rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#252945]"
+            >
+              Zamknij
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const contractorName =
     invoice.invoice_type === 'received'
@@ -507,7 +541,7 @@ export default function BankMatchingSimple({ month, year, invoice, companyId, on
                       className="border-b border-[#d3bb73]/10 transition-colors hover:bg-[#1c1f33]/30"
                     >
                       <td
-                        className={`${COL_CONTRACTOR} px-6 py-5 align-top text-sm text-[#e5e4e2]/80 max-w-[260px]`}
+                        className={`${COL_CONTRACTOR} max-w-[260px] px-6 py-5 align-top text-sm text-[#e5e4e2]/80`}
                       >
                         <div className="truncate">
                           {match.transaction.counterparty_name || 'Brak kontrahenta'}
@@ -519,7 +553,9 @@ export default function BankMatchingSimple({ month, year, invoice, companyId, on
                         )}
                       </td>
 
-                      <td className={`${COL_DOC} px-6 py-5 align-top text-sm text-[#e5e4e2] max-w-[260px]`}>
+                      <td
+                        className={`${COL_DOC} max-w-[260px] px-6 py-5 align-top text-sm text-[#e5e4e2]`}
+                      >
                         <div className="truncate font-medium">
                           {match.transaction.title || 'Brak tytułu przelewu'}
                         </div>

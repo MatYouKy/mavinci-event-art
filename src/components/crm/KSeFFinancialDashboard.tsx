@@ -27,6 +27,7 @@ import CompanySelector from './CompanySelector';
 import ResponsiveActionBar from './ResponsiveActionBar';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useDialog } from '@/contexts/DialogContext';
+import { KSeFInvoice } from './BankMatchingSimple';
 
 interface MonthlySummary {
   id: string;
@@ -126,7 +127,7 @@ function MonthActions({
     },
   ];
 
-  return <ResponsiveActionBar actions={actions} />;
+  return <ResponsiveActionBar actions={actions} disabledBackground mobileBreakpoint={4000} />;
 }
 
 export default function KSeFFinancialDashboard() {
@@ -146,6 +147,7 @@ export default function KSeFFinancialDashboard() {
     year: number;
   } | null>(null);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
+  const [selectedInvoice, setSelectedInvoice] = useState<KSeFInvoice | null>(null);
   const [uploadAccountType, setUploadAccountType] = useState<'regular' | 'vat'>('regular');
   const [uploadMonth, setUploadMonth] = useState<MonthlySummary | null>(null);
   const [showStatementsListModal, setShowStatementsListModal] = useState(false);
@@ -1340,7 +1342,7 @@ export default function KSeFFinancialDashboard() {
         <BankMatchingSimple
           month={unmatchedModalMonth.month}
           year={unmatchedModalMonth.year}
-          invoice={null}
+          invoice={selectedInvoice}
           companyId={selectedCompanyId}
           onClose={() => {
             setShowSimpleMatchModal(false);
