@@ -47,7 +47,7 @@ export default function Footer() {
             <div>
               <Link href="/" className="inline-block">
                 <Image
-                  src="/logo mavinci.svg"
+                  src="/logo.png"
                   alt="MAVINCI event & art"
                   width={100}
                   height={100}

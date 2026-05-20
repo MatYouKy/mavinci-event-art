@@ -14,6 +14,7 @@ import { supabase } from '@/lib/supabase/browser';
 import { Notification } from './crm/NotificationCenter';
 import { IEmployee } from '@/app/(crm)/crm/employees/type';
 import { User } from '@supabase/supabase-js';
+import Image from 'next/image';
 
 const navLinks = [
   { label: 'O Nas', href: '/o-nas' },
@@ -79,7 +80,7 @@ export default function Navbar({ onAdminClick, initialNotifications, initialEmpl
   const servicesRef = useRef<HTMLDivElement>(null);
   const navRef = useRef<HTMLElement>(null);
   const lastScrollY = useRef(0);
-  const { signOut, user } = useAuth();
+  const { signOut, authUser } = useAuth();
 
   const isMobile = useMobile();
   const { isEditMode, toggleEditMode } = useEditMode();
@@ -93,7 +94,6 @@ export default function Navbar({ onAdminClick, initialNotifications, initialEmpl
   };
 
   const isOfferActive = pathname.startsWith('/oferta');
-  const authUser = useAppSelector((state) => state.auth.user);
   const [crmUser, setCrmUser] = useState<User | null>(null);
   const [employee, setEmployee] = useState<IEmployee>(initialEmployee);
 
@@ -191,7 +191,7 @@ export default function Navbar({ onAdminClick, initialNotifications, initialEmpl
     setIsDropdownOpen(false);
   };
 
-  const isAuthenticated = !!user || !!authUser || !!crmUser;
+  const isAuthenticated = !!authUser || !!crmUser;
 
   const getDisplayName = () => {
     if (employee) {
@@ -256,11 +256,12 @@ export default function Navbar({ onAdminClick, initialNotifications, initialEmpl
         <div className="mx-auto max-w-7xl rounded-full border border-[#d3bb73]/20 bg-[#1c1f33]/95 px-4 shadow-lg backdrop-blur-md md:px-8">
           <div className="flex h-14 items-center justify-between gap-0 md:h-16 md:gap-4">
             <Link href="/" className="flex flex-shrink-0 items-center">
-              <img
-                src="/logo mavinci.svg"
+              <Image
+                src="/logo.png"
                 alt="MAVINCI event & art"
-                className="h-8 w-auto"
-                style={{ minWidth: '120px' }}
+                width={160}
+                height={60}
+                className="h-auto w-40"
               />
             </Link>
             {isMobile && <div className="flex-1" />}
@@ -342,9 +343,11 @@ export default function Navbar({ onAdminClick, initialNotifications, initialEmpl
                   >
                     {avatarUrl ? (
                       <div className="h-8 w-8 overflow-hidden rounded-full border-2 border-[#d3bb73]/30">
-                        <img
+                        <Image
                           src={avatarUrl}
                           alt={displayName}
+                          width={32}
+                          height={32}
                           className="h-full w-full"
                           style={getAvatarStyle()}
                         />
@@ -368,9 +371,11 @@ export default function Navbar({ onAdminClick, initialNotifications, initialEmpl
                         <div className="mb-2 flex items-center gap-3">
                           {avatarUrl ? (
                             <div className="h-12 w-12 overflow-hidden rounded-full border-2 border-[#d3bb73]/30">
-                              <img
+                              <Image
                                 src={avatarUrl}
                                 alt={displayName}
+                                width={48}
+                                height={48}
                                 className="h-full w-full"
                                 style={getAvatarStyle()}
                               />
@@ -583,9 +588,11 @@ export default function Navbar({ onAdminClick, initialNotifications, initialEmpl
                   <div className="flex items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-4 py-2">
                     {avatarUrl ? (
                       <div className="h-9 w-9 flex-shrink-0 overflow-hidden rounded-full border-2 border-[#d3bb73]/30">
-                        <img
+                        <Image
                           src={avatarUrl}
                           alt={displayName}
+                          width={36}
+                          height={36}
                           className="h-full w-full"
                           style={getAvatarStyle()}
                         />

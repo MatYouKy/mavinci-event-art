@@ -18,9 +18,9 @@ export const metadata: Metadata = {
   description: 'Mavinci CRM',
   robots: { index: false, follow: false },
   icons: {
-    icon: [{ url: '/shape-mavinci.svg', type: 'image/svg+xml' }],
-    shortcut: '/shape-mavinci.svg',
-    apple: '/shape-mavinci.svg',
+    icon: [{ url: '/signature.png', type: 'image/png' }],
+    shortcut: '/signature.png',
+    apple: '/signature.png',
   },
 };
 

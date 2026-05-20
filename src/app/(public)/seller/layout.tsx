@@ -91,7 +91,7 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
           <div className="flex h-full flex-col">
             <div className="flex items-center justify-between border-b border-[#d3bb73]/10 px-6 py-6">
               <Link href="/seller" className="flex items-center gap-3">
-                <Image src="/logo mavinci-simple.svg" alt="Mavinci" priority className="h-8 w-auto"
+                <Image src="/logo.png" alt="Mavinci" priority className="h-8 w-auto"
                 width={160}
                 height={60}
                 />

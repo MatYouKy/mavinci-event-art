@@ -28,6 +28,9 @@ import ResponsiveActionBar from './ResponsiveActionBar';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useDialog } from '@/contexts/DialogContext';
 import { KSeFInvoice } from './BankMatchingSimple';
+import BankStatementsListModal from './invoices/modal/BankStatementRecord';
+
+type AccountType = 'regular' | 'vat' | 'mt940';
 
 interface MonthlySummary {
   id: string;
@@ -46,7 +49,7 @@ interface MonthlySummary {
 interface BankStatementRecord {
   id: string;
   file_name: string;
-  account_type: 'regular' | 'vat';
+  account_type: AccountType;
   statement_month: number;
   statement_year: number;
   my_company_id: string;
@@ -87,15 +90,17 @@ function MonthActions({
   isAdmin: boolean;
   onUpload: () => void;
   onDetails: () => void;
-  onDownload: (accountType: 'regular' | 'vat') => void;
+  onDownload: (accountType: AccountType) => void;
 }) {
   const [hasRegular, setHasRegular] = useState(false);
   const [hasVat, setHasVat] = useState(false);
+  const [hasMt940, setHasMt940] = useState(false);
 
   useEffect(() => {
     if (!summary.bank_statement_uploaded) {
       setHasRegular(false);
       setHasVat(false);
+      setHasMt940(false);
       return;
     }
 
@@ -113,6 +118,7 @@ function MonthActions({
         if (!allowedCompanyIds || allowedCompanyIds.length === 0) {
           setHasRegular(false);
           setHasVat(false);
+          setHasMt940(false);
           return;
         }
 
@@ -125,6 +131,7 @@ function MonthActions({
         console.error('Error checking statements:', error);
         setHasRegular(false);
         setHasVat(false);
+        setHasMt940(false);
         return;
       }
 
@@ -132,6 +139,7 @@ function MonthActions({
 
       setHasRegular(types.includes('regular'));
       setHasVat(types.includes('vat'));
+      setHasMt940(types.includes('mt940'));
     };
 
     void check();
@@ -167,6 +175,12 @@ function MonthActions({
       icon: <Download className="h-4 w-4" />,
       show: hasVat,
     },
+    {
+      label: 'Pobierz wyciag MT940',
+      onClick: () => onDownload('mt940'),
+      icon: <Download className="h-4 w-4" />,
+      show: hasMt940,
+    },
   ];
 
   return <ResponsiveActionBar actions={actions} disabledBackground mobileBreakpoint={4000} />;
@@ -189,7 +203,7 @@ export default function KSeFFinancialDashboard() {
     year: number;
   } | null>(null);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
-  const [uploadAccountType, setUploadAccountType] = useState<'regular' | 'vat'>('regular');
+  const [uploadAccountType, setUploadAccountType] = useState<AccountType>('regular');
   const [uploadMonth, setUploadMonth] = useState<MonthlySummary | null>(null);
   const [showStatementsListModal, setShowStatementsListModal] = useState(false);
   const [allStatements, setAllStatements] = useState<BankStatementRecord[]>([]);
@@ -216,9 +230,18 @@ export default function KSeFFinancialDashboard() {
   const handleSelectedFile = async (file: File | null, month: number, year: number) => {
     if (!file) return;
 
-    const isPdf = file.name.toLowerCase().endsWith('.pdf');
-    if (!isPdf) {
-      showSnackbar('Dozwolony jest tylko plik PDF z wyciągiem bankowym', 'error');
+    const lowerName = file.name.toLowerCase();
+
+    const isValid =
+      uploadAccountType === 'mt940' ? lowerName.endsWith('.txt') : lowerName.endsWith('.pdf');
+
+    if (!isValid) {
+      showSnackbar(
+        uploadAccountType === 'mt940'
+          ? 'Dla MT940 dozwolony jest tylko plik TXT'
+          : 'Dozwolony jest tylko plik PDF z wyciągiem bankowym',
+        'error',
+      );
       return;
     }
 
@@ -338,7 +361,7 @@ export default function KSeFFinancialDashboard() {
 
   const handleDownloadStatement = async (
     statementId: string,
-    accountType: 'regular' | 'vat',
+    accountType: 'regular' | 'vat' | 'mt940',
     month: number,
     year: number,
   ) => {
@@ -362,7 +385,27 @@ export default function KSeFFinancialDashboard() {
         throw new Error('Nie udało się wygenerować linku do pobrania');
       }
 
-      window.open(signedUrl.signedUrl, '_blank', 'noopener,noreferrer');
+      if (accountType !== 'mt940') {
+        window.open(signedUrl.signedUrl, '_blank', 'noopener,noreferrer');
+        return;
+      }
+
+      const response = await fetch(signedUrl.signedUrl);
+      if (!response.ok) {
+        throw new Error('Nie udało się pobrać pliku MT940');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = stmt.file_name || `mt940-${year}-${month}.txt`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      window.URL.revokeObjectURL(url);
     } catch (error: any) {
       console.error('Download error:', error);
       showSnackbar(error.message || 'Błąd pobierania wyciągu', 'error');
@@ -447,11 +490,7 @@ export default function KSeFFinancialDashboard() {
     }
   };
 
-  const getStatementsForMonth = async (
-    month: number,
-    year: number,
-    accountType: 'regular' | 'vat',
-  ) => {
+  const getStatementsForMonth = async (month: number, year: number, accountType: AccountType) => {
     let query = supabase
       .from('bank_statements')
       .select('id, file_storage_path, file_name, account_type, my_company_id')
@@ -477,11 +516,7 @@ export default function KSeFFinancialDashboard() {
     return data || [];
   };
 
-  const handleDownloadForMonth = async (
-    month: number,
-    year: number,
-    accountType: 'regular' | 'vat',
-  ) => {
+  const handleDownloadForMonth = async (month: number, year: number, accountType: AccountType) => {
     const statements = await getStatementsForMonth(month, year, accountType);
 
     if (!statements.length) {
@@ -508,39 +543,58 @@ export default function KSeFFinancialDashboard() {
   const handleFileUpload = async (file: File, month: number, year: number) => {
     try {
       if (!selectedCompanyId) {
-        showSnackbar('Wybierz firmę przed uplodem wyciągu bankowego', 'error');
+        showSnackbar('Wybierz firmę przed uploadem wyciągu bankowego', 'error');
         return;
       }
 
       setUploadingFile(true);
-      setUploadProgress({ step: 'Wczytywanie pliku PDF...', current: 0, total: 8 });
+      setUploadProgress({ step: 'Wczytywanie pliku...', current: 0, total: 8 });
 
       const lowerName = file.name.toLowerCase();
+      const isMt940 = uploadAccountType === 'mt940';
 
-      if (!lowerName.endsWith('.pdf')) {
+      if (isMt940) {
+        if (!lowerName.endsWith('.txt')) {
+          throw new Error('Dla MT940 obsługiwane są wyłącznie pliki TXT');
+        }
+      } else if (!lowerName.endsWith('.pdf')) {
         throw new Error('Obsługiwane są wyłącznie pliki PDF');
       }
 
       const fileType: 'MT940' = 'MT940';
 
-      setUploadProgress({ step: 'Parsowanie PDF...', current: 1, total: 8 });
-
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const response = await fetch('/bridge/ksef/bank/parse-pdf', {
-        method: 'POST',
-        body: formData,
+      setUploadProgress({
+        step: isMt940 ? 'Parsowanie pliku MT940...' : 'Parsowanie PDF...',
+        current: 1,
+        total: 8,
       });
 
-      const result = await response.json();
+      let parsedStatement: any;
+      let fileContent = '';
 
-      if (!response.ok || !result?.success) {
-        throw new Error(result?.error || 'Nie udało się sparsować PDF');
+      if (isMt940) {
+        fileContent = await file.text();
+        parsedStatement = parseMT940(fileContent);
+      } else {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await fetch('/bridge/ksef/bank/parse-pdf', {
+          method: 'POST',
+          body: formData,
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || !result?.success) {
+          throw new Error(result?.error || 'Nie udało się sparsować PDF');
+        }
+
+        parsedStatement = result.data;
+        fileContent = parsedStatement?.rawText || '[PDF parsed]';
       }
 
-      const parsedStatement = result.data;
-      const fileContent = parsedStatement?.rawText || '[PDF parsed]';
+      const transactions = parsedStatement?.transactions || [];
 
       setUploadProgress({ step: 'Wyszukiwanie poprzedniego wyciągu...', current: 2, total: 8 });
 
@@ -562,6 +616,7 @@ export default function KSeFFinancialDashboard() {
         const oldStoragePaths = (existingStatements || [])
           .map((s) => s.file_storage_path)
           .filter(Boolean) as string[];
+
         if (oldStoragePaths.length > 0) {
           await supabase.storage.from('bank-statements').remove(oldStoragePaths);
         }
@@ -606,12 +661,15 @@ export default function KSeFFinancialDashboard() {
 
       setUploadProgress({ step: 'Przesyłanie pliku do magazynu...', current: 4, total: 8 });
 
-      const storagePath = `${selectedCompanyId}/${year}/${month}_${uploadAccountType}_${Date.now()}.pdf`;
+      const extension = isMt940 ? 'txt' : 'pdf';
+      const contentType = isMt940 ? 'text/plain' : 'application/pdf';
+
+      const storagePath = `${selectedCompanyId}/${year}/${month}_${uploadAccountType}_${Date.now()}.${extension}`;
 
       const { error: storageError } = await supabase.storage
         .from('bank-statements')
         .upload(storagePath, file, {
-          contentType: 'application/pdf',
+          contentType,
           upsert: true,
         });
 
@@ -636,11 +694,11 @@ export default function KSeFFinancialDashboard() {
           my_company_id: selectedCompanyId,
           account_type: uploadAccountType,
           file_storage_path: storagePath,
-          account_number: parsedStatement.accountNumber,
-          opening_balance: parsedStatement.openingBalance,
-          closing_balance: parsedStatement.closingBalance,
-          currency: parsedStatement.currency,
-          transactions_count: parsedStatement.transactions.length,
+          account_number: parsedStatement?.accountNumber ?? null,
+          opening_balance: parsedStatement?.openingBalance ?? null,
+          closing_balance: parsedStatement?.closingBalance ?? null,
+          currency: parsedStatement?.currency || 'PLN',
+          transactions_count: transactions.length,
           uploaded_by: user?.id,
           processed: false,
         })
@@ -650,7 +708,7 @@ export default function KSeFFinancialDashboard() {
       if (statementError) throw statementError;
 
       setUploadProgress({
-        step: `Przetwarzanie transakcji (0/${parsedStatement.transactions.length})...`,
+        step: `Przetwarzanie transakcji (0/${transactions.length})...`,
         current: 6,
         total: 8,
       });
@@ -658,12 +716,12 @@ export default function KSeFFinancialDashboard() {
       let matchedCount = 0;
       let unmatchedCount = 0;
 
-      for (let i = 0; i < parsedStatement.transactions.length; i++) {
-        const transaction = parsedStatement.transactions[i];
+      for (let i = 0; i < transactions.length; i++) {
+        const transaction = transactions[i];
 
         if (i % 5 === 0) {
           setUploadProgress({
-            step: `Przetwarzanie transakcji (${i + 1}/${parsedStatement.transactions.length})...`,
+            step: `Przetwarzanie transakcji (${i + 1}/${transactions.length})...`,
             current: 6,
             total: 8,
           });
@@ -699,14 +757,14 @@ export default function KSeFFinancialDashboard() {
         const { error: insertTransactionError } = await supabase.from('bank_transactions').insert({
           statement_id: statement.id,
           transaction_date: transaction.transactionDate,
-          posting_date: transaction.postingDate,
+          posting_date: transaction.postingDate ?? null,
           amount: transaction.amount,
-          currency: transaction.currency,
+          currency: transaction.currency || 'PLN',
           transaction_type: transaction.type,
-          counterparty_name: transaction.counterpartyName,
-          counterparty_account: transaction.counterpartyAccount,
-          title: transaction.title,
-          reference_number: transaction.referenceNumber,
+          counterparty_name: transaction.counterpartyName ?? null,
+          counterparty_account: transaction.counterpartyAccount ?? null,
+          title: transaction.title ?? null,
+          reference_number: transaction.referenceNumber ?? null,
           matched_invoice_id: matchedInvoiceId,
           match_confidence: matchConfidence,
           manual_match: false,
@@ -741,12 +799,14 @@ export default function KSeFFinancialDashboard() {
       );
 
       showSnackbar(
-        `Wyciąg PDF został podmieniony. Transakcji: ${parsedStatement.transactions.length}, automatycznie dopasowanych: ${matchedCount}, do weryfikacji: ${unmatchedCount}`,
+        `${isMt940 ? 'Plik MT940' : 'Wyciąg PDF'} został przesłany. Transakcji: ${
+          transactions.length
+        }, automatycznie dopasowanych: ${matchedCount}, do weryfikacji: ${unmatchedCount}`,
         'success',
       );
     } catch (error: any) {
-      console.error('Error uploading PDF:', error);
-      showSnackbar(error.message || 'Błąd podczas importu PDF', 'error');
+      console.error('Error uploading bank statement:', error);
+      showSnackbar(error.message || 'Błąd podczas importu wyciągu', 'error');
     } finally {
       setUploadingFile(false);
       setUploadProgress({ step: '', current: 0, total: 0 });
@@ -1300,6 +1360,17 @@ export default function KSeFFinancialDashboard() {
                     />
                     <span className="text-sm text-[#e5e4e2]">Konto VAT</span>
                   </label>
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input
+                      type="radio"
+                      name="uploadAccountType"
+                      value="mt940"
+                      checked={uploadAccountType === 'mt940'}
+                      onChange={() => setUploadAccountType('mt940')}
+                      className="h-4 w-4 accent-[#d3bb73]"
+                    />
+                    <span className="text-sm text-[#e5e4e2]">MT940</span>
+                  </label>
                 </div>
               </div>
 
@@ -1340,8 +1411,20 @@ export default function KSeFFinancialDashboard() {
                   if (uploadingFile) return;
 
                   const file = e.dataTransfer.files?.[0] ?? null;
-                  if (file && !file.name.toLowerCase().endsWith('.pdf')) {
-                    showSnackbar('Mozesz upuscic tylko plik PDF', 'error');
+                  if (
+                    file &&
+                    uploadAccountType === 'mt940' &&
+                    !file.name.toLowerCase().endsWith('.txt')
+                  ) {
+                    showSnackbar('Możesz upuscic tylko plik TXT', 'error');
+                    return;
+                  }
+                  if (
+                    file &&
+                    uploadAccountType !== 'mt940' &&
+                    !file.name.toLowerCase().endsWith('.pdf')
+                  ) {
+                    showSnackbar('Możesz upuscic tylko plik PDF', 'error');
                     return;
                   }
 
@@ -1364,14 +1447,16 @@ export default function KSeFFinancialDashboard() {
                     {isDragOver ? 'Upusc plik tutaj' : 'Przeslij wyciag bankowy'}
                   </h4>
 
-                  <p className="mt-1 text-xs text-[#e5e4e2]/60">Format PDF (.pdf)</p>
+                  <p className="mt-1 text-xs text-[#e5e4e2]/60">
+                    {uploadAccountType === 'mt940' ? 'Format TXT (.txt)' : 'Format PDF (.pdf)'}
+                  </p>
 
                   <label className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#252945] px-4 py-2 text-sm text-[#e5e4e2] hover:border-[#d3bb73]/40 hover:bg-[#2d3254]">
                     <Upload className="h-4 w-4" />
                     Wybierz plik
                     <input
                       type="file"
-                      accept=".pdf"
+                      accept={uploadAccountType === 'mt940' ? '.txt' : '.pdf'}
                       disabled={uploadingFile}
                       className="hidden"
                       onChange={async (e) => {
@@ -1457,173 +1542,17 @@ export default function KSeFFinancialDashboard() {
         />
       )}
 
-      {showStatementsListModal && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
-          <div className="max-h-[90vh] w-full max-w-4xl overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl">
-            <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-6">
-              <h3 className="text-xl font-medium text-[#e5e4e2]">Wszystkie wyciagi bankowe</h3>
-              <button
-                onClick={() => setShowStatementsListModal(false)}
-                className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
-              >
-                x
-              </button>
-            </div>
-
-            <div className="max-h-[70vh] overflow-y-auto p-6">
-              {loadingStatements ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="text-[#e5e4e2]/60">Ladowanie...</div>
-                </div>
-              ) : allStatements.length === 0 ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="text-[#e5e4e2]/60">Brak dodanych wyciagow</div>
-                </div>
-              ) : (
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-[#d3bb73]/10">
-                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
-                        Plik
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
-                        Firma
-                      </th>
-                      <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
-                        Typ
-                      </th>
-                      <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
-                        Okres
-                      </th>
-                      <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
-                        Transakcje
-                      </th>
-                      <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
-                        Akcje
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {allStatements.map((stmt) => {
-                      console.log(stmt);
-                      return (
-                        <tr
-                          key={stmt.id}
-                          className="border-b border-[#d3bb73]/10 transition-colors hover:bg-[#252945]/50"
-                        >
-                          <td className="px-4 py-3">
-                            {renamingStatement?.id === stmt.id ? (
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="text"
-                                  value={renamingStatement.name}
-                                  onChange={(e) =>
-                                    setRenamingStatement({
-                                      ...renamingStatement,
-                                      name: e.target.value,
-                                    })
-                                  }
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') handleRenameStatement();
-                                    if (e.key === 'Escape') setRenamingStatement(null);
-                                  }}
-                                  autoFocus
-                                  className="w-full rounded border border-[#d3bb73]/30 bg-[#0f1119] px-2 py-1 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-                                />
-                                <button
-                                  onClick={handleRenameStatement}
-                                  className="rounded px-2 py-1 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
-                                >
-                                  OK
-                                </button>
-                                <button
-                                  onClick={() => setRenamingStatement(null)}
-                                  className="rounded px-2 py-1 text-xs text-[#e5e4e2]/60 hover:bg-white/5"
-                                >
-                                  x
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="text-sm text-[#e5e4e2]">{stmt.file_name}</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className="text-sm text-[#e5e4e2]/70">
-                              {stmt.my_companies?.name || '-'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <span
-                              className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${
-                                stmt.account_type === 'vat'
-                                  ? 'bg-blue-500/20 text-blue-400'
-                                  : 'bg-[#d3bb73]/20 text-[#d3bb73]'
-                              }`}
-                            >
-                              {stmt.account_type === 'vat' ? 'VAT' : 'Biezace'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <span className="text-sm text-[#e5e4e2]/70">
-                              {MONTHS[stmt.statement_month - 1]} {stmt.statement_year}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <span className="text-sm text-[#e5e4e2]/70">
-                              {stmt.transactions_count}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <ResponsiveActionBar
-                              disabledBackground
-                              mobileBreakpoint={4000}
-                              actions={[
-                                {
-                                  label: 'Pobierz',
-                                  icon: <Download className="h-4 w-4" />,
-                                  show: Boolean(stmt.file_storage_path),
-                                  onClick: () =>
-                                    handleDownloadStatement(
-                                      stmt.id,
-                                      stmt.account_type,
-                                      stmt.statement_month,
-                                      stmt.statement_year,
-                                    ),
-                                },
-                                {
-                                  label: 'Zmień nazwę',
-                                  icon: <Pencil className="h-4 w-4" />,
-                                  onClick: () =>
-                                    setRenamingStatement({ id: stmt.id, name: stmt.file_name }),
-                                },
-                                {
-                                  label: 'Usuń',
-                                  icon: <Trash2 className="h-4 w-4" />,
-                                  variant: 'danger',
-                                  onClick: () => handleDeleteStatement(stmt.id),
-                                },
-                              ]}
-                            />
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
-
-            <div className="flex justify-end border-t border-[#d3bb73]/10 p-6">
-              <button
-                onClick={() => setShowStatementsListModal(false)}
-                className="rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm text-[#e5e4e2] hover:bg-[#252945]"
-              >
-                Zamknij
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <BankStatementsListModal
+        open={showStatementsListModal}
+        loading={loadingStatements}
+        statements={allStatements}
+        renamingStatement={renamingStatement}
+        setRenamingStatement={setRenamingStatement}
+        onClose={() => setShowStatementsListModal(false)}
+        onRename={handleRenameStatement}
+        onDownload={handleDownloadStatement}
+        onDelete={handleDeleteStatement}
+      />
     </div>
   );
 }
