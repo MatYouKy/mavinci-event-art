@@ -232,6 +232,7 @@ export default function EquipmentDetailPage() {
         purchase_date: editForm.purchase_date || null,
         purchase_price: toFloat(editForm.purchase_price),
         current_value: toFloat(editForm.current_value),
+        depreciation_rate: toFloat(editForm.depreciation_rate),
         rental_price_per_day: toFloat(editForm.rental_price_per_day),
         warranty_until: editForm.warranty_until || null,
         serial_number: editForm.serial_number || null,
