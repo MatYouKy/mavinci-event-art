@@ -295,6 +295,11 @@ export default function EventAgendaTab({
           .eq('agenda_id', agenda.id)
           .order('order_index');
 
+        console.log('AGENDA:', agenda);
+        console.log('AGENDA ID:', agenda.id);
+        console.log('ITEMS:', items);
+        console.log('ITEMS ERROR:', itemsError);
+
         if (itemsError) throw itemsError;
 
         setAgendaItems(
@@ -378,7 +383,9 @@ export default function EventAgendaTab({
       if (!b.time) return -1;
 
       const timeToMinutes = (time: string): number => {
-        const [hours, minutes] = time.split(':').map(Number);
+        const normalized = isoToTimeInput(time);
+        const [hours, minutes] = normalized.split(':').map(Number);
+
         let totalMinutes = hours * 60 + minutes;
 
         if (hours < 6) {
@@ -409,6 +416,20 @@ export default function EventAgendaTab({
     const isoStart = buildIsoDateTime(normalizedEventDate, startTimeInput);
     const isoEnd = buildIsoDateTime(normalizedEventDate, endTimeInput);
 
+    const sortedItems = getSortedAgendaItems();
+
+    const invalidItem = sortedItems.find((item) => {
+      const normalizedTime = isoToTimeInput(item.time);
+      const isoTime = buildIsoDateTime(normalizedEventDate, normalizedTime);
+
+      return !isoTime || !item.title?.trim();
+    });
+
+    if (invalidItem) {
+      alert('Każdy etap harmonogramu musi mieć poprawną godzinę i tytuł.');
+      return;
+    }
+
     try {
       setSaving(true);
 
@@ -432,6 +453,7 @@ export default function EventAgendaTab({
           .single();
 
         if (agendaError) throw agendaError;
+
         currentAgendaId = newAgenda.id;
         setAgendaId(currentAgendaId);
       } else {
@@ -443,24 +465,44 @@ export default function EventAgendaTab({
             start_time: isoStart,
             end_time: isoEnd,
             client_contact: contact?.full_name || null,
-            modified_after_generation: generatedPdfPath ? true : false,
+            modified_after_generation: Boolean(generatedPdfPath),
           })
           .eq('id', currentAgendaId);
 
         if (updateError) throw updateError;
       }
 
-      // items - czyścimy isEditing i sortujemy
-      await supabase.from('event_agenda_items').delete().eq('agenda_id', currentAgendaId);
+      /**
+       * WAŻNE:
+       * Walidacja jest przed delete, więc nie skasujemy starego harmonogramu,
+       * jeśli nowe pozycje są niepoprawne.
+       */
+      const { error: deleteItemsError } = await supabase
+        .from('event_agenda_items')
+        .delete()
+        .eq('agenda_id', currentAgendaId);
 
-      if (agendaItems.length > 0) {
-        const sortedItems = getSortedAgendaItems();
+      if (deleteItemsError) throw deleteItemsError;
+
+      console.log('SORTED ITEMS BEFORE SAVE:', sortedItems);
+      console.log(
+        'ITEMS PAYLOAD:',
+        sortedItems.map((item, index) => ({
+          agenda_id: currentAgendaId,
+          time: buildIsoDateTime(normalizedEventDate, isoToTimeInput(item.time)),
+          title: item.title.trim(),
+          description: item.description?.trim() || '',
+          order_index: index,
+        })),
+      );
+
+      if (sortedItems.length > 0) {
         const { error: itemsError } = await supabase.from('event_agenda_items').insert(
           sortedItems.map((item, index) => ({
             agenda_id: currentAgendaId,
-            time: buildIsoDateTime(normalizedEventDate, item.time),
-            title: item.title,
-            description: item.description,
+            time: buildIsoDateTime(normalizedEventDate, isoToTimeInput(item.time)),
+            title: item.title.trim(),
+            description: item.description?.trim() || '',
             order_index: index,
           })),
         );
@@ -468,10 +510,15 @@ export default function EventAgendaTab({
         if (itemsError) throw itemsError;
       }
 
-      // notes
-      await supabase.from('event_agenda_notes').delete().eq('agenda_id', currentAgendaId);
+      const { error: deleteNotesError } = await supabase
+        .from('event_agenda_notes')
+        .delete()
+        .eq('agenda_id', currentAgendaId);
 
-      const flatNotes = flattenNotes(agendaNotes);
+      if (deleteNotesError) throw deleteNotesError;
+
+      const flatNotes = flattenNotes(agendaNotes).filter((note) => note.content?.trim());
+
       if (flatNotes.length > 0) {
         const notesWithIds = new Map<string, string>();
 
@@ -485,7 +532,7 @@ export default function EventAgendaTab({
                   note.parent_id && notesWithIds.has(note.parent_id)
                     ? notesWithIds.get(note.parent_id)
                     : null,
-                content: note.content,
+                content: note.content.trim(),
                 order_index: note.order_index,
                 level: note.level,
               },
@@ -494,11 +541,13 @@ export default function EventAgendaTab({
             .single();
 
           if (noteError) throw noteError;
-          if (note.id) notesWithIds.set(note.id, insertedNote.id);
+
+          if (note.id) {
+            notesWithIds.set(note.id, insertedNote.id);
+          }
         }
       }
 
-      // Invaliduj cache aby odświeżyć historię zmian
       dispatch(
         eventsApi.util.invalidateTags([
           { type: 'EventAgenda', id: eventId },
@@ -507,10 +556,11 @@ export default function EventAgendaTab({
       );
 
       alert('Agenda została zapisana');
+
       await fetchAgenda();
       setEditMode(false);
     } catch (err) {
-      console.error('Error saving agenda:', err);
+      console.error('Error saving agenda:', JSON.stringify(err, null, 2));
       alert('Wystąpił błąd podczas zapisywania agendy');
     } finally {
       setSaving(false);
