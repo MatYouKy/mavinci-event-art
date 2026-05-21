@@ -36,7 +36,10 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface Invoice {
   bank_name: string;
-  company_logo_url: string;
+  company_logo_url: string | null;
+  my_company: {
+    logo_url: string | null;
+  } | null;
   id: string;
   invoice_number: string;
   invoice_type: string;
@@ -156,7 +159,21 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   const fetchInvoice = async () => {
     try {
       const [invoiceRes, itemsRes] = await Promise.all([
-        supabase.from('invoices').select('*').eq('id', params.id).single(),
+        supabase
+          .from('invoices')
+          .select(
+            `
+            *,
+            my_company:my_companies (
+              id,
+              name,
+              logo_url
+            )
+          `,
+          )
+          .eq('id', params.id)
+          .single(),
+
         supabase
           .from('invoice_items')
           .select('*')
@@ -581,7 +598,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
         safeStatus = 'draft';
       }
     }
-    
+
     try {
       const { error } = await supabase
         .from('invoices')
@@ -742,6 +759,8 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   const previewAmountToPay = isFinalInvoicePreview
     ? Number(previewSettlementSummary?.remainingGross ?? invoice.total_gross ?? 0)
     : Number(invoice.total_gross ?? 0);
+
+  const companyLogoUrl = invoice?.my_company?.logo_url || invoice?.company_logo_url || null;
 
   return (
     <PermissionGuard module="invoices">
@@ -1097,50 +1116,50 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           )}
 
           <div
-            className="invoice-preview mx-auto mb-6 rounded-xl bg-white text-black"
-            style={{ width: '794px', minHeight: '1123px', padding: '60px' }}
+            className="invoice-preview mx-auto mb-6 flex flex-col rounded-xl bg-white text-black"
+            style={{ width: '794px', minHeight: '1123px', padding: '42px 48px' }}
           >
-            <div className="mb-12 flex items-start justify-between">
+            <div className="mb-6 flex items-start justify-between">
               <div className="flex items-center gap-4">
-                {invoice.company_logo_url ? (
+                {companyLogoUrl ? (
                   <Image
-                    width={128}
-                    height={128}
-                    src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/company-logos/${invoice.company_logo_url}`}
+                    width={256}
+                    height={256}
+                    src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/company-logos/${companyLogoUrl}`}
                     alt="Logo firmy"
-                    className="h-16 w-auto object-contain"
+                    className="h-32 w-auto object-contain"
                   />
-                ) : (
-                  <Image
-                    src="https://mavinci.pl/shape-mavinci-black.png"
-                    alt="Logo firmy"
-                    className="h-16 w-auto object-contain"
-                    width={128}
-                    height={128}
-                  />
-                )}
+                ) : null}
               </div>
-              <div className="text-right text-sm">
-                <div className="mb-4">
-                  <div className="text-gray-600">Miejsce wystawienia</div>
-                  <div className="font-medium">{invoice.issue_place}</div>
+              <div className="space-y-2 text-right text-xs leading-tight">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-gray-500">
+                    Miejsce wystawienia
+                  </div>
+                  <div className="font-medium text-black">{invoice.issue_place}</div>
                 </div>
-                <div className="mb-4">
-                  <div className="text-gray-600">Data wystawienia</div>
-                  <div className="font-medium">
+
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-gray-500">
+                    Data wystawienia
+                  </div>
+                  <div className="font-medium text-black">
                     {new Date(invoice.issue_date).toLocaleDateString('pl-PL')}
                   </div>
                 </div>
+
                 <div>
-                  <div className="text-gray-600">Data sprzedazy</div>
-                  <div className="font-medium">
+                  <div className="text-[10px] uppercase tracking-wide text-gray-500">
+                    Data sprzedaży
+                  </div>
+                  <div className="font-medium text-black">
                     {new Date(invoice.sale_date).toLocaleDateString('pl-PL')}
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="mb-12 grid grid-cols-2 gap-12">
+            <div className="mb-3 grid grid-cols-2 gap-8 text-sm leading-snug">
               <div>
                 <div className="mb-2 text-sm text-gray-600">Sprzedawca</div>
                 <div className="font-medium">{invoice.seller_name}</div>
@@ -1161,7 +1180,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               </div>
             </div>
 
-            <div className="mb-8 text-center">
+            <div className="mb-2 text-center">
               <div className="text-2xl font-bold">
                 {getTypeLabel(invoice.invoice_type, invoice.invoice_number)}{' '}
                 {invoice.invoice_number}
@@ -1171,52 +1190,58 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             <table className="mb-8 w-full text-sm">
               <thead className="bg-gray-100">
                 <tr>
-                  <th className="border border-gray-300 p-2 text-left">Lp.</th>
-                  <th className="border border-gray-300 p-2 text-left">Nazwa towaru lub uslugi</th>
-                  <th className="border border-gray-300 p-2">Jm.</th>
-                  <th className="border border-gray-300 p-2">Ilosc</th>
-                  <th className="border border-gray-300 p-2">Cena netto</th>
-                  <th className="border border-gray-300 p-2">Wartosc netto</th>
-                  <th className="border border-gray-300 p-2">Stawka VAT</th>
-                  <th className="border border-gray-300 p-2">Kwota VAT</th>
-                  <th className="border border-gray-300 p-2">Wartosc brutto</th>
+                  <th className="border border-gray-300 px-1.5 py-1 text-left">Lp.</th>
+                  <th className="border border-gray-300 px-1.5 py-1 text-left">
+                    Nazwa towaru lub uslugi
+                  </th>
+                  <th className="border border-gray-300 px-1.5 py-1">Jm.</th>
+                  <th className="border border-gray-300 px-1.5 py-1">Ilosc</th>
+                  <th className="border border-gray-300 px-1.5 py-1">Cena netto</th>
+                  <th className="border border-gray-300 px-1.5 py-1">Wartosc netto</th>
+                  <th className="border border-gray-300 px-1.5 py-1">Stawka VAT</th>
+                  <th className="border border-gray-300 px-1.5 py-1">Kwota VAT</th>
+                  <th className="border border-gray-300 px-1.5 py-1">Wartosc brutto</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((item) => (
                   <tr key={item.id}>
-                    <td className="border border-gray-300 p-2">{item.position_number}</td>
-                    <td className="border border-gray-300 p-2">{item.name}</td>
-                    <td className="border border-gray-300 p-2 text-center">{item.unit}</td>
-                    <td className="border border-gray-300 p-2 text-right">{item.quantity}</td>
-                    <td className="border border-gray-300 p-2 text-right">
+                    <td className="border border-gray-300 px-1.5 py-1">{item.position_number}</td>
+                    <td className="border border-gray-300 px-1.5 py-1">{item.name}</td>
+                    <td className="border border-gray-300 px-1.5 py-1 text-center">{item.unit}</td>
+                    <td className="border border-gray-300 px-1.5 py-1 text-right">
+                      {item.quantity}
+                    </td>
+                    <td className="border border-gray-300 px-1.5 py-1 text-right">
                       {item.price_net.toFixed(2)}
                     </td>
-                    <td className="border border-gray-300 p-2 text-right">
+                    <td className="border border-gray-300 px-1.5 py-1 text-right">
                       {item.value_net.toFixed(2)}
                     </td>
-                    <td className="border border-gray-300 p-2 text-center">{item.vat_rate}%</td>
-                    <td className="border border-gray-300 p-2 text-right">
+                    <td className="border border-gray-300 px-1.5 py-1 text-center">
+                      {item.vat_rate}%
+                    </td>
+                    <td className="border border-gray-300 px-1.5 py-1 text-right">
                       {item.vat_amount.toFixed(2)}
                     </td>
-                    <td className="border border-gray-300 p-2 text-right font-medium">
+                    <td className="border border-gray-300 px-1.5 py-1 text-right font-medium">
                       {item.value_gross.toFixed(2)}
                     </td>
                   </tr>
                 ))}
 
                 <tr className="bg-gray-100 font-bold">
-                  <td colSpan={5} className="border border-gray-300 p-2 text-right">
+                  <td colSpan={5} className="border border-gray-300 px-1.5 py-1 text-right">
                     Razem
                   </td>
-                  <td className="border border-gray-300 p-2 text-right">
+                  <td className="border border-gray-300 px-1.5 py-1 text-right">
                     {invoice.total_net.toFixed(2)}
                   </td>
-                  <td className="border border-gray-300 p-2"></td>
-                  <td className="border border-gray-300 p-2 text-right">
+                  <td className="border border-gray-300 px-1.5 py-1"></td>
+                  <td className="border border-gray-300 px-1.5 py-1 text-right">
                     {invoice.total_vat.toFixed(2)}
                   </td>
-                  <td className="border border-gray-300 p-2 text-right">
+                  <td className="border border-gray-300 px-1.5 py-1 text-right">
                     {invoice.total_gross.toFixed(2)}
                   </td>
                 </tr>
@@ -1305,7 +1330,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               </div>
             )}
 
-            <div className="mb-8 grid grid-cols-2 gap-12 text-sm">
+            <div className="mb-5 grid grid-cols-2 gap-8 text-xs leading-snug">
               <div>
                 <div className="mb-2">
                   <span className="text-gray-600">Sposob platnosci:</span> {invoice.payment_method}
@@ -1326,23 +1351,27 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               <div>
                 <div className="mb-2">
                   <span className="text-gray-600">Do zaplaty:</span>{' '}
-                  <span className="text-lg font-bold">{previewAmountToPay.toFixed(2)} PLN</span>
+                  <span className="text-base font-bold">{previewAmountToPay.toFixed(2)} PLN</span>
                 </div>
               </div>
             </div>
 
-            <div className="mb-8 text-xs text-gray-600">{invoice.footer_note || ''}</div>
+            <div className="mb-5 text-[10px] leading-snug text-gray-600">
+              {invoice.footer_note || ''}
+            </div>
 
             <div className="flex justify-end">
-              <div className="w-64 border-t border-gray-300 pt-2 text-center">
+              <div className="w-64 border-t border-gray-300 pt-2 text-center text-xs">
                 <div className="mb-1 text-sm">
                   {invoice.signature_name || 'Mateusz Kwiatkowski'}
                 </div>
-                <div className="text-xs text-gray-600">Podpis osoby upowazionej do wystawienia</div>
+                <div className="text-[10px] leading-snug text-gray-600">
+                  Podpis osoby upowazionej do wystawienia
+                </div>
               </div>
             </div>
 
-            <div className="mt-8 text-center text-xs text-gray-500">
+            <div className="mt-[auto] text-center text-xs text-gray-500">
               {invoice.website || 'www.mavinci.pl'}
             </div>
           </div>

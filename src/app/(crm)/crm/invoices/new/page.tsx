@@ -86,12 +86,6 @@ export default function NewInvoicePage() {
   }, [eventId, employeeLoading]);
 
   useEffect(() => {
-    if (selectedCompanyId && !urlRelatedLoaded && !(urlType === 'corrective' && urlRelated)) {
-      fetchData();
-    }
-  }, [selectedCompanyId]);
-
-  useEffect(() => {
     if (
       urlType === 'corrective' &&
       urlRelated &&
@@ -166,7 +160,12 @@ export default function NewInvoicePage() {
 
   const fetchData = async () => {
     try {
-      const [settingsRes, businessClientsRes, companiesRes, allInvoicesRes] = await Promise.all([
+      const [
+        settingsRes,
+        businessClientsRes,
+        companiesRes,
+        allInvoicesRes,
+      ] = await Promise.all([
         supabase.rpc('get_invoice_settings_for_creation'),
         supabase.rpc('get_business_clients'),
         supabase
@@ -176,28 +175,30 @@ export default function NewInvoicePage() {
           .order('is_default', { ascending: false }),
         supabase
           .from('invoices')
-          .select('id, invoice_number, invoice_type, issue_date, total_gross, buyer_name, status')
+          .select(
+            'id, invoice_number, invoice_type, issue_date, total_gross, buyer_name, status, my_company_id',
+          )
           .neq('invoice_type', 'corrective')
           .in('status', ['issued', 'sent', 'paid'])
           .order('issue_date', { ascending: false }),
       ]);
-
-      if (allInvoicesRes.data) {
-        setAvailableInvoices(allInvoicesRes.data);
-      }
-
+  
       if (settingsRes.error) {
         console.error('Error fetching invoice settings:', settingsRes.error);
         throw new Error(
           'Brak uprawnień do tworzenia faktur. Wymagane: invoices_manage lub finances_manage',
         );
       }
-
+  
       if (settingsRes.data && settingsRes.data.length > 0) {
         setSettings(settingsRes.data[0]);
+  
         const defaultMethod = settingsRes.data[0]?.default_payment_method;
-        if (defaultMethod) setPaymentMethod(defaultMethod);
+        if (defaultMethod) {
+          setPaymentMethod(defaultMethod);
+        }
       }
+  
       if (businessClientsRes.data) {
         const formattedClients = businessClientsRes.data.map((client: any) => ({
           id: client.id,
@@ -207,22 +208,34 @@ export default function NewInvoicePage() {
           postal_code: client.postal_code,
           city: client.city,
           client_type: client.client_type,
+          email: client.email,
+          phone: client.phone,
+          bank_name: client.bank_name,
+          bank_account: client.bank_account,
         }));
+  
         setOrganizations(formattedClients);
       }
-
+  
+      let finalCompaniesList: MyCompany[] = [];
+  
       if (companiesRes.data) {
         let companiesList = companiesRes.data as MyCompany[];
+  
         if (!isAdmin) {
           const allowedIds = (currentEmployee as any)?.my_company_ids;
           const invoicePerms = (currentEmployee as any)?.invoice_company_permissions || {};
+  
           const hasAllowedList = Array.isArray(allowedIds) && allowedIds.length > 0;
+  
           if (hasAllowedList) {
             companiesList = companiesList.filter((c) => allowedIds.includes(c.id));
           }
+  
           const hasAnyPerEntry = Object.values(invoicePerms).some(
             (v) => Array.isArray(v) && v.length > 0,
           );
+  
           if (hasAnyPerEntry) {
             companiesList = companiesList.filter(
               (c) => Array.isArray(invoicePerms[c.id]) && invoicePerms[c.id].includes('issue'),
@@ -231,15 +244,27 @@ export default function NewInvoicePage() {
             companiesList = [];
           }
         }
+  
+        finalCompaniesList = companiesList;
         setMyCompanies(companiesList);
-        const defaultCompany = companiesList.find((c: MyCompany) => c.is_default);
-        if (defaultCompany) {
-          setSelectedCompanyId(defaultCompany.id);
-        } else if (companiesList.length > 0) {
-          setSelectedCompanyId(companiesList[0].id);
-        }
+  
+        /**
+         * WAŻNE:
+         * Nie nadpisujemy firmy, jeśli user już coś wybrał.
+         * Dzięki temu select nie wraca do domyślnej działalności.
+         */
+        setSelectedCompanyId((prev) => {
+          if (prev) return prev;
+  
+          const defaultCompany = companiesList.find((c) => c.is_default);
+          return defaultCompany?.id || companiesList[0]?.id || '';
+        });
       }
-
+  
+      if (allInvoicesRes.data) {
+        setAvailableInvoices(allInvoicesRes.data);
+      }
+  
       if (eventId) {
         const [eventRes, financialInfoRes] = await Promise.all([
           supabase
@@ -249,26 +274,26 @@ export default function NewInvoicePage() {
             .maybeSingle(),
           supabase.rpc('get_event_financial_info', { p_event_id: eventId }),
         ]);
-
+  
         if (eventRes.data) {
           if (eventRes.data.organization_id) {
             setSelectedOrgId(eventRes.data.organization_id);
           }
-
+  
           if (eventRes.data.event_date) {
             setSaleDate(eventRes.data.event_date.split('T')[0]);
           }
         }
-
+  
         const financialInfo = financialInfoRes.data?.[0];
-
+  
         if (financialInfo && !financialInfo.can_invoice) {
           showSnackbar(
-            'Uwaga: Ten klient nie ma uzupelnionego NIP. Nie bedzie mozna zapisac faktury.',
+            'Uwaga: Ten klient nie ma uzupełnionego NIP. Nie będzie można zapisać faktury.',
             'warning',
           );
         }
-
+  
         if (financialInfo?.accepted_offer_id) {
           const { data: offerData } = await supabase
             .from('offers')
@@ -288,13 +313,14 @@ export default function NewInvoicePage() {
             )
             .eq('id', financialInfo.accepted_offer_id)
             .maybeSingle();
-
+  
           if (offerData?.offer_items && offerData.offer_items.length > 0) {
             const vatRate = offerData.tax_percent ?? 23;
+  
             const sortedItems = [...offerData.offer_items].sort(
               (a: any, b: any) => (a.display_order ?? 0) - (b.display_order ?? 0),
             );
-
+  
             setItems(
               sortedItems.map((oi: any, idx: number) => ({
                 position_number: idx + 1,
@@ -305,15 +331,19 @@ export default function NewInvoicePage() {
                 vat_rate: vatRate,
               })),
             );
-
+  
             const totalNetto = sortedItems.reduce(
               (sum: number, oi: any) => sum + Number(oi.total ?? 0),
               0,
             );
+  
             const totalBrutto = totalNetto * (1 + vatRate / 100);
-
+  
             showSnackbar(
-              `Pozycje wypelnione z oferty ${financialInfo.accepted_offer_number}: ${totalBrutto.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} zl brutto`,
+              `Pozycje wypełnione z oferty ${financialInfo.accepted_offer_number}: ${totalBrutto.toLocaleString(
+                'pl-PL',
+                { minimumFractionDigits: 2 },
+              )} zł brutto`,
               'success',
             );
           }
@@ -321,7 +351,7 @@ export default function NewInvoicePage() {
           setItems([
             {
               position_number: 1,
-              name: `Obsluga techniczna - ${eventRes.data.name}`,
+              name: `Obsługa techniczna - ${eventRes.data.name}`,
               unit: 'szt.',
               quantity: 1,
               price_net: 0,
@@ -446,62 +476,84 @@ export default function NewInvoicePage() {
       showSnackbar('Wybierz firmę wystawiającą fakturę', 'error');
       return;
     }
-
+  
     if (!selectedOrgId) {
       showSnackbar('Wybierz nabywcę', 'error');
       return;
     }
-
-    if (!invoiceNumber) {
+  
+    if (!invoiceNumber.trim()) {
       showSnackbar('Numer faktury jest wymagany', 'error');
       return;
     }
-
+  
     if (invoiceType === 'corrective') {
       if (!relatedInvoiceId) {
-        showSnackbar('Wybierz fakture do korekty', 'error');
+        showSnackbar('Wybierz fakturę do korekty', 'error');
         return;
       }
+  
       if (!correctionReason.trim()) {
-        showSnackbar('Podaj przyczyne korekty', 'error');
+        showSnackbar('Podaj przyczynę korekty', 'error');
         return;
       }
-      if (items.some((item) => !item.name)) {
-        showSnackbar('Wypelnij nazwy wszystkich pozycji faktury', 'error');
+  
+      if (items.some((item) => !item.name.trim())) {
+        showSnackbar('Wypełnij nazwy wszystkich pozycji faktury', 'error');
         return;
       }
-    } else if (items.some((item) => !item.name || item.price_net === 0)) {
+    } else if (items.some((item) => !item.name.trim() || item.price_net === 0)) {
       showSnackbar('Wypełnij wszystkie pozycje faktury', 'error');
       return;
     }
-
+  
     try {
       setLoading(true);
-
+  
+      const normalizedInvoiceNumber = invoiceNumber.trim();
+  
+      const { data: existingInvoiceNumber, error: existingInvoiceNumberError } = await supabase
+        .from('invoices')
+        .select('id')
+        .eq('my_company_id', selectedCompanyId)
+        .eq('invoice_number', normalizedInvoiceNumber)
+        .maybeSingle();
+  
+      if (existingInvoiceNumberError) {
+        throw existingInvoiceNumberError;
+      }
+  
+      if (existingInvoiceNumber) {
+        showSnackbar('Ten numer faktury jest już użyty dla wybranej działalności.', 'error');
+        setLoading(false);
+        return;
+      }
+  
       const selectedOrg = organizations.find((o) => o.id === selectedOrgId);
       if (!selectedOrg) throw new Error('Organization not found');
-
+  
       const selectedCompany = myCompanies.find((c) => c.id === selectedCompanyId);
       if (!selectedCompany) throw new Error('Company not found');
-
+  
       const {
         data: { user },
       } = await supabase.auth.getUser();
+  
       const { data: employee } = await supabase
         .from('employees')
         .select('id, name, surname')
         .eq('email', user?.email)
         .maybeSingle();
-
+  
       const signatureName =
         [employee?.name, employee?.surname].filter(Boolean).join(' ').trim() ||
         selectedCompany.signature_name ||
         '';
-
+  
       const footerNote = buildInvoiceFooterText(selectedCompany);
-
+  
       const website = selectedCompany.website || 'www.mavinci.pl';
-
+  
       const sellerStreet = [
         selectedCompany.street,
         selectedCompany.building_number,
@@ -510,8 +562,9 @@ export default function NewInvoicePage() {
         .filter(Boolean)
         .join(' ')
         .trim();
-
+  
       const missingSellerFields: string[] = [];
+  
       if (!selectedCompany.legal_name) missingSellerFields.push('nazwa firmy');
       if (!selectedCompany.nip) missingSellerFields.push('NIP');
       if (!selectedCompany.street) missingSellerFields.push('adres (ulica)');
@@ -521,30 +574,30 @@ export default function NewInvoicePage() {
       if (!selectedCompany.bank_account) missingSellerFields.push('numer konta bankowego');
       if (!selectedCompany.email) missingSellerFields.push('email');
       if (!selectedCompany.phone) missingSellerFields.push('telefon');
-
+  
       if (missingSellerFields.length > 0) {
         showSnackbar(
-          `Uzupelnij dane firmy wystawiajacej: ${missingSellerFields.join(', ')}. Przejdz do Ustawienia > Moje firmy.`,
+          `Uzupełnij dane firmy wystawiającej: ${missingSellerFields.join(', ')}. Przejdź do Ustawienia > Moje firmy.`,
           'error',
         );
         setLoading(false);
         return;
       }
-
+  
       if (!selectedOrg.nip) {
-        showSnackbar('Nabywca nie ma uzupelnionego NIP. Uzupelnij dane kontrahenta.', 'error');
+        showSnackbar('Nabywca nie ma uzupełnionego NIP. Uzupełnij dane kontrahenta.', 'error');
         setLoading(false);
         return;
       }
-
+  
       const invoiceData = {
-        invoice_number: invoiceNumber,
+        invoice_number: normalizedInvoiceNumber,
         invoice_type: invoiceType,
         is_proforma: invoiceType === 'proforma',
         status: invoiceType === 'proforma' ? 'proforma' : 'draft',
         footer_note: footerNote,
         signature_name: signatureName,
-        website: website,
+        website,
         issue_date: issueDate,
         sale_date: saleDate,
         payment_due_date: calculatePaymentDueDate(),
@@ -583,20 +636,20 @@ export default function NewInvoicePage() {
             }
           : {}),
       };
-
+  
       const { data: invoice, error: invoiceError } = await supabase
         .from('invoices')
         .insert(invoiceData)
         .select()
         .single();
-
+  
       if (invoiceError) throw invoiceError;
-
-      // Użyj uproszczonych pozycji jeśli checkbox zaznaczony
+  
       const finalItems = getItemsForInvoice();
-
+  
       const itemsToInsert = finalItems.map((item) => {
         const { valueNet, vatAmount, valueGross } = calculateItemValues(item);
+  
         return {
           invoice_id: invoice.id,
           position_number: item.position_number,
@@ -610,25 +663,32 @@ export default function NewInvoicePage() {
           value_gross: valueGross,
         };
       });
-
+  
       const { error: itemsError } = await supabase.from('invoice_items').insert(itemsToInsert);
-
+  
       if (itemsError) throw itemsError;
-
+  
       await supabase.from('invoice_history').insert({
         invoice_id: invoice.id,
         action: 'created',
         changed_by: employee?.id,
-        changes: { invoice_type: invoiceType },
+        changes: {
+          invoice_type: invoiceType,
+          my_company_id: selectedCompanyId,
+          invoice_number: normalizedInvoiceNumber,
+        },
       });
-
+  
       showSnackbar('Faktura została utworzona', 'success');
       router.push(`/crm/invoices/${invoice.id}`);
     } catch (err: any) {
       console.error('Error creating invoice:', err);
-      let msg = 'Blad podczas tworzenia faktury';
+  
+      let msg = 'Błąd podczas tworzenia faktury';
+  
       if (err?.code === '23502') {
         const col = err.message?.match(/column "(.+?)"/)?.[1] || '';
+  
         const fieldMap: Record<string, string> = {
           seller_street: 'adres sprzedawcy',
           seller_city: 'miasto sprzedawcy',
@@ -645,13 +705,15 @@ export default function NewInvoicePage() {
           bank_name: 'nazwa banku sprzedawcy',
           bank_account: 'numer konta bankowego sprzedawcy',
         };
+  
         const fieldName = fieldMap[col] || col;
-        msg = `Brakuje wymaganego pola: ${fieldName}. Uzupelnij dane i sprobuj ponownie.`;
+        msg = `Brakuje wymaganego pola: ${fieldName}. Uzupełnij dane i spróbuj ponownie.`;
       } else if (err?.code === '23505') {
-        msg = 'Faktura o tym numerze juz istnieje. Wybierz inny numer.';
+        msg = 'Faktura o tym numerze już istnieje dla tej działalności. Wybierz inny numer.';
       } else if (err?.message) {
         msg = err.message;
       }
+  
       showSnackbar(msg, 'error');
     } finally {
       setLoading(false);
