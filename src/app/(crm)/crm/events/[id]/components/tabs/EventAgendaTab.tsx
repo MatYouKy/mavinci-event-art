@@ -295,11 +295,6 @@ export default function EventAgendaTab({
           .eq('agenda_id', agenda.id)
           .order('order_index');
 
-        console.log('AGENDA:', agenda);
-        console.log('AGENDA ID:', agenda.id);
-        console.log('ITEMS:', items);
-        console.log('ITEMS ERROR:', itemsError);
-
         if (itemsError) throw itemsError;
 
         setAgendaItems(
@@ -418,14 +413,14 @@ export default function EventAgendaTab({
 
     const sortedItems = getSortedAgendaItems();
 
-    const invalidItem = sortedItems.find((item) => {
+    // Filter out items without title or valid time instead of blocking the entire save
+    const validItems = sortedItems.filter((item) => {
       const normalizedTime = isoToTimeInput(item.time);
       const isoTime = buildIsoDateTime(normalizedEventDate, normalizedTime);
-
-      return !isoTime || !item.title?.trim();
+      return isoTime && item.title?.trim();
     });
 
-    if (invalidItem) {
+    if (validItems.length === 0 && sortedItems.length > 0) {
       alert('Każdy etap harmonogramu musi mieć poprawną godzinę i tytuł.');
       return;
     }
@@ -472,11 +467,6 @@ export default function EventAgendaTab({
         if (updateError) throw updateError;
       }
 
-      /**
-       * WAŻNE:
-       * Walidacja jest przed delete, więc nie skasujemy starego harmonogramu,
-       * jeśli nowe pozycje są niepoprawne.
-       */
       const { error: deleteItemsError } = await supabase
         .from('event_agenda_items')
         .delete()
@@ -484,21 +474,9 @@ export default function EventAgendaTab({
 
       if (deleteItemsError) throw deleteItemsError;
 
-      console.log('SORTED ITEMS BEFORE SAVE:', sortedItems);
-      console.log(
-        'ITEMS PAYLOAD:',
-        sortedItems.map((item, index) => ({
-          agenda_id: currentAgendaId,
-          time: buildIsoDateTime(normalizedEventDate, isoToTimeInput(item.time)),
-          title: item.title.trim(),
-          description: item.description?.trim() || '',
-          order_index: index,
-        })),
-      );
-
-      if (sortedItems.length > 0) {
+      if (validItems.length > 0) {
         const { error: itemsError } = await supabase.from('event_agenda_items').insert(
-          sortedItems.map((item, index) => ({
+          validItems.map((item, index) => ({
             agenda_id: currentAgendaId,
             time: buildIsoDateTime(normalizedEventDate, isoToTimeInput(item.time)),
             title: item.title.trim(),
@@ -941,7 +919,10 @@ export default function EventAgendaTab({
     if (canManage && !editMode) {
       result.push({
         label: 'Edytuj agendę',
-        onClick: () => setEditMode(true),
+        onClick: () => {
+          setAgendaItems((prev) => prev.map((item) => ({ ...item, isEditing: true })));
+          setEditMode(true);
+        },
         icon: <List className="h-4 w-4" />,
         variant: 'default',
       });
