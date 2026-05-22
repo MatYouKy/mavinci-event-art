@@ -9,6 +9,19 @@ import BuyerSearchInput from '../../new/components/BuyerSearchInput';
 import AddBuyerModal from '../../new/components/AddBuyerModal';
 import { MyCompany } from '../../../settings/my-companies/page';
 
+interface IndividualContact {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  street: string | null;
+  postal_code: string | null;
+  city: string | null;
+}
+
 interface Organization {
   id: string;
   name: string;
@@ -64,6 +77,21 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
   const [website, setWebsite] = useState('');
   const [signatureName, setSignatureName] = useState('');
 
+  const [buyerIsPrivatePerson, setBuyerIsPrivatePerson] = useState(false);
+  const [individualContacts, setIndividualContacts] = useState<IndividualContact[]>([]);
+  const [selectedIndividualId, setSelectedIndividualId] = useState('');
+  const [individualSearch, setIndividualSearch] = useState('');
+
+  const [privateBuyer, setPrivateBuyer] = useState({
+    firstName: '',
+    lastName: '',
+    street: '',
+    postalCode: '',
+    city: '',
+    email: '',
+    phone: '',
+  });
+
   const [invoiceStatus, setInvoiceStatus] = useState('draft');
 
   const [correctionReason, setCorrectionReason] = useState('');
@@ -81,28 +109,43 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
 
   const fetchData = async () => {
     try {
-      const [invoiceRes, itemsRes, businessClientsRes, companiesRes, allInvoicesRes] =
-        await Promise.all([
-          supabase.from('invoices').select('*').eq('id', params.id).single(),
-          supabase
-            .from('invoice_items')
-            .select('*')
-            .eq('invoice_id', params.id)
-            .order('position_number'),
-          supabase.rpc('get_business_clients'),
-          supabase
-            .from('my_companies')
-            .select('*')
-            .eq('is_active', true)
-            .order('is_default', { ascending: false }),
-          supabase
-            .from('invoices')
-            .select('id, invoice_number, invoice_type, issue_date, total_gross, buyer_name, status')
-            .neq('id', params.id)
-            .neq('invoice_type', 'corrective')
-            .in('status', ['issued', 'sent', 'paid'])
-            .order('issue_date', { ascending: false }),
-        ]);
+      const [
+        invoiceRes,
+        itemsRes,
+        businessClientsRes,
+        companiesRes,
+        allInvoicesRes,
+        individualContactsRes,
+      ] = await Promise.all([
+        supabase.from('invoices').select('*').eq('id', params.id).single(),
+        supabase
+          .from('invoice_items')
+          .select('*')
+          .eq('invoice_id', params.id)
+          .order('position_number'),
+        supabase.rpc('get_business_clients'),
+        supabase
+          .from('my_companies')
+          .select('*')
+          .eq('is_active', true)
+          .order('is_default', { ascending: false }),
+        supabase
+          .from('invoices')
+          .select(
+            'id, invoice_number, invoice_type, issue_date, total_gross, buyer_name, status, buyer_is_private_person',
+          )
+          .neq('id', params.id)
+          .neq('invoice_type', 'corrective')
+          .in('status', ['issued', 'sent', 'paid'])
+          .order('issue_date', { ascending: false }),
+        supabase
+          .from('contacts')
+          .select(
+            'id, first_name, last_name, full_name, email, phone, mobile, address, street, postal_code, city',
+          )
+          .eq('contact_type', 'individual')
+          .order('last_name', { ascending: true }),
+      ]);
 
       if (allInvoicesRes.data) {
         setAvailableInvoices(allInvoicesRes.data);
@@ -124,6 +167,24 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         setWebsite(inv.website || 'www.mavinci.pl');
         setSignatureName(inv.signature_name || '');
         setIncludeDefaultFooterNote(Boolean(inv.invoice_footer_text));
+        setBuyerIsPrivatePerson(inv.buyer_is_private_person ?? false);
+        setSelectedIndividualId(inv.buyer_contact_id || '');
+
+        if (inv.buyer_is_private_person) {
+          const [firstName = '', ...rest] = String(inv.buyer_name || '').split(' ');
+
+          setPrivateBuyer({
+            firstName,
+            lastName: rest.join(' '),
+            street: inv.buyer_street || '',
+            postalCode: inv.buyer_postal_code || '',
+            city: inv.buyer_city || '',
+            email: '',
+            phone: '',
+          });
+
+          setIndividualSearch(inv.buyer_name || '');
+        }
 
         if (inv.is_proforma) {
           setInvoiceType('proforma');
@@ -170,6 +231,23 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
           bank_account: client.bank_account,
         }));
         setOrganizations(formattedClients);
+      }
+
+      if (individualContactsRes.data) {
+        setIndividualContacts(
+          individualContactsRes.data.map((c: any) => ({
+            id: c.id,
+            first_name: c.first_name,
+            last_name: c.last_name,
+            full_name: c.full_name,
+            email: c.email,
+            phone: c.phone || c.mobile,
+            address: c.address || '',
+            street: c.street || c.address || '',
+            postal_code: c.postal_code || '',
+            city: c.city || '',
+          })),
+        );
       }
 
       if (companiesRes.data) {
@@ -325,10 +403,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
       return null;
     }
 
-    return (
-      selectedCompany?.invoice_footer_text ||
-      ''
-    );
+    return selectedCompany?.invoice_footer_text || '';
   };
 
   const handleSubmit = async () => {
@@ -337,7 +412,21 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
       return;
     }
 
-    if (!selectedOrgId) {
+    if (buyerIsPrivatePerson) {
+      if (
+        !privateBuyer.firstName.trim() ||
+        !privateBuyer.lastName.trim() ||
+        !privateBuyer.street.trim() ||
+        !privateBuyer.postalCode.trim() ||
+        !privateBuyer.city.trim()
+      ) {
+        showSnackbar(
+          'Uzupełnij dane osoby prywatnej: imię, nazwisko, adres, kod pocztowy i miasto.',
+          'error',
+        );
+        return;
+      }
+    } else if (!selectedOrgId) {
       showSnackbar('Wybierz nabywce', 'error');
       return;
     }
@@ -362,8 +451,13 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
     try {
       setSaving(true);
 
-      const selectedOrg = organizations.find((o) => o.id === selectedOrgId);
-      if (!selectedOrg) throw new Error('Organization not found');
+      const selectedOrg = buyerIsPrivatePerson
+        ? null
+        : organizations.find((o) => o.id === selectedOrgId);
+
+      if (!buyerIsPrivatePerson && !selectedOrg) {
+        throw new Error('Organization not found');
+      }
 
       const selectedCompany = myCompanies.find((c) => c.id === selectedCompanyId);
       if (!selectedCompany) throw new Error('Company not found');
@@ -372,9 +466,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         invoiceType === 'corrective'
           ? buildInvoiceFooterText()
           : includeDefaultFooterNote
-            ? customFooterNote?.trim() ||
-              selectedCompany.invoice_footer_text ||
-              ''
+            ? customFooterNote?.trim() || selectedCompany.invoice_footer_text || ''
             : null;
 
       const missingSellerFields: string[] = [];
@@ -395,7 +487,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         return;
       }
 
-      if (!selectedOrg.nip) {
+      if (!buyerIsPrivatePerson && !selectedOrg?.nip) {
         showSnackbar('Nabywca nie ma uzupelnionego NIP. Uzupelnij dane kontrahenta.', 'error');
         setSaving(false);
         return;
@@ -449,7 +541,25 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         signature_name: signatureName,
         website: website,
         payment_due_date: calculatePaymentDueDate(),
-        organization_id: selectedOrgId,
+        organization_id: buyerIsPrivatePerson ? null : selectedOrgId,
+        buyer_contact_id: buyerIsPrivatePerson ? selectedIndividualId || null : null,
+
+        buyer_name: buyerIsPrivatePerson
+          ? `${privateBuyer.firstName} ${privateBuyer.lastName}`.trim()
+          : selectedOrg!.name,
+
+        buyer_nip: buyerIsPrivatePerson ? null : selectedOrg!.nip,
+
+        buyer_street: buyerIsPrivatePerson ? privateBuyer.street : selectedOrg!.street || '',
+
+        buyer_postal_code: buyerIsPrivatePerson
+          ? privateBuyer.postalCode
+          : selectedOrg!.postal_code || '',
+
+        buyer_city: buyerIsPrivatePerson ? privateBuyer.city : selectedOrg!.city || '',
+
+        buyer_country: 'Polska',
+        buyer_is_private_person: buyerIsPrivatePerson,
         my_company_id: selectedCompanyId,
         seller_name: selectedCompany.legal_name,
         seller_nip: selectedCompany.nip,
@@ -459,12 +569,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         seller_email: selectedCompany.email,
         seller_phone: selectedCompany.phone,
         seller_country: 'Polska',
-        buyer_name: selectedOrg.name,
-        buyer_nip: selectedOrg.nip,
-        buyer_street: selectedOrg.street || '',
-        buyer_postal_code: selectedOrg.postal_code || '',
-        buyer_city: selectedOrg.city || '',
-        buyer_country: 'Polska',
+
         payment_method: paymentMethod,
         bank_name: selectedCompany.bank_name || '',
         bank_account: selectedCompany.bank_account || '',
@@ -548,6 +653,42 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
       setSaving(false);
     }
   };
+  const handleSelectIndividual = (contactId: string) => {
+    setSelectedIndividualId(contactId);
+
+    const contact = individualContacts.find((c) => c.id === contactId);
+    if (!contact) return;
+
+    const name =
+      contact.full_name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
+
+    setIndividualSearch(name);
+
+    setPrivateBuyer({
+      firstName: contact.first_name || '',
+      lastName: contact.last_name || '',
+      street: contact.street || contact.address || '',
+      postalCode: contact.postal_code || '',
+      city: contact.city || '',
+      email: contact.email || '',
+      phone: contact.phone || '',
+    });
+  };
+
+  const filteredIndividualContacts = individualContacts.filter((contact) => {
+    const search = individualSearch.toLowerCase().trim();
+
+    if (!search) return false;
+
+    const name =
+      contact.full_name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
+
+    return [name, contact.email, contact.phone, contact.city]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+      .includes(search);
+  });
 
   if (loading) {
     return (
@@ -848,22 +989,121 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
               </div>
             )}
 
+            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-4">
+              <input
+                type="checkbox"
+                checked={buyerIsPrivatePerson}
+                onChange={(e) => setBuyerIsPrivatePerson(e.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-[#d3bb73]/20 text-[#d3bb73]"
+              />
+
+              <div>
+                <div className="text-sm font-medium text-[#e5e4e2]">
+                  Faktura dla osoby prywatnej
+                </div>
+
+                <div className="mt-1 text-xs text-[#e5e4e2]/60">
+                  Ukrywa oznaczenie „Wizualizacja” i dostosowuje dokument dla klienta
+                  indywidualnego.
+                </div>
+              </div>
+            </label>
             {/* Nabywca */}
             <div className="grid grid-cols-1 gap-6">
-              {invoiceType === 'corrective' && relatedInvoiceId ? (
-                <div>
-                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nabywca *</label>
-                  <div className="rounded-lg border border-orange-500/20 bg-[#0a0d1a]/50 px-4 py-3 text-[#e5e4e2]">
-                    {organizations.find((o) => o.id === selectedOrgId)?.name ||
-                      'Nabywca z faktury korygowanej'}
-                    {organizations.find((o) => o.id === selectedOrgId)?.nip && (
-                      <span className="ml-2 text-xs text-[#e5e4e2]/40">
-                        NIP: {organizations.find((o) => o.id === selectedOrgId)?.nip}
-                      </span>
+              {buyerIsPrivatePerson ? (
+                <div className="rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-4">
+                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                    Osoba prywatna
+                  </label>
+
+                  <div className="relative mb-4">
+                    <input
+                      type="text"
+                      value={individualSearch}
+                      onChange={(e) => setIndividualSearch(e.target.value)}
+                      placeholder="Szukaj osoby po imieniu, nazwisku, emailu, telefonie lub mieście..."
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] placeholder-[#e5e4e2]/30"
+                    />
+
+                    {individualSearch.trim() && filteredIndividualContacts.length > 0 && (
+                      <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 max-h-72 overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#111827] shadow-2xl">
+                        {filteredIndividualContacts.slice(0, 20).map((contact) => {
+                          const name =
+                            contact.full_name ||
+                            `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
+
+                          return (
+                            <button
+                              key={contact.id}
+                              type="button"
+                              onClick={() => handleSelectIndividual(contact.id)}
+                              className="block w-full border-b border-[#d3bb73]/10 px-4 py-3 text-left last:border-b-0 hover:bg-[#d3bb73]/10"
+                            >
+                              <div className="text-sm font-medium text-[#e5e4e2]">
+                                {name || 'Bez nazwy'}
+                              </div>
+                              <div className="mt-1 text-xs text-[#e5e4e2]/50">
+                                {[contact.email, contact.phone, contact.city]
+                                  .filter(Boolean)
+                                  .join(' · ') || 'Brak danych kontaktowych'}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
                     )}
                   </div>
-                  <div className="mt-2 text-xs text-orange-400">
-                    Nabywca zostal pobrany z faktury korygowanej
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <input
+                      type="text"
+                      value={privateBuyer.firstName}
+                      onChange={(e) =>
+                        setPrivateBuyer((prev) => ({ ...prev, firstName: e.target.value }))
+                      }
+                      placeholder="Imię *"
+                      className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
+                    />
+
+                    <input
+                      type="text"
+                      value={privateBuyer.lastName}
+                      onChange={(e) =>
+                        setPrivateBuyer((prev) => ({ ...prev, lastName: e.target.value }))
+                      }
+                      placeholder="Nazwisko *"
+                      className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
+                    />
+
+                    <input
+                      type="text"
+                      value={privateBuyer.street}
+                      onChange={(e) =>
+                        setPrivateBuyer((prev) => ({ ...prev, street: e.target.value }))
+                      }
+                      placeholder="Ulica i numer *"
+                      className="col-span-2 rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
+                    />
+
+                    <input
+                      type="text"
+                      value={privateBuyer.postalCode}
+                      onChange={(e) =>
+                        setPrivateBuyer((prev) => ({ ...prev, postalCode: e.target.value }))
+                      }
+                      placeholder="Kod pocztowy *"
+                      className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
+                    />
+
+                    <input
+                      type="text"
+                      value={privateBuyer.city}
+                      onChange={(e) =>
+                        setPrivateBuyer((prev) => ({ ...prev, city: e.target.value }))
+                      }
+                      placeholder="Miasto *"
+                      className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
+                    />
                   </div>
                 </div>
               ) : (

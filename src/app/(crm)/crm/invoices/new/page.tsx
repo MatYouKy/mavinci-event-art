@@ -11,6 +11,19 @@ import AddBuyerModal from './components/AddBuyerModal';
 import InvoiceNumberInput from './components/InvoiceNumberInput';
 import { MyCompany } from '../../settings/my-companies/page';
 
+interface IndividualContact {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  street: string | null;
+  postal_code: string | null;
+  city: string | null;
+}
+
 interface Organization {
   id: string;
   name: string;
@@ -36,7 +49,12 @@ interface InvoiceItem {
 
 export default function NewInvoicePage() {
   const router = useRouter();
-  const { employee: currentEmployee, isAdmin, loading: employeeLoading, canManageModule } = useCurrentEmployee();
+  const {
+    employee: currentEmployee,
+    isAdmin,
+    loading: employeeLoading,
+    canManageModule,
+  } = useCurrentEmployee();
   const canManageInvoices = canManageModule('invoices');
   const searchParams = useSearchParams();
   const { showSnackbar } = useSnackbar();
@@ -77,8 +95,23 @@ export default function NewInvoicePage() {
   const [correctedInvoiceKsefNumber, setCorrectedInvoiceKsefNumber] = useState('');
   const [correctedInvoiceWasInKsef, setCorrectedInvoiceWasInKsef] = useState(false);
   const [availableInvoices, setAvailableInvoices] = useState<any[]>([]);
+  const [buyerIsPrivatePerson, setBuyerIsPrivatePerson] = useState(false);
 
   const [urlRelatedLoaded, setUrlRelatedLoaded] = useState(false);
+  const [individualSearch, setIndividualSearch] = useState('');
+
+  const [individualContacts, setIndividualContacts] = useState<IndividualContact[]>([]);
+  const [selectedIndividualId, setSelectedIndividualId] = useState('');
+
+  const [privateBuyer, setPrivateBuyer] = useState({
+    firstName: '',
+    lastName: '',
+    street: '',
+    postalCode: '',
+    city: '',
+    email: '',
+    phone: '',
+  });
 
   useEffect(() => {
     if (employeeLoading) return;
@@ -160,45 +193,48 @@ export default function NewInvoicePage() {
 
   const fetchData = async () => {
     try {
-      const [
-        settingsRes,
-        businessClientsRes,
-        companiesRes,
-        allInvoicesRes,
-      ] = await Promise.all([
-        supabase.rpc('get_invoice_settings_for_creation'),
-        supabase.rpc('get_business_clients'),
-        supabase
-          .from('my_companies')
-          .select('*')
-          .eq('is_active', true)
-          .order('is_default', { ascending: false }),
-        supabase
-          .from('invoices')
-          .select(
-            'id, invoice_number, invoice_type, issue_date, total_gross, buyer_name, status, my_company_id',
-          )
-          .neq('invoice_type', 'corrective')
-          .in('status', ['issued', 'sent', 'paid'])
-          .order('issue_date', { ascending: false }),
-      ]);
-  
+      const [settingsRes, businessClientsRes, companiesRes, allInvoicesRes, individualContactsRes] =
+        await Promise.all([
+          supabase.rpc('get_invoice_settings_for_creation'),
+          supabase.rpc('get_business_clients'),
+          supabase
+            .from('my_companies')
+            .select('*')
+            .eq('is_active', true)
+            .order('is_default', { ascending: false }),
+          supabase
+            .from('invoices')
+            .select(
+              'id, invoice_number, invoice_type, issue_date, total_gross, buyer_name, status, my_company_id',
+            )
+            .neq('invoice_type', 'corrective')
+            .in('status', ['issued', 'sent', 'paid'])
+            .order('issue_date', { ascending: false }),
+          supabase
+            .from('contacts')
+            .select(
+              'id, first_name, last_name, full_name, email, phone, mobile, address, street, postal_code, city',
+            )
+            .eq('contact_type', 'individual')
+            .order('last_name', { ascending: true }),
+        ]);
+
       if (settingsRes.error) {
         console.error('Error fetching invoice settings:', settingsRes.error);
         throw new Error(
           'Brak uprawnień do tworzenia faktur. Wymagane: invoices_manage lub finances_manage',
         );
       }
-  
+
       if (settingsRes.data && settingsRes.data.length > 0) {
         setSettings(settingsRes.data[0]);
-  
+
         const defaultMethod = settingsRes.data[0]?.default_payment_method;
         if (defaultMethod) {
           setPaymentMethod(defaultMethod);
         }
       }
-  
+
       if (businessClientsRes.data) {
         const formattedClients = businessClientsRes.data.map((client: any) => ({
           id: client.id,
@@ -213,29 +249,44 @@ export default function NewInvoicePage() {
           bank_name: client.bank_name,
           bank_account: client.bank_account,
         }));
-  
+
         setOrganizations(formattedClients);
       }
-  
+
+      setIndividualContacts(
+        individualContactsRes.data.map((c: any) => ({
+          id: c.id,
+          first_name: c.first_name,
+          last_name: c.last_name,
+          full_name: c.full_name,
+          email: c.email,
+          phone: c.phone || c.mobile,
+          address: c.address || '',
+          street: c.street || c.address || '',
+          postal_code: c.postal_code || '',
+          city: c.city || '',
+        })),
+      );
+
       let finalCompaniesList: MyCompany[] = [];
-  
+
       if (companiesRes.data) {
         let companiesList = companiesRes.data as MyCompany[];
-  
+
         if (!isAdmin) {
           const allowedIds = (currentEmployee as any)?.my_company_ids;
           const invoicePerms = (currentEmployee as any)?.invoice_company_permissions || {};
-  
+
           const hasAllowedList = Array.isArray(allowedIds) && allowedIds.length > 0;
-  
+
           if (hasAllowedList) {
             companiesList = companiesList.filter((c) => allowedIds.includes(c.id));
           }
-  
+
           const hasAnyPerEntry = Object.values(invoicePerms).some(
             (v) => Array.isArray(v) && v.length > 0,
           );
-  
+
           if (hasAnyPerEntry) {
             companiesList = companiesList.filter(
               (c) => Array.isArray(invoicePerms[c.id]) && invoicePerms[c.id].includes('issue'),
@@ -244,10 +295,10 @@ export default function NewInvoicePage() {
             companiesList = [];
           }
         }
-  
+
         finalCompaniesList = companiesList;
         setMyCompanies(companiesList);
-  
+
         /**
          * WAŻNE:
          * Nie nadpisujemy firmy, jeśli user już coś wybrał.
@@ -255,16 +306,16 @@ export default function NewInvoicePage() {
          */
         setSelectedCompanyId((prev) => {
           if (prev) return prev;
-  
+
           const defaultCompany = companiesList.find((c) => c.is_default);
           return defaultCompany?.id || companiesList[0]?.id || '';
         });
       }
-  
+
       if (allInvoicesRes.data) {
         setAvailableInvoices(allInvoicesRes.data);
       }
-  
+
       if (eventId) {
         const [eventRes, financialInfoRes] = await Promise.all([
           supabase
@@ -274,26 +325,26 @@ export default function NewInvoicePage() {
             .maybeSingle(),
           supabase.rpc('get_event_financial_info', { p_event_id: eventId }),
         ]);
-  
+
         if (eventRes.data) {
           if (eventRes.data.organization_id) {
             setSelectedOrgId(eventRes.data.organization_id);
           }
-  
+
           if (eventRes.data.event_date) {
             setSaleDate(eventRes.data.event_date.split('T')[0]);
           }
         }
-  
+
         const financialInfo = financialInfoRes.data?.[0];
-  
+
         if (financialInfo && !financialInfo.can_invoice) {
           showSnackbar(
             'Uwaga: Ten klient nie ma uzupełnionego NIP. Nie będzie można zapisać faktury.',
             'warning',
           );
         }
-  
+
         if (financialInfo?.accepted_offer_id) {
           const { data: offerData } = await supabase
             .from('offers')
@@ -313,14 +364,14 @@ export default function NewInvoicePage() {
             )
             .eq('id', financialInfo.accepted_offer_id)
             .maybeSingle();
-  
+
           if (offerData?.offer_items && offerData.offer_items.length > 0) {
             const vatRate = offerData.tax_percent ?? 23;
-  
+
             const sortedItems = [...offerData.offer_items].sort(
               (a: any, b: any) => (a.display_order ?? 0) - (b.display_order ?? 0),
             );
-  
+
             setItems(
               sortedItems.map((oi: any, idx: number) => ({
                 position_number: idx + 1,
@@ -331,14 +382,14 @@ export default function NewInvoicePage() {
                 vat_rate: vatRate,
               })),
             );
-  
+
             const totalNetto = sortedItems.reduce(
               (sum: number, oi: any) => sum + Number(oi.total ?? 0),
               0,
             );
-  
+
             const totalBrutto = totalNetto * (1 + vatRate / 100);
-  
+
             showSnackbar(
               `Pozycje wypełnione z oferty ${financialInfo.accepted_offer_number}: ${totalBrutto.toLocaleString(
                 'pl-PL',
@@ -366,7 +417,25 @@ export default function NewInvoicePage() {
     }
   };
 
-  const isCashPayment = paymentMethod === 'Gotówka' || paymentMethod === 'Karta' || paymentMethod === 'BLIK';
+  const handleSelectIndividual = (contactId: string) => {
+    setSelectedIndividualId(contactId);
+
+    const contact = individualContacts.find((c) => c.id === contactId);
+    if (!contact) return;
+
+    setPrivateBuyer({
+      firstName: contact.first_name || '',
+      lastName: contact.last_name || '',
+      street: contact.street || '',
+      postalCode: contact.postal_code || '',
+      city: contact.city || '',
+      email: contact.email || '',
+      phone: contact.phone || '',
+    });
+  };
+
+  const isCashPayment =
+    paymentMethod === 'Gotówka' || paymentMethod === 'Karta' || paymentMethod === 'BLIK';
 
   const calculatePaymentDueDate = () => {
     if (isCashPayment) return issueDate;
@@ -462,10 +531,7 @@ export default function NewInvoicePage() {
     }
 
     if (includeDefaultFooterNote) {
-      return (
-        selectedCompany.invoice_footer_text ||
-        ''
-      );
+      return selectedCompany.invoice_footer_text || '';
     }
 
     return null;
@@ -476,28 +542,42 @@ export default function NewInvoicePage() {
       showSnackbar('Wybierz firmę wystawiającą fakturę', 'error');
       return;
     }
-  
-    if (!selectedOrgId) {
+
+    if (buyerIsPrivatePerson) {
+      if (
+        !privateBuyer.firstName.trim() ||
+        !privateBuyer.lastName.trim() ||
+        !privateBuyer.street.trim() ||
+        !privateBuyer.postalCode.trim() ||
+        !privateBuyer.city.trim()
+      ) {
+        showSnackbar(
+          'Uzupełnij dane osoby prywatnej: imię, nazwisko, adres, kod pocztowy i miasto.',
+          'error',
+        );
+        return;
+      }
+    } else if (!selectedOrgId) {
       showSnackbar('Wybierz nabywcę', 'error');
       return;
     }
-  
+
     if (!invoiceNumber.trim()) {
       showSnackbar('Numer faktury jest wymagany', 'error');
       return;
     }
-  
+
     if (invoiceType === 'corrective') {
       if (!relatedInvoiceId) {
         showSnackbar('Wybierz fakturę do korekty', 'error');
         return;
       }
-  
+
       if (!correctionReason.trim()) {
         showSnackbar('Podaj przyczynę korekty', 'error');
         return;
       }
-  
+
       if (items.some((item) => !item.name.trim())) {
         showSnackbar('Wypełnij nazwy wszystkich pozycji faktury', 'error');
         return;
@@ -506,54 +586,59 @@ export default function NewInvoicePage() {
       showSnackbar('Wypełnij wszystkie pozycje faktury', 'error');
       return;
     }
-  
+
     try {
       setLoading(true);
-  
+
       const normalizedInvoiceNumber = invoiceNumber.trim();
-  
+
       const { data: existingInvoiceNumber, error: existingInvoiceNumberError } = await supabase
         .from('invoices')
         .select('id')
         .eq('my_company_id', selectedCompanyId)
         .eq('invoice_number', normalizedInvoiceNumber)
         .maybeSingle();
-  
+
       if (existingInvoiceNumberError) {
         throw existingInvoiceNumberError;
       }
-  
+
       if (existingInvoiceNumber) {
         showSnackbar('Ten numer faktury jest już użyty dla wybranej działalności.', 'error');
         setLoading(false);
         return;
       }
-  
-      const selectedOrg = organizations.find((o) => o.id === selectedOrgId);
-      if (!selectedOrg) throw new Error('Organization not found');
-  
+
+      const selectedOrg = buyerIsPrivatePerson
+        ? null
+        : organizations.find((o) => o.id === selectedOrgId);
+
+      if (!buyerIsPrivatePerson && !selectedOrg) {
+        throw new Error('Organization not found');
+      }
+
       const selectedCompany = myCompanies.find((c) => c.id === selectedCompanyId);
       if (!selectedCompany) throw new Error('Company not found');
-  
+
       const {
         data: { user },
       } = await supabase.auth.getUser();
-  
+
       const { data: employee } = await supabase
         .from('employees')
         .select('id, name, surname')
         .eq('email', user?.email)
         .maybeSingle();
-  
+
       const signatureName =
         [employee?.name, employee?.surname].filter(Boolean).join(' ').trim() ||
         selectedCompany.signature_name ||
         '';
-  
+
       const footerNote = buildInvoiceFooterText(selectedCompany);
-  
+
       const website = selectedCompany.website || 'www.mavinci.pl';
-  
+
       const sellerStreet = [
         selectedCompany.street,
         selectedCompany.building_number,
@@ -562,9 +647,9 @@ export default function NewInvoicePage() {
         .filter(Boolean)
         .join(' ')
         .trim();
-  
+
       const missingSellerFields: string[] = [];
-  
+
       if (!selectedCompany.legal_name) missingSellerFields.push('nazwa firmy');
       if (!selectedCompany.nip) missingSellerFields.push('NIP');
       if (!selectedCompany.street) missingSellerFields.push('adres (ulica)');
@@ -574,7 +659,7 @@ export default function NewInvoicePage() {
       if (!selectedCompany.bank_account) missingSellerFields.push('numer konta bankowego');
       if (!selectedCompany.email) missingSellerFields.push('email');
       if (!selectedCompany.phone) missingSellerFields.push('telefon');
-  
+
       if (missingSellerFields.length > 0) {
         showSnackbar(
           `Uzupełnij dane firmy wystawiającej: ${missingSellerFields.join(', ')}. Przejdź do Ustawienia > Moje firmy.`,
@@ -583,14 +668,18 @@ export default function NewInvoicePage() {
         setLoading(false);
         return;
       }
-  
-      if (!selectedOrg.nip) {
-        showSnackbar('Nabywca nie ma uzupełnionego NIP. Uzupełnij dane kontrahenta.', 'error');
+
+      if (!buyerIsPrivatePerson && !selectedOrg.nip) {
+        showSnackbar(
+          'Nabywca nie ma uzupełnionego NIP. Uzupełnij dane kontrahenta albo zaznacz fakturę dla osoby prywatnej.',
+          'error',
+        );
         setLoading(false);
         return;
       }
-  
+
       const invoiceData = {
+        buyer_is_private_person: buyerIsPrivatePerson,
         invoice_number: normalizedInvoiceNumber,
         invoice_type: invoiceType,
         is_proforma: invoiceType === 'proforma',
@@ -602,7 +691,23 @@ export default function NewInvoicePage() {
         sale_date: saleDate,
         payment_due_date: calculatePaymentDueDate(),
         event_id: eventId || null,
-        organization_id: selectedOrgId,
+        organization_id: buyerIsPrivatePerson ? null : selectedOrgId,
+
+        buyer_name: buyerIsPrivatePerson
+          ? `${privateBuyer.firstName} ${privateBuyer.lastName}`.trim()
+          : selectedOrg!.name,
+
+        buyer_nip: buyerIsPrivatePerson ? null : selectedOrg!.nip,
+
+        buyer_street: buyerIsPrivatePerson ? privateBuyer.street : selectedOrg!.street || '',
+
+        buyer_postal_code: buyerIsPrivatePerson
+          ? privateBuyer.postalCode
+          : selectedOrg!.postal_code || '',
+
+        buyer_city: buyerIsPrivatePerson ? privateBuyer.city : selectedOrg!.city || '',
+
+        buyer_contact_id: buyerIsPrivatePerson ? selectedIndividualId || null : null,
         my_company_id: selectedCompanyId,
         seller_name: selectedCompany.legal_name,
         seller_nip: selectedCompany.nip,
@@ -612,12 +717,6 @@ export default function NewInvoicePage() {
         seller_email: selectedCompany.email,
         seller_phone: selectedCompany.phone,
         seller_country: 'Polska',
-        buyer_name: selectedOrg.name,
-        buyer_nip: selectedOrg.nip,
-        buyer_street: selectedOrg.street || '',
-        buyer_postal_code: selectedOrg.postal_code || '',
-        buyer_city: selectedOrg.city || '',
-        buyer_country: 'Polska',
         payment_method: paymentMethod,
         bank_name: selectedCompany.bank_name || '',
         bank_account: selectedCompany.bank_account || '',
@@ -636,20 +735,20 @@ export default function NewInvoicePage() {
             }
           : {}),
       };
-  
+
       const { data: invoice, error: invoiceError } = await supabase
         .from('invoices')
         .insert(invoiceData)
         .select()
         .single();
-  
+
       if (invoiceError) throw invoiceError;
-  
+
       const finalItems = getItemsForInvoice();
-  
+
       const itemsToInsert = finalItems.map((item) => {
         const { valueNet, vatAmount, valueGross } = calculateItemValues(item);
-  
+
         return {
           invoice_id: invoice.id,
           position_number: item.position_number,
@@ -663,11 +762,11 @@ export default function NewInvoicePage() {
           value_gross: valueGross,
         };
       });
-  
+
       const { error: itemsError } = await supabase.from('invoice_items').insert(itemsToInsert);
-  
+
       if (itemsError) throw itemsError;
-  
+
       await supabase.from('invoice_history').insert({
         invoice_id: invoice.id,
         action: 'created',
@@ -678,17 +777,17 @@ export default function NewInvoicePage() {
           invoice_number: normalizedInvoiceNumber,
         },
       });
-  
+
       showSnackbar('Faktura została utworzona', 'success');
       router.push(`/crm/invoices/${invoice.id}`);
     } catch (err: any) {
       console.error('Error creating invoice:', err);
-  
+
       let msg = 'Błąd podczas tworzenia faktury';
-  
+
       if (err?.code === '23502') {
         const col = err.message?.match(/column "(.+?)"/)?.[1] || '';
-  
+
         const fieldMap: Record<string, string> = {
           seller_street: 'adres sprzedawcy',
           seller_city: 'miasto sprzedawcy',
@@ -705,7 +804,7 @@ export default function NewInvoicePage() {
           bank_name: 'nazwa banku sprzedawcy',
           bank_account: 'numer konta bankowego sprzedawcy',
         };
-  
+
         const fieldName = fieldMap[col] || col;
         msg = `Brakuje wymaganego pola: ${fieldName}. Uzupełnij dane i spróbuj ponownie.`;
       } else if (err?.code === '23505') {
@@ -713,7 +812,7 @@ export default function NewInvoicePage() {
       } else if (err?.message) {
         msg = err.message;
       }
-  
+
       showSnackbar(msg, 'error');
     } finally {
       setLoading(false);
@@ -721,8 +820,19 @@ export default function NewInvoicePage() {
   };
 
   const totals = calculateTotals();
+  const filteredIndividualContacts = individualContacts.filter((contact) => {
+    const search = individualSearch.toLowerCase().trim();
 
-  
+    const name =
+      contact.full_name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
+
+    const searchable = [name, contact.email, contact.phone, contact.city]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+
+    return searchable.includes(search);
+  });
 
   return (
     <div className="min-h-screen bg-[#0a0d1a] p-6">
@@ -737,6 +847,45 @@ export default function NewInvoicePage() {
 
         <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-8">
           <h1 className="mb-8 text-2xl font-light text-[#e5e4e2]">Wystaw fakturę VAT</h1>
+          {invoiceType !== 'corrective' && (
+            <div className="mb-2 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-4">
+              <label className="flex cursor-pointer items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={buyerIsPrivatePerson}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setBuyerIsPrivatePerson(checked);
+
+                    setSelectedOrgId('');
+                    setSelectedIndividualId('');
+
+                    setPrivateBuyer({
+                      firstName: '',
+                      lastName: '',
+                      street: '',
+                      postalCode: '',
+                      city: '',
+                      email: '',
+                      phone: '',
+                    });
+                  }}
+                  className="mt-1 h-4 w-4 rounded border-[#d3bb73]/20 text-[#d3bb73]"
+                />
+
+                <div>
+                  <div className="text-sm font-medium text-[#e5e4e2]">
+                    Faktura dla osoby prywatnej
+                  </div>
+
+                  <div className="mt-1 text-xs text-[#e5e4e2]/60">
+                    Użyj, gdy nabywca jest osobą indywidualną bez NIP. Dokument nie będzie oznaczony
+                    jako „Wizualizacja”.
+                  </div>
+                </div>
+              </label>
+            </div>
+          )}
 
           <div className="space-y-6">
             <div className="mb-6 rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/5 p-4">
@@ -909,14 +1058,116 @@ export default function NewInvoicePage() {
                   <div className="rounded-lg border border-orange-500/20 bg-[#0a0d1a]/50 px-4 py-3 text-[#e5e4e2]">
                     {organizations.find((o) => o.id === selectedOrgId)?.name ||
                       'Nabywca z faktury korygowanej'}
-                    {organizations.find((o) => o.id === selectedOrgId)?.nip && (
-                      <span className="ml-2 text-xs text-[#e5e4e2]/40">
-                        NIP: {organizations.find((o) => o.id === selectedOrgId)?.nip}
-                      </span>
-                    )}
                   </div>
-                  <div className="mt-2 text-xs text-orange-400">
-                    Nabywca zostal pobrany z faktury korygowanej
+                </div>
+              ) : buyerIsPrivatePerson ? (
+                <div className="rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-4">
+                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                    Osoba prywatna
+                  </label>
+
+                  <div className="mb-4">
+                    <div className="relative mb-4">
+                      <input
+                        type="text"
+                        value={individualSearch}
+                        onChange={(e) => setIndividualSearch(e.target.value)}
+                        placeholder="Szukaj osoby po imieniu, nazwisku, emailu, telefonie lub mieście..."
+                        className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] placeholder-[#e5e4e2]/30"
+                      />
+
+                      {individualSearch.trim() && (
+                        <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 max-h-72 overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#111827] shadow-2xl backdrop-blur">
+                          {filteredIndividualContacts.length > 0 ? (
+                            filteredIndividualContacts.slice(0, 20).map((contact) => {
+                              const name =
+                                contact.full_name ||
+                                `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
+
+                              const isSelected = selectedIndividualId === contact.id;
+
+                              return (
+                                <button
+                                  key={contact.id}
+                                  type="button"
+                                  onClick={() => {
+                                    handleSelectIndividual(contact.id);
+                                    setIndividualSearch(name || '');
+                                  }}
+                                  className={`block w-full border-b border-[#d3bb73]/10 px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-[#d3bb73]/10 ${
+                                    isSelected ? 'bg-[#d3bb73]/10' : ''
+                                  }`}
+                                >
+                                  <div className="text-sm font-medium text-[#e5e4e2]">
+                                    {name || 'Bez nazwy'}
+                                  </div>
+
+                                  <div className="mt-1 text-xs text-[#e5e4e2]/50">
+                                    {[contact.email, contact.phone, contact.city]
+                                      .filter(Boolean)
+                                      .join(' · ') || 'Brak danych kontaktowych'}
+                                  </div>
+                                </button>
+                              );
+                            })
+                          ) : (
+                            <div className="px-4 py-3 text-sm text-[#e5e4e2]/50">Brak wyników</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <input
+                      type="text"
+                      value={privateBuyer.firstName}
+                      onChange={(e) =>
+                        setPrivateBuyer((prev) => ({ ...prev, firstName: e.target.value }))
+                      }
+                      placeholder="Imię *"
+                      className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
+                    />
+
+                    <input
+                      type="text"
+                      value={privateBuyer.lastName}
+                      onChange={(e) =>
+                        setPrivateBuyer((prev) => ({ ...prev, lastName: e.target.value }))
+                      }
+                      placeholder="Nazwisko *"
+                      className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
+                    />
+
+                    <input
+                      type="text"
+                      value={privateBuyer.street}
+                      onChange={(e) =>
+                        setPrivateBuyer((prev) => ({ ...prev, street: e.target.value }))
+                      }
+                      placeholder="Ulica i numer *"
+                      className="col-span-2 rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
+                    />
+
+                    <input
+                      type="text"
+                      value={privateBuyer.postalCode}
+                      onChange={(e) =>
+                        setPrivateBuyer((prev) => ({ ...prev, postalCode: e.target.value }))
+                      }
+                      placeholder="Kod pocztowy *"
+                      className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
+                    />
+
+                    <input
+                      type="text"
+                      value={privateBuyer.city}
+                      onChange={(e) =>
+                        setPrivateBuyer((prev) => ({ ...prev, city: e.target.value }))
+                      }
+                      placeholder="Miasto *"
+                      className="rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
+                    />
                   </div>
                 </div>
               ) : (

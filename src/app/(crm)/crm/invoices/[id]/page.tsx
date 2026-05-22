@@ -35,6 +35,7 @@ import {
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface Invoice {
+  buyer_is_private_person: boolean;
   bank_name: string;
   company_logo_url: string | null;
   my_company: {
@@ -388,6 +389,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
       const finalSettlementData = await buildFinalSettlementData(invoice);
 
       const html = buildInvoicePdfHtml({
+        buyerIsPrivatePerson: invoice.buyer_is_private_person,
         footerNote: invoice.footer_note || '',
         signatureName: invoice.signature_name || 'Mateusz Kwiatkowski',
         website: invoice.website || 'www.mavinci.pl',
@@ -1119,6 +1121,11 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             className="invoice-preview mx-auto mb-6 flex flex-col rounded-xl bg-white text-black"
             style={{ width: '794px', minHeight: '1123px', padding: '42px 48px' }}
           >
+            {!invoice.buyer_is_private_person && (
+              <div className="-mx-12 -mt-[42px] mb-6 bg-gray-500 py-1.5 text-center text-xs font-bold uppercase tracking-[0.35em] text-white">
+                Wizualizacja
+              </div>
+            )}
             <div className="mb-6 flex items-start justify-between">
               <div className="flex items-center gap-4">
                 {companyLogoUrl ? (

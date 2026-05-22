@@ -11,6 +11,7 @@ export interface SettledInvoicePdfRef {
 }
 
 interface InvoicePdfData {
+  buyerIsPrivatePerson: boolean;
   footerNote: string;
   signatureName: string;
   website: string;
@@ -463,7 +464,7 @@ const isFinalInvoice =
 </head>
 
 <body>
-  <div class="preview-banner">Wizualizacja</div>
+${!data.buyerIsPrivatePerson ? '<div class="preview-banner">Wizualizacja</div>' : ''}
   <div class="top">
     <div>
       ${data.companyLogoUrl ? `<img src="${esc(data.companyLogoUrl)}" alt="Logo" class="logo" />` : ''}
