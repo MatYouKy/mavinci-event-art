@@ -1,5 +1,6 @@
 import SendCalculationEmailModal from '../../SendCalculationEmailModal';
 import { ImportFromOfferModal } from './ImportFromOfferModal';
+import { AddCalculationItemModal } from './AddCalculationItemModal';
 import { useState } from 'react';
 import { useCallback } from 'react';
 import { useEffect } from 'react';
@@ -23,6 +24,7 @@ import { FileText } from 'lucide-react';
 import { Mail } from 'lucide-react';
 import { Save } from 'lucide-react';
 import { Trash2 } from 'lucide-react';
+import { Zap } from 'lucide-react';
 import { fmt } from '../helpers/calculations/calculations.helper';
 
 export function CalculationEditor({
@@ -45,6 +47,7 @@ export function CalculationEditor({
   const [eventName, setEventName] = useState('');
   const [eventDate, setEventDate] = useState<string | null>(null);
   const [showImport, setShowImport] = useState(false);
+  const [addModalCategory, setAddModalCategory] = useState<Category | null>(null);
   const [generatedPdfPath, setGeneratedPdfPath] = useState<string | null>(null);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [showSendEmail, setShowSendEmail] = useState(false);
@@ -156,25 +159,12 @@ export function CalculationEditor({
     load();
   }, [load]);
 
-  const addEmptyRow = (category: Category) => {
-    setItems((prev) => [
-      ...prev,
-      {
-        category,
-        name: '',
-        description: '',
-        unit: category === 'staff' ? 'h' : category === 'transport' ? 'km' : 'szt.',
-        quantity: 1,
-        unit_price: 0,
-        days: 1,
-        source: 'manual',
-        position: prev.filter((p) => p.category === category).length,
-        vat_rate: DEFAULT_VAT,
-        editing: true,
-        power_watts: null,
-        power_source_ref: null,
-      },
-    ]);
+  const openAddModal = (category: Category) => {
+    setAddModalCategory(category);
+  };
+
+  const addItemFromModal = (item: CalcItem) => {
+    setItems((prev) => [...prev, item]);
   };
 
   const updateItem = (index: number, patch: Partial<CalcItem>) => {
@@ -391,6 +381,16 @@ export function CalculationEditor({
     [items],
   );
 
+  const totalPowerAmps230 = useMemo(() => {
+    if (totalPowerWatts === 0) return 0;
+    return round2(totalPowerWatts / 230);
+  }, [totalPowerWatts]);
+
+  const totalPowerAmps400 = useMemo(() => {
+    if (totalPowerWatts === 0) return 0;
+    return round2(totalPowerWatts / (400 * 1.732));
+  }, [totalPowerWatts]);
+
   const fmtPower = (watts: number) =>
     watts >= 1000 ? `${(watts / 1000).toFixed(2)} kW` : `${watts.toFixed(0)} W`;
 
@@ -494,7 +494,7 @@ export function CalculationEditor({
           category={cat}
           items={grouped[cat]}
           allItems={items}
-          onAdd={() => addEmptyRow(cat)}
+          onAdd={() => openAddModal(cat)}
           onUpdate={updateItem}
           onRemove={removeItem}
           onToggleEdit={toggleEdit}
@@ -512,20 +512,47 @@ export function CalculationEditor({
         />
       </div>
 
-      <div className="flex flex-wrap items-center justify-end gap-6 rounded-xl border border-[#d3bb73]/30 bg-[#0a0d1a] p-4">
-        <div className="text-right">
-          <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/50">Netto</div>
-          <div className="text-xl font-light text-[#e5e4e2]">{fmt(grandTotal)} PLN</div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/50">VAT</div>
-          <div className="text-xl font-light text-[#e5e4e2]/80">
-            {fmt(round2(grandTotalGross - grandTotal))} PLN
+      <div className="flex flex-wrap items-center justify-between gap-6 rounded-xl border border-[#d3bb73]/30 bg-[#0a0d1a] p-4">
+        {totalPowerWatts > 0 && (
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Zap className="h-4 w-4 text-amber-400" />
+              <div>
+                <div className="text-xs uppercase tracking-wider text-amber-400/70">
+                  Pobor mocy
+                </div>
+                <div className="text-lg font-light text-amber-400">{fmtPower(totalPowerWatts)}</div>
+              </div>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/50">1f / 230V</div>
+              <div className="text-sm font-light text-[#e5e4e2]/80">
+                {totalPowerAmps230.toFixed(1)} A
+              </div>
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/50">3f / 400V</div>
+              <div className="text-sm font-light text-[#e5e4e2]/80">
+                {totalPowerAmps400.toFixed(1)} A
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs uppercase tracking-wider text-[#d3bb73]">Brutto</div>
-          <div className="text-3xl font-light text-[#d3bb73]">{fmt(grandTotalGross)} PLN</div>
+        )}
+        <div className="flex flex-wrap items-center gap-6">
+          <div className="text-right">
+            <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/50">Netto</div>
+            <div className="text-xl font-light text-[#e5e4e2]">{fmt(grandTotal)} PLN</div>
+          </div>
+          <div className="text-right">
+            <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/50">VAT</div>
+            <div className="text-xl font-light text-[#e5e4e2]/80">
+              {fmt(round2(grandTotalGross - grandTotal))} PLN
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-xs uppercase tracking-wider text-[#d3bb73]">Brutto</div>
+            <div className="text-3xl font-light text-[#d3bb73]">{fmt(grandTotalGross)} PLN</div>
+          </div>
         </div>
       </div>
 
@@ -551,6 +578,15 @@ export function CalculationEditor({
           calculationName={name}
           eventName={eventName}
           onClose={() => setShowSendEmail(false)}
+        />
+      )}
+
+      {addModalCategory && (
+        <AddCalculationItemModal
+          category={addModalCategory}
+          existingCount={items.filter((it) => it.category === addModalCategory).length}
+          onAdd={addItemFromModal}
+          onClose={() => setAddModalCategory(null)}
         />
       )}
     </div>
