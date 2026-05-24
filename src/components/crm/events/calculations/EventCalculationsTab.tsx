@@ -53,6 +53,12 @@ export interface CalcItem {
   position: number;
   vat_rate: number;
   editing?: boolean;
+  power_watts?: number | null;
+  power_source_ref?: string | null;
+  power_specs?: {
+    power_watts?: number | null;
+  } | null;
+  equipment_item_id?: string | null;
 }
 
 interface Props {
@@ -201,6 +207,8 @@ export default function EventCalculationsTab({ eventId }: Props) {
           source_ref: item.source_ref,
           position: index,
           vat_rate: item.vat_rate ?? DEFAULT_VAT,
+          power_specs: item.power_specs ?? { power_watts: null },
+          equipment_item_id: item.equipment_item_id ?? null,
         }));
 
         const { error: insertItemsError } = await supabase

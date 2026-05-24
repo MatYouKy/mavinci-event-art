@@ -37,7 +37,7 @@ export function CategorySection({
     if (warehouseLoaded) return;
     const { data } = await supabase
       .from('equipment_items')
-      .select('id, name, brand, model, rental_price_per_day')
+      .select('id, name, brand, model, rental_price_per_day, power_specs')
       .order('name');
     setWarehouseList((data as WarehouseEquipment[]) ?? []);
     setWarehouseLoaded(true);

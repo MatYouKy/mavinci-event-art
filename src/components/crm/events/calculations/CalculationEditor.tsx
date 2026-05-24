@@ -93,6 +93,8 @@ export function CalculationEditor({
           source_ref: r.source_ref,
           position: r.position,
           vat_rate: r.vat_rate != null ? Number(r.vat_rate) : DEFAULT_VAT,
+          power_watts: r.power_specs?.power_watts ?? null,
+          power_source_ref: r.equipment_item_id ?? null,
           editing: false,
         })),
       );
@@ -169,6 +171,8 @@ export function CalculationEditor({
         position: prev.filter((p) => p.category === category).length,
         vat_rate: DEFAULT_VAT,
         editing: true,
+        power_watts: null,
+        power_source_ref: null,
       },
     ]);
   };
@@ -243,24 +247,24 @@ export function CalculationEditor({
 
       await supabase.from('event_calculation_items').delete().eq('calculation_id', calculationId);
 
-      if (items.length) {
-        const payload = items.map((it, idx) => ({
-          calculation_id: calculationId,
-          category: it.category,
-          name: it.name,
-          description: it.description || '',
-          unit: it.unit || 'szt.',
-          quantity: Number(it.quantity) || 0,
-          unit_price: Number(it.unit_price) || 0,
-          days: Number(it.days) || 1,
-          source: it.source,
-          source_ref: it.source_ref ?? null,
-          position: idx,
-          vat_rate: Number(it.vat_rate ?? DEFAULT_VAT),
-        }));
-        const { error: insErr } = await supabase.from('event_calculation_items').insert(payload);
-        if (insErr) throw insErr;
-      }
+      const payload = items.map((it, idx) => ({
+        calculation_id: calculationId,
+        category: it.category,
+        name: it.name,
+        description: it.description || '',
+        unit: it.unit || 'szt.',
+        quantity: Number(it.quantity) || 0,
+        unit_price: Number(it.unit_price) || 0,
+        days: Number(it.days) || 1,
+        source: it.source,
+        source_ref: it.source_ref ?? null,
+        position: idx,
+        vat_rate: Number(it.vat_rate ?? DEFAULT_VAT),
+        power_specs: {
+          power_watts: it.power_watts ?? null,
+        },
+        equipment_item_id: it.power_source_ref ?? null,
+      }));
 
       showSnackbar('Zapisano kalkulację', 'success');
       setItems((prev) => prev.map((it) => ({ ...it, editing: false })));
@@ -377,6 +381,18 @@ export function CalculationEditor({
     }
     setShowSendEmail(true);
   };
+
+  const totalPowerWatts = useMemo(
+    () =>
+      items.reduce(
+        (sum, item) => sum + Number(item.power_watts || 0) * Number(item.quantity || 0),
+        0,
+      ),
+    [items],
+  );
+
+  const fmtPower = (watts: number) =>
+    watts >= 1000 ? `${(watts / 1000).toFixed(2)} kW` : `${watts.toFixed(0)} W`;
 
   if (loading) {
     return (
