@@ -59,6 +59,8 @@ export interface CalcItem {
     power_watts?: number | null;
   } | null;
   equipment_item_id?: string | null;
+  thumbnail_url?: string | null;
+  stock_quantity?: number | null;
 }
 
 interface Props {

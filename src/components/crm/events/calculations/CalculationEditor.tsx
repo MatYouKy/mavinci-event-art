@@ -81,25 +81,73 @@ export function CalculationEditor({
       setGeneratedPdfPath(calc.generated_pdf_path ?? null);
     }
     if (itemsData) {
+      const equipmentIds = itemsData
+        .filter((r: any) => r.equipment_item_id)
+        .map((r: any) => r.equipment_item_id as string);
+
+      let equipmentMap: Record<string, { thumbnail_url: string | null; stock_quantity: number }> =
+        {};
+
+      if (equipmentIds.length > 0) {
+        const { data: eqData } = await supabase
+          .from('equipment_items')
+          .select('id, thumbnail_url, cable_stock_quantity, warehouse_categories(uses_simple_quantity)')
+          .in('id', equipmentIds);
+
+        const unitItemIds = (eqData ?? [])
+          .filter((e: any) => !e.warehouse_categories?.uses_simple_quantity)
+          .map((e: any) => e.id);
+
+        let unitCounts: Record<string, number> = {};
+        if (unitItemIds.length > 0) {
+          const { data: units } = await supabase
+            .from('equipment_units')
+            .select('equipment_item_id')
+            .in('equipment_item_id', unitItemIds)
+            .eq('status', 'available');
+          if (units) {
+            for (const u of units) {
+              unitCounts[u.equipment_item_id] = (unitCounts[u.equipment_item_id] || 0) + 1;
+            }
+          }
+        }
+
+        for (const eq of eqData ?? []) {
+          const usesSimple = (eq as any).warehouse_categories?.uses_simple_quantity ?? false;
+          equipmentMap[eq.id] = {
+            thumbnail_url: eq.thumbnail_url ?? null,
+            stock_quantity: usesSimple
+              ? Number((eq as any).cable_stock_quantity ?? 0)
+              : unitCounts[eq.id] ?? 0,
+          };
+        }
+      }
+
       setItems(
-        itemsData.map((r: any) => ({
-          id: r.id,
-          calculation_id: r.calculation_id,
-          category: r.category,
-          name: r.name,
-          description: r.description ?? '',
-          unit: r.unit,
-          quantity: Number(r.quantity),
-          unit_price: Number(r.unit_price),
-          days: Number(r.days),
-          source: r.source,
-          source_ref: r.source_ref,
-          position: r.position,
-          vat_rate: r.vat_rate != null ? Number(r.vat_rate) : DEFAULT_VAT,
-          power_watts: r.power_specs?.power_watts ?? null,
-          power_source_ref: r.equipment_item_id ?? null,
-          editing: false,
-        })),
+        itemsData.map((r: any) => {
+          const eqInfo = r.equipment_item_id ? equipmentMap[r.equipment_item_id] : null;
+          return {
+            id: r.id,
+            calculation_id: r.calculation_id,
+            category: r.category,
+            name: r.name,
+            description: r.description ?? '',
+            unit: r.unit,
+            quantity: Number(r.quantity),
+            unit_price: Number(r.unit_price),
+            days: Number(r.days),
+            source: r.source,
+            source_ref: r.source_ref,
+            position: r.position,
+            vat_rate: r.vat_rate != null ? Number(r.vat_rate) : DEFAULT_VAT,
+            power_watts: r.power_specs?.power_watts ?? null,
+            power_source_ref: r.equipment_item_id ?? null,
+            equipment_item_id: r.equipment_item_id ?? null,
+            thumbnail_url: eqInfo?.thumbnail_url ?? null,
+            stock_quantity: eqInfo?.stock_quantity ?? null,
+            editing: false,
+          };
+        }),
       );
     }
     if (ev) {

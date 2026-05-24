@@ -1,14 +1,91 @@
-import { Check, Pencil, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, Check, Package, Pencil, Plus, Trash2 } from 'lucide-react';
 import { CATEGORY_META } from './calculations.constants';
 import { CalcItem, Category } from './EventCalculationsTab';
 import { WarehouseEquipment } from './calculations.types';
-import { useState } from 'react';
-import { useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase/browser';
 import { fmt } from '../helpers/calculations/calculations.helper';
 import { rowNet, rowGross } from '../helpers/calculations/calculations.helper';
 import { EquipmentNameCell } from './EquipmentNameCell';
 import ResponsiveActionBar from '../../ResponsiveActionBar';
+
+function ItemThumbnail({ item }: { item: CalcItem }) {
+  const [showPopover, setShowPopover] = useState(false);
+  const isWarehouse = item.source === 'warehouse' && item.equipment_item_id;
+  const exceeded =
+    isWarehouse && item.stock_quantity != null && item.quantity > item.stock_quantity;
+
+  if (!isWarehouse) return null;
+
+  return (
+    <div
+      className="relative flex-shrink-0"
+      onMouseEnter={() => setShowPopover(true)}
+      onMouseLeave={() => setShowPopover(false)}
+    >
+      <div className="relative">
+        {item.thumbnail_url ? (
+          <img
+            src={item.thumbnail_url}
+            alt={item.name}
+            className={`h-8 w-8 rounded object-cover ${
+              exceeded ? 'ring-2 ring-orange-400' : ''
+            }`}
+          />
+        ) : (
+          <div
+            className={`flex h-8 w-8 items-center justify-center rounded border bg-[#0a0d1a] ${
+              exceeded ? 'border-orange-400' : 'border-[#d3bb73]/20'
+            }`}
+          >
+            <Package className="h-3.5 w-3.5 text-[#e5e4e2]/30" />
+          </div>
+        )}
+        {exceeded && (
+          <div className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-orange-500">
+            <AlertTriangle className="h-2.5 w-2.5 text-white" />
+          </div>
+        )}
+      </div>
+
+      {showPopover && (
+        <div className="absolute bottom-full left-0 z-50 mb-2 w-56 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-3 shadow-xl">
+          {item.thumbnail_url && (
+            <img
+              src={item.thumbnail_url}
+              alt={item.name}
+              className="mb-2 h-24 w-full rounded-md object-cover"
+            />
+          )}
+          <div className="text-sm font-medium text-[#e5e4e2]">{item.name}</div>
+          {item.stock_quantity != null && (
+            <div className="mt-1 text-xs text-[#e5e4e2]/50">
+              Stan magazynowy:{' '}
+              <span
+                className={
+                  exceeded ? 'font-medium text-orange-400' : 'text-emerald-400'
+                }
+              >
+                {item.stock_quantity}
+              </span>
+            </div>
+          )}
+          {exceeded && (
+            <div className="mt-1 flex items-center gap-1 text-xs text-orange-400">
+              <AlertTriangle className="h-3 w-3" />
+              Przekroczono stan ({item.quantity} / {item.stock_quantity})
+            </div>
+          )}
+          {item.power_watts != null && item.power_watts > 0 && (
+            <div className="mt-1 text-xs text-amber-400/70">
+              Pobor: {item.power_watts}W
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function CategorySection({
   category,
@@ -97,7 +174,12 @@ export function CategorySection({
                       onDoubleClick={() => onToggleEdit(idx, true)}
                     >
                       <td className="px-3 py-2 text-[#e5e4e2]">
-                        {it.name || <span className="text-[#e5e4e2]/40">—</span>}
+                        <div className="flex items-center gap-2">
+                          <ItemThumbnail item={it} />
+                          <span className="truncate">
+                            {it.name || <span className="text-[#e5e4e2]/40">—</span>}
+                          </span>
+                        </div>
                       </td>
                       <td className="px-3 py-2 text-[#e5e4e2]/70">
                         {it.description || <span className="text-[#e5e4e2]/30">—</span>}

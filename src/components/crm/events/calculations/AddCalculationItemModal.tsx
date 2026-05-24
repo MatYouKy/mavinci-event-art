@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { X, Search, Package, Zap } from 'lucide-react';
+import { X, Search, Package, Zap, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { CalcItem, Category } from './EventCalculationsTab';
 import { DEFAULT_VAT } from '../helpers/calculations/calculations.helper';
@@ -19,6 +19,7 @@ interface EquipmentOption {
     voltage_volts?: number | null;
   } | null;
   category_name?: string | null;
+  stock_quantity: number;
 }
 
 interface Props {
@@ -51,23 +52,56 @@ export function AddCalculationItemModal({ category, existingCount, onAdd, onClos
   const loadEquipment = useCallback(async () => {
     if (equipmentList.length > 0) return;
     setLoadingEquipment(true);
+
     const { data } = await supabase
       .from('equipment_items')
       .select(
-        'id, name, brand, model, thumbnail_url, rental_price_per_day, power_specs, warehouse_categories(name)',
+        'id, name, brand, model, thumbnail_url, rental_price_per_day, power_specs, cable_stock_quantity, category_id, warehouse_categories(name, uses_simple_quantity)',
       )
       .order('name');
 
-    const mapped: EquipmentOption[] = (data ?? []).map((item: any) => ({
-      id: item.id,
-      name: item.name,
-      brand: item.brand,
-      model: item.model,
-      thumbnail_url: item.thumbnail_url,
-      rental_price_per_day: item.rental_price_per_day,
-      power_specs: item.power_specs,
-      category_name: item.warehouse_categories?.name ?? null,
-    }));
+    if (!data) {
+      setLoadingEquipment(false);
+      return;
+    }
+
+    const itemIds = data
+      .filter((d: any) => !d.warehouse_categories?.uses_simple_quantity)
+      .map((d: any) => d.id);
+
+    let unitCounts: Record<string, number> = {};
+    if (itemIds.length > 0) {
+      const { data: units } = await supabase
+        .from('equipment_units')
+        .select('equipment_item_id')
+        .in('equipment_item_id', itemIds)
+        .eq('status', 'available');
+
+      if (units) {
+        for (const u of units) {
+          unitCounts[u.equipment_item_id] = (unitCounts[u.equipment_item_id] || 0) + 1;
+        }
+      }
+    }
+
+    const mapped: EquipmentOption[] = data.map((item: any) => {
+      const usesSimple = item.warehouse_categories?.uses_simple_quantity ?? false;
+      const stock = usesSimple
+        ? Number(item.cable_stock_quantity ?? 0)
+        : unitCounts[item.id] ?? 0;
+
+      return {
+        id: item.id,
+        name: item.name,
+        brand: item.brand,
+        model: item.model,
+        thumbnail_url: item.thumbnail_url,
+        rental_price_per_day: item.rental_price_per_day,
+        power_specs: item.power_specs,
+        category_name: item.warehouse_categories?.name ?? null,
+        stock_quantity: stock,
+      };
+    });
 
     setEquipmentList(mapped);
     setLoadingEquipment(false);
@@ -103,6 +137,9 @@ export function AddCalculationItemModal({ category, existingCount, onAdd, onClos
     }
   };
 
+  const stockExceeded =
+    selectedEquipment != null && quantity > selectedEquipment.stock_quantity;
+
   const handleSubmit = () => {
     if (!name.trim()) return;
 
@@ -122,6 +159,8 @@ export function AddCalculationItemModal({ category, existingCount, onAdd, onClos
       power_watts: powerWatts,
       power_source_ref: selectedEquipment?.id ?? null,
       equipment_item_id: selectedEquipment?.id ?? null,
+      thumbnail_url: selectedEquipment?.thumbnail_url ?? null,
+      stock_quantity: selectedEquipment?.stock_quantity ?? null,
     };
 
     onAdd(item);
@@ -235,6 +274,9 @@ export function AddCalculationItemModal({ category, existingCount, onAdd, onClos
                         </div>
                       </div>
                       <div className="flex-shrink-0 text-right">
+                        <div className="text-xs text-[#e5e4e2]/50">
+                          Stan: <span className={eq.stock_quantity > 0 ? 'text-emerald-400' : 'text-red-400'}>{eq.stock_quantity}</span>
+                        </div>
                         {eq.power_specs?.power_watts ? (
                           <div className="flex items-center gap-1 text-xs text-amber-400/80">
                             <Zap className="h-3 w-3" />
@@ -281,6 +323,9 @@ export function AddCalculationItemModal({ category, existingCount, onAdd, onClos
                       {selectedEquipment.power_specs.power_watts}W
                     </span>
                   )}
+                  <span className="text-[#e5e4e2]/40">
+                    Stan: {selectedEquipment.stock_quantity}
+                  </span>
                 </div>
               </div>
               <button
@@ -325,6 +370,12 @@ export function AddCalculationItemModal({ category, existingCount, onAdd, onClos
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                 <div>
                   <label className="mb-1.5 block text-sm text-[#e5e4e2]/60">Ilosc</label>
+                  {stockExceeded && (
+                    <div className="mb-1.5 flex items-center gap-1.5 rounded-md bg-orange-500/10 px-2 py-1 text-xs text-orange-400">
+                      <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                      Przekroczono stan ({selectedEquipment!.stock_quantity} dostępne)
+                    </div>
+                  )}
                   <input
                     type="number"
                     step="1"
