@@ -585,15 +585,42 @@ export default function EventAgendaTab({
       }
 
       let companyLogoUrl: string | null = null;
-      const myCompanyId = (event as any)?.my_company_id;
+
+      const myCompanyId = (event as any)?.my_company_id ?? null;
+      
+      let companyQuery = supabase
+        .from('my_companies')
+        .select('id, logo_url')
+        .eq('is_active', true);
+
+        console.log('companyQuery', companyQuery);
+      
       if (myCompanyId) {
-        const { data: companyData } = await supabase
-          .from('my_companies')
-          .select('logo_url')
-          .eq('id', myCompanyId)
-          .maybeSingle();
-        if (companyData?.logo_url) {
-          companyLogoUrl = companyData.logo_url;
+        companyQuery = companyQuery.eq('id', myCompanyId);
+      } else {
+        companyQuery = companyQuery.eq('is_default', true);
+      }
+      
+      const { data: companyData, error: companyError } = await companyQuery.maybeSingle();
+      
+      console.log('AGENDA COMPANY LOGO DEBUG', {
+        event,
+        myCompanyId,
+        companyData,
+        companyError,
+      });
+      
+      if (companyData?.logo_url) {
+        const rawLogo = companyData.logo_url;
+      
+        if (/^https?:\/\//i.test(rawLogo) || rawLogo.startsWith('data:')) {
+          companyLogoUrl = rawLogo;
+        } else {
+          const { data: publicLogo } = supabase.storage
+            .from('company-logos')
+            .getPublicUrl(rawLogo);
+      
+          companyLogoUrl = publicLogo.publicUrl;
         }
       }
 
@@ -614,6 +641,8 @@ export default function EventAgendaTab({
         authorNumber: createdByEmployee?.phone_number || '',
         companyLogoUrl,
       };
+
+      console.log('htmlPayload', htmlPayload);
 
       const response = await fetch('/bridge/events/agenda-pdf', {
         method: 'POST',
