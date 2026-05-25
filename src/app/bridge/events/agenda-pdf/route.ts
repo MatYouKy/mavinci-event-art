@@ -24,6 +24,7 @@ type Body = {
     lastUpdated: string;
     authorName: string;
     authorNumber: string;
+    companyLogoUrl?: string | null;
   };
   createdBy?: string | null;
   previousPdfPath?: string | null;

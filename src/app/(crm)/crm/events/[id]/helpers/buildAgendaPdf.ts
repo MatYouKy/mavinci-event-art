@@ -20,6 +20,7 @@ export const buildAgendaHtml = ({
   lastUpdated,
   authorName,
   authorNumber,
+  companyLogoUrl,
 }: {
   eventName: string;
   eventDate: string;
@@ -33,6 +34,7 @@ export const buildAgendaHtml = ({
   lastUpdated?: string;
   authorName: string;
   authorNumber: string;
+  companyLogoUrl?: string | null;
 }) => {
   let rowNumber = 1;
 
@@ -285,7 +287,7 @@ export const buildAgendaHtml = ({
     </div>
 
     <div class="right">
-      <img src="/shape-mavinci-black.png" alt="Logo" class="logo" />
+      <img src="${companyLogoUrl || '/shape-mavinci-black.png'}" alt="Logo" class="logo" />
       <div class="meta">
         <div class="meta-row"><strong>Opiekun:</strong> ${esc(authorName || '-')}</div>
         <div class="meta-row"><strong>Tel:</strong> ${esc(authorNumber || '-')}</div>

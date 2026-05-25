@@ -56,6 +56,7 @@ export interface IEvent {
   category_id?: string | null;
   organization_id?: string | null;
   contact_person_id?: string | null;
+  my_company_id?: string | null;
   created_by?: string;
   created_at?: string;
   expected_revenue?: number;

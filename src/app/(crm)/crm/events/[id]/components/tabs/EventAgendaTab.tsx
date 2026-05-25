@@ -584,6 +584,19 @@ export default function EventAgendaTab({
         contactNumber = (contact as any)?.business_phone || (contact as any)?.mobile || '';
       }
 
+      let companyLogoUrl: string | null = null;
+      const myCompanyId = (event as any)?.my_company_id;
+      if (myCompanyId) {
+        const { data: companyData } = await supabase
+          .from('my_companies')
+          .select('logo_url')
+          .eq('id', myCompanyId)
+          .maybeSingle();
+        if (companyData?.logo_url) {
+          companyLogoUrl = companyData.logo_url;
+        }
+      }
+
       const { pdfStart, pdfEnd } = getPdfStartEndFromItems(getSortedAgendaItems());
 
       const htmlPayload = {
@@ -599,6 +612,7 @@ export default function EventAgendaTab({
         lastUpdated: new Date().toISOString(),
         authorName: createdByEmployee?.name || '',
         authorNumber: createdByEmployee?.phone_number || '',
+        companyLogoUrl,
       };
 
       const response = await fetch('/bridge/events/agenda-pdf', {
