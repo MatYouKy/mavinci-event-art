@@ -205,7 +205,6 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
         )
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
-        .limit(100);
 
       if (error) throw error;
 
@@ -475,7 +474,6 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
               <div className="mb-3 flex items-center justify-between">
                 <div>
                   <h3 className="text-lg font-bold text-[#e5e4e2]">Powiadomienia</h3>
-                  <p className="mt-0.5 text-xs text-[#e5e4e2]/40">Wyświetlanie ostatnich 100</p>
                 </div>
                 <button
                   onClick={() => setShowPanel(false)}
