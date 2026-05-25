@@ -39,6 +39,9 @@ interface InvoicePdfData {
   totalGross: number;
   companyLogoUrl?: string | null;
   isProforma: boolean;
+  correctionReason?: string;
+  correctedInvoiceNumber?: string;
+  correctedInvoiceIssueDate?: string;
   items: Array<{
     positionNumber: number;
     name: string;
@@ -117,7 +120,10 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
         const paymentMethod = data.paymentMethod?.toLowerCase().trim() || '';
 const isCash = paymentMethod === 'gotówka' || paymentMethod === 'gotowka' || paymentMethod === 'cash';
 
-const label = isCash ? 'Zapłacono:' : 'Do zapłaty:';
+const isCorrectiveInvoice = data.invoiceType === 'corrective';
+const label = isCorrectiveInvoice
+  ? 'Kwota korekty:'
+  : isCash ? 'Zapłacono:' : 'Do zapłaty:';
 
 const isFinalInvoice =
   data.invoiceType === 'final' || data.invoiceNumber?.startsWith('FKO/');
@@ -186,6 +192,10 @@ const isFinalInvoice =
     `
     : '';
 
+  const correctiveItems = isCorrectiveInvoice && data.invoice_items?.some((i) => i.before_quantity != null)
+    ? data.invoice_items
+    : null;
+
   const rows = invoiceItems.length
   ? invoiceItems
       .map(
@@ -209,6 +219,59 @@ const isFinalInvoice =
         <td colspan="9" class="center">Brak pozycji</td>
       </tr>
     `;
+
+  const correctiveItemsHtml = correctiveItems ? correctiveItems.map((item, idx) => {
+    const bQty = Number(item.before_quantity ?? 0);
+    const bPrice = Number(item.before_price_net ?? 0);
+    const bNet = bQty * bPrice;
+    const bVat = Math.round(bNet * item.vat_rate) / 100;
+    const bGross = bNet + bVat;
+
+    const aQty = Number(item.after_quantity ?? bQty);
+    const aPrice = Number(item.after_price_net ?? bPrice);
+    const aNet = aQty * aPrice;
+    const aVat = Math.round(aNet * item.vat_rate) / 100;
+    const aGross = aNet + aVat;
+
+    const dNet = aNet - bNet;
+    const dVat = aVat - bVat;
+    const dGross = aGross - bGross;
+
+    return `
+      <tr style="background: #f9fafb;">
+        <td rowspan="3" style="vertical-align: middle;">${idx + 1}</td>
+        <td rowspan="3" style="vertical-align: middle;">${esc(item.name)}</td>
+        <td style="font-size: 9px; color: #666;">Przed</td>
+        <td class="center">${esc(item.unit)}</td>
+        <td class="right">${bQty}</td>
+        <td class="right">${formatMoney(bPrice)}</td>
+        <td class="right">${formatMoney(bNet)}</td>
+        <td class="center">${item.vat_rate}%</td>
+        <td class="right">${formatMoney(bVat)}</td>
+        <td class="right">${formatMoney(bGross)}</td>
+      </tr>
+      <tr>
+        <td style="font-size: 9px; color: #666;">Po</td>
+        <td class="center">${esc(item.unit)}</td>
+        <td class="right">${aQty}</td>
+        <td class="right">${formatMoney(aPrice)}</td>
+        <td class="right">${formatMoney(aNet)}</td>
+        <td class="center">${item.vat_rate}%</td>
+        <td class="right">${formatMoney(aVat)}</td>
+        <td class="right">${formatMoney(aGross)}</td>
+      </tr>
+      <tr style="background: #f0f0f0; font-weight: 600;">
+        <td style="font-size: 9px;">Korekta</td>
+        <td class="center">${esc(item.unit)}</td>
+        <td class="right">${aQty - bQty !== 0 ? (aQty - bQty > 0 ? '+' : '') + (aQty - bQty) : '0'}</td>
+        <td class="right">${formatMoney(aPrice - bPrice)}</td>
+        <td class="right">${formatMoney(dNet)}</td>
+        <td class="center">${item.vat_rate}%</td>
+        <td class="right">${formatMoney(dVat)}</td>
+        <td class="right strong">${formatMoney(dGross)}</td>
+      </tr>
+    `;
+  }).join('') : '';
 
   return `<!DOCTYPE html>
 <html lang="pl">
@@ -497,6 +560,43 @@ ${!data.buyerIsPrivatePerson ? '<div class="preview-banner">Wizualizacja</div>' 
   ${esc(getTypeLabel(data.invoiceType, data.invoiceNumber))} ${esc(data.invoiceNumber)}
   </div>
 
+  ${isCorrectiveInvoice && data.correctedInvoiceNumber ? `
+    <div style="margin-bottom: 14px; font-size: 11px; border: 1px solid #d1d5db; padding: 8px 12px; background: #f9fafb;">
+      <span style="color: #666;">Korekta do faktury:</span>
+      <strong>${esc(data.correctedInvoiceNumber)}</strong>
+      ${data.correctedInvoiceIssueDate ? ` z dnia <strong>${esc(formatDate(data.correctedInvoiceIssueDate))}</strong>` : ''}
+      ${data.correctionReason ? `<br/><span style="color: #666;">Przyczyna korekty:</span> ${esc(data.correctionReason)}` : ''}
+    </div>
+  ` : ''}
+
+  ${correctiveItems ? `
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 2%">Lp.</th>
+        <th style="width: 28%">Nazwa towaru lub usługi</th>
+        <th style="width: 5%; font-size: 9px;"></th>
+        <th style="width: 3%">Jm.</th>
+        <th style="width: 5%">Ilość</th>
+        <th style="width: 10%">Cena netto</th>
+        <th style="width: 12%">Wartość netto</th>
+        <th style="width: 5%">VAT</th>
+        <th style="width: 9%">Kwota VAT</th>
+        <th style="width: 11%">Brutto</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${correctiveItemsHtml}
+      <tr>
+        <td colspan="6" class="right strong">Kwota korekty</td>
+        <td class="right strong">${formatMoney(data.totalNet)}</td>
+        <td></td>
+        <td class="right strong">${formatMoney(data.totalVat)}</td>
+        <td class="right strong">${formatMoney(data.totalGross)}</td>
+      </tr>
+    </tbody>
+  </table>
+  ` : `
   <table>
     <thead>
       <tr>
@@ -522,7 +622,7 @@ ${!data.buyerIsPrivatePerson ? '<div class="preview-banner">Wizualizacja</div>' 
       </tr>
     </tbody>
   </table>
-    </table>
+  `}
 
   ${settledInvoicesHtml}
   ${finalSettlementHtml}

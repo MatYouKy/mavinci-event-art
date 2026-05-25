@@ -431,6 +431,9 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
         companyLogoUrl: invoice.company_logo_url
           ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/company-logos/${invoice.company_logo_url}`
           : null,
+        correctionReason: invoice.correction_reason || undefined,
+        correctedInvoiceNumber: invoice.corrected_invoice_number || undefined,
+        correctedInvoiceIssueDate: invoice.corrected_invoice_issue_date || undefined,
         items: (freshItems || items).map((item: any) => ({
           positionNumber: item.position_number,
           name: item.name,
@@ -1431,7 +1434,9 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               </div>
               <div>
                 <div className="mb-2">
-                  <span className="text-gray-600">Do zaplaty:</span>{' '}
+                  <span className="text-gray-600">
+                    {invoice.invoice_type === 'corrective' ? 'Kwota korekty:' : 'Do zaplaty:'}
+                  </span>{' '}
                   <span className="text-base font-bold">{previewAmountToPay.toFixed(2)} PLN</span>
                 </div>
               </div>

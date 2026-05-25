@@ -763,9 +763,27 @@ export default function NewInvoicePage() {
       const finalItems = getItemsForInvoice();
 
       const itemsToInsert = finalItems.map((item) => {
-        const { valueNet, vatAmount, valueGross } = calculateItemValues(item);
+        if (invoiceType === 'corrective' && item.before_quantity != null) {
+          const afterQty = item.after_quantity ?? item.before_quantity;
+          const afterPrice = item.after_price_net ?? item.before_price_net ?? 0;
 
-        const base: any = {
+          return {
+            invoice_id: invoice.id,
+            position_number: item.position_number,
+            name: item.name,
+            unit: item.unit,
+            vat_rate: item.vat_rate,
+            quantity: afterQty,
+            price_net: afterPrice,
+            before_quantity: item.before_quantity,
+            before_price_net: item.before_price_net ?? 0,
+            after_quantity: afterQty,
+            after_price_net: afterPrice,
+          };
+        }
+
+        const { valueNet, vatAmount, valueGross } = calculateItemValues(item);
+        return {
           invoice_id: invoice.id,
           position_number: item.position_number,
           name: item.name,
@@ -777,33 +795,6 @@ export default function NewInvoicePage() {
           vat_amount: vatAmount,
           value_gross: valueGross,
         };
-
-        if (invoiceType === 'corrective' && item.before_quantity != null) {
-          const beforeNet = item.before_quantity * (item.before_price_net ?? 0);
-          const beforeVat = Math.round(beforeNet * item.vat_rate) / 100;
-          const beforeGross = beforeNet + beforeVat;
-
-          const afterQty = item.after_quantity ?? item.before_quantity;
-          const afterPrice = item.after_price_net ?? item.before_price_net ?? 0;
-          const afterNet = afterQty * afterPrice;
-          const afterVat = Math.round(afterNet * item.vat_rate) / 100;
-          const afterGross = afterNet + afterVat;
-
-          base.before_quantity = item.before_quantity;
-          base.before_price_net = item.before_price_net;
-          base.before_value_net = beforeNet;
-          base.before_vat_amount = beforeVat;
-          base.before_value_gross = beforeGross;
-          base.after_quantity = afterQty;
-          base.after_price_net = afterPrice;
-          base.after_value_net = afterNet;
-          base.after_vat_amount = afterVat;
-          base.after_value_gross = afterGross;
-          base.quantity = afterQty;
-          base.price_net = afterPrice;
-        }
-
-        return base;
       });
 
       const { error: itemsError } = await supabase.from('invoice_items').insert(itemsToInsert);
