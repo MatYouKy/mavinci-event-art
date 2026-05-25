@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Settings, Lock, Eye, Bell, LayoutGrid, LayoutList, Save, RefreshCw, Shield, Tag, ArrowRight, Mail, Plus, List, Table2, Building2, Key, Ligature as FileSignature } from 'lucide-react';
+import { Settings, Lock, Eye, Bell, LayoutGrid, LayoutList, Save, RefreshCw, Shield, Tag, ArrowRight, Mail, Plus, List, Table2, Building2, Key, Ligature as FileSignature, Upload, Volume2, Trash2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import ChangePasswordModal from '@/components/crm/ChangePasswordModal';
@@ -21,6 +21,7 @@ export interface NotificationPreferences {
   email: boolean;
   push: boolean;
   soundEnabled: boolean;
+  customSoundUrl?: string | null;
   categories: {
     messages: boolean;
     events: boolean;
@@ -77,6 +78,7 @@ export default function SettingsPage() {
   const [showAddEmailModal, setShowAddEmailModal] = useState(false);
   const [emailAccounts, setEmailAccounts] = useState<any[]>([]);
   const [systemEmail, setSystemEmail] = useState<string | null>(null);
+  const [uploadingSound, setUploadingSound] = useState(false);
   const { canViewModule } = useCurrentEmployee();
   const visibleModules = modules.filter((module) => {
     if (!employee) return false;
@@ -198,6 +200,126 @@ export default function SettingsPage() {
         },
       },
     }));
+  };
+
+  const handleSoundUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !employee?.id) return;
+
+    if (!file.type.startsWith('audio/')) {
+      showSnackbar('Proszę wybrać plik audio (mp3, wav, ogg)', 'error');
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      showSnackbar('Plik jest za duży (max 2MB)', 'error');
+      return;
+    }
+
+    setUploadingSound(true);
+    try {
+      const ext = file.name.split('.').pop() || 'mp3';
+      const filePath = `${employee.id}/notification-sound.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('employee-assets')
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrlData } = supabase.storage
+        .from('employee-assets')
+        .getPublicUrl(filePath);
+
+      const soundUrl = publicUrlData.publicUrl;
+
+      setPreferences((prev) => ({
+        ...prev,
+        notifications: {
+          ...((prev.notifications || {}) as NotificationPreferences),
+          customSoundUrl: soundUrl,
+        },
+      }));
+
+      const updatedPrefs = {
+        ...preferences,
+        notifications: {
+          ...((preferences.notifications || {}) as NotificationPreferences),
+          customSoundUrl: soundUrl,
+        },
+      };
+
+      await supabase
+        .from('employees')
+        .update({ preferences: updatedPrefs })
+        .eq('id', employee.id);
+
+      showSnackbar('Dźwięk powiadomień został zaktualizowany', 'success');
+    } catch (err) {
+      console.error('Error uploading sound:', err);
+      showSnackbar('Błąd podczas przesyłania pliku audio', 'error');
+    } finally {
+      setUploadingSound(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleRemoveCustomSound = async () => {
+    if (!employee?.id) return;
+
+    try {
+      setPreferences((prev) => ({
+        ...prev,
+        notifications: {
+          ...((prev.notifications || {}) as NotificationPreferences),
+          customSoundUrl: null,
+        },
+      }));
+
+      const updatedPrefs = {
+        ...preferences,
+        notifications: {
+          ...((preferences.notifications || {}) as NotificationPreferences),
+          customSoundUrl: null,
+        },
+      };
+
+      await supabase
+        .from('employees')
+        .update({ preferences: updatedPrefs })
+        .eq('id', employee.id);
+
+      showSnackbar('Przywrócono domyślny dźwięk', 'success');
+    } catch (err) {
+      console.error('Error removing custom sound:', err);
+      showSnackbar('Błąd podczas usuwania dźwięku', 'error');
+    }
+  };
+
+  const handleTestSound = () => {
+    const soundUrl = preferences.notifications?.customSoundUrl;
+    if (soundUrl) {
+      const audio = new Audio(soundUrl);
+      audio.volume = 0.5;
+      audio.play().catch(() => showSnackbar('Nie udało się odtworzyć dźwięku', 'error'));
+    } else {
+      try {
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(400, audioContext.currentTime + 0.1);
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.3);
+        setTimeout(() => audioContext.close(), 400);
+      } catch {
+        showSnackbar('Nie udało się odtworzyć dźwięku', 'error');
+      }
+    }
   };
 
   const handleSave = async () => {
@@ -512,6 +634,56 @@ export default function SettingsPage() {
                     className="h-5 w-5 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50"
                   />
                 </label>
+
+                {(preferences.notifications?.soundEnabled ?? true) && (
+                  <div className="rounded-lg bg-[#0f1119] p-4">
+                    <div className="mb-3 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-[#e5e4e2]">Własny dźwięk</p>
+                        <p className="mt-1 text-xs text-[#e5e4e2]/60">
+                          {preferences.notifications?.customSoundUrl
+                            ? 'Używasz własnego dźwięku powiadomień'
+                            : 'Używasz domyślnego dźwięku powiadomień'}
+                        </p>
+                      </div>
+                      <button
+                        onClick={handleTestSound}
+                        className="flex items-center gap-1.5 rounded-lg bg-[#1c1f33] px-3 py-2 text-xs text-[#e5e4e2]/80 transition-colors hover:bg-[#1c1f33]/70 hover:text-[#e5e4e2]"
+                      >
+                        <Volume2 className="h-3.5 w-3.5" />
+                        Test
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-[#d3bb73]/30 px-4 py-2.5 text-sm text-[#e5e4e2]/70 transition-colors hover:border-[#d3bb73]/60 hover:text-[#e5e4e2]">
+                        <Upload className="h-4 w-4" />
+                        {uploadingSound ? 'Przesyłanie...' : 'Wgraj plik audio'}
+                        <input
+                          type="file"
+                          accept="audio/mp3,audio/wav,audio/ogg,audio/mpeg,audio/*"
+                          onChange={handleSoundUpload}
+                          disabled={uploadingSound}
+                          className="hidden"
+                        />
+                      </label>
+
+                      {preferences.notifications?.customSoundUrl && (
+                        <button
+                          onClick={handleRemoveCustomSound}
+                          className="flex items-center gap-1.5 rounded-lg border border-red-500/30 px-3 py-2.5 text-xs text-red-400 transition-colors hover:border-red-500/60 hover:bg-red-500/10"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Usuń
+                        </button>
+                      )}
+                    </div>
+
+                    <p className="mt-2 text-xs text-[#e5e4e2]/40">
+                      Formaty: MP3, WAV, OGG. Maks. 2MB.
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="h-px bg-[#d3bb73]/10" />

@@ -48,8 +48,10 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [customSoundUrl, setCustomSoundUrl] = useState<string | null>(null);
   const prevUnreadCountRef = useRef<number>(0);
-  const isInitialLoadRef = useRef(true);
+  const readyForSoundRef = useRef(false);
+  const initialLoadDoneRef = useRef(false);
   const [absenceModalId, setAbsenceModalId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -93,8 +95,16 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
   }, []);
 
   useEffect(() => {
-    if (isInitialLoadRef.current) {
-      isInitialLoadRef.current = false;
+    if (!initialLoadDoneRef.current) {
+      initialLoadDoneRef.current = true;
+      prevUnreadCountRef.current = unreadCount;
+      setTimeout(() => {
+        readyForSoundRef.current = true;
+      }, 3000);
+      return;
+    }
+
+    if (!readyForSoundRef.current) {
       prevUnreadCountRef.current = unreadCount;
       return;
     }
@@ -124,6 +134,9 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
       if (data?.preferences?.notifications?.soundEnabled !== undefined) {
         setSoundEnabled(data.preferences.notifications.soundEnabled);
       }
+      if (data?.preferences?.notifications?.customSoundUrl) {
+        setCustomSoundUrl(data.preferences.notifications.customSoundUrl);
+      }
     } catch (error) {
       console.error('Error loading user preferences:', error);
     }
@@ -131,6 +144,13 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
 
   const playNotificationSound = () => {
     try {
+      if (customSoundUrl) {
+        const audio = new Audio(customSoundUrl);
+        audio.volume = 0.5;
+        audio.play().catch(() => {});
+        return;
+      }
+
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();
