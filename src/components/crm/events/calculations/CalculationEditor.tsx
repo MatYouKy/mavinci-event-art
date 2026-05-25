@@ -211,19 +211,93 @@ export function CalculationEditor({
     setAddModalCategory(category);
   };
 
-  const addItemFromModal = (item: CalcItem) => {
-    setItems((prev) => [...prev, item]);
+  const persistItem = async (item: CalcItem, position: number): Promise<string | null> => {
+    const row = {
+      calculation_id: calculationId,
+      category: item.category,
+      name: item.name,
+      description: item.description || '',
+      unit: item.unit || 'szt.',
+      quantity: Number(item.quantity) || 0,
+      unit_price: Number(item.unit_price) || 0,
+      days: Number(item.days) || 1,
+      source: item.source,
+      source_ref: item.source_ref ?? null,
+      position,
+      vat_rate: Number(item.vat_rate ?? DEFAULT_VAT),
+      power_specs: { power_watts: item.power_watts ?? null },
+      equipment_item_id: item.equipment_item_id ?? null,
+    };
+
+    if (item.id) {
+      const { error } = await supabase
+        .from('event_calculation_items')
+        .update(row)
+        .eq('id', item.id);
+      if (error) {
+        console.error('Error updating item:', error);
+        showSnackbar('Błąd zapisu pozycji', 'error');
+        return null;
+      }
+      return item.id;
+    } else {
+      const { data, error } = await supabase
+        .from('event_calculation_items')
+        .insert(row)
+        .select('id')
+        .single();
+      if (error || !data) {
+        console.error('Error inserting item:', error);
+        showSnackbar('Błąd dodawania pozycji', 'error');
+        return null;
+      }
+      return data.id;
+    }
+  };
+
+  const addItemFromModal = async (item: CalcItem) => {
+    const position = items.filter((it) => it.category === item.category).length;
+    const newId = await persistItem(item, position);
+    if (newId) {
+      setItems((prev) => [...prev, { ...item, id: newId }]);
+      await supabase
+        .from('event_calculations')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', calculationId);
+    }
   };
 
   const updateItem = (index: number, patch: Partial<CalcItem>) => {
     setItems((prev) => prev.map((it, i) => (i === index ? { ...it, ...patch } : it)));
   };
 
-  const removeItem = (index: number) => {
+  const removeItem = async (index: number) => {
+    const item = items[index];
+    if (item?.id) {
+      const { error } = await supabase.from('event_calculation_items').delete().eq('id', item.id);
+      if (error) {
+        showSnackbar('Błąd usuwania pozycji', 'error');
+        return;
+      }
+    }
     setItems((prev) => prev.filter((_, i) => i !== index));
+    await supabase
+      .from('event_calculations')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', calculationId);
   };
 
-  const toggleEdit = (index: number, editing: boolean) => {
+  const toggleEdit = async (index: number, editing: boolean) => {
+    if (!editing) {
+      const item = items[index];
+      if (item) {
+        await persistItem(item, item.position ?? index);
+        await supabase
+          .from('event_calculations')
+          .update({ updated_at: new Date().toISOString() })
+          .eq('id', calculationId);
+      }
+    }
     setItems((prev) => prev.map((it, i) => (i === index ? { ...it, editing } : it)));
   };
 
@@ -283,30 +357,14 @@ export function CalculationEditor({
         .eq('id', calculationId);
       if (updErr) throw updErr;
 
-      await supabase.from('event_calculation_items').delete().eq('calculation_id', calculationId);
-
-      const payload = items.map((it, idx) => ({
-        calculation_id: calculationId,
-        category: it.category,
-        name: it.name,
-        description: it.description || '',
-        unit: it.unit || 'szt.',
-        quantity: Number(it.quantity) || 0,
-        unit_price: Number(it.unit_price) || 0,
-        days: Number(it.days) || 1,
-        source: it.source,
-        source_ref: it.source_ref ?? null,
-        position: idx,
-        vat_rate: Number(it.vat_rate ?? DEFAULT_VAT),
-        power_specs: {
-          power_watts: it.power_watts ?? null,
-        },
-        equipment_item_id: it.power_source_ref ?? null,
-      }));
+      const editingItems = items.filter((it) => it.editing);
+      for (const item of editingItems) {
+        const idx = items.indexOf(item);
+        await persistItem(item, item.position ?? idx);
+      }
 
       showSnackbar('Zapisano kalkulację', 'success');
       setItems((prev) => prev.map((it) => ({ ...it, editing: false })));
-      await load();
     } catch (e: any) {
       console.error(e);
       showSnackbar(e.message || 'Błąd zapisu', 'error');
@@ -331,8 +389,23 @@ export function CalculationEditor({
     });
   };
 
-  const appendImportedItems = (imported: CalcItem[]) => {
-    setItems((prev) => [...prev, ...imported.map((it) => ({ ...it, editing: false }))]);
+  const appendImportedItems = async (imported: CalcItem[]) => {
+    const savedItems: CalcItem[] = [];
+    for (const it of imported) {
+      const position = items.length + savedItems.length;
+      const newId = await persistItem({ ...it, editing: false }, position);
+      if (newId) {
+        savedItems.push({ ...it, id: newId, editing: false });
+      }
+    }
+    if (savedItems.length > 0) {
+      setItems((prev) => [...prev, ...savedItems]);
+      await supabase
+        .from('event_calculations')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', calculationId);
+      showSnackbar(`Zaimportowano ${savedItems.length} pozycji`, 'success');
+    }
   };
 
   const handlePrint = () => {
