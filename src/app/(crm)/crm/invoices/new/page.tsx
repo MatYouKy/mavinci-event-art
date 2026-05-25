@@ -45,6 +45,10 @@ interface InvoiceItem {
   quantity: number;
   price_net: number;
   vat_rate: number;
+  before_quantity?: number;
+  before_price_net?: number;
+  after_quantity?: number;
+  after_price_net?: number;
 }
 
 export default function NewInvoicePage() {
@@ -182,9 +186,13 @@ export default function NewInvoicePage() {
             position_number: item.position_number,
             name: item.name,
             unit: item.unit,
-            quantity: item.quantity,
-            price_net: -Math.abs(Number(item.price_net)),
+            quantity: Number(item.quantity),
+            price_net: Number(item.price_net),
             vat_rate: item.vat_rate,
+            before_quantity: Number(item.quantity),
+            before_price_net: Number(item.price_net),
+            after_quantity: Number(item.quantity),
+            after_price_net: Number(item.price_net),
           })),
         );
       }
@@ -445,6 +453,14 @@ export default function NewInvoicePage() {
   };
 
   const calculateItemValues = (item: InvoiceItem) => {
+    if (invoiceType === 'corrective' && item.before_quantity != null && item.before_price_net != null) {
+      const beforeNet = item.before_quantity * item.before_price_net;
+      const afterNet = (item.after_quantity ?? item.before_quantity) * (item.after_price_net ?? item.before_price_net);
+      const diffNet = afterNet - beforeNet;
+      const diffVat = Math.round(diffNet * item.vat_rate) / 100;
+      const diffGross = diffNet + diffVat;
+      return { valueNet: diffNet, vatAmount: diffVat, valueGross: diffGross };
+    }
     const valueNet = item.quantity * item.price_net;
     const vatAmount = Math.round(valueNet * item.vat_rate) / 100;
     const valueGross = valueNet + vatAmount;
@@ -749,7 +765,7 @@ export default function NewInvoicePage() {
       const itemsToInsert = finalItems.map((item) => {
         const { valueNet, vatAmount, valueGross } = calculateItemValues(item);
 
-        return {
+        const base: any = {
           invoice_id: invoice.id,
           position_number: item.position_number,
           name: item.name,
@@ -761,6 +777,33 @@ export default function NewInvoicePage() {
           vat_amount: vatAmount,
           value_gross: valueGross,
         };
+
+        if (invoiceType === 'corrective' && item.before_quantity != null) {
+          const beforeNet = item.before_quantity * (item.before_price_net ?? 0);
+          const beforeVat = Math.round(beforeNet * item.vat_rate) / 100;
+          const beforeGross = beforeNet + beforeVat;
+
+          const afterQty = item.after_quantity ?? item.before_quantity;
+          const afterPrice = item.after_price_net ?? item.before_price_net ?? 0;
+          const afterNet = afterQty * afterPrice;
+          const afterVat = Math.round(afterNet * item.vat_rate) / 100;
+          const afterGross = afterNet + afterVat;
+
+          base.before_quantity = item.before_quantity;
+          base.before_price_net = item.before_price_net;
+          base.before_value_net = beforeNet;
+          base.before_vat_amount = beforeVat;
+          base.before_value_gross = beforeGross;
+          base.after_quantity = afterQty;
+          base.after_price_net = afterPrice;
+          base.after_value_net = afterNet;
+          base.after_vat_amount = afterVat;
+          base.after_value_gross = afterGross;
+          base.quantity = afterQty;
+          base.price_net = afterPrice;
+        }
+
+        return base;
       });
 
       const { error: itemsError } = await supabase.from('invoice_items').insert(itemsToInsert);
@@ -1272,18 +1315,30 @@ export default function NewInvoicePage() {
 
             <div className="border-t border-[#d3bb73]/10 pt-6">
               <div className="mb-4 flex items-center justify-between">
-                <h3 className="text-lg font-medium text-[#e5e4e2]">Pozycje faktury</h3>
-                <button
-                  onClick={addItem}
-                  className="flex items-center gap-2 text-sm text-[#d3bb73] hover:text-[#d3bb73]/80"
-                >
-                  <Plus className="h-4 w-4" />
-                  Dodaj pozycję
-                </button>
+                <h3 className="text-lg font-medium text-[#e5e4e2]">
+                  {invoiceType === 'corrective' ? 'Pozycje korekty' : 'Pozycje faktury'}
+                </h3>
+                {invoiceType !== 'corrective' && (
+                  <button
+                    onClick={addItem}
+                    className="flex items-center gap-2 text-sm text-[#d3bb73] hover:text-[#d3bb73]/80"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Dodaj pozycję
+                  </button>
+                )}
               </div>
 
+              {invoiceType === 'corrective' && items.length > 0 && (
+                <div className="mb-4 rounded-lg border border-orange-500/20 bg-orange-500/5 p-3 text-sm text-orange-300">
+                  Edytuj kolumnę &bdquo;Po korekcie&rdquo; aby zmienić wartości. Kolumna
+                  &bdquo;Przed&rdquo; jest tylko do odczytu. Róznica zostanie obliczona
+                  automatycznie.
+                </div>
+              )}
+
               {/* Checkbox uproszczonej faktury */}
-              {items.length > 1 && (
+              {invoiceType !== 'corrective' && items.length > 1 && (
                 <div className="mb-4 rounded-lg border border-blue-500/20 bg-blue-500/10 p-4">
                   <label className="flex cursor-pointer items-start gap-3">
                     <input
@@ -1323,124 +1378,271 @@ export default function NewInvoicePage() {
               )}
 
               <div className="space-y-4">
-                {items.map((item, index) => {
-                  const { valueNet, vatAmount, valueGross } = calculateItemValues(item);
-                  return (
-                    <div
-                      key={index}
-                      className="rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a] p-4"
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className="grid flex-1 grid-cols-6 gap-4">
-                          <div className="col-span-2">
-                            <label className="mb-1 block text-xs text-[#e5e4e2]/40">Nazwa *</label>
-                            <input
-                              type="text"
-                              value={item.name}
-                              onChange={(e) => updateItem(index, 'name', e.target.value)}
-                              className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="mb-1 block text-xs text-[#e5e4e2]/40">J.m.</label>
-                            <select
-                              value={item.unit}
-                              onChange={(e) => updateItem(index, 'unit', e.target.value)}
-                              className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
-                            >
-                              <option value="szt.">szt.</option>
-                              <option value="godz.">godz.</option>
-                              <option value="usł.">usł.</option>
-                              <option value="m">m</option>
-                              <option value="m2">m2</option>
-                              <option value="kg">kg</option>
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="mb-1 block text-xs text-[#e5e4e2]/40">Ilość *</label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={item.quantity}
-                              onChange={(e) =>
-                                updateItem(index, 'quantity', parseFloat(e.target.value))
-                              }
-                              className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="mb-1 block text-xs text-[#e5e4e2]/40">
-                              Cena netto *
-                            </label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={item.price_net}
-                              onChange={(e) =>
-                                updateItem(index, 'price_net', parseFloat(e.target.value))
-                              }
-                              className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="mb-1 block text-xs text-[#e5e4e2]/40">VAT %</label>
-                            <select
-                              value={item.vat_rate}
-                              onChange={(e) =>
-                                updateItem(index, 'vat_rate', parseInt(e.target.value))
-                              }
-                              className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
-                            >
-                              <option value={0}>0%</option>
-                              <option value={5}>5%</option>
-                              <option value={8}>8%</option>
-                              <option value={23}>23%</option>
-                            </select>
-                          </div>
-                        </div>
-
-                        <button
-                          onClick={() => removeItem(index)}
-                          className="rounded-lg p-2 text-red-400 hover:bg-red-500/10"
+                {invoiceType === 'corrective'
+                  ? items.map((item, index) => {
+                      const { valueNet, vatAmount, valueGross } = calculateItemValues(item);
+                      const beforeNet = (item.before_quantity ?? 0) * (item.before_price_net ?? 0);
+                      const afterQty = item.after_quantity ?? item.before_quantity ?? 0;
+                      const afterPrice = item.after_price_net ?? item.before_price_net ?? 0;
+                      const afterNet = afterQty * afterPrice;
+                      return (
+                        <div
+                          key={index}
+                          className="rounded-lg border border-orange-500/15 bg-[#0a0d1a] p-4"
                         >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
+                          <div className="mb-3 flex items-center justify-between">
+                            <div className="text-sm font-medium text-[#e5e4e2]">
+                              {item.position_number}. {item.name}
+                            </div>
+                            <span className="rounded bg-[#1c1f33] px-2 py-0.5 text-xs text-[#e5e4e2]/50">
+                              VAT {item.vat_rate}%
+                            </span>
+                          </div>
 
-                      <div className="mt-3 grid grid-cols-3 gap-4 border-t border-[#d3bb73]/10 pt-3 text-sm">
-                        <div>
-                          <span className="text-[#e5e4e2]/40">Wartość netto:</span>
-                          <span className="ml-2 text-[#e5e4e2]">{valueNet.toFixed(2)} zł</span>
+                          <div className="grid grid-cols-3 gap-4">
+                            {/* PRZED */}
+                            <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]/50 p-3">
+                              <div className="mb-2 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/40">
+                                Przed korektą
+                              </div>
+                              <div className="space-y-2">
+                                <div>
+                                  <span className="text-xs text-[#e5e4e2]/40">Ilość:</span>
+                                  <span className="ml-2 text-sm text-[#e5e4e2]/70">
+                                    {item.before_quantity ?? 0} {item.unit}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-xs text-[#e5e4e2]/40">Cena netto:</span>
+                                  <span className="ml-2 text-sm text-[#e5e4e2]/70">
+                                    {(item.before_price_net ?? 0).toFixed(2)} zł
+                                  </span>
+                                </div>
+                                <div className="border-t border-[#d3bb73]/10 pt-2">
+                                  <span className="text-xs text-[#e5e4e2]/40">Wartość netto:</span>
+                                  <span className="ml-2 text-sm text-[#e5e4e2]/70">
+                                    {beforeNet.toFixed(2)} zł
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* PO */}
+                            <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 p-3">
+                              <div className="mb-2 text-xs font-medium uppercase tracking-wider text-orange-400">
+                                Po korekcie
+                              </div>
+                              <div className="space-y-2">
+                                <div>
+                                  <label className="mb-0.5 block text-xs text-[#e5e4e2]/40">
+                                    Ilość
+                                  </label>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={item.after_quantity ?? item.before_quantity ?? 0}
+                                    onChange={(e) =>
+                                      updateItem(index, 'after_quantity' as any, parseFloat(e.target.value) || 0)
+                                    }
+                                    className="w-full rounded border border-orange-500/30 bg-[#1c1f33] px-2 py-1.5 text-sm text-[#e5e4e2] focus:border-orange-500 focus:outline-none"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="mb-0.5 block text-xs text-[#e5e4e2]/40">
+                                    Cena netto
+                                  </label>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={item.after_price_net ?? item.before_price_net ?? 0}
+                                    onChange={(e) =>
+                                      updateItem(index, 'after_price_net' as any, parseFloat(e.target.value) || 0)
+                                    }
+                                    className="w-full rounded border border-orange-500/30 bg-[#1c1f33] px-2 py-1.5 text-sm text-[#e5e4e2] focus:border-orange-500 focus:outline-none"
+                                  />
+                                </div>
+                                <div className="border-t border-orange-500/10 pt-2">
+                                  <span className="text-xs text-[#e5e4e2]/40">Wartość netto:</span>
+                                  <span className="ml-2 text-sm text-[#e5e4e2]">
+                                    {afterNet.toFixed(2)} zł
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* RÓŻNICA */}
+                            <div className="rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-3">
+                              <div className="mb-2 text-xs font-medium uppercase tracking-wider text-[#d3bb73]">
+                                Różnica (korekta)
+                              </div>
+                              <div className="space-y-2">
+                                <div>
+                                  <span className="text-xs text-[#e5e4e2]/40">Netto:</span>
+                                  <span
+                                    className={`ml-2 text-sm font-medium ${valueNet < 0 ? 'text-red-400' : valueNet > 0 ? 'text-green-400' : 'text-[#e5e4e2]/50'}`}
+                                  >
+                                    {valueNet >= 0 ? '+' : ''}
+                                    {valueNet.toFixed(2)} zł
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-xs text-[#e5e4e2]/40">VAT:</span>
+                                  <span
+                                    className={`ml-2 text-sm ${vatAmount < 0 ? 'text-red-400' : vatAmount > 0 ? 'text-green-400' : 'text-[#e5e4e2]/50'}`}
+                                  >
+                                    {vatAmount >= 0 ? '+' : ''}
+                                    {vatAmount.toFixed(2)} zł
+                                  </span>
+                                </div>
+                                <div className="border-t border-[#d3bb73]/10 pt-2">
+                                  <span className="text-xs text-[#e5e4e2]/40">Brutto:</span>
+                                  <span
+                                    className={`ml-2 text-sm font-medium ${valueGross < 0 ? 'text-red-400' : valueGross > 0 ? 'text-green-400' : 'text-[#e5e4e2]/50'}`}
+                                  >
+                                    {valueGross >= 0 ? '+' : ''}
+                                    {valueGross.toFixed(2)} zł
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <span className="text-[#e5e4e2]/40">Kwota VAT:</span>
-                          <span className="ml-2 text-[#e5e4e2]">{vatAmount.toFixed(2)} zł</span>
+                      );
+                    })
+                  : items.map((item, index) => {
+                      const { valueNet, vatAmount, valueGross } = calculateItemValues(item);
+                      return (
+                        <div
+                          key={index}
+                          className="rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a] p-4"
+                        >
+                          <div className="flex items-start gap-4">
+                            <div className="grid flex-1 grid-cols-6 gap-4">
+                              <div className="col-span-2">
+                                <label className="mb-1 block text-xs text-[#e5e4e2]/40">
+                                  Nazwa *
+                                </label>
+                                <input
+                                  type="text"
+                                  value={item.name}
+                                  onChange={(e) => updateItem(index, 'name', e.target.value)}
+                                  className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="mb-1 block text-xs text-[#e5e4e2]/40">J.m.</label>
+                                <select
+                                  value={item.unit}
+                                  onChange={(e) => updateItem(index, 'unit', e.target.value)}
+                                  className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
+                                >
+                                  <option value="szt.">szt.</option>
+                                  <option value="godz.">godz.</option>
+                                  <option value="usł.">usł.</option>
+                                  <option value="m">m</option>
+                                  <option value="m2">m2</option>
+                                  <option value="kg">kg</option>
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="mb-1 block text-xs text-[#e5e4e2]/40">
+                                  Ilość *
+                                </label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={item.quantity}
+                                  onChange={(e) =>
+                                    updateItem(index, 'quantity', parseFloat(e.target.value))
+                                  }
+                                  className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="mb-1 block text-xs text-[#e5e4e2]/40">
+                                  Cena netto *
+                                </label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={item.price_net}
+                                  onChange={(e) =>
+                                    updateItem(index, 'price_net', parseFloat(e.target.value))
+                                  }
+                                  className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="mb-1 block text-xs text-[#e5e4e2]/40">
+                                  VAT %
+                                </label>
+                                <select
+                                  value={item.vat_rate}
+                                  onChange={(e) =>
+                                    updateItem(index, 'vat_rate', parseInt(e.target.value))
+                                  }
+                                  className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
+                                >
+                                  <option value={0}>0%</option>
+                                  <option value={5}>5%</option>
+                                  <option value={8}>8%</option>
+                                  <option value={23}>23%</option>
+                                </select>
+                              </div>
+                            </div>
+
+                            <button
+                              onClick={() => removeItem(index)}
+                              className="rounded-lg p-2 text-red-400 hover:bg-red-500/10"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+
+                          <div className="mt-3 grid grid-cols-3 gap-4 border-t border-[#d3bb73]/10 pt-3 text-sm">
+                            <div>
+                              <span className="text-[#e5e4e2]/40">Wartość netto:</span>
+                              <span className="ml-2 text-[#e5e4e2]">{valueNet.toFixed(2)} zł</span>
+                            </div>
+                            <div>
+                              <span className="text-[#e5e4e2]/40">Kwota VAT:</span>
+                              <span className="ml-2 text-[#e5e4e2]">
+                                {vatAmount.toFixed(2)} zł
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-[#e5e4e2]/40">Wartość brutto:</span>
+                              <span className="ml-2 font-medium text-[#d3bb73]">
+                                {valueGross.toFixed(2)} zł
+                              </span>
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <span className="text-[#e5e4e2]/40">Wartość brutto:</span>
-                          <span className="ml-2 font-medium text-[#d3bb73]">
-                            {valueGross.toFixed(2)} zł
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                      );
+                    })}
               </div>
             </div>
 
             <div className="border-t border-[#d3bb73]/10 pt-6">
               <div className="rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-6">
-                <h3 className="mb-4 text-lg font-medium text-[#e5e4e2]">Podsumowanie</h3>
+                <h3 className="mb-4 text-lg font-medium text-[#e5e4e2]">
+                  {invoiceType === 'corrective' ? 'Kwota korekty' : 'Podsumowanie'}
+                </h3>
 
-                {simplifiedInvoice && items.length > 1 && (
+                {invoiceType === 'corrective' && (
+                  <div className="mb-4 text-xs text-[#e5e4e2]/50">
+                    Poniższe wartości to suma różnic między stanem przed i po korekcie.
+                  </div>
+                )}
+
+                {simplifiedInvoice && items.length > 1 && invoiceType !== 'corrective' && (
                   <div className="mb-4 rounded-lg border border-blue-500/20 bg-blue-500/10 p-3">
                     <div className="mb-2 text-xs font-medium text-blue-400">
-                      📄 Podgląd uproszczonej faktury:
+                      Podgląd uproszczonej faktury:
                     </div>
                     <div className="text-sm text-[#e5e4e2]">
                       1. {simplifiedServiceName || 'Obsługa muzyczna'} -{' '}
@@ -1454,20 +1656,29 @@ export default function NewInvoicePage() {
 
                 <div className="grid grid-cols-3 gap-6">
                   <div>
-                    <div className="mb-1 text-sm text-[#e5e4e2]/60">Suma netto</div>
-                    <div className="text-2xl font-light text-[#e5e4e2]">
+                    <div className="mb-1 text-sm text-[#e5e4e2]/60">
+                      {invoiceType === 'corrective' ? 'Korekta netto' : 'Suma netto'}
+                    </div>
+                    <div className={`text-2xl font-light ${invoiceType === 'corrective' ? (totals.totalNet < 0 ? 'text-red-400' : totals.totalNet > 0 ? 'text-green-400' : 'text-[#e5e4e2]') : 'text-[#e5e4e2]'}`}>
+                      {invoiceType === 'corrective' && totals.totalNet >= 0 ? '+' : ''}
                       {totals.totalNet.toFixed(2)} zł
                     </div>
                   </div>
                   <div>
-                    <div className="mb-1 text-sm text-[#e5e4e2]/60">Suma VAT</div>
-                    <div className="text-2xl font-light text-[#e5e4e2]">
+                    <div className="mb-1 text-sm text-[#e5e4e2]/60">
+                      {invoiceType === 'corrective' ? 'Korekta VAT' : 'Suma VAT'}
+                    </div>
+                    <div className={`text-2xl font-light ${invoiceType === 'corrective' ? (totals.totalVat < 0 ? 'text-red-400' : totals.totalVat > 0 ? 'text-green-400' : 'text-[#e5e4e2]') : 'text-[#e5e4e2]'}`}>
+                      {invoiceType === 'corrective' && totals.totalVat >= 0 ? '+' : ''}
                       {totals.totalVat.toFixed(2)} zł
                     </div>
                   </div>
                   <div>
-                    <div className="mb-1 text-sm text-[#e5e4e2]/60">Suma brutto</div>
-                    <div className="text-2xl font-medium text-[#d3bb73]">
+                    <div className="mb-1 text-sm text-[#e5e4e2]/60">
+                      {invoiceType === 'corrective' ? 'Korekta brutto' : 'Suma brutto'}
+                    </div>
+                    <div className={`text-2xl font-medium ${invoiceType === 'corrective' ? (totals.totalGross < 0 ? 'text-red-400' : totals.totalGross > 0 ? 'text-green-400' : 'text-[#d3bb73]') : 'text-[#d3bb73]'}`}>
+                      {invoiceType === 'corrective' && totals.totalGross >= 0 ? '+' : ''}
                       {totals.totalGross.toFixed(2)} zł
                     </div>
                   </div>
