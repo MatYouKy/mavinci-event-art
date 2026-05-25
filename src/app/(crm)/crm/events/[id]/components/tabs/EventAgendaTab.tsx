@@ -19,7 +19,6 @@ import {
   X,
 } from 'lucide-react';
 import { buildAgendaHtml } from '@/app/(crm)/crm/events/[id]/helpers/buildAgendaPdf';
-import { supabaseServer } from '@/lib/supabaseServer';
 import { useEvent } from '../../../hooks/useEvent';
 import { useGetContactByIdQuery } from '@/app/(crm)/crm/contacts/store/clientsApi';
 import { ContactRow, OrganizationRow } from '@/app/(crm)/crm/contacts/types';
@@ -251,7 +250,7 @@ export default function EventAgendaTab({
   }, [startTime, endTime, contact, agendaId]);
 
   const fetchCreatedByEmployee = async () => {
-    const { data: Author } = await supabaseServer
+    const { data: Author } = await supabase
       .from('employees')
       .select('name, surname, phone_number')
       .eq('id', createdById)
@@ -913,7 +912,7 @@ export default function EventAgendaTab({
     }
   };
 
-  const actions = useMemo<Action[]>(() => {
+  const actions: Action[] = (() => {
     const result: Action[] = [];
 
     if (canManage && !editMode) {
@@ -988,16 +987,7 @@ export default function EventAgendaTab({
     }
 
     return result;
-  }, [
-    canManage,
-    editMode,
-    saving,
-    agendaId,
-    generatedPdfPath,
-    modifiedAfterGeneration,
-    pdfExists,
-    generating,
-  ]);
+  })();
 
   const renderNoteEdit = (note: AgendaNote, depth: number = 0) => {
     const indent = depth * 24;
