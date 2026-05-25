@@ -462,6 +462,7 @@ export function CalculationEditor({
       grandTotal,
       grandTotalGross,
       company,
+      totalPowerWatts,
     });
     const w = window.open('', '_blank');
     if (!w) {
@@ -496,6 +497,7 @@ export function CalculationEditor({
         grandTotal,
         grandTotalGross,
         company,
+        totalPowerWatts,
       });
 
       const res = await fetch('/bridge/events/calculations-pdf', {
@@ -717,6 +719,19 @@ export function CalculationEditor({
         </div>
       </div>
 
+      {generatingPdf && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="flex min-w-[280px] flex-col items-center gap-4 rounded-2xl border border-[#d3bb73]/30 bg-[#1c1f33] px-8 py-7 shadow-2xl">
+            <Loader2 className="h-9 w-9 animate-spin text-[#d3bb73]" />
+
+            <div className="text-center">
+              <div className="text-base font-medium text-[#e5e4e2]">Generuję PDF kalkulacji</div>
+              <div className="mt-1 text-sm text-[#e5e4e2]/50">Proszę chwilę poczekać...</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showImport && (
         <ImportFromOfferModal
           eventId={eventId}
@@ -745,6 +760,7 @@ export function CalculationEditor({
       {addModalCategory && (
         <AddCalculationItemModal
           category={addModalCategory}
+          existingItems={items}
           existingCount={items.filter((it) => it.category === addModalCategory).length}
           onAdd={addItemFromModal}
           onClose={() => setAddModalCategory(null)}

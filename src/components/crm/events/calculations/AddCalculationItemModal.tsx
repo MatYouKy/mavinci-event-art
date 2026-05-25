@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase/browser';
 import { CalcItem, Category } from './EventCalculationsTab';
 import { DEFAULT_VAT } from '../helpers/calculations/calculations.helper';
 import NextImage from 'next/image';
+import Popover from '@/components/UI/Tooltip';
 interface EquipmentOption {
   id: string;
   name: string;
@@ -25,14 +26,24 @@ interface EquipmentOption {
 interface Props {
   category: Category;
   existingCount: number;
+  existingItems: CalcItem[];
   onAdd: (item: CalcItem) => void;
   onClose: () => void;
 }
 
-export function AddCalculationItemModal({ category, existingCount, onAdd, onClose }: Props) {
+export function AddCalculationItemModal({
+  category,
+  existingCount,
+  existingItems,
+  onAdd,
+  onClose,
+}: Props) {
   const [mode, setMode] = useState<'warehouse' | 'manual'>(
     category === 'equipment' ? 'warehouse' : 'manual',
   );
+
+  const PAGE_SIZE = 30;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [search, setSearch] = useState('');
   const [equipmentList, setEquipmentList] = useState<EquipmentOption[]>([]);
   const [loadingEquipment, setLoadingEquipment] = useState(false);
@@ -73,6 +84,8 @@ export function AddCalculationItemModal({ category, existingCount, onAdd, onClos
       )
     `,
       )
+      .eq('is_active', true)
+      .is('deleted_at', null)
       .order('name');
 
     if (error) {
@@ -82,15 +95,15 @@ export function AddCalculationItemModal({ category, existingCount, onAdd, onClos
     }
 
     const itemIds = data
-    .filter((d: any) => {
-      const usesSimple =
-        d.warehouse_categories?.special_properties?.some(
-          (p: any) => p.name === 'uses_simple_quantity' && p.value === true,
-        ) ?? false;
-  
-      return !usesSimple;
-    })
-    .map((d: any) => d.id);
+      .filter((d: any) => {
+        const usesSimple =
+          d.warehouse_categories?.special_properties?.some(
+            (p: any) => p.name === 'uses_simple_quantity' && p.value === true,
+          ) ?? false;
+
+        return !usesSimple;
+      })
+      .map((d: any) => d.id);
 
     let unitCounts: Record<string, number> = {};
     if (itemIds.length > 0) {
@@ -98,7 +111,7 @@ export function AddCalculationItemModal({ category, existingCount, onAdd, onClos
         .from('equipment_units')
         .select('equipment_id')
         .in('equipment_id', itemIds)
-        .eq('status', 'available');
+        .eq('status', 'available')
 
       if (units) {
         for (const u of units) {
@@ -139,17 +152,36 @@ export function AddCalculationItemModal({ category, existingCount, onAdd, onClos
     }
   }, [mode, loadEquipment]);
 
-  const filteredEquipment = useMemo(() => {
+  const getAlreadyAddedQuantity = (equipmentId: string) =>
+    existingItems
+      .filter((item) => item.source === 'warehouse' && item.source_ref === equipmentId)
+      .reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+
+  const getRemainingStock = (eq: EquipmentOption) => {
+    const alreadyAdded = getAlreadyAddedQuantity(eq.id);
+    return Math.max(eq.stock_quantity - alreadyAdded, 0);
+  };
+
+  const filteredEquipmentAll = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return equipmentList.slice(0, 50);
-    return equipmentList
-      .filter((e) => {
-        const full =
-          `${e.name} ${e.brand ?? ''} ${e.model ?? ''} ${e.category_name ?? ''}`.toLowerCase();
-        return full.includes(q);
-      })
-      .slice(0, 50);
-  }, [equipmentList, search]);
+
+    return equipmentList.filter((e) => {
+      const remaining = getRemainingStock(e);
+
+      if (remaining <= 0) return false;
+
+      if (!q) return true;
+
+      const full =
+        `${e.name} ${e.brand ?? ''} ${e.model ?? ''} ${e.category_name ?? ''}`.toLowerCase();
+
+      return full.includes(q);
+    });
+  }, [equipmentList, search, existingItems]);
+
+  const filteredEquipment = useMemo(() => {
+    return filteredEquipmentAll.slice(0, visibleCount);
+  }, [filteredEquipmentAll, visibleCount]);
 
   const handleSelectEquipment = (eq: EquipmentOption) => {
     setSelectedEquipment(eq);
@@ -191,6 +223,12 @@ export function AddCalculationItemModal({ category, existingCount, onAdd, onClos
     onClose();
   };
 
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [search]);
+
+  const currentlyVisible = Math.min(visibleCount, filteredEquipmentAll.length);
+
   const netTotal = quantity * unitPrice * (days || 1);
   const grossTotal = netTotal * (1 + vatRate / 100);
 
@@ -199,7 +237,7 @@ export function AddCalculationItemModal({ category, existingCount, onAdd, onClos
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-[#d3bb73]/20 bg-[#1c1f33]">
+      <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-[#d3bb73]/20 bg-[#1c1f33]">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#d3bb73]/10 px-6 py-4">
           <h3 className="text-lg font-medium text-[#e5e4e2]">Dodaj pozycję</h3>
@@ -258,70 +296,144 @@ export function AddCalculationItemModal({ category, existingCount, onAdd, onClos
                 />
               </div>
 
-              <div className="max-h-64 overflow-y-auto rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a]">
+              <div className="max-h-[420px] overflow-y-auto rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a]">
                 {loadingEquipment ? (
                   <div className="py-8 text-center text-sm text-[#e5e4e2]/50">Wczytywanie...</div>
-                ) : filteredEquipment.length === 0 ? (
+                ) : filteredEquipmentAll.length === 0 ? (
                   <div className="py-8 text-center text-sm text-[#e5e4e2]/50">Brak wyników</div>
                 ) : (
-                  filteredEquipment.map((eq) => (
-                    <button
-                      key={eq.id}
-                      type="button"
-                      onClick={() => handleSelectEquipment(eq)}
-                      className="flex w-full items-center gap-3 border-b border-[#d3bb73]/10 px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-[#d3bb73]/10"
-                    >
-                      {eq.thumbnail_url ? (
-                        <NextImage
-                          src={eq.thumbnail_url}
-                          alt={eq.name}
-                          width={40}
-                          height={40}
-                          className="h-10 w-10 rounded-lg object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] text-xs text-[#e5e4e2]/30">
-                          <Package className="h-4 w-4" />
-                        </div>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-medium text-[#e5e4e2]">
-                          {[eq.brand, eq.model].filter(Boolean).join(' ') || eq.name}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {(eq.brand || eq.model) && (
-                            <span className="truncate text-xs text-[#e5e4e2]/50">{eq.name}</span>
-                          )}
-                          {eq.category_name && (
-                            <span className="rounded-full bg-[#d3bb73]/10 px-2 py-0.5 text-[10px] text-[#d3bb73]/80">
-                              {eq.category_name}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex-shrink-0 text-right">
-                        <div className="text-xs text-[#e5e4e2]/50">
-                          Stan:{' '}
-                          <span
-                            className={eq.stock_quantity > 0 ? 'text-emerald-400' : 'text-red-400'}
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 z-10 bg-[#111827] text-xs uppercase tracking-wider text-[#e5e4e2]/50">
+                      <tr>
+                        <th className="w-16 px-3 py-3 text-left">Thumb</th>
+                        <th className="px-3 py-3 text-left">Nazwa / marka / model</th>
+                        <th className="w-32 px-3 py-3 text-right">Cena rentalna</th>
+                        <th className="w-32 px-3 py-3 text-right">Pobór prądu</th>
+                        <th className="w-32 px-3 py-3 text-right">Stan</th>
+                      </tr>
+                    </thead>
+
+                    <tbody className="divide-y divide-[#d3bb73]/10">
+                      {filteredEquipment.map((eq) => {
+                        const alreadyAdded = getAlreadyAddedQuantity(eq.id);
+                        const remainingStock = getRemainingStock(eq);
+
+                        return (
+                          <tr
+                            key={eq.id}
+                            onClick={() =>
+                              handleSelectEquipment({ ...eq, stock_quantity: remainingStock })
+                            }
+                            className="cursor-pointer transition-colors hover:bg-[#d3bb73]/10"
                           >
-                            {eq.stock_quantity}
-                          </span>
-                        </div>
-                        {eq.power_specs?.power_watts ? (
-                          <div className="flex items-center gap-1 text-xs text-amber-400/80">
-                            <Zap className="h-3 w-3" />
-                            {eq.power_specs.power_watts}W
-                          </div>
-                        ) : null}
-                        {eq.rental_price_per_day ? (
-                          <div className="text-xs text-[#d3bb73]">
-                            {Number(eq.rental_price_per_day).toFixed(0)} zl/dzien
-                          </div>
-                        ) : null}
-                      </div>
+                            <td className="px-3 py-3">
+                              {eq.thumbnail_url ? (
+                                <Popover
+                                  trigger={
+                                    <NextImage
+                                      src={eq.thumbnail_url}
+                                      alt={eq.name}
+                                      width={48}
+                                      height={48}
+                                      className="h-12 w-12 rounded-lg object-cover"
+                                    />
+                                  }
+                                  content={
+                                    <NextImage
+                                      src={eq.thumbnail_url}
+                                      alt={eq.name}
+                                      width={300}
+                                      height={300}
+                                      className="h-auto w-full rounded-lg object-cover"
+                                    />
+                                  }
+                                  openOn="hover"
+                                />
+                              ) : (
+                                <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] text-[#e5e4e2]/30">
+                                  <Package className="h-4 w-4" />
+                                </div>
+                              )}
+                            </td>
+
+                            <td className="min-w-0 px-3 py-3">
+                              <div className="font-medium text-[#e5e4e2]">{eq.name}</div>
+
+                              <div className="mt-0.5 text-xs text-[#e5e4e2]/50">
+                                {[eq.brand, eq.model].filter(Boolean).join(' ') || '—'}
+                              </div>
+
+                              {eq.category_name && (
+                                <div className="mt-1 inline-flex rounded-full bg-[#d3bb73]/10 px-2 py-0.5 text-[10px] text-[#d3bb73]/80">
+                                  {eq.category_name}
+                                </div>
+                              )}
+                            </td>
+
+                            <td className="px-3 py-3 text-right text-[#d3bb73]">
+                              {eq.rental_price_per_day
+                                ? `${Number(eq.rental_price_per_day).toFixed(2)} zł`
+                                : '—'}
+                            </td>
+
+                            <td className="px-3 py-3 text-right">
+                              {eq.power_specs?.power_watts ? (
+                                <span className="inline-flex items-center justify-end gap-1 text-amber-400/90">
+                                  <Zap className="h-3.5 w-3.5" />
+                                  {eq.power_specs.power_watts >= 1000
+                                    ? `${(eq.power_specs.power_watts / 1000).toFixed(2)} kW`
+                                    : `${eq.power_specs.power_watts} W`}
+                                </span>
+                              ) : (
+                                <span className="text-[#e5e4e2]/40">—</span>
+                              )}
+                            </td>
+
+                            <td className="px-3 py-3 text-right">
+                              <div className="text-xs text-[#e5e4e2]/50">
+                                Stan:{' '}
+                                <span
+                                  className={
+                                    eq.stock_quantity > 0 ? 'text-emerald-400' : 'text-red-400'
+                                  }
+                                >
+                                  {eq.stock_quantity}
+                                </span>
+                              </div>
+
+                              <div className="text-xs text-[#e5e4e2]/50">
+                                Pozostało:{' '}
+                                <span
+                                  className={
+                                    remainingStock > 0 ? 'text-emerald-400' : 'text-red-400'
+                                  }
+                                >
+                                  {remainingStock}
+                                </span>
+                              </div>
+
+                              {alreadyAdded > 0 && (
+                                <div className="text-[10px] text-[#d3bb73]">
+                                  Dodano: {alreadyAdded}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+                {visibleCount < filteredEquipmentAll.length && (
+                  <div className="border-t border-[#d3bb73]/10 p-3 text-center">
+                    <button
+                      type="button"
+                      onClick={() => setVisibleCount((prev) => prev + PAGE_SIZE)}
+                      className="rounded-lg border border-[#d3bb73]/30 px-4 py-2 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
+                    >
+                      Pokaż więcej ({currentlyVisible} / {filteredEquipmentAll.length})
                     </button>
-                  ))
+                  </div>
                 )}
               </div>
             </div>

@@ -12,6 +12,7 @@ export function buildCalculationHtml(params: {
   grandTotal: number;
   grandTotalGross: number;
   company?: any;
+  totalPowerWatts: number;
 }): string {
   const {
     name,
@@ -24,7 +25,10 @@ export function buildCalculationHtml(params: {
     grandTotal,
     grandTotalGross,
     company,
+    totalPowerWatts,
   } = params;
+
+  console.log('totalPowerWatts', totalPowerWatts);
 
   const formattedDate = eventDate
     ? new Date(eventDate).toLocaleDateString('pl-PL', {
@@ -97,6 +101,25 @@ export function buildCalculationHtml(params: {
       `;
     })
     .join('');
+
+    const formatPower = (watts: number) => {
+      if (!watts || watts <= 0) return '-';
+      return watts >= 1000 ? `${fmt(round2(watts / 1000))} kW` : `${Math.round(watts)} W`;
+    };
+    
+    const getPowerSuggestion = (watts: number) => {
+      if (!watts || watts <= 0) return null;
+    
+      const amps3f = watts / (400 * 1.732);
+    
+      if (amps3f <= 16) return '3F 16A';
+      if (amps3f <= 32) return '3F 32A';
+      if (amps3f <= 63) return '3F 63A';
+      
+      return 'powyżej 3F 63A — wymagana analiza techniczna';
+    };
+    
+    const powerSuggestion = getPowerSuggestion(totalPowerWatts);
 
   return `<!DOCTYPE html>
 <html lang="pl">
@@ -267,18 +290,79 @@ export function buildCalculationHtml(params: {
     background: #fafaf3;
   }
 
-  .grand {
-    margin-top: 14px;
-    padding: 12px 16px;
-    background: #1c1f33;
-    color: #f5f5f5;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-radius: 4px;
-    page-break-inside: avoid;
-    break-inside: avoid;
-  }
+.summary-table {
+  margin-top: 16px;
+  margin-left: auto;
+  width: 360px;
+  border-collapse: collapse;
+  page-break-inside: avoid;
+}
+
+.summary-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid #eee;
+  text-align: right;
+}
+
+.summary-table .label {
+  color: #555;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.summary-table .value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1c1f33;
+}
+
+.summary-table .gross .label,
+.summary-table .gross .value {
+  color: #b1963f;
+}
+
+.technical-section {
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 2px solid #d3bb73;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.technical-title {
+  margin-bottom: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: #b1963f;
+}
+
+.technical-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  max-width: 520px;
+}
+
+.technical-label {
+  font-size: 9px;
+  color: #555;
+}
+
+.technical-value {
+  margin-top: 2px;
+  font-size: 14px;
+  color: #1c1f33;
+  font-weight: 600;
+}
+
+.technical-value.accent {
+  color: #b1963f;
+  font-size: 16px;
+  font-weight: 300;
+}
 
   .grand .label {
     font-size: 8.5px;
@@ -298,6 +382,35 @@ export function buildCalculationHtml(params: {
     font-weight: 300;
   }
 
+  .power-box {
+    min-width: 190px;
+    padding: 12px 16px;
+    border: 1px solid #d3bb73;
+    border-radius: 4px;
+    background: #faf8f2;
+    text-align: right;
+  }
+
+  .power-box .label {
+    font-size: 8.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: #7a6a38;
+  }
+
+  .power-box .value {
+    margin-top: 3px;
+    font-size: 18px;
+    font-weight: 300;
+    color: #b1963f;
+  }
+
+  .power-box .hint {
+    margin-top: 5px;
+    font-size: 8.5px;
+    color: #555;
+  }
+
   .notes {
     margin-top: 16px;
     padding: 10px 12px;
@@ -309,6 +422,42 @@ export function buildCalculationHtml(params: {
     page-break-inside: avoid;
     break-inside: avoid;
   }
+
+  .power-section {
+  margin-top: 12px;
+  padding: 12px 16px;
+  border: 1px solid #d3bb73;
+  border-radius: 4px;
+  background: #faf8f2;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.power-section-title {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: #7a6a38;
+  margin-bottom: 8px;
+}
+
+.power-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.power-value {
+  font-size: 17px;
+  font-weight: 300;
+  color: #b1963f;
+}
+
+.power-hint {
+  font-size: 10px;
+  color: #1c1f33;
+  font-weight: 600;
+}
 
   footer {
     position: fixed;
@@ -367,20 +516,39 @@ export function buildCalculationHtml(params: {
   <main>
     ${sections || '<p style="color:#888;text-align:center;padding:32px 0;">Brak pozycji</p>'}
 
-    <div class="grand">
-      <div>
-        <div class="label">Netto</div>
-        <div class="amount">${fmt(grandTotal)} PLN</div>
-      </div>
-      <div>
-        <div class="label">VAT</div>
-        <div class="amount">${fmt(round2(grandTotalGross - grandTotal))} PLN</div>
-      </div>
-      <div>
-        <div class="label" style="color:#d3bb73;">Brutto</div>
-        <div class="value">${fmt(grandTotalGross)} PLN</div>
-      </div>
-    </div>
+    <table class="summary-table">
+  <tr>
+    <td class="label">Netto</td>
+    <td class="value">${fmt(grandTotal)} PLN</td>
+  </tr>
+  <tr>
+    <td class="label">VAT</td>
+    <td class="value">${fmt(round2(grandTotalGross - grandTotal))} PLN</td>
+  </tr>
+  <tr class="gross">
+    <td class="label">Brutto</td>
+    <td class="value">${fmt(grandTotalGross)} PLN</td>
+  </tr>
+</table>
+
+${
+  totalPowerWatts > 0
+    ? `<section class="technical-section">
+        <div class="technical-title">Wymagania techniczne</div>
+        <div class="technical-grid">
+          <div>
+            <div class="technical-label">Szacowany pobór mocy</div>
+            <div class="technical-value accent">${formatPower(totalPowerWatts)}</div>
+          </div>
+          <div>
+            <div class="technical-label">Minimalne przyłącze</div>
+            <div class="technical-value">${esc(powerSuggestion ?? '-')}</div>
+          </div>
+        </div>
+      </section>`
+    : ''
+}
+
 
     ${notes ? `<div class="notes">${esc(notes)}</div>` : ''}
   </main>
