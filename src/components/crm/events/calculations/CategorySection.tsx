@@ -8,10 +8,10 @@ import { fmt } from '../helpers/calculations/calculations.helper';
 import { rowNet, rowGross } from '../helpers/calculations/calculations.helper';
 import { EquipmentNameCell } from './EquipmentNameCell';
 import ResponsiveActionBar from '../../ResponsiveActionBar';
-
+import NextImage from 'next/image';
 function ItemThumbnail({ item }: { item: CalcItem }) {
   const [showPopover, setShowPopover] = useState(false);
-  const isWarehouse = item.source === 'warehouse' && item.equipment_item_id;
+  const isWarehouse = item.source === 'warehouse' && item.power_source_ref;
   const exceeded =
     isWarehouse && item.stock_quantity != null && item.quantity > item.stock_quantity;
 
@@ -25,13 +25,15 @@ function ItemThumbnail({ item }: { item: CalcItem }) {
     >
       <div className="relative">
         {item.thumbnail_url ? (
-          <img
+          <NextImage
             src={item.thumbnail_url}
             alt={item.name}
+            width={32}
+            height={32}
             className={`h-8 w-8 rounded object-cover ${
               exceeded ? 'ring-2 ring-orange-400' : ''
             }`}
-          />
+          />  
         ) : (
           <div
             className={`flex h-8 w-8 items-center justify-center rounded border bg-[#0a0d1a] ${
@@ -51,10 +53,12 @@ function ItemThumbnail({ item }: { item: CalcItem }) {
       {showPopover && (
         <div className="absolute bottom-full left-0 z-50 mb-2 w-56 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] p-3 shadow-xl">
           {item.thumbnail_url && (
-            <img
+            <NextImage
               src={item.thumbnail_url}
               alt={item.name}
               className="mb-2 h-24 w-full rounded-md object-cover"
+              width={24}
+              height={24}
             />
           )}
           <div className="text-sm font-medium text-[#e5e4e2]">{item.name}</div>

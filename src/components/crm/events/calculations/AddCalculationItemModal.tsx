@@ -82,8 +82,15 @@ export function AddCalculationItemModal({ category, existingCount, onAdd, onClos
     }
 
     const itemIds = data
-      .filter((d: any) => !d.warehouse_categories?.uses_simple_quantity)
-      .map((d: any) => d.id);
+    .filter((d: any) => {
+      const usesSimple =
+        d.warehouse_categories?.special_properties?.some(
+          (p: any) => p.name === 'uses_simple_quantity' && p.value === true,
+        ) ?? false;
+  
+      return !usesSimple;
+    })
+    .map((d: any) => d.id);
 
     let unitCounts: Record<string, number> = {};
     if (itemIds.length > 0) {
@@ -176,7 +183,6 @@ export function AddCalculationItemModal({ category, existingCount, onAdd, onClos
       editing: false,
       power_watts: powerWatts,
       power_source_ref: selectedEquipment?.id ?? null,
-      equipment_item_id: selectedEquipment?.id ?? null,
       thumbnail_url: selectedEquipment?.thumbnail_url ?? null,
       stock_quantity: selectedEquipment?.stock_quantity ?? null,
     };

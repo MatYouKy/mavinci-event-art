@@ -58,7 +58,6 @@ export interface CalcItem {
   power_specs?: {
     power_watts?: number | null;
   } | null;
-  equipment_item_id?: string | null;
   thumbnail_url?: string | null;
   stock_quantity?: number | null;
 }
@@ -210,7 +209,6 @@ export default function EventCalculationsTab({ eventId }: Props) {
           position: index,
           vat_rate: item.vat_rate ?? DEFAULT_VAT,
           power_specs: item.power_specs ?? { power_watts: null },
-          equipment_item_id: item.equipment_item_id ?? null,
         }));
 
         const { error: insertItemsError } = await supabase
