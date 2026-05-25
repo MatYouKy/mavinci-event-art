@@ -5,7 +5,7 @@ import { X, Search, Package, Zap, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { CalcItem, Category } from './EventCalculationsTab';
 import { DEFAULT_VAT } from '../helpers/calculations/calculations.helper';
-
+import NextImage from 'next/image';
 interface EquipmentOption {
   id: string;
   name: string;
@@ -53,14 +53,30 @@ export function AddCalculationItemModal({ category, existingCount, onAdd, onClos
     if (equipmentList.length > 0) return;
     setLoadingEquipment(true);
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('equipment_items')
       .select(
-        'id, name, brand, model, thumbnail_url, rental_price_per_day, power_specs, cable_stock_quantity, category_id, warehouse_categories(name, uses_simple_quantity)',
+        `
+      id,
+      name,
+      brand,
+      model,
+      thumbnail_url,
+      rental_price_per_day,
+      power_specs,
+      cable_stock_quantity,
+      warehouse_category_id,
+      warehouse_categories:warehouse_category_id (
+        id,
+        name,
+        special_properties
+      )
+    `,
       )
       .order('name');
 
-    if (!data) {
+    if (error) {
+      console.error(error);
       setLoadingEquipment(false);
       return;
     }
@@ -73,22 +89,25 @@ export function AddCalculationItemModal({ category, existingCount, onAdd, onClos
     if (itemIds.length > 0) {
       const { data: units } = await supabase
         .from('equipment_units')
-        .select('equipment_item_id')
-        .in('equipment_item_id', itemIds)
+        .select('equipment_id')
+        .in('equipment_id', itemIds)
         .eq('status', 'available');
 
       if (units) {
         for (const u of units) {
-          unitCounts[u.equipment_item_id] = (unitCounts[u.equipment_item_id] || 0) + 1;
+          unitCounts[u.equipment_id] = (unitCounts[u.equipment_id] || 0) + 1;
         }
       }
     }
 
     const mapped: EquipmentOption[] = data.map((item: any) => {
-      const usesSimple = item.warehouse_categories?.uses_simple_quantity ?? false;
+      const usesSimple =
+        item.warehouse_categories?.special_properties?.some(
+          (p: any) => p.name === 'uses_simple_quantity' && p.value === true,
+        ) ?? false;
       const stock = usesSimple
         ? Number(item.cable_stock_quantity ?? 0)
-        : unitCounts[item.id] ?? 0;
+        : (unitCounts[item.id] ?? 0);
 
       return {
         id: item.id,
@@ -137,8 +156,7 @@ export function AddCalculationItemModal({ category, existingCount, onAdd, onClos
     }
   };
 
-  const stockExceeded =
-    selectedEquipment != null && quantity > selectedEquipment.stock_quantity;
+  const stockExceeded = selectedEquipment != null && quantity > selectedEquipment.stock_quantity;
 
   const handleSubmit = () => {
     if (!name.trim()) return;
@@ -248,9 +266,11 @@ export function AddCalculationItemModal({ category, existingCount, onAdd, onClos
                       className="flex w-full items-center gap-3 border-b border-[#d3bb73]/10 px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-[#d3bb73]/10"
                     >
                       {eq.thumbnail_url ? (
-                        <img
+                        <NextImage
                           src={eq.thumbnail_url}
                           alt={eq.name}
+                          width={40}
+                          height={40}
                           className="h-10 w-10 rounded-lg object-cover"
                         />
                       ) : (
@@ -275,7 +295,12 @@ export function AddCalculationItemModal({ category, existingCount, onAdd, onClos
                       </div>
                       <div className="flex-shrink-0 text-right">
                         <div className="text-xs text-[#e5e4e2]/50">
-                          Stan: <span className={eq.stock_quantity > 0 ? 'text-emerald-400' : 'text-red-400'}>{eq.stock_quantity}</span>
+                          Stan:{' '}
+                          <span
+                            className={eq.stock_quantity > 0 ? 'text-emerald-400' : 'text-red-400'}
+                          >
+                            {eq.stock_quantity}
+                          </span>
                         </div>
                         {eq.power_specs?.power_watts ? (
                           <div className="flex items-center gap-1 text-xs text-amber-400/80">
@@ -300,10 +325,12 @@ export function AddCalculationItemModal({ category, existingCount, onAdd, onClos
           {mode === 'warehouse' && selectedEquipment && (
             <div className="mb-4 flex items-center gap-3 rounded-lg border border-[#d3bb73]/30 bg-[#0a0d1a] p-3">
               {selectedEquipment.thumbnail_url ? (
-                <img
+                <NextImage
                   src={selectedEquipment.thumbnail_url}
                   alt={selectedEquipment.name}
                   className="h-12 w-12 rounded-lg object-cover"
+                  width={48}
+                  height={48}
                 />
               ) : (
                 <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]">
@@ -439,9 +466,7 @@ export function AddCalculationItemModal({ category, existingCount, onAdd, onClos
                     type="number"
                     step="1"
                     value={powerWatts ?? ''}
-                    onChange={(e) =>
-                      setPowerWatts(e.target.value ? Number(e.target.value) : null)
-                    }
+                    onChange={(e) => setPowerWatts(e.target.value ? Number(e.target.value) : null)}
                     placeholder="np. 575"
                     className={inputClass}
                   />
@@ -479,7 +504,7 @@ export function AddCalculationItemModal({ category, existingCount, onAdd, onClos
           <button
             onClick={handleSubmit}
             disabled={!name.trim()}
-            className="rounded-lg bg-[#d3bb73] px-5 py-2 text-sm font-medium text-[#1c1f33] disabled:opacity-40 hover:bg-[#d3bb73]/90"
+            className="rounded-lg bg-[#d3bb73] px-5 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-40"
           >
             Dodaj pozycje
           </button>
