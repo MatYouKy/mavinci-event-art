@@ -152,7 +152,6 @@ export default function MeetingDetailPage() {
       const { error: updateError } = await supabase
         .from('meetings')
         .update({
-          created_by: session?.user?.id,
           title: formData.title,
           location_id: formData.location_id,
           location_text: formData.location_text || null,
@@ -247,26 +246,60 @@ export default function MeetingDetailPage() {
       <div className="mx-auto max-w-5xl">
         <div className="space-y-6 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4 hover:bg-[#1c1f33] rounded-lg p-2 transition-colors cursor-pointer">
+            <div className="flex cursor-pointer items-center gap-4 rounded-lg p-2 transition-colors hover:bg-[#1c1f33]">
               <Link href="/crm/calendar" className="flex items-center gap-2">
-                <ArrowLeft className="h-5 w-5 text-[#e5e4e2] " />
+                <ArrowLeft className="h-5 w-5 text-[#e5e4e2]" />
                 <span className="hidden sm:inline">Powrót</span>
               </Link>
             </div>
             <ResponsiveActionBar
-              actions={[
-                {
-                  label: 'Edytuj',
-                  onClick: () => setIsEditing(true),
-                  icon: <Pencil className="h-4 w-4" />,
-                },
-                {
-                  label: 'Usuń',
-                  onClick: handleDelete,
-                  icon: <Trash2 className="h-4 w-4" />,
-                  variant: 'danger',
-                },
-              ]}
+              actions={
+                isEditing
+                  ? [
+                      {
+                        label: saving ? 'Zapisywanie...' : 'Zapisz',
+                        onClick: handleSave,
+                        icon: <Save className="h-4 w-4" />,
+                        variant: 'primary',
+                        disabled: saving,
+                      },
+                      {
+                        label: 'Anuluj',
+                        onClick: () => {
+                          if (!meeting) return;
+
+                          setFormData({
+                            title: meeting.title,
+                            location_id: meeting.location_id,
+                            location_text: meeting.location_text || '',
+                            datetime_start: utcToLocalDatetimeString(meeting.datetime_start),
+                            datetime_end: meeting.datetime_end
+                              ? utcToLocalDatetimeString(meeting.datetime_end)
+                              : '',
+                            notes: meeting.notes || '',
+                            color: meeting.color,
+                            is_all_day: meeting.is_all_day,
+                          });
+
+                          setIsEditing(false);
+                        },
+                        icon: <ArrowLeft className="h-4 w-4" />,
+                      },
+                    ]
+                  : [
+                      {
+                        label: 'Edytuj',
+                        onClick: () => setIsEditing(true),
+                        icon: <Pencil className="h-4 w-4" />,
+                      },
+                      {
+                        label: 'Usuń',
+                        onClick: handleDelete,
+                        icon: <Trash2 className="h-4 w-4" />,
+                        variant: 'danger',
+                      },
+                    ]
+              }
             />
           </div>
           <div
