@@ -48,7 +48,6 @@ Deno.serve(async (req: Request) => {
       throw new Error("Event not found");
     }
 
-    // Fetch related data in parallel
     const [
       organizationRes,
       contactRes,
@@ -123,7 +122,6 @@ Deno.serve(async (req: Request) => {
     const offer = offerRes.data;
     const company = companyRes.data;
 
-    // Determine recipient email
     const recipientEmail =
       contact?.email || organization?.email;
 
@@ -131,13 +129,12 @@ Deno.serve(async (req: Request) => {
       return new Response(
         JSON.stringify({
           success: false,
-          message: "No recipient email found (no contact person or organization email)",
+          message: "Brak adresu email odbiorcy (brak emaila kontaktu ani organizacji)",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Build email content
     const contactName =
       contact?.full_name ||
       [contact?.first_name, contact?.last_name].filter(Boolean).join(" ") ||
@@ -173,7 +170,6 @@ Deno.serve(async (req: Request) => {
           .join(", ")
       : null;
 
-    // Build phases section
     const realizationPhase = phases.find(
       (p: any) => p.phase_type === "realization"
     );
@@ -194,7 +190,6 @@ Deno.serve(async (req: Request) => {
         }
       : null;
 
-    // Build offer items scope
     const offerItems = offer?.offer_items
       ? [...offer.offer_items]
           .sort(
@@ -210,7 +205,6 @@ Deno.serve(async (req: Request) => {
       ? `${supabaseUrl}/storage/v1/object/public/company-logos/${company.logo_url}`
       : null;
 
-    // Build HTML email
     const emailBody = buildConfirmationEmailHtml({
       contactName,
       eventName: event.name,
@@ -227,7 +221,6 @@ Deno.serve(async (req: Request) => {
       companyLogo,
     });
 
-    // Get system email account
     const { data: systemEmail } = await supabase
       .from("employee_email_accounts")
       .select("id")
@@ -235,10 +228,9 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (!systemEmail) {
-      throw new Error("System email account not configured");
+      throw new Error("Brak skonfigurowanego konta email systemowego");
     }
 
-    // Send email via send-email function
     const sendEmailUrl = `${supabaseUrl}/functions/v1/send-email`;
     const sendEmailResponse = await fetch(sendEmailUrl, {
       method: "POST",
