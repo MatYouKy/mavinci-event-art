@@ -57,6 +57,7 @@ export function CalculationEditor({
     id: string;
     name: string;
     email: string | null;
+    phone: string | null;
   } | null>(null);
 
   const load = useCallback(async () => {
@@ -202,7 +203,7 @@ export function CalculationEditor({
         if (ev.contact_person_id) {
           const { data: contact } = await supabase
             .from('contacts')
-            .select('id, first_name, last_name, full_name, email')
+            .select('id, first_name, last_name, full_name, email, phone')
             .eq('id', ev.contact_person_id)
             .maybeSingle();
 
@@ -214,6 +215,7 @@ export function CalculationEditor({
               id: contact.id,
               name: contactName || 'Kontakt bez nazwy',
               email: contact.email ?? null,
+              phone: contact.phone ?? null,
             });
 
             setDefaultEmail(contact.email ?? '');
@@ -450,7 +452,31 @@ export function CalculationEditor({
     }
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    const { data: employee } = await supabase
+      .from('employees')
+      .select('name, surname, email, phone_number')
+      .eq('auth_user_id', user?.id)
+      .maybeSingle();
+
+    const preparedBy = employee
+      ? {
+          name:
+            [employee.name, employee.surname].filter(Boolean).join(' ') ||
+            user?.email ||
+            'Nieznany użytkownik',
+          email: employee.email ?? user?.email ?? null,
+          phone: employee.phone_number ?? null,
+        }
+      : {
+          name: user?.email ?? 'Nieznany użytkownik',
+          email: user?.email ?? null,
+          phone: null,
+        };
     const html = buildCalculationHtml({
       name,
       notes,
@@ -463,6 +489,8 @@ export function CalculationEditor({
       grandTotalGross,
       company,
       totalPowerWatts,
+      contactPerson: primaryContact,
+      preparedBy,
     });
     const w = window.open('', '_blank');
     if (!w) {
@@ -480,11 +508,32 @@ export function CalculationEditor({
       showSnackbar('Kalkulacja nie zawiera pozycji', 'warning');
       return;
     }
+
     setGeneratingPdf(true);
     try {
       const {
         data: { user },
       } = await supabase.auth.getUser();
+
+      const { data: employee } = await supabase
+        .from('employees')
+        .select('first_name, last_name, full_name, email, phone')
+        .eq('auth_user_id', user?.id)
+        .maybeSingle();
+
+      const preparedBy = employee
+        ? {
+            name:
+              employee.full_name ||
+              `${employee.first_name ?? ''} ${employee.last_name ?? ''}`.trim(),
+            email: employee.email ?? user?.email ?? null,
+            phone: employee.phone ?? null,
+          }
+        : {
+            name: user?.email ?? 'Nieznany użytkownik',
+            email: user?.email ?? null,
+            phone: null,
+          };
 
       const html = buildCalculationHtml({
         name,
@@ -498,6 +547,8 @@ export function CalculationEditor({
         grandTotalGross,
         company,
         totalPowerWatts,
+        contactPerson: primaryContact,
+        preparedBy,
       });
 
       const res = await fetch('/bridge/events/calculations-pdf', {

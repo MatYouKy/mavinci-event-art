@@ -18,7 +18,6 @@ import {
   Check,
   X,
 } from 'lucide-react';
-import { buildAgendaHtml } from '@/app/(crm)/crm/events/[id]/helpers/buildAgendaPdf';
 import { useEvent } from '../../../hooks/useEvent';
 import { useGetContactByIdQuery } from '@/app/(crm)/crm/contacts/store/clientsApi';
 import { ContactRow, OrganizationRow } from '@/app/(crm)/crm/contacts/types';
@@ -593,7 +592,6 @@ export default function EventAgendaTab({
         .select('id, logo_url')
         .eq('is_active', true);
 
-        console.log('companyQuery', companyQuery);
       
       if (myCompanyId) {
         companyQuery = companyQuery.eq('id', myCompanyId);
@@ -603,12 +601,6 @@ export default function EventAgendaTab({
       
       const { data: companyData, error: companyError } = await companyQuery.maybeSingle();
       
-      console.log('AGENDA COMPANY LOGO DEBUG', {
-        event,
-        myCompanyId,
-        companyData,
-        companyError,
-      });
       
       if (companyData?.logo_url) {
         const rawLogo = companyData.logo_url;
@@ -641,8 +633,6 @@ export default function EventAgendaTab({
         authorNumber: createdByEmployee?.phone_number || '',
         companyLogoUrl,
       };
-
-      console.log('htmlPayload', htmlPayload);
 
       const response = await fetch('/bridge/events/agenda-pdf', {
         method: 'POST',

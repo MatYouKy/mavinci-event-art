@@ -5,6 +5,7 @@ interface AgendaNote {
   level: number;
   parent_id: string | null;
   children?: AgendaNote[];
+  
 }
 
 export const buildAgendaHtml = ({
@@ -21,6 +22,9 @@ export const buildAgendaHtml = ({
   authorName,
   authorNumber,
   companyLogoUrl,
+  company,
+  contactPerson,
+  preparedBy,
 }: {
   eventName: string;
   eventDate: string;
@@ -35,6 +39,17 @@ export const buildAgendaHtml = ({
   authorName: string;
   authorNumber: string;
   companyLogoUrl?: string | null;
+  company?: any;
+contactPerson?: {
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+} | null;
+preparedBy?: {
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+} | null;
 }) => {
   let rowNumber = 1;
 
@@ -144,43 +159,86 @@ export const buildAgendaHtml = ({
       padding-bottom: 18mm;
     }
 
-    /* header identyczny vibe jak checklista */
-    .header {
+    header {
+      padding-bottom: 12px;
+      margin-bottom: 16px;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: start;
+      gap: 18px;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 300;
+      letter-spacing: 0.4px;
+    }
+
+header .event-meta {
+  font-size: 9.5px;
+  color: #555;
+  margin-top: 6px;
+  line-height: 1.4;
+  font-weight: 400;
+}
+
+header .event-meta strong {
+  color: #1c1f33;
+  font-weight: 600;
+}
+
+    header .logo-wrap {
       display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      padding-bottom: 8px;
-      margin-bottom: 8px;
+      justify-content: center;
+      align-items: center;
+      min-width: 120px;
+    }
+
+    header img.logo {
+      display: block;
+      max-height: 76px;
+      max-width: 130px;
+      object-fit: contain;
+    }
+
+    header .meta {
+      font-size: 9.5px;
+      color: #555;
+      text-align: right;
+      line-height: 1.4;
+    }
+
+    header .meta strong {
+      color: #1c1f33;
+    }
+
+    header .meta .company-name {
+      font-size: 11px;
+      color: #1c1f33;
+      font-weight: 600;
+    }
+
+    header .event-meta div {
+      margin-bottom: 2px;
+    }
+
+    .company-claim {
+      font-size: 8.5px;
+      font-style: italic;
+      letter-spacing: 0.4px;
+      color: #777;
+      margin-top: 1px;
+    }
+
+    .prepared-by {
+      margin-top: 8px;
     }
 
     h1 {
       font-size: 16px;
       margin: 0 0 6px;
       font-weight: 700;
-    }
-
-    .meta { font-size: 10px; }
-    .meta-row { margin-bottom: 2px; }
-
-    .right {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      text-align: right;
-      min-width: 160px;
-    }
-
-    .logo {
-      max-width: 105px;
-      height: auto;
-      margin-bottom: 4px;
-      filter: grayscale(100%);
-    }
-
-    .stamp {
-      margin-top: 4px;
-      font-size: 9px;
-      color: #6b7280;
     }
 
     /* tabela */
@@ -274,27 +332,55 @@ export const buildAgendaHtml = ({
   </style>
 </head>
 <body>
-  <div class="header">
-    <div class="left">
-      <h1>Agenda wydarzenia</h1>
-      <div class="meta">
-        <div class="meta-row"><strong>Wydarzenie:</strong> ${esc(eventName)}</div>
-        <div class="meta-row"><strong>Data:</strong> ${esc(eventDate || '-')}</div>
-        <div class="meta-row"><strong>Godziny:</strong> ${esc(timeRange)}</div>
-        <div class="meta-row"><strong>Klient:</strong> ${esc(clientContact || '-')}</div>
-        <div class="meta-row"><strong>Kontakt:</strong> ${esc(contactName || '-')} ${contactNumber ? `(${esc(contactNumber)})` : ''}</div>
-      </div>
-    </div>
+  <header>
+  <div>
+    <h1>Agenda wydarzenia</h1>
 
-    <div class="right">
-      <img src="${companyLogoUrl || '/shape-mavinci-black.png'}" alt="Logo" class="logo" />
-      <div class="meta">
-        <div class="meta-row"><strong>Opiekun:</strong> ${esc(authorName || '-')}</div>
-        <div class="meta-row"><strong>Tel:</strong> ${esc(authorNumber || '-')}</div>
-      </div>
-      <div class="stamp">Ostatnia aktualizacja: ${esc(formatLastUpdated(lastUpdated))}</div>
+    <div class="event-meta">
+      ${eventName ? `<div>Wydarzenie: <strong>${esc(eventName)}</strong></div>` : ''}
+      ${eventDate ? `<div>Data: <strong>${esc(eventDate)}</strong></div>` : ''}
+      ${timeRange ? `<div>Godziny: <strong>${esc(timeRange)}</strong></div>` : ''}
+
+      ${
+        contactPerson?.name || contactName
+          ? `<div>Agenda dla: <strong>${esc(contactPerson?.name || contactName)}</strong></div>`
+          : ''
+      }
+      ${
+        contactPerson?.phone || contactNumber
+          ? `<div>Telefon: ${esc(contactPerson?.phone || contactNumber)}</div>`
+          : ''
+      }
+      ${contactPerson?.email ? `<div>E-mail: ${esc(contactPerson.email)}</div>` : ''}
     </div>
   </div>
+
+  <div class="logo-wrap">
+    ${
+      company?.logo_url || companyLogoUrl
+        ? `<img class="logo" src="${esc(company?.logo_url || companyLogoUrl)}" alt="${esc(company?.name || '')}" />`
+        : ''
+    }
+  </div>
+
+  <div class="meta">
+    ${
+      company
+        ? `<div class="company-name">${esc(company.legal_name || company.name || '')}</div>`
+        : `<div class="company-name">MAVINCI SP. Z O.O.</div>`
+    }
+
+    <div class="prepared-by">
+      ${preparedBy?.name || authorName ? `<div>Przygotowane przez: <strong>${esc(preparedBy?.name || authorName)}</strong></div>` : ''}
+      ${preparedBy?.phone || authorNumber ? `<div>Telefon: ${esc(preparedBy?.phone || authorNumber)}</div>` : ''}
+      ${preparedBy?.email ? `<div>E-mail: ${esc(preparedBy.email)}</div>` : ''}
+    </div>
+
+    <div style="margin-top:5px;color:#888;">
+      Aktualizacja: <strong>${esc(formatLastUpdated(lastUpdated))}</strong>
+    </div>
+  </div>
+</header>
 
   <table>
     <thead>

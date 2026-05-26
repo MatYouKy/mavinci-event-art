@@ -13,6 +13,16 @@ export function buildCalculationHtml(params: {
   grandTotalGross: number;
   company?: any;
   totalPowerWatts: number;
+  contactPerson: {
+    name: string;
+    email: string;
+    phone: string;
+  } | null;
+  preparedBy: {
+    name: string;
+    email: string;
+    phone: string;
+  } | null;
 }): string {
   const {
     name,
@@ -26,9 +36,10 @@ export function buildCalculationHtml(params: {
     grandTotalGross,
     company,
     totalPowerWatts,
+    contactPerson,
+    preparedBy,
   } = params;
 
-  console.log('totalPowerWatts', totalPowerWatts);
 
   const formattedDate = eventDate
     ? new Date(eventDate).toLocaleDateString('pl-PL', {
@@ -55,6 +66,9 @@ export function buildCalculationHtml(params: {
   const sections = (Object.keys(categoryLabel) as Category[])
     .filter((cat) => grouped[cat].length > 0)
     .map((cat) => {
+      const categoryNet = categoryTotals[cat] ?? grouped[cat].reduce((sum, item) => sum + rowNet(item), 0);
+      const categoryGross = categoryTotalsGross[cat] ?? grouped[cat].reduce((sum, item) => sum + rowGross(item), 0);
+
       const rows = grouped[cat]
         .map(
           (it) => `
@@ -91,9 +105,9 @@ export function buildCalculationHtml(params: {
             <tbody>${rows}</tbody>
             <tfoot>
               <tr>
-                <td colspan="6" class="right">Podsuma ${categoryLabel[cat]}:</td>
-                <td class="num strong">${fmt(categoryTotals[cat])} PLN</td>
-                <td class="num strong accent">${fmt(categoryTotalsGross[cat])} PLN</td>
+                <td colspan="6" class="right">Suma częściowa ${categoryLabel[cat]}:</td>
+                <td class="num strong">${fmt(categoryNet)} PLN</td>
+                <td class="num strong accent">${fmt(categoryGross)} PLN</td>
               </tr>
             </tfoot>
           </table>
@@ -120,6 +134,7 @@ export function buildCalculationHtml(params: {
     };
     
     const powerSuggestion = getPowerSuggestion(totalPowerWatts);
+    
 
   return `<!DOCTYPE html>
 <html lang="pl">
@@ -474,6 +489,14 @@ export function buildCalculationHtml(params: {
     background: #fff;
   }
 
+    .company-claim {
+    font-size: 8px;
+    text-decoration: italic;
+    letter-spacing: 0.8px;
+    color: #555;
+    margin-top: 2px;
+  }
+
   @media print {
     body {
       padding: 0 0 10mm 0;
@@ -491,8 +514,11 @@ export function buildCalculationHtml(params: {
     <div>
       <h1>${esc(name) || 'Kalkulacja'}</h1>
       <div class="event-meta">
-        ${eventName ? `Wydarzenie: <strong>${esc(eventName)}</strong>` : ''}
-        ${formattedDate ? ` &middot; ${esc(formattedDate)}` : ''}
+        ${eventName ? `<div>Wydarzenie: <strong>${esc(eventName)}</strong></div>` : ''}
+        ${formattedDate ? `<div>Data: <strong>${esc(formattedDate)}</strong></div>` : ''}
+        ${contactPerson?.name ? `<div>Kalkulacja dla: <strong>${esc(contactPerson.name)}</strong></div>` : ''}
+        ${contactPerson?.phone ? `<div>Telefon: ${esc(contactPerson.phone)}</div>` : ''}
+        ${contactPerson?.email ? `<div>E-mail: ${esc(contactPerson.email)}</div>` : ''}
       </div>
     </div>
 
@@ -500,17 +526,23 @@ export function buildCalculationHtml(params: {
       ${company?.logo_url ? `<img class="logo" src="${esc(company.logo_url)}" alt="${esc(company?.name || '')}" />` : ''}
     </div>
 
-    <div class="meta">
-      ${
-        company
-          ? `<div class="company-name">${esc(company.legal_name || company.name || '')}</div>
-             ${company.nip ? `<div>NIP: ${esc(company.nip)}</div>` : ''}
-             ${company.street ? `<div>${esc(company.street)}${company.building_number ? ` ${esc(company.building_number)}` : ''}${company.apartment_number ? `/${esc(company.apartment_number)}` : ''}</div>` : ''}
-             ${company.postal_code || company.city ? `<div>${esc(company.postal_code || '')} ${esc(company.city || '')}</div>` : ''}
-             <div style="margin-top:5px;color:#888;">Wygenerowano: <strong>${new Date().toLocaleDateString('pl-PL')}</strong></div>`
-          : `<div>Wygenerowano</div><strong>${new Date().toLocaleDateString('pl-PL')}</strong>`
-      }
-    </div>
+<div class="meta">
+  ${
+    company
+      ? `<div class="company-name">${esc(company.legal_name || company.name || '')}</div>`
+      : ''
+  }
+
+  <div class="prepared-by">
+    ${preparedBy?.name ? `<div>Przygotowane przez: <strong>${esc(preparedBy.name)}</strong></div>` : ''}
+    ${preparedBy?.phone ? `<div>Telefon: ${esc(preparedBy.phone)}</div>` : ''}
+    ${preparedBy?.email ? `<div>E-mail: ${esc(preparedBy.email)}</div>` : ''}
+  </div>
+
+  <div style="margin-top:5px;color:#888;">
+    Wygenerowano: <strong>${new Date().toLocaleDateString('pl-PL')}</strong>
+  </div>
+</div>
   </header>
 
   <main>

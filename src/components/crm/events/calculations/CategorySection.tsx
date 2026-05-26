@@ -9,6 +9,7 @@ import { rowNet, rowGross } from '../helpers/calculations/calculations.helper';
 import { EquipmentNameCell } from './EquipmentNameCell';
 import ResponsiveActionBar from '../../ResponsiveActionBar';
 import NextImage from 'next/image';
+
 function ItemThumbnail({ item }: { item: CalcItem }) {
   const [showPopover, setShowPopover] = useState(false);
   const isWarehouse = item.source === 'warehouse' && item.power_source_ref;
@@ -30,10 +31,8 @@ function ItemThumbnail({ item }: { item: CalcItem }) {
             alt={item.name}
             width={32}
             height={32}
-            className={`h-8 w-8 rounded object-cover ${
-              exceeded ? 'ring-2 ring-orange-400' : ''
-            }`}
-          />  
+            className={`h-8 w-8 rounded object-cover ${exceeded ? 'ring-2 ring-orange-400' : ''}`}
+          />
         ) : (
           <div
             className={`flex h-8 w-8 items-center justify-center rounded border bg-[#0a0d1a] ${
@@ -65,11 +64,7 @@ function ItemThumbnail({ item }: { item: CalcItem }) {
           {item.stock_quantity != null && (
             <div className="mt-1 text-xs text-[#e5e4e2]/50">
               Stan magazynowy:{' '}
-              <span
-                className={
-                  exceeded ? 'font-medium text-orange-400' : 'text-emerald-400'
-                }
-              >
+              <span className={exceeded ? 'font-medium text-orange-400' : 'text-emerald-400'}>
                 {item.stock_quantity}
               </span>
             </div>
@@ -81,9 +76,7 @@ function ItemThumbnail({ item }: { item: CalcItem }) {
             </div>
           )}
           {item.power_watts != null && item.power_watts > 0 && (
-            <div className="mt-1 text-xs text-amber-400/70">
-              Pobor: {item.power_watts}W
-            </div>
+            <div className="mt-1 text-xs text-amber-400/70">Pobor: {item.power_watts}W</div>
           )}
         </div>
       )}
@@ -130,6 +123,10 @@ export function CategorySection({
   const priceInputClass =
     'w-full min-w-[80px] max-w-[120px] rounded-md border border-[#d3bb73]/20 bg-[#0a0d1a] px-2 py-1 text-right tabular-nums text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none';
 
+  const categoryNetTotal = items.reduce((sum, item) => sum + rowNet(item), 0);
+  const categoryGrossTotal = items.reduce((sum, item) => sum + rowGross(item), 0);
+  const isTransport = category === 'transport';
+
   return (
     <div className="relative rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]">
       <div className="flex items-center justify-between border-b border-[#d3bb73]/10 bg-[#0a0d1a] px-4 py-3">
@@ -158,8 +155,9 @@ export function CategorySection({
                 <th className="px-3 py-2">Opis</th>
                 <th className="min-w-[90px] px-3 py-2">Ilość</th>
                 <th className="min-w-[80px] px-3 py-2">Jedn.</th>
-                <th className="min-w-[80px] px-3 py-2">Dni</th>
-                <th className="min-w-[120px] px-3 py-2">Cena jedn.</th>
+                <th className="min-w-[80px] px-3 py-2">{isTransport ? 'Km' : 'Dni'}</th>
+
+                <th className="min-w-[120px] px-3 py-2">{isTransport ? 'Stawka' : 'Cena jedn.'}</th>
                 <th className="min-w-[80px] px-3 py-2">VAT %</th>
                 <th className="w-28 px-3 py-2 text-right">Netto</th>
                 <th className="w-28 px-3 py-2 text-right">Brutto</th>
@@ -190,8 +188,12 @@ export function CategorySection({
                       </td>
                       <td className="px-3 py-2 text-[#e5e4e2]/80">{it.quantity}</td>
                       <td className="px-3 py-2 text-[#e5e4e2]/80">{it.unit}</td>
-                      <td className="px-3 py-2 text-[#e5e4e2]/80">{it.days}</td>
-                      <td className="px-3 py-2 text-[#e5e4e2]/80">{fmt(it.unit_price)}</td>
+                      <td className="px-3 py-2 text-[#e5e4e2]/80">
+                        {isTransport ? `${it.days} km` : it.days}
+                      </td>
+                      <td className="px-3 py-2 text-[#e5e4e2]/80">
+                        {isTransport ? fmt(it.unit_price) : fmt(it.unit_price)}
+                      </td>
                       <td className="px-3 py-2 text-[#e5e4e2]/80">{it.vat_rate}%</td>
                       <td className="px-3 py-2 text-right text-[#e5e4e2]">{fmt(rowNet(it))}</td>
                       <td className="px-3 py-2 text-right text-[#d3bb73]">{fmt(rowGross(it))}</td>
@@ -315,6 +317,26 @@ export function CategorySection({
                 );
               })}
             </tbody>
+            <tfoot>
+              <tr className="border-t border-[#d3bb73]/20 bg-[#0a0d1a]/80">
+                <td
+                  colSpan={7}
+                  className="px-3 py-3 text-right text-xs font-semibold uppercase tracking-wider text-[#e5e4e2]/60"
+                >
+                  Suma częściowa
+                </td>
+
+                <td className="px-3 py-3 text-right font-semibold tabular-nums text-[#e5e4e2]">
+                  {fmt(categoryNetTotal)}
+                </td>
+
+                <td className="px-3 py-3 text-right font-semibold tabular-nums text-[#d3bb73]">
+                  {fmt(categoryGrossTotal)}
+                </td>
+
+                <td className="px-3 py-3" />
+              </tr>
+            </tfoot>
           </table>
         </div>
       )}

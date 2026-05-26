@@ -42,6 +42,11 @@ export function AddCalculationItemModal({
     category === 'equipment' ? 'warehouse' : 'manual',
   );
 
+  const isTransport = category === 'transport';
+  const [unit, setUnit] = useState(
+    category === 'staff' ? 'h' : category === 'transport' ? 'auto' : 'szt.',
+  );
+
   const PAGE_SIZE = 30;
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [search, setSearch] = useState('');
@@ -52,9 +57,6 @@ export function AddCalculationItemModal({
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [quantity, setQuantity] = useState(1);
-  const [unit, setUnit] = useState(
-    category === 'staff' ? 'h' : category === 'transport' ? 'km' : 'szt.',
-  );
   const [days, setDays] = useState(1);
   const [unitPrice, setUnitPrice] = useState(0);
   const [vatRate, setVatRate] = useState(DEFAULT_VAT);
@@ -111,7 +113,7 @@ export function AddCalculationItemModal({
         .from('equipment_units')
         .select('equipment_id')
         .in('equipment_id', itemIds)
-        .eq('status', 'available')
+        .eq('status', 'available');
 
       if (units) {
         for (const u of units) {
@@ -514,7 +516,9 @@ export function AddCalculationItemModal({
 
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                 <div>
-                  <label className="mb-1.5 block text-sm text-[#e5e4e2]/60">Ilosc</label>
+                  <label className="mb-1.5 block text-sm text-[#e5e4e2]/60">
+                    {isTransport ? 'Ilość aut' : 'Ilość'}
+                  </label>
                   {stockExceeded && (
                     <div className="mb-1.5 flex items-center gap-1.5 rounded-md bg-orange-500/10 px-2 py-1 text-xs text-orange-400">
                       <AlertTriangle className="h-3 w-3 flex-shrink-0" />
@@ -526,7 +530,7 @@ export function AddCalculationItemModal({
                     step="1"
                     min="1"
                     value={quantity}
-                    onChange={(e) => setQuantity(Number(e.target.value) || 1)}
+                    onChange={(e) => setQuantity(Number(e.target.value))}
                     className={inputClass}
                   />
                 </div>
@@ -540,13 +544,15 @@ export function AddCalculationItemModal({
                   />
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-sm text-[#e5e4e2]/60">Dni</label>
+                  <label className="mb-1.5 block text-sm text-[#e5e4e2]/60">
+                    {isTransport ? 'Odległość (km)' : 'Dni'}
+                  </label>
                   <input
                     type="number"
-                    step="0.5"
-                    min="0.5"
+                    step={isTransport ? '1' : '0.5'}
+                    min={isTransport ? '0' : '0.5'}
                     value={days}
-                    onChange={(e) => setDays(Number(e.target.value) || 1)}
+                    onChange={(e) => setDays(Number(e.target.value))}
                     className={inputClass}
                   />
                 </div>
@@ -565,7 +571,7 @@ export function AddCalculationItemModal({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="mb-1.5 block text-sm text-[#e5e4e2]/60">
-                    Cena jednostkowa (netto)
+                    {isTransport ? 'Stawka za km (netto)' : 'Cena jednostkowa (netto)'}
                   </label>
                   <input
                     type="number"
@@ -595,7 +601,9 @@ export function AddCalculationItemModal({
               {unitPrice > 0 && (
                 <div className="flex items-center justify-between rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3">
                   <div className="text-sm text-[#e5e4e2]/60">
-                    {quantity} x {unitPrice.toFixed(2)} x {days} dni
+                    {isTransport
+                      ? `${quantity} aut x ${unitPrice.toFixed(2)} zł/km x ${days} km`
+                      : `${quantity} x ${unitPrice.toFixed(2)} x ${days} dni`}
                   </div>
                   <div className="text-right">
                     <div className="text-sm text-[#e5e4e2]">

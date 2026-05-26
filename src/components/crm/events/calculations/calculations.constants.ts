@@ -5,7 +5,7 @@ export const CATEGORY_META: Record<
   Category,
   { label: string; icon: React.ComponentType<{ className?: string }> }
 > = {
-  equipment: { label: 'Sprzęt', icon: Package },
+  equipment: { label: 'Pozycje', icon: Package },
   staff: { label: 'Ludzie', icon: Users },
   transport: { label: 'Transport', icon: Truck },
   other: { label: 'Pozostałe', icon: MoreHorizontal },
