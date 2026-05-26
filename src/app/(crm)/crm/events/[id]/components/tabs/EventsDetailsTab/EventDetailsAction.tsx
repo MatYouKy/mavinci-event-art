@@ -322,7 +322,7 @@ export default function EventDetailsAction({
       );
 
       const result = await response.json();
-      if (result.success) {
+      if (result.success === true) {
         showSnackbar(`Wysłano potwierdzenie do ${result.recipientEmail}`, 'success');
       } else {
         showSnackbar(result.message || result.error || 'Nie udało się wysłać potwierdzenia', 'error');

@@ -236,7 +236,7 @@ Deno.serve(async (req: Request) => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${supabaseKey}`,
+        Authorization: req.headers.get("Authorization") || "",
       },
       body: JSON.stringify({
         to: recipientEmail,
