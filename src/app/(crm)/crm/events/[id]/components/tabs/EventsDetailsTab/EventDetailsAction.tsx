@@ -13,6 +13,8 @@ import {
   Tag,
   Play,
   Printer,
+  Mail,
+  X,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -75,12 +77,30 @@ const statusIcon = (s: EventStatus) => {
   }
 };
 
+interface ContactInfo {
+  id?: string;
+  full_name?: string;
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  phone?: string;
+}
+
+interface OrganizationInfo {
+  id?: string;
+  name?: string;
+  alias?: string;
+  email?: string;
+}
+
 interface EventDetailsActionProps {
   event: IEvent;
   canEditStatus?: boolean;
   categories: EventCategoryRow[];
   hasOffers?: boolean;
   offersCount?: number;
+  contact?: ContactInfo | null;
+  organization?: OrganizationInfo | null;
 }
 
 export default function EventDetailsAction({
@@ -89,6 +109,8 @@ export default function EventDetailsAction({
   canEditStatus,
   hasOffers = false,
   offersCount = 0,
+  contact,
+  organization,
 }: EventDetailsActionProps) {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
@@ -101,6 +123,8 @@ export default function EventDetailsAction({
 
   const [draftStatus, setDraftStatus] = useState<EventStatus>(event?.status as EventStatus);
   const [savingStatus, setSavingStatus] = useState(false);
+  const [showSendConfirmation, setShowSendConfirmation] = useState(false);
+  const [sendingConfirmationEmail, setSendingConfirmationEmail] = useState(false);
 
   useEffect(() => {
     if (event?.status) {
@@ -249,12 +273,67 @@ export default function EventDetailsAction({
       setCurrentStatus(draftStatus);
       showSnackbar(`Status eventu: ${eventStatusLabels[draftStatus]}`, 'success');
       setStatusEditActive(false);
-      router.refresh();
+
+      if (draftStatus === 'offer_accepted' && currentStatus !== 'offer_accepted') {
+        setShowSendConfirmation(true);
+      } else {
+        router.refresh();
+      }
     } catch (err: any) {
       console.error('Error updating status:', err);
       showSnackbar(err?.message || 'Błąd podczas zmiany statusu', 'error');
     } finally {
       setSavingStatus(false);
+    }
+  };
+
+  const handleSendAcceptedEmail = async () => {
+    const recipientEmail =
+      contact?.email ||
+      (event as any).contact_person?.email ||
+      organization?.email ||
+      (event as any).organization?.email ||
+      null;
+
+    if (!recipientEmail) {
+      showSnackbar('Brak adresu e-mail osoby kontaktowej / klienta', 'error');
+      return;
+    }
+
+    setSendingConfirmationEmail(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      if (!token) {
+        showSnackbar('Brak sesji - nie można wysłać maila', 'error');
+        return;
+      }
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-event-confirmation`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ eventId: event.id }),
+        },
+      );
+
+      const result = await response.json();
+      if (result.success) {
+        showSnackbar(`Wysłano potwierdzenie do ${result.recipientEmail}`, 'success');
+      } else {
+        showSnackbar(result.message || result.error || 'Nie udało się wysłać potwierdzenia', 'error');
+      }
+    } catch (err: any) {
+      console.error('[EventDetailsAction] Error sending confirmation email:', err);
+      showSnackbar(err?.message || 'Nie udało się wysłać potwierdzenia', 'error');
+    } finally {
+      setSendingConfirmationEmail(false);
+      setShowSendConfirmation(false);
+      router.refresh();
     }
   };
 
@@ -539,6 +618,69 @@ export default function EventDetailsAction({
           </button>
         )}
       </div>
+
+      {showSendConfirmation && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="flex items-center gap-2 text-lg font-light text-[#e5e4e2]">
+                <Mail className="h-5 w-5 text-[#d3bb73]" />
+                Potwierdzenie email
+              </h2>
+              <button
+                onClick={() => { setShowSendConfirmation(false); router.refresh(); }}
+                disabled={sendingConfirmationEmail}
+                className="text-[#e5e4e2]/60 hover:text-[#e5e4e2] disabled:opacity-50"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <p className="mb-6 text-sm leading-relaxed text-[#e5e4e2]/80">
+              Status został zmieniony na{' '}
+              <span className="font-medium text-[#d3bb73]">Oferta zaakceptowana</span>.
+              <br />
+              Czy wysłać maila z potwierdzeniem realizacji do klienta?
+            </p>
+
+            {(contact?.email || organization?.email) && (
+              <div className="mb-4 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-3 py-2 text-xs text-[#e5e4e2]/60">
+                Odbiorca:{' '}
+                <span className="text-[#e5e4e2]">
+                  {contact?.email || organization?.email}
+                </span>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={handleSendAcceptedEmail}
+                disabled={sendingConfirmationEmail}
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
+              >
+                {sendingConfirmationEmail ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Wysyłanie...
+                  </>
+                ) : (
+                  <>
+                    <Mail className="h-4 w-4" />
+                    Wyślij
+                  </>
+                )}
+              </button>
+              <button
+                onClick={() => { setShowSendConfirmation(false); router.refresh(); }}
+                disabled={sendingConfirmationEmail}
+                className="rounded-lg px-4 py-2 text-[#e5e4e2]/60 hover:bg-[#1c1f33] disabled:opacity-50"
+              >
+                Pomiń
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
