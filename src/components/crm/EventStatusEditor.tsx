@@ -36,6 +36,35 @@ export default function EventStatusSelectModal({
 
   if (!isOpen) return null;
 
+  const sendConfirmationEmail = async () => {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
+      if (!token) return;
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-event-confirmation`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ eventId }),
+        },
+      );
+
+      const result = await response.json();
+      if (result.success) {
+        showSnackbar(`Email potwierdzający wysłany do: ${result.recipientEmail}`, 'success');
+      } else {
+        console.warn('[EventStatus] Confirmation email not sent:', result.message || result.error);
+      }
+    } catch (err) {
+      console.error('[EventStatus] Error sending confirmation email:', err);
+    }
+  };
+
   const save = async () => {
     try {
       setSaving(true);
@@ -46,6 +75,10 @@ export default function EventStatusSelectModal({
         .eq('id', eventId);
 
       if (error) throw error;
+
+      if (value === 'offer_accepted' && currentStatus !== 'offer_accepted') {
+        sendConfirmationEmail();
+      }
 
       showSnackbar('Status eventu został zaktualizowany', 'success');
       onStatusChange?.(value);
