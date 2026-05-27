@@ -120,7 +120,9 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
   const [availableInvoices, setAvailableInvoices] = useState<any[]>([]);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
-  console.log('myCompanies', myCompanies);
+  const [paidDate, setPaidDate] = useState(new Date().toISOString().split('T')[0]);
+  const [paymentStatus, setPaymentStatus] = useState<'unpaid' | 'partial' | 'paid'>('unpaid');
+  const [paidAmount, setPaidAmount] = useState(0);
 
   useEffect(() => {
     fetchData();
@@ -187,6 +189,9 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         setSignatureName(inv.signature_name || '');
         setIncludeDefaultFooterNote(Boolean(inv.invoice_footer_text));
         setBuyerIsPrivatePerson(inv.buyer_is_private_person ?? false);
+        setPaidDate(
+          inv.paid_at ? inv.paid_at.split('T')[0] : inv.payment_due_date || inv.issue_date || '',
+        );
         setSelectedIndividualId(inv.buyer_contact_id || '');
         setSelectedEventId(inv.event_id || null);
         fetchOrganizationEvents(inv.organization_id || null);
@@ -586,13 +591,17 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         invoice_number: invoiceNumber,
         invoice_type: invoiceType,
         is_proforma: invoiceType === 'proforma',
-        status: invoiceStatus,
+        payment_status: paymentStatus,
+        paid_amount: paymentStatus === 'unpaid' ? 0 : paidAmount,
+        paid_at: paymentStatus === 'unpaid' ? null : paidDate || null,
+        status: paymentStatus === 'paid' ? 'paid' : invoiceStatus,
+        payment_due_date:
+          invoiceStatus === 'paid' ? paidDate || issueDate : calculatePaymentDueDate(),
         issue_date: issueDate,
         sale_date: saleDate,
         footer_note: footerNote,
         signature_name: signatureName,
         website: website,
-        payment_due_date: calculatePaymentDueDate(),
         organization_id: buyerIsPrivatePerson ? null : selectedOrgId,
         buyer_contact_id: buyerIsPrivatePerson ? selectedIndividualId || null : null,
 
@@ -1298,6 +1307,8 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
                 </select>
               </div>
 
+
+
               <div>
                 <label className="mb-2 block text-sm text-[#e5e4e2]/60">Miejsce wystawienia</label>
                 <input
@@ -1307,6 +1318,84 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
                   placeholder="np. Warszawa"
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
                 />
+              </div>
+            </div>
+            {invoiceStatus === 'paid' && (
+                <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-4">
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data opłacenia *</label>
+                  <input
+                    type="date"
+                    value={paidDate}
+                    onChange={(e) => setPaidDate(e.target.value)}
+                    className="w-full rounded-lg border border-green-500/30 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
+                  />
+
+                  <div className="mt-3 rounded-lg border border-green-500/20 bg-green-500/10 p-3 text-sm text-green-400">
+                    Faktura opłacona. Do zapłaty: 0.00 zł
+                  </div>
+                </div>
+              )}
+
+            <div className="rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-4">
+              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                Status płatności
+              </label>
+
+              <select
+                value={paymentStatus}
+                onChange={(e) => {
+                  const nextStatus = e.target.value as 'unpaid' | 'partial' | 'paid';
+                  setPaymentStatus(nextStatus);
+
+                  if (nextStatus === 'unpaid') {
+                    setPaidAmount(0);
+                  }
+
+                  if (nextStatus === 'paid') {
+                    setPaidAmount(totals.totalGross);
+                    setPaidDate(
+                      (prev) => prev || issueDate || new Date().toISOString().split('T')[0],
+                    );
+                  }
+                }}
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
+              >
+                <option value="unpaid">Do zapłaty</option>
+                <option value="partial">Częściowo zapłacono</option>
+                <option value="paid">Zapłacono</option>
+              </select>
+
+              {paymentStatus !== 'unpaid' && (
+                <div className="mt-4 grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data płatności</label>
+                    <input
+                      type="date"
+                      value={paidDate}
+                      onChange={(e) => setPaidDate(e.target.value)}
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Kwota zapłacona</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={paidAmount}
+                      onChange={(e) => setPaidAmount(Number(e.target.value.replace(',', '.')) || 0)}
+                      disabled={paymentStatus === 'paid'}
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] disabled:opacity-60"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-4 rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a]/50 p-3 text-sm">
+                <span className="text-[#e5e4e2]/50">Do zapłaty:</span>
+                <span className="ml-2 font-medium text-[#d3bb73]">
+                  {Math.max(totals.totalGross - paidAmount, 0).toFixed(2)} zł
+                </span>
               </div>
             </div>
 
@@ -1485,12 +1574,25 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
                   <div>
                     <div className="mb-1 text-sm text-[#e5e4e2]/60">Suma brutto</div>
                     <div className="text-2xl font-medium text-[#d3bb73]">
-                      {totals.totalGross.toFixed(2)} zl
+                      {invoiceStatus === 'paid' ? '0.00' : totals.totalGross.toFixed(2)} zl
                     </div>
                   </div>
                 </div>
               </div>
             </div>
+            {paymentStatus !== 'unpaid' && (
+              <div className="mt-4 border-t border-[#d3bb73]/10 pt-4 text-sm">
+                <div className="text-[#e5e4e2]/60">
+                  Zapłacono: <span className="text-green-400">{paidAmount.toFixed(2)} zł</span>
+                </div>
+                <div className="mt-1 text-[#e5e4e2]/60">
+                  Do zapłaty:{' '}
+                  <span className="font-medium text-[#d3bb73]">
+                    {Math.max(totals.totalGross - paidAmount, 0).toFixed(2)} zł
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* Przyciski */}
             <div className="flex justify-end gap-4 pt-6">

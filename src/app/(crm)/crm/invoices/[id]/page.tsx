@@ -45,6 +45,9 @@ interface Invoice {
   invoice_number: string;
   invoice_type: string;
   status: string;
+  payment_status: 'unpaid' | 'partial' | 'paid' | null;
+  paid_amount: number | null;
+  paid_at: string | null;
   issue_date: string;
   sale_date: string;
   payment_due_date: string;
@@ -396,26 +399,44 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
   const handleGeneratePDF = async () => {
     if (!invoice) return;
+
     setGenerating(true);
+
     try {
       const resolvedEventId = invoice.event_id || relatedData.relatedInvoice?.event_id || null;
+
       const { data: freshItems } = await supabase
         .from('invoice_items')
         .select('*')
         .eq('invoice_id', invoice.id)
         .order('position_number', { ascending: true });
 
+      const pdfItems = freshItems || items;
+
       if (freshItems && freshItems.length > 0) {
         setItems(freshItems);
-
         setInvoice((prev) => (prev ? { ...prev, invoice_items: freshItems } : prev));
       }
 
       const finalSettlementData = await buildFinalSettlementData(invoice);
 
-      console.log('invoice.website', invoice.website);
+      const pdfAmountToPay =
+        (invoice.invoice_type === 'final' || invoice.invoice_number?.startsWith('FKO/')) &&
+        finalSettlementData.settlementSummary
+          ? Number(finalSettlementData.settlementSummary.remainingGross ?? 0)
+          : Number(invoice.total_gross ?? 0);
+
+      const normalizedPaymentStatus: 'unpaid' | 'partial' | 'paid' =
+        invoice.payment_status || (invoice.status === 'paid' ? 'paid' : 'unpaid');
+
+      const normalizedPaidAmount =
+        normalizedPaymentStatus === 'paid' ? pdfAmountToPay : Number(invoice.paid_amount ?? 0);
 
       const html = buildInvoicePdfHtml({
+        paymentStatus: normalizedPaymentStatus,
+        paidAmount: normalizedPaidAmount,
+        paidAt: invoice.paid_at,
+
         buyerIsPrivatePerson: invoice.buyer_is_private_person,
         footerNote: invoice.footer_note || '',
         signatureName: invoice.signature_name || 'Mateusz Kwiatkowski',
@@ -451,7 +472,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
         correctionReason: invoice.correction_reason || undefined,
         correctedInvoiceNumber: invoice.corrected_invoice_number || undefined,
         correctedInvoiceIssueDate: invoice.corrected_invoice_issue_date || undefined,
-        items: (freshItems || items).map((item: any) => ({
+        items: pdfItems.map((item: any) => ({
           positionNumber: item.position_number,
           name: item.name,
           unit: item.unit,
@@ -467,6 +488,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
         settledInvoices: invoice.settled_invoices ?? finalSettlementData.settledInvoices,
         settlementSummary: invoice.settlement_summary ?? finalSettlementData.settlementSummary,
       });
+
       const response = await fetch('/bridge/invoices/invoice-pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -488,9 +510,11 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
       }
 
       const result = await response.json();
+
       if (result.base64) {
         setLastBase64(result.base64);
       }
+
       if (result.storagePath) {
         setPdfPath(result.storagePath);
         setInvoice((prev) =>
@@ -621,35 +645,35 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
     let safeStatus = newStatus;
 
-    if (invoice.is_proforma) {
-      const allowed = ['draft', 'proforma', 'cancelled'];
+    const updateData: Record<string, any> = {
+      status: safeStatus,
+    };
 
-      if (!allowed.includes(newStatus)) {
-        safeStatus = 'proforma';
-      }
-    } else {
-      if (newStatus === 'proforma') {
-        safeStatus = 'draft';
-      }
+    if (safeStatus === 'paid') {
+      updateData.payment_status = 'paid';
+      updateData.paid_amount = Number(invoice.total_gross ?? 0);
+      updateData.paid_at = new Date().toISOString();
+      updateData.payment_due_date = new Date().toISOString().split('T')[0];
+    }
+
+    if (safeStatus !== 'paid' && invoice.payment_status === 'paid') {
+      updateData.payment_status = 'unpaid';
+      updateData.paid_amount = 0;
+      updateData.paid_at = null;
     }
 
     try {
-      const { error } = await supabase
-        .from('invoices')
-        .update({ status: safeStatus })
-        .eq('id', params.id);
+      const { error } = await supabase.from('invoices').update(updateData).eq('id', params.id);
 
       if (error) throw error;
 
-      setInvoice((prev) => (prev ? { ...prev, status: safeStatus } : null));
-      showSnackbar('Status faktury zostal zmieniony', 'success');
+      setInvoice((prev) => (prev ? { ...prev, ...updateData } : null));
+      showSnackbar('Status faktury został zmieniony', 'success');
     } catch (err) {
       console.error('Error updating status:', err);
-      showSnackbar('Blad podczas zmiany statusu', 'error');
+      showSnackbar('Błąd podczas zmiany statusu', 'error');
     }
   };
-
-  const [sendingToKSeF, setSendingToKSeF] = useState(false);
 
   const handleConvertToVAT = () => {
     setShowConvertProformaModal(true);
@@ -781,6 +805,9 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     return labels[type] || 'Faktura VAT';
   }
 
+  const paymentStatus = invoice.payment_status || (invoice.status === 'paid' ? 'paid' : 'unpaid');
+  const paidAmount = Number(invoice.paid_amount ?? 0);
+
   const previewSettlementSummary =
     invoice.settlement_summary ?? finalSettlementPreview?.settlementSummary;
 
@@ -799,42 +826,42 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     const rounded = Number(value.toFixed(2));
     return Object.is(rounded, -0) ? 0 : rounded;
   };
-  
+
   const getCorrectionValues = (item: InvoiceItem) => {
     const vatRate = Number(item.vat_rate ?? 0);
-  
+
     const beforeQty = Number(item.before_quantity ?? 0);
     const beforePrice = Number(item.before_price_net ?? item.price_net ?? 0);
     const beforeNet = money(Number(item.before_value_net ?? beforeQty * beforePrice));
     const beforeVat = money(Number(item.before_vat_amount ?? (beforeNet * vatRate) / 100));
     const beforeGross = money(Number(item.before_value_gross ?? beforeNet + beforeVat));
-  
+
     const correctionNet = money(Number(item.value_net ?? 0));
     const correctionVat = money(Number(item.vat_amount ?? (correctionNet * vatRate) / 100));
     const correctionGross = money(Number(item.value_gross ?? correctionNet + correctionVat));
-  
+
     const correctionQty =
       correctionNet !== 0 && beforePrice !== 0
         ? money(Math.abs(correctionNet / beforePrice))
         : Math.abs(Number(item.before_quantity ?? 1));
-  
+
     const correctionPrice =
       correctionQty !== 0 ? money(correctionNet / correctionQty) : correctionNet;
-  
+
     return {
       vatRate,
-  
+
       beforeQty,
       beforePrice,
       beforeNet,
       beforeVat,
       beforeGross,
-  
+
       correctionQty,
       correctionPrice: -correctionPrice,
-      correctionNet : -correctionNet,
-      correctionVat : -correctionVat,
-      correctionGross : -correctionGross,
+      correctionNet: -correctionNet,
+      correctionVat: -correctionVat,
+      correctionGross: -correctionGross,
     };
   };
 
@@ -848,6 +875,12 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     if (!number) return '0';
     return `${number > 0 ? '+' : ''}${number}`;
   };
+  const amountToPay =
+    paymentStatus === 'paid'
+      ? 0
+      : paymentStatus === 'partial'
+        ? Math.max(previewAmountToPay - paidAmount, 0)
+        : previewAmountToPay;
 
   return (
     <PermissionGuard module="invoices">
@@ -1666,6 +1699,14 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                   <span className="text-gray-600">Termin platnosci:</span>{' '}
                   {new Date(invoice.payment_due_date).toLocaleDateString('pl-PL')}
                 </div>
+                <div className="mb-2">
+                  <span className="text-gray-600">Status płatności:</span>{' '}
+                  {paymentStatus === 'paid'
+                    ? `Zapłacono${invoice.paid_at ? ` (${new Date(invoice.paid_at).toLocaleDateString('pl-PL')})` : ''}`
+                    : paymentStatus === 'partial'
+                      ? `Częściowo zapłacono: ${paidAmount.toFixed(2)} PLN`
+                      : 'Do zapłaty'}
+                </div>
                 <div>
                   <span className="text-gray-600">Numer konta:</span>
                   <div className="font-mono">{invoice.bank_account}</div>
@@ -1678,9 +1719,15 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               <div>
                 <div className="mb-2">
                   <span className="text-gray-600">
-                    {invoice.invoice_type === 'corrective' ? 'Kwota korekty:' : 'Do zaplaty:'}
+                    {invoice.invoice_type === 'corrective'
+                      ? 'Kwota korekty:'
+                      : paymentStatus === 'paid'
+                        ? 'Zapłacono:'
+                        : paymentStatus === 'partial'
+                          ? 'Pozostało do zapłaty:'
+                          : 'Do zapłaty:'}
                   </span>{' '}
-                  <span className="text-base font-bold">{previewAmountToPay.toFixed(2)} PLN</span>
+                  <span className="text-base font-bold">{amountToPay.toFixed(2)} PLN</span>
                 </div>
               </div>
             </div>

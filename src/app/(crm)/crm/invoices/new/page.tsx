@@ -144,6 +144,9 @@ export default function NewInvoicePage() {
   const [selectedEventId, setSelectedEventId] = useState<string>(eventId || '');
   const [organizationEvents, setOrganizationEvents] = useState<EventOption[]>([]);
 
+  const [isPaid, setIsPaid] = useState(false);
+  const [paidDate, setPaidDate] = useState(new Date().toISOString().split('T')[0]);
+
   const [privateBuyer, setPrivateBuyer] = useState({
     firstName: '',
     lastName: '',
@@ -807,13 +810,14 @@ export default function NewInvoicePage() {
         invoice_number: normalizedInvoiceNumber,
         invoice_type: invoiceType,
         is_proforma: invoiceType === 'proforma',
-        status: invoiceType === 'proforma' ? 'proforma' : 'draft',
+        status: isPaid ? 'paid' : invoiceType === 'proforma' ? 'proforma' : 'draft',
+        paid_at: isPaid ? paidDate : null,
+        payment_due_date: isPaid ? paidDate : calculatePaymentDueDate(),
         footer_note: footerNote,
         signature_name: signatureName,
         website,
         issue_date: issueDate,
         sale_date: saleDate,
-        payment_due_date: calculatePaymentDueDate(),
         event_id: selectedEventId || null,
         organization_id: buyerIsPrivatePerson ? null : selectedOrgId,
 
@@ -1385,6 +1389,44 @@ export default function NewInvoicePage() {
                   <option value="Karta">Karta</option>
                   <option value="BLIK">BLIK</option>
                 </select>
+              </div>
+
+              <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-4">
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={isPaid}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setIsPaid(checked);
+
+                      if (checked && !paidDate) {
+                        setPaidDate(issueDate || new Date().toISOString().split('T')[0]);
+                      }
+                    }}
+                    className="mt-1 h-4 w-4 rounded border-green-500/30 text-green-500"
+                  />
+
+                  <div className="flex-1">
+                    <div className="text-sm font-medium text-[#e5e4e2]">Faktura opłacona</div>
+                    <div className="mt-1 text-xs text-[#e5e4e2]/60">
+                      Po zaznaczeniu status faktury zostanie ustawiony jako opłacona, a do zapłaty
+                      będzie 0 zł.
+                    </div>
+                  </div>
+                </label>
+
+                {isPaid && (
+                  <div className="mt-4">
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data opłacenia *</label>
+                    <input
+                      type="date"
+                      value={paidDate}
+                      onChange={(e) => setPaidDate(e.target.value)}
+                      className="w-full rounded-lg border border-green-500/30 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
+                    />
+                  </div>
+                )}
               </div>
 
               {!isCashPayment ? (
@@ -2018,6 +2060,12 @@ export default function NewInvoicePage() {
                       </div>
                     </div>
                   </>
+                )}
+
+                {isPaid && (
+                  <div className="mt-4 rounded-lg border border-green-500/20 bg-green-500/10 p-3 text-sm text-green-400">
+                    Faktura opłacona. Do zapłaty: 0.00 zł
+                  </div>
                 )}
               </div>
             </div>
