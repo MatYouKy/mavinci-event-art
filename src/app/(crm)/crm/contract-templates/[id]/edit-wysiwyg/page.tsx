@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import Image from 'next/image';
+
 export default function EditTemplateWYSIWYGPage() {
   const params = useParams();
   const router = useRouter();
@@ -1136,7 +1137,7 @@ export default function EditTemplateWYSIWYGPage() {
                   { key: '{{organization_name}}', label: 'Nazwa firmy' },
                   { key: '{{organization_nip}}', label: 'NIP' },
                   { key: '{{organization_legal_form}}', label: 'Forma prawna' },
-                  { key: '{{organization_krs}}', label: 'KRS (auto-ukrywa dla JDG)' },
+                  { key: '{{organization_krs}}', label: 'KRS (pokazuje tylko jeśli istnieje)' },
                   { key: '{{organization_regon}}', label: 'REGON' },
                   { key: '{{organization_full_address}}', label: 'Pełny adres' },
                   { key: '{{organization_address}}', label: 'Adres (ulica)' },
