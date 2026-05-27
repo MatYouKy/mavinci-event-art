@@ -233,7 +233,7 @@ export default function KSeFIntegrationPanel() {
   const [newPaymentDate, setNewPaymentDate] = useState('');
   const [newPaymentNotes, setNewPaymentNotes] = useState('');
   const [viewMode, setViewMode] = useState<KSeFViewMode>('table');
-  const [sortKey, setSortKey] = useState<KSeFSortKey>('invoice_number');
+  const [sortKey, setSortKey] = useState<KSeFSortKey>('issue_date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [showMatchModal, setShowMatchModal] = useState(false);
   const [matchModalDate, setMatchModalDate] = useState<{ month: number; year: number } | null>(
@@ -400,7 +400,7 @@ export default function KSeFIntegrationPanel() {
         query = query.in('my_company_id', allowedCompanyIds);
       }
 
-      const { data, error } = await query.order('ksef_issued_at', { ascending: false });
+      const { data, error } = await query.order('issue_date', { ascending: false, nullsFirst: false });;
 
       if (error) throw error;
 
@@ -1683,7 +1683,7 @@ export default function KSeFIntegrationPanel() {
         <BankMatchingSimple
           month={matchModalDate.month}
           year={matchModalDate.year}
-          invoice={matchInvoice}
+          invoiceData={matchInvoice}
           companyId={selectedCompanyId}
           onClose={() => {
             setShowMatchModal(false);
