@@ -22,14 +22,6 @@ interface KSeFSendModalProps {
   onClose: () => void;
 }
 
-type KsefProgressEvent = {
-  step: string;
-  status: 'active' | 'completed' | 'error';
-  message?: string;
-  attempt?: number;
-  maxAttempts?: number;
-};
-
 type StepStatus = 'pending' | 'active' | 'completed' | 'error';
 
 interface Step {
@@ -116,7 +108,6 @@ export default function KSeFSendModal({
     hasStarted.current = true;
 
     const controller = new AbortController();
-    const jobId = crypto.randomUUID();
 
     startTimeRef.current = Date.now();
 
@@ -124,127 +115,127 @@ export default function KSeFSendModal({
       setElapsedTime(Math.floor((Date.now() - startTimeRef.current) / 1000));
     }, 500);
 
-    const eventSource = new EventSource(
-      `/bridge/ksef/invoices/progress?jobId=${encodeURIComponent(jobId)}`,
-    );
+    const processEvent = (data: any) => {
+      if (data.type === 'progress') {
+        const progressIndex = STEPS_CONFIG.findIndex((step) => step.id === data.step);
+        if (progressIndex === -1) return;
 
-    const markProgress = (progress: KsefProgressEvent) => {
-      const progressIndex = STEPS_CONFIG.findIndex((step) => step.id === progress.step);
+        setCurrentStepIndex(progressIndex);
+        currentStepRef.current = progressIndex;
 
-      if (progressIndex === -1) return;
+        setSteps((old) =>
+          old.map((step, index) => {
+            if (index < progressIndex) return { ...step, status: 'completed' as StepStatus };
+            if (index === progressIndex) return { ...step, status: data.status as StepStatus };
+            return step;
+          }),
+        );
 
-      setCurrentStepIndex(progressIndex);
-      currentStepRef.current = progressIndex;
+        if (data.step === 'poll') {
+          if (data.attempt) setPollAttempt(data.attempt);
+          if (data.maxAttempts) setPollMaxAttempts(data.maxAttempts);
+        }
 
-      setSteps((old) =>
-        old.map((step, index) => {
-          if (index < progressIndex) {
-            return { ...step, status: 'completed' as StepStatus };
-          }
+        if (data.status === 'error') {
+          const message = data.message || 'Błąd wysyłki do KSeF';
+          setErrorMessage(message);
+          setFinished(true);
+          onError(message);
+        }
+      } else if (data.type === 'result') {
+        if (data.success) {
+          setKsefRef(data.ksef_reference_number ?? null);
+          setSteps((old) => old.map((step) => ({ ...step, status: 'completed' as StepStatus })));
+          setCurrentStepIndex(STEPS_CONFIG.length - 1);
+          setFinished(true);
+          onSuccess({
+            ksef_reference_number: data.ksef_reference_number,
+            ksef_timestamp: data.ksef_timestamp,
+          });
+        } else {
+          const msg = data.error || 'Nieznany błąd KSeF';
+          const details = Array.isArray(data.details) ? data.details.join(', ') : data.details;
+          const fullMsg = details ? `${msg}: ${details}` : msg;
 
-          if (index === progressIndex) {
-            return { ...step, status: progress.status };
-          }
-
-          return step;
-        }),
-      );
-
-      if (progress.step === 'poll') {
-        if (progress.attempt) setPollAttempt(progress.attempt);
-        if (progress.maxAttempts) setPollMaxAttempts(progress.maxAttempts);
-      }
-
-      if (progress.status === 'error') {
-        const message = progress.message || 'Błąd wysyłki do KSeF';
-        setErrorMessage(message);
-        setFinished(true);
-        onError(message);
-        eventSource.close();
-      }
-    };
-
-    eventSource.onmessage = (event) => {
-      try {
-        const progress = JSON.parse(event.data) as KsefProgressEvent;
-        markProgress(progress);
-      } catch (err) {
-        console.warn('[KSEF_PROGRESS] Invalid SSE message:', err);
-      }
-    };
-
-    eventSource.onerror = () => {
-      console.warn('[KSEF_PROGRESS] SSE connection error');
-    };
-
-    fetch('/bridge/ksef/invoices/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ invoiceId, jobId }),
-      signal: controller.signal,
-    })
-      .then(async (res) => {
-        const result = await res.json();
-
-        if (!res.ok) {
-          const details = Array.isArray(result.details)
-            ? result.details.join(', ')
-            : result.details;
-
-          const msg = result.error || details || 'Nieznany błąd KSeF';
-
-          setErrorMessage(msg);
+          setErrorMessage(fullMsg);
           setFinished(true);
 
           setSteps((old) =>
             old.map((step, index) => {
               const failedAt = Math.max(currentStepRef.current, 0);
-              if (index < failedAt) {
-                return { ...step, status: 'completed' as StepStatus };
-              }
-
-              if (index === failedAt) {
-                return { ...step, status: 'error' as StepStatus };
-              }
-
+              if (index < failedAt) return { ...step, status: 'completed' as StepStatus };
+              if (index === failedAt) return { ...step, status: 'error' as StepStatus };
               return step;
             }),
           );
 
+          onError(fullMsg);
+        }
+      }
+    };
+
+    (async () => {
+      try {
+        const response = await fetch('/bridge/ksef/invoices/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ invoiceId }),
+          signal: controller.signal,
+        });
+
+        if (!response.body) {
+          const result = await response.json();
+          const msg = result.error || 'Brak streamu z serwera';
+          setErrorMessage(msg);
+          setFinished(true);
           onError(msg);
-          eventSource.close();
           return;
         }
 
-        setKsefRef(result.ksef_reference_number ?? null);
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
 
-        setSteps((old) => old.map((step) => ({ ...step, status: 'completed' as StepStatus })));
-        setCurrentStepIndex(STEPS_CONFIG.length - 1);
-        setFinished(true);
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-        onSuccess({
-          ksef_reference_number: result.ksef_reference_number,
-          ksef_timestamp: result.ksef_timestamp,
-        });
+          buffer += decoder.decode(value, { stream: true });
 
-        eventSource.close();
-      })
-      .catch((err) => {
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                processEvent(data);
+              } catch {
+                // invalid JSON line
+              }
+            }
+          }
+        }
+
+        if (buffer.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(buffer.slice(6));
+            processEvent(data);
+          } catch {
+            // invalid
+          }
+        }
+      } catch (err: any) {
         if (err.name === 'AbortError') return;
-
         const msg = err.message || 'Nieznany błąd';
-
         setErrorMessage(msg);
         setFinished(true);
         onError(msg);
-
-        eventSource.close();
-      });
+      }
+    })();
 
     return () => {
       controller.abort();
-      eventSource.close();
-
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
@@ -255,7 +246,6 @@ export default function KSeFSendModal({
   const formatTime = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
     const rest = seconds % 60;
-
     return minutes > 0 ? `${minutes}m ${rest}s` : `${rest}s`;
   };
 
