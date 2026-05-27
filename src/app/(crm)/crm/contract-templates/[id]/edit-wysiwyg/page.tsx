@@ -41,6 +41,7 @@ export default function EditTemplateWYSIWYGPage() {
   const [selectedFooter, setSelectedFooter] = useState<'default' | 'minimal' | 'none'>('default');
   const [selectedFooterTemplateId, setSelectedFooterTemplateId] = useState<string | null>(null);
   const [footerTemplates, setFooterTemplates] = useState<any[]>([]);
+  const [brandLogos, setBrandLogos] = useState<Array<{ url: string; label: string; companyName: string }>>([]);
   const [showFooterEditor, setShowFooterEditor] = useState(false);
   const [footerLogoScale, setFooterLogoScale] = useState(80);
   const [footerContent, setFooterContent] = useState({
@@ -66,6 +67,7 @@ export default function EditTemplateWYSIWYGPage() {
   useEffect(() => {
     fetchTemplate();
     fetchFooterTemplates();
+    fetchBrandLogos();
   }, [templateId]);
 
   useEffect(() => {
@@ -274,6 +276,51 @@ export default function EditTemplateWYSIWYGPage() {
       setFooterTemplates(data || []);
     } catch (err: any) {
       console.error('Error fetching footer templates:', err);
+    }
+  };
+
+  const fetchBrandLogos = async () => {
+    try {
+      const { data: companies } = await supabase
+        .from('my_companies')
+        .select('id, name, logo_url')
+        .eq('is_active', true)
+        .order('is_default', { ascending: false });
+
+      const { data: logos } = await supabase
+        .from('company_brandbook_logos')
+        .select('url, label, variant, company_id')
+        .order('order_index');
+
+      const result: Array<{ url: string; label: string; companyName: string }> = [];
+
+      (companies || []).forEach((company: any) => {
+        const companyLogos = (logos || []).filter((l: any) => l.company_id === company.id);
+
+        if (companyLogos.length > 0) {
+          companyLogos.forEach((logo: any) => {
+            result.push({
+              url: logo.url,
+              label: logo.label || logo.variant || 'Logo',
+              companyName: company.name,
+            });
+          });
+        } else if (company.logo_url) {
+          result.push({
+            url: company.logo_url,
+            label: 'Logo domyslne',
+            companyName: company.name,
+          });
+        }
+      });
+
+      setBrandLogos(result);
+
+      if (result.length > 0 && selectedLogo === '/erulers_logo_vect.png') {
+        setSelectedLogo(result[0].url);
+      }
+    } catch (err: any) {
+      console.error('Error fetching brand logos:', err);
     }
   };
 
@@ -927,13 +974,22 @@ export default function EditTemplateWYSIWYGPage() {
               <select
                 value={selectedLogo}
                 onChange={(e) => setSelectedLogo(e.target.value)}
-                className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1 text-sm text-[#e5e4e2]"
+                className="max-w-[220px] rounded border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1 text-sm text-[#e5e4e2]"
               >
-                <option value="/erulers_logo_vect.png">EVENT RULERS (główne)</option>
-                <option value="/logo.png">Mavinci (pełne)</option>
-                <option value="/logo mavinci-simple.svg">Mavinci (simple)</option>
-                <option value="/signature.png">Mavinci Signature (kolorowe)</option>
-                <option value="/shape-mavinci-black.svg">Mavinci Shape (czarne)</option>
+                {brandLogos.length > 0 ? (
+                  brandLogos.map((logo, idx) => (
+                    <option key={`brand-${idx}`} value={logo.url}>
+                      {logo.companyName} - {logo.label}
+                    </option>
+                  ))
+                ) : (
+                  <option value="" disabled>Brak logotypow w brandbooku</option>
+                )}
+                {selectedLogo && !brandLogos.some((l) => l.url === selectedLogo) && (
+                  <option value={selectedLogo}>
+                    {selectedLogo.split('/').pop()} (niestandardowe)
+                  </option>
+                )}
               </select>
             </div>
 
@@ -1308,17 +1364,30 @@ export default function EditTemplateWYSIWYGPage() {
                 />
               </div>
               <div className="md:col-span-2 lg:col-span-3">
-                <label className="mb-1 block text-xs text-[#e5e4e2]/60">URL logo</label>
+                <label className="mb-1 block text-xs text-[#e5e4e2]/60">Logo stopki</label>
                 <div className="flex gap-2">
-                  <input
-                    type="text"
+                  <select
                     value={footerContent.logoUrl}
                     onChange={(e) =>
                       setFooterContent({ ...footerContent, logoUrl: e.target.value })
                     }
                     className="flex-1 rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-sm text-[#e5e4e2]"
-                    placeholder="/erulers_logo_vect.png"
-                  />
+                  >
+                    {brandLogos.length > 0 ? (
+                      brandLogos.map((logo, idx) => (
+                        <option key={`footer-brand-${idx}`} value={logo.url}>
+                          {logo.companyName} - {logo.label}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="" disabled>Brak logotypow w brandbooku</option>
+                    )}
+                    {footerContent.logoUrl && !brandLogos.some((l) => l.url === footerContent.logoUrl) && (
+                      <option value={footerContent.logoUrl}>
+                        {footerContent.logoUrl} (niestandardowe)
+                      </option>
+                    )}
+                  </select>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-[#e5e4e2]/60">Skala:</span>
                     <input
