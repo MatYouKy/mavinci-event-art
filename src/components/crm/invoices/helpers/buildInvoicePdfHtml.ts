@@ -122,7 +122,7 @@ const isCash = paymentMethod === 'gotówka' || paymentMethod === 'gotowka' || pa
 
 const isCorrectiveInvoice = data.invoiceType === 'corrective';
 const label = isCorrectiveInvoice
-  ? 'Kwota korekty:'
+  ? (data.totalGross < 0 ? 'Razem do zwrotu:' : 'Do zapłaty:')
   : isCash ? 'Zapłacono:' : 'Do zapłaty:';
 
 const isFinalInvoice =
@@ -130,7 +130,7 @@ const isFinalInvoice =
 
   const amountToPay = isFinalInvoice && data.settlementSummary
   ? data.settlementSummary.remainingGross
-  : data.totalGross;
+  : isCorrectiveInvoice ? Math.abs(data.totalGross) : data.totalGross;
 
   const finalSettlementHtml =
   isFinalInvoice && data.settlementSummary
@@ -587,15 +587,40 @@ ${!data.buyerIsPrivatePerson ? '<div class="preview-banner">Wizualizacja</div>' 
     </thead>
     <tbody>
       ${correctiveItemsHtml}
-      <tr>
-        <td colspan="6" class="right strong">Kwota korekty</td>
-        <td class="right strong">${formatMoney(data.totalNet)}</td>
-        <td></td>
-        <td class="right strong">${formatMoney(data.totalVat)}</td>
-        <td class="right strong">${formatMoney(data.totalGross)}</td>
-      </tr>
     </tbody>
   </table>
+  ${(() => {
+    const cItems = correctiveItems!;
+    const tBeforeNet = cItems.reduce((s, i) => s + Number(i.before_quantity ?? 0) * Number(i.before_price_net ?? 0), 0);
+    const tAfterNet = cItems.reduce((s, i) => s + Number(i.after_quantity ?? i.before_quantity ?? 0) * Number(i.after_price_net ?? i.before_price_net ?? 0), 0);
+    const tBeforeVat = cItems.reduce((s, i) => s + Math.round(Number(i.before_quantity ?? 0) * Number(i.before_price_net ?? 0) * i.vat_rate) / 100, 0);
+    const tAfterVat = cItems.reduce((s, i) => s + Math.round(Number(i.after_quantity ?? i.before_quantity ?? 0) * Number(i.after_price_net ?? i.before_price_net ?? 0) * i.vat_rate) / 100, 0);
+    const tBeforeGross = tBeforeNet + tBeforeVat;
+    const tAfterGross = tAfterNet + tAfterVat;
+    return `
+    <table style="margin-left: auto; margin-top: 8px; width: auto; font-size: 11px;">
+      <tbody>
+        <tr>
+          <td class="right strong" style="padding: 4px 10px;">Przed korektą:</td>
+          <td class="right" style="padding: 4px 10px;">${formatMoney(tBeforeNet)}</td>
+          <td class="right" style="padding: 4px 10px;">${formatMoney(tBeforeVat)}</td>
+          <td class="right" style="padding: 4px 10px;">${formatMoney(tBeforeGross)}</td>
+        </tr>
+        <tr>
+          <td class="right strong" style="padding: 4px 10px;">Korekta:</td>
+          <td class="right" style="padding: 4px 10px;">${formatMoney(data.totalNet)}</td>
+          <td class="right" style="padding: 4px 10px;">${formatMoney(data.totalVat)}</td>
+          <td class="right" style="padding: 4px 10px;">${formatMoney(data.totalGross)}</td>
+        </tr>
+        <tr style="font-weight: 700;">
+          <td class="right strong" style="padding: 4px 10px;">Po korekcie:</td>
+          <td class="right" style="padding: 4px 10px;">${formatMoney(tAfterNet)}</td>
+          <td class="right" style="padding: 4px 10px;">${formatMoney(tAfterVat)}</td>
+          <td class="right" style="padding: 4px 10px;">${formatMoney(tAfterGross)}</td>
+        </tr>
+      </tbody>
+    </table>`;
+  })()}
   ` : `
   <table>
     <thead>

@@ -1209,63 +1209,141 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
             {invoice.invoice_type === 'corrective' && items.some((i) => i.before_quantity != null) ? (
               <div className="mb-8">
-                {items.map((item) => {
-                  const beforeNet = (item.before_quantity ?? 0) * (item.before_price_net ?? 0);
-                  const afterNet = (item.after_quantity ?? item.before_quantity ?? 0) * (item.after_price_net ?? item.before_price_net ?? 0);
-                  const beforeVat = Math.round(beforeNet * item.vat_rate) / 100;
-                  const afterVat = Math.round(afterNet * item.vat_rate) / 100;
+                {invoice.corrected_invoice_number && (
+                  <div className="mb-4 text-center text-sm">
+                    Dotyczy: {relatedData.relatedInvoice?.invoice_type === 'final' ? 'Faktura koncowa' : 'Faktura'}{' '}
+                    {invoice.corrected_invoice_number} z dnia:{' '}
+                    {invoice.corrected_invoice_issue_date
+                      ? new Date(invoice.corrected_invoice_issue_date).toLocaleDateString('pl-PL')
+                      : '-'}
+                  </div>
+                )}
+                <table className="mb-4 w-full text-sm">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="border border-gray-300 px-1.5 py-1 text-left">Lp.</th>
+                      <th className="border border-gray-300 px-1.5 py-1 text-left">Nazwa towaru lub uslugi</th>
+                      <th className="border border-gray-300 px-1.5 py-1">Jm.</th>
+                      <th className="border border-gray-300 px-1.5 py-1">Ilosc</th>
+                      <th className="border border-gray-300 px-1.5 py-1">Cena netto</th>
+                      <th className="border border-gray-300 px-1.5 py-1">Wartosc netto</th>
+                      <th className="border border-gray-300 px-1.5 py-1">Stawka VAT</th>
+                      <th className="border border-gray-300 px-1.5 py-1">Kwota VAT</th>
+                      <th className="border border-gray-300 px-1.5 py-1">Wartosc brutto</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((item) => {
+                      const beforeQty = item.before_quantity ?? 0;
+                      const beforePrice = item.before_price_net ?? 0;
+                      const afterQty = item.after_quantity ?? beforeQty;
+                      const afterPrice = item.after_price_net ?? beforePrice;
+                      const beforeNet = beforeQty * beforePrice;
+                      const afterNet = afterQty * afterPrice;
+                      const beforeVat = Math.round(beforeNet * item.vat_rate) / 100;
+                      const afterVat = Math.round(afterNet * item.vat_rate) / 100;
+                      const beforeGross = beforeNet + beforeVat;
+                      const afterGross = afterNet + afterVat;
+                      return (
+                        <tr key={item.id} className="group">
+                          <td className="border border-gray-300 px-1.5 py-1 align-top" rowSpan={3}>
+                            {item.position_number}
+                          </td>
+                          <td colSpan={8} className="border border-gray-300 p-0">
+                            <table className="w-full">
+                              <tbody>
+                                <tr>
+                                  <td className="border-b border-gray-200 px-1.5 py-1 text-left">
+                                    <span className="text-xs text-gray-500">Przed korektą:</span><br />
+                                    {item.name}
+                                  </td>
+                                  <td className="w-[50px] border-b border-gray-200 px-1.5 py-1 text-center">{item.unit}</td>
+                                  <td className="w-[60px] border-b border-gray-200 px-1.5 py-1 text-right">{beforeQty}</td>
+                                  <td className="w-[80px] border-b border-gray-200 px-1.5 py-1 text-right">{beforePrice.toFixed(2)}</td>
+                                  <td className="w-[90px] border-b border-gray-200 px-1.5 py-1 text-right">{beforeNet.toFixed(2)}</td>
+                                  <td className="w-[50px] border-b border-gray-200 px-1.5 py-1 text-center">{item.vat_rate}%</td>
+                                  <td className="w-[80px] border-b border-gray-200 px-1.5 py-1 text-right">{beforeVat.toFixed(2)}</td>
+                                  <td className="w-[90px] border-b border-gray-200 px-1.5 py-1 text-right">{beforeGross.toFixed(2)}</td>
+                                </tr>
+                                <tr>
+                                  <td className="border-b border-gray-200 px-1.5 py-1 text-left">
+                                    <span className="text-xs text-gray-500">Po korekcie:</span><br />
+                                    {item.name}
+                                  </td>
+                                  <td className="border-b border-gray-200 px-1.5 py-1 text-center">{item.unit}</td>
+                                  <td className="border-b border-gray-200 px-1.5 py-1 text-right">{afterQty}</td>
+                                  <td className="border-b border-gray-200 px-1.5 py-1 text-right">{afterPrice.toFixed(2)}</td>
+                                  <td className="border-b border-gray-200 px-1.5 py-1 text-right">{afterNet.toFixed(2)}</td>
+                                  <td className="border-b border-gray-200 px-1.5 py-1 text-center">{item.vat_rate}%</td>
+                                  <td className="border-b border-gray-200 px-1.5 py-1 text-right">{afterVat.toFixed(2)}</td>
+                                  <td className="border-b border-gray-200 px-1.5 py-1 text-right">{afterGross.toFixed(2)}</td>
+                                </tr>
+                                <tr className="bg-gray-50 font-medium">
+                                  <td className="px-1.5 py-1 text-left">
+                                    <span className="text-xs">Korekta</span>
+                                  </td>
+                                  <td className="px-1.5 py-1 text-center"></td>
+                                  <td className="px-1.5 py-1 text-right">{(afterQty - beforeQty) !== 0 ? (afterQty - beforeQty) : ''}</td>
+                                  <td className="px-1.5 py-1 text-right">{(afterPrice - beforePrice) !== 0 ? (afterPrice - beforePrice).toFixed(2) : ''}</td>
+                                  <td className="px-1.5 py-1 text-right">{item.value_net.toFixed(2)}</td>
+                                  <td className="px-1.5 py-1 text-center">{item.vat_rate}%</td>
+                                  <td className="px-1.5 py-1 text-right">{item.vat_amount.toFixed(2)}</td>
+                                  <td className="px-1.5 py-1 text-right">{item.value_gross.toFixed(2)}</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+
+                {(() => {
+                  const totalBeforeNet = items.reduce((sum, i) => sum + (i.before_quantity ?? 0) * (i.before_price_net ?? 0), 0);
+                  const totalAfterNet = items.reduce((sum, i) => {
+                    const aq = i.after_quantity ?? i.before_quantity ?? 0;
+                    const ap = i.after_price_net ?? i.before_price_net ?? 0;
+                    return sum + aq * ap;
+                  }, 0);
+                  const totalBeforeVat = items.reduce((sum, i) => sum + Math.round((i.before_quantity ?? 0) * (i.before_price_net ?? 0) * i.vat_rate) / 100, 0);
+                  const totalAfterVat = items.reduce((sum, i) => {
+                    const aq = i.after_quantity ?? i.before_quantity ?? 0;
+                    const ap = i.after_price_net ?? i.before_price_net ?? 0;
+                    return sum + Math.round(aq * ap * i.vat_rate) / 100;
+                  }, 0);
+                  const totalBeforeGross = totalBeforeNet + totalBeforeVat;
+                  const totalAfterGross = totalAfterNet + totalAfterVat;
                   return (
-                    <div key={item.id} className="mb-3 border border-gray-300 p-2 text-sm">
-                      <div className="mb-2 font-medium">
-                        {item.position_number}. {item.name} ({item.unit}, VAT {item.vat_rate}%)
-                      </div>
-                      <table className="w-full text-xs">
-                        <thead className="bg-gray-100">
-                          <tr>
-                            <th className="border border-gray-200 px-1.5 py-1"></th>
-                            <th className="border border-gray-200 px-1.5 py-1">Ilosc</th>
-                            <th className="border border-gray-200 px-1.5 py-1">Cena netto</th>
-                            <th className="border border-gray-200 px-1.5 py-1">Wartosc netto</th>
-                            <th className="border border-gray-200 px-1.5 py-1">Kwota VAT</th>
-                            <th className="border border-gray-200 px-1.5 py-1">Wartosc brutto</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr>
-                            <td className="border border-gray-200 px-1.5 py-1 font-medium">Przed</td>
-                            <td className="border border-gray-200 px-1.5 py-1 text-right">{item.before_quantity ?? 0}</td>
-                            <td className="border border-gray-200 px-1.5 py-1 text-right">{(item.before_price_net ?? 0).toFixed(2)}</td>
-                            <td className="border border-gray-200 px-1.5 py-1 text-right">{beforeNet.toFixed(2)}</td>
-                            <td className="border border-gray-200 px-1.5 py-1 text-right">{beforeVat.toFixed(2)}</td>
-                            <td className="border border-gray-200 px-1.5 py-1 text-right">{(beforeNet + beforeVat).toFixed(2)}</td>
-                          </tr>
-                          <tr>
-                            <td className="border border-gray-200 px-1.5 py-1 font-medium">Po</td>
-                            <td className="border border-gray-200 px-1.5 py-1 text-right">{item.after_quantity ?? item.before_quantity ?? 0}</td>
-                            <td className="border border-gray-200 px-1.5 py-1 text-right">{(item.after_price_net ?? item.before_price_net ?? 0).toFixed(2)}</td>
-                            <td className="border border-gray-200 px-1.5 py-1 text-right">{afterNet.toFixed(2)}</td>
-                            <td className="border border-gray-200 px-1.5 py-1 text-right">{afterVat.toFixed(2)}</td>
-                            <td className="border border-gray-200 px-1.5 py-1 text-right">{(afterNet + afterVat).toFixed(2)}</td>
-                          </tr>
-                          <tr className="bg-gray-50 font-medium">
-                            <td className="border border-gray-200 px-1.5 py-1 font-medium">Roznica</td>
-                            <td className="border border-gray-200 px-1.5 py-1 text-right">{((item.after_quantity ?? item.before_quantity ?? 0) - (item.before_quantity ?? 0)).toFixed(2)}</td>
-                            <td className="border border-gray-200 px-1.5 py-1 text-right">{((item.after_price_net ?? item.before_price_net ?? 0) - (item.before_price_net ?? 0)).toFixed(2)}</td>
-                            <td className="border border-gray-200 px-1.5 py-1 text-right">{item.value_net.toFixed(2)}</td>
-                            <td className="border border-gray-200 px-1.5 py-1 text-right">{item.vat_amount.toFixed(2)}</td>
-                            <td className="border border-gray-200 px-1.5 py-1 text-right">{item.value_gross.toFixed(2)}</td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
+                    <table className="mb-4 ml-auto w-auto text-sm">
+                      <tbody>
+                        <tr className="font-medium">
+                          <td className="border border-gray-300 bg-gray-100 px-3 py-1 text-right">Przed korektą:</td>
+                          <td className="border border-gray-300 px-3 py-1 text-right">{totalBeforeNet.toFixed(2)}</td>
+                          <td className="border border-gray-300 px-3 py-1 text-right">{totalBeforeVat.toFixed(2)}</td>
+                          <td className="border border-gray-300 px-3 py-1 text-right">{totalBeforeGross.toFixed(2)}</td>
+                        </tr>
+                        <tr className="font-medium">
+                          <td className="border border-gray-300 bg-gray-100 px-3 py-1 text-right">Korekta:</td>
+                          <td className="border border-gray-300 px-3 py-1 text-right">{invoice.total_net.toFixed(2)}</td>
+                          <td className="border border-gray-300 px-3 py-1 text-right">{invoice.total_vat.toFixed(2)}</td>
+                          <td className="border border-gray-300 px-3 py-1 text-right">{invoice.total_gross.toFixed(2)}</td>
+                        </tr>
+                        <tr className="font-bold">
+                          <td className="border border-gray-300 bg-gray-100 px-3 py-1 text-right">Po korekcie:</td>
+                          <td className="border border-gray-300 px-3 py-1 text-right">{totalAfterNet.toFixed(2)}</td>
+                          <td className="border border-gray-300 px-3 py-1 text-right">{totalAfterVat.toFixed(2)}</td>
+                          <td className="border border-gray-300 px-3 py-1 text-right">{totalAfterGross.toFixed(2)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
                   );
-                })}
-                <div className="border border-gray-300 bg-gray-100 p-2 text-sm font-bold">
+                })()}
+
+                <div className="border border-gray-300 bg-gray-100 p-3 text-sm font-bold">
                   <div className="flex justify-between">
-                    <span>Kwota korekty:</span>
-                    <span>
-                      Netto: {invoice.total_net.toFixed(2)} zl | VAT: {invoice.total_vat.toFixed(2)} zl | Brutto: {invoice.total_gross.toFixed(2)} zl
-                    </span>
+                    <span>{invoice.total_gross < 0 ? 'Razem do zwrotu:' : 'Do zaplaty:'}</span>
+                    <span>{Math.abs(invoice.total_gross).toFixed(2)} PLN</span>
                   </div>
                 </div>
               </div>
