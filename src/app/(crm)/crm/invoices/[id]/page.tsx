@@ -68,6 +68,7 @@ interface Invoice {
   pdf_generated_at: string | null;
   event_id: string | null;
   organization_id: string | null;
+  buyer_contact_id: string | null;
   related_invoice_id: string | null;
   is_proforma: boolean;
   proforma_converted_to_invoice_id: string | null;
@@ -472,6 +473,8 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           fileName: `Faktura_${invoice.invoice_number}.pdf`,
           invoiceId: invoice.id,
           eventId: resolvedEventId,
+          organizationId: invoice.organization_id || null,
+          buyerContactId: invoice.buyer_contact_id || null,
           createdBy: employee?.id ?? null,
           previousPdfPath: pdfPath,
         }),
@@ -495,7 +498,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
         );
         showSnackbar('PDF wygenerowany i zapisany', 'success');
       } else {
-        showSnackbar('PDF wygenerowany (brak powiazanego eventu do zapisu)', 'info');
+        showSnackbar('PDF wygenerowany', 'success');
       }
     } catch (err: any) {
       console.error('Error generating PDF:', err);
