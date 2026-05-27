@@ -50,6 +50,7 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [customSoundUrl, setCustomSoundUrl] = useState<string | null>(null);
   const soundEnabledRef = useRef(true);
+  const customSoundUrlRef = useRef<string | null>(null);
   const prevUnreadCountRef = useRef<number>(0);
   const readyForSoundRef = useRef(false);
   const initialLoadDoneRef = useRef(false);
@@ -128,6 +129,10 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
   }, [soundEnabled]);
 
   useEffect(() => {
+    customSoundUrlRef.current = customSoundUrl;
+  }, [customSoundUrl]);
+
+  useEffect(() => {
     if (!initialLoadDoneRef.current) {
       initialLoadDoneRef.current = true;
       prevUnreadCountRef.current = unreadCount;
@@ -168,8 +173,8 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
 
   const playNotificationSound = () => {
     try {
-      if (customSoundUrl) {
-        const audio = new Audio(customSoundUrl);
+      if (customSoundUrlRef.current) {
+        const audio = new Audio(customSoundUrlRef.current);
         audio.volume = 0.5;
         audio.play().catch(() => {});
         return;
