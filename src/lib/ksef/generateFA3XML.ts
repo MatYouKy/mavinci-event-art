@@ -373,8 +373,8 @@ function buildInvoiceItems(invoice: any): FA3PreparedInvoice['invoice']['items']
     const hasBefore = item?.before_quantity != null && item?.before_price_net != null;
 
     if (isCorrectiveInvoice && hasBefore) {
-      const beforeQty = Number(item.before_quantity || 0);
-      const beforePriceNet = Number(item.before_price_net || 0);
+      const beforeQty = Number(item.before_quantity ?? 0);
+      const beforePriceNet = Number(item.before_price_net ?? 0);
       const beforeValueNet = Number(item.before_value_net || beforeQty * beforePriceNet);
       const beforeVatAmount = Number(item.before_vat_amount || Math.round(beforeValueNet * vatRate) / 100);
       const beforeValueGross = Number(item.before_value_gross || beforeValueNet + beforeVatAmount);
@@ -394,9 +394,11 @@ function buildInvoiceItems(invoice: any): FA3PreparedInvoice['invoice']['items']
 
       const afterQty = Number(item.after_quantity ?? item.quantity ?? beforeQty);
       const afterPriceNet = Number(item.after_price_net ?? item.price_net ?? beforePriceNet);
-      const afterValueNet = Number(item.after_value_net || afterQty * afterPriceNet);
-      const afterVatAmount = Number(item.after_vat_amount || Math.round(afterValueNet * vatRate) / 100);
-      const afterValueGross = Number(item.after_value_gross || afterValueNet + afterVatAmount);
+      const afterValueNet = Number(item.after_value_net ?? afterQty * afterPriceNet);
+      const afterVatAmount = Number(
+        item.after_vat_amount ?? Math.round(afterValueNet * vatRate) / 100,
+      );
+      const afterValueGross = Number(item.after_value_gross ?? afterValueNet + afterVatAmount);
 
       items.push({
         lineNumber,

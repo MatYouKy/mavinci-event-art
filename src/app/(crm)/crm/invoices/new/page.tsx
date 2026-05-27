@@ -11,6 +11,13 @@ import AddBuyerModal from './components/AddBuyerModal';
 import InvoiceNumberInput from './components/InvoiceNumberInput';
 import { MyCompany } from '../../settings/my-companies/page';
 
+interface EventOption {
+  id: string;
+  name: string;
+  event_date: string | null;
+  organization_id: string | null;
+}
+
 interface IndividualContact {
   id: string;
   first_name: string | null;
@@ -45,10 +52,18 @@ interface InvoiceItem {
   quantity: number;
   price_net: number;
   vat_rate: number;
+
   before_quantity?: number;
   before_price_net?: number;
+  before_value_net?: number;
+  before_vat_amount?: number;
+  before_value_gross?: number;
+
   after_quantity?: number;
   after_price_net?: number;
+  after_value_net?: number;
+  after_vat_amount?: number;
+  after_value_gross?: number;
 }
 
 export default function NewInvoicePage() {
@@ -86,7 +101,16 @@ export default function NewInvoicePage() {
   );
   const [selectedOrgId, setSelectedOrgId] = useState<string>('');
   const [items, setItems] = useState<InvoiceItem[]>([
-    { position_number: 1, name: '', unit: 'szt.', quantity: 1, price_net: 0, vat_rate: 23 },
+    {
+      position_number: 1,
+      name: '',
+      unit: 'szt.',
+      quantity: 1,
+      price_net: 0,
+      vat_rate: 23,
+      before_value_net: 0,
+      before_vat_amount: 0,
+    },
   ]);
   const [simplifiedInvoice, setSimplifiedInvoice] = useState(false);
   const [simplifiedServiceName, setSimplifiedServiceName] = useState('Obsługa muzyczna');
@@ -107,6 +131,9 @@ export default function NewInvoicePage() {
   const [individualContacts, setIndividualContacts] = useState<IndividualContact[]>([]);
   const [selectedIndividualId, setSelectedIndividualId] = useState('');
 
+  const [selectedEventId, setSelectedEventId] = useState<string>(eventId || '');
+  const [organizationEvents, setOrganizationEvents] = useState<EventOption[]>([]);
+
   const [privateBuyer, setPrivateBuyer] = useState({
     firstName: '',
     lastName: '',
@@ -121,6 +148,31 @@ export default function NewInvoicePage() {
     if (employeeLoading) return;
     fetchData();
   }, [eventId, employeeLoading]);
+
+  useEffect(() => {
+    if (!selectedOrgId) {
+      setOrganizationEvents([]);
+      setSelectedEventId(eventId || '');
+      return;
+    }
+
+    fetchOrganizationEvents(selectedOrgId);
+  }, [selectedOrgId]);
+
+  const fetchOrganizationEvents = async (organizationId: string) => {
+    const { data, error } = await supabase
+      .from('events')
+      .select('id, name, event_date, organization_id')
+      .eq('organization_id', organizationId)
+      .order('event_date', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching organization events:', error);
+      return;
+    }
+
+    setOrganizationEvents(data || []);
+  };
 
   useEffect(() => {
     if (
@@ -157,6 +209,7 @@ export default function NewInvoicePage() {
       setCorrectedInvoiceIssueDate(origInvoice.issue_date || '');
       setSelectedOrgId(origInvoice.organization_id || '');
       setSelectedCompanyId(origInvoice.my_company_id || '');
+      setSelectedEventId(origInvoice.event_id || '');
 
       if (origInvoice.sale_date) {
         setSaleDate(origInvoice.sale_date.split('T')[0]);
@@ -182,18 +235,36 @@ export default function NewInvoicePage() {
           (a: any, b: any) => (a.position_number ?? 0) - (b.position_number ?? 0),
         );
         setItems(
-          sortedItems.map((item: any) => ({
-            position_number: item.position_number,
-            name: item.name,
-            unit: item.unit,
-            quantity: Number(item.quantity),
-            price_net: Number(item.price_net),
-            vat_rate: item.vat_rate,
-            before_quantity: Number(item.quantity),
-            before_price_net: Number(item.price_net),
-            after_quantity: Number(item.quantity),
-            after_price_net: Number(item.price_net),
-          })),
+          sortedItems.map((item: any) => {
+            const beforeQuantity = Number(item.quantity ?? 0);
+            const beforePriceNet = Number(item.price_net ?? 0);
+            const beforeValueNet = Number(item.value_net ?? beforeQuantity * beforePriceNet);
+            const beforeVatAmount = Number(
+              item.vat_amount ?? Math.round(beforeValueNet * Number(item.vat_rate ?? 0)) / 100,
+            );
+            const beforeValueGross = Number(item.value_gross ?? beforeValueNet + beforeVatAmount);
+
+            return {
+              position_number: item.position_number,
+              name: item.name,
+              unit: item.unit,
+              quantity: beforeQuantity,
+              price_net: -beforePriceNet,
+              vat_rate: item.vat_rate,
+
+              before_quantity: beforeQuantity,
+              before_price_net: beforePriceNet,
+              before_value_net: beforeValueNet,
+              before_vat_amount: beforeVatAmount,
+              before_value_gross: beforeValueGross,
+
+              after_quantity: beforeQuantity,
+              after_price_net: beforePriceNet,
+              after_value_net: beforeValueNet,
+              after_vat_amount: beforeVatAmount,
+              after_value_gross: beforeValueGross,
+            };
+          }),
         );
       }
     }
@@ -325,6 +396,7 @@ export default function NewInvoicePage() {
       }
 
       if (eventId) {
+        setSelectedEventId(eventId);
         const [eventRes, financialInfoRes] = await Promise.all([
           supabase
             .from('events')
@@ -388,6 +460,9 @@ export default function NewInvoicePage() {
                 quantity: oi.quantity ?? 1,
                 price_net: Number(oi.total ?? 0) / Math.max(oi.quantity ?? 1, 1),
                 vat_rate: vatRate,
+                before_value_net: 0,
+                before_value_gross: 0,
+                before_vat_amount: 0,
               })),
             );
 
@@ -415,6 +490,8 @@ export default function NewInvoicePage() {
               quantity: 1,
               price_net: 0,
               vat_rate: 23,
+              before_value_net: 0,
+              before_vat_amount: 0,
             },
           ]);
         }
@@ -453,17 +530,23 @@ export default function NewInvoicePage() {
   };
 
   const calculateItemValues = (item: InvoiceItem) => {
-    if (invoiceType === 'corrective' && item.before_quantity != null && item.before_price_net != null) {
-      const beforeNet = item.before_quantity * item.before_price_net;
-      const afterNet = (item.after_quantity ?? item.before_quantity) * (item.after_price_net ?? item.before_price_net);
-      const diffNet = afterNet - beforeNet;
-      const diffVat = Math.round(diffNet * item.vat_rate) / 100;
-      const diffGross = diffNet + diffVat;
-      return { valueNet: diffNet, vatAmount: diffVat, valueGross: diffGross };
+    const vatRate = Number(item.vat_rate ?? 0);
+
+    if (invoiceType === 'corrective') {
+      const correctionQty = Math.abs(Number(item.quantity ?? 0));
+      const correctionPrice = -Math.abs(Number(item.price_net ?? 0));
+
+      const valueNet = Number((correctionQty * correctionPrice).toFixed(2));
+      const vatAmount = Number((Math.round(valueNet * vatRate) / 100).toFixed(2));
+      const valueGross = Number((valueNet + vatAmount).toFixed(2));
+
+      return { valueNet, vatAmount, valueGross };
     }
-    const valueNet = item.quantity * item.price_net;
-    const vatAmount = Math.round(valueNet * item.vat_rate) / 100;
-    const valueGross = valueNet + vatAmount;
+
+    const valueNet = Number((Number(item.quantity ?? 0) * Number(item.price_net ?? 0)).toFixed(2));
+    const vatAmount = Number((Math.round(valueNet * vatRate) / 100).toFixed(2));
+    const valueGross = Number((valueNet + vatAmount).toFixed(2));
+
     return { valueNet, vatAmount, valueGross };
   };
 
@@ -492,6 +575,9 @@ export default function NewInvoicePage() {
         quantity: 1,
         price_net: 0,
         vat_rate: 23,
+        before_value_net: 0,
+        after_value_net: 0,
+        before_vat_amount: 0,
       },
     ]);
   };
@@ -528,6 +614,8 @@ export default function NewInvoicePage() {
         quantity: 1,
         price_net: Math.round(totalNet * 100) / 100,
         vat_rate: 23,
+        before_value_net: 0,
+        after_value_net: 0,
       },
     ];
   };
@@ -706,7 +794,7 @@ export default function NewInvoicePage() {
         issue_date: issueDate,
         sale_date: saleDate,
         payment_due_date: calculatePaymentDueDate(),
-        event_id: eventId || null,
+        event_id: selectedEventId || null,
         organization_id: buyerIsPrivatePerson ? null : selectedOrgId,
 
         buyer_name: buyerIsPrivatePerson
@@ -761,28 +849,61 @@ export default function NewInvoicePage() {
       if (invoiceError) throw invoiceError;
 
       const finalItems = getItemsForInvoice();
-
       const itemsToInsert = finalItems.map((item) => {
-        if (invoiceType === 'corrective' && item.before_quantity != null) {
-          const afterQty = item.after_quantity ?? item.before_quantity;
-          const afterPrice = item.after_price_net ?? item.before_price_net ?? 0;
+        if (invoiceType === 'corrective') {
+          const vatRate = Number(item.vat_rate ?? 0);
+
+          const beforeQuantity = Number(item.before_quantity ?? item.quantity ?? 0);
+          const beforePriceNet = Number(item.before_price_net ?? 0);
+          const beforeValueNet = Number((beforeQuantity * beforePriceNet).toFixed(2));
+          const beforeVatAmount = Number((Math.round(beforeValueNet * vatRate) / 100).toFixed(2));
+          const beforeValueGross = Number((beforeValueNet + beforeVatAmount).toFixed(2));
+
+          const correctionQuantity = Number(item.quantity ?? 0); // np. -1
+          const correctionPriceNet = Math.abs(Number(item.price_net ?? 0)); // np. 16260.16
+
+          const deltaNet = Number((correctionQuantity * correctionPriceNet).toFixed(2));
+          const deltaVat = Number((Math.round(deltaNet * vatRate) / 100).toFixed(2));
+          const deltaGross = Number((deltaNet + deltaVat).toFixed(2));
+
+          const afterQuantity = Number((beforeQuantity + correctionQuantity).toFixed(2));
+          const afterValueNet = Number((beforeValueNet + deltaNet).toFixed(2));
+          const afterVatAmount = Number((beforeVatAmount + deltaVat).toFixed(2));
+          const afterValueGross = Number((beforeValueGross + deltaGross).toFixed(2));
+          const afterPriceNet =
+            afterQuantity !== 0
+              ? Number((afterValueNet / afterQuantity).toFixed(2))
+              : beforePriceNet;
 
           return {
             invoice_id: invoice.id,
             position_number: item.position_number,
             name: item.name,
             unit: item.unit,
-            vat_rate: item.vat_rate,
-            quantity: afterQty,
-            price_net: afterPrice,
-            before_quantity: item.before_quantity,
-            before_price_net: item.before_price_net ?? 0,
-            after_quantity: afterQty,
-            after_price_net: afterPrice,
+
+            quantity: correctionQuantity,
+            price_net: correctionPriceNet,
+            vat_rate: vatRate,
+            value_net: deltaNet,
+            vat_amount: deltaVat,
+            value_gross: deltaGross,
+
+            before_quantity: beforeQuantity,
+            before_price_net: beforePriceNet,
+            before_value_net: beforeValueNet,
+            before_vat_amount: beforeVatAmount,
+            before_value_gross: beforeValueGross,
+
+            after_quantity: afterQuantity,
+            after_price_net: afterPriceNet,
+            after_value_net: afterValueNet,
+            after_vat_amount: afterVatAmount,
+            after_value_gross: afterValueGross,
           };
         }
 
         const { valueNet, vatAmount, valueGross } = calculateItemValues(item);
+
         return {
           invoice_id: invoice.id,
           position_number: item.position_number,
@@ -1212,6 +1333,35 @@ export default function NewInvoicePage() {
                   onAddNew={() => setShowAddBuyerModal(true)}
                 />
               )}
+              {!buyerIsPrivatePerson && selectedOrgId && (
+                <div className="rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-4">
+                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                    Powiązane wydarzenie
+                  </label>
+
+                  <select
+                    value={selectedEventId}
+                    onChange={(e) => setSelectedEventId(e.target.value)}
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
+                  >
+                    <option value="">Brak powiązanego wydarzenia</option>
+
+                    {organizationEvents.map((event) => (
+                      <option key={event.id} value={event.id}>
+                        {event.name}
+                        {event.event_date
+                          ? ` - ${new Date(event.event_date).toLocaleDateString('pl-PL')}`
+                          : ''}
+                      </option>
+                    ))}
+                  </select>
+
+                  <div className="mt-2 text-xs text-[#e5e4e2]/50">
+                    Jeśli wybierzesz wydarzenie, PDF faktury zapisze się również w plikach tego
+                    eventu.
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-6">
@@ -1371,11 +1521,42 @@ export default function NewInvoicePage() {
               <div className="space-y-4">
                 {invoiceType === 'corrective'
                   ? items.map((item, index) => {
-                      const { valueNet, vatAmount, valueGross } = calculateItemValues(item);
-                      const beforeNet = (item.before_quantity ?? 0) * (item.before_price_net ?? 0);
-                      const afterQty = item.after_quantity ?? item.before_quantity ?? 0;
-                      const afterPrice = item.after_price_net ?? item.before_price_net ?? 0;
-                      const afterNet = afterQty * afterPrice;
+                      const vatRate = Number(item.vat_rate ?? 0);
+
+                      const beforeQty = Number(item.before_quantity ?? 0);
+
+                      const beforePrice = Number(item.before_price_net ?? 0);
+
+                      const beforeNet = Number(item.before_value_net ?? beforeQty * beforePrice);
+
+                      const beforeVat = Number(
+                        item.before_vat_amount ?? Math.round(beforeNet * vatRate) / 100,
+                      );
+
+                      const beforeGross = Number(item.before_value_gross ?? beforeNet + beforeVat);
+
+                      /**
+
+         * W formularzu korekty:
+
+         * quantity = ilość pozycji korygowanej, dodatnia wizualnie
+
+         * price_net = cena korekty, domyślnie ujemna
+
+         */
+
+                      const correctionQty = Math.abs(Number(item.quantity ?? beforeQty));
+
+                      const correctionPrice = -Math.abs(Number(item.price_net ?? beforePrice));
+
+                      const correctionNet = Number((correctionQty * correctionPrice).toFixed(2));
+
+                      const correctionVat = Number(
+                        (Math.round(correctionNet * vatRate) / 100).toFixed(2),
+                      );
+
+                      const correctionGross = Number((correctionNet + correctionVat).toFixed(2));
+
                       return (
                         <div
                           key={index}
@@ -1385,32 +1566,40 @@ export default function NewInvoicePage() {
                             <div className="text-sm font-medium text-[#e5e4e2]">
                               {item.position_number}. {item.name}
                             </div>
+
                             <span className="rounded bg-[#1c1f33] px-2 py-0.5 text-xs text-[#e5e4e2]/50">
-                              VAT {item.vat_rate}%
+                              VAT {vatRate}%
                             </span>
                           </div>
 
                           <div className="grid grid-cols-3 gap-4">
                             {/* PRZED */}
+
                             <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]/50 p-3">
                               <div className="mb-2 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/40">
                                 Przed korektą
                               </div>
+
                               <div className="space-y-2">
                                 <div>
                                   <span className="text-xs text-[#e5e4e2]/40">Ilość:</span>
+
                                   <span className="ml-2 text-sm text-[#e5e4e2]/70">
-                                    {item.before_quantity ?? 0} {item.unit}
+                                    {beforeQty} {item.unit}
                                   </span>
                                 </div>
+
                                 <div>
                                   <span className="text-xs text-[#e5e4e2]/40">Cena netto:</span>
+
                                   <span className="ml-2 text-sm text-[#e5e4e2]/70">
-                                    {(item.before_price_net ?? 0).toFixed(2)} zł
+                                    {beforePrice.toFixed(2)} zł
                                   </span>
                                 </div>
+
                                 <div className="border-t border-[#d3bb73]/10 pt-2">
                                   <span className="text-xs text-[#e5e4e2]/40">Wartość netto:</span>
+
                                   <span className="ml-2 text-sm text-[#e5e4e2]/70">
                                     {beforeNet.toFixed(2)} zł
                                   </span>
@@ -1418,80 +1607,117 @@ export default function NewInvoicePage() {
                               </div>
                             </div>
 
-                            {/* PO */}
+                            {/* PO KOREKCIE */}
+
                             <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 p-3">
                               <div className="mb-2 text-xs font-medium uppercase tracking-wider text-orange-400">
                                 Po korekcie
                               </div>
+
                               <div className="space-y-2">
                                 <div>
                                   <label className="mb-0.5 block text-xs text-[#e5e4e2]/40">
                                     Ilość
                                   </label>
+
                                   <input
                                     type="number"
                                     step="0.01"
-                                    value={item.after_quantity ?? item.before_quantity ?? 0}
+                                    value={correctionQty}
                                     onChange={(e) =>
-                                      updateItem(index, 'after_quantity' as any, parseFloat(e.target.value) || 0)
+                                      updateItem(
+                                        index,
+
+                                        'quantity',
+
+                                        Math.abs(Number(e.target.value.replace(',', '.')) || 0),
+                                      )
                                     }
                                     className="w-full rounded border border-orange-500/30 bg-[#1c1f33] px-2 py-1.5 text-sm text-[#e5e4e2] focus:border-orange-500 focus:outline-none"
                                   />
                                 </div>
+
                                 <div>
                                   <label className="mb-0.5 block text-xs text-[#e5e4e2]/40">
                                     Cena netto
                                   </label>
+
                                   <input
                                     type="number"
                                     step="0.01"
-                                    value={item.after_price_net ?? item.before_price_net ?? 0}
+                                    value={correctionPrice}
                                     onChange={(e) =>
-                                      updateItem(index, 'after_price_net' as any, parseFloat(e.target.value) || 0)
+                                      updateItem(
+                                        index,
+
+                                        'price_net',
+
+                                        -Math.abs(Number(e.target.value.replace(',', '.')) || 0),
+                                      )
                                     }
                                     className="w-full rounded border border-orange-500/30 bg-[#1c1f33] px-2 py-1.5 text-sm text-[#e5e4e2] focus:border-orange-500 focus:outline-none"
                                   />
                                 </div>
+
                                 <div className="border-t border-orange-500/10 pt-2">
                                   <span className="text-xs text-[#e5e4e2]/40">Wartość netto:</span>
-                                  <span className="ml-2 text-sm text-[#e5e4e2]">
-                                    {afterNet.toFixed(2)} zł
+
+                                  <span className="ml-2 text-sm text-red-400">
+                                    {correctionNet.toFixed(2)} zł
                                   </span>
                                 </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    updateItem(
+                                      index,
+                                      'quantity',
+                                      Math.abs(Number(item.before_quantity ?? 0)),
+                                    );
+
+                                    updateItem(
+                                      index,
+                                      'price_net',
+                                      -Math.abs(Number(item.before_price_net ?? 0)),
+                                    );
+                                  }}
+                                  className="mt-2 w-full rounded border border-red-500/30 px-2 py-1.5 text-xs text-red-400 transition hover:bg-red-500/10"
+                                >
+                                  Skoryguj pozycję do zera
+                                </button>
                               </div>
                             </div>
 
                             {/* RÓŻNICA */}
+
                             <div className="rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-3">
                               <div className="mb-2 text-xs font-medium uppercase tracking-wider text-[#d3bb73]">
-                                Różnica (korekta)
+                                Różnica / korekta
                               </div>
+
                               <div className="space-y-2">
                                 <div>
                                   <span className="text-xs text-[#e5e4e2]/40">Netto:</span>
-                                  <span
-                                    className={`ml-2 text-sm font-medium ${valueNet < 0 ? 'text-red-400' : valueNet > 0 ? 'text-green-400' : 'text-[#e5e4e2]/50'}`}
-                                  >
-                                    {valueNet >= 0 ? '+' : ''}
-                                    {valueNet.toFixed(2)} zł
+
+                                  <span className="ml-2 text-sm font-medium text-red-400">
+                                    {correctionNet.toFixed(2)} zł
                                   </span>
                                 </div>
+
                                 <div>
                                   <span className="text-xs text-[#e5e4e2]/40">VAT:</span>
-                                  <span
-                                    className={`ml-2 text-sm ${vatAmount < 0 ? 'text-red-400' : vatAmount > 0 ? 'text-green-400' : 'text-[#e5e4e2]/50'}`}
-                                  >
-                                    {vatAmount >= 0 ? '+' : ''}
-                                    {vatAmount.toFixed(2)} zł
+
+                                  <span className="ml-2 text-sm text-red-400">
+                                    {correctionVat.toFixed(2)} zł
                                   </span>
                                 </div>
+
                                 <div className="border-t border-[#d3bb73]/10 pt-2">
                                   <span className="text-xs text-[#e5e4e2]/40">Brutto:</span>
-                                  <span
-                                    className={`ml-2 text-sm font-medium ${valueGross < 0 ? 'text-red-400' : valueGross > 0 ? 'text-green-400' : 'text-[#e5e4e2]/50'}`}
-                                  >
-                                    {valueGross >= 0 ? '+' : ''}
-                                    {valueGross.toFixed(2)} zł
+
+                                  <span className="ml-2 text-sm font-medium text-red-400">
+                                    {correctionGross.toFixed(2)} zł
                                   </span>
                                 </div>
                               </div>
@@ -1601,9 +1827,7 @@ export default function NewInvoicePage() {
                             </div>
                             <div>
                               <span className="text-[#e5e4e2]/40">Kwota VAT:</span>
-                              <span className="ml-2 text-[#e5e4e2]">
-                                {vatAmount.toFixed(2)} zł
-                              </span>
+                              <span className="ml-2 text-[#e5e4e2]">{vatAmount.toFixed(2)} zł</span>
                             </div>
                             <div>
                               <span className="text-[#e5e4e2]/40">Wartość brutto:</span>
@@ -1650,7 +1874,9 @@ export default function NewInvoicePage() {
                     <div className="mb-1 text-sm text-[#e5e4e2]/60">
                       {invoiceType === 'corrective' ? 'Korekta netto' : 'Suma netto'}
                     </div>
-                    <div className={`text-2xl font-light ${invoiceType === 'corrective' ? (totals.totalNet < 0 ? 'text-red-400' : totals.totalNet > 0 ? 'text-green-400' : 'text-[#e5e4e2]') : 'text-[#e5e4e2]'}`}>
+                    <div
+                      className={`text-2xl font-light ${invoiceType === 'corrective' ? (totals.totalNet < 0 ? 'text-red-400' : totals.totalNet > 0 ? 'text-green-400' : 'text-[#e5e4e2]') : 'text-[#e5e4e2]'}`}
+                    >
                       {invoiceType === 'corrective' && totals.totalNet >= 0 ? '+' : ''}
                       {totals.totalNet.toFixed(2)} zł
                     </div>
@@ -1659,7 +1885,9 @@ export default function NewInvoicePage() {
                     <div className="mb-1 text-sm text-[#e5e4e2]/60">
                       {invoiceType === 'corrective' ? 'Korekta VAT' : 'Suma VAT'}
                     </div>
-                    <div className={`text-2xl font-light ${invoiceType === 'corrective' ? (totals.totalVat < 0 ? 'text-red-400' : totals.totalVat > 0 ? 'text-green-400' : 'text-[#e5e4e2]') : 'text-[#e5e4e2]'}`}>
+                    <div
+                      className={`text-2xl font-light ${invoiceType === 'corrective' ? (totals.totalVat < 0 ? 'text-red-400' : totals.totalVat > 0 ? 'text-green-400' : 'text-[#e5e4e2]') : 'text-[#e5e4e2]'}`}
+                    >
                       {invoiceType === 'corrective' && totals.totalVat >= 0 ? '+' : ''}
                       {totals.totalVat.toFixed(2)} zł
                     </div>
@@ -1668,7 +1896,9 @@ export default function NewInvoicePage() {
                     <div className="mb-1 text-sm text-[#e5e4e2]/60">
                       {invoiceType === 'corrective' ? 'Korekta brutto' : 'Suma brutto'}
                     </div>
-                    <div className={`text-2xl font-medium ${invoiceType === 'corrective' ? (totals.totalGross < 0 ? 'text-red-400' : totals.totalGross > 0 ? 'text-green-400' : 'text-[#d3bb73]') : 'text-[#d3bb73]'}`}>
+                    <div
+                      className={`text-2xl font-medium ${invoiceType === 'corrective' ? (totals.totalGross < 0 ? 'text-red-400' : totals.totalGross > 0 ? 'text-green-400' : 'text-[#d3bb73]') : 'text-[#d3bb73]'}`}
+                    >
                       {invoiceType === 'corrective' && totals.totalGross >= 0 ? '+' : ''}
                       {totals.totalGross.toFixed(2)} zł
                     </div>

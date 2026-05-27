@@ -9,6 +9,12 @@ import BuyerSearchInput from '../../new/components/BuyerSearchInput';
 import AddBuyerModal from '../../new/components/AddBuyerModal';
 import { MyCompany } from '../../../settings/my-companies/page';
 
+interface OrganizationEvent {
+  id: string;
+  name: string;
+  event_date: string | null;
+}
+
 interface IndividualContact {
   id: string;
   first_name: string | null;
@@ -82,6 +88,8 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
   const [selectedIndividualId, setSelectedIndividualId] = useState('');
   const [individualSearch, setIndividualSearch] = useState('');
 
+  const [organizationEvents, setOrganizationEvents] = useState<OrganizationEvent[]>([]);
+
   const [privateBuyer, setPrivateBuyer] = useState({
     firstName: '',
     lastName: '',
@@ -102,6 +110,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
   const [correctedInvoiceKsefNumber, setCorrectedInvoiceKsefNumber] = useState('');
   const [correctedInvoiceWasInKsef, setCorrectedInvoiceWasInKsef] = useState(false);
   const [availableInvoices, setAvailableInvoices] = useState<any[]>([]);
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -132,7 +141,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         supabase
           .from('invoices')
           .select(
-            'id, invoice_number, invoice_type, issue_date, total_gross, buyer_name, status, buyer_is_private_person',
+            'id, invoice_number, invoice_type, issue_date, total_gross, buyer_name, status, buyer_is_private_person, event_id',
           )
           .neq('id', params.id)
           .neq('invoice_type', 'corrective')
@@ -169,7 +178,11 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         setIncludeDefaultFooterNote(Boolean(inv.invoice_footer_text));
         setBuyerIsPrivatePerson(inv.buyer_is_private_person ?? false);
         setSelectedIndividualId(inv.buyer_contact_id || '');
-
+        setSelectedEventId(inv.event_id || null);
+        fetchOrganizationEvents(inv.organization_id || null);
+        if (inv.organization_id) {
+          await fetchOrganizationEvents(inv.organization_id);
+        }
         if (inv.buyer_is_private_person) {
           const [firstName = '', ...rest] = String(inv.buyer_name || '').split(' ');
 
@@ -276,6 +289,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
 
   const handleSelectOriginalInvoice = async (invoiceId: string) => {
     setRelatedInvoiceId(invoiceId);
+
     if (!invoiceId) {
       setCorrectedInvoiceNumber('');
       setCorrectedInvoiceIssueDate('');
@@ -295,6 +309,11 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
       setCorrectedInvoiceIssueDate(origInvoice.issue_date || '');
       setSelectedOrgId(origInvoice.organization_id || '');
       setSelectedCompanyId(origInvoice.my_company_id || '');
+      setSelectedEventId(origInvoice.event_id || null);
+
+      if (origInvoice.organization_id) {
+        await fetchOrganizationEvents(origInvoice.organization_id);
+      }
 
       const { data: ksefRecord } = await supabase
         .from('ksef_invoices')
@@ -328,6 +347,28 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         );
       }
     }
+  };
+
+  const fetchOrganizationEvents = async (organizationId?: string | null) => {
+    if (!organizationId) {
+      setOrganizationEvents([]);
+      setSelectedEventId(null);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('events')
+      .select('id, name, event_date')
+      .eq('organization_id', organizationId)
+      .order('event_date', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching organization events:', error);
+      showSnackbar('Błąd podczas pobierania wydarzeń organizacji', 'error');
+      return;
+    }
+
+    setOrganizationEvents(data || []);
   };
 
   const calculatePaymentDueDate = () => {
@@ -531,6 +572,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         '';
 
       const invoiceData: Record<string, any> = {
+        event_id: selectedEventId,
         invoice_number: invoiceNumber,
         invoice_type: invoiceType,
         is_proforma: invoiceType === 'proforma',
@@ -1110,9 +1152,44 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
                 <BuyerSearchInput
                   contacts={organizations}
                   selectedContactId={selectedOrgId}
-                  onContactSelect={setSelectedOrgId}
+                  onContactSelect={(orgId) => {
+                    setSelectedOrgId(orgId);
+                    setSelectedEventId(null);
+                    fetchOrganizationEvents(orgId);
+                  }}
                   onAddNew={() => setShowAddBuyerModal(true)}
                 />
+              )}
+
+              {!buyerIsPrivatePerson && selectedOrgId && (
+                <div className="rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-4">
+                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                    Powiązane wydarzenie
+                  </label>
+
+                  <select
+                    value={selectedEventId || ''}
+                    onChange={(e) => setSelectedEventId(e.target.value || null)}
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
+                  >
+                    <option value="">Brak powiązanego wydarzenia</option>
+
+                    {organizationEvents.map((event) => (
+                      <option key={event.id} value={event.id}>
+                        {event.name}
+                        {event.event_date
+                          ? ` — ${new Date(event.event_date).toLocaleDateString('pl-PL')}`
+                          : ''}
+                      </option>
+                    ))}
+                  </select>
+
+                  {organizationEvents.length === 0 && (
+                    <div className="mt-2 text-xs text-[#e5e4e2]/50">
+                      Brak wydarzeń przypisanych do tej organizacji.
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 

@@ -378,18 +378,34 @@ async function enrichFinalInvoiceSettledInvoicesWithKsefNumbers(
 }
 
 export async function POST(request: NextRequest) {
-  const body = await request.json();
-  const invoiceId = body.invoiceId;
+  console.log('[KSeF SEND] POST endpoint hit');
+  let body: any = {};
+  try {
+    const rawBody = await request.text();
+    if (!rawBody.trim()) {
+      return new Response(JSON.stringify({ error: 'Puste body requestu' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    body = JSON.parse(rawBody);
+  } catch (err) {
+    console.error('[KSeF SEND] Invalid JSON body', err);
+    return new Response(JSON.stringify({ error: 'Nieprawidłowe body JSON' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
 
+  const invoiceId = body.invoiceId;
   if (!invoiceId) {
-    return new Response(
-      JSON.stringify({ error: 'Brak ID faktury' }),
-      { status: 400, headers: { 'Content-Type': 'application/json' } },
-    );
+    return new Response(JSON.stringify({ error: 'Brak ID faktury' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
 
   const encoder = new TextEncoder();
-
   const stream = new ReadableStream({
     async start(controller) {
       let sessionId: string | undefined;
@@ -490,6 +506,8 @@ export async function POST(request: NextRequest) {
           ? await enrichFinalInvoiceSettledInvoicesWithKsefNumbers(supabase, invoice)
           : invoice;
 
+          console.log('[KSeF invoice_items]', invoice.invoice_items);
+
         const preparedInvoice = prepareFA3Invoice(invoiceForXml, organization);
         const validation = validatePreparedFA3Invoice(preparedInvoice);
 
@@ -508,6 +526,14 @@ export async function POST(request: NextRequest) {
         emitProgress('xml', 'active', { message: 'Generowanie XML FA(3)' });
 
         const xmlContent = generateFA3XML(preparedInvoice, { debug: true });
+
+        return new Response(xmlContent, {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/xml',
+          },
+        });
+
         emitProgress('xml', 'completed');
 
         // Auth

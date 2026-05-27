@@ -108,7 +108,12 @@ interface RelatedData {
   } | null;
   organization?: { id: string; name: string; nip: string; email?: string } | null;
   primaryContact?: { id: string; name: string; email?: string | null } | null;
-  relatedInvoice?: { id: string; invoice_number: string; invoice_type: string } | null;
+  relatedInvoice?: {
+    id: string;
+    invoice_number: string;
+    invoice_type: string;
+    event_id?: string | null;
+  } | null;
   relatedInvoices?: Array<{
     id: string;
     invoice_number: string;
@@ -163,11 +168,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     settlementSummary?: Invoice['settlement_summary'];
   } | null>(null);
 
-  useEffect(() => {
-    fetchInvoice();
-  }, [params.id]);
-
-  const fetchInvoice = async () => {
+  const fetchInvoice = useCallback(async () => {
     try {
       const [invoiceRes, itemsRes] = await Promise.all([
         supabase
@@ -222,7 +223,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           promises.push(
             supabase
               .from('invoices')
-              .select('id, invoice_number, invoice_type')
+              .select('id, invoice_number, invoice_type, event_id')
               .eq('id', invoiceRes.data.related_invoice_id)
               .maybeSingle(),
           );
@@ -287,7 +288,11 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     } finally {
       setLoading(false);
     }
-  };
+  }, [params.id]);
+
+  useEffect(() => {
+    fetchInvoice();
+  }, [fetchInvoice]);
 
   useEffect(() => {
     if (!invoice) return;
@@ -371,6 +376,14 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     };
   };
 
+  const handleKsefSuccess = useCallback(async () => {
+    await fetchInvoice();
+  }, [fetchInvoice]);
+
+  const handleKsefError = useCallback((error: string) => {
+    console.error('[KSeF error]', error);
+  }, []);
+
   useEffect(() => {
     if (!invoice) return;
 
@@ -384,6 +397,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     if (!invoice) return;
     setGenerating(true);
     try {
+      const resolvedEventId = invoice.event_id || relatedData.relatedInvoice?.event_id || null;
       const { data: freshItems } = await supabase
         .from('invoice_items')
         .select('*')
@@ -457,7 +471,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           html,
           fileName: `Faktura_${invoice.invoice_number}.pdf`,
           invoiceId: invoice.id,
-          eventId: invoice.event_id,
+          eventId: resolvedEventId,
           createdBy: employee?.id ?? null,
           previousPdfPath: pdfPath,
         }),
@@ -776,6 +790,51 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     : Number(invoice.total_gross ?? 0);
 
   const companyLogoUrl = invoice?.my_company?.logo_url || invoice?.company_logo_url || null;
+  const getCorrectionValues = (item: InvoiceItem) => {
+    const vatRate = Number(item.vat_rate ?? 0);
+
+    const beforeQty = Number(item.before_quantity ?? item.quantity ?? 0);
+    const beforePrice = Number(item.before_price_net ?? item.price_net ?? 0);
+    const beforeNet = Number(item.before_value_net ?? beforeQty * beforePrice);
+    const beforeVat = Number(item.before_vat_amount ?? Math.round(beforeNet * vatRate) / 100);
+    const beforeGross = Number(item.before_value_gross ?? beforeNet + beforeVat);
+
+    const afterQty = Number(item.after_quantity ?? item.quantity ?? beforeQty);
+    const afterPrice = Number(item.after_price_net ?? item.price_net ?? beforePrice);
+    const afterNet = Number(item.after_value_net ?? afterQty * afterPrice);
+    const afterVat = Number(item.after_vat_amount ?? Math.round(afterNet * vatRate) / 100);
+    const afterGross = Number(item.after_value_gross ?? afterNet + afterVat);
+
+    return {
+      vatRate,
+      beforeQty,
+      beforePrice,
+      beforeNet,
+      beforeVat,
+      beforeGross,
+      afterQty,
+      afterPrice,
+      afterNet,
+      afterVat,
+      afterGross,
+      deltaQty: afterQty - beforeQty,
+      deltaPrice: afterPrice - beforePrice,
+      deltaNet: afterNet - beforeNet,
+      deltaVat: afterVat - beforeVat,
+      deltaGross: afterGross - beforeGross,
+    };
+  };
+
+  const formatSignedMoney = (value?: number) => {
+    const number = Number(value || 0);
+    return `${number > 0 ? '+' : ''}${number.toFixed(2)}`;
+  };
+
+  const formatSignedQuantity = (value?: number) => {
+    const number = Number(value || 0);
+    if (!number) return '0';
+    return `${number > 0 ? '+' : ''}${number}`;
+  };
 
   return (
     <PermissionGuard module="invoices">
@@ -1207,11 +1266,15 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               </div>
             </div>
 
-            {invoice.invoice_type === 'corrective' && items.some((i) => i.before_quantity != null) ? (
+            {invoice.invoice_type === 'corrective' &&
+            items.some((i) => i.before_quantity != null) ? (
               <div className="mb-8">
                 {invoice.corrected_invoice_number && (
                   <div className="mb-4 text-center text-sm">
-                    Dotyczy: {relatedData.relatedInvoice?.invoice_type === 'final' ? 'Faktura koncowa' : 'Faktura'}{' '}
+                    Dotyczy:{' '}
+                    {relatedData.relatedInvoice?.invoice_type === 'final'
+                      ? 'Faktura koncowa'
+                      : 'Faktura'}{' '}
                     {invoice.corrected_invoice_number} z dnia:{' '}
                     {invoice.corrected_invoice_issue_date
                       ? new Date(invoice.corrected_invoice_issue_date).toLocaleDateString('pl-PL')
@@ -1222,7 +1285,9 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                   <thead className="bg-gray-100">
                     <tr>
                       <th className="border border-gray-300 px-1.5 py-1 text-left">Lp.</th>
-                      <th className="border border-gray-300 px-1.5 py-1 text-left">Nazwa towaru lub uslugi</th>
+                      <th className="border border-gray-300 px-1.5 py-1 text-left">
+                        Nazwa towaru lub uslugi
+                      </th>
                       <th className="border border-gray-300 px-1.5 py-1">Jm.</th>
                       <th className="border border-gray-300 px-1.5 py-1">Ilosc</th>
                       <th className="border border-gray-300 px-1.5 py-1">Cena netto</th>
@@ -1234,16 +1299,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                   </thead>
                   <tbody>
                     {items.map((item) => {
-                      const beforeQty = item.before_quantity ?? 0;
-                      const beforePrice = item.before_price_net ?? 0;
-                      const afterQty = item.after_quantity ?? beforeQty;
-                      const afterPrice = item.after_price_net ?? beforePrice;
-                      const beforeNet = beforeQty * beforePrice;
-                      const afterNet = afterQty * afterPrice;
-                      const beforeVat = Math.round(beforeNet * item.vat_rate) / 100;
-                      const afterVat = Math.round(afterNet * item.vat_rate) / 100;
-                      const beforeGross = beforeNet + beforeVat;
-                      const afterGross = afterNet + afterVat;
+                      const correction = getCorrectionValues(item);
                       return (
                         <tr key={item.id} className="group">
                           <td className="border border-gray-300 px-1.5 py-1 align-top" rowSpan={3}>
@@ -1254,41 +1310,81 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                               <tbody>
                                 <tr>
                                   <td className="border-b border-gray-200 px-1.5 py-1 text-left">
-                                    <span className="text-xs text-gray-500">Przed korektą:</span><br />
+                                    <span className="text-xs text-gray-500">Przed korektą:</span>
+                                    <br />
                                     {item.name}
                                   </td>
-                                  <td className="w-[50px] border-b border-gray-200 px-1.5 py-1 text-center">{item.unit}</td>
-                                  <td className="w-[60px] border-b border-gray-200 px-1.5 py-1 text-right">{beforeQty}</td>
-                                  <td className="w-[80px] border-b border-gray-200 px-1.5 py-1 text-right">{beforePrice.toFixed(2)}</td>
-                                  <td className="w-[90px] border-b border-gray-200 px-1.5 py-1 text-right">{beforeNet.toFixed(2)}</td>
-                                  <td className="w-[50px] border-b border-gray-200 px-1.5 py-1 text-center">{item.vat_rate}%</td>
-                                  <td className="w-[80px] border-b border-gray-200 px-1.5 py-1 text-right">{beforeVat.toFixed(2)}</td>
-                                  <td className="w-[90px] border-b border-gray-200 px-1.5 py-1 text-right">{beforeGross.toFixed(2)}</td>
+                                  <td className="w-[50px] border-b border-gray-200 px-1.5 py-1 text-center">
+                                    {item.unit}
+                                  </td>
+                                  <td className="w-[60px] border-b border-gray-200 px-1.5 py-1 text-right">
+                                    {correction.beforeQty}
+                                  </td>
+                                  <td className="w-[80px] border-b border-gray-200 px-1.5 py-1 text-right">
+                                    {correction.beforePrice.toFixed(2)}
+                                  </td>
+                                  <td className="w-[90px] border-b border-gray-200 px-1.5 py-1 text-right">
+                                    {correction.beforeNet.toFixed(2)}
+                                  </td>
+                                  <td className="w-[50px] border-b border-gray-200 px-1.5 py-1 text-center">
+                                    {item.vat_rate}%
+                                  </td>
+                                  <td className="w-[80px] border-b border-gray-200 px-1.5 py-1 text-right">
+                                    {correction.beforeVat.toFixed(2)}
+                                  </td>
+                                  <td className="w-[90px] border-b border-gray-200 px-1.5 py-1 text-right">
+                                    {correction.beforeGross.toFixed(2)}
+                                  </td>
                                 </tr>
                                 <tr>
                                   <td className="border-b border-gray-200 px-1.5 py-1 text-left">
-                                    <span className="text-xs text-gray-500">Po korekcie:</span><br />
+                                    <span className="text-xs text-gray-500">Po korekcie:</span>
+                                    <br />
                                     {item.name}
                                   </td>
-                                  <td className="border-b border-gray-200 px-1.5 py-1 text-center">{item.unit}</td>
-                                  <td className="border-b border-gray-200 px-1.5 py-1 text-right">{afterQty}</td>
-                                  <td className="border-b border-gray-200 px-1.5 py-1 text-right">{afterPrice.toFixed(2)}</td>
-                                  <td className="border-b border-gray-200 px-1.5 py-1 text-right">{afterNet.toFixed(2)}</td>
-                                  <td className="border-b border-gray-200 px-1.5 py-1 text-center">{item.vat_rate}%</td>
-                                  <td className="border-b border-gray-200 px-1.5 py-1 text-right">{afterVat.toFixed(2)}</td>
-                                  <td className="border-b border-gray-200 px-1.5 py-1 text-right">{afterGross.toFixed(2)}</td>
+                                  <td className="border-b border-gray-200 px-1.5 py-1 text-center">
+                                    {item.unit}
+                                  </td>
+                                  <td className="border-b border-gray-200 px-1.5 py-1 text-right">
+                                    {correction.afterQty}
+                                  </td>
+                                  <td className="border-b border-gray-200 px-1.5 py-1 text-right">
+                                    {correction.afterPrice.toFixed(2)}
+                                  </td>
+                                  <td className="border-b border-gray-200 px-1.5 py-1 text-right">
+                                    {correction.afterNet.toFixed(2)}
+                                  </td>
+                                  <td className="border-b border-gray-200 px-1.5 py-1 text-center">
+                                    {item.vat_rate}%
+                                  </td>
+                                  <td className="border-b border-gray-200 px-1.5 py-1 text-right">
+                                    {correction.afterVat.toFixed(2)}
+                                  </td>
+                                  <td className="border-b border-gray-200 px-1.5 py-1 text-right">
+                                    {correction.afterGross.toFixed(2)}
+                                  </td>
                                 </tr>
                                 <tr className="bg-gray-50 font-medium">
                                   <td className="px-1.5 py-1 text-left">
                                     <span className="text-xs">Korekta</span>
                                   </td>
                                   <td className="px-1.5 py-1 text-center"></td>
-                                  <td className="px-1.5 py-1 text-right">{(afterQty - beforeQty) !== 0 ? (afterQty - beforeQty) : ''}</td>
-                                  <td className="px-1.5 py-1 text-right">{(afterPrice - beforePrice) !== 0 ? (afterPrice - beforePrice).toFixed(2) : ''}</td>
-                                  <td className="px-1.5 py-1 text-right">{item.value_net.toFixed(2)}</td>
+                                  <td className="px-1.5 py-1 text-right">
+                                    {formatSignedQuantity(correction.deltaQty)}
+                                  </td>
+                                  <td className="px-1.5 py-1 text-right">
+                                    {formatSignedMoney(correction.deltaPrice)}
+                                  </td>
+                                  <td className="px-1.5 py-1 text-right">
+                                    {item.value_net.toFixed(2)}
+                                  </td>
                                   <td className="px-1.5 py-1 text-center">{item.vat_rate}%</td>
-                                  <td className="px-1.5 py-1 text-right">{item.vat_amount.toFixed(2)}</td>
-                                  <td className="px-1.5 py-1 text-right">{item.value_gross.toFixed(2)}</td>
+                                  <td className="px-1.5 py-1 text-right">
+                                    {item.vat_amount.toFixed(2)}
+                                  </td>
+                                  <td className="px-1.5 py-1 text-right">
+                                    {item.value_gross.toFixed(2)}
+                                  </td>
                                 </tr>
                               </tbody>
                             </table>
@@ -1300,13 +1396,24 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                 </table>
 
                 {(() => {
-                  const totalBeforeNet = items.reduce((sum, i) => sum + (i.before_quantity ?? 0) * (i.before_price_net ?? 0), 0);
+                  const totalBeforeNet = items.reduce(
+                    (sum, i) => sum + (i.before_quantity ?? 0) * (i.before_price_net ?? 0),
+                    0,
+                  );
                   const totalAfterNet = items.reduce((sum, i) => {
                     const aq = i.after_quantity ?? i.before_quantity ?? 0;
                     const ap = i.after_price_net ?? i.before_price_net ?? 0;
                     return sum + aq * ap;
                   }, 0);
-                  const totalBeforeVat = items.reduce((sum, i) => sum + Math.round((i.before_quantity ?? 0) * (i.before_price_net ?? 0) * i.vat_rate) / 100, 0);
+                  const totalBeforeVat = items.reduce(
+                    (sum, i) =>
+                      sum +
+                      Math.round(
+                        (i.before_quantity ?? 0) * (i.before_price_net ?? 0) * i.vat_rate,
+                      ) /
+                        100,
+                    0,
+                  );
                   const totalAfterVat = items.reduce((sum, i) => {
                     const aq = i.after_quantity ?? i.before_quantity ?? 0;
                     const ap = i.after_price_net ?? i.before_price_net ?? 0;
@@ -1318,22 +1425,46 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                     <table className="mb-4 ml-auto w-auto text-sm">
                       <tbody>
                         <tr className="font-medium">
-                          <td className="border border-gray-300 bg-gray-100 px-3 py-1 text-right">Przed korektą:</td>
-                          <td className="border border-gray-300 px-3 py-1 text-right">{totalBeforeNet.toFixed(2)}</td>
-                          <td className="border border-gray-300 px-3 py-1 text-right">{totalBeforeVat.toFixed(2)}</td>
-                          <td className="border border-gray-300 px-3 py-1 text-right">{totalBeforeGross.toFixed(2)}</td>
+                          <td className="border border-gray-300 bg-gray-100 px-3 py-1 text-right">
+                            Przed korektą:
+                          </td>
+                          <td className="border border-gray-300 px-3 py-1 text-right">
+                            {totalBeforeNet.toFixed(2)}
+                          </td>
+                          <td className="border border-gray-300 px-3 py-1 text-right">
+                            {totalBeforeVat.toFixed(2)}
+                          </td>
+                          <td className="border border-gray-300 px-3 py-1 text-right">
+                            {totalBeforeGross.toFixed(2)}
+                          </td>
                         </tr>
                         <tr className="font-medium">
-                          <td className="border border-gray-300 bg-gray-100 px-3 py-1 text-right">Korekta:</td>
-                          <td className="border border-gray-300 px-3 py-1 text-right">{invoice.total_net.toFixed(2)}</td>
-                          <td className="border border-gray-300 px-3 py-1 text-right">{invoice.total_vat.toFixed(2)}</td>
-                          <td className="border border-gray-300 px-3 py-1 text-right">{invoice.total_gross.toFixed(2)}</td>
+                          <td className="border border-gray-300 bg-gray-100 px-3 py-1 text-right">
+                            Korekta:
+                          </td>
+                          <td className="border border-gray-300 px-3 py-1 text-right">
+                            {invoice.total_net.toFixed(2)}
+                          </td>
+                          <td className="border border-gray-300 px-3 py-1 text-right">
+                            {invoice.total_vat.toFixed(2)}
+                          </td>
+                          <td className="border border-gray-300 px-3 py-1 text-right">
+                            {invoice.total_gross.toFixed(2)}
+                          </td>
                         </tr>
                         <tr className="font-bold">
-                          <td className="border border-gray-300 bg-gray-100 px-3 py-1 text-right">Po korekcie:</td>
-                          <td className="border border-gray-300 px-3 py-1 text-right">{totalAfterNet.toFixed(2)}</td>
-                          <td className="border border-gray-300 px-3 py-1 text-right">{totalAfterVat.toFixed(2)}</td>
-                          <td className="border border-gray-300 px-3 py-1 text-right">{totalAfterGross.toFixed(2)}</td>
+                          <td className="border border-gray-300 bg-gray-100 px-3 py-1 text-right">
+                            Po korekcie:
+                          </td>
+                          <td className="border border-gray-300 px-3 py-1 text-right">
+                            {totalAfterNet.toFixed(2)}
+                          </td>
+                          <td className="border border-gray-300 px-3 py-1 text-right">
+                            {totalAfterVat.toFixed(2)}
+                          </td>
+                          <td className="border border-gray-300 px-3 py-1 text-right">
+                            {totalAfterGross.toFixed(2)}
+                          </td>
                         </tr>
                       </tbody>
                     </table>
@@ -1342,72 +1473,74 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
                 <div className="border border-gray-300 bg-gray-100 p-3 text-sm font-bold">
                   <div className="flex justify-between">
-                    <span>{invoice.total_gross < 0 ? 'Razem do zwrotu:' : 'Do zaplaty:'}</span>
-                    <span>{Math.abs(invoice.total_gross).toFixed(2)} PLN</span>
+                    <span>{invoice.total_gross < 0 ? 'Razem do zwrotu:' : 'Suma korekt:'}</span>
+                    <span>{formatSignedMoney(invoice.total_gross)} PLN</span>
                   </div>
                 </div>
               </div>
             ) : (
-            <table className="mb-8 w-full text-sm">
-              <thead className="bg-gray-100">
-                <tr>
-                  <th className="border border-gray-300 px-1.5 py-1 text-left">Lp.</th>
-                  <th className="border border-gray-300 px-1.5 py-1 text-left">
-                    Nazwa towaru lub uslugi
-                  </th>
-                  <th className="border border-gray-300 px-1.5 py-1">Jm.</th>
-                  <th className="border border-gray-300 px-1.5 py-1">Ilosc</th>
-                  <th className="border border-gray-300 px-1.5 py-1">Cena netto</th>
-                  <th className="border border-gray-300 px-1.5 py-1">Wartosc netto</th>
-                  <th className="border border-gray-300 px-1.5 py-1">Stawka VAT</th>
-                  <th className="border border-gray-300 px-1.5 py-1">Kwota VAT</th>
-                  <th className="border border-gray-300 px-1.5 py-1">Wartosc brutto</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item) => (
-                  <tr key={item.id}>
-                    <td className="border border-gray-300 px-1.5 py-1">{item.position_number}</td>
-                    <td className="border border-gray-300 px-1.5 py-1">{item.name}</td>
-                    <td className="border border-gray-300 px-1.5 py-1 text-center">{item.unit}</td>
-                    <td className="border border-gray-300 px-1.5 py-1 text-right">
-                      {item.quantity}
+              <table className="mb-8 w-full text-sm">
+                <thead className="bg-gray-100">
+                  <tr>
+                    <th className="border border-gray-300 px-1.5 py-1 text-left">Lp.</th>
+                    <th className="border border-gray-300 px-1.5 py-1 text-left">
+                      Nazwa towaru lub uslugi
+                    </th>
+                    <th className="border border-gray-300 px-1.5 py-1">Jm.</th>
+                    <th className="border border-gray-300 px-1.5 py-1">Ilosc</th>
+                    <th className="border border-gray-300 px-1.5 py-1">Cena netto</th>
+                    <th className="border border-gray-300 px-1.5 py-1">Wartosc netto</th>
+                    <th className="border border-gray-300 px-1.5 py-1">Stawka VAT</th>
+                    <th className="border border-gray-300 px-1.5 py-1">Kwota VAT</th>
+                    <th className="border border-gray-300 px-1.5 py-1">Wartosc brutto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((item) => (
+                    <tr key={item.id}>
+                      <td className="border border-gray-300 px-1.5 py-1">{item.position_number}</td>
+                      <td className="border border-gray-300 px-1.5 py-1">{item.name}</td>
+                      <td className="border border-gray-300 px-1.5 py-1 text-center">
+                        {item.unit}
+                      </td>
+                      <td className="border border-gray-300 px-1.5 py-1 text-right">
+                        {item.quantity}
+                      </td>
+                      <td className="border border-gray-300 px-1.5 py-1 text-right">
+                        {item.price_net.toFixed(2)}
+                      </td>
+                      <td className="border border-gray-300 px-1.5 py-1 text-right">
+                        {item.value_net.toFixed(2)}
+                      </td>
+                      <td className="border border-gray-300 px-1.5 py-1 text-center">
+                        {item.vat_rate}%
+                      </td>
+                      <td className="border border-gray-300 px-1.5 py-1 text-right">
+                        {item.vat_amount.toFixed(2)}
+                      </td>
+                      <td className="border border-gray-300 px-1.5 py-1 text-right font-medium">
+                        {item.value_gross.toFixed(2)}
+                      </td>
+                    </tr>
+                  ))}
+
+                  <tr className="bg-gray-100 font-bold">
+                    <td colSpan={5} className="border border-gray-300 px-1.5 py-1 text-right">
+                      Razem
                     </td>
                     <td className="border border-gray-300 px-1.5 py-1 text-right">
-                      {item.price_net.toFixed(2)}
+                      {invoice.total_net.toFixed(2)}
+                    </td>
+                    <td className="border border-gray-300 px-1.5 py-1"></td>
+                    <td className="border border-gray-300 px-1.5 py-1 text-right">
+                      {invoice.total_vat.toFixed(2)}
                     </td>
                     <td className="border border-gray-300 px-1.5 py-1 text-right">
-                      {item.value_net.toFixed(2)}
-                    </td>
-                    <td className="border border-gray-300 px-1.5 py-1 text-center">
-                      {item.vat_rate}%
-                    </td>
-                    <td className="border border-gray-300 px-1.5 py-1 text-right">
-                      {item.vat_amount.toFixed(2)}
-                    </td>
-                    <td className="border border-gray-300 px-1.5 py-1 text-right font-medium">
-                      {item.value_gross.toFixed(2)}
+                      {invoice.total_gross.toFixed(2)}
                     </td>
                   </tr>
-                ))}
-
-                <tr className="bg-gray-100 font-bold">
-                  <td colSpan={5} className="border border-gray-300 px-1.5 py-1 text-right">
-                    Razem
-                  </td>
-                  <td className="border border-gray-300 px-1.5 py-1 text-right">
-                    {invoice.total_net.toFixed(2)}
-                  </td>
-                  <td className="border border-gray-300 px-1.5 py-1"></td>
-                  <td className="border border-gray-300 px-1.5 py-1 text-right">
-                    {invoice.total_vat.toFixed(2)}
-                  </td>
-                  <td className="border border-gray-300 px-1.5 py-1 text-right">
-                    {invoice.total_gross.toFixed(2)}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+                </tbody>
+              </table>
             )}
 
             {previewSettledInvoices.length > 0 && (
@@ -1634,10 +1767,8 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           <KSeFSendModal
             invoiceId={invoice.id}
             invoiceNumber={invoice.invoice_number}
-            onSuccess={async () => {
-              await fetchInvoice();
-            }}
-            onError={() => {}}
+            onSuccess={handleKsefSuccess}
+            onError={handleKsefError}
             onClose={() => setShowKSeFModal(false)}
           />
         )}

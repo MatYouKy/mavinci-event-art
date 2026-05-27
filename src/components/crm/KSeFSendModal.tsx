@@ -98,15 +98,23 @@ export default function KSeFSendModal({
   const [pollAttempt, setPollAttempt] = useState(0);
   const [pollMaxAttempts, setPollMaxAttempts] = useState(MAX_POLL_ATTEMPTS);
 
-  const hasStarted = useRef(false);
   const startTimeRef = useRef(Date.now());
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const currentStepRef = useRef(-1);
+  const resultReceivedRef = useRef(false);
+
+  const onSuccessRef = useRef(onSuccess);
+  const onErrorRef = useRef(onError);
 
   useEffect(() => {
-    if (hasStarted.current) return;
-    hasStarted.current = true;
+    onSuccessRef.current = onSuccess; 
+  }, [onSuccess]);
 
+  useEffect(() => {
+    onErrorRef.current = onError;
+  }, [onError]);
+
+  useEffect(() => {
     const controller = new AbortController();
 
     startTimeRef.current = Date.now();
@@ -140,15 +148,16 @@ export default function KSeFSendModal({
           const message = data.message || 'Błąd wysyłki do KSeF';
           setErrorMessage(message);
           setFinished(true);
-          onError(message);
+          onErrorRef.current(message);
         }
       } else if (data.type === 'result') {
+        resultReceivedRef.current = true;
         if (data.success) {
           setKsefRef(data.ksef_reference_number ?? null);
           setSteps((old) => old.map((step) => ({ ...step, status: 'completed' as StepStatus })));
           setCurrentStepIndex(STEPS_CONFIG.length - 1);
           setFinished(true);
-          onSuccess({
+          onSuccessRef.current({
             ksef_reference_number: data.ksef_reference_number,
             ksef_timestamp: data.ksef_timestamp,
           });
@@ -169,12 +178,16 @@ export default function KSeFSendModal({
             }),
           );
 
-          onError(fullMsg);
+          onErrorRef.current(fullMsg);
         }
       }
     };
 
     (async () => {
+      console.log('[KSeF modal] start fetch', {
+        invoiceId,
+        url: '/bridge/ksef/invoices/send',
+      });
       try {
         const response = await fetch('/bridge/ksef/invoices/send', {
           method: 'POST',
@@ -182,13 +195,37 @@ export default function KSeFSendModal({
           body: JSON.stringify({ invoiceId }),
           signal: controller.signal,
         });
+        console.log('[KSeF modal] response received', {
+          status: response.status,
+          ok: response.ok,
+          contentType: response.headers.get('content-type'),
+        });
 
-        if (!response.body) {
-          const result = await response.json();
-          const msg = result.error || 'Brak streamu z serwera';
+        if (!response.ok) {
+          const text = await response.text();
+          const msg = `Błąd endpointu KSeF: ${response.status} ${response.statusText}. ${text.slice(0, 500)}`;
           setErrorMessage(msg);
           setFinished(true);
-          onError(msg);
+          onErrorRef.current(msg);
+          return;
+        }
+
+        const contentType = response.headers.get('content-type') || '';
+
+        if (!contentType.includes('text/event-stream')) {
+          const text = await response.text();
+          const msg = `Endpoint KSeF nie zwrócił streamu SSE. Content-Type: ${contentType}. Odpowiedź: ${text.slice(0, 500)}`;
+          setErrorMessage(msg);
+          setFinished(true);
+          onErrorRef.current(msg);
+          return;
+        }
+
+        if (!response.body) {
+          const msg = 'Brak streamu z serwera';
+          setErrorMessage(msg);
+          setFinished(true);
+          onErrorRef.current(msg);
           return;
         }
 
@@ -225,12 +262,27 @@ export default function KSeFSendModal({
             // invalid
           }
         }
+        if (!resultReceivedRef.current) {
+          const msg = 'Połączenie z endpointem KSeF zakończyło się bez wyniku.';
+          setErrorMessage(msg);
+          setFinished(true);
+          onErrorRef.current(msg);
+        }
       } catch (err: any) {
-        if (err.name === 'AbortError') return;
-        const msg = err.message || 'Nieznany błąd';
-        setErrorMessage(msg);
+        console.error('[KSeF modal] fetch error', {
+          name: err?.name,
+          message: err?.message,
+          error: err,
+        });
+        
+        const errorMsg =
+          err?.name === 'AbortError'
+            ? 'Request do KSeF został przerwany po stronie frontendu.'
+            : err.message || 'Nieznany błąd';
+        
+        setErrorMessage(errorMsg);
         setFinished(true);
-        onError(msg);
+        onErrorRef.current(errorMsg);
       }
     })();
 
@@ -241,7 +293,7 @@ export default function KSeFSendModal({
         timerRef.current = null;
       }
     };
-  }, [invoiceId, onError, onSuccess]);
+  }, [invoiceId]);
 
   const formatTime = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
@@ -263,11 +315,7 @@ export default function KSeFSendModal({
             <div className="flex items-center gap-3">
               <div
                 className={`flex h-10 w-10 items-center justify-center rounded-xl ${
-                  isError
-                    ? 'bg-red-500/20'
-                    : isSuccess
-                      ? 'bg-green-500/20'
-                      : 'bg-[#d3bb73]/20'
+                  isError ? 'bg-red-500/20' : isSuccess ? 'bg-green-500/20' : 'bg-[#d3bb73]/20'
                 }`}
               >
                 {isError ? (
@@ -305,8 +353,7 @@ export default function KSeFSendModal({
             <div className="mt-4">
               <div className="mb-1 flex items-center justify-between text-xs text-[#e5e4e2]/40">
                 <span>
-                  Krok {Math.max(Math.min(currentStepIndex + 1, steps.length), 1)} z{' '}
-                  {steps.length}
+                  Krok {Math.max(Math.min(currentStepIndex + 1, steps.length), 1)} z {steps.length}
                 </span>
                 <span>{formatTime(elapsedTime)}</span>
               </div>
@@ -375,9 +422,7 @@ export default function KSeFSendModal({
                     )}
 
                     {step.id === 'save' && step.status === 'active' && (
-                      <span className="ml-2 text-xs font-normal text-[#d3bb73]">
-                        (3 operacje)
-                      </span>
+                      <span className="ml-2 text-xs font-normal text-[#d3bb73]">(3 operacje)</span>
                     )}
                   </div>
 
@@ -415,9 +460,7 @@ export default function KSeFSendModal({
           <div className="border-t border-[#d3bb73]/20 px-6 py-4">
             {isSuccess && ksefRef && (
               <div className="mb-4 rounded-lg border border-green-500/20 bg-green-500/10 p-3">
-                <div className="text-sm font-medium text-green-400">
-                  Numer referencyjny KSeF
-                </div>
+                <div className="text-sm font-medium text-green-400">Numer referencyjny KSeF</div>
                 <div className="mt-1 font-mono text-sm text-[#e5e4e2]">{ksefRef}</div>
               </div>
             )}
