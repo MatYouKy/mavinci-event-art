@@ -120,6 +120,8 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
   const [availableInvoices, setAvailableInvoices] = useState<any[]>([]);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
+  console.log('myCompanies', myCompanies);
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -868,10 +870,14 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
               <select
                 value={selectedCompanyId}
                 onChange={(e) => {
-                  setSelectedCompanyId(e.target.value);
-                  const company = myCompanies.find((c) => c.id === e.target.value);
+                  const companyId = e.target.value;
+                  setSelectedCompanyId(companyId);
+
+                  const company = myCompanies.find((c) => c.id === companyId);
+
                   if (company) {
-                    setIssuePlace(company.city);
+                    setIssuePlace(company.city || '');
+                    setWebsite(company.website || 'www.mavinci.pl');
                   }
                 }}
                 disabled={invoiceType === 'corrective' && !!relatedInvoiceId}

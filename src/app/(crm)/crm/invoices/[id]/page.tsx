@@ -413,11 +413,13 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
       const finalSettlementData = await buildFinalSettlementData(invoice);
 
+      console.log('invoice.website', invoice.website);
+
       const html = buildInvoicePdfHtml({
         buyerIsPrivatePerson: invoice.buyer_is_private_person,
         footerNote: invoice.footer_note || '',
         signatureName: invoice.signature_name || 'Mateusz Kwiatkowski',
-        website: invoice.website || 'www.mavinci.pl',
+        website: invoice.website || null,
         invoiceNumber: invoice.invoice_number,
         invoiceType:
           invoice.invoice_type === 'proforma' || invoice.is_proforma
@@ -1217,7 +1219,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                     height={256}
                     src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/company-logos/${companyLogoUrl}`}
                     alt="Logo firmy"
-                    className="h-32 w-auto object-contain"
+                    className="max-h-32 max-w-[300px] object-contain"
                   />
                 ) : null}
               </div>

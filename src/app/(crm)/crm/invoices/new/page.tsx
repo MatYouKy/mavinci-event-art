@@ -761,7 +761,7 @@ export default function NewInvoicePage() {
 
       const footerNote = buildInvoiceFooterText(selectedCompany);
 
-      const website = selectedCompany.website || 'www.mavinci.pl';
+      const website = selectedCompany.website?.trim() || null;
 
       const sellerStreet = [
         selectedCompany.street,

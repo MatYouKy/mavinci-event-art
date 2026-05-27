@@ -14,7 +14,7 @@ interface InvoicePdfData {
   buyerIsPrivatePerson: boolean;
   footerNote: string;
   signatureName: string;
-  website: string;
+  website?: string | null;
   invoiceNumber: string;
   invoiceType: string;
   issueDate: string;
@@ -758,7 +758,7 @@ const totals = correctiveItems!.reduce(
   </div>
 
 
-  <div class="footer-website">${esc(data.website)}</div>
+  ${data.website ? `<div class="footer-website">${esc(data.website)}</div>` : ''}
 </body>
 </html>`;
 };
