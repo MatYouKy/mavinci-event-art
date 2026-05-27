@@ -249,7 +249,7 @@ export default function NewInvoicePage() {
               name: item.name,
               unit: item.unit,
               quantity: beforeQuantity,
-              price_net: -beforePriceNet,
+              price_net: beforePriceNet,
               vat_rate: item.vat_rate,
 
               before_quantity: beforeQuantity,
@@ -533,12 +533,19 @@ export default function NewInvoicePage() {
     const vatRate = Number(item.vat_rate ?? 0);
 
     if (invoiceType === 'corrective') {
-      const correctionQty = Math.abs(Number(item.quantity ?? 0));
-      const correctionPrice = -Math.abs(Number(item.price_net ?? 0));
+      const afterQty = Number(item.quantity ?? 0);
+      const afterPrice = Number(item.price_net ?? 0);
+      const afterNet = Number((afterQty * afterPrice).toFixed(2));
+      const afterVat = Number((Math.round(afterNet * vatRate) / 100).toFixed(2));
+      const afterGross = Number((afterNet + afterVat).toFixed(2));
 
-      const valueNet = Number((correctionQty * correctionPrice).toFixed(2));
-      const vatAmount = Number((Math.round(valueNet * vatRate) / 100).toFixed(2));
-      const valueGross = Number((valueNet + vatAmount).toFixed(2));
+      const beforeNet = Number(item.before_value_net ?? 0);
+      const beforeVat = Number(item.before_vat_amount ?? 0);
+      const beforeGross = Number(item.before_value_gross ?? beforeNet + beforeVat);
+
+      const valueNet = Number((afterNet - beforeNet).toFixed(2));
+      const vatAmount = Number((afterVat - beforeVat).toFixed(2));
+      const valueGross = Number((afterGross - beforeGross).toFixed(2));
 
       return { valueNet, vatAmount, valueGross };
     }
@@ -852,53 +859,21 @@ export default function NewInvoicePage() {
       const itemsToInsert = finalItems.map((item) => {
         if (invoiceType === 'corrective') {
           const vatRate = Number(item.vat_rate ?? 0);
-
-          const beforeQuantity = Number(item.before_quantity ?? item.quantity ?? 0);
+          const beforeQuantity = Number(item.before_quantity ?? 0);
           const beforePriceNet = Number(item.before_price_net ?? 0);
-          const beforeValueNet = Number((beforeQuantity * beforePriceNet).toFixed(2));
-          const beforeVatAmount = Number((Math.round(beforeValueNet * vatRate) / 100).toFixed(2));
-          const beforeValueGross = Number((beforeValueNet + beforeVatAmount).toFixed(2));
-
-          const correctionQuantity = Number(item.quantity ?? 0); // np. -1
-          const correctionPriceNet = Math.abs(Number(item.price_net ?? 0)); // np. 16260.16
-
-          const deltaNet = Number((correctionQuantity * correctionPriceNet).toFixed(2));
-          const deltaVat = Number((Math.round(deltaNet * vatRate) / 100).toFixed(2));
-          const deltaGross = Number((deltaNet + deltaVat).toFixed(2));
-
-          const afterQuantity = Number((beforeQuantity + correctionQuantity).toFixed(2));
-          const afterValueNet = Number((beforeValueNet + deltaNet).toFixed(2));
-          const afterVatAmount = Number((beforeVatAmount + deltaVat).toFixed(2));
-          const afterValueGross = Number((beforeValueGross + deltaGross).toFixed(2));
-          const afterPriceNet =
-            afterQuantity !== 0
-              ? Number((afterValueNet / afterQuantity).toFixed(2))
-              : beforePriceNet;
+          const afterQuantity = Number(item.quantity ?? beforeQuantity);
+          const afterPriceNet = Number(item.price_net ?? beforePriceNet);
 
           return {
             invoice_id: invoice.id,
             position_number: item.position_number,
             name: item.name,
             unit: item.unit,
-
-            quantity: correctionQuantity,
-            price_net: correctionPriceNet,
             vat_rate: vatRate,
-            value_net: deltaNet,
-            vat_amount: deltaVat,
-            value_gross: deltaGross,
-
             before_quantity: beforeQuantity,
             before_price_net: beforePriceNet,
-            before_value_net: beforeValueNet,
-            before_vat_amount: beforeVatAmount,
-            before_value_gross: beforeValueGross,
-
             after_quantity: afterQuantity,
             after_price_net: afterPriceNet,
-            after_value_net: afterValueNet,
-            after_vat_amount: afterVatAmount,
-            after_value_gross: afterValueGross,
           };
         }
 
@@ -1524,38 +1499,24 @@ export default function NewInvoicePage() {
                       const vatRate = Number(item.vat_rate ?? 0);
 
                       const beforeQty = Number(item.before_quantity ?? 0);
-
                       const beforePrice = Number(item.before_price_net ?? 0);
-
                       const beforeNet = Number(item.before_value_net ?? beforeQty * beforePrice);
-
                       const beforeVat = Number(
                         item.before_vat_amount ?? Math.round(beforeNet * vatRate) / 100,
                       );
-
                       const beforeGross = Number(item.before_value_gross ?? beforeNet + beforeVat);
 
-                      /**
-
-         * W formularzu korekty:
-
-         * quantity = ilość pozycji korygowanej, dodatnia wizualnie
-
-         * price_net = cena korekty, domyślnie ujemna
-
-         */
-
-                      const correctionQty = Math.abs(Number(item.quantity ?? beforeQty));
-
-                      const correctionPrice = -Math.abs(Number(item.price_net ?? beforePrice));
-
-                      const correctionNet = Number((correctionQty * correctionPrice).toFixed(2));
-
-                      const correctionVat = Number(
-                        (Math.round(correctionNet * vatRate) / 100).toFixed(2),
+                      const afterQty = Number(item.quantity ?? beforeQty);
+                      const afterPrice = Number(item.price_net ?? beforePrice);
+                      const afterNet = Number((afterQty * afterPrice).toFixed(2));
+                      const afterVat = Number(
+                        (Math.round(afterNet * vatRate) / 100).toFixed(2),
                       );
+                      const afterGross = Number((afterNet + afterVat).toFixed(2));
 
-                      const correctionGross = Number((correctionNet + correctionVat).toFixed(2));
+                      const deltaNetto = Number((afterNet - beforeNet).toFixed(2));
+                      const deltaVat = Number((afterVat - beforeVat).toFixed(2));
+                      const deltaGross = Number((afterGross - beforeGross).toFixed(2));
 
                       return (
                         <div
@@ -1623,14 +1584,12 @@ export default function NewInvoicePage() {
                                   <input
                                     type="number"
                                     step="0.01"
-                                    value={correctionQty}
+                                    value={afterQty}
                                     onChange={(e) =>
                                       updateItem(
                                         index,
-
                                         'quantity',
-
-                                        Math.abs(Number(e.target.value.replace(',', '.')) || 0),
+                                        Number(e.target.value.replace(',', '.')) || 0,
                                       )
                                     }
                                     className="w-full rounded border border-orange-500/30 bg-[#1c1f33] px-2 py-1.5 text-sm text-[#e5e4e2] focus:border-orange-500 focus:outline-none"
@@ -1645,14 +1604,12 @@ export default function NewInvoicePage() {
                                   <input
                                     type="number"
                                     step="0.01"
-                                    value={correctionPrice}
+                                    value={afterPrice}
                                     onChange={(e) =>
                                       updateItem(
                                         index,
-
                                         'price_net',
-
-                                        -Math.abs(Number(e.target.value.replace(',', '.')) || 0),
+                                        Number(e.target.value.replace(',', '.')) || 0,
                                       )
                                     }
                                     className="w-full rounded border border-orange-500/30 bg-[#1c1f33] px-2 py-1.5 text-sm text-[#e5e4e2] focus:border-orange-500 focus:outline-none"
@@ -1662,25 +1619,16 @@ export default function NewInvoicePage() {
                                 <div className="border-t border-orange-500/10 pt-2">
                                   <span className="text-xs text-[#e5e4e2]/40">Wartość netto:</span>
 
-                                  <span className="ml-2 text-sm text-red-400">
-                                    {correctionNet.toFixed(2)} zł
+                                  <span className="ml-2 text-sm text-[#e5e4e2]/70">
+                                    {afterNet.toFixed(2)} zł
                                   </span>
                                 </div>
 
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    updateItem(
-                                      index,
-                                      'quantity',
-                                      Math.abs(Number(item.before_quantity ?? 0)),
-                                    );
-
-                                    updateItem(
-                                      index,
-                                      'price_net',
-                                      -Math.abs(Number(item.before_price_net ?? 0)),
-                                    );
+                                    updateItem(index, 'quantity', beforeQty);
+                                    updateItem(index, 'price_net', 0);
                                   }}
                                   className="mt-2 w-full rounded border border-red-500/30 px-2 py-1.5 text-xs text-red-400 transition hover:bg-red-500/10"
                                 >
@@ -1700,24 +1648,24 @@ export default function NewInvoicePage() {
                                 <div>
                                   <span className="text-xs text-[#e5e4e2]/40">Netto:</span>
 
-                                  <span className="ml-2 text-sm font-medium text-red-400">
-                                    {correctionNet.toFixed(2)} zł
+                                  <span className={`ml-2 text-sm font-medium ${deltaNetto < 0 ? 'text-red-400' : deltaNetto > 0 ? 'text-green-400' : 'text-[#e5e4e2]/70'}`}>
+                                    {deltaNetto.toFixed(2)} zł
                                   </span>
                                 </div>
 
                                 <div>
                                   <span className="text-xs text-[#e5e4e2]/40">VAT:</span>
 
-                                  <span className="ml-2 text-sm text-red-400">
-                                    {correctionVat.toFixed(2)} zł
+                                  <span className={`ml-2 text-sm ${deltaVat < 0 ? 'text-red-400' : deltaVat > 0 ? 'text-green-400' : 'text-[#e5e4e2]/70'}`}>
+                                    {deltaVat.toFixed(2)} zł
                                   </span>
                                 </div>
 
                                 <div className="border-t border-[#d3bb73]/10 pt-2">
                                   <span className="text-xs text-[#e5e4e2]/40">Brutto:</span>
 
-                                  <span className="ml-2 text-sm font-medium text-red-400">
-                                    {correctionGross.toFixed(2)} zł
+                                  <span className={`ml-2 text-sm font-medium ${deltaGross < 0 ? 'text-red-400' : deltaGross > 0 ? 'text-green-400' : 'text-[#e5e4e2]/70'}`}>
+                                    {deltaGross.toFixed(2)} zł
                                   </span>
                                 </div>
                               </div>
@@ -1848,62 +1796,109 @@ export default function NewInvoicePage() {
                   {invoiceType === 'corrective' ? 'Kwota korekty' : 'Podsumowanie'}
                 </h3>
 
-                {invoiceType === 'corrective' && (
-                  <div className="mb-4 text-xs text-[#e5e4e2]/50">
-                    Poniższe wartości to suma różnic między stanem przed i po korekcie.
-                  </div>
-                )}
+                {invoiceType === 'corrective' && (() => {
+                  const totalBeforeNet = items.reduce((sum, i) => sum + Number(i.before_value_net ?? 0), 0);
+                  const totalBeforeVat = items.reduce((sum, i) => sum + Number(i.before_vat_amount ?? 0), 0);
+                  const totalBeforeGross = totalBeforeNet + totalBeforeVat;
+                  const totalAfterNet = totalBeforeNet + totals.totalNet;
+                  const totalAfterVat = totalBeforeVat + totals.totalVat;
+                  const totalAfterGross = totalAfterNet + totalAfterVat;
 
-                {simplifiedInvoice && items.length > 1 && invoiceType !== 'corrective' && (
-                  <div className="mb-4 rounded-lg border border-blue-500/20 bg-blue-500/10 p-3">
-                    <div className="mb-2 text-xs font-medium text-blue-400">
-                      Podgląd uproszczonej faktury:
-                    </div>
-                    <div className="text-sm text-[#e5e4e2]">
-                      1. {simplifiedServiceName || 'Obsługa muzyczna'} -{' '}
-                      {totals.totalNet.toFixed(2)} zł netto
-                    </div>
-                    <div className="mt-2 text-xs text-[#e5e4e2]/60">
-                      Oryginalne pozycje ({items.length}): {items.map((i) => i.name).join(', ')}
-                    </div>
-                  </div>
-                )}
+                  return (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-3 gap-6 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]/30 p-4">
+                        <div>
+                          <div className="mb-1 text-xs text-[#e5e4e2]/40">Przed korektą - netto</div>
+                          <div className="text-lg text-[#e5e4e2]/70">{totalBeforeNet.toFixed(2)} zł</div>
+                        </div>
+                        <div>
+                          <div className="mb-1 text-xs text-[#e5e4e2]/40">Przed korektą - VAT</div>
+                          <div className="text-lg text-[#e5e4e2]/70">{totalBeforeVat.toFixed(2)} zł</div>
+                        </div>
+                        <div>
+                          <div className="mb-1 text-xs text-[#e5e4e2]/40">Przed korektą - brutto</div>
+                          <div className="text-lg text-[#e5e4e2]/70">{totalBeforeGross.toFixed(2)} zł</div>
+                        </div>
+                      </div>
 
-                <div className="grid grid-cols-3 gap-6">
-                  <div>
-                    <div className="mb-1 text-sm text-[#e5e4e2]/60">
-                      {invoiceType === 'corrective' ? 'Korekta netto' : 'Suma netto'}
+                      <div className="grid grid-cols-3 gap-6">
+                        <div>
+                          <div className="mb-1 text-sm text-[#e5e4e2]/60">Korekta netto</div>
+                          <div className={`text-2xl font-light ${totals.totalNet < 0 ? 'text-red-400' : totals.totalNet > 0 ? 'text-green-400' : 'text-[#e5e4e2]'}`}>
+                            {totals.totalNet.toFixed(2)} zł
+                          </div>
+                        </div>
+                        <div>
+                          <div className="mb-1 text-sm text-[#e5e4e2]/60">Korekta VAT</div>
+                          <div className={`text-2xl font-light ${totals.totalVat < 0 ? 'text-red-400' : totals.totalVat > 0 ? 'text-green-400' : 'text-[#e5e4e2]'}`}>
+                            {totals.totalVat.toFixed(2)} zł
+                          </div>
+                        </div>
+                        <div>
+                          <div className="mb-1 text-sm text-[#e5e4e2]/60">Korekta brutto</div>
+                          <div className={`text-2xl font-medium ${totals.totalGross < 0 ? 'text-red-400' : totals.totalGross > 0 ? 'text-green-400' : 'text-[#d3bb73]'}`}>
+                            {totals.totalGross.toFixed(2)} zł
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-6 rounded-lg border border-orange-500/15 bg-orange-500/5 p-4">
+                        <div>
+                          <div className="mb-1 text-xs text-orange-400">Po korekcie - netto</div>
+                          <div className="text-lg font-medium text-[#e5e4e2]">{totalAfterNet.toFixed(2)} zł</div>
+                        </div>
+                        <div>
+                          <div className="mb-1 text-xs text-orange-400">Po korekcie - VAT</div>
+                          <div className="text-lg font-medium text-[#e5e4e2]">{totalAfterVat.toFixed(2)} zł</div>
+                        </div>
+                        <div>
+                          <div className="mb-1 text-xs text-orange-400">Po korekcie - brutto</div>
+                          <div className="text-lg font-medium text-[#d3bb73]">{totalAfterGross.toFixed(2)} zł</div>
+                        </div>
+                      </div>
                     </div>
-                    <div
-                      className={`text-2xl font-light ${invoiceType === 'corrective' ? (totals.totalNet < 0 ? 'text-red-400' : totals.totalNet > 0 ? 'text-green-400' : 'text-[#e5e4e2]') : 'text-[#e5e4e2]'}`}
-                    >
-                      {invoiceType === 'corrective' && totals.totalNet >= 0 ? '+' : ''}
-                      {totals.totalNet.toFixed(2)} zł
+                  );
+                })()}
+
+                {invoiceType !== 'corrective' && (
+                  <>
+                    {simplifiedInvoice && items.length > 1 && (
+                      <div className="mb-4 rounded-lg border border-blue-500/20 bg-blue-500/10 p-3">
+                        <div className="mb-2 text-xs font-medium text-blue-400">
+                          Podgląd uproszczonej faktury:
+                        </div>
+                        <div className="text-sm text-[#e5e4e2]">
+                          1. {simplifiedServiceName || 'Obsługa muzyczna'} -{' '}
+                          {totals.totalNet.toFixed(2)} zł netto
+                        </div>
+                        <div className="mt-2 text-xs text-[#e5e4e2]/60">
+                          Oryginalne pozycje ({items.length}): {items.map((i) => i.name).join(', ')}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-3 gap-6">
+                      <div>
+                        <div className="mb-1 text-sm text-[#e5e4e2]/60">Suma netto</div>
+                        <div className="text-2xl font-light text-[#e5e4e2]">
+                          {totals.totalNet.toFixed(2)} zł
+                        </div>
+                      </div>
+                      <div>
+                        <div className="mb-1 text-sm text-[#e5e4e2]/60">Suma VAT</div>
+                        <div className="text-2xl font-light text-[#e5e4e2]">
+                          {totals.totalVat.toFixed(2)} zł
+                        </div>
+                      </div>
+                      <div>
+                        <div className="mb-1 text-sm text-[#e5e4e2]/60">Suma brutto</div>
+                        <div className="text-2xl font-medium text-[#d3bb73]">
+                          {totals.totalGross.toFixed(2)} zł
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                  <div>
-                    <div className="mb-1 text-sm text-[#e5e4e2]/60">
-                      {invoiceType === 'corrective' ? 'Korekta VAT' : 'Suma VAT'}
-                    </div>
-                    <div
-                      className={`text-2xl font-light ${invoiceType === 'corrective' ? (totals.totalVat < 0 ? 'text-red-400' : totals.totalVat > 0 ? 'text-green-400' : 'text-[#e5e4e2]') : 'text-[#e5e4e2]'}`}
-                    >
-                      {invoiceType === 'corrective' && totals.totalVat >= 0 ? '+' : ''}
-                      {totals.totalVat.toFixed(2)} zł
-                    </div>
-                  </div>
-                  <div>
-                    <div className="mb-1 text-sm text-[#e5e4e2]/60">
-                      {invoiceType === 'corrective' ? 'Korekta brutto' : 'Suma brutto'}
-                    </div>
-                    <div
-                      className={`text-2xl font-medium ${invoiceType === 'corrective' ? (totals.totalGross < 0 ? 'text-red-400' : totals.totalGross > 0 ? 'text-green-400' : 'text-[#d3bb73]') : 'text-[#d3bb73]'}`}
-                    >
-                      {invoiceType === 'corrective' && totals.totalGross >= 0 ? '+' : ''}
-                      {totals.totalGross.toFixed(2)} zł
-                    </div>
-                  </div>
-                </div>
+                  </>
+                )}
               </div>
             </div>
 
