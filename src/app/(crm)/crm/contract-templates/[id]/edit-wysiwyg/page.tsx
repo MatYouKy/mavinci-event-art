@@ -292,6 +292,12 @@ export default function EditTemplateWYSIWYGPage() {
         .select('url, label, variant, company_id')
         .order('order_index');
 
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const toPublicUrl = (path: string) => {
+        if (path.startsWith('http')) return path;
+        return `${supabaseUrl}/storage/v1/object/public/company-logos/${path}`;
+      };
+
       const result: Array<{ url: string; label: string; companyName: string }> = [];
 
       (companies || []).forEach((company: any) => {
@@ -300,14 +306,14 @@ export default function EditTemplateWYSIWYGPage() {
         if (companyLogos.length > 0) {
           companyLogos.forEach((logo: any) => {
             result.push({
-              url: logo.url,
+              url: toPublicUrl(logo.url),
               label: logo.label || logo.variant || 'Logo',
               companyName: company.name,
             });
           });
         } else if (company.logo_url) {
           result.push({
-            url: company.logo_url,
+            url: company.logo_url.startsWith('http') ? company.logo_url : toPublicUrl(company.logo_url),
             label: 'Logo domyslne',
             companyName: company.name,
           });
