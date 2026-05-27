@@ -1,10 +1,8 @@
-// app/bridge/ksef/invoices/send/progress/route.ts
-
 import { NextRequest } from 'next/server';
 import { subscribeKsefProgress } from '../send/progress-store';
 
-
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
   const jobId = request.nextUrl.searchParams.get('jobId');
@@ -18,20 +16,22 @@ export async function GET(request: NextRequest) {
   const stream = new ReadableStream({
     start(controller) {
       const send = (data: any) => {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+        } catch {
+          // stream already closed
+        }
       };
-
-      send({
-        step: 'validate',
-        status: 'active',
-        message: 'Start wysyłki do KSeF',
-      });
 
       const unsubscribe = subscribeKsefProgress(jobId, send);
 
       request.signal.addEventListener('abort', () => {
         unsubscribe();
-        controller.close();
+        try {
+          controller.close();
+        } catch {
+          // already closed
+        }
       });
     },
   });
@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
       Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
     },
   });
 }
