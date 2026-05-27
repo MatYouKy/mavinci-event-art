@@ -1096,7 +1096,7 @@ export default function EventDetailPageClient({
         />
       )}
 
-      {activeTab === 'calculations' && <EventCalculationsTab eventId={eventId} />}
+      {activeTab === 'calculations' && <EventCalculationsTab eventId={eventId}  contactPerson={contact as any }/>}
 
       {activeTab === 'history' && (
         <div className="space-y-6">

@@ -557,13 +557,9 @@ export default function SendCalculationEmailModal({
               <div>
                 <label className="mb-2 block text-sm text-[#e5e4e2]/60">
                   Do (email odbiorcy) <span className="text-red-400">*</span>
-                  {contactPerson?.email ? (
+                  {contactPerson && contactPerson.email ? (
                     <span className="ml-3 mt-1 text-xs text-[#e5e4e2]/40">
-                      Kontakt główny: {contactPerson.name}
-                    </span>
-                  ) : recipientName ? (
-                    <span className="ml-3 mt-1 text-xs text-[#e5e4e2]/40">
-                      Kontakt główny: {recipientName}
+                      Kontakt główny: {contactPerson.name} ({contactPerson.email})
                     </span>
                   ) : null}
                 </label>

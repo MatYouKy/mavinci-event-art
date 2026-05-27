@@ -64,11 +64,12 @@ export interface CalcItem {
 
 interface Props {
   eventId: string;
+  contactPerson: any | null;
 }
 
 // const rowTotal = rowNet;
 
-export default function EventCalculationsTab({ eventId }: Props) {
+export default function EventCalculationsTab({ eventId, contactPerson }: Props) {
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
 
@@ -78,7 +79,7 @@ export default function EventCalculationsTab({ eventId }: Props) {
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [sendingCalculation, setSendingCalculation] = useState<CalculationRow | null>(null);
   const [printingId, setPrintingId] = useState<string | null>(null);
-
+  
   const fetchList = useCallback(
     async (showLoader = true) => {
       if (showLoader) setLoading(true);
@@ -95,7 +96,6 @@ export default function EventCalculationsTab({ eventId }: Props) {
         if (showLoader) setLoading(false);
         return;
       }
-
       const rows: CalculationRow[] = (data ?? []).map((r: any) => {
         const items = r.event_calculation_items ?? [];
         const total = items.reduce(
@@ -441,6 +441,12 @@ export default function EventCalculationsTab({ eventId }: Props) {
           eventId={eventId}
           calculationName={sendingCalculation.name}
           onClose={() => setSendingCalculation(null)}
+          contactPerson={{
+            id: contactPerson.id,
+            name: contactPerson.first_name + ' ' + contactPerson.last_name,
+            email: contactPerson.email,
+          }}
+          defaultEmail={contactPerson.email}
         />
       )}
     </div>
