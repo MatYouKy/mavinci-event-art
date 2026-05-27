@@ -49,9 +49,11 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [customSoundUrl, setCustomSoundUrl] = useState<string | null>(null);
+  const soundEnabledRef = useRef(true);
   const prevUnreadCountRef = useRef<number>(0);
   const readyForSoundRef = useRef(false);
   const initialLoadDoneRef = useRef(false);
+  const sessionStartRef = useRef<string>(new Date().toISOString());
   const [absenceModalId, setAbsenceModalId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -63,7 +65,34 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notification_recipients',
+        },
+        (payload) => {
+          const newRow = payload.new as any;
+          const createdAt = newRow?.created_at;
+          if (createdAt && createdAt > sessionStartRef.current && readyForSoundRef.current && soundEnabledRef.current) {
+            playNotificationSound();
+          }
+          fetchNotifications();
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'notification_recipients',
+        },
+        (payload) => {
+          fetchNotifications();
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
           schema: 'public',
           table: 'notification_recipients',
         },
@@ -95,6 +124,10 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
   }, []);
 
   useEffect(() => {
+    soundEnabledRef.current = soundEnabled;
+  }, [soundEnabled]);
+
+  useEffect(() => {
     if (!initialLoadDoneRef.current) {
       initialLoadDoneRef.current = true;
       prevUnreadCountRef.current = unreadCount;
@@ -104,17 +137,8 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
       return;
     }
 
-    if (!readyForSoundRef.current) {
-      prevUnreadCountRef.current = unreadCount;
-      return;
-    }
-
-    if (unreadCount > prevUnreadCountRef.current && soundEnabled) {
-      playNotificationSound();
-    }
-
     prevUnreadCountRef.current = unreadCount;
-  }, [unreadCount, soundEnabled]);
+  }, [unreadCount]);
 
   const loadUserPreferences = async () => {
     try {
