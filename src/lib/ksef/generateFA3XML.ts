@@ -365,7 +365,7 @@ function buildInvoiceItems(invoice: any): FA3PreparedInvoice['invoice']['items']
   const isCorrectiveInvoice = invoice?.invoice_type === 'corrective';
 
   (invoice?.invoice_items || []).forEach((item: any, index: number) => {
-    const lineNumber = Number(item?.position_number ?? index + 1);
+    const sourceLineNumber = Number(item?.position_number ?? index + 1);
     const name = pickFirstNonEmpty(item?.name) || '';
     const unit = pickFirstNonEmpty(item?.unit) || 'szt';
     const vatRate = Number(item?.vat_rate || 0);
@@ -375,12 +375,14 @@ function buildInvoiceItems(invoice: any): FA3PreparedInvoice['invoice']['items']
     if (isCorrectiveInvoice && hasBefore) {
       const beforeQty = Number(item.before_quantity ?? 0);
       const beforePriceNet = Number(item.before_price_net ?? 0);
-      const beforeValueNet = Number(item.before_value_net || beforeQty * beforePriceNet);
-      const beforeVatAmount = Number(item.before_vat_amount || Math.round(beforeValueNet * vatRate) / 100);
-      const beforeValueGross = Number(item.before_value_gross || beforeValueNet + beforeVatAmount);
+      const beforeValueNet = Number(item.before_value_net ?? beforeQty * beforePriceNet);
+      const beforeVatAmount = Number(
+        item.before_vat_amount ?? Math.round(beforeValueNet * vatRate) / 100,
+      );
+      const beforeValueGross = Number(item.before_value_gross ?? beforeValueNet + beforeVatAmount);
 
       items.push({
-        lineNumber,
+        lineNumber: items.length + 1,
         name,
         unit,
         quantity: beforeQty,
@@ -392,38 +394,52 @@ function buildInvoiceItems(invoice: any): FA3PreparedInvoice['invoice']['items']
         stanPrzed: true,
       });
 
-      const afterQty = Number(item.after_quantity ?? item.quantity ?? beforeQty);
-      const afterPriceNet = Number(item.after_price_net ?? item.price_net ?? beforePriceNet);
-      const afterValueNet = Number(item.after_value_net ?? afterQty * afterPriceNet);
-      const afterVatAmount = Number(
-        item.after_vat_amount ?? Math.round(afterValueNet * vatRate) / 100,
+      const correctionValueNet = Number(item.value_net ?? 0);
+      const correctionVatAmount = Number(
+        item.vat_amount ?? Math.round(correctionValueNet * vatRate) / 100,
       );
-      const afterValueGross = Number(item.after_value_gross ?? afterValueNet + afterVatAmount);
+      const correctionValueGross = Number(
+        item.value_gross ?? correctionValueNet + correctionVatAmount,
+      );
+
+      const correctionQty =
+        beforeQty > 0
+          ? beforeQty
+          : beforePriceNet !== 0
+            ? Math.abs(correctionValueNet / beforePriceNet)
+            : Math.abs(Number(item.quantity ?? 1));
+
+      const correctionPriceNet =
+        correctionQty !== 0
+          ? Number((correctionValueNet / correctionQty).toFixed(2))
+          : correctionValueNet;
 
       items.push({
-        lineNumber,
+        lineNumber: items.length + 1,
         name,
         unit,
-        quantity: afterQty,
-        priceNet: afterPriceNet,
-        valueNet: afterValueNet,
+        quantity: correctionQty,
+        priceNet: correctionPriceNet,
+        valueNet: correctionValueNet,
         vatRate,
-        vatAmount: afterVatAmount,
-        valueGross: afterValueGross,
+        vatAmount: correctionVatAmount,
+        valueGross: correctionValueGross,
       });
-    } else {
-      items.push({
-        lineNumber,
-        name,
-        unit,
-        quantity: Number(item?.quantity || 0),
-        priceNet: Number(item?.price_net || 0),
-        valueNet: Number(item?.value_net || 0),
-        vatRate,
-        vatAmount: Number(item?.vat_amount || 0),
-        valueGross: Number(item?.value_gross || 0),
-      });
+
+      return;
     }
+
+    items.push({
+      lineNumber: sourceLineNumber,
+      name,
+      unit,
+      quantity: Number(item?.quantity || 0),
+      priceNet: Number(item?.price_net || 0),
+      valueNet: Number(item?.value_net || 0),
+      vatRate,
+      vatAmount: Number(item?.vat_amount || 0),
+      valueGross: Number(item?.value_gross || 0),
+    });
   });
 
   return items;
@@ -795,14 +811,12 @@ export function generateFA3XML(
   const faTotalVat = data.invoice.totalVat;
   const faTotalGross = data.invoice.totalGross;
   const dodatkowyOpisXml = buildDodatkowyOpisXml(data);
-
-
   
   const invoiceRowsXml = data.invoice.items
   .map(
-    (item) => `
+    (item, index) => `
     <FaWiersz>
-      <NrWierszaFa>${item.lineNumber}</NrWierszaFa>
+      <NrWierszaFa>${index + 1}</NrWierszaFa>
       <P_7>${escapeXml(item.name)}</P_7>
       <P_8A>${escapeXml(item.unit)}</P_8A>
       <P_8B>${formatDecimal(item.quantity)}</P_8B>

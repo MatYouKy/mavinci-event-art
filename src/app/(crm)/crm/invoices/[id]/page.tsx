@@ -790,38 +790,46 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     : Number(invoice.total_gross ?? 0);
 
   const companyLogoUrl = invoice?.my_company?.logo_url || invoice?.company_logo_url || null;
+  const money = (value: number) => {
+    const rounded = Number(value.toFixed(2));
+    return Object.is(rounded, -0) ? 0 : rounded;
+  };
+  
   const getCorrectionValues = (item: InvoiceItem) => {
     const vatRate = Number(item.vat_rate ?? 0);
-
-    const beforeQty = Number(item.before_quantity ?? item.quantity ?? 0);
+  
+    const beforeQty = Number(item.before_quantity ?? 0);
     const beforePrice = Number(item.before_price_net ?? item.price_net ?? 0);
-    const beforeNet = Number(item.before_value_net ?? beforeQty * beforePrice);
-    const beforeVat = Number(item.before_vat_amount ?? Math.round(beforeNet * vatRate) / 100);
-    const beforeGross = Number(item.before_value_gross ?? beforeNet + beforeVat);
-
-    const afterQty = Number(item.after_quantity ?? item.quantity ?? beforeQty);
-    const afterPrice = Number(item.after_price_net ?? item.price_net ?? beforePrice);
-    const afterNet = Number(item.after_value_net ?? afterQty * afterPrice);
-    const afterVat = Number(item.after_vat_amount ?? Math.round(afterNet * vatRate) / 100);
-    const afterGross = Number(item.after_value_gross ?? afterNet + afterVat);
-
+    const beforeNet = money(Number(item.before_value_net ?? beforeQty * beforePrice));
+    const beforeVat = money(Number(item.before_vat_amount ?? (beforeNet * vatRate) / 100));
+    const beforeGross = money(Number(item.before_value_gross ?? beforeNet + beforeVat));
+  
+    const correctionNet = money(Number(item.value_net ?? 0));
+    const correctionVat = money(Number(item.vat_amount ?? (correctionNet * vatRate) / 100));
+    const correctionGross = money(Number(item.value_gross ?? correctionNet + correctionVat));
+  
+    const correctionQty =
+      correctionNet !== 0 && beforePrice !== 0
+        ? money(Math.abs(correctionNet / beforePrice))
+        : Math.abs(Number(item.before_quantity ?? 1));
+  
+    const correctionPrice =
+      correctionQty !== 0 ? money(correctionNet / correctionQty) : correctionNet;
+  
     return {
       vatRate,
+  
       beforeQty,
       beforePrice,
       beforeNet,
       beforeVat,
       beforeGross,
-      afterQty,
-      afterPrice,
-      afterNet,
-      afterVat,
-      afterGross,
-      deltaQty: afterQty - beforeQty,
-      deltaPrice: afterPrice - beforePrice,
-      deltaNet: afterNet - beforeNet,
-      deltaVat: afterVat - beforeVat,
-      deltaGross: afterGross - beforeGross,
+  
+      correctionQty,
+      correctionPrice: -correctionPrice,
+      correctionNet : -correctionNet,
+      correctionVat : -correctionVat,
+      correctionGross : -correctionGross,
     };
   };
 
@@ -841,7 +849,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
       <div className="min-h-screen bg-[#0a0d1a] p-6">
         <div className="mx-auto max-w-5xl">
           <button
-            onClick={() => router.back()}
+            onClick={() => router.push('/crm/invoices')}
             className="mb-6 flex items-center gap-2 text-[#e5e4e2]/60 hover:text-[#d3bb73]"
           >
             <ArrowLeft className="h-5 w-5" />
@@ -1314,66 +1322,85 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                                     <br />
                                     {item.name}
                                   </td>
+
                                   <td className="w-[50px] border-b border-gray-200 px-1.5 py-1 text-center">
                                     {item.unit}
                                   </td>
+
                                   <td className="w-[60px] border-b border-gray-200 px-1.5 py-1 text-right">
                                     {correction.beforeQty}
                                   </td>
+
                                   <td className="w-[80px] border-b border-gray-200 px-1.5 py-1 text-right">
                                     {correction.beforePrice.toFixed(2)}
                                   </td>
+
                                   <td className="w-[90px] border-b border-gray-200 px-1.5 py-1 text-right">
                                     {correction.beforeNet.toFixed(2)}
                                   </td>
+
                                   <td className="w-[50px] border-b border-gray-200 px-1.5 py-1 text-center">
                                     {item.vat_rate}%
                                   </td>
+
                                   <td className="w-[80px] border-b border-gray-200 px-1.5 py-1 text-right">
                                     {correction.beforeVat.toFixed(2)}
                                   </td>
+
                                   <td className="w-[90px] border-b border-gray-200 px-1.5 py-1 text-right">
                                     {correction.beforeGross.toFixed(2)}
                                   </td>
                                 </tr>
+
                                 <tr>
                                   <td className="border-b border-gray-200 px-1.5 py-1 text-left">
-                                    <span className="text-xs text-gray-500">Po korekcie:</span>
+                                    <span className="text-xs text-gray-500">Korekta:</span>
                                     <br />
                                     {item.name}
                                   </td>
+
                                   <td className="border-b border-gray-200 px-1.5 py-1 text-center">
                                     {item.unit}
                                   </td>
+
                                   <td className="border-b border-gray-200 px-1.5 py-1 text-right">
-                                    {correction.afterQty}
+                                    {correction.correctionQty}
                                   </td>
+
                                   <td className="border-b border-gray-200 px-1.5 py-1 text-right">
-                                    {correction.afterPrice.toFixed(2)}
+                                    {correction.correctionPrice < 0 ? '' : '-'}
+                                    {Math.abs(correction.correctionPrice).toFixed(2)}
                                   </td>
+
                                   <td className="border-b border-gray-200 px-1.5 py-1 text-right">
-                                    {correction.afterNet.toFixed(2)}
+                                    {correction.correctionNet < 0 ? '' : '-'}
+                                    {Math.abs(correction.correctionNet).toFixed(2)}
                                   </td>
+
                                   <td className="border-b border-gray-200 px-1.5 py-1 text-center">
                                     {item.vat_rate}%
                                   </td>
+
                                   <td className="border-b border-gray-200 px-1.5 py-1 text-right">
-                                    {correction.afterVat.toFixed(2)}
+                                    {correction.correctionVat < 0 ? '' : '-'}
+                                    {Math.abs(correction.correctionVat).toFixed(2)}
                                   </td>
+
                                   <td className="border-b border-gray-200 px-1.5 py-1 text-right">
-                                    {correction.afterGross.toFixed(2)}
+                                    {correction.correctionGross < 0 ? '' : '-'}
+                                    {Math.abs(correction.correctionGross).toFixed(2)}
                                   </td>
                                 </tr>
-                                <tr className="bg-gray-50 font-medium">
+                                {/* <tr className="bg-gray-50 font-medium">
                                   <td className="px-1.5 py-1 text-left">
                                     <span className="text-xs">Korekta</span>
                                   </td>
                                   <td className="px-1.5 py-1 text-center"></td>
                                   <td className="px-1.5 py-1 text-right">
-                                    {formatSignedQuantity(correction.deltaQty)}
+                                    {formatSignedQuantity(correction.correctionQty)}
                                   </td>
                                   <td className="px-1.5 py-1 text-right">
-                                    {formatSignedMoney(correction.deltaPrice)}
+                                    {formatSignedMoney(correction.correctionPrice)}
                                   </td>
                                   <td className="px-1.5 py-1 text-right">
                                     {item.value_net.toFixed(2)}
@@ -1385,7 +1412,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                                   <td className="px-1.5 py-1 text-right">
                                     {item.value_gross.toFixed(2)}
                                   </td>
-                                </tr>
+                                </tr> */}
                               </tbody>
                             </table>
                           </td>

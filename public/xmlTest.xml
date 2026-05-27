@@ -3,7 +3,7 @@
   <Naglowek>
     <KodFormularza kodSystemowy="FA (3)" wersjaSchemy="1-0E">FA</KodFormularza>
     <WariantFormularza>3</WariantFormularza>
-    <DataWytworzeniaFa>2026-05-13T11:47:41.480Z</DataWytworzeniaFa>
+    <DataWytworzeniaFa>2026-05-27T19:34:53.827Z</DataWytworzeniaFa>
     <SystemInfo>Mavinci CRM v1.0</SystemInfo>
   </Naglowek>
 
@@ -17,37 +17,41 @@
       <AdresL1>Marcina Kasprzaka 15 /66</AdresL1>
       <AdresL2>10-057 Olsztyn</AdresL2>
     </Adres>
+    <DaneKontaktowe>
+      <Email>biuro@mavinci.pl</Email>
+      <Telefon>+48698212279</Telefon>
+    </DaneKontaktowe>
   </Podmiot1>
 
   <Podmiot2>
     <DaneIdentyfikacyjne>
-      <NIP>5272780836</NIP>
-      <Nazwa>WECO-TRAVEL SERVICES SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ</Nazwa>
+      <NIP>5431505859</NIP>
+      <Nazwa>ENERGO SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ</Nazwa>
     </DaneIdentyfikacyjne>
     <Adres>
       <KodKraju>PL</KodKraju>
-      <AdresL1>ALEJA JANA PAWŁA II 19</AdresL1>
-      <AdresL2>00-854 WARSZAWA</AdresL2>
+      <AdresL1>KLESZCZELOWSKA 84A</AdresL1>
+      <AdresL2>17-100 BIELSK PODLASKI</AdresL2>
     </Adres>
     <DaneKontaktowe>
-      
-      <Telefon>+48 22 439 68 00</Telefon>
+      <Email>energo@energobielsk.pl</Email>
+      <Telefon>+48 85 730 28 18</Telefon>
     </DaneKontaktowe>
-    <NrKlienta>WECO-TRAVEL</NrKlienta>
-    <IDNabywcy>WECO-TRAVEL</IDNabywcy>
+    <NrKlienta>ENERGO BIELSK</NrKlienta>
+    <IDNabywcy>ENERGO BIELSK</IDNabywcy>
     <JST>2</JST>
     <GV>2</GV>
   </Podmiot2>
 
   <Fa>
     <KodWaluty>PLN</KodWaluty>
-    <P_1>2026-05-13</P_1>
+    <P_1>2026-05-27</P_1>
     <P_1M>Olsztyn</P_1M>
-    <P_2>FKO/2/2026</P_2>
-    <P_6>2026-05-13</P_6>
-    <P_13_1>32100.00</P_13_1>
-    <P_14_1>7383.00</P_14_1>
-    <P_15>39483.00</P_15>
+    <P_2>KOR/3/2026</P_2>
+    <P_6>2026-05-23</P_6>
+    <P_13_1>-16260.16</P_13_1>
+    <P_14_1>-3739.84</P_14_1>
+    <P_15>-20000.00</P_15>
     
     <Adnotacje>
       <P_16>2</P_16>
@@ -65,38 +69,47 @@
       <P_PMarzyN>1</P_PMarzyN>
     </PMarzy>
     </Adnotacje>
-    <RodzajFaktury>ROZ</RodzajFaktury>
+    <RodzajFaktury>KOR</RodzajFaktury>
     
-    <DodatkowyOpis>
-      <Klucz>Rozliczenie zaliczek</Klucz>
-      <Wartosc>Rozliczono faktury zaliczkowe: ZAL/3/2026 (12300.00 PLN brutto). Do dopłaty: 27183.00 PLN brutto.</Wartosc>
-    </DodatkowyOpis>
+    <PrzyczynaKorekty>grwfedsq</PrzyczynaKorekty>
+    <TypKorekty>1</TypKorekty>
+    <DaneFaKorygowanej>
+      <DataWystFaKorygowanej>2026-05-25</DataWystFaKorygowanej>
+      <NrFaKorygowanej>24/2026</NrFaKorygowanej>
+      <NrKSeFN>1</NrKSeFN>
+    </DaneFaKorygowanej>
     
-    
-    
-    <FakturaZaliczkowa>
-      <NrKSeFFaZaliczkowej>7394011583-20260511-7C7651400001-3E</NrKSeFFaZaliczkowej>
-    </FakturaZaliczkowa>
     
     <FaWiersz>
       <NrWierszaFa>1</NrWierszaFa>
       <P_7>Obsługa techniczna konferencji</P_7>
       <P_8A>szt.</P_8A>
       <P_8B>1.00</P_8B>
-      <P_9A>32100.00</P_9A>
-      <P_11>32100.00</P_11>
+      <P_9A>16260.16</P_9A>
+      <P_11>16260.16</P_11>
+      <P_12>23</P_12>
+      <StanPrzed>1</StanPrzed>
+    </FaWiersz>
+
+    <FaWiersz>
+      <NrWierszaFa>2</NrWierszaFa>
+      <P_7>Obsługa techniczna konferencji</P_7>
+      <P_8A>szt.</P_8A>
+      <P_8B>1.00</P_8B>
+      <P_9A>-16260.16</P_9A>
+      <P_11>-16260.16</P_11>
       <P_12>23</P_12>
     </FaWiersz>
     <Platnosc>
       
       <TerminPlatnosci>
-        <Termin>2026-05-27</Termin>
+        <Termin>2026-06-03</Termin>
       </TerminPlatnosci>
       <FormaPlatnosci>6</FormaPlatnosci>
       
       <RachunekBankowy>
         <NrRB>12102035410000550204086815</NrRB>
-        
+        <NazwaBanku>PKO BP</NazwaBanku>
       </RachunekBankowy>
     </Platnosc>
   </Fa>

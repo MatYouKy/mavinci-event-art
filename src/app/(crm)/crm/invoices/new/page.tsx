@@ -66,6 +66,16 @@ interface InvoiceItem {
   after_value_gross?: number;
 }
 
+const round2 = (value: number) => Number(value.toFixed(2));
+
+const netFromGross = (gross: number, vatRate: number) => {
+  return round2(gross / (1 + vatRate / 100));
+};
+
+const grossFromNet = (net: number, vatRate: number) => {
+  return round2(net * (1 + vatRate / 100));
+};
+
 export default function NewInvoicePage() {
   const router = useRouter();
   const {
@@ -523,8 +533,11 @@ export default function NewInvoicePage() {
     paymentMethod === 'Gotówka' || paymentMethod === 'Karta' || paymentMethod === 'BLIK';
 
   const calculatePaymentDueDate = () => {
-    if (isCashPayment) return issueDate;
+    if (!issueDate) return '';
     const date = new Date(issueDate);
+    if (isNaN(date.getTime())) {
+      return '';
+    }
     date.setDate(date.getDate() + paymentDays);
     return date.toISOString().split('T')[0];
   };
@@ -638,7 +651,7 @@ export default function NewInvoicePage() {
         ? new Date(correctedInvoiceIssueDate).toLocaleDateString('pl-PL')
         : 'brak daty';
 
-      return `Faktura korygująca odnosi się do faktury ${correctedInvoiceNumber || '-'} z dnia ${issueDateText}. <br />Przyczyna korekty: ${correctionReason || '-'}.`;
+      return `Faktura korygująca odnosi się do faktury ${correctedInvoiceNumber || '-'} z dnia ${issueDateText}. Przyczyna korekty: ${correctionReason || '-'}.`;
     }
 
     if (includeDefaultFooterNote) {
@@ -1505,14 +1518,14 @@ export default function NewInvoicePage() {
                         item.before_vat_amount ?? Math.round(beforeNet * vatRate) / 100,
                       );
                       const beforeGross = Number(item.before_value_gross ?? beforeNet + beforeVat);
+                      const beforeGrossPrice = grossFromNet(beforePrice, vatRate);
 
                       const afterQty = Number(item.quantity ?? beforeQty);
                       const afterPrice = Number(item.price_net ?? beforePrice);
                       const afterNet = Number((afterQty * afterPrice).toFixed(2));
-                      const afterVat = Number(
-                        (Math.round(afterNet * vatRate) / 100).toFixed(2),
-                      );
+                      const afterVat = Number((Math.round(afterNet * vatRate) / 100).toFixed(2));
                       const afterGross = Number((afterNet + afterVat).toFixed(2));
+                      const afterGrossPrice = grossFromNet(afterPrice, vatRate);
 
                       const deltaNetto = Number((afterNet - beforeNet).toFixed(2));
                       const deltaVat = Number((afterVat - beforeVat).toFixed(2));
@@ -1534,8 +1547,6 @@ export default function NewInvoicePage() {
                           </div>
 
                           <div className="grid grid-cols-3 gap-4">
-                            {/* PRZED */}
-
                             <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]/50 p-3">
                               <div className="mb-2 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/40">
                                 Przed korektą
@@ -1544,7 +1555,6 @@ export default function NewInvoicePage() {
                               <div className="space-y-2">
                                 <div>
                                   <span className="text-xs text-[#e5e4e2]/40">Ilość:</span>
-
                                   <span className="ml-2 text-sm text-[#e5e4e2]/70">
                                     {beforeQty} {item.unit}
                                   </span>
@@ -1552,23 +1562,33 @@ export default function NewInvoicePage() {
 
                                 <div>
                                   <span className="text-xs text-[#e5e4e2]/40">Cena netto:</span>
-
                                   <span className="ml-2 text-sm text-[#e5e4e2]/70">
                                     {beforePrice.toFixed(2)} zł
                                   </span>
                                 </div>
 
+                                <div>
+                                  <span className="text-xs text-[#e5e4e2]/40">Cena brutto:</span>
+                                  <span className="ml-2 text-sm text-[#e5e4e2]/70">
+                                    {beforeGrossPrice.toFixed(2)} zł
+                                  </span>
+                                </div>
+
                                 <div className="border-t border-[#d3bb73]/10 pt-2">
                                   <span className="text-xs text-[#e5e4e2]/40">Wartość netto:</span>
-
                                   <span className="ml-2 text-sm text-[#e5e4e2]/70">
                                     {beforeNet.toFixed(2)} zł
                                   </span>
                                 </div>
+
+                                <div>
+                                  <span className="text-xs text-[#e5e4e2]/40">Wartość brutto:</span>
+                                  <span className="ml-2 text-sm text-[#e5e4e2]/70">
+                                    {beforeGross.toFixed(2)} zł
+                                  </span>
+                                </div>
                               </div>
                             </div>
-
-                            {/* PO KOREKCIE */}
 
                             <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 p-3">
                               <div className="mb-2 text-xs font-medium uppercase tracking-wider text-orange-400">
@@ -1580,7 +1600,6 @@ export default function NewInvoicePage() {
                                   <label className="mb-0.5 block text-xs text-[#e5e4e2]/40">
                                     Ilość
                                   </label>
-
                                   <input
                                     type="number"
                                     step="0.01"
@@ -1589,7 +1608,7 @@ export default function NewInvoicePage() {
                                       updateItem(
                                         index,
                                         'quantity',
-                                        Number(e.target.value.replace(',', '.')) || 0,
+                                        Number(e.target.value.replace(',', '.')),
                                       )
                                     }
                                     className="w-full rounded border border-orange-500/30 bg-[#1c1f33] px-2 py-1.5 text-sm text-[#e5e4e2] focus:border-orange-500 focus:outline-none"
@@ -1600,7 +1619,6 @@ export default function NewInvoicePage() {
                                   <label className="mb-0.5 block text-xs text-[#e5e4e2]/40">
                                     Cena netto
                                   </label>
-
                                   <input
                                     type="number"
                                     step="0.01"
@@ -1609,18 +1627,40 @@ export default function NewInvoicePage() {
                                       updateItem(
                                         index,
                                         'price_net',
-                                        Number(e.target.value.replace(',', '.')) || 0,
+                                        Number(e.target.value.replace(',', '.')),
                                       )
                                     }
                                     className="w-full rounded border border-orange-500/30 bg-[#1c1f33] px-2 py-1.5 text-sm text-[#e5e4e2] focus:border-orange-500 focus:outline-none"
                                   />
                                 </div>
 
+                                <div>
+                                  <label className="mb-0.5 block text-xs text-[#e5e4e2]/40">
+                                    Cena brutto
+                                  </label>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={afterGrossPrice}
+                                    onChange={(e) => {
+                                      const gross = Number(e.target.value.replace(',', '.'));
+                                      updateItem(index, 'price_net', netFromGross(gross, vatRate));
+                                    }}
+                                    className="w-full rounded border border-orange-500/30 bg-[#1c1f33] px-2 py-1.5 text-sm text-[#e5e4e2] focus:border-orange-500 focus:outline-none"
+                                  />
+                                </div>
+
                                 <div className="border-t border-orange-500/10 pt-2">
                                   <span className="text-xs text-[#e5e4e2]/40">Wartość netto:</span>
-
                                   <span className="ml-2 text-sm text-[#e5e4e2]/70">
                                     {afterNet.toFixed(2)} zł
+                                  </span>
+                                </div>
+
+                                <div>
+                                  <span className="text-xs text-[#e5e4e2]/40">Wartość brutto:</span>
+                                  <span className="ml-2 text-sm text-[#e5e4e2]/70">
+                                    {afterGross.toFixed(2)} zł
                                   </span>
                                 </div>
 
@@ -1637,8 +1677,6 @@ export default function NewInvoicePage() {
                               </div>
                             </div>
 
-                            {/* RÓŻNICA */}
-
                             <div className="rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-3">
                               <div className="mb-2 text-xs font-medium uppercase tracking-wider text-[#d3bb73]">
                                 Różnica / korekta
@@ -1647,24 +1685,45 @@ export default function NewInvoicePage() {
                               <div className="space-y-2">
                                 <div>
                                   <span className="text-xs text-[#e5e4e2]/40">Netto:</span>
-
-                                  <span className={`ml-2 text-sm font-medium ${deltaNetto < 0 ? 'text-red-400' : deltaNetto > 0 ? 'text-green-400' : 'text-[#e5e4e2]/70'}`}>
+                                  <span
+                                    className={`ml-2 text-sm font-medium ${
+                                      deltaNetto < 0
+                                        ? 'text-red-400'
+                                        : deltaNetto > 0
+                                          ? 'text-green-400'
+                                          : 'text-[#e5e4e2]/70'
+                                    }`}
+                                  >
                                     {deltaNetto.toFixed(2)} zł
                                   </span>
                                 </div>
 
                                 <div>
                                   <span className="text-xs text-[#e5e4e2]/40">VAT:</span>
-
-                                  <span className={`ml-2 text-sm ${deltaVat < 0 ? 'text-red-400' : deltaVat > 0 ? 'text-green-400' : 'text-[#e5e4e2]/70'}`}>
+                                  <span
+                                    className={`ml-2 text-sm ${
+                                      deltaVat < 0
+                                        ? 'text-red-400'
+                                        : deltaVat > 0
+                                          ? 'text-green-400'
+                                          : 'text-[#e5e4e2]/70'
+                                    }`}
+                                  >
                                     {deltaVat.toFixed(2)} zł
                                   </span>
                                 </div>
 
                                 <div className="border-t border-[#d3bb73]/10 pt-2">
                                   <span className="text-xs text-[#e5e4e2]/40">Brutto:</span>
-
-                                  <span className={`ml-2 text-sm font-medium ${deltaGross < 0 ? 'text-red-400' : deltaGross > 0 ? 'text-green-400' : 'text-[#e5e4e2]/70'}`}>
+                                  <span
+                                    className={`ml-2 text-sm font-medium ${
+                                      deltaGross < 0
+                                        ? 'text-red-400'
+                                        : deltaGross > 0
+                                          ? 'text-green-400'
+                                          : 'text-[#e5e4e2]/70'
+                                    }`}
+                                  >
                                     {deltaGross.toFixed(2)} zł
                                   </span>
                                 </div>
@@ -1676,13 +1735,16 @@ export default function NewInvoicePage() {
                     })
                   : items.map((item, index) => {
                       const { valueNet, vatAmount, valueGross } = calculateItemValues(item);
+                      const vatRate = Number(item.vat_rate ?? 0);
+                      const priceGross = grossFromNet(Number(item.price_net ?? 0), vatRate);
+
                       return (
                         <div
                           key={index}
                           className="rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a] p-4"
                         >
                           <div className="flex items-start gap-4">
-                            <div className="grid flex-1 grid-cols-6 gap-4">
+                            <div className="grid flex-1 grid-cols-7 gap-4">
                               <div className="col-span-2">
                                 <label className="mb-1 block text-xs text-[#e5e4e2]/40">
                                   Nazwa *
@@ -1743,13 +1805,40 @@ export default function NewInvoicePage() {
 
                               <div>
                                 <label className="mb-1 block text-xs text-[#e5e4e2]/40">
+                                  Cena brutto *
+                                </label>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={priceGross}
+                                  onChange={(e) => {
+                                    const gross = Number(e.target.value.replace(',', '.'));
+                                    updateItem(index, 'price_net', netFromGross(gross, vatRate));
+                                  }}
+                                  className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="mb-1 block text-xs text-[#e5e4e2]/40">
                                   VAT %
                                 </label>
                                 <select
                                   value={item.vat_rate}
-                                  onChange={(e) =>
-                                    updateItem(index, 'vat_rate', parseInt(e.target.value))
-                                  }
+                                  onChange={(e) => {
+                                    const newVatRate = parseInt(e.target.value);
+                                    const currentGross = grossFromNet(
+                                      Number(item.price_net ?? 0),
+                                      vatRate,
+                                    );
+
+                                    updateItem(index, 'vat_rate', newVatRate);
+                                    updateItem(
+                                      index,
+                                      'price_net',
+                                      netFromGross(currentGross, newVatRate),
+                                    );
+                                  }}
                                   className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
                                 >
                                   <option value={0}>0%</option>
@@ -1796,69 +1885,100 @@ export default function NewInvoicePage() {
                   {invoiceType === 'corrective' ? 'Kwota korekty' : 'Podsumowanie'}
                 </h3>
 
-                {invoiceType === 'corrective' && (() => {
-                  const totalBeforeNet = items.reduce((sum, i) => sum + Number(i.before_value_net ?? 0), 0);
-                  const totalBeforeVat = items.reduce((sum, i) => sum + Number(i.before_vat_amount ?? 0), 0);
-                  const totalBeforeGross = totalBeforeNet + totalBeforeVat;
-                  const totalAfterNet = totalBeforeNet + totals.totalNet;
-                  const totalAfterVat = totalBeforeVat + totals.totalVat;
-                  const totalAfterGross = totalAfterNet + totalAfterVat;
+                {invoiceType === 'corrective' &&
+                  (() => {
+                    const totalBeforeNet = items.reduce(
+                      (sum, i) => sum + Number(i.before_value_net ?? 0),
+                      0,
+                    );
+                    const totalBeforeVat = items.reduce(
+                      (sum, i) => sum + Number(i.before_vat_amount ?? 0),
+                      0,
+                    );
+                    const totalBeforeGross = totalBeforeNet + totalBeforeVat;
+                    const totalAfterNet = totalBeforeNet + totals.totalNet;
+                    const totalAfterVat = totalBeforeVat + totals.totalVat;
+                    const totalAfterGross = totalAfterNet + totalAfterVat;
 
-                  return (
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-3 gap-6 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]/30 p-4">
-                        <div>
-                          <div className="mb-1 text-xs text-[#e5e4e2]/40">Przed korektą - netto</div>
-                          <div className="text-lg text-[#e5e4e2]/70">{totalBeforeNet.toFixed(2)} zł</div>
-                        </div>
-                        <div>
-                          <div className="mb-1 text-xs text-[#e5e4e2]/40">Przed korektą - VAT</div>
-                          <div className="text-lg text-[#e5e4e2]/70">{totalBeforeVat.toFixed(2)} zł</div>
-                        </div>
-                        <div>
-                          <div className="mb-1 text-xs text-[#e5e4e2]/40">Przed korektą - brutto</div>
-                          <div className="text-lg text-[#e5e4e2]/70">{totalBeforeGross.toFixed(2)} zł</div>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-6">
-                        <div>
-                          <div className="mb-1 text-sm text-[#e5e4e2]/60">Korekta netto</div>
-                          <div className={`text-2xl font-light ${totals.totalNet < 0 ? 'text-red-400' : totals.totalNet > 0 ? 'text-green-400' : 'text-[#e5e4e2]'}`}>
-                            {totals.totalNet.toFixed(2)} zł
+                    return (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-3 gap-6 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]/30 p-4">
+                          <div>
+                            <div className="mb-1 text-xs text-[#e5e4e2]/40">
+                              Przed korektą - netto
+                            </div>
+                            <div className="text-lg text-[#e5e4e2]/70">
+                              {totalBeforeNet.toFixed(2)} zł
+                            </div>
+                          </div>
+                          <div>
+                            <div className="mb-1 text-xs text-[#e5e4e2]/40">
+                              Przed korektą - VAT
+                            </div>
+                            <div className="text-lg text-[#e5e4e2]/70">
+                              {totalBeforeVat.toFixed(2)} zł
+                            </div>
+                          </div>
+                          <div>
+                            <div className="mb-1 text-xs text-[#e5e4e2]/40">
+                              Przed korektą - brutto
+                            </div>
+                            <div className="text-lg text-[#e5e4e2]/70">
+                              {totalBeforeGross.toFixed(2)} zł
+                            </div>
                           </div>
                         </div>
-                        <div>
-                          <div className="mb-1 text-sm text-[#e5e4e2]/60">Korekta VAT</div>
-                          <div className={`text-2xl font-light ${totals.totalVat < 0 ? 'text-red-400' : totals.totalVat > 0 ? 'text-green-400' : 'text-[#e5e4e2]'}`}>
-                            {totals.totalVat.toFixed(2)} zł
-                          </div>
-                        </div>
-                        <div>
-                          <div className="mb-1 text-sm text-[#e5e4e2]/60">Korekta brutto</div>
-                          <div className={`text-2xl font-medium ${totals.totalGross < 0 ? 'text-red-400' : totals.totalGross > 0 ? 'text-green-400' : 'text-[#d3bb73]'}`}>
-                            {totals.totalGross.toFixed(2)} zł
-                          </div>
-                        </div>
-                      </div>
 
-                      <div className="grid grid-cols-3 gap-6 rounded-lg border border-orange-500/15 bg-orange-500/5 p-4">
-                        <div>
-                          <div className="mb-1 text-xs text-orange-400">Po korekcie - netto</div>
-                          <div className="text-lg font-medium text-[#e5e4e2]">{totalAfterNet.toFixed(2)} zł</div>
+                        <div className="grid grid-cols-3 gap-6">
+                          <div>
+                            <div className="mb-1 text-sm text-[#e5e4e2]/60">Korekta netto</div>
+                            <div
+                              className={`text-2xl font-light ${totals.totalNet < 0 ? 'text-red-400' : totals.totalNet > 0 ? 'text-green-400' : 'text-[#e5e4e2]'}`}
+                            >
+                              {totals.totalNet.toFixed(2)} zł
+                            </div>
+                          </div>
+                          <div>
+                            <div className="mb-1 text-sm text-[#e5e4e2]/60">Korekta VAT</div>
+                            <div
+                              className={`text-2xl font-light ${totals.totalVat < 0 ? 'text-red-400' : totals.totalVat > 0 ? 'text-green-400' : 'text-[#e5e4e2]'}`}
+                            >
+                              {totals.totalVat.toFixed(2)} zł
+                            </div>
+                          </div>
+                          <div>
+                            <div className="mb-1 text-sm text-[#e5e4e2]/60">Korekta brutto</div>
+                            <div
+                              className={`text-2xl font-medium ${totals.totalGross < 0 ? 'text-red-400' : totals.totalGross > 0 ? 'text-green-400' : 'text-[#d3bb73]'}`}
+                            >
+                              {totals.totalGross.toFixed(2)} zł
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <div className="mb-1 text-xs text-orange-400">Po korekcie - VAT</div>
-                          <div className="text-lg font-medium text-[#e5e4e2]">{totalAfterVat.toFixed(2)} zł</div>
-                        </div>
-                        <div>
-                          <div className="mb-1 text-xs text-orange-400">Po korekcie - brutto</div>
-                          <div className="text-lg font-medium text-[#d3bb73]">{totalAfterGross.toFixed(2)} zł</div>
+
+                        <div className="grid grid-cols-3 gap-6 rounded-lg border border-orange-500/15 bg-orange-500/5 p-4">
+                          <div>
+                            <div className="mb-1 text-xs text-orange-400">Po korekcie - netto</div>
+                            <div className="text-lg font-medium text-[#e5e4e2]">
+                              {totalAfterNet.toFixed(2)} zł
+                            </div>
+                          </div>
+                          <div>
+                            <div className="mb-1 text-xs text-orange-400">Po korekcie - VAT</div>
+                            <div className="text-lg font-medium text-[#e5e4e2]">
+                              {totalAfterVat.toFixed(2)} zł
+                            </div>
+                          </div>
+                          <div>
+                            <div className="mb-1 text-xs text-orange-400">Po korekcie - brutto</div>
+                            <div className="text-lg font-medium text-[#d3bb73]">
+                              {totalAfterGross.toFixed(2)} zł
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })()}
+                    );
+                  })()}
 
                 {invoiceType !== 'corrective' && (
                   <>

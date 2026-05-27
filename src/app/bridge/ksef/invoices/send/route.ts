@@ -378,7 +378,6 @@ async function enrichFinalInvoiceSettledInvoicesWithKsefNumbers(
 }
 
 export async function POST(request: NextRequest) {
-  console.log('[KSeF SEND] POST endpoint hit');
   let body: any = {};
   try {
     const rawBody = await request.text();
@@ -506,8 +505,6 @@ export async function POST(request: NextRequest) {
           ? await enrichFinalInvoiceSettledInvoicesWithKsefNumbers(supabase, invoice)
           : invoice;
 
-          console.log('[KSeF invoice_items]', invoice.invoice_items);
-
         const preparedInvoice = prepareFA3Invoice(invoiceForXml, organization);
         const validation = validatePreparedFA3Invoice(preparedInvoice);
 
@@ -526,13 +523,6 @@ export async function POST(request: NextRequest) {
         emitProgress('xml', 'active', { message: 'Generowanie XML FA(3)' });
 
         const xmlContent = generateFA3XML(preparedInvoice, { debug: true });
-
-        return new Response(xmlContent, {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/xml',
-          },
-        });
 
         emitProgress('xml', 'completed');
 

@@ -52,6 +52,14 @@ interface InvoiceItem {
   vat_rate: number;
 }
 
+const grossFromNet = (net: number, vatRate: number) => {
+  return Number((net * (1 + vatRate / 100)).toFixed(2));
+};
+
+const netFromGross = (gross: number, vatRate: number) => {
+  return Number((gross / (1 + vatRate / 100)).toFixed(2));
+};
+
 const PAYMENT_METHODS = ['Przelew', 'Gotówka', 'Karta płatnicza', 'Kompensata'];
 
 export default function EditInvoicePage({ params }: { params: { id: string } }) {
@@ -754,7 +762,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
     <div className="min-h-screen bg-[#0a0d1a] p-6">
       <div className="mx-auto max-w-5xl">
         <button
-          onClick={() => router.back()}
+          onClick={() => router.push('/crm/invoices')}
           className="mb-6 flex items-center gap-2 text-[#e5e4e2]/60 hover:text-[#d3bb73]"
         >
           <ArrowLeft className="h-5 w-5" />
@@ -1312,13 +1320,18 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
               <div className="space-y-4">
                 {items.map((item, index) => {
                   const { valueNet, vatAmount, valueGross } = calculateItemValues(item);
+
+                  const vatRate = Number(item.vat_rate ?? 0);
+                  const priceNet = Number(item.price_net ?? 0);
+                  const priceGross = grossFromNet(priceNet, vatRate);
+
                   return (
                     <div
                       key={index}
                       className="rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a] p-4"
                     >
                       <div className="flex items-start gap-4">
-                        <div className="grid flex-1 grid-cols-6 gap-4">
+                        <div className="grid flex-1 grid-cols-7 gap-4">
                           <div className="col-span-2">
                             <label className="mb-1 block text-xs text-[#e5e4e2]/40">Nazwa *</label>
                             <input
@@ -1365,7 +1378,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
                             <input
                               type="number"
                               step="0.01"
-                              value={item.price_net}
+                              value={priceNet}
                               onChange={(e) =>
                                 updateItem(index, 'price_net', parseFloat(e.target.value))
                               }
@@ -1374,12 +1387,36 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
                           </div>
 
                           <div>
+                            <label className="mb-1 block text-xs text-[#e5e4e2]/40">
+                              Cena brutto *
+                            </label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={priceGross}
+                              onChange={(e) => {
+                                const gross = Number(e.target.value.replace(',', '.'));
+                                updateItem(index, 'price_net', netFromGross(gross, vatRate));
+                              }}
+                              className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
+                            />
+                          </div>
+
+                          <div>
                             <label className="mb-1 block text-xs text-[#e5e4e2]/40">VAT %</label>
                             <select
                               value={item.vat_rate}
-                              onChange={(e) =>
-                                updateItem(index, 'vat_rate', parseInt(e.target.value))
-                              }
+                              onChange={(e) => {
+                                const nextVatRate = parseInt(e.target.value);
+                                const currentGross = grossFromNet(priceNet, vatRate);
+
+                                updateItem(index, 'vat_rate', nextVatRate);
+                                updateItem(
+                                  index,
+                                  'price_net',
+                                  netFromGross(currentGross, nextVatRate),
+                                );
+                              }}
                               className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
                             >
                               <option value={0}>0%</option>
@@ -1403,10 +1440,12 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
                           <span className="text-[#e5e4e2]/40">Wartosc netto:</span>
                           <span className="ml-2 text-[#e5e4e2]">{valueNet.toFixed(2)} zl</span>
                         </div>
+
                         <div>
                           <span className="text-[#e5e4e2]/40">Kwota VAT:</span>
                           <span className="ml-2 text-[#e5e4e2]">{vatAmount.toFixed(2)} zl</span>
                         </div>
+
                         <div>
                           <span className="text-[#e5e4e2]/40">Wartosc brutto:</span>
                           <span className="ml-2 font-medium text-[#d3bb73]">

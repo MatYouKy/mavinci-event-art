@@ -97,13 +97,6 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
     if (!value) return '';
     return new Date(value).toLocaleDateString('pl-PL');
   };
-
-  const formatMoney = (value?: number) => Number(value || 0).toFixed(2);
-
-  const formatSignedMoney = (value?: number) => {
-    const number = Number(value || 0);
-    return `${number > 0 ? '+' : ''}${number.toFixed(2)}`;
-  };
   
   const formatSignedQuantity = (value?: number) => {
     const number = Number(value || 0);
@@ -111,20 +104,44 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
     return `${number > 0 ? '+' : ''}${number}`;
   };
   
+  const money = (value?: number) => {
+
+    const rounded = Number(Number(value || 0).toFixed(2));
+  
+    return Object.is(rounded, -0) ? 0 : rounded;
+  
+  };
+  
+  const formatMoney = (value?: number) => money(value).toFixed(2);
+  
+  const formatSignedMoney = (value?: number) => {
+  
+    const number = money(value);
+  
+    return `${number > 0 ? '+' : ''}${number.toFixed(2)}`;
+  
+  };
+  
   const getCorrectionValues = (item: InvoiceItem) => {
     const vatRate = Number(item.vat_rate ?? 0);
   
-    const beforeQty = Number(item.before_quantity ?? item.quantity ?? 0);
+    const beforeQty = Number(item.before_quantity ?? 0);
     const beforePrice = Number(item.before_price_net ?? item.price_net ?? 0);
-    const beforeNet = Number(item.before_value_net ?? beforeQty * beforePrice);
-    const beforeVat = Number(item.before_vat_amount ?? Math.round(beforeNet * vatRate) / 100);
-    const beforeGross = Number(item.before_value_gross ?? beforeNet + beforeVat);
+    const beforeNet = money(item.before_value_net ?? beforeQty * beforePrice);
+    const beforeVat = money(item.before_vat_amount ?? (beforeNet * vatRate) / 100);
+    const beforeGross = money(item.before_value_gross ?? beforeNet + beforeVat);
   
-    const afterQty = Number(item.after_quantity ?? item.quantity ?? beforeQty);
-    const afterPrice = Number(item.after_price_net ?? item.price_net ?? beforePrice);
-    const afterNet = Number(item.after_value_net ?? afterQty * afterPrice);
-    const afterVat = Number(item.after_vat_amount ?? Math.round(afterNet * vatRate) / 100);
-    const afterGross = Number(item.after_value_gross ?? afterNet + afterVat);
+    const correctionNet = money(item.value_net ?? 0);
+    const correctionVat = money(item.vat_amount ?? (correctionNet * vatRate) / 100);
+    const correctionGross = money(item.value_gross ?? correctionNet + correctionVat);
+  
+    const correctionQty =
+      correctionNet !== 0 && beforePrice !== 0
+        ? money(Math.abs(correctionNet / beforePrice))
+        : Math.abs(Number(item.before_quantity ?? item.quantity ?? 1));
+  
+    const correctionPrice =
+      correctionQty !== 0 ? money(correctionNet / correctionQty) : correctionNet;
   
     return {
       vatRate,
@@ -133,16 +150,12 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
       beforeNet,
       beforeVat,
       beforeGross,
-      afterQty,
-      afterPrice,
-      afterNet,
-      afterVat,
-      afterGross,
-      deltaQty: afterQty - beforeQty,
-      deltaPrice: afterPrice - beforePrice,
-      deltaNet: afterNet - beforeNet,
-      deltaVat: afterVat - beforeVat,
-      deltaGross: afterGross - beforeGross,
+  
+      correctionQty,
+      correctionPrice,
+      correctionNet,
+      correctionVat,
+      correctionGross,
     };
   };
 
@@ -276,41 +289,30 @@ const isFinalInvoice =
           const correction = getCorrectionValues(item);
   
           return `
-        <tr style="background: #f9fafb;">
-          <td rowspan="3" style="vertical-align: middle;">${idx + 1}</td>
-          <td rowspan="3" style="vertical-align: middle;">${esc(item.name)}</td>
-          <td style="font-size: 9px; color: #666;">Przed korektą</td>
-          <td class="center">${esc(item.unit)}</td>
-          <td class="right">${correction.beforeQty}</td>
-          <td class="right">${formatMoney(correction.beforePrice)}</td>
-          <td class="right">${formatMoney(correction.beforeNet)}</td>
-          <td class="center">${correction.vatRate}%</td>
-          <td class="right">${formatMoney(correction.beforeVat)}</td>
-          <td class="right">${formatMoney(correction.beforeGross)}</td>
-        </tr>
+            <tr style="background: #f9fafb;">
+              <td rowspan="2" style="vertical-align: middle;">${idx + 1}</td>
+              <td rowspan="2" style="vertical-align: middle;">${esc(item.name)}</td>
+              <td style="font-size: 9px; color: #666;">Przed korektą</td>
+              <td class="center">${esc(item.unit)}</td>
+              <td class="right">${correction.beforeQty}</td>
+              <td class="right">${formatMoney(correction.beforePrice)}</td>
+              <td class="right">${formatMoney(correction.beforeNet)}</td>
+              <td class="center">${correction.vatRate}%</td>
+              <td class="right">${formatMoney(correction.beforeVat)}</td>
+              <td class="right">${formatMoney(correction.beforeGross)}</td>
+            </tr>
   
-        <tr>
-          <td style="font-size: 9px; color: #666;">Po korekcie</td>
-          <td class="center">${esc(item.unit)}</td>
-          <td class="right">${correction.afterQty}</td>
-          <td class="right">${formatMoney(correction.afterPrice)}</td>
-          <td class="right">${formatMoney(correction.afterNet)}</td>
-          <td class="center">${correction.vatRate}%</td>
-          <td class="right">${formatMoney(correction.afterVat)}</td>
-          <td class="right">${formatMoney(correction.afterGross)}</td>
-        </tr>
-  
-        <tr style="background: #f0f0f0; font-weight: 600;">
-          <td style="font-size: 9px;">Korekta</td>
-          <td class="center">${esc(item.unit)}</td>
-          <td class="right">${formatSignedQuantity(correction.deltaQty)}</td>
-          <td class="right">${formatSignedMoney(correction.deltaPrice)}</td>
-          <td class="right">${formatSignedMoney(correction.deltaNet)}</td>
-          <td class="center">${correction.vatRate}%</td>
-          <td class="right">${formatSignedMoney(correction.deltaVat)}</td>
-          <td class="right strong">${formatSignedMoney(correction.deltaGross)}</td>
-        </tr>
-      `;
+            <tr>
+              <td style="font-size: 9px; color: #666;">Korekta</td>
+              <td class="center">${esc(item.unit)}</td>
+              <td class="right">${correction.correctionQty}</td>
+              <td class="right">${formatMoney(correction.correctionPrice)}</td>
+              <td class="right">${formatMoney(correction.correctionNet)}</td>
+              <td class="center">${correction.vatRate}%</td>
+              <td class="right">${formatMoney(correction.correctionVat)}</td>
+              <td class="right strong">${formatMoney(correction.correctionGross)}</td>
+            </tr>
+          `;
         })
         .join('')
     : '';
@@ -632,55 +634,49 @@ ${!data.buyerIsPrivatePerson ? '<div class="preview-banner">Wizualizacja</div>' 
     </tbody>
   </table>
 ${(() => {
-  const totals = correctiveItems!.reduce(
-    (sum, item) => {
-      const c = getCorrectionValues(item);
+const totals = correctiveItems!.reduce(
+  (sum, item) => {
+    const c = getCorrectionValues(item);
 
-      return {
-        beforeNet: sum.beforeNet + c.beforeNet,
-        beforeVat: sum.beforeVat + c.beforeVat,
-        beforeGross: sum.beforeGross + c.beforeGross,
-        deltaNet: sum.deltaNet + c.deltaNet,
-        deltaVat: sum.deltaVat + c.deltaVat,
-        deltaGross: sum.deltaGross + c.deltaGross,
-        afterNet: sum.afterNet + c.afterNet,
-        afterVat: sum.afterVat + c.afterVat,
-        afterGross: sum.afterGross + c.afterGross,
-      };
-    },
-    {
-      beforeNet: 0,
-      beforeVat: 0,
-      beforeGross: 0,
-      deltaNet: 0,
-      deltaVat: 0,
-      deltaGross: 0,
-      afterNet: 0,
-      afterVat: 0,
-      afterGross: 0,
-    },
-  );
+    return {
+      beforeNet: sum.beforeNet + c.beforeNet,
+      beforeVat: sum.beforeVat + c.beforeVat,
+      beforeGross: sum.beforeGross + c.beforeGross,
+      correctionNet: sum.correctionNet + c.correctionNet,
+      correctionVat: sum.correctionVat + c.correctionVat,
+      correctionGross: sum.correctionGross + c.correctionGross,
+    };
+  },
+  {
+    beforeNet: 0,
+    beforeVat: 0,
+    beforeGross: 0,
+    correctionNet: 0,
+    correctionVat: 0,
+    correctionGross: 0,
+  },
+);
 
   return `
     <table style="margin-left: auto; margin-top: 8px; width: auto; font-size: 11px;">
       <tbody>
-        <tr>
-          <td class="right strong" style="padding: 4px 10px;">Przed korektą:</td>
-          <td class="right" style="padding: 4px 10px;">${formatMoney(totals.beforeNet)}</td>
-          <td class="right" style="padding: 4px 10px;">${formatMoney(totals.beforeVat)}</td>
-          <td class="right" style="padding: 4px 10px;">${formatMoney(totals.beforeGross)}</td>
-        </tr>
-        <tr>
-          <td class="right strong" style="padding: 4px 10px;">Suma korekt:</td>
-          <td class="right" style="padding: 4px 10px;">${formatSignedMoney(totals.deltaNet)}</td>
-          <td class="right" style="padding: 4px 10px;">${formatSignedMoney(totals.deltaVat)}</td>
-          <td class="right" style="padding: 4px 10px;">${formatSignedMoney(totals.deltaGross)}</td>
-        </tr>
+<tr>
+  <td class="right strong" style="padding: 4px 10px;">Przed korektą:</td>
+  <td class="right" style="padding: 4px 10px;">${formatMoney(totals.beforeNet)}</td>
+  <td class="right" style="padding: 4px 10px;">${formatMoney(totals.beforeVat)}</td>
+  <td class="right" style="padding: 4px 10px;">${formatMoney(totals.beforeGross)}</td>
+</tr>
+<tr>
+  <td class="right strong" style="padding: 4px 10px;">Suma korekt:</td>
+  <td class="right" style="padding: 4px 10px;">${formatSignedMoney(totals.correctionNet)}</td>
+  <td class="right" style="padding: 4px 10px;">${formatSignedMoney(totals.correctionVat)}</td>
+  <td class="right" style="padding: 4px 10px;">${formatSignedMoney(totals.correctionGross)}</td>
+</tr>
         <tr style="font-weight: 700;">
           <td class="right strong" style="padding: 4px 10px;">Po korekcie:</td>
-          <td class="right" style="padding: 4px 10px;">${formatMoney(totals.afterNet)}</td>
-          <td class="right" style="padding: 4px 10px;">${formatMoney(totals.afterVat)}</td>
-          <td class="right" style="padding: 4px 10px;">${formatMoney(totals.afterGross)}</td>
+          <td class="right" style="padding: 4px 10px;">${formatMoney(totals.beforeNet + totals.correctionNet)}</td>
+          <td class="right" style="padding: 4px 10px;">${formatMoney(totals.beforeVat + totals.correctionVat)}</td>
+          <td class="right" style="padding: 4px 10px;">${formatMoney(totals.beforeGross + totals.correctionGross)}</td>
         </tr>
       </tbody>
     </table>`;

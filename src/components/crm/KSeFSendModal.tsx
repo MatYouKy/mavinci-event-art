@@ -105,9 +105,10 @@ export default function KSeFSendModal({
 
   const onSuccessRef = useRef(onSuccess);
   const onErrorRef = useRef(onError);
+  const requestStartedRef = useRef(false);
 
   useEffect(() => {
-    onSuccessRef.current = onSuccess; 
+    onSuccessRef.current = onSuccess;
   }, [onSuccess]);
 
   useEffect(() => {
@@ -115,7 +116,9 @@ export default function KSeFSendModal({
   }, [onError]);
 
   useEffect(() => {
-    const controller = new AbortController();
+    if (requestStartedRef.current) return;
+
+    requestStartedRef.current = true;
 
     startTimeRef.current = Date.now();
 
@@ -184,21 +187,11 @@ export default function KSeFSendModal({
     };
 
     (async () => {
-      console.log('[KSeF modal] start fetch', {
-        invoiceId,
-        url: '/bridge/ksef/invoices/send',
-      });
       try {
         const response = await fetch('/bridge/ksef/invoices/send', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ invoiceId }),
-          signal: controller.signal,
-        });
-        console.log('[KSeF modal] response received', {
-          status: response.status,
-          ok: response.ok,
-          contentType: response.headers.get('content-type'),
         });
 
         if (!response.ok) {
@@ -274,12 +267,12 @@ export default function KSeFSendModal({
           message: err?.message,
           error: err,
         });
-        
+
         const errorMsg =
           err?.name === 'AbortError'
             ? 'Request do KSeF został przerwany po stronie frontendu.'
             : err.message || 'Nieznany błąd';
-        
+
         setErrorMessage(errorMsg);
         setFinished(true);
         onErrorRef.current(errorMsg);
@@ -287,7 +280,6 @@ export default function KSeFSendModal({
     })();
 
     return () => {
-      controller.abort();
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
