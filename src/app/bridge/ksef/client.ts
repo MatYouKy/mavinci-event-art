@@ -327,32 +327,66 @@ export async function getKSeFInvoiceXml(
   isTestEnvironment: boolean,
   context?: Record<string, unknown>,
 ): Promise<string> {
-  const baseUrl = getBaseUrl(isTestEnvironment);
-  const url = `${baseUrl}/invoices/${ksefReferenceNumber}`;
+  const host = isTestEnvironment
+    ? 'https://api-test.ksef.mf.gov.pl'
+    : 'https://api.ksef.mf.gov.pl';
 
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      Accept: 'application/octet-stream',
-      Authorization: `Bearer ${accessToken}`,
+  const endpoints = [
+    {
+      url: `${host}/api/online/Invoice/Get/${ksefReferenceNumber}`,
+      headers: { Accept: 'application/octet-stream', SessionToken: accessToken },
     },
-    signal: AbortSignal.timeout(KSEF_TIMEOUT_MS),
-    cache: 'no-store',
-  });
+    {
+      url: `${host}/api/v2/invoices/ksef/${ksefReferenceNumber}`,
+      headers: { Accept: 'application/octet-stream', Authorization: `Bearer ${accessToken}` },
+    },
+  ];
 
-  if (!response.ok) {
-    const raw = await response.text();
-    console.error(`${KSEF_LOG_PREFIX} invoice XML fetch error`, {
-      url,
-      status: response.status,
-      body: raw,
-      ksefReferenceNumber,
-      ...context,
-    });
-    throw new Error(`KSeF invoice XML error ${response.status}: ${raw}`);
+  let lastError = '';
+  let lastStatus = 0;
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetch(endpoint.url, {
+        method: 'GET',
+        headers: endpoint.headers,
+        signal: AbortSignal.timeout(KSEF_TIMEOUT_MS),
+        cache: 'no-store',
+      });
+
+      if (response.ok) {
+        return await response.text();
+      }
+
+      lastStatus = response.status;
+      lastError = await response.text();
+
+      console.warn(`${KSEF_LOG_PREFIX} invoice XML endpoint failed`, {
+        url: endpoint.url,
+        status: response.status,
+        body: lastError,
+        ksefReferenceNumber,
+        ...context,
+      });
+    } catch (e: any) {
+      lastError = e?.message || 'transport error';
+      console.warn(`${KSEF_LOG_PREFIX} invoice XML endpoint transport error`, {
+        url: endpoint.url,
+        message: lastError,
+        ksefReferenceNumber,
+        ...context,
+      });
+    }
   }
 
-  return await response.text();
+  console.error(`${KSEF_LOG_PREFIX} all invoice XML endpoints failed`, {
+    ksefReferenceNumber,
+    lastStatus,
+    lastError,
+    ...context,
+  });
+
+  throw new Error(`KSeF invoice XML error ${lastStatus}: ${lastError}`);
 }
 
 export async function getKSeFInvoices(

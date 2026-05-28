@@ -69,10 +69,13 @@ export async function POST(req: Request) {
         { stage: 'invoice-detail-fetch', invoiceId: invoiceRow.id, ksefRef: refNumber },
       );
     } catch (e: any) {
-      return NextResponse.json(
-        { success: false, error: `Nie udało się pobrać XML z KSeF: ${e?.message}` },
-        { status: 502 }
-      );
+      return NextResponse.json({
+        success: true,
+        invoice: invoiceRow,
+        parsed: null,
+        source: 'ksef_unavailable',
+        error: `Nie udało się pobrać XML z KSeF: ${e?.message}`,
+      });
     }
 
     const parsed = parseFA3InvoiceXml(xmlContent);
