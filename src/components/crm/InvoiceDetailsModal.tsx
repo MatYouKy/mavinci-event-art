@@ -3,6 +3,7 @@
 import { X, Printer, Banknote, CreditCard, Calendar, FileText, Building2, User, Loader2 } from 'lucide-react';
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase/browser';
+import Image from 'next/image';
 
 interface InvoiceDetailsModalProps {
   invoice: any;
@@ -590,7 +591,13 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
               <div className="flex items-start justify-between">
                 <div className="flex items-start gap-4">
                   {isIssued && myCompany?.logo_url && (
-                    <img src={myCompany.logo_url} alt={myCompany.name} className="h-14 w-auto object-contain" />
+                    <Image
+                    width={256}
+                    height={256}
+                    src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/company-logos/${invoice.company_logo_url}`}
+                    alt="Logo firmy"
+                    className="max-h-32 max-w-[300px] object-contain"
+                  />
                   )}
                   <div>
                     <h1 className="text-2xl font-bold text-gray-900">
