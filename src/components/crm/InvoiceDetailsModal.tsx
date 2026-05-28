@@ -1,6 +1,6 @@
 'use client';
 
-import { X, Printer, Banknote, CreditCard, Calendar, FileText, Building2, User } from 'lucide-react';
+import { X, Printer, Banknote, CreditCard, Calendar, FileText, Building2, User, MapPin } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/browser';
 
@@ -71,6 +71,15 @@ function formatAmount(value: any, currency = 'PLN'): string {
   return `${n.toFixed(2)} ${currency}`;
 }
 
+function formatDate(value: string | null | undefined): string {
+  if (!value) return '—';
+  try {
+    return new Date(value).toLocaleDateString('pl-PL');
+  } catch {
+    return value;
+  }
+}
+
 function parseItemsFromXml(xml: string | null | undefined): any[] {
   if (!xml || typeof xml !== 'string') return [];
   try {
@@ -114,6 +123,51 @@ function buildFullAddress(c: MyCompanyData | null): string {
   const withApt = c.apartment_number ? `${streetLine}/${c.apartment_number}` : streetLine;
   const cityLine = [c.postal_code, c.city].filter(Boolean).join(' ');
   return [withApt, cityLine, c.country].filter(Boolean).join(', ');
+}
+
+interface VatSummaryRow {
+  rate: string;
+  net: number;
+  vat: number;
+  gross: number;
+}
+
+function computeVatSummary(items: any[], invoiceVatRate: string): VatSummaryRow[] {
+  const map = new Map<string, VatSummaryRow>();
+
+  for (const item of items) {
+    const rawRate = item.vatRate ?? item.vat_rate ?? item.taxRate ?? invoiceVatRate;
+    const rateKey = rawRate == null
+      ? invoiceVatRate
+      : typeof rawRate === 'number'
+        ? `${rawRate}%`
+        : String(rawRate).includes('%')
+          ? String(rawRate)
+          : `${rawRate}%`;
+
+    const qty = Number(item.quantity ?? item.qty ?? 1);
+    const unitPrice = Number(
+      item.unitPrice ?? item.unit_price ?? item.netPrice ?? item.netUnitPrice ?? item.price_net ?? 0,
+    );
+    const netTotal = Number(
+      item.netAmount ?? item.net_amount ?? item.value_net ?? unitPrice * qty,
+    );
+    const grossTotal = Number(
+      item.grossAmount ?? item.gross_amount ?? item.grossPrice ?? item.value_gross ?? 0,
+    );
+    const vatAmount = grossTotal > 0 ? grossTotal - netTotal : 0;
+
+    const existing = map.get(rateKey);
+    if (existing) {
+      existing.net += netTotal;
+      existing.vat += vatAmount;
+      existing.gross += grossTotal;
+    } else {
+      map.set(rateKey, { rate: rateKey, net: netTotal, vat: vatAmount, gross: grossTotal });
+    }
+  }
+
+  return Array.from(map.values());
 }
 
 export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetailsModalProps) {
@@ -228,6 +282,8 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
 
   const paymentStatusLabel = (() => {
     if (invoice.payment_status === 'paid' || invoice.payment_date) return 'Opłacona';
+    if (invoice.payment_status === 'partially_paid') return 'Częściowo opłacona';
+    if (invoice.payment_status === 'overdue') return 'Przeterminowana';
     if (invoice.payment_due_date) {
       const due = new Date(invoice.payment_due_date);
       const now = new Date();
@@ -240,6 +296,12 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
     if (invoice.payment_status === 'paid' || invoice.payment_date) {
       return 'bg-green-100 text-green-800';
     }
+    if (invoice.payment_status === 'partially_paid') {
+      return 'bg-blue-100 text-blue-800';
+    }
+    if (invoice.payment_status === 'overdue') {
+      return 'bg-red-100 text-red-800';
+    }
     if (invoice.payment_due_date) {
       const due = new Date(invoice.payment_due_date);
       const now = new Date();
@@ -247,6 +309,8 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
     }
     return 'bg-amber-100 text-amber-800';
   })();
+
+  const vatSummary = items.length > 0 ? computeVatSummary(items, displayVatRate) : [];
 
   return (
     <>
@@ -274,11 +338,11 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
 
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
         <div className="relative w-full max-w-5xl max-h-[92vh] overflow-y-auto rounded-xl bg-white shadow-2xl">
-          {/* Header */}
-          <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4 print:hidden">
+          {/* Toolbar */}
+          <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white px-6 py-3 print:hidden">
             <div className="flex items-center gap-3">
               <FileText className="h-5 w-5 text-gray-500" />
-              <h2 className="text-xl font-semibold text-gray-900">Szczegóły faktury</h2>
+              <h2 className="text-lg font-semibold text-gray-900">Szczegóły faktury</h2>
               <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${paymentStatusClasses}`}>
                 {paymentStatusLabel}
               </span>
@@ -301,377 +365,403 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
             </div>
           </div>
 
-          {/* Invoice Content */}
+          {/* Invoice Content - FA3 Schema Layout */}
           <div
-            className="p-8 print:p-12 bg-white flex flex-col"
+            className="p-8 print:p-10 bg-white"
             id="invoice-print-wrapper"
-            style={{ minHeight: '1123px' }}
           >
-            <div className="flex-1">
-              {/* Header sekcja */}
-              <div className="mb-8 flex items-start justify-between">
+            {/* === HEADER: Invoice Number, Type, KSeF Reference === */}
+            <div className="mb-6 border-b-2 border-gray-800 pb-4">
+              <div className="flex items-start justify-between">
                 <div className="flex items-start gap-4">
                   {isIssued && myCompany?.logo_url && (
                     <img
                       src={myCompany.logo_url}
                       alt={myCompany.name}
-                      className="h-16 w-auto object-contain"
+                      className="h-14 w-auto object-contain"
                     />
                   )}
                   <div>
-                    <h1 className="mb-2 text-3xl font-bold text-gray-900">
+                    <h1 className="text-2xl font-bold text-gray-900">
                       FAKTURA {invoiceType.toUpperCase()}
                     </h1>
-                    <div className="text-lg text-gray-700">
-                      Nr: <span className="font-semibold">{invoice.invoice_number || 'Brak numeru'}</span>
+                    <div className="mt-1 text-base font-semibold text-gray-800">
+                      Nr: {invoice.invoice_number || 'Brak numeru'}
                     </div>
-                    {invoice.ksef_reference_number && (
-                      <div className="mt-1 text-xs text-gray-500">
-                        KSeF: <span className="font-mono">{invoice.ksef_reference_number}</span>
-                      </div>
-                    )}
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-sm text-gray-600">Data wystawienia</div>
-                  <div className="text-lg font-semibold text-gray-900">
-                    {invoiceDate ? new Date(invoiceDate).toLocaleDateString('pl-PL') : '—'}
+                {invoice.ksef_reference_number && (
+                  <div className="text-right">
+                    <div className="text-xs font-medium uppercase text-gray-500">Numer KSeF</div>
+                    <div className="mt-0.5 font-mono text-xs text-gray-700">
+                      {invoice.ksef_reference_number}
+                    </div>
                   </div>
-                  {myCompany?.invoice_issue_place && (
-                    <div className="mt-1 text-sm text-gray-500">
-                      Miejsce: {(myCompany as any).invoice_issue_place}
+                )}
+              </div>
+            </div>
+
+            {/* === SPRZEDAWCA / NABYWCA === */}
+            <div className="mb-6 grid grid-cols-2 gap-6">
+              {/* Sprzedawca */}
+              <div>
+                <div className="mb-2 flex items-center gap-2 border-b border-gray-300 pb-1">
+                  <Building2 className="h-4 w-4 text-gray-600" />
+                  <span className="text-sm font-bold uppercase tracking-wide text-gray-700">
+                    Sprzedawca
+                  </span>
+                </div>
+                <div className="space-y-1 text-sm">
+                  <div className="font-semibold text-gray-900">{sellerName}</div>
+                  {sellerNip && (
+                    <div className="text-gray-700">
+                      <span className="text-gray-500">NIP:</span> {sellerNip}
+                    </div>
+                  )}
+                  {sellerAddress && (
+                    <div className="text-gray-700">
+                      <span className="text-gray-500">Adres:</span> {sellerAddress}
+                    </div>
+                  )}
+                  {isIssued && myCompany?.email && (
+                    <div className="text-gray-700">
+                      <span className="text-gray-500">Email:</span> {myCompany.email}
+                    </div>
+                  )}
+                  {isIssued && myCompany?.phone && (
+                    <div className="text-gray-700">
+                      <span className="text-gray-500">Tel.:</span> {myCompany.phone}
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* Sprzedawca i Nabywca */}
-              <div className="mb-8 grid grid-cols-2 gap-6">
-                <div>
-                  <div className="mb-2 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-gray-500">
-                    <Building2 className="h-4 w-4" />
-                    Sprzedawca
-                  </div>
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-                    <div className="font-semibold text-gray-900">{sellerName}</div>
-                    {sellerNip && (
-                      <div className="mt-1 text-sm text-gray-600">NIP: {sellerNip}</div>
-                    )}
-                    {sellerAddress && (
-                      <div className="mt-2 text-sm text-gray-600">{sellerAddress}</div>
-                    )}
-                    {isIssued && myCompany?.email && (
-                      <div className="mt-2 text-sm text-gray-600">Email: {myCompany.email}</div>
-                    )}
-                    {isIssued && myCompany?.phone && (
-                      <div className="text-sm text-gray-600">Tel.: {myCompany.phone}</div>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="mb-2 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-gray-500">
-                    <User className="h-4 w-4" />
+              {/* Nabywca */}
+              <div>
+                <div className="mb-2 flex items-center gap-2 border-b border-gray-300 pb-1">
+                  <User className="h-4 w-4 text-gray-600" />
+                  <span className="text-sm font-bold uppercase tracking-wide text-gray-700">
                     Nabywca
+                  </span>
+                </div>
+                <div className="space-y-1 text-sm">
+                  <div className="font-semibold text-gray-900">
+                    {invoice.buyer_name || 'Brak danych nabywcy'}
                   </div>
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-                    <div className="font-semibold text-gray-900">
-                      {invoice.buyer_name || 'Brak danych nabywcy'}
+                  {invoice.buyer_nip && (
+                    <div className="text-gray-700">
+                      <span className="text-gray-500">NIP:</span> {invoice.buyer_nip}
                     </div>
-                    {invoice.buyer_nip && (
-                      <div className="mt-1 text-sm text-gray-600">NIP: {invoice.buyer_nip}</div>
-                    )}
-                    {invoice.buyer_address && (
-                      <div className="mt-2 text-sm text-gray-600">{invoice.buyer_address}</div>
-                    )}
-                  </div>
+                  )}
+                  {invoice.buyer_address && (
+                    <div className="text-gray-700">
+                      <span className="text-gray-500">Adres:</span> {invoice.buyer_address}
+                    </div>
+                  )}
                 </div>
               </div>
+            </div>
 
-              {/* Informacje o płatności */}
-              <div className="mb-6 rounded-lg border border-gray-200 bg-gray-50 p-4">
-                <div className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-gray-500">
-                  <CreditCard className="h-4 w-4" />
-                  Płatność
+            {/* === SZCZEGÓŁY: Dates, Place === */}
+            <div className="mb-6">
+              <div className="mb-2 flex items-center gap-2 border-b border-gray-300 pb-1">
+                <Calendar className="h-4 w-4 text-gray-600" />
+                <span className="text-sm font-bold uppercase tracking-wide text-gray-700">
+                  Szczegóły
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
+                <div>
+                  <span className="text-gray-500">Data wystawienia:</span>
+                  <div className="font-medium text-gray-900">{formatDate(invoiceDate)}</div>
                 </div>
-                <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-                  <div>
-                    <div className="text-xs text-gray-500">Metoda płatności</div>
-                    <div className="mt-1 font-medium text-gray-900">
-                      {formatPaymentMethod(invoice.payment_method)}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-1 text-xs text-gray-500">
-                      <Calendar className="h-3 w-3" />
-                      Termin płatności
-                    </div>
-                    <div className="mt-1 font-medium text-gray-900">
-                      {invoice.payment_due_date
-                        ? new Date(invoice.payment_due_date).toLocaleDateString('pl-PL')
-                        : '—'}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-gray-500">Status</div>
-                    <div className="mt-1">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${paymentStatusClasses}`}>
-                        {paymentStatusLabel}
-                      </span>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-gray-500">Data zapłaty</div>
-                    <div className="mt-1 font-medium text-gray-900">
-                      {invoice.payment_date
-                        ? new Date(invoice.payment_date).toLocaleDateString('pl-PL')
-                        : '—'}
-                    </div>
+                <div>
+                  <span className="text-gray-500">Data sprzedaży:</span>
+                  <div className="font-medium text-gray-900">
+                    {formatDate(invoice.sale_date || invoice.issue_date)}
                   </div>
                 </div>
-
-                {(bankAccount || vatBankAccount) && (
-                  <div className="mt-4 space-y-3 border-t border-gray-200 pt-4">
-                    {bankAccount && (
-                      <div className="flex items-start gap-3">
-                        <Banknote className="mt-0.5 h-4 w-4 text-gray-500" />
-                        <div className="flex-1">
-                          <div className="text-xs text-gray-500">
-                            {isIssued ? 'Numer konta do wpłaty' : 'Numer konta bankowego'}
-                          </div>
-                          <div className="mt-0.5 font-mono text-sm font-medium text-gray-900 break-all">
-                            {formatBankAccount(bankAccount)}
-                          </div>
-                          {bankName && (
-                            <div className="text-xs text-gray-600">{bankName}</div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                    {vatBankAccount && (
-                      <div className="flex items-start gap-3">
-                        <Banknote className="mt-0.5 h-4 w-4 text-gray-500" />
-                        <div className="flex-1">
-                          <div className="text-xs text-gray-500">
-                            Rachunek VAT (split payment)
-                          </div>
-                          <div className="mt-0.5 font-mono text-sm font-medium text-gray-900 break-all">
-                            {formatBankAccount(vatBankAccount)}
-                          </div>
-                          {vatBankName && (
-                            <div className="text-xs text-gray-600">{vatBankName}</div>
-                          )}
-                        </div>
-                      </div>
-                    )}
+                {invoice.issue_place && (
+                  <div>
+                    <span className="text-gray-500">Miejsce wystawienia:</span>
+                    <div className="font-medium text-gray-900">{invoice.issue_place}</div>
                   </div>
                 )}
-              </div>
-
-              {/* Pozycje faktury */}
-              <div className="mb-6">
-                <div className="mb-3 text-sm font-semibold uppercase tracking-wider text-gray-500">
-                  Pozycje faktury
+                {(myCompany as any)?.invoice_issue_place && !invoice.issue_place && (
+                  <div>
+                    <span className="text-gray-500">Miejsce wystawienia:</span>
+                    <div className="font-medium text-gray-900">
+                      {(myCompany as any).invoice_issue_place}
+                    </div>
+                  </div>
+                )}
+                <div>
+                  <span className="text-gray-500">Waluta:</span>
+                  <div className="font-medium text-gray-900">{currency}</div>
                 </div>
-                <div className="overflow-x-auto rounded-lg border border-gray-200">
-                  <table className="w-full">
-                    <thead className="bg-gray-50">
+              </div>
+            </div>
+
+            {/* === POZYCJE (Line Items Table) === */}
+            <div className="mb-6">
+              <div className="mb-2 flex items-center gap-2 border-b border-gray-300 pb-1">
+                <FileText className="h-4 w-4 text-gray-600" />
+                <span className="text-sm font-bold uppercase tracking-wide text-gray-700">
+                  Pozycje
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b-2 border-gray-300 bg-gray-100">
+                      <th className="px-2 py-2 text-left font-semibold text-gray-700">Lp.</th>
+                      <th className="px-2 py-2 text-left font-semibold text-gray-700">Nazwa towaru/usługi</th>
+                      <th className="px-2 py-2 text-right font-semibold text-gray-700">Cena jedn. netto</th>
+                      <th className="px-2 py-2 text-right font-semibold text-gray-700">Ilość</th>
+                      <th className="px-2 py-2 text-left font-semibold text-gray-700">Miara</th>
+                      <th className="px-2 py-2 text-right font-semibold text-gray-700">Stawka podatku</th>
+                      <th className="px-2 py-2 text-right font-semibold text-gray-700">Wartość sprzedaży netto</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.length > 0 ? (
+                      items.map((item: any, index: number) => {
+                        const name =
+                          item.name || item.description || item.serviceName || item.productName || 'Brak nazwy';
+                        const qty = item.quantity ?? item.qty ?? 1;
+                        const unit = item.unit || item.unitOfMeasure || 'szt.';
+                        const netUnit =
+                          item.unitPrice ?? item.unit_price ?? item.netPrice ?? item.netUnitPrice ?? item.price_net ?? null;
+                        const netTotal =
+                          item.netAmount ?? item.net_amount ?? item.value_net ?? (netUnit != null ? Number(netUnit) * Number(qty) : null);
+                        const vatRateRaw = item.vatRate ?? item.vat_rate ?? item.taxRate ?? null;
+                        const vatRate =
+                          vatRateRaw == null
+                            ? displayVatRate
+                            : typeof vatRateRaw === 'number'
+                              ? `${vatRateRaw}%`
+                              : String(vatRateRaw).includes('%')
+                                ? vatRateRaw
+                                : `${vatRateRaw}%`;
+
+                        return (
+                          <tr key={index} className="border-b border-gray-200">
+                            <td className="px-2 py-2 text-gray-700">{index + 1}</td>
+                            <td className="px-2 py-2 text-gray-900 font-medium">{name}</td>
+                            <td className="px-2 py-2 text-right text-gray-900">
+                              {netUnit != null ? Number(netUnit).toFixed(2) : '—'}
+                            </td>
+                            <td className="px-2 py-2 text-right text-gray-900">{qty}</td>
+                            <td className="px-2 py-2 text-gray-700">{unit}</td>
+                            <td className="px-2 py-2 text-right text-gray-900">{vatRate}</td>
+                            <td className="px-2 py-2 text-right font-medium text-gray-900">
+                              {netTotal != null ? Number(netTotal).toFixed(2) : '—'}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
                       <tr className="border-b border-gray-200">
-                        <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-gray-600">
-                          Lp.
-                        </th>
-                        <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-gray-600">
-                          Nazwa towaru/usługi
-                        </th>
-                        <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wider text-gray-600">
-                          Ilość
-                        </th>
-                        <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wider text-gray-600">
-                          J.m.
-                        </th>
-                        <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wider text-gray-600">
-                          Cena netto
-                        </th>
-                        <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wider text-gray-600">
-                          Wart. netto
-                        </th>
-                        <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wider text-gray-600">
-                          VAT
-                        </th>
-                        <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wider text-gray-600">
-                          Wart. brutto
-                        </th>
+                        <td className="px-2 py-2 text-gray-700">1</td>
+                        <td className="px-2 py-2 text-gray-900 font-medium">
+                          {isIssued ? 'Towary/usługi' : `Faktura od: ${invoice.seller_name || 'dostawcy'}`}
+                        </td>
+                        <td className="px-2 py-2 text-right text-gray-900">
+                          {invoice.net_amount != null ? Number(invoice.net_amount).toFixed(2) : '—'}
+                        </td>
+                        <td className="px-2 py-2 text-right text-gray-900">1</td>
+                        <td className="px-2 py-2 text-gray-700">szt.</td>
+                        <td className="px-2 py-2 text-right text-gray-900">{displayVatRate}</td>
+                        <td className="px-2 py-2 text-right font-medium text-gray-900">
+                          {invoice.net_amount != null ? Number(invoice.net_amount).toFixed(2) : '—'}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* === KWOTA NALEŻNOŚCI OGÓŁEM === */}
+            <div className="mb-6 flex justify-end">
+              <div className="rounded-lg border-2 border-gray-800 bg-gray-50 px-6 py-3">
+                <div className="text-xs uppercase tracking-wider text-gray-600">Kwota należności ogółem</div>
+                <div className="mt-1 text-2xl font-bold text-gray-900">
+                  {formatAmount(invoice.gross_amount, currency)}
+                </div>
+              </div>
+            </div>
+
+            {/* === PODSUMOWANIE STAWEK PODATKU (VAT Summary by Rate) === */}
+            <div className="mb-6">
+              <div className="mb-2 flex items-center gap-2 border-b border-gray-300 pb-1">
+                <span className="text-sm font-bold uppercase tracking-wide text-gray-700">
+                  Podsumowanie stawek podatku
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b-2 border-gray-300 bg-gray-100">
+                      <th className="px-3 py-2 text-left font-semibold text-gray-700">Stawka podatku</th>
+                      <th className="px-3 py-2 text-right font-semibold text-gray-700">Wartość sprzedaży netto</th>
+                      <th className="px-3 py-2 text-right font-semibold text-gray-700">Kwota podatku</th>
+                      <th className="px-3 py-2 text-right font-semibold text-gray-700">Wartość brutto</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vatSummary.length > 0 ? (
+                      vatSummary.map((row) => (
+                        <tr key={row.rate} className="border-b border-gray-200">
+                          <td className="px-3 py-2 font-medium text-gray-900">{row.rate}</td>
+                          <td className="px-3 py-2 text-right text-gray-900">{row.net.toFixed(2)}</td>
+                          <td className="px-3 py-2 text-right text-gray-900">{row.vat.toFixed(2)}</td>
+                          <td className="px-3 py-2 text-right font-medium text-gray-900">{row.gross.toFixed(2)}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr className="border-b border-gray-200">
+                        <td className="px-3 py-2 font-medium text-gray-900">{displayVatRate}</td>
+                        <td className="px-3 py-2 text-right text-gray-900">
+                          {invoice.net_amount != null ? Number(invoice.net_amount).toFixed(2) : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-right text-gray-900">
+                          {vatAmount != null ? vatAmount.toFixed(2) : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-right font-medium text-gray-900">
+                          {invoice.gross_amount != null ? Number(invoice.gross_amount).toFixed(2) : '—'}
+                        </td>
+                      </tr>
+                    )}
+                    {/* Totals row */}
+                    <tr className="border-t-2 border-gray-400 bg-gray-50 font-semibold">
+                      <td className="px-3 py-2 text-gray-900">RAZEM</td>
+                      <td className="px-3 py-2 text-right text-gray-900">
+                        {invoice.net_amount != null ? Number(invoice.net_amount).toFixed(2) : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-right text-gray-900">
+                        {vatAmount != null ? vatAmount.toFixed(2) : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-right text-gray-900">
+                        {invoice.gross_amount != null ? Number(invoice.gross_amount).toFixed(2) : '—'}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* === PŁATNOŚĆ (Payment Section) === */}
+            <div className="mb-6">
+              <div className="mb-2 flex items-center gap-2 border-b border-gray-300 pb-1">
+                <CreditCard className="h-4 w-4 text-gray-600" />
+                <span className="text-sm font-bold uppercase tracking-wide text-gray-700">
+                  Płatność
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
+                <div>
+                  <span className="text-gray-500">Metoda płatności:</span>
+                  <div className="font-medium text-gray-900">
+                    {formatPaymentMethod(invoice.payment_method)}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-gray-500">Termin płatności:</span>
+                  <div className="font-medium text-gray-900">
+                    {formatDate(invoice.payment_due_date)}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-gray-500">Status płatności:</span>
+                  <div className="mt-0.5">
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${paymentStatusClasses}`}>
+                      {paymentStatusLabel}
+                    </span>
+                  </div>
+                </div>
+                <div>
+                  <span className="text-gray-500">Data zapłaty:</span>
+                  <div className="font-medium text-gray-900">
+                    {formatDate(invoice.payment_date)}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* === NUMER RACHUNKU BANKOWEGO (Bank Account Table) === */}
+            {(bankAccount || vatBankAccount) && (
+              <div className="mb-6">
+                <div className="mb-2 flex items-center gap-2 border-b border-gray-300 pb-1">
+                  <Banknote className="h-4 w-4 text-gray-600" />
+                  <span className="text-sm font-bold uppercase tracking-wide text-gray-700">
+                    Numer rachunku bankowego
+                  </span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-sm">
+                    <thead>
+                      <tr className="border-b-2 border-gray-300 bg-gray-100">
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700">Typ rachunku</th>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700">Numer rachunku</th>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-700">Bank</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {items.length > 0 ? (
-                        items.map((item: any, index: number) => {
-                          const name =
-                            item.name ||
-                            item.description ||
-                            item.serviceName ||
-                            item.productName ||
-                            'Brak nazwy';
-                          const description =
-                            item.description && item.description !== item.name
-                              ? item.description
-                              : null;
-                          const qty = item.quantity ?? item.qty ?? 1;
-                          const unit = item.unit || item.unitOfMeasure || 'szt.';
-                          const netUnit =
-                            item.unitPrice ??
-                            item.unit_price ??
-                            item.netPrice ??
-                            item.netUnitPrice ??
-                            item.price_net ??
-                            null;
-                          const netTotal =
-                            item.netAmount ??
-                            item.net_amount ??
-                            item.value_net ??
-                            (netUnit != null ? Number(netUnit) * Number(qty) : null);
-                          const vatRateRaw =
-                            item.vatRate ?? item.vat_rate ?? item.taxRate ?? null;
-                          const vatRate =
-                            vatRateRaw == null
-                              ? displayVatRate
-                              : typeof vatRateRaw === 'number'
-                                ? `${vatRateRaw}%`
-                                : String(vatRateRaw).includes('%')
-                                  ? vatRateRaw
-                                  : `${vatRateRaw}%`;
-                          const grossTotal =
-                            item.grossAmount ??
-                            item.gross_amount ??
-                            item.grossPrice ??
-                            item.value_gross ??
-                            null;
-
-                          return (
-                            <tr key={index} className="border-b border-gray-100 last:border-b-0">
-                              <td className="px-3 py-3 text-sm text-gray-900">{index + 1}</td>
-                              <td className="px-3 py-3 text-sm text-gray-900">
-                                <div className="font-medium">{name}</div>
-                                {description && (
-                                  <div className="mt-0.5 text-xs text-gray-500">{description}</div>
-                                )}
-                              </td>
-                              <td className="px-3 py-3 text-right text-sm text-gray-900">{qty}</td>
-                              <td className="px-3 py-3 text-sm text-gray-700">{unit}</td>
-                              <td className="px-3 py-3 text-right text-sm text-gray-900">
-                                {netUnit != null ? formatAmount(netUnit, currency) : '—'}
-                              </td>
-                              <td className="px-3 py-3 text-right text-sm text-gray-900">
-                                {netTotal != null ? formatAmount(netTotal, currency) : '—'}
-                              </td>
-                              <td className="px-3 py-3 text-right text-sm text-gray-900">
-                                {vatRate}
-                              </td>
-                              <td className="px-3 py-3 text-right text-sm font-semibold text-gray-900">
-                                {grossTotal != null ? formatAmount(grossTotal, currency) : '—'}
-                              </td>
-                            </tr>
-                          );
-                        })
-                      ) : (
-                        <tr className="border-b border-gray-100 last:border-b-0">
-                          <td className="px-3 py-3 text-sm text-gray-900">1</td>
-                          <td className="px-3 py-3 text-sm text-gray-900">
-                            <div className="font-medium">
-                              {isIssued
-                                ? 'Towary/usługi'
-                                : `Faktura od: ${invoice.seller_name || 'dostawcy'}`}
-                            </div>
-                            <div className="mt-0.5 text-xs text-gray-500">
-                              {isIssued
-                                ? 'Szczegółowe pozycje niedostępne'
-                                : 'Szczegóły pozycji dostępne na oryginalnej fakturze sprzedawcy'}
-                            </div>
+                      {bankAccount && (
+                        <tr className="border-b border-gray-200">
+                          <td className="px-3 py-2 text-gray-900">Rachunek podstawowy</td>
+                          <td className="px-3 py-2 font-mono text-gray-900">
+                            {formatBankAccount(bankAccount)}
                           </td>
-                          <td className="px-3 py-3 text-right text-sm text-gray-900">1</td>
-                          <td className="px-3 py-3 text-sm text-gray-700">szt.</td>
-                          <td className="px-3 py-3 text-right text-sm text-gray-900">
-                            {formatAmount(invoice.net_amount, currency)}
+                          <td className="px-3 py-2 text-gray-700">{bankName || '—'}</td>
+                        </tr>
+                      )}
+                      {vatBankAccount && (
+                        <tr className="border-b border-gray-200">
+                          <td className="px-3 py-2 text-gray-900">Rachunek VAT (split payment)</td>
+                          <td className="px-3 py-2 font-mono text-gray-900">
+                            {formatBankAccount(vatBankAccount)}
                           </td>
-                          <td className="px-3 py-3 text-right text-sm text-gray-900">
-                            {formatAmount(invoice.net_amount, currency)}
-                          </td>
-                          <td className="px-3 py-3 text-right text-sm text-gray-900">
-                            {displayVatRate}
-                          </td>
-                          <td className="px-3 py-3 text-right text-sm font-semibold text-gray-900">
-                            {formatAmount(invoice.gross_amount, currency)}
-                          </td>
+                          <td className="px-3 py-2 text-gray-700">{vatBankName || '—'}</td>
                         </tr>
                       )}
                     </tbody>
                   </table>
                 </div>
               </div>
+            )}
 
-              {/* Podsumowanie */}
+            {/* Footer text */}
+            {isIssued && myCompany?.invoice_footer_text && (
+              <div className="mb-4 rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700 whitespace-pre-wrap">
+                {myCompany.invoice_footer_text}
+              </div>
+            )}
+
+            {/* Signature */}
+            {isIssued && (myCompany?.signature_name || myCompany?.signature_title) && (
               <div className="flex justify-end">
-                <div className="w-full max-w-sm">
-                  <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-4">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Suma netto:</span>
-                      <span className="font-medium text-gray-900">
-                        {formatAmount(invoice.net_amount, currency)}
-                      </span>
+                <div className="w-56 border-t border-gray-300 pt-2 text-center">
+                  {myCompany?.signature_name && (
+                    <div className="text-sm font-medium text-gray-900">
+                      {myCompany.signature_name}
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">VAT ({displayVatRate}):</span>
-                      <span className="font-medium text-gray-900">
-                        {vatAmount != null ? formatAmount(vatAmount, currency) : '—'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between border-t border-gray-300 pt-2 text-lg">
-                      <span className="font-semibold text-gray-900">Do zapłaty:</span>
-                      <span className="font-bold text-gray-900">
-                        {formatAmount(invoice.gross_amount, currency)}
-                      </span>
-                    </div>
-                  </div>
+                  )}
+                  {myCompany?.signature_title && (
+                    <div className="text-xs text-gray-600">{myCompany.signature_title}</div>
+                  )}
                 </div>
               </div>
+            )}
 
-              {/* Footer text z my_companies */}
-              {isIssued && myCompany?.invoice_footer_text && (
-                <div className="mt-8 rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700 whitespace-pre-wrap">
-                  {myCompany.invoice_footer_text}
-                </div>
-              )}
-
-              {/* Signature */}
-              {isIssued && (myCompany?.signature_name || myCompany?.signature_title) && (
-                <div className="mt-8 flex justify-end">
-                  <div className="w-64 border-t border-gray-300 pt-2 text-center">
-                    {myCompany?.signature_name && (
-                      <div className="text-sm font-medium text-gray-900">
-                        {myCompany.signature_name}
-                      </div>
-                    )}
-                    {myCompany?.signature_title && (
-                      <div className="text-xs text-gray-600">{myCompany.signature_title}</div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Stopka */}
-            <div className="mt-auto border-t border-gray-200 pt-6">
-              <div className="text-xs text-gray-500">
-                <p>
-                  Faktura wygenerowana przez system Mavinci CRM w ramach integracji z Krajowym
-                  Systemem e-Faktur (KSeF).
-                </p>
-                <p className="mt-2">
-                  Data synchronizacji:{' '}
-                  {invoice.synced_at
-                    ? new Date(invoice.synced_at).toLocaleString('pl-PL')
-                    : 'Brak danych'}
-                </p>
+            {/* Sync info */}
+            <div className="mt-6 border-t border-gray-200 pt-4">
+              <div className="text-xs text-gray-400">
+                Faktura zsynchronizowana z Krajowym Systemem e-Faktur (KSeF)
+                {invoice.synced_at && (
+                  <span> | Synchronizacja: {new Date(invoice.synced_at).toLocaleString('pl-PL')}</span>
+                )}
               </div>
             </div>
           </div>

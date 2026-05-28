@@ -133,7 +133,7 @@ export async function POST(req: Request) {
           payment_method: paymentData.payment_method,
           payment_date: paymentData.payment_date,
           bank_account_number: paymentData.bank_account_number,
-          payment_status: paymentData.payment_method === '1' ? 'paid' : 'unpaid',
+          payment_status: paymentData.payment_status,
           xml_content: '',
           sync_status: 'synced',
           sync_error: null,
