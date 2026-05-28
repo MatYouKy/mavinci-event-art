@@ -134,6 +134,7 @@ export async function POST(req: Request) {
 
         rows.push({
           ksef_reference_number: ksefRef,
+          my_company_id: companyId,
           invoice_number: parsed?.invoice_number || inv.invoiceNumber || null,
           invoice_type: 'issued',
           seller_name: parsed?.seller_name || inv.seller?.name || null,
