@@ -58,6 +58,7 @@ export interface CalcItem {
   power_specs?: {
     power_watts?: number | null;
   } | null;
+  weight_kg?: number | null;
   thumbnail_url?: string | null;
   stock_quantity?: number | null;
 }
@@ -208,7 +209,10 @@ export default function EventCalculationsTab({ eventId, contactPerson }: Props) 
           source_ref: item.source_ref,
           position: index,
           vat_rate: item.vat_rate ?? DEFAULT_VAT,
+          power_watts: item.power_watts ?? null,
+          power_source_ref: item.power_source_ref ?? null,
           power_specs: item.power_specs ?? { power_watts: null },
+          weight_kg: item.weight_kg ?? null,
         }));
 
         const { error: insertItemsError } = await supabase

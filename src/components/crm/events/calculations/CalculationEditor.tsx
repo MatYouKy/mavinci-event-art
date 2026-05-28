@@ -25,6 +25,7 @@ import { Mail } from 'lucide-react';
 import { Save } from 'lucide-react';
 import { Trash2 } from 'lucide-react';
 import { Zap } from 'lucide-react';
+import { Weight } from 'lucide-react';
 import { fmt } from '../helpers/calculations/calculations.helper';
 
 export function CalculationEditor({
@@ -92,7 +93,7 @@ export function CalculationEditor({
 
         const equipmentMap: Record<
           string,
-          { thumbnail_url: string | null; stock_quantity: number }
+          { thumbnail_url: string | null; stock_quantity: number; weight_kg: number | null }
         > = {};
 
         if (equipmentIds.length > 0) {
@@ -103,6 +104,7 @@ export function CalculationEditor({
                 id,
                 thumbnail_url,
                 cable_stock_quantity,
+                weight_kg,
                 warehouse_categories:warehouse_category_id (
                   id,
                   name,
@@ -140,6 +142,7 @@ export function CalculationEditor({
             equipmentMap[eq.id] = {
               thumbnail_url: eq.thumbnail_url ?? null,
               stock_quantity: simpleQuantity > 0 ? simpleQuantity : (unitCounts[eq.id] ?? 0),
+              weight_kg: eq.weight_kg != null ? Number(eq.weight_kg) : null,
             };
           }
         }
@@ -164,6 +167,7 @@ export function CalculationEditor({
               vat_rate: r.vat_rate != null ? Number(r.vat_rate) : DEFAULT_VAT,
               power_watts: r.power_watts != null ? Number(r.power_watts) : null,
               power_source_ref: r.source_ref ?? null,
+              weight_kg: r.weight_kg != null ? Number(r.weight_kg) : (eqInfo?.weight_kg ?? null),
               thumbnail_url: eqInfo?.thumbnail_url ?? null,
               stock_quantity: eqInfo?.stock_quantity ?? null,
               editing: false,
@@ -259,6 +263,7 @@ export function CalculationEditor({
       position,
       vat_rate: Number(item.vat_rate ?? DEFAULT_VAT),
       power_watts: item.power_watts ?? null,
+      weight_kg: item.weight_kg ?? null,
     };
 
     if (item.id) {
@@ -607,8 +612,20 @@ export function CalculationEditor({
     return round2(totalPowerWatts / (400 * 1.732));
   }, [totalPowerWatts]);
 
+  const totalWeightKg = useMemo(
+    () =>
+      items.reduce(
+        (sum, item) => sum + Number(item.weight_kg || 0) * Number(item.quantity || 0),
+        0,
+      ),
+    [items],
+  );
+
   const fmtPower = (watts: number) =>
     watts >= 1000 ? `${(watts / 1000).toFixed(2)} kW` : `${watts.toFixed(0)} W`;
+
+  const fmtWeight = (kg: number) =>
+    kg >= 1000 ? `${(kg / 1000).toFixed(2)} t` : `${kg.toFixed(1)} kg`;
 
   if (loading) {
     return (
@@ -729,27 +746,40 @@ export function CalculationEditor({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-6 rounded-xl border border-[#d3bb73]/30 bg-[#0a0d1a] p-4">
-        {totalPowerWatts > 0 && (
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Zap className="h-4 w-4 text-amber-400" />
-              <div>
-                <div className="text-xs uppercase tracking-wider text-amber-400/70">Pobor mocy</div>
-                <div className="text-lg font-light text-amber-400">{fmtPower(totalPowerWatts)}</div>
+        {(totalPowerWatts > 0 || totalWeightKg > 0) && (
+          <div className="flex flex-wrap items-center gap-6">
+            {totalPowerWatts > 0 && (
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-amber-400" />
+                  <div>
+                    <div className="text-xs uppercase tracking-wider text-amber-400/70">Pobor mocy</div>
+                    <div className="text-lg font-light text-amber-400">{fmtPower(totalPowerWatts)}</div>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/50">1f / 230V</div>
+                  <div className="text-sm font-light text-[#e5e4e2]/80">
+                    {totalPowerAmps230.toFixed(1)} A
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/50">3f / 400V</div>
+                  <div className="text-sm font-light text-[#e5e4e2]/80">
+                    {totalPowerAmps400.toFixed(1)} A
+                  </div>
+                </div>
               </div>
-            </div>
-            <div>
-              <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/50">1f / 230V</div>
-              <div className="text-sm font-light text-[#e5e4e2]/80">
-                {totalPowerAmps230.toFixed(1)} A
+            )}
+            {totalWeightKg > 0 && (
+              <div className="flex items-center gap-2">
+                <Weight className="h-4 w-4 text-sky-400" />
+                <div>
+                  <div className="text-xs uppercase tracking-wider text-sky-400/70">Waga</div>
+                  <div className="text-lg font-light text-sky-400">{fmtWeight(totalWeightKg)}</div>
+                </div>
               </div>
-            </div>
-            <div>
-              <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/50">3f / 400V</div>
-              <div className="text-sm font-light text-[#e5e4e2]/80">
-                {totalPowerAmps400.toFixed(1)} A
-              </div>
-            </div>
+            )}
           </div>
         )}
         <div className="flex flex-wrap items-center gap-6">
