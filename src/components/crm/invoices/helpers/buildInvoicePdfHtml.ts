@@ -595,7 +595,9 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
 </head>
 
 <body>
-  ${!data.buyerIsPrivatePerson ? '<div class="preview-banner">Wizualizacja</div>' : ''}
+${!data.buyerIsPrivatePerson && data.invoiceType !== 'proforma'
+  ? `<div class="preview-banner">Wizualizacja</div>`
+  : ''}
 
   <div class="top">
     <div>

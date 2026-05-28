@@ -14,10 +14,12 @@ import {
   AlignLeft,
   AlignCenter,
   AlignRight,
+  AlignJustify,
   List,
   ListOrdered,
   Type,
   Trash2,
+  Columns,
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import Image from 'next/image';
@@ -41,7 +43,9 @@ export default function EditTemplateWYSIWYGPage() {
   const [selectedFooter, setSelectedFooter] = useState<'default' | 'minimal' | 'none'>('default');
   const [selectedFooterTemplateId, setSelectedFooterTemplateId] = useState<string | null>(null);
   const [footerTemplates, setFooterTemplates] = useState<any[]>([]);
-  const [brandLogos, setBrandLogos] = useState<Array<{ url: string; label: string; companyName: string }>>([]);
+  const [brandLogos, setBrandLogos] = useState<
+    Array<{ url: string; label: string; companyName: string }>
+  >([]);
   const [showFooterEditor, setShowFooterEditor] = useState(false);
   const [footerLogoScale, setFooterLogoScale] = useState(80);
   const [footerContent, setFooterContent] = useState({
@@ -313,7 +317,9 @@ export default function EditTemplateWYSIWYGPage() {
           });
         } else if (company.logo_url) {
           result.push({
-            url: company.logo_url.startsWith('http') ? company.logo_url : toPublicUrl(company.logo_url),
+            url: company.logo_url.startsWith('http')
+              ? company.logo_url
+              : toPublicUrl(company.logo_url),
             label: 'Logo domyslne',
             companyName: company.name,
           });
@@ -710,6 +716,32 @@ export default function EditTemplateWYSIWYGPage() {
     showSnackbar('Usunięto stronę', 'success');
   };
 
+  const justifySelection = () => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+
+    let el =
+      selection.focusNode?.nodeType === Node.TEXT_NODE
+        ? selection.focusNode.parentElement
+        : (selection.focusNode as HTMLElement | null);
+
+    while (el && !el.classList?.contains('contract-content')) {
+      if (['P', 'DIV', 'LI', 'H1', 'H2', 'H3'].includes(el.tagName)) break;
+      el = el.parentElement;
+    }
+
+    if (!el) return;
+
+    el.style.textAlign = 'justify';
+
+    const editor = el.closest('.contract-content') as HTMLElement | null;
+    const pageIndex = pageRefs.current.findIndex((ref) => ref === editor);
+
+    if (editor && pageIndex !== -1) {
+      updatePageContent(pageIndex, editor.innerHTML);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -805,6 +837,7 @@ export default function EditTemplateWYSIWYGPage() {
         <div className="mx-auto max-w-[1400px] px-6 py-3">
           <div className="flex flex-wrap items-center gap-2">
             <button
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => execCommand('bold')}
               className="rounded p-2 hover:bg-[#d3bb73]/10"
               title="Pogrubienie"
@@ -812,6 +845,7 @@ export default function EditTemplateWYSIWYGPage() {
               <Bold className="h-4 w-4 text-[#e5e4e2]" />
             </button>
             <button
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => execCommand('italic')}
               className="rounded p-2 hover:bg-[#d3bb73]/10"
               title="Kursywa"
@@ -819,6 +853,7 @@ export default function EditTemplateWYSIWYGPage() {
               <Italic className="h-4 w-4 text-[#e5e4e2]" />
             </button>
             <button
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => execCommand('underline')}
               className="rounded p-2 hover:bg-[#d3bb73]/10"
               title="Podkreślenie"
@@ -826,6 +861,7 @@ export default function EditTemplateWYSIWYGPage() {
               <Underline className="h-4 w-4 text-[#e5e4e2]" />
             </button>
             <button
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => execCommand('strikeThrough')}
               className="rounded p-2 hover:bg-[#d3bb73]/10"
               title="Przekreślenie"
@@ -836,6 +872,7 @@ export default function EditTemplateWYSIWYGPage() {
             <div className="mx-2 h-6 w-px bg-[#d3bb73]/30" />
 
             <button
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => execCommand('justifyLeft')}
               className="rounded p-2 hover:bg-[#d3bb73]/10"
               title="Do lewej"
@@ -843,6 +880,7 @@ export default function EditTemplateWYSIWYGPage() {
               <AlignLeft className="h-4 w-4 text-[#e5e4e2]" />
             </button>
             <button
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => execCommand('justifyCenter')}
               className="rounded p-2 hover:bg-[#d3bb73]/10"
               title="Wyśrodkuj"
@@ -850,16 +888,26 @@ export default function EditTemplateWYSIWYGPage() {
               <AlignCenter className="h-4 w-4 text-[#e5e4e2]" />
             </button>
             <button
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => execCommand('justifyRight')}
               className="rounded p-2 hover:bg-[#d3bb73]/10"
               title="Do prawej"
             >
               <AlignRight className="h-4 w-4 text-[#e5e4e2]" />
             </button>
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={justifySelection}
+              className="rounded p-2 hover:bg-[#d3bb73]/10"
+              title="Wyjustuj"
+            >
+              <AlignJustify className="h-4 w-4 text-[#e5e4e2]" />
+            </button>
 
             <div className="mx-2 h-6 w-px bg-[#d3bb73]/30" />
 
             <button
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => execCommand('insertUnorderedList')}
               className="rounded p-2 hover:bg-[#d3bb73]/10"
               title="Lista"
@@ -867,6 +915,7 @@ export default function EditTemplateWYSIWYGPage() {
               <List className="h-4 w-4 text-[#e5e4e2]" />
             </button>
             <button
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => execCommand('insertOrderedList')}
               className="rounded p-2 hover:bg-[#d3bb73]/10"
               title="Lista numerowana"
@@ -877,6 +926,7 @@ export default function EditTemplateWYSIWYGPage() {
             <div className="mx-2 h-6 w-px bg-[#d3bb73]/30" />
 
             <select
+              onMouseDown={(e) => e.preventDefault()}
               onChange={(e) => {
                 const size = e.target.value;
                 document.execCommand('fontSize', false, '7');
@@ -916,6 +966,7 @@ export default function EditTemplateWYSIWYGPage() {
             <div className="ml-2 flex items-center gap-2">
               <span className="text-xs text-[#e5e4e2]/60">Czcionka:</span>
               <select
+                onMouseDown={(e) => e.preventDefault()}
                 value={selectedFont}
                 onChange={(e) => {
                   setSelectedFont(e.target.value);
@@ -942,6 +993,7 @@ export default function EditTemplateWYSIWYGPage() {
                 min="1"
                 max="3"
                 step="0.1"
+                onMouseDown={(e) => e.preventDefault()}
                 value={lineHeight}
                 onChange={(e) => {
                   const newValue = Number(e.target.value);
@@ -989,7 +1041,9 @@ export default function EditTemplateWYSIWYGPage() {
                     </option>
                   ))
                 ) : (
-                  <option value="" disabled>Brak logotypow w brandbooku</option>
+                  <option value="" disabled>
+                    Brak logotypow w brandbooku
+                  </option>
                 )}
                 {selectedLogo && !brandLogos.some((l) => l.url === selectedLogo) && (
                   <option value={selectedLogo}>
@@ -1386,13 +1440,16 @@ export default function EditTemplateWYSIWYGPage() {
                         </option>
                       ))
                     ) : (
-                      <option value="" disabled>Brak logotypow w brandbooku</option>
-                    )}
-                    {footerContent.logoUrl && !brandLogos.some((l) => l.url === footerContent.logoUrl) && (
-                      <option value={footerContent.logoUrl}>
-                        {footerContent.logoUrl} (niestandardowe)
+                      <option value="" disabled>
+                        Brak logotypow w brandbooku
                       </option>
                     )}
+                    {footerContent.logoUrl &&
+                      !brandLogos.some((l) => l.url === footerContent.logoUrl) && (
+                        <option value={footerContent.logoUrl}>
+                          {footerContent.logoUrl} (niestandardowe)
+                        </option>
+                      )}
                   </select>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-[#e5e4e2]/60">Skala:</span>
@@ -1461,6 +1518,24 @@ export default function EditTemplateWYSIWYGPage() {
                   pageRefs.current[pageIndex] = el;
                   if (el && el.innerHTML === '' && pageContent) {
                     el.innerHTML = pageContent;
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Tab') return;
+                
+                  const selection = window.getSelection();
+                  const node = selection?.focusNode;
+                  const el =
+                    node?.nodeType === Node.TEXT_NODE
+                      ? node.parentElement
+                      : (node as HTMLElement | null);
+                
+                  const li = el?.closest?.('li');
+                
+                  if (li) {
+                    e.preventDefault();
+                    document.execCommand(e.shiftKey ? 'outdent' : 'indent');
+                    updatePageContent(pageIndex, e.currentTarget.innerHTML);
                   }
                 }}
                 contentEditable={true}
