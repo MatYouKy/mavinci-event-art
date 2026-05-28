@@ -321,6 +321,40 @@ export async function closeKSeFOnlineSession(
   );
 }
 
+export async function getKSeFInvoiceXml(
+  ksefReferenceNumber: string,
+  accessToken: string,
+  isTestEnvironment: boolean,
+  context?: Record<string, unknown>,
+): Promise<string> {
+  const baseUrl = getBaseUrl(isTestEnvironment);
+  const url = `${baseUrl}/invoices/${ksefReferenceNumber}`;
+
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/octet-stream',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: AbortSignal.timeout(KSEF_TIMEOUT_MS),
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    const raw = await response.text();
+    console.error(`${KSEF_LOG_PREFIX} invoice XML fetch error`, {
+      url,
+      status: response.status,
+      body: raw,
+      ksefReferenceNumber,
+      ...context,
+    });
+    throw new Error(`KSeF invoice XML error ${response.status}: ${raw}`);
+  }
+
+  return await response.text();
+}
+
 export async function getKSeFInvoices(
   params: {
     accessToken: string;

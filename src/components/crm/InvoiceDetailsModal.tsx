@@ -1,6 +1,6 @@
 'use client';
 
-import { X, Printer, Banknote, CreditCard, Calendar, FileText, Building2, User, MapPin } from 'lucide-react';
+import { X, Printer, Banknote, CreditCard, Calendar, FileText, Building2, User } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/browser';
 
@@ -80,26 +80,120 @@ function formatDate(value: string | null | undefined): string {
   }
 }
 
-function parseItemsFromXml(xml: string | null | undefined): any[] {
-  if (!xml || typeof xml !== 'string') return [];
+interface XmlParsedData {
+  items: any[];
+  seller_name: string | null;
+  seller_nip: string | null;
+  seller_address: string | null;
+  buyer_name: string | null;
+  buyer_nip: string | null;
+  buyer_address: string | null;
+  payment_due_date: string | null;
+  payment_method: string | null;
+  payment_info: string | null;
+  bank_account_number: string | null;
+  bank_swift: string | null;
+  bank_name: string | null;
+}
+
+function getXmlTag(src: string, tag: string): string | null {
+  const m = src.match(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`));
+  return m ? m[1].trim() : null;
+}
+
+function getXmlBlock(src: string, tag: string): string | null {
+  const m = src.match(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, 's'));
+  return m ? m[1] : null;
+}
+
+function buildAddressFromXml(block: string): string | null {
+  const adresPol = getXmlBlock(block, 'AdresPol') || getXmlBlock(block, 'AdresZagr') || block;
+  const kodPocztowy = getXmlTag(adresPol, 'KodPocztowy');
+  const miejscowosc = getXmlTag(adresPol, 'Miejscowosc');
+  const ulica = getXmlTag(adresPol, 'Ulica');
+  const nrDomu = getXmlTag(adresPol, 'NrDomu');
+  const nrLokalu = getXmlTag(adresPol, 'NrLokalu');
+
+  const parts: string[] = [];
+  if (kodPocztowy || miejscowosc) {
+    parts.push([kodPocztowy, miejscowosc].filter(Boolean).join(','));
+  }
+  const streetParts: string[] = [];
+  if (ulica) streetParts.push(ulica);
+  if (nrDomu) streetParts.push(nrDomu);
+  if (nrLokalu) streetParts.push(`Lok. ${nrLokalu}`);
+  if (streetParts.length > 0) parts.push(streetParts.join(' '));
+
+  return parts.length > 0 ? parts.join(', ') : null;
+}
+
+function parseFullXml(xml: string | null | undefined): XmlParsedData {
+  const empty: XmlParsedData = {
+    items: [],
+    seller_name: null,
+    seller_nip: null,
+    seller_address: null,
+    buyer_name: null,
+    buyer_nip: null,
+    buyer_address: null,
+    payment_due_date: null,
+    payment_method: null,
+    payment_info: null,
+    bank_account_number: null,
+    bank_swift: null,
+    bank_name: null,
+  };
+
+  if (!xml || typeof xml !== 'string' || xml.length < 50) return empty;
+
   try {
+    // Seller (Podmiot1)
+    const podmiot1 = getXmlBlock(xml, 'Podmiot1') || '';
+    const sellerNip = getXmlTag(podmiot1, 'NIP') || getXmlTag(podmiot1, 'Nip');
+    const sellerName = getXmlTag(podmiot1, 'Nazwa') || getXmlTag(podmiot1, 'NazwaHandlowa') || getXmlTag(podmiot1, 'PelnaNazwa');
+    const sellerAddress = buildAddressFromXml(podmiot1);
+
+    // Buyer (Podmiot2)
+    const podmiot2 = getXmlBlock(xml, 'Podmiot2') || '';
+    const buyerNip = getXmlTag(podmiot2, 'NIP') || getXmlTag(podmiot2, 'Nip');
+    const buyerName = getXmlTag(podmiot2, 'Nazwa') || getXmlTag(podmiot2, 'NazwaHandlowa') || getXmlTag(podmiot2, 'PelnaNazwa');
+    const buyerAddress = buildAddressFromXml(podmiot2);
+
+    // Payment
+    const platnosc = getXmlBlock(xml, 'Platnosc') || '';
+    const formaPlatnosci = getXmlTag(platnosc, 'FormaPlatnosci');
+    const terminPlatnosci = getXmlTag(platnosc, 'TerminPlatnosci');
+    const zaplacono = getXmlTag(platnosc, 'Zaplacono');
+
+    let paymentInfo: string | null = null;
+    if (zaplacono === '1' || zaplacono?.toLowerCase() === 'tak') {
+      paymentInfo = 'Zapłacono';
+    } else if (getXmlTag(platnosc, 'ZnacznikZaplatyCzesciowej') === '1') {
+      paymentInfo = 'Zapłata częściowa';
+    } else {
+      paymentInfo = 'Brak zapłaty';
+    }
+
+    // Bank account
+    const rachunek = getXmlBlock(xml, 'RachunekBankowy') || getXmlBlock(platnosc, 'RachunekBankowy') || '';
+    const bankAccountNumber = getXmlTag(rachunek, 'NrRB') || getXmlTag(rachunek, 'NrRachunku');
+    const bankSwift = getXmlTag(rachunek, 'SWIFT') || getXmlTag(rachunek, 'KodSWIFT');
+    const bankName = getXmlTag(rachunek, 'NazwaBanku') || getXmlTag(rachunek, 'RachunekWlasnyBanku');
+
+    // Items
     const wierszRegex = /<FaWiersz\b[^>]*>([\s\S]*?)<\/FaWiersz>/g;
-    const getTag = (src: string, tag: string): string | null => {
-      const m = src.match(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`));
-      return m ? m[1].trim() : null;
-    };
     const items: any[] = [];
     let match: RegExpExecArray | null;
     while ((match = wierszRegex.exec(xml)) !== null) {
       const block = match[1];
-      const name = getTag(block, 'P_7') || getTag(block, 'P_7A') || 'Pozycja';
-      const unit = getTag(block, 'P_8A') || 'szt.';
-      const qty = getTag(block, 'P_8B');
-      const unitNet = getTag(block, 'P_9A');
-      const net = getTag(block, 'P_11');
-      const vat = getTag(block, 'P_12');
-      const gross = getTag(block, 'P_11A');
-      const nrWiersza = getTag(block, 'NrWierszaFa');
+      const name = getXmlTag(block, 'P_7') || getXmlTag(block, 'P_7A') || 'Pozycja';
+      const unit = getXmlTag(block, 'P_8A') || 'szt.';
+      const qty = getXmlTag(block, 'P_8B');
+      const unitNet = getXmlTag(block, 'P_9A');
+      const net = getXmlTag(block, 'P_11');
+      const vat = getXmlTag(block, 'P_12');
+      const gross = getXmlTag(block, 'P_11A');
+      const nrWiersza = getXmlTag(block, 'NrWierszaFa');
       items.push({
         position_number: nrWiersza ? Number(nrWiersza) : items.length + 1,
         name,
@@ -111,9 +205,24 @@ function parseItemsFromXml(xml: string | null | undefined): any[] {
         value_gross: gross != null ? Number(gross) : null,
       });
     }
-    return items;
+
+    return {
+      items,
+      seller_name: sellerName || null,
+      seller_nip: sellerNip || null,
+      seller_address: sellerAddress,
+      buyer_name: buyerName || null,
+      buyer_nip: buyerNip || null,
+      buyer_address: buyerAddress,
+      payment_due_date: terminPlatnosci || null,
+      payment_method: formaPlatnosci || null,
+      payment_info: paymentInfo,
+      bank_account_number: bankAccountNumber || null,
+      bank_swift: bankSwift || null,
+      bank_name: bankName || null,
+    };
   } catch {
-    return [];
+    return empty;
   }
 }
 
@@ -238,8 +347,14 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
   const currency = invoice.currency || 'PLN';
   const isIssued = invoice.invoice_type === 'issued';
 
+  // Parse XML for complete data (fallback when DB fields are empty)
+  const xmlData = parseFullXml(invoice?.xml_content);
+
   const calculateVatRate = () => {
     if (invoice.vat_rate) return invoice.vat_rate;
+    if (xmlData.items.length > 0 && xmlData.items[0].vat_rate != null) {
+      return `${xmlData.items[0].vat_rate}%`;
+    }
     if (invoice.net_amount != null && invoice.gross_amount != null) {
       const net = Number(invoice.net_amount);
       const gross = Number(invoice.gross_amount);
@@ -253,25 +368,39 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
   };
   const displayVatRate = calculateVatRate();
 
-  const xmlItems = parseItemsFromXml(invoice?.xml_content);
+  // Items priority: DB invoice_items JSON > fetched DB items > XML parsed items
   const items: any[] =
     Array.isArray(invoice.invoice_items) && invoice.invoice_items.length > 0
       ? invoice.invoice_items
       : dbItems.length > 0
         ? dbItems
-        : xmlItems;
+        : xmlData.items;
 
+  // Bank account: DB field > XML parsed > company data
   const bankAccount =
     invoice.bank_account_number ||
+    xmlData.bank_account_number ||
     (isIssued ? myCompany?.bank_account : null) ||
     null;
-  const bankName = isIssued ? myCompany?.bank_name : null;
+  const bankSwift = xmlData.bank_swift || null;
+  const bankName = xmlData.bank_name || (isIssued ? myCompany?.bank_name : null) || null;
   const vatBankAccount = isIssued ? myCompany?.vat_bank_account : null;
   const vatBankName = isIssued ? myCompany?.vat_bank_name : null;
 
-  const sellerName = invoice.seller_name || (isIssued ? myCompany?.legal_name || myCompany?.name : null) || 'Brak danych sprzedawcy';
-  const sellerNip = invoice.seller_nip || (isIssued ? myCompany?.nip : null);
-  const sellerAddress = invoice.seller_address || (isIssued ? buildFullAddress(myCompany) : null);
+  // Seller: DB field > XML parsed > company data
+  const sellerName = invoice.seller_name || xmlData.seller_name || (isIssued ? myCompany?.legal_name || myCompany?.name : null) || 'Brak danych sprzedawcy';
+  const sellerNip = invoice.seller_nip || xmlData.seller_nip || (isIssued ? myCompany?.nip : null);
+  const sellerAddress = invoice.seller_address || xmlData.seller_address || (isIssued ? buildFullAddress(myCompany) : null);
+
+  // Buyer: DB field > XML parsed
+  const buyerName = invoice.buyer_name || xmlData.buyer_name || 'Brak danych nabywcy';
+  const buyerNip = invoice.buyer_nip || xmlData.buyer_nip || null;
+  const buyerAddress = invoice.buyer_address || xmlData.buyer_address || null;
+
+  // Payment: DB field > XML parsed
+  const paymentDueDate = invoice.payment_due_date || xmlData.payment_due_date || null;
+  const paymentMethod = invoice.payment_method || xmlData.payment_method || null;
+  const paymentInfo = xmlData.payment_info || null;
 
   const vatAmount =
     invoice.vat_amount != null
@@ -284,8 +413,8 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
     if (invoice.payment_status === 'paid' || invoice.payment_date) return 'Opłacona';
     if (invoice.payment_status === 'partially_paid') return 'Częściowo opłacona';
     if (invoice.payment_status === 'overdue') return 'Przeterminowana';
-    if (invoice.payment_due_date) {
-      const due = new Date(invoice.payment_due_date);
+    if (paymentDueDate) {
+      const due = new Date(paymentDueDate);
       const now = new Date();
       if (due < now) return 'Przeterminowana';
     }
@@ -302,8 +431,8 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
     if (invoice.payment_status === 'overdue') {
       return 'bg-red-100 text-red-800';
     }
-    if (invoice.payment_due_date) {
-      const due = new Date(invoice.payment_due_date);
+    if (paymentDueDate) {
+      const due = new Date(paymentDueDate);
       const now = new Date();
       if (due < now) return 'bg-red-100 text-red-800';
     }
@@ -446,16 +575,16 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
                 </div>
                 <div className="space-y-1 text-sm">
                   <div className="font-semibold text-gray-900">
-                    {invoice.buyer_name || 'Brak danych nabywcy'}
+                    {buyerName}
                   </div>
-                  {invoice.buyer_nip && (
+                  {buyerNip && (
                     <div className="text-gray-700">
-                      <span className="text-gray-500">NIP:</span> {invoice.buyer_nip}
+                      <span className="text-gray-500">NIP:</span> {buyerNip}
                     </div>
                   )}
-                  {invoice.buyer_address && (
+                  {buyerAddress && (
                     <div className="text-gray-700">
-                      <span className="text-gray-500">Adres:</span> {invoice.buyer_address}
+                      <span className="text-gray-500">Adres:</span> {buyerAddress}
                     </div>
                   )}
                 </div>
@@ -659,17 +788,22 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
                   Płatność
                 </span>
               </div>
+              {paymentInfo && (
+                <div className="mb-3 text-sm text-gray-700">
+                  Informacja o płatności: <span className="font-medium">{paymentInfo}</span>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
                 <div>
-                  <span className="text-gray-500">Metoda płatności:</span>
+                  <span className="text-gray-500">Forma płatności:</span>
                   <div className="font-medium text-gray-900">
-                    {formatPaymentMethod(invoice.payment_method)}
+                    {formatPaymentMethod(paymentMethod)}
                   </div>
                 </div>
                 <div>
                   <span className="text-gray-500">Termin płatności:</span>
                   <div className="font-medium text-gray-900">
-                    {formatDate(invoice.payment_due_date)}
+                    {formatDate(paymentDueDate)}
                   </div>
                 </div>
                 <div>
@@ -700,31 +834,44 @@ export default function InvoiceDetailsModal({ invoice, onClose }: InvoiceDetails
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full border-collapse text-sm">
-                    <thead>
-                      <tr className="border-b-2 border-gray-300 bg-gray-100">
-                        <th className="px-3 py-2 text-left font-semibold text-gray-700">Typ rachunku</th>
-                        <th className="px-3 py-2 text-left font-semibold text-gray-700">Numer rachunku</th>
-                        <th className="px-3 py-2 text-left font-semibold text-gray-700">Bank</th>
-                      </tr>
-                    </thead>
                     <tbody>
                       {bankAccount && (
-                        <tr className="border-b border-gray-200">
-                          <td className="px-3 py-2 text-gray-900">Rachunek podstawowy</td>
-                          <td className="px-3 py-2 font-mono text-gray-900">
-                            {formatBankAccount(bankAccount)}
-                          </td>
-                          <td className="px-3 py-2 text-gray-700">{bankName || '—'}</td>
-                        </tr>
+                        <>
+                          <tr className="border-b border-gray-200">
+                            <td className="px-3 py-2 font-medium text-gray-700 w-48">Pełny numer rachunku</td>
+                            <td className="px-3 py-2 font-mono text-gray-900">
+                              {formatBankAccount(bankAccount)}
+                            </td>
+                          </tr>
+                          {bankSwift && (
+                            <tr className="border-b border-gray-200">
+                              <td className="px-3 py-2 font-medium text-gray-700">Kod SWIFT</td>
+                              <td className="px-3 py-2 font-mono text-gray-900">{bankSwift}</td>
+                            </tr>
+                          )}
+                          {bankName && (
+                            <tr className="border-b border-gray-200">
+                              <td className="px-3 py-2 font-medium text-gray-700">Nazwa banku</td>
+                              <td className="px-3 py-2 text-gray-900">{bankName}</td>
+                            </tr>
+                          )}
+                        </>
                       )}
                       {vatBankAccount && (
-                        <tr className="border-b border-gray-200">
-                          <td className="px-3 py-2 text-gray-900">Rachunek VAT (split payment)</td>
-                          <td className="px-3 py-2 font-mono text-gray-900">
-                            {formatBankAccount(vatBankAccount)}
-                          </td>
-                          <td className="px-3 py-2 text-gray-700">{vatBankName || '—'}</td>
-                        </tr>
+                        <>
+                          <tr className="border-b border-gray-200 border-t-2 border-t-gray-300">
+                            <td className="px-3 py-2 font-medium text-gray-700">Rachunek VAT</td>
+                            <td className="px-3 py-2 font-mono text-gray-900">
+                              {formatBankAccount(vatBankAccount)}
+                            </td>
+                          </tr>
+                          {vatBankName && (
+                            <tr className="border-b border-gray-200">
+                              <td className="px-3 py-2 font-medium text-gray-700">Nazwa banku</td>
+                              <td className="px-3 py-2 text-gray-900">{vatBankName}</td>
+                            </tr>
+                          )}
+                        </>
                       )}
                     </tbody>
                   </table>
