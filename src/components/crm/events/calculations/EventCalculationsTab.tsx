@@ -11,6 +11,8 @@ import {
   FileCheck2,
   Printer,
   Mail,
+  CheckCircle2,
+  Circle,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -34,6 +36,7 @@ interface CalculationRow {
   created_at: string;
   updated_at: string;
   generated_pdf_path: string | null;
+  is_accepted: boolean;
   items_count?: number;
   total?: number;
 }
@@ -68,8 +71,6 @@ interface Props {
   contactPerson: any | null;
 }
 
-// const rowTotal = rowNet;
-
 export default function EventCalculationsTab({ eventId, contactPerson }: Props) {
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
@@ -80,7 +81,8 @@ export default function EventCalculationsTab({ eventId, contactPerson }: Props) 
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const [sendingCalculation, setSendingCalculation] = useState<CalculationRow | null>(null);
   const [printingId, setPrintingId] = useState<string | null>(null);
-  
+  const [acceptingId, setAcceptingId] = useState<string | null>(null);
+
   const fetchList = useCallback(
     async (showLoader = true) => {
       if (showLoader) setLoading(true);
@@ -115,6 +117,7 @@ export default function EventCalculationsTab({ eventId, contactPerson }: Props) 
           items_count: items.length,
           total: round2(total),
           generated_pdf_path: r.generated_pdf_path ?? null,
+          is_accepted: r.is_accepted ?? false,
         };
       });
 
@@ -241,6 +244,7 @@ export default function EventCalculationsTab({ eventId, contactPerson }: Props) 
           items_count: calcItems?.length ?? 0,
           total: round2(duplicatedTotal),
           generated_pdf_path: null,
+          is_accepted: false,
         },
         ...prev,
       ]);
@@ -289,6 +293,52 @@ export default function EventCalculationsTab({ eventId, contactPerson }: Props) 
     } finally {
       setPrintingId(null);
     }
+  };
+
+  const handleAccept = async (calc: CalculationRow) => {
+    const newAccepted = !calc.is_accepted;
+    const confirmMsg = newAccepted
+      ? `Oznaczyć "${calc.name}" jako zaakceptowaną? Stanie się źródłem danych finansowych dla tego wydarzenia.`
+      : `Cofnąć akceptację kalkulacji "${calc.name}"? Źródłem danych finansowych ponownie będzie zaakceptowana oferta.`;
+
+    showConfirm({
+      title: newAccepted ? 'Zaakceptować kalkulację?' : 'Cofnąć akceptację?',
+      message: confirmMsg,
+      confirmText: newAccepted ? 'Zaakceptuj' : 'Cofnij',
+      cancelText: 'Anuluj',
+    }).then(async (confirmed: boolean | void) => {
+      if (!confirmed) return;
+
+      try {
+        setAcceptingId(calc.id);
+
+        const { error } = await supabase
+          .from('event_calculations')
+          .update({ is_accepted: newAccepted })
+          .eq('id', calc.id);
+
+        if (error) throw error;
+
+        setList((prev) =>
+          prev.map((c) => ({
+            ...c,
+            is_accepted: c.id === calc.id ? newAccepted : newAccepted ? false : c.is_accepted,
+          })),
+        );
+
+        showSnackbar(
+          newAccepted
+            ? 'Kalkulacja zaakceptowana — dane finansowe zaktualizowane'
+            : 'Akceptacja cofnięta — przywrócono dane z oferty',
+          'success',
+        );
+      } catch (err: any) {
+        console.error('Error accepting calculation:', err);
+        showSnackbar(err?.message || 'Nie udało się zmienić statusu kalkulacji', 'error');
+      } finally {
+        setAcceptingId(null);
+      }
+    });
   };
 
   if (activeId) {
@@ -360,6 +410,16 @@ export default function EventCalculationsTab({ eventId, contactPerson }: Props) 
                     <div className="flex items-center gap-2">
                       <span>{c.name}</span>
 
+                      {c.is_accepted && (
+                        <span
+                          title="Zaakceptowana — źródło danych finansowych"
+                          className="inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400"
+                        >
+                          <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+                          Zaakceptowana
+                        </span>
+                      )}
+
                       {c.generated_pdf_path && (
                         <span
                           title="PDF wygenerowany"
@@ -421,6 +481,24 @@ export default function EventCalculationsTab({ eventId, contactPerson }: Props) 
                             onClick: () => setSendingCalculation(c),
                             disabled: !c.generated_pdf_path,
                             icon: <Mail className="h-4 w-4" />,
+                            variant: 'default',
+                          },
+                          {
+                            label: acceptingId === c.id
+                              ? 'Zmieniam...'
+                              : c.is_accepted
+                                ? 'Cofnij akceptację'
+                                : 'Zaakceptuj',
+                            onClick: () => handleAccept(c),
+                            disabled: acceptingId === c.id,
+                            icon:
+                              acceptingId === c.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : c.is_accepted ? (
+                                <Circle className="h-4 w-4" />
+                              ) : (
+                                <CheckCircle2 className="h-4 w-4" />
+                              ),
                             variant: 'default',
                           },
                           {

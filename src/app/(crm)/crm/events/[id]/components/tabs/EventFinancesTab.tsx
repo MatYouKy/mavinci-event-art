@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
-import { DollarSign, TrendingUp, TrendingDown, Receipt, Plus, Trash2, CreditCard as Edit, Check, X, FileText, Calendar, Fuel, Users, Package, Truck, Upload, Eye, AlertCircle, Building2, User, Info } from 'lucide-react';
+import { DollarSign, TrendingUp, TrendingDown, Receipt, Plus, Trash2, CreditCard as Edit, Check, X, FileText, Calendar, Fuel, Users, Package, Truck, Upload, Eye, AlertCircle, Building2, User, Info, Calculator } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import FinalInvoiceWizardModal from '@/components/crm/FinalInvoiceWizardModal';
 
@@ -99,6 +99,8 @@ export default function EventFinancesTab({ eventId }: Props) {
   const [showFinalInvoiceModal, setShowFinalInvoiceModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showAddCost, setShowAddCost] = useState(false);
+  const [financialSource, setFinancialSource] = useState<'offer' | 'calculation'>('offer');
+  const [acceptedCalcName, setAcceptedCalcName] = useState<string | null>(null);
 
   // Formularz kosztu
   const [costForm, setCostForm] = useState({
@@ -178,6 +180,28 @@ export default function EventFinancesTab({ eventId }: Props) {
         setCosts(formattedCosts);
       }
       if (categoriesRes.data) setCategories(categoriesRes.data);
+
+      // Fetch financial source info
+      const { data: eventFinSource } = await supabase
+        .from('events')
+        .select('financial_source, accepted_calculation_id')
+        .eq('id', eventId)
+        .maybeSingle();
+
+      if (eventFinSource?.financial_source === 'calculation') {
+        setFinancialSource('calculation');
+        if (eventFinSource.accepted_calculation_id) {
+          const { data: calcData } = await supabase
+            .from('event_calculations')
+            .select('name')
+            .eq('id', eventFinSource.accepted_calculation_id)
+            .maybeSingle();
+          setAcceptedCalcName(calcData?.name || null);
+        }
+      } else {
+        setFinancialSource('offer');
+        setAcceptedCalcName(null);
+      }
 
       // Pobierz transakcje gotówkowe (tylko dla adminów)
       if (isAdmin) {
@@ -372,6 +396,12 @@ export default function EventFinancesTab({ eventId }: Props) {
               <TrendingUp className="h-5 w-5 text-green-400" />
               <span className="text-sm text-[#e5e4e2]/60">Przychód planowany</span>
             </div>
+            {financialSource === 'calculation' && acceptedCalcName && (
+              <div className="mb-2 flex items-center gap-1.5 rounded bg-blue-500/15 px-2 py-1 text-xs text-blue-400">
+                <Calculator className="h-3 w-3" />
+                <span>Źródło: kalkulacja &bdquo;{acceptedCalcName}&rdquo;</span>
+              </div>
+            )}
             {acceptedOffer ? (
               <>
                 <div className="text-2xl font-light text-[#d3bb73]">
