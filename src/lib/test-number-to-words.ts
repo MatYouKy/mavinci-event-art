@@ -39,16 +39,3 @@ const testCases = [
 testCases.forEach((num) => {
   console.log(`${num.toLocaleString('pl-PL')} zł => ${numberToWords(num)}`);
 });
-
-console.log('\n=== Przykłady dla szablonów ===\n');
-
-console.log('Budżet: 4500 zł');
-console.log('Budżet słownie:', numberToWords(4500));
-console.log('');
-
-console.log('Zadatek: 2250 zł');
-console.log('Zadatek słownie:', numberToWords(2250));
-console.log('');
-
-console.log('Kwota: 15750 zł');
-console.log('Kwota słownie:', numberToWords(15750));

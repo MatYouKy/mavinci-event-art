@@ -235,8 +235,6 @@ Deno.serve(async (req: Request) => {
       `;
     }
 
-    console.log('[send-invoice-email] Sending from:', emailAccount.email_address, 'with', attachments.length, 'attachments for invoice:', invoiceId);
-
     const relayPayload = {
       smtpConfig: {
         host: emailAccount.smtp_host,
