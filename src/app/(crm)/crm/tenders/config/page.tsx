@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/browser';
-import { Save, Plus, Trash2, Settings, Tag, MapPin, Gauge, Clock, Circle as XCircle, CircleCheck as CheckCircle2, X } from 'lucide-react';
+import Link from 'next/link';
+import { Save, Plus, Trash2, Settings, Tag, MapPin, Gauge, Clock, Circle as XCircle, CircleCheck as CheckCircle2, X, ArrowLeft } from 'lucide-react';
 
 interface FilterConfig {
   id: string;
@@ -126,6 +127,12 @@ export default function FilterConfigPage() {
     <div className="p-6 lg:p-8">
       <div className="mb-6 flex items-center justify-between">
         <div>
+          <Link
+            href="/crm/tenders"
+            className="mb-2 inline-flex items-center gap-1.5 text-xs text-[#e5e4e2]/40 hover:text-[#e5e4e2]/70"
+          >
+            <ArrowLeft className="h-3 w-3" /> Wróć do przetargów
+          </Link>
           <h1 className="text-2xl font-light text-[#e5e4e2]">Konfiguracja filtrów</h1>
           <p className="mt-1 text-sm text-[#e5e4e2]/50">
             Definiuj kryteria dopasowania przetargów do profilu firmy

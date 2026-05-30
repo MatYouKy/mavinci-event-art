@@ -7,7 +7,8 @@ import TenderFilters from './components/TenderFilters';
 import TenderStats from './components/TenderStats';
 import ImportControls from './components/ImportControls';
 import TenderDetailModal from './components/TenderDetailModal';
-import { RefreshCw, Download } from 'lucide-react';
+import Link from 'next/link';
+import { RefreshCw, Download, Settings } from 'lucide-react';
 
 export interface Tender {
   id: string;
@@ -180,6 +181,13 @@ export default function TendersPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <Link
+            href="/crm/tenders/config"
+            className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm text-[#e5e4e2]/70 transition-colors hover:border-[#d3bb73]/40 hover:text-[#e5e4e2]"
+          >
+            <Settings className="h-4 w-4" />
+            Konfiguracja
+          </Link>
           <button
             onClick={handleExport}
             className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm text-[#e5e4e2]/70 transition-colors hover:border-[#d3bb73]/40 hover:text-[#e5e4e2]"

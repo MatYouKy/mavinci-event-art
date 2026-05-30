@@ -68,64 +68,86 @@ function calculateRelevanceScore(
   return Math.max(0, Math.min(100, score));
 }
 
-async function fetchBZPNotices(
-  pageSize = 50
-): Promise<TenderRecord[]> {
+async function fetchBZPNotices(pageSize = 50): Promise<TenderRecord[]> {
   const tenders: TenderRecord[] = [];
 
   try {
     const today = new Date();
-    const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const weekAgo = new Date(today.getTime() - 14 * 24 * 60 * 60 * 1000);
     const dateFrom = weekAgo.toISOString().split("T")[0];
 
-    const url = `https://ezamowienia.gov.pl/mo-board/api/v1/notice/search?publicationDateFrom=${dateFrom}&size=${pageSize}&sort=publicationDate,desc`;
+    const url = `https://ezamowienia.gov.pl/mo-board/api/v1/Board/Search?noticeType=ContractNotice&publicationDateFrom=${dateFrom}&size=${pageSize}&sort=publicationDate,desc`;
 
     const response = await fetch(url, {
-      headers: { Accept: "application/json" },
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "TenderMonitor/1.0",
+      },
     });
 
     if (!response.ok) {
-      throw new Error(`BZP API error: ${response.status} ${response.statusText}`);
+      const text = await response.text().catch(() => "");
+      throw new Error(
+        `BZP API error: ${response.status} ${response.statusText} - ${text.substring(0, 200)}`
+      );
     }
 
     const data = await response.json();
-    const notices = data.content || data.notices || data || [];
+    const notices = data.content || data.notices || data.results || [];
 
     if (Array.isArray(notices)) {
       for (const notice of notices) {
         const cpvCodes: string[] = [];
-        if (notice.cpvCode) cpvCodes.push(notice.cpvCode);
+        if (notice.cpvCode) cpvCodes.push(String(notice.cpvCode));
         if (notice.cpvCodes && Array.isArray(notice.cpvCodes)) {
-          cpvCodes.push(...notice.cpvCodes);
+          cpvCodes.push(...notice.cpvCodes.map((c: unknown) => String(typeof c === 'object' && c !== null && 'code' in c ? (c as Record<string, unknown>).code : c)));
         }
+        if (notice.mainCpvCode) cpvCodes.push(String(notice.mainCpvCode));
 
         const externalId =
-          notice.noticeNumber || notice.id || notice.bzpNumber || "";
+          notice.bzpNumber || notice.noticeNumber || notice.id || notice.number || "";
         if (!externalId) continue;
 
         tenders.push({
           external_id: String(externalId),
           source: "bzp",
-          title: notice.objectContract || notice.title || notice.name || "",
+          title:
+            notice.objectContract ||
+            notice.title ||
+            notice.name ||
+            notice.orderObject ||
+            "",
           description:
-            notice.shortDescription || notice.description || notice.objectDescription || "",
+            notice.shortDescription ||
+            notice.description ||
+            notice.objectDescription ||
+            notice.additionalInfo ||
+            "",
           contracting_authority:
             notice.contractingAuthorityName ||
             notice.buyerName ||
-            notice.contracting_authority ||
+            notice.organisationName ||
+            notice.contractingAuthority?.name ||
             "",
           cpv_codes: cpvCodes,
           location:
-            notice.city || notice.location || notice.place || "",
+            notice.city ||
+            notice.location ||
+            notice.place ||
+            notice.contractingAuthority?.city ||
+            "",
           publication_date: notice.publicationDate || null,
           submission_deadline:
             notice.tenderSubmissionDeadline ||
             notice.offerSubmissionDeadline ||
             notice.deadline ||
+            notice.submissionDate ||
             null,
-          estimated_value: Number(notice.totalValue || notice.estimatedValue || 0),
+          estimated_value: Number(
+            notice.totalValue || notice.estimatedValue || notice.orderValue || 0
+          ),
           currency: notice.currency || "PLN",
-          source_url: `https://ezamowienia.gov.pl/mo-client-board/bzp/notice-details/${encodeURIComponent(externalId)}`,
+          source_url: `https://ezamowienia.gov.pl/mo-client-board/bzp/notice-details/${encodeURIComponent(String(externalId))}`,
           raw_data: notice,
         });
       }
@@ -143,19 +165,34 @@ async function fetchTEDNotices(pageSize = 50): Promise<TenderRecord[]> {
 
   try {
     const today = new Date();
-    const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const weekAgo = new Date(today.getTime() - 14 * 24 * 60 * 60 * 1000);
     const dateFrom = weekAgo.toISOString().split("T")[0];
 
-    const searchUrl = `https://api.ted.europa.eu/v3/notices/search?query=PD%3E%3D${dateFrom}%20AND%20CY%3DPL&pageSize=${pageSize}&sortField=PD&sortOrder=DESC`;
+    const searchBody = {
+      query: `PD>=${dateFrom} AND CY=PL`,
+      pageSize: pageSize,
+      pageNum: 1,
+      sortField: "PD",
+      sortOrder: "desc",
+    };
 
-    const response = await fetch(searchUrl, {
-      headers: {
-        Accept: "application/json",
-      },
-    });
+    const response = await fetch(
+      "https://api.ted.europa.eu/v3/notices/search",
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(searchBody),
+      }
+    );
 
     if (!response.ok) {
-      throw new Error(`TED API error: ${response.status} ${response.statusText}`);
+      const text = await response.text().catch(() => "");
+      throw new Error(
+        `TED API error: ${response.status} ${response.statusText} - ${text.substring(0, 200)}`
+      );
     }
 
     const data = await response.json();
@@ -164,37 +201,46 @@ async function fetchTEDNotices(pageSize = 50): Promise<TenderRecord[]> {
     if (Array.isArray(notices)) {
       for (const notice of notices) {
         const externalId =
-          notice.noticeId || notice["ND"] || notice.id || "";
+          notice.noticeId || notice["ND"] || notice.id || notice.documentNumber || "";
         if (!externalId) continue;
 
         const cpvCodes: string[] = [];
         if (notice.cpvCodes) {
           cpvCodes.push(
             ...(Array.isArray(notice.cpvCodes)
-              ? notice.cpvCodes
-              : [notice.cpvCodes])
+              ? notice.cpvCodes.map((c: unknown) => String(c))
+              : [String(notice.cpvCodes)])
           );
         }
-        if (notice["CPV"]) cpvCodes.push(notice["CPV"]);
+        if (notice["CPV"]) cpvCodes.push(String(notice["CPV"]));
+        if (notice.cpv) cpvCodes.push(String(notice.cpv));
 
         tenders.push({
           external_id: String(externalId),
           source: "ted",
-          title: notice.title || notice["TI"] || "",
+          title: notice.title || notice["TI"] || notice.titleEnglish || "",
           description:
-            notice.description || notice.summary || notice["TX"] || "",
+            notice.description ||
+            notice.summary ||
+            notice["TX"] ||
+            notice.shortDescription ||
+            "",
           contracting_authority:
             notice.buyerName ||
             notice["AA"] ||
             notice.contractingAuthority ||
+            notice.caName ||
             "",
           cpv_codes: cpvCodes,
-          location: notice.town || notice["TW"] || notice.place || "Polska",
+          location:
+            notice.town || notice["TW"] || notice.place || notice.city || "Polska",
           publication_date: notice.publicationDate || notice["PD"] || null,
-          submission_deadline: notice.deadline || notice["DT"] || null,
-          estimated_value: Number(notice.estimatedValue || notice.totalValue || 0),
+          submission_deadline: notice.deadline || notice["DT"] || notice.timeLimit || null,
+          estimated_value: Number(
+            notice.estimatedValue || notice.totalValue || notice.valueEuro || 0
+          ),
           currency: notice.currency || "EUR",
-          source_url: `https://ted.europa.eu/en/notice/-/detail/${externalId}`,
+          source_url: `https://ted.europa.eu/en/notice/-/detail/${encodeURIComponent(String(externalId))}`,
           raw_data: notice,
         });
       }
@@ -214,50 +260,74 @@ async function fetchBazaKonkurencyjnosci(
 
   try {
     const today = new Date();
-    const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const weekAgo = new Date(today.getTime() - 14 * 24 * 60 * 60 * 1000);
     const dateFrom = weekAgo.toISOString().split("T")[0];
 
-    const searchUrl = `https://bazakonkurencyjnosci.funduszeeuropejskie.gov.pl/api/announcements?dateFrom=${dateFrom}&limit=${pageSize}&order=desc`;
+    const searchUrl = `https://bazakonkurencyjnosci.funduszeeuropejskie.gov.pl/api/announcements?dateFrom=${dateFrom}&limit=${pageSize}&orderBy=publication_date&orderType=desc`;
 
     const response = await fetch(searchUrl, {
-      headers: { Accept: "application/json" },
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "TenderMonitor/1.0",
+      },
     });
 
     if (!response.ok) {
-      throw new Error(
-        `Baza Konkurencyjnosci API error: ${response.status} ${response.statusText}`
+      console.warn(
+        `Baza Konkurencyjnosci API returned ${response.status} - skipping source`
       );
+      return tenders;
     }
 
     const data = await response.json();
-    const notices = data.data || data.announcements || data.items || data || [];
+    const notices =
+      data.data || data.announcements || data.items || data.results || [];
 
     if (Array.isArray(notices)) {
       for (const notice of notices) {
-        const externalId = notice.id || notice.number || "";
+        const externalId = notice.id || notice.number || notice.announcementId || "";
         if (!externalId) continue;
 
         const cpvCodes: string[] = [];
         if (notice.cpvCodes && Array.isArray(notice.cpvCodes)) {
-          cpvCodes.push(...notice.cpvCodes.map((c: any) => c.code || c));
+          cpvCodes.push(
+            ...notice.cpvCodes.map((c: unknown) =>
+              String(typeof c === "object" && c !== null && "code" in c ? (c as Record<string, unknown>).code : c)
+            )
+          );
         }
-        if (notice.cpvCode) cpvCodes.push(notice.cpvCode);
+        if (notice.cpvCode) cpvCodes.push(String(notice.cpvCode));
 
         tenders.push({
           external_id: String(externalId),
           source: "baza_konkurencyjnosci",
-          title: notice.title || notice.name || "",
-          description: notice.description || notice.content || "",
+          title: notice.title || notice.name || notice.subject || "",
+          description: notice.description || notice.content || notice.text || "",
           contracting_authority:
-            notice.beneficiary || notice.publisher || notice.company || "",
+            notice.beneficiary ||
+            notice.publisher ||
+            notice.company ||
+            notice.organizationName ||
+            "",
           cpv_codes: cpvCodes,
-          location: notice.location || notice.province || notice.city || "",
-          publication_date: notice.publicationDate || notice.createdAt || null,
+          location:
+            notice.location ||
+            notice.province ||
+            notice.city ||
+            notice.voivodeship ||
+            "",
+          publication_date:
+            notice.publicationDate || notice.createdAt || notice.publishDate || null,
           submission_deadline:
-            notice.submissionDeadline || notice.offerDeadline || null,
-          estimated_value: Number(notice.value || notice.estimatedValue || 0),
+            notice.submissionDeadline ||
+            notice.offerDeadline ||
+            notice.applicationDeadline ||
+            null,
+          estimated_value: Number(
+            notice.value || notice.estimatedValue || notice.orderValue || 0
+          ),
           currency: notice.currency || "PLN",
-          source_url: `https://bazakonkurencyjnosci.funduszeeuropejskie.gov.pl/ogloszenia/${externalId}`,
+          source_url: `https://bazakonkurencyjnosci.funduszeeuropejskie.gov.pl/ogloszenia/${encodeURIComponent(String(externalId))}`,
           raw_data: notice,
         });
       }
@@ -301,7 +371,16 @@ Deno.serve(async (req: Request) => {
       ? [sourceParam]
       : ["bzp", "ted", "baza_konkurencyjnosci"];
 
-    const results: Record<string, { success: boolean; count: number; new: number; updated: number; error?: string }> = {};
+    const results: Record<
+      string,
+      {
+        success: boolean;
+        count: number;
+        new: number;
+        updated: number;
+        error?: string;
+      }
+    > = {};
 
     for (const source of sources) {
       const logEntry = {
@@ -402,8 +481,10 @@ Deno.serve(async (req: Request) => {
           new: newCount,
           updated: updatedCount,
         };
-      } catch (sourceError: any) {
-        console.error(`Error fetching ${source}:`, sourceError);
+      } catch (sourceError) {
+        const errorMsg =
+          sourceError instanceof Error ? sourceError.message : String(sourceError);
+        console.error(`Error fetching ${source}:`, errorMsg);
 
         if (logId) {
           await supabase
@@ -411,7 +492,7 @@ Deno.serve(async (req: Request) => {
             .update({
               status: "error",
               finished_at: new Date().toISOString(),
-              error_message: sourceError.message || String(sourceError),
+              error_message: errorMsg,
             })
             .eq("id", logId);
         }
@@ -421,21 +502,19 @@ Deno.serve(async (req: Request) => {
           count: 0,
           new: 0,
           updated: 0,
-          error: sourceError.message || String(sourceError),
+          error: errorMsg,
         };
       }
     }
 
+    return new Response(JSON.stringify({ success: true, results }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error("Fatal error in fetch-tenders:", errorMsg);
     return new Response(
-      JSON.stringify({ success: true, results }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
-  } catch (error: any) {
-    console.error("Fatal error in fetch-tenders:", error);
-    return new Response(
-      JSON.stringify({ success: false, error: error.message || String(error) }),
+      JSON.stringify({ success: false, error: errorMsg }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
