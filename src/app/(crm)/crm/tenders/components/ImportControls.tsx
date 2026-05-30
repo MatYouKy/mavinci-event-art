@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Play, Loader as Loader2, CircleCheck as CheckCircle2, Circle as XCircle } from 'lucide-react';
+import { Play, Loader as Loader2, CircleCheck, CircleX } from 'lucide-react';
 
 interface ImportResult {
   success: boolean;
@@ -69,7 +69,7 @@ export default function ImportControls({ onImportComplete }: { onImportComplete:
           <div className="ml-auto flex items-center gap-2">
             {result.success ? (
               <span className="flex items-center gap-1.5 text-xs text-green-400">
-                <CheckCircle2 className="h-3.5 w-3.5" />
+                <CircleCheck className="h-3.5 w-3.5" />
                 Import zakończony
                 {result.results && (
                   <span className="text-[#e5e4e2]/40">
@@ -80,7 +80,7 @@ export default function ImportControls({ onImportComplete }: { onImportComplete:
               </span>
             ) : (
               <span className="flex items-center gap-1.5 text-xs text-red-400">
-                <XCircle className="h-3.5 w-3.5" />
+                <CircleX className="h-3.5 w-3.5" />
                 Błąd: {result.error}
               </span>
             )}

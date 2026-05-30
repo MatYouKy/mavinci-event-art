@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/browser';
 import Link from 'next/link';
-import { Save, Plus, Trash2, Settings, Tag, MapPin, Gauge, Clock, Circle as XCircle, CircleCheck as CheckCircle2, X, ArrowLeft } from 'lucide-react';
+import { Save, Plus, Trash2, Settings, Tag, MapPin, Gauge, Clock, CircleX, CircleCheck, X, ArrowLeft } from 'lucide-react';
 
 interface FilterConfig {
   id: string;
@@ -152,7 +152,7 @@ export default function FilterConfigPage() {
             ? 'border-green-500/30 bg-green-500/10 text-green-400'
             : 'border-red-500/30 bg-red-500/10 text-red-400'
         }`}>
-          {message.type === 'success' ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+          {message.type === 'success' ? <CircleCheck className="h-4 w-4" /> : <CircleX className="h-4 w-4" />}
           {message.text}
         </div>
       )}
