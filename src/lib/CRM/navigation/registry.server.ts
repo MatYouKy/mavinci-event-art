@@ -20,7 +20,8 @@ export type NavKey =
   | 'invoices'
   | 'locations'
   | 'time-tracking'
-  | 'databases';
+  | 'databases'
+  | 'tenders';
 
 export type NavigationItemDTO = {
   key: NavKey;
@@ -234,5 +235,13 @@ export const allNavigation: NavigationItemDTO[] = [
     iconKey: 'databases',
     module: 'databases',
     permissions: ['databases_view'],
+  },
+  {
+    key: 'tenders',
+    name: 'Przetargi',
+    href: '/crm/tenders',
+    iconKey: 'tenders',
+    module: 'tenders',
+    permissions: ['tenders_view'],
   },
 ];

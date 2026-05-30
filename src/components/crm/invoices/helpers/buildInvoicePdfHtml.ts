@@ -87,7 +87,7 @@ function getTypeLabel(type: string, invoiceNumber?: string) {
 }
 
 export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
-  const esc = (s: any) =>
+  const esc = (s: unknown) =>
     String(s ?? '')
       .replaceAll('&', '&amp;')
       .replaceAll('<', '&lt;')

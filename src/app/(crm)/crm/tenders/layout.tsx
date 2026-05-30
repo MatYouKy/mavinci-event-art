@@ -1,8 +1,8 @@
-import type { Metadata } from "next";
-import CrmSidebar from "./components/CrmSidebar";
+import type { Metadata } from 'next';
+import CrmSidebar from '../../../../components/crm/tenders/CrmSidebar';
 
 export const metadata: Metadata = {
-  title: "CRM - Monitor Przetargów",
+  title: 'CRM - Monitor Przetargów',
 };
 
 export default function CrmLayout({ children }: { children: React.ReactNode }) {

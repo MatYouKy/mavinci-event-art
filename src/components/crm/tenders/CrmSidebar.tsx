@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { FileSearch, Settings, ChartBar as BarChart3 } from 'lucide-react';
+import { FileSearch, Settings, BarChart3 } from 'lucide-react';
 
 const navItems = [
   { href: '/crm/tenders', label: 'Przetargi', icon: FileSearch },
