@@ -306,10 +306,11 @@ export const buildEquipmentChecklistHtml = ({
     }
 
     body {
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      color: #111827;
+      font-family: Arial, Helvetica, sans-serif;
+      color: #000;
       font-size: 9.5px;
       line-height: 1.2;
+      font-weight: 500;
     }
 
     .page {
@@ -368,7 +369,6 @@ export const buildEquipmentChecklistHtml = ({
       max-width: 105px;
       height: auto;
       margin-bottom: 4px;
-      filter: grayscale(100%);
     }
 
     table {
@@ -395,7 +395,9 @@ export const buildEquipmentChecklistHtml = ({
     }
 
     thead th {
-      background: #f3f4f6;
+      background: #e5e7eb;
+      color: #000;
+      font-weight: 700;
       font-size: 9px;
       letter-spacing: 0.06em;
       text-transform: uppercase;
@@ -515,6 +517,28 @@ export const buildEquipmentChecklistHtml = ({
       border-top: 1px solid #333;
       font-size: 9px;
       color: #666;
+    }
+      th,
+      td,
+      div,
+      span,
+      strong,
+      em {
+        color: #000;
+        opacity: 1;
+      }
+    .bm {
+      font-weight: 700;
+      color: #000;
+    }
+    .nm {
+      color: #111;
+    }
+    .muted {
+      color: #222;
+    }
+    .tag {
+      color: #111;
     }
   </style>
 </head>
