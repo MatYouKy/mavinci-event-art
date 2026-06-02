@@ -727,7 +727,7 @@ export const EventEquipmentTab: React.FC<{
     const kitThumb = row?.kit?.thumbnail_url || row?.equipment_kits?.thumbnail_url || '';
 
     const key = getKeyForEventRow(row); // "kit-<id>"
-    const avail = (availabilityByKey as any)?.[key as AvailKey];
+    const avail = (availabilityByKey as any)?.[key];
     const limits = getUiLimits(avail);
     const qty = Number(row?.quantity);
     const hasConflict = avail && avail.max_add < 0;

@@ -149,15 +149,10 @@ function normalizePhone(phone?: string | null): string | undefined {
 function normalizeCustomerToken(value?: string | null): string | undefined {
   const normalized = (value || '')
     .trim()
-    .replace(/[\r\n\t]+/g, ' ')
-    .replace(/\s+/g, ' ');
+    .replace(/\s+/g, ' ')
+    .slice(0, 256);
 
-  if (!normalized) return undefined;
-
-  // Bezpiecznie dla NrKlienta / IDNabywcy — nie wrzucamy nazw firm.
-  if (normalized.length > 32) return undefined;
-
-  return normalized;
+  return normalized || undefined;
 }
 
 function normalizeKsefText(value?: string | null): string | undefined {
@@ -650,6 +645,17 @@ export function validatePreparedFA3Invoice(
     }
   }
 
+  if (
+    !data.buyer.email &&
+    !data.buyer.phone &&
+    !data.buyer.customerNumber &&
+    !data.buyer.internalId
+  ) {
+    errors.push(
+      'Podmiot2 musi zawierać co najmniej jedno z pól: buyer.email, buyer.phone, buyer.customerNumber albo buyer.internalId',
+    );
+  }
+
   return {
     valid: errors.length === 0,
     errors,
@@ -896,9 +902,9 @@ export function generateFA3XML(
   </Fa>
 </Faktura>`;
 
-  // if (options.debug) {
-  //   console.log(xml);
-  // }
+  if (options.debug) {
+    console.log(xml);
+  }
 
   return xml;
 }
