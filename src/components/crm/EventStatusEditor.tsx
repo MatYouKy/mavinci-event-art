@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase/browser';
 import { X, Calculator, FileText } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import { EventStatus } from './Calendar/types';
 
-const EVENT_STATUSES = [
+const EVENT_STATUSES: { value: EventStatus; label: string }[] = [
   { value: 'inquiry', label: 'Zapytanie' },
   { value: 'offer_to_send', label: 'Oferta do wysłania' },
   { value: 'offer_sent', label: 'Oferta wysłana' },
@@ -30,12 +31,14 @@ export default function EventStatusSelectModal({
   eventId,
   currentStatus,
   onStatusChange,
+  canManage,
 }: {
   isOpen: boolean;
   onClose: () => void;
   eventId: string;
   currentStatus: string;
   onStatusChange?: (newStatus: string) => void;
+  canManage: boolean;
 }) {
   const { showSnackbar } = useSnackbar();
   const [value, setValue] = useState(currentStatus || 'draft');
@@ -45,7 +48,7 @@ export default function EventStatusSelectModal({
   const [selectedCalculationId, setSelectedCalculationId] = useState<string>('');
   const [loadingOptions, setLoadingOptions] = useState(false);
 
-  const showFinancialSourcePicker = value === 'offer_accepted';
+  const showFinancialSourcePicker = value === 'offer_accepted' && canManage;
 
   useEffect(() => {
     if (!isOpen || !showFinancialSourcePicker) return;

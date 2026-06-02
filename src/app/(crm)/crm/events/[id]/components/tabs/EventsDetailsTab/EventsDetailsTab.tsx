@@ -31,6 +31,7 @@ interface EventsDetailsTabProps {
   hasLimitedAccess: boolean;
   canManageTeam: boolean;
   isAdmin: boolean;
+  isCreator: boolean;
   canEventManage: boolean;
   contact: ISimpleContact | null;
   organization: OrganizationRow | null;
@@ -46,6 +47,7 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
   initialEvent,
   isAdmin,
   canEventManage,
+  isCreator,
 }) => {
   const { updateEvent, refetch } = useEvent();
 
@@ -67,6 +69,8 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
 
   const [showEditClientModal, setShowEditClientModal] = useState(false);
   const router = useRouter();
+  const canSeeFullDetails = isAdmin || isCreator || !hasLimitedAccess;
+const canEditEventDetails = isAdmin || isCreator || canEventManage;
 
   const handleUpdateDescription = async (description: string) => {
     // optimistic UI
@@ -170,7 +174,7 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
               <div className="flex items-center gap-2">
                 <p className="text-sm text-[#e5e4e2]/60">Firma realizująca</p>
 
-                {canEventManage && (
+                {canEditEventDetails && (
                   <button
                     onClick={() => setShowEditCompanyModal(true)}
                     className="flex items-center gap-1 text-xs text-[#d3bb73] hover:text-[#d3bb73]/80"
@@ -330,7 +334,7 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
           )}  */}
 
           {/* Ukryj klienta dla użytkowników z ograniczonym dostępem */}
-          {!hasLimitedAccess && isAdmin && (
+          {canSeeFullDetails && (
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-medium text-[#e5e4e2]">Informacje o kliencie</h3>
@@ -352,10 +356,18 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
                     <div>
                       <p className="text-sm text-[#e5e4e2]/60">Klient (Firma)</p>
                       <a
-                        href={`/crm/contacts/${organization.id}`}
+                        href={`/crm/contacts/${organization?.id}`}
                         className="text-[#e5e4e2] hover:text-[#d3bb73]"
                       >
                         {organization ? organization.alias || organization.name : 'Brak klienta'}
+                        {organization?.email && (
+                          <div className="mt-1 flex items-center gap-2 text-sm text-[#e5e4e2]/60">
+                            <Mail className="h-3 w-3" />
+                            <a href={`mailto:${organization.email}`} className="text-[#e5e4e2] hover:text-[#d3bb73]">
+                              {organization.email}
+                            </a>
+                          </div>
+                        )}
                       </a>
                     </div>
                   </div>
@@ -453,8 +465,8 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
             onClose={() => setShowEditClientModal(false)}
             eventId={event.id}
             currentClientType={(event as any).client_type || 'business'}
-            currentOrganizationId={event.organization_id}
-            currentContactPersonId={event.contact_person_id}
+            currentOrganizationId={event.organization_id || ''}
+            currentContactPersonId={event.contact_person_id || ''}
             onSuccess={async () => {
               setShowEditClientModal(false);
 
@@ -479,13 +491,13 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
       <EventDestailsDescription
         eventId={event.id}
         handleSaveDescription={handleUpdateDescription}
-        eventDescription={event.description}
+        eventDescription={event.description || ''}
         hasLimitedAccess={hasLimitedAccess}
         // onSaved={async () => {
         //   await refetch();
         // }}
       />
-      <EventDetailsNotes eventDetailsNotes={event.notes} handleUpdateNotes={handleUpdateNotes} />
+      <EventDetailsNotes eventDetailsNotes={event.notes || ''} handleUpdateNotes={handleUpdateNotes} />
     </>
   );
 };

@@ -535,7 +535,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
       }
     } catch (err: unknown | Error) {
       if (err instanceof Error) {
-      console.error('Error generating PDF:', err);
+        console.error('Error generating PDF:', err);
         showSnackbar(err.message, 'error');
       } else {
         console.error('Error generating PDF:', err);
@@ -1745,8 +1745,12 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             </div>
 
             <div className="mb-5 text-[10px] leading-snug text-gray-600">
-              <span style={{ whiteSpace: 'pre-wrap', fontWeight: '700' }}>Uwagi:</span>{' '}
-              {invoice.footer_note || ''}
+              {invoice.footer_note && (
+                <span style={{ whiteSpace: 'pre-wrap', fontWeight: '700' }}>Uwagi:</span>
+              )}{' '}
+              {invoice.footer_note && (
+                <span style={{ whiteSpace: 'pre-wrap' }}>{invoice.footer_note}</span>
+              )}
             </div>
 
             <div className="flex justify-end">

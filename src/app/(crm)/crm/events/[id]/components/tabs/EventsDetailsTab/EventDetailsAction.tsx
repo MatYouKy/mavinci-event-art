@@ -77,7 +77,7 @@ const statusIcon = (s: EventStatus) => {
   }
 };
 
-interface ContactInfo {
+export interface ContactInfo {
   id?: string;
   full_name?: string;
   first_name?: string;
@@ -86,7 +86,7 @@ interface ContactInfo {
   phone?: string;
 }
 
-interface OrganizationInfo {
+export interface OrganizationInfo {
   id?: string;
   name?: string;
   alias?: string;
@@ -238,9 +238,9 @@ export default function EventDetailsAction({
       // odśwież lokalny "category" (żeby od razu pokazało label/kolor)
       if (newCategoryId) {
         const next = categories.find((c) => c.id === newCategoryId);
-        setCategory(next ?? null);
+        setCategory(next ?? undefined);
       } else {
-        setCategory(null);
+        setCategory(undefined);
       }
 
       showSnackbar('Zaktualizowano kategorię wydarzenia', 'success');

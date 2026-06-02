@@ -312,10 +312,10 @@ export default function EventsPageClient({
 
   const canViewEventStatus = isUserAdmin || hasScope('events_manage', currentEmployee);
   const canDeleteEvents =
-  isUserAdmin ||
-  hasScope('events_manage', currentEmployee) ||
-  currentEmployee.permissions?.includes('admin') ||
-  currentEmployee.permissions?.includes('events_manage');
+    isUserAdmin ||
+    hasScope('events_manage', currentEmployee) ||
+    currentEmployee.permissions?.includes('admin') ||
+    currentEmployee.permissions?.includes('events_manage');
 
   const canViewEventBudget =
     isUserAdmin ||
@@ -326,11 +326,14 @@ export default function EventsPageClient({
     hasScope('invoices_manage', currentEmployee) ||
     hasScope('invoices_view', currentEmployee);
 
-    const canAddNewEvent =
+  const canAddNewEvent =
     isUserAdmin ||
     hasScope('events_manage', currentEmployee) ||
     currentEmployee.role === 'admin' ||
     currentEmployee.permissions?.includes('events_create');
+
+  console.log('currentEmployee', currentEmployee.permissions);
+  console.log('canAddNewEvent', canAddNewEvent);
 
   // ---- Table widths from prefs (fallback to defaults)
 
@@ -753,19 +756,22 @@ export default function EventsPageClient({
         onClick: () => router.push('/crm/event-categories'),
         icon: <Tag className="h-4 w-4" />,
         variant: 'default',
+        show: true,
       });
+    }
 
-      if (canAddNewEvent) {
+    if (canAddNewEvent) {
       arr.push({
         label: 'Nowy event',
         onClick: () => setIsModalOpen(true),
         icon: <Plus className="h-4 w-4" />,
         variant: 'primary',
+        show: true,
       });
-    }}
+    }
 
     return arr;
-  }, [router, setIsModalOpen, canViewEventStatus, canAddNewEvent]);
+  }, [router, canViewEventStatus, canAddNewEvent]);
 
   return (
     <div className="space-y-6">
