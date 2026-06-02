@@ -28,11 +28,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const employee = await getCurrentEmployeeServerCached();
   const initialUnreadMessagesCount = await fetchUnreadCountServer(); // pobieramy liczbę nieprzeczytanych wiadomości na początku
 
-  console.log('[employee]', employee);
-console.log('[employee.id]', employee?.id);
-console.log('[initialUnreadMessagesCount]', initialUnreadMessagesCount);
-
-
   if (!employee?.id) {
     redirect('/login');
   }
