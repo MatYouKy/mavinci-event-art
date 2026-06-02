@@ -59,8 +59,30 @@ export async function POST(req: Request) {
     );
 
     const invoices = Array.isArray(data?.invoices) ? data.invoices : [];
+    let newCount = 0;
+    let skippedCount = 0;
 
     if (invoices.length > 0) {
+      // Collect all ksef_reference_numbers from the fetched batch
+      const allKsefRefs = invoices
+        .map((inv: any) =>
+          inv.ksefNumber ||
+          inv.ksefReferenceNumber ||
+          inv.ksef_reference_number ||
+          inv.referenceNumber
+        )
+        .filter(Boolean);
+
+      // Check which invoices already exist in DB - skip those to avoid overwriting payment status
+      const { data: existingInvoices } = await supabase
+        .from('ksef_invoices')
+        .select('ksef_reference_number')
+        .in('ksef_reference_number', allKsefRefs);
+
+      const existingRefs = new Set(
+        (existingInvoices || []).map((e: any) => e.ksef_reference_number)
+      );
+
       const rows = [];
 
       for (const inv of invoices) {
@@ -71,6 +93,9 @@ export async function POST(req: Request) {
           inv.referenceNumber;
 
         if (!ksefRef) continue;
+
+        // Skip invoices that already exist in DB to preserve their payment status
+        if (existingRefs.has(ksefRef)) continue;
 
         // Fetch full invoice XML for complete data
         let xmlContent = '';
@@ -122,6 +147,13 @@ export async function POST(req: Request) {
           bankAccountNumber,
         });
 
+        // For immediate payment methods (cash/card), set payment_date to issue_date
+        const effectivePaymentDate =
+          paymentDate ||
+          (paymentData.payment_status === 'paid' && (paymentMethod === '1' || paymentMethod === '2')
+            ? (parsed?.issue_date || inv.issueDate || new Date().toISOString().split('T')[0])
+            : null);
+
         // VAT rate from items
         let vatRate: string | null = null;
         if (parsed?.invoice_items && parsed.invoice_items.length > 0) {
@@ -154,7 +186,7 @@ export async function POST(req: Request) {
           issue_date: parsed?.issue_date || inv.issueDate || null,
           payment_due_date: paymentDueDate,
           payment_method: paymentMethod,
-          payment_date: paymentDate,
+          payment_date: effectivePaymentDate,
           bank_account_number: bankAccountNumber,
           payment_status: paymentData.payment_status,
           xml_content: xmlContent,
@@ -172,24 +204,25 @@ export async function POST(req: Request) {
       }
 
       if (rows.length > 0) {
-        const { error: upsertError } = await supabase
+        const { error: insertError } = await supabase
           .from('ksef_invoices')
-          .upsert(rows, {
-            onConflict: 'ksef_reference_number',
-          });
+          .insert(rows);
 
-        if (upsertError) {
-          console.error('[KSEF_NEXT] received invoices upsert error', upsertError);
+        if (insertError) {
+          console.error('[KSEF_NEXT] received invoices insert error', insertError);
 
           return NextResponse.json(
             {
               success: false,
-              error: upsertError.message || 'Błąd zapisu faktur do bazy',
+              error: insertError.message || 'Błąd zapisu faktur do bazy',
             },
             { status: 500 }
           );
         }
       }
+
+      newCount = rows.length;
+      skippedCount = existingRefs.size;
     }
 
     const { error: logError } = await supabase.from('ksef_sync_log').insert({
@@ -206,7 +239,11 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
-      data,
+      data: {
+        ...data,
+        newCount,
+        skippedCount,
+      },
     });
   } catch (error: any) {
     console.error('[KSEF_NEXT] received invoices route error', error);

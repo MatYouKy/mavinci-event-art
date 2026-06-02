@@ -614,11 +614,23 @@ export default function KSeFIntegrationPanel() {
         );
       }
 
-      const issuedCount = issuedResult?.data?.invoices?.length || 0;
-      const receivedCount = receivedResult?.data?.invoices?.length || 0;
+      const issuedNew = issuedResult?.data?.newCount || 0;
+      const issuedSkipped = issuedResult?.data?.skippedCount || 0;
+      const receivedNew = receivedResult?.data?.newCount || 0;
+      const receivedSkipped = receivedResult?.data?.skippedCount || 0;
+
+      const parts = [];
+      if (issuedNew > 0 || receivedNew > 0) {
+        parts.push(`Nowe: ${issuedNew + receivedNew}`);
+      }
+      if (issuedSkipped > 0 || receivedSkipped > 0) {
+        parts.push(`Pominięte (już istnieją): ${issuedSkipped + receivedSkipped}`);
+      }
 
       showSnackbar(
-        `Zsynchronizowano ${issuedCount} wystawionych i ${receivedCount} otrzymanych faktur`,
+        parts.length > 0
+          ? `Synchronizacja zakończona. ${parts.join(', ')}`
+          : 'Synchronizacja zakończona - brak nowych faktur',
         'success',
       );
 

@@ -105,8 +105,8 @@ function determinePaymentStatus(params: {
 }): 'paid' | 'unpaid' | 'overdue' | 'partially_paid' {
   const { paymentMethod, paymentDate, paymentDueDate, paidAmount, grossAmount } = params;
 
-  // Cash payment (method '1') = paid immediately
-  if (paymentMethod === '1') return 'paid';
+  // Cash payment (method '1') or card payment (method '2') = paid immediately
+  if (paymentMethod === '1' || paymentMethod === '2') return 'paid';
 
   // If payment date is set, it was paid
   if (paymentDate) return 'paid';
@@ -136,6 +136,10 @@ export function getPaymentMethodLabel(code: string | null): string {
 
 export function isCashPayment(paymentMethod: string | null): boolean {
   return paymentMethod === '1';
+}
+
+export function isCardPayment(paymentMethod: string | null): boolean {
+  return paymentMethod === '2';
 }
 
 export function isTransferPayment(paymentMethod: string | null): boolean {
