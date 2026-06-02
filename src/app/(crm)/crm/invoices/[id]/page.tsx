@@ -147,6 +147,9 @@ export interface InvoiceItem {
   after_value_net?: number | null;
   after_vat_amount?: number | null;
   after_value_gross?: number | null;
+  total_net?: number | null;
+  total_vat?: number | null;
+  total_gross?: number | null;
 }
 
 export default function InvoiceDetailPage({ params }: { params: { id: string } }) {
@@ -269,6 +272,10 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               .select('id, first_name, last_name, full_name, email')
               .eq('id', contactPersonId)
               .maybeSingle();
+
+            if (contactError) {
+              console.error('Error fetching contact:', contactError);
+            }
 
             if (contact) {
               related.primaryContact = {
@@ -472,7 +479,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
         correctionReason: invoice.correction_reason || undefined,
         correctedInvoiceNumber: invoice.corrected_invoice_number || undefined,
         correctedInvoiceIssueDate: invoice.corrected_invoice_issue_date || undefined,
-        items: pdfItems.map((item: any) => ({
+        items: pdfItems.map((item: InvoiceItem) => ({
           positionNumber: item.position_number,
           name: item.name,
           unit: item.unit,
@@ -483,7 +490,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           vatAmount: item.vat_amount,
           valueGross: item.value_gross,
         })),
-        invoice_items: (freshItems || invoice.invoice_items || []) as any,
+        invoice_items: (freshItems || invoice.invoice_items || []) as InvoiceItem[],
         isProforma: false,
         settledInvoices: invoice.settled_invoices ?? finalSettlementData.settledInvoices,
         settlementSummary: invoice.settlement_summary ?? finalSettlementData.settlementSummary,
@@ -526,9 +533,14 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
       } else {
         showSnackbar('PDF wygenerowany', 'success');
       }
-    } catch (err: any) {
+    } catch (err: unknown | Error) {
+      if (err instanceof Error) {
       console.error('Error generating PDF:', err);
-      showSnackbar(err.message || 'Blad generowania PDF', 'error');
+        showSnackbar(err.message, 'error');
+      } else {
+        console.error('Error generating PDF:', err);
+        showSnackbar('Nieznany błąd podczas generowania PDF', 'error');
+      }
     } finally {
       setGenerating(false);
     }
@@ -643,9 +655,9 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   const handleStatusChange = async (newStatus: string) => {
     if (!invoice) return;
 
-    let safeStatus = newStatus;
+    const safeStatus = newStatus;
 
-    const updateData: Record<string, any> = {
+    const updateData: Record<string, string | number | null> = {
       status: safeStatus,
     };
 
@@ -870,11 +882,11 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     return `${number > 0 ? '+' : ''}${number.toFixed(2)}`;
   };
 
-  const formatSignedQuantity = (value?: number) => {
-    const number = Number(value || 0);
-    if (!number) return '0';
-    return `${number > 0 ? '+' : ''}${number}`;
-  };
+  // const formatSignedQuantity = (value?: number) => {
+  //   const number = Number(value || 0);
+  //   if (!number) return '0';
+  //   return `${number > 0 ? '+' : ''}${number}`;
+  // };
   const amountToPay =
     paymentStatus === 'paid'
       ? 0
@@ -1733,6 +1745,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
             </div>
 
             <div className="mb-5 text-[10px] leading-snug text-gray-600">
+              <span style={{ whiteSpace: 'pre-wrap', fontWeight: '700' }}>Uwagi:</span>{' '}
               {invoice.footer_note || ''}
             </div>
 

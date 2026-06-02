@@ -3,7 +3,23 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/browser';
 import Link from 'next/link';
-import { Save, Plus, Trash2, Settings, Tag, MapPin, Gauge, Clock, CircleX, CircleCheck, X, ArrowLeft } from 'lucide-react';
+import {
+  Save,
+  Plus,
+  Trash2,
+  Settings,
+  Tag,
+  MapPin,
+  Gauge,
+  Clock,
+  FileX,
+  FileCheck,
+  X,
+  ArrowLeft,
+  RefreshCw,
+} from 'lucide-react';
+
+type ListField = 'positive_keywords' | 'negative_keywords' | 'cpv_codes' | 'locations';
 
 interface FilterConfig {
   id: string;
@@ -29,6 +45,11 @@ export default function FilterConfigPage() {
   const [newNegKeyword, setNewNegKeyword] = useState('');
   const [newCpv, setNewCpv] = useState('');
   const [newLocation, setNewLocation] = useState('');
+  const [isCounting, setIsCounting] = useState(false);
+
+  const [duplicateFields, setDuplicateFields] = useState<
+    Partial<Record<'positive_keywords' | 'negative_keywords' | 'cpv_codes' | 'locations', boolean>>
+  >({});
 
   useEffect(() => {
     fetchConfigs();
@@ -99,20 +120,104 @@ export default function FilterConfigPage() {
     fetchConfigs();
   };
 
-  const addItem = (field: 'positive_keywords' | 'negative_keywords' | 'cpv_codes' | 'locations', value: string) => {
+  const splitBulkValues = (value: string) => {
+    return value
+      .split(/[\n,;.]+/g)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  };
+
+  const normalizeValue = (value: string) => {
+    return value.trim().toLowerCase();
+  };
+
+  const addItems = (field: ListField, value: string) => {
     if (!selected || !value.trim()) return;
+
+    const values = splitBulkValues(value);
+    const existingNormalized = new Set(selected[field].map(normalizeValue));
+
+    const uniqueToAdd: string[] = [];
+    let hasDuplicates = false;
+
+    for (const item of values) {
+      const normalized = normalizeValue(item);
+
+      if (existingNormalized.has(normalized)) {
+        hasDuplicates = true;
+        continue;
+      }
+
+      if (uniqueToAdd.some((v) => normalizeValue(v) === normalized)) {
+        hasDuplicates = true;
+        continue;
+      }
+
+      uniqueToAdd.push(item);
+    }
+
+    setDuplicateFields((prev) => ({
+      ...prev,
+      [field]: hasDuplicates,
+    }));
+
+    if (hasDuplicates) {
+      window.setTimeout(() => {
+        setDuplicateFields((prev) => ({
+          ...prev,
+          [field]: false,
+        }));
+      }, 1800);
+    }
+
+    if (uniqueToAdd.length === 0) return;
+
     setSelected({
       ...selected,
-      [field]: [...selected[field], value.trim()],
+      [field]: [...selected[field], ...uniqueToAdd],
     });
   };
 
-  const removeItem = (field: 'positive_keywords' | 'negative_keywords' | 'cpv_codes' | 'locations', index: number) => {
+  const removeItem = (
+    field: 'positive_keywords' | 'negative_keywords' | 'cpv_codes' | 'locations',
+    index: number,
+  ) => {
     if (!selected) return;
     setSelected({
       ...selected,
       [field]: selected[field].filter((_, i) => i !== index),
     });
+  };
+
+  const handleRecalculateTenders = async () => {
+    setIsCounting(true);
+    setSaving(true);
+    setMessage(null);
+
+    try {
+      const response = await fetch('/bridge/tenders/recalculate', {
+        method: 'POST',
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Nie udało się przeliczyć przetargów');
+      }
+
+      setMessage({
+        type: 'success',
+        text: `Przeliczono ${data.updated ?? 0} przetargów`,
+      });
+    } catch (err) {
+      setMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Nieznany błąd',
+      });
+    } finally {
+      setSaving(false);
+      setIsCounting(false);
+    }
   };
 
   if (loading) {
@@ -125,6 +230,22 @@ export default function FilterConfigPage() {
 
   return (
     <div className="p-6 lg:p-8">
+      {isCounting && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6 text-center shadow-2xl">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10">
+              <RefreshCw className="h-7 w-7 animate-spin text-[#d3bb73]" />
+            </div>
+
+            <h2 className="text-lg font-medium text-[#e5e4e2]">Przeliczanie przetargów</h2>
+
+            <p className="mt-2 text-sm leading-relaxed text-[#e5e4e2]/50">
+              Aktualizuję ocenę trafności na podstawie aktywnej konfiguracji. Proszę nie zamykać
+              okna.
+            </p>
+          </div>
+        </div>
+      )}
       <div className="mb-6 flex items-center justify-between">
         <div>
           <Link
@@ -147,12 +268,18 @@ export default function FilterConfigPage() {
       </div>
 
       {message && (
-        <div className={`mb-4 flex items-center gap-2 rounded-lg border px-4 py-3 text-sm ${
-          message.type === 'success'
-            ? 'border-green-500/30 bg-green-500/10 text-green-400'
-            : 'border-red-500/30 bg-red-500/10 text-red-400'
-        }`}>
-          {message.type === 'success' ? <CircleCheck className="h-4 w-4" /> : <CircleX className="h-4 w-4" />}
+        <div
+          className={`mb-4 flex items-center gap-2 rounded-lg border px-4 py-3 text-sm ${
+            message.type === 'success'
+              ? 'border-green-500/30 bg-green-500/10 text-green-400'
+              : 'border-red-500/30 bg-red-500/10 text-red-400'
+          }`}
+        >
+          {message.type === 'success' ? (
+            <FileCheck className="h-4 w-4" />
+          ) : (
+            <FileX className="h-4 w-4" />
+          )}
           {message.text}
         </div>
       )}
@@ -208,7 +335,9 @@ export default function FilterConfigPage() {
                     min={0}
                     max={100}
                     value={selected.min_relevance_score}
-                    onChange={(e) => setSelected({ ...selected, min_relevance_score: Number(e.target.value) })}
+                    onChange={(e) =>
+                      setSelected({ ...selected, min_relevance_score: Number(e.target.value) })
+                    }
                     className="w-full rounded-lg border border-[#d3bb73]/15 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none"
                   />
                 </div>
@@ -221,7 +350,9 @@ export default function FilterConfigPage() {
                     min={1}
                     max={365}
                     value={selected.max_days_to_deadline}
-                    onChange={(e) => setSelected({ ...selected, max_days_to_deadline: Number(e.target.value) })}
+                    onChange={(e) =>
+                      setSelected({ ...selected, max_days_to_deadline: Number(e.target.value) })
+                    }
                     className="w-full rounded-lg border border-[#d3bb73]/15 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none"
                   />
                 </div>
@@ -249,17 +380,33 @@ export default function FilterConfigPage() {
                   type="text"
                   value={newKeyword}
                   onChange={(e) => setNewKeyword(e.target.value)}
+                  onPaste={(e) => {
+                    const pasted = e.clipboardData.getData('text');
+                  
+                    if (/[\n,;.]/.test(pasted)) {
+                      e.preventDefault();
+                      addItems('positive_keywords', pasted);
+                      setNewKeyword('');
+                    }
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
-                      addItem('positive_keywords', newKeyword);
+                      addItems('positive_keywords', newKeyword);
                       setNewKeyword('');
                     }
                   }}
                   placeholder="Dodaj słowo kluczowe..."
-                  className="flex-1 rounded-lg border border-[#d3bb73]/15 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] placeholder-[#e5e4e2]/30 focus:border-[#d3bb73]/40 focus:outline-none"
+                  className={`flex-1 rounded-lg border bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] placeholder-[#e5e4e2]/30 focus:outline-none ${
+                    duplicateFields.positive_keywords
+                      ? 'border-red-500/80 focus:border-red-500'
+                      : 'border-[#d3bb73]/15 focus:border-[#d3bb73]/40'
+                  }`}
                 />
                 <button
-                  onClick={() => { addItem('positive_keywords', newKeyword); setNewKeyword(''); }}
+                  onClick={() => {
+                    addItems('positive_keywords', newKeyword);
+                    setNewKeyword('');
+                  }}
                   className="rounded-lg bg-green-500/20 px-3 py-2 text-sm text-green-400 hover:bg-green-500/30"
                 >
                   <Plus className="h-4 w-4" />
@@ -267,9 +414,15 @@ export default function FilterConfigPage() {
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {selected.positive_keywords.map((kw, i) => (
-                  <span key={i} className="flex items-center gap-1 rounded-lg border border-green-500/20 bg-green-500/10 px-2 py-1 text-xs text-green-400">
+                  <span
+                    key={i}
+                    className="flex items-center gap-1 rounded-lg border border-green-500/20 bg-green-500/10 px-2 py-1 text-xs text-green-400"
+                  >
                     {kw}
-                    <button onClick={() => removeItem('positive_keywords', i)} className="ml-1 hover:text-white">
+                    <button
+                      onClick={() => removeItem('positive_keywords', i)}
+                      className="ml-1 hover:text-white"
+                    >
                       <X className="h-3 w-3" />
                     </button>
                   </span>
@@ -287,17 +440,33 @@ export default function FilterConfigPage() {
                   type="text"
                   value={newNegKeyword}
                   onChange={(e) => setNewNegKeyword(e.target.value)}
+                  onPaste={(e) => {
+                    const pasted = e.clipboardData.getData('text');
+                  
+                    if (/[\n,;.]/.test(pasted)) {
+                      e.preventDefault();
+                      addItems('positive_keywords', pasted);
+                      setNewKeyword('');
+                    }
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
-                      addItem('negative_keywords', newNegKeyword);
+                      addItems('negative_keywords', newNegKeyword);
                       setNewNegKeyword('');
                     }
                   }}
                   placeholder="Dodaj frazę wykluczającą..."
-                  className="flex-1 rounded-lg border border-[#d3bb73]/15 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] placeholder-[#e5e4e2]/30 focus:border-[#d3bb73]/40 focus:outline-none"
+                  className={`flex-1 rounded-lg border bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] placeholder-[#e5e4e2]/30 focus:outline-none ${
+                    duplicateFields.negative_keywords
+                      ? 'border-red-500/80 focus:border-red-500'
+                      : 'border-[#d3bb73]/15 focus:border-[#d3bb73]/40'
+                  }`}
                 />
                 <button
-                  onClick={() => { addItem('negative_keywords', newNegKeyword); setNewNegKeyword(''); }}
+                  onClick={() => {
+                    addItems('negative_keywords', newNegKeyword);
+                    setNewNegKeyword('');
+                  }}
                   className="rounded-lg bg-red-500/20 px-3 py-2 text-sm text-red-400 hover:bg-red-500/30"
                 >
                   <Plus className="h-4 w-4" />
@@ -305,9 +474,15 @@ export default function FilterConfigPage() {
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {selected.negative_keywords.map((kw, i) => (
-                  <span key={i} className="flex items-center gap-1 rounded-lg border border-red-500/20 bg-red-500/10 px-2 py-1 text-xs text-red-400">
+                  <span
+                    key={i}
+                    className="flex items-center gap-1 rounded-lg border border-red-500/20 bg-red-500/10 px-2 py-1 text-xs text-red-400"
+                  >
                     {kw}
-                    <button onClick={() => removeItem('negative_keywords', i)} className="ml-1 hover:text-white">
+                    <button
+                      onClick={() => removeItem('negative_keywords', i)}
+                      className="ml-1 hover:text-white"
+                    >
                       <X className="h-3 w-3" />
                     </button>
                   </span>
@@ -325,17 +500,33 @@ export default function FilterConfigPage() {
                   type="text"
                   value={newCpv}
                   onChange={(e) => setNewCpv(e.target.value)}
+                  onPaste={(e) => {
+                    const pasted = e.clipboardData.getData('text');
+                  
+                    if (/[\n,;.]/.test(pasted)) {
+                      e.preventDefault();
+                      addItems('positive_keywords', pasted);
+                      setNewKeyword('');
+                    }
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
-                      addItem('cpv_codes', newCpv);
+                      addItems('cpv_codes', newCpv);
                       setNewCpv('');
                     }
                   }}
                   placeholder="np. 79952000-2"
-                  className="flex-1 rounded-lg border border-[#d3bb73]/15 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] placeholder-[#e5e4e2]/30 focus:border-[#d3bb73]/40 focus:outline-none"
+                  className={`flex-1 rounded-lg border bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] placeholder-[#e5e4e2]/30 focus:outline-none ${
+                    duplicateFields.cpv_codes
+                      ? 'border-red-500/80 focus:border-red-500'
+                      : 'border-[#d3bb73]/15 focus:border-[#d3bb73]/40'
+                  }`}
                 />
                 <button
-                  onClick={() => { addItem('cpv_codes', newCpv); setNewCpv(''); }}
+                  onClick={() => {
+                    addItems('cpv_codes', newCpv);
+                    setNewCpv('');
+                  }}
                   className="rounded-lg bg-[#d3bb73]/20 px-3 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/30"
                 >
                   <Plus className="h-4 w-4" />
@@ -343,9 +534,15 @@ export default function FilterConfigPage() {
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {selected.cpv_codes.map((cpv, i) => (
-                  <span key={i} className="flex items-center gap-1 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-2 py-1 text-xs text-[#d3bb73]">
+                  <span
+                    key={i}
+                    className="flex items-center gap-1 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-2 py-1 text-xs text-[#d3bb73]"
+                  >
                     {cpv}
-                    <button onClick={() => removeItem('cpv_codes', i)} className="ml-1 hover:text-white">
+                    <button
+                      onClick={() => removeItem('cpv_codes', i)}
+                      className="ml-1 hover:text-white"
+                    >
                       <X className="h-3 w-3" />
                     </button>
                   </span>
@@ -363,17 +560,33 @@ export default function FilterConfigPage() {
                   type="text"
                   value={newLocation}
                   onChange={(e) => setNewLocation(e.target.value)}
+                  onPaste={(e) => {
+                    const pasted = e.clipboardData.getData('text');
+                  
+                    if (/[\n,;.]/.test(pasted)) {
+                      e.preventDefault();
+                      addItems('positive_keywords', pasted);
+                      setNewKeyword('');
+                    }
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
-                      addItem('locations', newLocation);
+                      addItems('locations', newLocation);
                       setNewLocation('');
                     }
                   }}
                   placeholder="np. Warszawa, małopolskie..."
-                  className="flex-1 rounded-lg border border-[#d3bb73]/15 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] placeholder-[#e5e4e2]/30 focus:border-[#d3bb73]/40 focus:outline-none"
+                  className={`flex-1 rounded-lg border bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] placeholder-[#e5e4e2]/30 focus:outline-none ${
+                    duplicateFields.locations
+                      ? 'border-red-500/80 focus:border-red-500'
+                      : 'border-[#d3bb73]/15 focus:border-[#d3bb73]/40'
+                  }`}
                 />
                 <button
-                  onClick={() => { addItem('locations', newLocation); setNewLocation(''); }}
+                  onClick={() => {
+                    addItems('locations', newLocation);
+                    setNewLocation('');
+                  }}
                   className="rounded-lg bg-blue-500/20 px-3 py-2 text-sm text-blue-400 hover:bg-blue-500/30"
                 >
                   <Plus className="h-4 w-4" />
@@ -381,9 +594,15 @@ export default function FilterConfigPage() {
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {selected.locations.map((loc, i) => (
-                  <span key={i} className="flex items-center gap-1 rounded-lg border border-blue-500/20 bg-blue-500/10 px-2 py-1 text-xs text-blue-400">
+                  <span
+                    key={i}
+                    className="flex items-center gap-1 rounded-lg border border-blue-500/20 bg-blue-500/10 px-2 py-1 text-xs text-blue-400"
+                  >
                     {loc}
-                    <button onClick={() => removeItem('locations', i)} className="ml-1 hover:text-white">
+                    <button
+                      onClick={() => removeItem('locations', i)}
+                      className="ml-1 hover:text-white"
+                    >
                       <X className="h-3 w-3" />
                     </button>
                   </span>
@@ -398,14 +617,24 @@ export default function FilterConfigPage() {
               >
                 <Trash2 className="h-4 w-4" /> Usuń konfigurację
               </button>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
-              >
-                <Save className="h-4 w-4" />
-                {saving ? 'Zapisywanie...' : 'Zapisz konfigurację'}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleRecalculateTenders}
+                  disabled={saving || isCounting}
+                  className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/10 disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isCounting ? 'animate-spin' : ''}`} />
+                  Przelicz przetargi
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
+                >
+                  <Save className="h-4 w-4" />
+                  {saving ? 'Zapisywanie...' : 'Zapisz konfigurację'}
+                </button>
+              </div>
             </div>
           </div>
         )}

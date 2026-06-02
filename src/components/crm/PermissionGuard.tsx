@@ -26,6 +26,8 @@ export default function PermissionGuard({
 
   const { employee } = useCurrentEmployee();
 
+  console.log('[employee]', employee);
+
   useEffect(() => {
     const checkPermission = async () => {
       try {

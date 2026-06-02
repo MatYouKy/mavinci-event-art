@@ -14,25 +14,44 @@ function getSourceBadge(source: string) {
   const config: Record<string, { label: string; classes: string }> = {
     bzp: { label: 'BZP', classes: 'bg-blue-500/15 text-blue-400 border-blue-500/30' },
     ted: { label: 'TED', classes: 'bg-green-500/15 text-green-400 border-green-500/30' },
-    baza_konkurencyjnosci: { label: 'Baza Konkurencyjności', classes: 'bg-orange-500/15 text-orange-400 border-orange-500/30' },
+    baza_konkurencyjnosci: {
+      label: 'Baza Konkurencyjności',
+      classes: 'bg-orange-500/15 text-orange-400 border-orange-500/30',
+    },
   };
-  const c = config[source] || { label: source, classes: 'bg-gray-500/15 text-gray-400 border-gray-500/30' };
-  return <span className={`inline-flex rounded border px-2 py-0.5 text-xs ${c.classes}`}>{c.label}</span>;
+  const c = config[source] || {
+    label: source,
+    classes: 'bg-gray-500/15 text-gray-400 border-gray-500/30',
+  };
+  return (
+    <span className={`inline-flex rounded border px-2 py-0.5 text-xs ${c.classes}`}>{c.label}</span>
+  );
 }
 
 function getStatusBadge(status: string) {
   const config: Record<string, { label: string; classes: string }> = {
     new: { label: 'Nowy', classes: 'bg-[#d3bb73]/10 text-[#d3bb73] border-[#d3bb73]/30' },
     reviewing: { label: 'W analizie', classes: 'bg-blue-500/15 text-blue-400 border-blue-500/30' },
-    interested: { label: 'Zainteresowany', classes: 'bg-green-500/15 text-green-400 border-green-500/30' },
-    preparing: { label: 'Przygotowywanie', classes: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30' },
-    submitted: { label: 'Oferta złożona', classes: 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30' },
+    interested: {
+      label: 'Zainteresowany',
+      classes: 'bg-green-500/15 text-green-400 border-green-500/30',
+    },
+    preparing: {
+      label: 'Przygotowywanie',
+      classes: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30',
+    },
+    submitted: {
+      label: 'Oferta złożona',
+      classes: 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30',
+    },
     won: { label: 'Wygrana', classes: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' },
     lost: { label: 'Przegrana', classes: 'bg-red-500/15 text-red-400 border-red-500/30' },
     ignored: { label: 'Zignorowany', classes: 'bg-gray-500/15 text-gray-400 border-gray-500/30' },
   };
   const c = config[status] || config.new;
-  return <span className={`inline-flex rounded border px-2 py-0.5 text-xs ${c.classes}`}>{c.label}</span>;
+  return (
+    <span className={`inline-flex rounded border px-2 py-0.5 text-xs ${c.classes}`}>{c.label}</span>
+  );
 }
 
 function getScoreColor(score: number) {
@@ -49,7 +68,11 @@ function getScoreBg(score: number) {
 
 function formatDate(date: string | null) {
   if (!date) return '—';
-  return new Date(date).toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return new Date(date).toLocaleDateString('pl-PL', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
 }
 
 function daysUntilDeadline(deadline: string | null): string | null {
@@ -74,7 +97,9 @@ export default function TenderList({ tenders, loading, onSelect, onUpdate }: Pro
     return (
       <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] py-16 text-center">
         <p className="text-[#e5e4e2]/40">Brak przetargów spełniających kryteria</p>
-        <p className="mt-2 text-sm text-[#e5e4e2]/25">Spróbuj zmienić filtry lub uruchom import danych</p>
+        <p className="mt-2 text-sm text-[#e5e4e2]/25">
+          Spróbuj zmienić filtry lub uruchom import danych
+        </p>
       </div>
     );
   }
@@ -83,24 +108,29 @@ export default function TenderList({ tenders, loading, onSelect, onUpdate }: Pro
     <div className="space-y-2">
       {tenders.map((tender) => {
         const deadlineDays = daysUntilDeadline(tender.submission_deadline);
-        const isUrgent = tender.submission_deadline &&
+        const isUrgent =
+          tender.submission_deadline &&
           new Date(tender.submission_deadline).getTime() - Date.now() < 7 * 24 * 60 * 60 * 1000 &&
           new Date(tender.submission_deadline).getTime() > Date.now();
 
         return (
           <div
             key={tender.id}
-            className={`group cursor-pointer rounded-xl border bg-[#1c1f33] p-4 transition-all hover:border-[#d3bb73]/30 ${
-              tender.relevance_score >= 70
-                ? 'border-green-500/20'
-                : tender.relevance_score >= 40
-                  ? 'border-[#d3bb73]/15'
-                  : 'border-[#d3bb73]/10'
+            className={`group cursor-pointer rounded-xl border bg-[#1c1f33] p-4 transition-all hover:border-[#d3bb73]/40 ${
+              tender.manual_relevance === 'relevant' || tender.is_matched
+                ? 'border-[#d3bb73]/50 shadow-[0_0_0_1px_rgba(211,187,115,0.12)]'
+                : tender.relevance_score >= 70
+                  ? 'border-green-500/25'
+                  : tender.relevance_score >= 40
+                    ? 'border-[#d3bb73]/20'
+                    : 'border-[#d3bb73]/10'
             } ${tender.is_hidden ? 'opacity-50' : ''}`}
             onClick={() => onSelect(tender)}
           >
             <div className="flex items-start gap-4">
-              <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border ${getScoreBg(tender.relevance_score)}`}>
+              <div
+                className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border ${getScoreBg(tender.relevance_score)}`}
+              >
                 <span className={`text-sm font-medium ${getScoreColor(tender.relevance_score)}`}>
                   {tender.relevance_score}
                 </span>
@@ -131,7 +161,9 @@ export default function TenderList({ tenders, loading, onSelect, onUpdate }: Pro
                     </span>
                   )}
                   {tender.submission_deadline && (
-                    <span className={`flex items-center gap-1 ${isUrgent ? 'text-orange-400' : ''}`}>
+                    <span
+                      className={`flex items-center gap-1 ${isUrgent ? 'text-orange-400' : ''}`}
+                    >
                       <Clock className="h-3 w-3" />
                       Termin: {formatDate(tender.submission_deadline)}
                       {deadlineDays && <span className="ml-1">({deadlineDays})</span>}
@@ -150,13 +182,16 @@ export default function TenderList({ tenders, loading, onSelect, onUpdate }: Pro
                 )}
               </div>
 
-              <div className="flex flex-shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
+              <div
+                className="flex flex-shrink-0 items-center gap-1"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <button
                   onClick={() => onUpdate(tender.id, { is_watched: !tender.is_watched })}
                   className={`rounded-lg p-2 transition-colors ${
                     tender.is_watched
                       ? 'text-[#d3bb73] hover:bg-[#d3bb73]/10'
-                      : 'text-[#e5e4e2]/30 hover:text-[#d3bb73] hover:bg-[#d3bb73]/5'
+                      : 'text-[#e5e4e2]/30 hover:bg-[#d3bb73]/5 hover:text-[#d3bb73]'
                   }`}
                   title={tender.is_watched ? 'Przestań obserwować' : 'Obserwuj'}
                 >
@@ -165,7 +200,7 @@ export default function TenderList({ tenders, loading, onSelect, onUpdate }: Pro
 
                 <button
                   onClick={() => onUpdate(tender.id, { is_hidden: !tender.is_hidden })}
-                  className="rounded-lg p-2 text-[#e5e4e2]/30 transition-colors hover:text-[#e5e4e2]/60 hover:bg-[#e5e4e2]/5"
+                  className="rounded-lg p-2 text-[#e5e4e2]/30 transition-colors hover:bg-[#e5e4e2]/5 hover:text-[#e5e4e2]/60"
                   title={tender.is_hidden ? 'Pokaż' : 'Ukryj'}
                 >
                   {tender.is_hidden ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
@@ -175,7 +210,7 @@ export default function TenderList({ tenders, loading, onSelect, onUpdate }: Pro
                   href={tender.source_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="rounded-lg p-2 text-[#e5e4e2]/30 transition-colors hover:text-blue-400 hover:bg-blue-500/5"
+                  className="rounded-lg p-2 text-[#e5e4e2]/30 transition-colors hover:bg-blue-500/5 hover:text-blue-400"
                   title="Otwórz źródło"
                   onClick={(e) => e.stopPropagation()}
                 >

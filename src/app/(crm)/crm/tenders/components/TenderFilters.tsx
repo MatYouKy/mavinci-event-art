@@ -65,6 +65,7 @@ export default function TenderFilters({ filters, onChange }: Props) {
           className="rounded-lg border border-[#d3bb73]/15 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none"
         >
           <option value="">Wszystkie</option>
+          <option value="smart">Najtrafniejsze i najpilniejsze</option>
           <option value="matched">Dopasowane</option>
           <option value="unmatched">Niedopasowane</option>
         </select>
@@ -89,6 +90,15 @@ export default function TenderFilters({ filters, onChange }: Props) {
             className="rounded border-[#d3bb73]/30 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73]/30"
           />
           Pokaż ukryte
+        </label>
+        <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/60">
+          <input
+            type="checkbox"
+            checked={filters.showExpired}
+            onChange={(e) => update({ showExpired: e.target.checked })}
+            className="rounded border-[#d3bb73]/30 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73]/30"
+          />
+          Pokaż po terminie
         </label>
 
         <div className="flex items-center gap-2 text-sm text-[#e5e4e2]/60">

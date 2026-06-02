@@ -17,11 +17,27 @@ export default function TenderStats() {
   useEffect(() => {
     const fetchStats = async () => {
       const [totalRes, matchedRes, watchedRes, expiringRes] = await Promise.all([
-        supabase.from('tenders').select('id', { count: 'exact', head: true }).eq('is_hidden', false),
-        supabase.from('tenders').select('id', { count: 'exact', head: true }).eq('is_matched', true).eq('is_hidden', false),
-        supabase.from('tenders').select('id', { count: 'exact', head: true }).eq('is_watched', true),
-        supabase.from('tenders').select('id', { count: 'exact', head: true })
-          .eq('is_hidden', false)
+        supabase
+          .from('tenders')
+          .select('id', { count: 'exact', head: true })
+          .or('is_hidden.eq.false,is_hidden.is.null'),
+
+        supabase
+          .from('tenders')
+          .select('id', { count: 'exact', head: true })
+          .eq('is_matched', true)
+          .or('is_hidden.eq.false,is_hidden.is.null'),
+
+        supabase
+          .from('tenders')
+          .select('id', { count: 'exact', head: true })
+          .eq('is_watched', true)
+          .or('is_hidden.eq.false,is_hidden.is.null'),
+
+        supabase
+          .from('tenders')
+          .select('id', { count: 'exact', head: true })
+          .or('is_hidden.eq.false,is_hidden.is.null')
           .gte('submission_deadline', new Date().toISOString())
           .lte('submission_deadline', new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()),
       ]);
@@ -41,7 +57,12 @@ export default function TenderStats() {
     { label: 'Wszystkie', value: stats.total, icon: FileSearch, color: 'text-[#d3bb73]' },
     { label: 'Dopasowane', value: stats.matched, icon: TrendingUp, color: 'text-green-400' },
     { label: 'Obserwowane', value: stats.watched, icon: Eye, color: 'text-blue-400' },
-    { label: 'Termin < 7 dni', value: stats.expiringSoon, icon: Calendar, color: 'text-orange-400' },
+    {
+      label: 'Termin < 7 dni',
+      value: stats.expiringSoon,
+      icon: Calendar,
+      color: 'text-orange-400',
+    },
   ];
 
   return (

@@ -56,6 +56,7 @@ interface InvoicePdfData {
     valueNet: number;
     vatAmount: number;
     valueGross: number;
+    unitPriceNet?: number;
   }>;
   invoice_items?: Array<InvoiceItem>;
   settledInvoices?: SettledInvoicePdfRef[];
@@ -69,6 +70,7 @@ interface InvoicePdfData {
     remainingNet: number;
     remainingVat: number;
     remainingGross: number;
+    unitPriceNet?: number;
   };
 }
 
@@ -172,12 +174,12 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
     data.items && data.items.length > 0
       ? data.items
       : data.invoice_items && data.invoice_items.length > 0
-        ? data.invoice_items.map((item: any, idx: number) => ({
+        ? data.invoice_items.map((item: InvoiceItem, idx: number) => ({
             positionNumber: item.position_number ?? idx + 1,
             name: item.name,
             unit: item.unit,
             quantity: Number(item.quantity),
-            priceNet: Number(item.price_net ?? item.unit_price_net ?? 0),
+            priceNet: Number(item.price_net ?? item.price_net ?? 0),
             vatRate: Number(item.vat_rate ?? 0),
             valueNet: Number(item.value_net ?? item.total_net ?? 0),
             vatAmount: Number(item.vat_amount ?? item.total_vat ?? 0),
@@ -826,7 +828,7 @@ ${!data.buyerIsPrivatePerson && data.invoiceType !== 'proforma'
   </div>
 
   <div class="footer-note">
-    ${esc(data.footerNote)}
+    ${data.footerNote ? `<span style="white-space: pre-wrap; font-weight: 700;">Uwagi:</span> ${esc(data.footerNote)}` : ''}
   </div>
 
   <div class="signature">

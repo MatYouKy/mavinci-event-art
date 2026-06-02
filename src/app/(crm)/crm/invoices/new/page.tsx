@@ -98,6 +98,7 @@ export default function NewInvoicePage() {
   const [settings, setSettings] = useState<any>(null);
   const [showAddBuyerModal, setShowAddBuyerModal] = useState(false);
   const [includeDefaultFooterNote, setIncludeDefaultFooterNote] = useState(true);
+  const [invoiceNote, setInvoiceNote] = useState('');
 
   const [invoiceType, setInvoiceType] = useState<'vat' | 'proforma' | 'advance' | 'corrective'>(
     urlType === 'corrective' ? 'corrective' : 'vat',
@@ -346,7 +347,7 @@ export default function NewInvoicePage() {
       }
 
       setIndividualContacts(
-        individualContactsRes.data.map((c: any) => ({
+        individualContactsRes.data?.map((c: any) => ({
           id: c.id,
           first_name: c.first_name,
           last_name: c.last_name,
@@ -357,7 +358,7 @@ export default function NewInvoicePage() {
           street: c.street || c.address || '',
           postal_code: c.postal_code || '',
           city: c.city || '',
-        })),
+        })) || [],
       );
 
       let finalCompaniesList: MyCompany[] = [];
@@ -648,20 +649,22 @@ export default function NewInvoicePage() {
     await fetchData();
   };
 
-  const buildInvoiceFooterText = (selectedCompany: MyCompany) => {
+  const buildInvoiceFooterText = () => {
     if (invoiceType === 'corrective') {
       const issueDateText = correctedInvoiceIssueDate
         ? new Date(correctedInvoiceIssueDate).toLocaleDateString('pl-PL')
         : 'brak daty';
-
-      return `Faktura korygująca odnosi się do faktury ${correctedInvoiceNumber || '-'} z dnia ${issueDateText}. Przyczyna korekty: ${correctionReason || '-'}.`;
+  
+      return `Faktura korygująca odnosi się do faktury ${correctedInvoiceNumber || '-'} z dnia ${issueDateText}. Przyczyna korekty: ${
+        correctionReason || '-'
+      }.`;
     }
-
-    if (includeDefaultFooterNote) {
-      return selectedCompany.invoice_footer_text || '';
+  
+    if (!includeDefaultFooterNote) {
+      return null;
     }
-
-    return null;
+  
+    return invoiceNote.trim() || null;
   };
 
   const handleSubmit = async () => {
@@ -762,7 +765,7 @@ export default function NewInvoicePage() {
         selectedCompany.signature_name ||
         '';
 
-      const footerNote = buildInvoiceFooterText(selectedCompany);
+        const footerNote = buildInvoiceFooterText();
 
       const website = selectedCompany.website?.trim() || null;
 
@@ -796,7 +799,7 @@ export default function NewInvoicePage() {
         return;
       }
 
-      if (!buyerIsPrivatePerson && !selectedOrg.nip) {
+      if (!buyerIsPrivatePerson && !selectedOrg?.nip) {
         showSnackbar(
           'Nabywca nie ma uzupełnionego NIP. Uzupełnij dane kontrahenta albo zaznacz fakturę dla osoby prywatnej.',
           'error',
@@ -965,6 +968,17 @@ export default function NewInvoicePage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!includeDefaultFooterNote) return;
+    if (invoiceNote.trim()) return;
+  
+    const selectedCompany = myCompanies.find((c) => c.id === selectedCompanyId);
+  
+    if (selectedCompany?.invoice_footer_text) {
+      setInvoiceNote(selectedCompany.invoice_footer_text);
+    }
+  }, [selectedCompanyId, myCompanies, includeDefaultFooterNote]);
 
   const totals = calculateTotals();
   const filteredIndividualContacts = individualContacts.filter((contact) => {
@@ -1469,18 +1483,50 @@ export default function NewInvoicePage() {
                   <input
                     type="checkbox"
                     checked={includeDefaultFooterNote}
-                    onChange={(e) => setIncludeDefaultFooterNote(e.target.checked)}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setIncludeDefaultFooterNote(checked);
+
+                      const selectedCompany = myCompanies.find((c) => c.id === selectedCompanyId);
+
+                      if (checked && selectedCompany?.invoice_footer_text && !invoiceNote.trim()) {
+                        setInvoiceNote(selectedCompany.invoice_footer_text);
+                      }
+
+                      if (!checked) {
+                        setInvoiceNote('');
+                      }
+                    }}
                     className="mt-1 h-4 w-4 rounded border-[#d3bb73]/20 text-[#d3bb73]"
                   />
-                  <div>
+
+                  <div className="flex-1">
                     <div className="text-sm font-medium text-[#e5e4e2]">
-                      Dodaj standardową notę płatniczą
+                      Dodaj adnotacje do faktury
                     </div>
+
                     <div className="mt-1 text-xs text-[#e5e4e2]/60">
-                      Nota zostanie zapisana na fakturze i pokazana w PDF.
+                      Treść zostanie zapisana na fakturze, pokazana w PDF i może zostać przekazana
+                      do KSeF.
                     </div>
                   </div>
                 </label>
+
+                {includeDefaultFooterNote && (
+                  <div className="mt-4">
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+                      Adnotacje / nota płatnicza
+                    </label>
+
+                    <textarea
+                      value={invoiceNote}
+                      onChange={(e) => setInvoiceNote(e.target.value)}
+                      rows={4}
+                      placeholder="Np. Niniejsza faktura jest wezwaniem do zapłaty..."
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-sm text-[#e5e4e2] placeholder-[#e5e4e2]/30 focus:border-[#d3bb73] focus:outline-none"
+                    />
+                  </div>
+                )}
               </div>
             )}
 

@@ -3,24 +3,11 @@
 import { useState, useEffect } from 'react';
 import { X, RotateCcw } from 'lucide-react';
 import Image from 'next/image';
-
-interface ImagePosition {
-  posX: number;
-  posY: number;
-  scale: number;
-}
-
-interface ImageMetadata {
-  desktop?: {
-    position?: ImagePosition;
-    objectFit?: string;
-  };
-}
-
+import { IImageMetadata, IImagePosition, ImageObjectFit } from '@/types/image';
 interface ImagePositionEditorProps {
   imageUrl: string;
-  currentMetadata: ImageMetadata | null;
-  onSave: (metadata: ImageMetadata) => Promise<void>;
+  currentMetadata: IImageMetadata | null;
+  onSave: (metadata: IImageMetadata) => Promise<void>;
   onClose: () => void;
   title?: string;
   previewAspectRatio?: string;
@@ -40,12 +27,12 @@ export default function ImagePositionEditor({
   previewHeight = 200,
   showCircularPreview = false,
 }: ImagePositionEditorProps) {
-  const [position, setPosition] = useState<ImagePosition>({
+  const [position, setPosition] = useState<IImagePosition>({
     posX: currentMetadata?.desktop?.position?.posX ?? 0,
     posY: currentMetadata?.desktop?.position?.posY ?? 0,
     scale: currentMetadata?.desktop?.position?.scale ?? 1,
   });
-  const [objectFit, setObjectFit] = useState<string>(
+  const [objectFit, setObjectFit] = useState<ImageObjectFit>(
     currentMetadata?.desktop?.objectFit ?? 'cover'
   );
   const [isSaving, setIsSaving] = useState(false);
@@ -58,15 +45,16 @@ export default function ImagePositionEditor({
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      const metadata: ImageMetadata = {
+      const metadata: IImageMetadata = {
         desktop: {
+          src: imageUrl,
           position,
           objectFit,
         },
       };
       await onSave(metadata);
       onClose();
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error saving position:', error);
       alert('Błąd podczas zapisywania pozycji');
     } finally {
@@ -193,7 +181,7 @@ export default function ImagePositionEditor({
               <label className="block text-sm text-[#e5e4e2]/60 mb-2">Dopasowanie:</label>
               <select
                 value={objectFit}
-                onChange={(e) => setObjectFit(e.target.value)}
+                onChange={(e) => setObjectFit(e.target.value as ImageObjectFit)}
                 className="w-full px-3 py-2 bg-[#252842] border border-[#d3bb73]/10 rounded-lg text-[#e5e4e2]"
               >
                 <option value="cover">Wypełnij (Cover)</option>

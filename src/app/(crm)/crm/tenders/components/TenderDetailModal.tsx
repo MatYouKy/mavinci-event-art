@@ -2,8 +2,18 @@
 
 import { useState } from 'react';
 import {
-  X, ExternalLink, MapPin, Building2, Clock, Calendar,
-  Star, EyeOff, Eye, ThumbsUp, ThumbsDown, Save
+  X,
+  ExternalLink,
+  MapPin,
+  Building2,
+  Clock,
+  Calendar,
+  Star,
+  EyeOff,
+  Eye,
+  ThumbsUp,
+  ThumbsDown,
+  Save,
 } from 'lucide-react';
 import type { Tender } from '../page';
 
@@ -27,7 +37,9 @@ const STATUS_OPTIONS = [
 function formatDate(date: string | null) {
   if (!date) return '—';
   return new Date(date).toLocaleDateString('pl-PL', {
-    day: '2-digit', month: 'long', year: 'numeric',
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
   });
 }
 
@@ -38,7 +50,9 @@ function getScoreBar(score: number) {
       <div className="h-2 flex-1 rounded-full bg-[#0a0d1a]">
         <div className={`h-2 rounded-full ${color}`} style={{ width: `${score}%` }} />
       </div>
-      <span className={`text-lg font-medium ${score >= 70 ? 'text-green-400' : score >= 40 ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/40'}`}>
+      <span
+        className={`text-lg font-medium ${score >= 70 ? 'text-green-400' : score >= 40 ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/40'}`}
+      >
         {score}/100
       </span>
     </div>
@@ -65,7 +79,10 @@ export default function TenderDetailModal({ tender, onClose, onUpdate }: Props) 
       <div className="w-full max-w-3xl rounded-xl border border-[#d3bb73]/20 bg-[#0f1119] shadow-2xl">
         <div className="flex items-center justify-between border-b border-[#d3bb73]/10 px-6 py-4">
           <h2 className="text-lg font-light text-[#e5e4e2]">Szczegóły przetargu</h2>
-          <button onClick={onClose} className="rounded-lg p-1 text-[#e5e4e2]/40 hover:text-[#e5e4e2]">
+          <button
+            onClick={onClose}
+            className="rounded-lg p-1 text-[#e5e4e2]/40 hover:text-[#e5e4e2]"
+          >
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -110,7 +127,10 @@ export default function TenderDetailModal({ tender, onClose, onUpdate }: Props) 
               <label className="mb-2 block text-xs text-[#e5e4e2]/50">Kody CPV</label>
               <div className="flex flex-wrap gap-1.5">
                 {tender.cpv_codes.map((cpv, i) => (
-                  <span key={i} className="rounded border border-[#d3bb73]/20 bg-[#d3bb73]/5 px-2 py-0.5 text-xs text-[#d3bb73]">
+                  <span
+                    key={i}
+                    className="rounded border border-[#d3bb73]/20 bg-[#d3bb73]/5 px-2 py-0.5 text-xs text-[#d3bb73]"
+                  >
                     {cpv}
                   </span>
                 ))}
@@ -122,7 +142,8 @@ export default function TenderDetailModal({ tender, onClose, onUpdate }: Props) 
             <div className="mb-4">
               <label className="mb-1 block text-xs text-[#e5e4e2]/50">Szacowana wartość</label>
               <div className="text-sm text-[#d3bb73]">
-                {tender.estimated_value.toLocaleString('pl-PL', { minimumFractionDigits: 2 })} {tender.currency}
+                {tender.estimated_value.toLocaleString('pl-PL', { minimumFractionDigits: 2 })}{' '}
+                {tender.currency}
               </div>
             </div>
           )}
@@ -144,7 +165,9 @@ export default function TenderDetailModal({ tender, onClose, onUpdate }: Props) 
               className="w-full rounded-lg border border-[#d3bb73]/15 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none"
             >
               {STATUS_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
               ))}
             </select>
           </div>
@@ -164,7 +187,9 @@ export default function TenderDetailModal({ tender, onClose, onUpdate }: Props) 
             <label className="mb-2 block text-xs text-[#e5e4e2]/50">Ocena manualna</label>
             <div className="flex gap-2">
               <button
-                onClick={() => handleManualRelevance(tender.manual_relevance === 'relevant' ? null : 'relevant')}
+                onClick={() =>
+                  handleManualRelevance(tender.manual_relevance === 'relevant' ? null : 'relevant')
+                }
                 className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
                   tender.manual_relevance === 'relevant'
                     ? 'border-green-500/40 bg-green-500/10 text-green-400'
@@ -174,7 +199,11 @@ export default function TenderDetailModal({ tender, onClose, onUpdate }: Props) 
                 <ThumbsUp className="h-4 w-4" /> Trafny
               </button>
               <button
-                onClick={() => handleManualRelevance(tender.manual_relevance === 'irrelevant' ? null : 'irrelevant')}
+                onClick={() =>
+                  handleManualRelevance(
+                    tender.manual_relevance === 'irrelevant' ? null : 'irrelevant',
+                  )
+                }
                 className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
                   tender.manual_relevance === 'irrelevant'
                     ? 'border-red-500/40 bg-red-500/10 text-red-400'
@@ -207,14 +236,16 @@ export default function TenderDetailModal({ tender, onClose, onUpdate }: Props) 
               {tender.is_hidden ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
               {tender.is_hidden ? 'Pokaż' : 'Ukryj'}
             </button>
-            <a
-              href={tender.source_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 rounded-lg border border-[#d3bb73]/15 px-3 py-2 text-sm text-[#e5e4e2]/50 hover:border-blue-500/30 hover:text-blue-400"
-            >
-              <ExternalLink className="h-4 w-4" /> Otwórz źródło
-            </a>
+            {tender.source_url && (
+              <a
+                href={tender.source_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 rounded-lg border border-[#d3bb73]/15 px-3 py-2 text-sm text-[#e5e4e2]/50 hover:border-blue-500/30 hover:text-blue-400"
+              >
+                <ExternalLink className="h-4 w-4" /> Otwórz źródło
+              </a>
+            )}
           </div>
 
           <button

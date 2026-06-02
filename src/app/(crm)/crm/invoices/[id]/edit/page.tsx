@@ -68,7 +68,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [invoice, setInvoice] = useState<any>(null);
+  const [invoice, setInvoice] = useState<any | null>(null);
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [myCompanies, setMyCompanies] = useState<MyCompany[]>([]);
@@ -79,7 +79,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
   const [invoiceType, setInvoiceType] = useState<'vat' | 'proforma' | 'advance' | 'corrective'>(
     'vat',
   );
-  const [isProforma, setIsProforma] = useState(false);
+
   const [issueDate, setIssueDate] = useState('');
   const [saleDate, setSaleDate] = useState('');
   const [paymentDays, setPaymentDays] = useState(14);
@@ -89,7 +89,6 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
   const [includeDefaultFooterNote, setIncludeDefaultFooterNote] = useState(true);
   const [customFooterNote, setCustomFooterNote] = useState('');
   const [website, setWebsite] = useState('');
-  const [signatureName, setSignatureName] = useState('');
 
   const [buyerIsPrivatePerson, setBuyerIsPrivatePerson] = useState(false);
   const [individualContacts, setIndividualContacts] = useState<IndividualContact[]>([]);
@@ -182,12 +181,10 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         setSelectedCompanyId(inv.my_company_id || '');
         setPaymentMethod(inv.payment_method || 'Przelew');
         setIssuePlace(inv.issue_place || '');
-        setIsProforma(inv.is_proforma ?? false);
         setInvoiceStatus(inv.status || 'draft');
-        setCustomFooterNote(inv.invoice_footer_text || '');
+        setCustomFooterNote(inv.footer_note || '');
         setWebsite(inv.website || 'www.mavinci.pl');
-        setSignatureName(inv.signature_name || '');
-        setIncludeDefaultFooterNote(Boolean(inv.invoice_footer_text));
+        setIncludeDefaultFooterNote(Boolean(inv.footer_note));
         setBuyerIsPrivatePerson(inv.buyer_is_private_person ?? false);
         setPaidDate(
           inv.paid_at ? inv.paid_at.split('T')[0] : inv.payment_due_date || inv.issue_date || '',
@@ -445,21 +442,21 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
   };
 
   const buildInvoiceFooterText = () => {
-    const selectedCompany = myCompanies.find((c) => c.id === selectedCompanyId);
-
     if (invoiceType === 'corrective') {
       const issueDateText = correctedInvoiceIssueDate
         ? new Date(correctedInvoiceIssueDate).toLocaleDateString('pl-PL')
         : '-';
 
-      return `Faktura korygująca odnosi się do faktury ${correctedInvoiceNumber || '-'} z dnia ${issueDateText}.<br /> Przyczyna korekty: ${correctionReason || '-'}.`;
+      return `Faktura korygująca odnosi się do faktury ${correctedInvoiceNumber || '-'} z dnia ${issueDateText}. Przyczyna korekty: ${
+        correctionReason || '-'
+      }.`;
     }
 
     if (!includeDefaultFooterNote) {
       return null;
     }
 
-    return selectedCompany?.invoice_footer_text || '';
+    return customFooterNote.trim() || null;
   };
 
   const handleSubmit = async () => {
@@ -518,12 +515,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
       const selectedCompany = myCompanies.find((c) => c.id === selectedCompanyId);
       if (!selectedCompany) throw new Error('Company not found');
 
-      const footerNote =
-        invoiceType === 'corrective'
-          ? buildInvoiceFooterText()
-          : includeDefaultFooterNote
-            ? customFooterNote?.trim() || selectedCompany.invoice_footer_text || ''
-            : null;
+      const footerNote = buildInvoiceFooterText();
 
       const missingSellerFields: string[] = [];
       if (!selectedCompany.legal_name) missingSellerFields.push('nazwa firmy');
@@ -586,11 +578,11 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         selectedCompany.signature_name ||
         '';
 
-      const invoiceData: Record<string, any> = {
+      const invoiceData: Record<string, string | number | null> = {
         event_id: selectedEventId,
         invoice_number: invoiceNumber,
         invoice_type: invoiceType,
-        is_proforma: invoiceType === 'proforma',
+        is_proforma: invoiceType === 'proforma' ? 'true' : 'false',
         payment_status: paymentStatus,
         paid_amount: paymentStatus === 'unpaid' ? 0 : paidAmount,
         paid_at: paymentStatus === 'unpaid' ? null : paidDate || null,
@@ -620,7 +612,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         buyer_city: buyerIsPrivatePerson ? privateBuyer.city : selectedOrg!.city || '',
 
         buyer_country: 'Polska',
-        buyer_is_private_person: buyerIsPrivatePerson,
+        buyer_is_private_person: buyerIsPrivatePerson ? 'true' : 'false',
         my_company_id: selectedCompanyId,
         seller_name: selectedCompany.legal_name,
         seller_nip: selectedCompany.nip,
@@ -648,7 +640,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         invoiceData.corrected_invoice_number = correctedInvoiceNumber;
         invoiceData.corrected_invoice_issue_date = correctedInvoiceIssueDate || null;
         invoiceData.corrected_invoice_ksef_number = correctedInvoiceKsefNumber || null;
-        invoiceData.corrected_invoice_was_in_ksef = correctedInvoiceWasInKsef;
+        invoiceData.corrected_invoice_was_in_ksef = correctedInvoiceWasInKsef ? 'true' : 'false';
       } else {
         invoiceData.related_invoice_id = null;
         invoiceData.correction_reason = null;
@@ -656,7 +648,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         invoiceData.corrected_invoice_number = null;
         invoiceData.corrected_invoice_issue_date = null;
         invoiceData.corrected_invoice_ksef_number = null;
-        invoiceData.corrected_invoice_was_in_ksef = false;
+        invoiceData.corrected_invoice_was_in_ksef = 'false';
       }
 
       const { error: invoiceError } = await supabase
@@ -701,15 +693,17 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
 
       showSnackbar('Faktura zostala zaktualizowana', 'success');
       router.push(`/crm/invoices/${params.id}`);
-    } catch (err: any) {
+      } catch (err: unknown | Error) {
+      if (err instanceof Error) {
       console.error('Error updating invoice:', err);
       let msg = 'Blad podczas aktualizacji faktury';
-      if (err?.code === '23505') {
+      if (err.message.includes('23505')) {
         msg = 'Faktura o tym numerze juz istnieje. Wybierz inny numer.';
       } else if (err?.message) {
         msg = err.message;
       }
       showSnackbar(msg, 'error');
+      }
     } finally {
       setSaving(false);
     }
@@ -918,7 +912,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
                 <label className="mb-2 block text-sm text-[#e5e4e2]/60">Typ faktury *</label>
                 <select
                   value={invoiceType}
-                  onChange={(e) => setInvoiceType(e.target.value as any)}
+                  onChange={(e) => setInvoiceType(e.target.value as 'vat' | 'proforma' | 'advance' | 'corrective')}
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
                 >
                   <option value="vat">Faktura VAT</option>
@@ -1307,8 +1301,6 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
                 </select>
               </div>
 
-
-
               <div>
                 <label className="mb-2 block text-sm text-[#e5e4e2]/60">Miejsce wystawienia</label>
                 <input
@@ -1321,20 +1313,20 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
               </div>
             </div>
             {invoiceStatus === 'paid' && (
-                <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-4">
-                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data opłacenia *</label>
-                  <input
-                    type="date"
-                    value={paidDate}
-                    onChange={(e) => setPaidDate(e.target.value)}
-                    className="w-full rounded-lg border border-green-500/30 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
-                  />
+              <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-4">
+                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data opłacenia *</label>
+                <input
+                  type="date"
+                  value={paidDate}
+                  onChange={(e) => setPaidDate(e.target.value)}
+                  className="w-full rounded-lg border border-green-500/30 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
+                />
 
-                  <div className="mt-3 rounded-lg border border-green-500/20 bg-green-500/10 p-3 text-sm text-green-400">
-                    Faktura opłacona. Do zapłaty: 0.00 zł
-                  </div>
+                <div className="mt-3 rounded-lg border border-green-500/20 bg-green-500/10 p-3 text-sm text-green-400">
+                  Faktura opłacona. Do zapłaty: 0.00 zł
                 </div>
-              )}
+              </div>
+            )}
 
             <div className="rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-4">
               <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">

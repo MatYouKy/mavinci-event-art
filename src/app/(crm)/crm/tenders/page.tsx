@@ -45,6 +45,7 @@ export interface TenderFiltersState {
   showHidden: boolean;
   minScore: number;
   sortBy: string;
+  showExpired: boolean;
   sortDir: 'asc' | 'desc';
 }
 
@@ -52,11 +53,12 @@ const defaultFilters: TenderFiltersState = {
   search: '',
   source: '',
   status: '',
-  isMatched: 'matched',
+  isMatched: 'all',
   isWatched: false,
   showHidden: false,
+  showExpired: false,
   minScore: 0,
-  sortBy: 'relevance_score',
+  sortBy: 'smart',
   sortDir: 'desc',
 };
 
@@ -72,13 +74,11 @@ export default function TendersPage() {
   const fetchTenders = useCallback(async () => {
     setLoading(true);
     try {
-      let query = supabase
-        .from('tenders')
-        .select('*', { count: 'exact' });
+      let query = supabase.from('tenders').select('*', { count: 'exact' });
 
       if (filters.search) {
         query = query.or(
-          `title.ilike.%${filters.search}%,description.ilike.%${filters.search}%,contracting_authority.ilike.%${filters.search}%`
+          `title.ilike.%${filters.search}%,description.ilike.%${filters.search}%,contracting_authority.ilike.%${filters.search}%`,
         );
       }
 
@@ -91,7 +91,7 @@ export default function TendersPage() {
       }
 
       if (filters.isMatched === 'matched') {
-        query = query.eq('is_matched', true);
+        query = query.or('is_matched.eq.true,is_watched.eq.true,manual_relevance.eq.relevant');
       } else if (filters.isMatched === 'unmatched') {
         query = query.eq('is_matched', false);
       }
@@ -101,14 +101,35 @@ export default function TendersPage() {
       }
 
       if (!filters.showHidden) {
-        query = query.eq('is_hidden', false);
+        query = query.or('is_hidden.eq.false,is_hidden.is.null');
+      }
+
+      if (!filters.showExpired) {
+        const now = new Date().toISOString();
+      
+        query = query.or(
+          `submission_deadline.gte.${now},submission_deadline.is.null,is_watched.eq.true,manual_relevance.eq.relevant`,
+        );
       }
 
       if (filters.minScore > 0) {
         query = query.gte('relevance_score', filters.minScore);
       }
 
-      query = query.order(filters.sortBy, { ascending: filters.sortDir === 'asc' });
+      if (filters.sortBy === 'smart') {
+        query = query
+          .order('manual_relevance', { ascending: false, nullsFirst: false })
+          .order('is_matched', { ascending: false })
+          .order('is_watched', { ascending: false })
+          .order('relevance_score', { ascending: false })
+          .order('submission_deadline', { ascending: true, nullsFirst: false })
+          .order('publication_date', { ascending: false, nullsFirst: false });
+      } else {
+        query = query.order(filters.sortBy, {
+          ascending: filters.sortDir === 'asc',
+          nullsFirst: false,
+        });
+      }
       query = query.range(page * pageSize, (page + 1) * pageSize - 1);
 
       const { data, count, error } = await query;
@@ -129,7 +150,17 @@ export default function TendersPage() {
 
   const handleExport = () => {
     const csvRows = [
-      ['Tytuł', 'Zamawiający', 'Źródło', 'CPV', 'Lokalizacja', 'Termin', 'Ocena', 'Status', 'URL'].join(';'),
+      [
+        'Tytuł',
+        'Zamawiający',
+        'Źródło',
+        'CPV',
+        'Lokalizacja',
+        'Termin',
+        'Ocena',
+        'Status',
+        'URL',
+      ].join(';'),
       ...tenders.map((t) =>
         [
           `"${t.title.replace(/"/g, '""')}"`,
@@ -141,7 +172,7 @@ export default function TendersPage() {
           t.relevance_score,
           t.status,
           t.source_url,
-        ].join(';')
+        ].join(';'),
       ),
     ];
     const blob = new Blob(['\uFEFF' + csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
@@ -160,9 +191,7 @@ export default function TendersPage() {
       .eq('id', id);
 
     if (!error) {
-      setTenders((prev) =>
-        prev.map((t) => (t.id === id ? { ...t, ...updates } : t))
-      );
+      setTenders((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } : t)));
       if (selectedTender?.id === id) {
         setSelectedTender((prev) => (prev ? { ...prev, ...updates } : null));
       }
@@ -176,9 +205,7 @@ export default function TendersPage() {
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-light text-[#e5e4e2]">Monitor Przetargów</h1>
-          <p className="mt-1 text-sm text-[#e5e4e2]/50">
-            {totalCount} przetargów w bazie
-          </p>
+          <p className="mt-1 text-sm text-[#e5e4e2]/50">{totalCount} przetargów w bazie</p>
         </div>
         <div className="flex items-center gap-3">
           <Link
@@ -210,7 +237,13 @@ export default function TendersPage() {
 
       <ImportControls onImportComplete={fetchTenders} />
 
-      <TenderFilters filters={filters} onChange={(f) => { setFilters(f); setPage(0); }} />
+      <TenderFilters
+        filters={filters}
+        onChange={(f) => {
+          setFilters(f);
+          setPage(0);
+        }}
+      />
 
       <TenderList
         tenders={tenders}

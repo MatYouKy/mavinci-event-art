@@ -326,6 +326,12 @@ export default function EventsPageClient({
     hasScope('invoices_manage', currentEmployee) ||
     hasScope('invoices_view', currentEmployee);
 
+    const canAddNewEvent =
+    isUserAdmin ||
+    hasScope('events_manage', currentEmployee) ||
+    currentEmployee.role === 'admin' ||
+    currentEmployee.permissions?.includes('events_create');
+
   // ---- Table widths from prefs (fallback to defaults)
 
   const [colWidths, setColWidths] = useState<Record<EventsTableColKey, number>>(() => ({
@@ -452,7 +458,7 @@ export default function EventsPageClient({
           .eq('created_by', currentUserId);
 
         const createdEventIds = createdEvents?.map((e) => e.id) || [];
-        const allEventIds = [...new Set([...eventIds, ...createdEventIds])];
+        const allEventIds = Array.from(new Set([...eventIds, ...createdEventIds])) as string[];
 
         if (allEventIds.length === 0) {
           setEvents([]);
@@ -663,6 +669,8 @@ export default function EventsPageClient({
     }
   }, [searchParams, router, showSnackbar]);
 
+  console.log('canViewEventStatus', canViewEventStatus);
+
   const renderCell: Record<EventsTableColKey, (event: any) => React.ReactNode> = {
     name: (event) => (
       <>
@@ -747,16 +755,17 @@ export default function EventsPageClient({
         variant: 'default',
       });
 
+      if (canAddNewEvent) {
       arr.push({
         label: 'Nowy event',
         onClick: () => setIsModalOpen(true),
         icon: <Plus className="h-4 w-4" />,
         variant: 'primary',
       });
-    }
+    }}
 
     return arr;
-  }, [router, setIsModalOpen, canViewEventStatus]);
+  }, [router, setIsModalOpen, canViewEventStatus, canAddNewEvent]);
 
   return (
     <div className="space-y-6">

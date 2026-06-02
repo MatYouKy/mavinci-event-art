@@ -62,14 +62,14 @@ interface InvoiceItem {
   value_gross: number;
 }
 
-function getTypeLabel(type: string) {
-  const labels: Record<string, string> = {
-    standard: 'Faktura VAT',
-    proforma: 'Faktura Proforma',
-    corrective: 'Faktura korygująca',
-  };
-  return labels[type] || 'Faktura VAT';
-}
+// function getTypeLabel(type: string) {
+//   const labels: Record<string, string> = {
+//     standard: 'Faktura VAT',
+//     proforma: 'Faktura Proforma',
+//     corrective: 'Faktura korygująca',
+//   };
+//   return labels[type] || 'Faktura VAT';
+// }
 
 export default function SendInvoiceEmailModal({
   invoiceId,
@@ -144,6 +144,7 @@ W razie pytań proszę o kontakt.`,
     const items = (itemsRes.data || []) as InvoiceItem[];
   
     const html = buildInvoicePdfHtml({
+      buyerIsPrivatePerson: invoice.buyer_nip ? false : true,
       isProforma: invoice.is_proforma,
       footerNote: invoice.footer_note,
       signatureName: invoice.signature_name,
@@ -237,7 +238,7 @@ W razie pytań proszę o kontakt.`,
         return;
       }
 
-      let attachments: Array<{ filename: string; content: string; contentType: string }> = [];
+      const attachments: Array<{ filename: string; content: string; contentType: string }> = [];
 
       try {
         let base64: string;
@@ -271,10 +272,10 @@ W razie pytań proszę o kontakt.`,
           contentType: 'application/pdf',
         });
         showSnackbar('PDF gotowy, wysylam email...', 'info');
-      } catch (pdfError: any) {
+      } catch (pdfError: unknown | Error) {
         console.error('Error preparing PDF:', pdfError);
         showSnackbar(
-          `Nie udalo sie przygotowac PDF: ${pdfError.message}. Wysylam bez zalacznika.`,
+          `Nie udalo sie przygotowac PDF: ${pdfError instanceof Error ? pdfError.message : 'Nieznany błąd'}. Wysylam bez zalacznika.`,
           'warning',
         );
       }
@@ -307,10 +308,9 @@ W razie pytań proszę o kontakt.`,
       showSnackbar('Faktura wysłana przez email z załącznikiem PDF', 'success');
       onSent?.();
       onClose();
-    } catch (error: any) {
+    } catch (error: unknown | Error) {
       console.error('Error sending email:', error);
-      showSnackbar(error.message || 'Błąd podczas wysyłania email', 'error');
-    } finally {
+      showSnackbar(error instanceof Error ? error.message : 'Nieznany błąd podczas wysyłania email', 'error');
       setLoading(false);
     }
   };
