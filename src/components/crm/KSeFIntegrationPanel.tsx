@@ -558,13 +558,16 @@ export default function KSeFIntegrationPanel() {
     setSyncing(true);
 
     try {
-      const finalDateFrom = new Date(dateFrom);
-      const finalDateTo = new Date(dateTo);
+      if (dateFrom > dateTo) {
+        showSnackbar('Data "od" nie może być późniejsza niż data "do"', 'error');
+        setSyncing(false);
+        return;
+      }
 
       const payload = {
         companyId: selectedCredentials.my_company_id,
-        dateFrom: finalDateFrom.toISOString(),
-        dateTo: finalDateTo.toISOString(),
+        dateFrom: `${dateFrom}T00:00:00`,
+        dateTo: `${dateTo}T23:59:59`,
       };
 
       const [issuedResponse, receivedResponse] = await Promise.all([
