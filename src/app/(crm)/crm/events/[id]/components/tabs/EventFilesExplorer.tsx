@@ -384,6 +384,8 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
       return;
     }
 
+    let successCount = 0;
+
     for (const file of Array.from(uploadedFiles)) {
       const fileExt = file.name.split('.').pop();
       const fileName = `${eventId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
@@ -391,11 +393,10 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
       const { error: uploadError } = await supabase.storage
         .from('event-files')
         .upload(fileName, file);
-      showSnackbar('Plik został dodany', 'success');
 
       if (uploadError) {
         console.error('Upload error:', uploadError);
-        showSnackbar('Błąd podczas dodawania plików', 'error');
+        showSnackbar(`Błąd uploadu: ${file.name}`, 'error');
         continue;
       }
 
@@ -403,7 +404,7 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
         data: { publicUrl },
       } = supabase.storage.from('event-files').getPublicUrl(fileName);
 
-      await supabase.from('event_files').insert([
+      const { error: insertError } = await supabase.from('event_files').insert([
         {
           event_id: eventId,
           folder_id: currentFolder,
@@ -416,7 +417,22 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
           uploaded_by: session.user.id,
         },
       ]);
-      showSnackbar('Plik został dodany', 'success');
+
+      if (insertError) {
+        console.error('Insert error:', insertError);
+        await supabase.storage.from('event-files').remove([fileName]);
+        showSnackbar(`Błąd zapisu: ${file.name}`, 'error');
+        continue;
+      }
+
+      successCount++;
+    }
+
+    if (successCount > 0) {
+      showSnackbar(
+        successCount === 1 ? 'Plik został dodany' : `Dodano ${successCount} plików`,
+        'success',
+      );
     }
 
     setUploading(false);
@@ -568,6 +584,8 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
       return;
     }
 
+    let successCount = 0;
+
     for (const file of droppedFiles) {
       const fileExt = file.name.split('.').pop();
       const fileName = `${eventId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
@@ -578,7 +596,7 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
 
       if (uploadError) {
         console.error('Upload error:', uploadError);
-        showSnackbar('Błąd podczas dodawania plików', 'error');
+        showSnackbar(`Błąd uploadu: ${file.name}`, 'error');
         continue;
       }
 
@@ -586,7 +604,7 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
         data: { publicUrl },
       } = supabase.storage.from('event-files').getPublicUrl(fileName);
 
-      await supabase.from('event_files').insert([
+      const { error: insertError } = await supabase.from('event_files').insert([
         {
           event_id: eventId,
           folder_id: currentFolder,
@@ -599,11 +617,25 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
           uploaded_by: session.user.id,
         },
       ]);
+
+      if (insertError) {
+        console.error('Insert error:', insertError);
+        await supabase.storage.from('event-files').remove([fileName]);
+        showSnackbar(`Błąd zapisu: ${file.name}`, 'error');
+        continue;
+      }
+
+      successCount++;
     }
 
     setUploading(false);
     fetchFiles();
-    showSnackbar('Pliki zostały dodane', 'success');
+    if (successCount > 0) {
+      showSnackbar(
+        successCount === 1 ? 'Plik został dodany' : `Dodano ${successCount} plików`,
+        'success',
+      );
+    }
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
