@@ -83,6 +83,7 @@ export default function SendInvoiceEmailModal({
   const { showSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(false);
   const [senderEmail, setSenderEmail] = useState<string>('');
+  const [invoiceCompanyId, setInvoiceCompanyId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     to: clientEmail,
     subject: `Faktura ${invoiceNumber} wizualizacja`,
@@ -125,6 +126,27 @@ W razie pytań proszę o kontakt.`,
       }
     })();
   }, []);
+
+  useEffect(() => {
+    (async () => {
+      const { data: inv } = await supabase
+        .from('invoices')
+        .select('my_company_id, event_id')
+        .eq('id', invoiceId)
+        .maybeSingle();
+
+      if (inv?.my_company_id) {
+        setInvoiceCompanyId(inv.my_company_id);
+      } else if (inv?.event_id) {
+        const { data: evt } = await supabase
+          .from('events')
+          .select('my_company_id')
+          .eq('id', inv.event_id)
+          .maybeSingle();
+        if (evt?.my_company_id) setInvoiceCompanyId(evt.my_company_id);
+      }
+    })();
+  }, [invoiceId]);
 
   const generateInvoicePDF = async (): Promise<{ base64: string; filename: string }> => {
     const [invoiceRes, itemsRes] = await Promise.all([
@@ -294,7 +316,7 @@ W razie pytań proszę o kontakt.`,
             subject: formData.subject,
             message: formData.message,
             attachments,
-            signatureHtml: (await buildCompanySignatureHtml()).html,
+            signatureHtml: (await buildCompanySignatureHtml({ companyId: invoiceCompanyId })).html,
             recipientName: clientName,
           }),
         },
