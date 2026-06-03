@@ -22,6 +22,14 @@ interface KSeFSendModalProps {
   onClose: () => void;
 }
 
+type KsefProgressEvent = {
+  step: string;
+  status: 'active' | 'completed' | 'error';
+  message?: string;
+  attempt?: number;
+  maxAttempts?: number;
+};
+
 type StepStatus = 'pending' | 'active' | 'completed' | 'error';
 
 interface Step {
@@ -98,27 +106,17 @@ export default function KSeFSendModal({
   const [pollAttempt, setPollAttempt] = useState(0);
   const [pollMaxAttempts, setPollMaxAttempts] = useState(MAX_POLL_ATTEMPTS);
 
+  const hasStarted = useRef(false);
   const startTimeRef = useRef(Date.now());
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const currentStepRef = useRef(-1);
-  const resultReceivedRef = useRef(false);
-
-  const onSuccessRef = useRef(onSuccess);
-  const onErrorRef = useRef(onError);
-  const requestStartedRef = useRef(false);
 
   useEffect(() => {
-    onSuccessRef.current = onSuccess;
-  }, [onSuccess]);
+    if (hasStarted.current) return;
+    hasStarted.current = true;
 
-  useEffect(() => {
-    onErrorRef.current = onError;
-  }, [onError]);
-
-  useEffect(() => {
-    if (requestStartedRef.current) return;
-
-    requestStartedRef.current = true;
+    const controller = new AbortController();
+    const jobId = crypto.randomUUID();
 
     startTimeRef.current = Date.now();
 
@@ -126,170 +124,138 @@ export default function KSeFSendModal({
       setElapsedTime(Math.floor((Date.now() - startTimeRef.current) / 1000));
     }, 500);
 
-    const processEvent = (data: any) => {
-      if (data.type === 'progress') {
-        const progressIndex = STEPS_CONFIG.findIndex((step) => step.id === data.step);
-        if (progressIndex === -1) return;
+    const eventSource = new EventSource(
+      `/bridge/ksef/invoices/progress?jobId=${encodeURIComponent(jobId)}`,
+    );
 
-        setCurrentStepIndex(progressIndex);
-        currentStepRef.current = progressIndex;
+    const markProgress = (progress: KsefProgressEvent) => {
+      const progressIndex = STEPS_CONFIG.findIndex((step) => step.id === progress.step);
 
-        setSteps((old) =>
-          old.map((step, index) => {
-            if (index < progressIndex) return { ...step, status: 'completed' as StepStatus };
-            if (index === progressIndex) return { ...step, status: data.status as StepStatus };
-            return step;
-          }),
-        );
+      if (progressIndex === -1) return;
 
-        if (data.step === 'poll') {
-          if (data.attempt) setPollAttempt(data.attempt);
-          if (data.maxAttempts) setPollMaxAttempts(data.maxAttempts);
-        }
+      setCurrentStepIndex(progressIndex);
+      currentStepRef.current = progressIndex;
 
-        if (data.status === 'error') {
-          const message = data.message || 'Błąd wysyłki do KSeF';
-          setErrorMessage(message);
-          setFinished(true);
-          onErrorRef.current(message);
-        }
-      } else if (data.type === 'result') {
-        resultReceivedRef.current = true;
-        if (data.success) {
-          setKsefRef(data.ksef_reference_number ?? null);
-          setSteps((old) => old.map((step) => ({ ...step, status: 'completed' as StepStatus })));
-          setCurrentStepIndex(STEPS_CONFIG.length - 1);
-          setFinished(true);
-          onSuccessRef.current({
-            ksef_reference_number: data.ksef_reference_number,
-            ksef_timestamp: data.ksef_timestamp,
-          });
-        } else {
-          const msg = data.error || 'Nieznany błąd KSeF';
-          const details = Array.isArray(data.details) ? data.details.join(', ') : data.details;
-          const fullMsg = details ? `${msg}: ${details}` : msg;
+      setSteps((old) =>
+        old.map((step, index) => {
+          if (index < progressIndex) {
+            return { ...step, status: 'completed' as StepStatus };
+          }
 
-          setErrorMessage(fullMsg);
+          if (index === progressIndex) {
+            return { ...step, status: progress.status };
+          }
+
+          return step;
+        }),
+      );
+
+      if (progress.step === 'poll') {
+        if (progress.attempt) setPollAttempt(progress.attempt);
+        if (progress.maxAttempts) setPollMaxAttempts(progress.maxAttempts);
+      }
+
+      if (progress.status === 'error') {
+        const message = progress.message || 'Błąd wysyłki do KSeF';
+        setErrorMessage(message);
+        setFinished(true);
+        onError(message);
+        eventSource.close();
+      }
+    };
+
+    eventSource.onmessage = (event) => {
+      try {
+        const progress = JSON.parse(event.data) as KsefProgressEvent;
+        markProgress(progress);
+      } catch (err) {
+        console.warn('[KSEF_PROGRESS] Invalid SSE message:', err);
+      }
+    };
+
+    eventSource.onerror = () => {
+      console.warn('[KSEF_PROGRESS] SSE connection error');
+    };
+
+    fetch('/bridge/ksef/invoices/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ invoiceId, jobId }),
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        const result = await res.json();
+
+        if (!res.ok) {
+          const details = Array.isArray(result.details)
+            ? result.details.join(', ')
+            : result.details;
+
+          const msg = result.error || details || 'Nieznany błąd KSeF';
+
+          setErrorMessage(msg);
           setFinished(true);
 
           setSteps((old) =>
             old.map((step, index) => {
               const failedAt = Math.max(currentStepRef.current, 0);
-              if (index < failedAt) return { ...step, status: 'completed' as StepStatus };
-              if (index === failedAt) return { ...step, status: 'error' as StepStatus };
+              if (index < failedAt) {
+                return { ...step, status: 'completed' as StepStatus };
+              }
+
+              if (index === failedAt) {
+                return { ...step, status: 'error' as StepStatus };
+              }
+
               return step;
             }),
           );
 
-          onErrorRef.current(fullMsg);
-        }
-      }
-    };
-
-    (async () => {
-      try {
-        const response = await fetch('/bridge/ksef/invoices/send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ invoiceId }),
-        });
-
-        if (!response.ok) {
-          const text = await response.text();
-          const msg = `Błąd endpointu KSeF: ${response.status} ${response.statusText}. ${text.slice(0, 500)}`;
-          setErrorMessage(msg);
-          setFinished(true);
-          onErrorRef.current(msg);
+          onError(msg);
+          eventSource.close();
           return;
         }
 
-        const contentType = response.headers.get('content-type') || '';
+        setKsefRef(result.ksef_reference_number ?? null);
 
-        if (!contentType.includes('text/event-stream')) {
-          const text = await response.text();
-          const msg = `Endpoint KSeF nie zwrócił streamu SSE. Content-Type: ${contentType}. Odpowiedź: ${text.slice(0, 500)}`;
-          setErrorMessage(msg);
-          setFinished(true);
-          onErrorRef.current(msg);
-          return;
-        }
-
-        if (!response.body) {
-          const msg = 'Brak streamu z serwera';
-          setErrorMessage(msg);
-          setFinished(true);
-          onErrorRef.current(msg);
-          return;
-        }
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const data = JSON.parse(line.slice(6));
-                processEvent(data);
-              } catch {
-                // invalid JSON line
-              }
-            }
-          }
-        }
-
-        if (buffer.startsWith('data: ')) {
-          try {
-            const data = JSON.parse(buffer.slice(6));
-            processEvent(data);
-          } catch {
-            // invalid
-          }
-        }
-        if (!resultReceivedRef.current) {
-          const msg = 'Połączenie z endpointem KSeF zakończyło się bez wyniku.';
-          setErrorMessage(msg);
-          setFinished(true);
-          onErrorRef.current(msg);
-        }
-      } catch (err: any) {
-        console.error('[KSeF modal] fetch error', {
-          name: err?.name,
-          message: err?.message,
-          error: err,
-        });
-
-        const errorMsg =
-          err?.name === 'AbortError'
-            ? 'Request do KSeF został przerwany po stronie frontendu.'
-            : err.message || 'Nieznany błąd';
-
-        setErrorMessage(errorMsg);
+        setSteps((old) => old.map((step) => ({ ...step, status: 'completed' as StepStatus })));
+        setCurrentStepIndex(STEPS_CONFIG.length - 1);
         setFinished(true);
-        onErrorRef.current(errorMsg);
-      }
-    })();
+
+        onSuccess({
+          ksef_reference_number: result.ksef_reference_number,
+          ksef_timestamp: result.ksef_timestamp,
+        });
+
+        eventSource.close();
+      })
+      .catch((err) => {
+        if (err.name === 'AbortError') return;
+
+        const msg = err.message || 'Nieznany błąd';
+
+        setErrorMessage(msg);
+        setFinished(true);
+        onError(msg);
+
+        eventSource.close();
+      });
 
     return () => {
+      controller.abort();
+      eventSource.close();
+
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
       }
     };
-  }, [invoiceId]);
+  }, [invoiceId, onError, onSuccess]);
 
   const formatTime = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
     const rest = seconds % 60;
+
     return minutes > 0 ? `${minutes}m ${rest}s` : `${rest}s`;
   };
 
@@ -307,7 +273,11 @@ export default function KSeFSendModal({
             <div className="flex items-center gap-3">
               <div
                 className={`flex h-10 w-10 items-center justify-center rounded-xl ${
-                  isError ? 'bg-red-500/20' : isSuccess ? 'bg-green-500/20' : 'bg-[#d3bb73]/20'
+                  isError
+                    ? 'bg-red-500/20'
+                    : isSuccess
+                      ? 'bg-green-500/20'
+                      : 'bg-[#d3bb73]/20'
                 }`}
               >
                 {isError ? (
@@ -345,7 +315,8 @@ export default function KSeFSendModal({
             <div className="mt-4">
               <div className="mb-1 flex items-center justify-between text-xs text-[#e5e4e2]/40">
                 <span>
-                  Krok {Math.max(Math.min(currentStepIndex + 1, steps.length), 1)} z {steps.length}
+                  Krok {Math.max(Math.min(currentStepIndex + 1, steps.length), 1)} z{' '}
+                  {steps.length}
                 </span>
                 <span>{formatTime(elapsedTime)}</span>
               </div>
@@ -414,7 +385,9 @@ export default function KSeFSendModal({
                     )}
 
                     {step.id === 'save' && step.status === 'active' && (
-                      <span className="ml-2 text-xs font-normal text-[#d3bb73]">(3 operacje)</span>
+                      <span className="ml-2 text-xs font-normal text-[#d3bb73]">
+                        (3 operacje)
+                      </span>
                     )}
                   </div>
 
@@ -452,7 +425,9 @@ export default function KSeFSendModal({
           <div className="border-t border-[#d3bb73]/20 px-6 py-4">
             {isSuccess && ksefRef && (
               <div className="mb-4 rounded-lg border border-green-500/20 bg-green-500/10 p-3">
-                <div className="text-sm font-medium text-green-400">Numer referencyjny KSeF</div>
+                <div className="text-sm font-medium text-green-400">
+                  Numer referencyjny KSeF
+                </div>
                 <div className="mt-1 font-mono text-sm text-[#e5e4e2]">{ksefRef}</div>
               </div>
             )}

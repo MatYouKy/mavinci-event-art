@@ -233,7 +233,7 @@ export default function KSeFIntegrationPanel() {
   const [newPaymentDate, setNewPaymentDate] = useState('');
   const [newPaymentNotes, setNewPaymentNotes] = useState('');
   const [viewMode, setViewMode] = useState<KSeFViewMode>('table');
-  const [sortKey, setSortKey] = useState<KSeFSortKey>('issue_date');
+  const [sortKey, setSortKey] = useState<KSeFSortKey>('invoice_number');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [showMatchModal, setShowMatchModal] = useState(false);
   const [matchModalDate, setMatchModalDate] = useState<{ month: number; year: number } | null>(
@@ -400,7 +400,7 @@ export default function KSeFIntegrationPanel() {
         query = query.in('my_company_id', allowedCompanyIds);
       }
 
-      const { data, error } = await query.order('issue_date', { ascending: false, nullsFirst: false });;
+      const { data, error } = await query.order('ksef_issued_at', { ascending: false });
 
       if (error) throw error;
 
@@ -558,16 +558,13 @@ export default function KSeFIntegrationPanel() {
     setSyncing(true);
 
     try {
-      if (dateFrom > dateTo) {
-        showSnackbar('Data "od" nie może być późniejsza niż data "do"', 'error');
-        setSyncing(false);
-        return;
-      }
+      const finalDateFrom = new Date(dateFrom);
+      const finalDateTo = new Date(dateTo);
 
       const payload = {
         companyId: selectedCredentials.my_company_id,
-        dateFrom: `${dateFrom}T00:00:00`,
-        dateTo: `${dateTo}T23:59:59`,
+        dateFrom: finalDateFrom.toISOString(),
+        dateTo: finalDateTo.toISOString(),
       };
 
       const [issuedResponse, receivedResponse] = await Promise.all([
@@ -617,23 +614,11 @@ export default function KSeFIntegrationPanel() {
         );
       }
 
-      const issuedNew = issuedResult?.data?.newCount || 0;
-      const issuedSkipped = issuedResult?.data?.skippedCount || 0;
-      const receivedNew = receivedResult?.data?.newCount || 0;
-      const receivedSkipped = receivedResult?.data?.skippedCount || 0;
-
-      const parts = [];
-      if (issuedNew > 0 || receivedNew > 0) {
-        parts.push(`Nowe: ${issuedNew + receivedNew}`);
-      }
-      if (issuedSkipped > 0 || receivedSkipped > 0) {
-        parts.push(`Pominięte (już istnieją): ${issuedSkipped + receivedSkipped}`);
-      }
+      const issuedCount = issuedResult?.data?.invoices?.length || 0;
+      const receivedCount = receivedResult?.data?.invoices?.length || 0;
 
       showSnackbar(
-        parts.length > 0
-          ? `Synchronizacja zakończona. ${parts.join(', ')}`
-          : 'Synchronizacja zakończona - brak nowych faktur',
+        `Zsynchronizowano ${issuedCount} wystawionych i ${receivedCount} otrzymanych faktur`,
         'success',
       );
 
@@ -1698,7 +1683,7 @@ export default function KSeFIntegrationPanel() {
         <BankMatchingSimple
           month={matchModalDate.month}
           year={matchModalDate.year}
-          invoiceData={matchInvoice}
+          invoice={matchInvoice}
           companyId={selectedCompanyId}
           onClose={() => {
             setShowMatchModal(false);

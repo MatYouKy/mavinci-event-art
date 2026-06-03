@@ -2,7 +2,17 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Plus, Trash2, Package, Search, CreditCard as Edit, ArrowLeft, List, Table2, LayoutGrid } from 'lucide-react';
+import {
+  Plus,
+  Trash2,
+  Package,
+  Search,
+  Edit,
+  ArrowLeft,
+  List,
+  Table2,
+  LayoutGrid,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { uploadImage } from '@/lib/storage';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -52,7 +62,6 @@ interface Kit {
   description: string | null;
   thumbnail_url: string | null;
   warehouse_category_id: string | null;
-  quantity: number;
   is_active: boolean;
   created_at: string;
   equipment_kit_items: KitItem[];
@@ -91,7 +100,6 @@ export function KitsPageClient({ viewMode }: { viewMode: ViewMode }) {
     description: '',
     thumbnail_url: '',
     warehouse_category_id: '',
-    quantity: 1,
     id: '',
   });
   const [kitItems, setKitItems] = useState<
@@ -199,7 +207,6 @@ export function KitsPageClient({ viewMode }: { viewMode: ViewMode }) {
         description: kit.description || '',
         thumbnail_url: kit.thumbnail_url || '',
         warehouse_category_id: kit.warehouse_category_id || '',
-        quantity: kit.quantity || 1,
         id: kit.id,
       });
       setKitItems(
@@ -217,7 +224,6 @@ export function KitsPageClient({ viewMode }: { viewMode: ViewMode }) {
         description: '',
         thumbnail_url: '',
         warehouse_category_id: '',
-        quantity: 1,
         id: '',
       });
       setKitItems([]);
@@ -479,7 +485,6 @@ export function KitsPageClient({ viewMode }: { viewMode: ViewMode }) {
             description: kitForm.description || null,
             thumbnail_url: kitForm.thumbnail_url || null,
             warehouse_category_id: kitForm.warehouse_category_id || null,
-            quantity: kitForm.quantity || 1,
           })
           .eq('id', editingKit.id);
 
@@ -499,7 +504,6 @@ export function KitsPageClient({ viewMode }: { viewMode: ViewMode }) {
             description: kitForm.description || null,
             thumbnail_url: kitForm.thumbnail_url || null,
             warehouse_category_id: kitForm.warehouse_category_id || null,
-            quantity: kitForm.quantity || 1,
             created_by: user?.id || null,
           })
           .select()
@@ -631,12 +635,6 @@ export function KitsPageClient({ viewMode }: { viewMode: ViewMode }) {
               {category && <div className="mb-3 text-sm text-[#d3bb73]">{category.name}</div>}
               {viewingKit.description && (
                 <p className="mb-4 text-[#e5e4e2]/60">{viewingKit.description}</p>
-              )}
-              {viewingKit.quantity > 1 && (
-                <div className="mb-3 inline-flex items-center gap-2 rounded-lg bg-[#d3bb73]/10 px-3 py-1.5 text-sm text-[#d3bb73]">
-                  <Package className="h-4 w-4" />
-                  <span className="font-medium">{viewingKit.quantity} identycznych zestawów</span>
-                </div>
               )}
               <div className="text-sm text-[#e5e4e2]/40">
                 Utworzono: {new Date(viewingKit.created_at).toLocaleDateString('pl-PL')}
@@ -856,25 +854,6 @@ export function KitsPageClient({ viewMode }: { viewMode: ViewMode }) {
                       </option>
                     ))}
                   </select>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">
-                    Ilość zestawów
-                    <span className="ml-1 text-[#e5e4e2]/40">(ile identycznych kitów posiadasz)</span>
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={kitForm.quantity}
-                    onChange={(e) =>
-                      setKitForm((prev) => ({
-                        ...prev,
-                        quantity: Math.max(1, parseInt(e.target.value) || 1),
-                      }))
-                    }
-                    className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
-                  />
                 </div>
               </div>
             </div>
@@ -1184,12 +1163,6 @@ export function KitsPageClient({ viewMode }: { viewMode: ViewMode }) {
                   <span className="text-[#e5e4e2]/50">
                     {kit.equipment_kit_items.length} pozycji
                   </span>
-                  {kit.quantity > 1 && (
-                    <>
-                      <span className="text-[#e5e4e2]/30">•</span>
-                      <span className="text-[#d3bb73]/80">{kit.quantity} szt.</span>
-                    </>
-                  )}
                 </div>
 
                 {kit.description && (
@@ -1238,9 +1211,6 @@ export function KitsPageClient({ viewMode }: { viewMode: ViewMode }) {
               </th>
               <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wide text-[#e5e4e2]/50">
                 Pozycji
-              </th>
-              <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wide text-[#e5e4e2]/50">
-                Ilość
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-[#e5e4e2]/50">
                 Utworzono
@@ -1295,10 +1265,6 @@ export function KitsPageClient({ viewMode }: { viewMode: ViewMode }) {
 
                   <td className="px-4 py-3 text-center text-sm text-[#e5e4e2]">
                     {kit.equipment_kit_items.length}
-                  </td>
-
-                  <td className="px-4 py-3 text-center text-sm text-[#d3bb73]">
-                    {kit.quantity > 1 ? kit.quantity : '—'}
                   </td>
 
                   <td className="px-4 py-3 text-sm text-[#e5e4e2]/50">
@@ -1370,11 +1336,8 @@ export function KitsPageClient({ viewMode }: { viewMode: ViewMode }) {
               {kit.description && (
                 <p className="mb-3 text-sm text-[#e5e4e2]/60">{kit.description}</p>
               )}
-              <div className="mb-3 flex items-center gap-2 text-sm text-[#e5e4e2]/40">
-                <span>{kit.equipment_kit_items.length} pozycji</span>
-                {kit.quantity > 1 && (
-                  <span className="text-[#d3bb73]/80">• {kit.quantity} szt.</span>
-                )}
+              <div className="mb-3 text-sm text-[#e5e4e2]/40">
+                {kit.equipment_kit_items.length} pozycji
               </div>
               {canManage && (
                 <div className="flex gap-2">

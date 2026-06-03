@@ -558,6 +558,8 @@ export default function OrganizationDetailPage() {
 
     try {
       setSaving(true);
+
+      // Usuń full_name z editedData bo to kolumna generowana
       const { full_name, ...dataToUpdate } = editedContactData;
 
       const { error } = await supabase

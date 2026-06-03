@@ -34,8 +34,6 @@ import {
 import * as Icons from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 
-import { ContactRow, OrganizationRow } from '@/app/(crm)/crm/contacts/types';
-
 import EventTasksBoard from '@/app/(crm)/crm/events/[id]/components/tabs/EventTasksBoard';
 import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 import EventFilesExplorer from '@/app/(crm)/crm/events/[id]/components/tabs/EventFilesExplorer';
@@ -256,7 +254,7 @@ export default function EventDetailPageClient({
   const { organization, creator, currentEmployee, permissionContext, employees } = initialData;
 
   const {
-    canManageTeam: canManageTeamFromContext,
+    canManageTeam,
     allowedEventTabs,
     userAssignmentStatus,
     hasLimitedAccess,
@@ -265,15 +263,7 @@ export default function EventDetailPageClient({
     currentUserId,
   } = permissionContext;
 
-  const visibleEventTabs = useMemo(() => {
-    if (isAdmin) return ADMIN_EVENT_TABS;
-    if (isCreator) return CREATOR_EVENT_TABS;
-    return allowedEventTabs;
-  }, [isAdmin, isCreator, allowedEventTabs]);
-
-  const canEventManage =
-    isCreator || isAdmin || currentEmployee?.permissions?.includes('events_manage');
-  const canManageTeam = canManageTeamFromContext || isCreator || isAdmin;
+  const canEventManage = currentEmployee.permissions?.includes('events_manage') || isAdmin;
 
   const router = useRouter();
   const params = useParams();
@@ -290,19 +280,18 @@ export default function EventDetailPageClient({
   const [showStatusModal, setShowStatusModal] = useState(false);
 
   useEffect(() => {
-    setTeamEmployees(employees || []);
+    setTeamEmployees(employees);
   }, [employees]);
 
   // ✅ uprawnienia do OFERT / FAKTUR / FINANSÓW (dopasuj nazwy scope do swoich)
   const canViewCommercials =
-    isCreator ||
-    currentEmployee?.role === 'admin' ||
-    hasScope('finances_manage', currentEmployee as IEmployee) ||
-    hasScope('finances_view', currentEmployee as IEmployee) ||
-    hasScope('offers_manage', currentEmployee as IEmployee) ||
-    hasScope('offers_view', currentEmployee as IEmployee) ||
-    hasScope('invoices_manage', currentEmployee as IEmployee) ||
-    hasScope('invoices_view', currentEmployee as IEmployee);
+    currentEmployee.role === 'admin' ||
+    hasScope('finances_manage', currentEmployee.permissions) ||
+    hasScope('finances_view', currentEmployee.permissions) ||
+    hasScope('offers_manage', currentEmployee.permissions) ||
+    hasScope('offers_view', currentEmployee.permissions) ||
+    hasScope('invoices_manage', currentEmployee.permissions) ||
+    hasScope('invoices_view', currentEmployee.permissions);
 
   const [event, setEvent] = useState<IEvent>(initialData);
 
@@ -737,10 +726,9 @@ export default function EventDetailPageClient({
                 onClose={() => setShowStatusModal(false)}
                 eventId={eventId}
                 currentStatus={eventData?.status ?? 'inquiry'}
-                onStatusChange={(newStatus: string) => {
-                  updateEvent({ status: newStatus as EventStatus });
+                onStatusChange={(newStatus: EventStatus) => {
+                  updateEvent({ status: newStatus });
                 }}
-                canManage={canEventManage}
               />
             </div>
           </div>
@@ -768,11 +756,13 @@ export default function EventDetailPageClient({
           { id: 'history', label: 'Historia', icon: History },
         ]
           .filter((tab) => {
-            if (hasLimitedAccess && !isCreator && !isAdmin) {
+            // Jeśli użytkownik ma ograniczony dostęp, pokaż tylko przegląd
+            if (hasLimitedAccess) {
               return tab.id === 'overview';
             }
 
-            return visibleEventTabs.includes(tab.id);
+            // Dla pozostałych użytkowników sprawdź uprawnienia z access_level
+            return allowedEventTabs.includes(tab.id);
           })
           .map((tab) => {
             const Icon = tab.icon;
@@ -879,14 +869,13 @@ export default function EventDetailPageClient({
             )}
             <EventsDetailsTab
               initialEvent={event}
-              location={location || null}
-              organization={organization || null}
+              location={location}
+              organization={organization}
               contact={contact}
               hasLimitedAccess={hasLimitedAccess}
               canManageTeam={canManageTeam}
               isAdmin={isAdmin}
               canEventManage={canEventManage}
-              isCreator={isCreator}
             />
           </div>
 
@@ -896,20 +885,8 @@ export default function EventDetailPageClient({
               categories={categories}
               hasOffers={!!offersData && offersData.length > 0}
               offersCount={offersData?.length || 0}
-              contact={{
-                id: contact?.id || '',
-                full_name: contact?.full_name || '',
-                first_name: contact?.first_name || '',
-                last_name: contact?.last_name || '',
-                email: contact?.email || '',
-                phone: contact?.phone || '',
-              }}
-              organization={{
-                id: organization?.id || '',
-                name: organization?.name || '',
-                alias: organization?.alias || '',
-                email: organization?.email || '',
-              }}
+              contact={contact}
+              organization={organization}
             />
             {canViewCommercials && (
               <>
@@ -1020,7 +997,7 @@ export default function EventDetailPageClient({
       {activeTab === 'equipment' && (
         <EventEquipmentTab
           eventId={event?.id as string}
-          contact={contact as ISimpleContact}
+          contact={contact}
           eventDate={event?.event_date as string}
           location={
             `${location?.name}, ${location?.address}, ${location?.postal_code} ${location?.city}  ` as string
@@ -1082,7 +1059,7 @@ export default function EventDetailPageClient({
       {activeTab === 'logistics' && event && (
         <EventLogisticsPanel
           eventId={event.id}
-          eventLocation={event.location?.name || ''}
+          eventLocation={event.location.name}
           eventDate={event.event_date}
           canManage={canEventManage}
         />
@@ -1108,8 +1085,8 @@ export default function EventDetailPageClient({
 
       {activeTab === 'agenda' && (
         <EventAgendaTab
-          contact={contact as ContactRow | ISimpleContact}
-          organization={organization as OrganizationRow}
+          contact={contact}
+          organization={organization}
           eventId={eventId}
           eventName={event?.name ?? ''}
           eventDate={event?.event_date ?? ''}
@@ -1119,9 +1096,7 @@ export default function EventDetailPageClient({
         />
       )}
 
-      {activeTab === 'calculations' && (
-        <EventCalculationsTab eventId={eventId} contactPerson={contact as any} />
-      )}
+      {activeTab === 'calculations' && <EventCalculationsTab eventId={eventId} />}
 
       {activeTab === 'history' && (
         <div className="space-y-6">
@@ -1557,8 +1532,8 @@ export default function EventDetailPageClient({
             setShowCreateOfferModal(false);
           }}
           eventId={eventId}
-          organizationId={event.organization_id || ''}
-          contactId={event.contact_person_id || ''}
+          organizationId={event.organization_id}
+          contactId={event.contact_person_id}
           clientType={event?.client_type || 'business'}
           onSuccess={() => {
             setShowCreateOfferModal(false);

@@ -1,6 +1,7 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   ArrowLeft,
@@ -21,18 +22,17 @@ import {
   Trash2,
   Loader2,
 } from 'lucide-react';
-import { useSnackbar } from '@/contexts/SnackbarContext';
 import { supabase } from '@/lib/supabase/browser';
 import EmployeeEmailAccountsTab from '@/components/crm/EmployeeEmailAccountsTab';
 import EmployeePermissionsTab from '@/components/crm/EmployeePermissionsTab';
 import EmployeeQualificationsTab from '@/components/crm/EmployeeQualificationsTab';
 import { Formik, Form } from 'formik';
-import { IUploadImage, IImage, IImageMetadata } from '@/types/image';
-import { ImageEditorField, ImageEditorFieldHandle } from '@/components/ImageEditorField';
+import { ImageEditorField } from '@/components/ImageEditorField';
 import { AvatarEditorModal } from '@/components/AvatarEditorModal';
 import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 import ImagePositionEditor from '@/components/crm/ImagePositionEditor';
 import { uploadImage } from '@/lib/storage';
+import { IUploadImage, IImage, IImageMetadataUpload } from '@/types/image';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import PrivateTasksBoardTab from '@/components/crm/employee/tabs/PrivateTasksBoardTab';
 import EmployeeTimelineTab from '@/components/crm/employee/tabs/EmployeeTimelineTab';
@@ -42,7 +42,62 @@ import EmployeeEventsTab from '@/components/crm/employee/tabs/EmployeeEventsTab'
 import { EmployeeDocumentsTab } from '@/components/crm/employee/tabs/EmployeeDocumentsTab';
 import EmployeeOverviewTab from '@/components/crm/employee/tabs/EmployeeOverviewTab';
 import { useDialog } from '@/contexts/DialogContext';
-import { IEmployee } from '../../employees/type';
+
+interface ImagePosition {
+  posX: number;
+  posY: number;
+  scale: number;
+}
+
+interface ImageMetadata {
+  desktop?: {
+    src?: string;
+    position?: ImagePosition;
+    objectFit?: string;
+  };
+  mobile?: {
+    src?: string;
+    position?: ImagePosition;
+    objectFit?: string;
+  };
+}
+
+interface Employee {
+  id: string;
+  name: string;
+  surname: string;
+  nickname: string | null;
+  email: string;
+  personal_email: string | null;
+  notification_email_preference: 'work' | 'personal' | 'both' | 'none';
+  phone_number: string | null;
+  phone_private: string | null;
+  avatar_url: string | null;
+  avatar_metadata: ImageMetadata | null;
+  background_image_url: string | null;
+  background_metadata: ImageMetadata | null;
+  role: string;
+  access_level: string;
+  access_level_id: string | null;
+  occupation: string | null;
+  region: string | null;
+  address_street: string | null;
+  address_city: string | null;
+  address_postal_code: string | null;
+  nip: string | null;
+  company_name: string | null;
+  skills: string[] | null;
+  qualifications: string[] | null;
+  is_active: boolean;
+  notes: string | null;
+  created_at: string;
+  show_on_website: boolean;
+  website_bio: string | null;
+  linkedin_url: string | null;
+  instagram_url: string | null;
+  facebook_url: string | null;
+  order_index: number;
+}
 
 interface Document {
   id: string;
@@ -85,7 +140,7 @@ export default function EmployeeDetailPage() {
   const router = useRouter();
   const employeeId = params.id as string;
 
-  const [employee, setEmployee] = useState<IEmployee | null>(null);
+  const [employee, setEmployee] = useState<Employee | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [events, setEvents] = useState<EventAssignment[]>([]);
@@ -93,7 +148,7 @@ export default function EmployeeDetailPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [isEditing, setIsEditing] = useState(false);
-  const [editedData, setEditedData] = useState<Partial<IEmployee>>({});
+  const [editedData, setEditedData] = useState<Partial<Employee>>({});
   const [showAddDocumentModal, setShowAddDocumentModal] = useState(false);
   const [showAvatarModal, setShowAvatarModal] = useState(false);
   const [showAvatarPositionEditor, setShowAvatarPositionEditor] = useState(false);
@@ -101,14 +156,8 @@ export default function EmployeeDetailPage() {
   const [accessLevels, setAccessLevels] = useState<
     Array<{ id: string; name: string; description: string }>
   >([]);
-  const [pendingBackgroundImage, setPendingBackgroundImage] = useState<
-    IUploadImage | IImage | null
-  >(null);
-
-  const backgroundEditorRef = useRef<ImageEditorFieldHandle>(null);
 
   const { showConfirm } = useDialog();
-  const { showSnackbar } = useSnackbar();
 
   const {
     employee: currentEmployee,
@@ -223,41 +272,25 @@ export default function EmployeeDetailPage() {
 
   const handleSave = async () => {
     try {
-      const currentBackgroundImage = backgroundEditorRef.current?.getCurrentImage();
-
-      let dataToUpdate: Partial<IEmployee> = {
-        ...editedData,
-      };
-
-      if (currentBackgroundImage?.image_metadata) {
-        dataToUpdate.background_metadata = currentBackgroundImage.image_metadata;
-      }
+      const dataToUpdate = { ...editedData };
 
       if (isOwnProfile && !canEdit) {
         delete dataToUpdate.role;
         delete dataToUpdate.access_level;
       }
 
-      const { data: updatedEmployee, error } = await supabase
-        .from('employees')
-        .update(dataToUpdate)
-        .eq('id', employeeId)
-        .select('*')
-        .single();
+      const { error } = await supabase.from('employees').update(dataToUpdate).eq('id', employeeId);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error:', error);
+        throw error;
+      }
 
-      setEmployee(updatedEmployee as IEmployee);
-      setEditedData(updatedEmployee as Partial<IEmployee>);
-      setPendingBackgroundImage(null);
-
-      backgroundEditorRef.current?.closeEditor();
+      setEmployee({ ...employee, ...dataToUpdate } as Employee);
       setIsEditing(false);
-
-      showSnackbar('Zmiany zapisane pomyślnie', 'success');
     } catch (err) {
       console.error('Error updating employee:', err);
-      showSnackbar('Błąd podczas zapisywania zmian', 'error');
+      alert('Błąd podczas zapisywania zmian');
     }
   };
 
@@ -265,7 +298,7 @@ export default function EmployeeDetailPage() {
     if (!employee || isDeleting) return;
 
     if (canEdit !== true) {
-      showSnackbar?.('Nie masz uprawnień do usuwania pracowników.', 'error');
+      alert('Nie masz uprawnień do usuwania pracowników.');
       return;
     }
 
@@ -341,7 +374,7 @@ export default function EmployeeDetailPage() {
         label: 'Anuluj',
         onClick: () => {
           setIsEditing(false);
-          setEditedData(employee as Partial<IEmployee>);
+          setEditedData(employee);
         },
         icon: <X className="h-4 w-4" />,
         variant: 'default',
@@ -356,67 +389,52 @@ export default function EmployeeDetailPage() {
   ) => {
     try {
       let imageUrl = imageType === 'avatar' ? employee?.avatar_url : employee?.background_image_url;
+      let imageMetadata = payload.image.image_metadata;
 
       if (payload.file) {
         const folder = imageType === 'avatar' ? 'employee-avatars' : 'employee-backgrounds';
-
         imageUrl = await uploadImage(payload.file, folder);
+
+        imageMetadata = {
+          desktop: {
+            src: imageUrl,
+            position: payload.image.image_metadata?.desktop?.position || {
+              posX: 0,
+              posY: 0,
+              scale: 1,
+            },
+            objectFit:
+              payload.image.image_metadata?.desktop?.objectFit ||
+              (imageType === 'avatar' ? 'contain' : 'cover'),
+          },
+          mobile: {
+            src: imageUrl,
+            position: payload.image.image_metadata?.mobile?.position || {
+              posX: 0,
+              posY: 0,
+              scale: 1,
+            },
+            objectFit:
+              payload.image.image_metadata?.mobile?.objectFit ||
+              (imageType === 'avatar' ? 'contain' : 'cover'),
+          },
+        };
       }
 
-      if (!imageUrl) {
-        throw new Error('Nie udało się uzyskać URL zdjęcia po uploadzie.');
+      const updateData: any = {};
+      if (imageType === 'avatar') {
+        updateData.avatar_url = imageUrl;
+        updateData.avatar_metadata = imageMetadata;
+      } else {
+        updateData.background_image_url = imageUrl;
+        updateData.background_metadata = imageMetadata;
       }
 
-      const imageMetadata: IImageMetadata = {
-        desktop: {
-          src: imageUrl,
-          position: payload.image.image_metadata?.desktop?.position || {
-            posX: 0,
-            posY: 0,
-            scale: 1,
-          },
-          objectFit:
-            payload.image.image_metadata?.desktop?.objectFit ||
-            (imageType === 'avatar' ? 'contain' : 'cover'),
-        },
-        mobile: {
-          src: imageUrl,
-          position: payload.image.image_metadata?.mobile?.position || {
-            posX: 0,
-            posY: 0,
-            scale: 1,
-          },
-          objectFit:
-            payload.image.image_metadata?.mobile?.objectFit ||
-            (imageType === 'avatar' ? 'contain' : 'cover'),
-        },
-      };
+      const { error } = await supabase.from('employees').update(updateData).eq('id', employeeId);
 
-      const updateData =
-        imageType === 'avatar'
-          ? {
-              avatar_url: imageUrl,
-              avatar_metadata: imageMetadata,
-            }
-          : {
-              background_image_url: imageUrl,
-              background_metadata: imageMetadata,
-            };
-
-      const { data: updatedEmployee, error } = await supabase
-        .from('employees')
-        .update(updateData)
-        .eq('id', employeeId)
-        .select('*')
-        .single();
       if (error) throw error;
 
-      setEmployee(updatedEmployee as IEmployee);
-
-      setEditedData((prev) => ({
-        ...prev,
-        ...updateData,
-      }));
+      await fetchEmployeeDetails();
     } catch (err) {
       console.error('Error saving image:', err);
       throw err;
@@ -428,7 +446,7 @@ export default function EmployeeDetailPage() {
     alert('Funkcja dokumentów nie jest jeszcze dostępna');
   };
 
-  const handleSaveAvatarPosition = async (metadata: IImageMetadata) => {
+  const handleSaveAvatarPosition = async (metadata: ImageMetadata) => {
     try {
       const { error } = await supabase
         .from('employees')
@@ -438,12 +456,9 @@ export default function EmployeeDetailPage() {
       if (error) throw error;
 
       if (employee) {
-        setEmployee({
-          ...employee,
-          avatar_metadata: metadata,
-        });
+        setEmployee({ ...employee, avatar_metadata: metadata });
       }
-    } catch (error: unknown) {
+    } catch (error) {
       console.error('Error saving avatar position:', error);
       throw error;
     }
@@ -501,31 +516,31 @@ export default function EmployeeDetailPage() {
     alt: employee.name,
     image_metadata: {
       desktop: {
-        src: employee.avatar_url || undefined,
+        src: employee.avatar_url,
         position: employee.avatar_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 },
         objectFit: employee.avatar_metadata?.desktop?.objectFit || 'cover',
       },
       mobile: {
-        src: employee.avatar_url || undefined,
+        src: employee.avatar_url,
         position: employee.avatar_metadata?.mobile?.position || { posX: 0, posY: 0, scale: 1 },
         objectFit: employee.avatar_metadata?.mobile?.objectFit || 'cover',
       },
     },
+    file: function (file: any, folder: string): unknown {
+      throw new Error('Function not implemented.');
+    },
   };
 
-  const backgroundImageData: IUploadImage = {
-    alt: `${employee.name} ${employee.surname} background`,
-    image_metadata: {
-      desktop: {
-        src: employee.background_image_url || undefined,
-        position: employee.background_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 },
-        objectFit: employee.background_metadata?.desktop?.objectFit || 'cover',
-      },
-      mobile: {
-        src: employee.background_image_url || undefined,
-        position: employee.background_metadata?.mobile?.position || { posX: 0, posY: 0, scale: 1 },
-        objectFit: employee.background_metadata?.mobile?.objectFit || 'cover',
-      },
+  const backgroundImageData: IImageMetadataUpload = {
+    desktop: {
+      src: employee.background_image_url,
+      position: employee.background_metadata?.desktop?.position || { posX: 0, posY: 0, scale: 1 },
+      objectFit: employee.background_metadata?.desktop?.objectFit || 'cover',
+    },
+    mobile: {
+      src: employee.background_image_url,
+      position: employee.background_metadata?.mobile?.position || { posX: 0, posY: 0, scale: 1 },
+      objectFit: employee.background_metadata?.mobile?.objectFit || 'cover',
     },
   };
 
@@ -563,7 +578,6 @@ export default function EmployeeDetailPage() {
       </div>
 
       <Formik
-        key={`${employee.id}-${employee.avatar_url || ''}-${employee.background_image_url || ''}`}
         initialValues={{
           avatar: avatarImageData,
           background: backgroundImageData,
@@ -579,20 +593,14 @@ export default function EmployeeDetailPage() {
                 style={{ zIndex: isEditing ? 100 : 1 }}
               >
                 <ImageEditorField
-                  ref={backgroundEditorRef}
-                  fillParent
                   fieldName="background"
-                  image={backgroundImageData}
+                  image={backgroundImageData as IUploadImage | IImage}
                   isAdmin={isEditing && canEdit}
                   withMenu={isEditing && canEdit}
+                  mode="horizontal"
                   menuPosition="left-top"
-                  onImageChange={(image) => {
-                    setPendingBackgroundImage(image);
-                  }}
-                  onSave={async (payload) => {
-                    setPendingBackgroundImage(payload.image);
-                    await handleSaveImage('background', payload);
-                  }}
+                  multiplier={3}
+                  onSave={(payload) => handleSaveImage('background', payload)}
                 />
               </div>
               <div className="relative" style={{ zIndex: isEditing ? 50 : 10 }}>

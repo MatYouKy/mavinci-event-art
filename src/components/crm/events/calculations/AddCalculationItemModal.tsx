@@ -19,7 +19,6 @@ interface EquipmentOption {
     current_amps?: number | null;
     voltage_volts?: number | null;
   } | null;
-  weight_kg: number | null;
   category_name?: string | null;
   stock_quantity: number;
 }
@@ -78,7 +77,6 @@ export function AddCalculationItemModal({
       thumbnail_url,
       rental_price_per_day,
       power_specs,
-      weight_kg,
       cable_stock_quantity,
       warehouse_category_id,
       warehouse_categories:warehouse_category_id (
@@ -141,7 +139,6 @@ export function AddCalculationItemModal({
         thumbnail_url: item.thumbnail_url,
         rental_price_per_day: item.rental_price_per_day,
         power_specs: item.power_specs,
-        weight_kg: item.weight_kg != null ? Number(item.weight_kg) : null,
         category_name: item.warehouse_categories?.name ?? null,
         stock_quantity: stock,
       };
@@ -220,7 +217,6 @@ export function AddCalculationItemModal({
       editing: false,
       power_watts: powerWatts,
       power_source_ref: selectedEquipment?.id ?? null,
-      weight_kg: selectedEquipment?.weight_kg ?? null,
       thumbnail_url: selectedEquipment?.thumbnail_url ?? null,
       stock_quantity: selectedEquipment?.stock_quantity ?? null,
     };

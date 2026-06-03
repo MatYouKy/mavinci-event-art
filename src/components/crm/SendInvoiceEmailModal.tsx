@@ -62,14 +62,14 @@ interface InvoiceItem {
   value_gross: number;
 }
 
-// function getTypeLabel(type: string) {
-//   const labels: Record<string, string> = {
-//     standard: 'Faktura VAT',
-//     proforma: 'Faktura Proforma',
-//     corrective: 'Faktura korygująca',
-//   };
-//   return labels[type] || 'Faktura VAT';
-// }
+function getTypeLabel(type: string) {
+  const labels: Record<string, string> = {
+    standard: 'Faktura VAT',
+    proforma: 'Faktura Proforma',
+    corrective: 'Faktura korygująca',
+  };
+  return labels[type] || 'Faktura VAT';
+}
 
 export default function SendInvoiceEmailModal({
   invoiceId,
@@ -83,7 +83,6 @@ export default function SendInvoiceEmailModal({
   const { showSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(false);
   const [senderEmail, setSenderEmail] = useState<string>('');
-  const [invoiceCompanyId, setInvoiceCompanyId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     to: clientEmail,
     subject: `Faktura ${invoiceNumber} wizualizacja`,
@@ -127,27 +126,6 @@ W razie pytań proszę o kontakt.`,
     })();
   }, []);
 
-  useEffect(() => {
-    (async () => {
-      const { data: inv } = await supabase
-        .from('invoices')
-        .select('my_company_id, event_id')
-        .eq('id', invoiceId)
-        .maybeSingle();
-
-      if (inv?.my_company_id) {
-        setInvoiceCompanyId(inv.my_company_id);
-      } else if (inv?.event_id) {
-        const { data: evt } = await supabase
-          .from('events')
-          .select('my_company_id')
-          .eq('id', inv.event_id)
-          .maybeSingle();
-        if (evt?.my_company_id) setInvoiceCompanyId(evt.my_company_id);
-      }
-    })();
-  }, [invoiceId]);
-
   const generateInvoicePDF = async (): Promise<{ base64: string; filename: string }> => {
     const [invoiceRes, itemsRes] = await Promise.all([
       supabase.from('invoices').select('*').eq('id', invoiceId).single(),
@@ -166,7 +144,6 @@ W razie pytań proszę o kontakt.`,
     const items = (itemsRes.data || []) as InvoiceItem[];
   
     const html = buildInvoicePdfHtml({
-      buyerIsPrivatePerson: invoice.buyer_nip ? false : true,
       isProforma: invoice.is_proforma,
       footerNote: invoice.footer_note,
       signatureName: invoice.signature_name,
@@ -260,7 +237,7 @@ W razie pytań proszę o kontakt.`,
         return;
       }
 
-      const attachments: Array<{ filename: string; content: string; contentType: string }> = [];
+      let attachments: Array<{ filename: string; content: string; contentType: string }> = [];
 
       try {
         let base64: string;
@@ -294,10 +271,10 @@ W razie pytań proszę o kontakt.`,
           contentType: 'application/pdf',
         });
         showSnackbar('PDF gotowy, wysylam email...', 'info');
-      } catch (pdfError: unknown | Error) {
+      } catch (pdfError: any) {
         console.error('Error preparing PDF:', pdfError);
         showSnackbar(
-          `Nie udalo sie przygotowac PDF: ${pdfError instanceof Error ? pdfError.message : 'Nieznany błąd'}. Wysylam bez zalacznika.`,
+          `Nie udalo sie przygotowac PDF: ${pdfError.message}. Wysylam bez zalacznika.`,
           'warning',
         );
       }
@@ -316,7 +293,7 @@ W razie pytań proszę o kontakt.`,
             subject: formData.subject,
             message: formData.message,
             attachments,
-            signatureHtml: (await buildCompanySignatureHtml({ companyId: invoiceCompanyId })).html,
+            signatureHtml: (await buildCompanySignatureHtml()).html,
             recipientName: clientName,
           }),
         },
@@ -330,9 +307,10 @@ W razie pytań proszę o kontakt.`,
       showSnackbar('Faktura wysłana przez email z załącznikiem PDF', 'success');
       onSent?.();
       onClose();
-    } catch (error: unknown | Error) {
+    } catch (error: any) {
       console.error('Error sending email:', error);
-      showSnackbar(error instanceof Error ? error.message : 'Nieznany błąd podczas wysyłania email', 'error');
+      showSnackbar(error.message || 'Błąd podczas wysyłania email', 'error');
+    } finally {
       setLoading(false);
     }
   };

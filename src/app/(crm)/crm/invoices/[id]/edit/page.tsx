@@ -9,12 +9,6 @@ import BuyerSearchInput from '../../new/components/BuyerSearchInput';
 import AddBuyerModal from '../../new/components/AddBuyerModal';
 import { MyCompany } from '../../../settings/my-companies/page';
 
-interface OrganizationEvent {
-  id: string;
-  name: string;
-  event_date: string | null;
-}
-
 interface IndividualContact {
   id: string;
   first_name: string | null;
@@ -52,14 +46,6 @@ interface InvoiceItem {
   vat_rate: number;
 }
 
-const grossFromNet = (net: number, vatRate: number) => {
-  return Number((net * (1 + vatRate / 100)).toFixed(2));
-};
-
-const netFromGross = (gross: number, vatRate: number) => {
-  return Number((gross / (1 + vatRate / 100)).toFixed(2));
-};
-
 const PAYMENT_METHODS = ['Przelew', 'Gotówka', 'Karta płatnicza', 'Kompensata'];
 
 export default function EditInvoicePage({ params }: { params: { id: string } }) {
@@ -68,7 +54,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [invoice, setInvoice] = useState<any | null>(null);
+  const [invoice, setInvoice] = useState<any>(null);
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [myCompanies, setMyCompanies] = useState<MyCompany[]>([]);
@@ -79,7 +65,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
   const [invoiceType, setInvoiceType] = useState<'vat' | 'proforma' | 'advance' | 'corrective'>(
     'vat',
   );
-
+  const [isProforma, setIsProforma] = useState(false);
   const [issueDate, setIssueDate] = useState('');
   const [saleDate, setSaleDate] = useState('');
   const [paymentDays, setPaymentDays] = useState(14);
@@ -89,13 +75,12 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
   const [includeDefaultFooterNote, setIncludeDefaultFooterNote] = useState(true);
   const [customFooterNote, setCustomFooterNote] = useState('');
   const [website, setWebsite] = useState('');
+  const [signatureName, setSignatureName] = useState('');
 
   const [buyerIsPrivatePerson, setBuyerIsPrivatePerson] = useState(false);
   const [individualContacts, setIndividualContacts] = useState<IndividualContact[]>([]);
   const [selectedIndividualId, setSelectedIndividualId] = useState('');
   const [individualSearch, setIndividualSearch] = useState('');
-
-  const [organizationEvents, setOrganizationEvents] = useState<OrganizationEvent[]>([]);
 
   const [privateBuyer, setPrivateBuyer] = useState({
     firstName: '',
@@ -117,11 +102,6 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
   const [correctedInvoiceKsefNumber, setCorrectedInvoiceKsefNumber] = useState('');
   const [correctedInvoiceWasInKsef, setCorrectedInvoiceWasInKsef] = useState(false);
   const [availableInvoices, setAvailableInvoices] = useState<any[]>([]);
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
-
-  const [paidDate, setPaidDate] = useState(new Date().toISOString().split('T')[0]);
-  const [paymentStatus, setPaymentStatus] = useState<'unpaid' | 'partial' | 'paid'>('unpaid');
-  const [paidAmount, setPaidAmount] = useState(0);
 
   useEffect(() => {
     fetchData();
@@ -152,7 +132,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         supabase
           .from('invoices')
           .select(
-            'id, invoice_number, invoice_type, issue_date, total_gross, buyer_name, status, buyer_is_private_person, event_id',
+            'id, invoice_number, invoice_type, issue_date, total_gross, buyer_name, status, buyer_is_private_person',
           )
           .neq('id', params.id)
           .neq('invoice_type', 'corrective')
@@ -181,20 +161,15 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         setSelectedCompanyId(inv.my_company_id || '');
         setPaymentMethod(inv.payment_method || 'Przelew');
         setIssuePlace(inv.issue_place || '');
+        setIsProforma(inv.is_proforma ?? false);
         setInvoiceStatus(inv.status || 'draft');
-        setCustomFooterNote(inv.footer_note || '');
+        setCustomFooterNote(inv.invoice_footer_text || '');
         setWebsite(inv.website || 'www.mavinci.pl');
-        setIncludeDefaultFooterNote(Boolean(inv.footer_note));
+        setSignatureName(inv.signature_name || '');
+        setIncludeDefaultFooterNote(Boolean(inv.invoice_footer_text));
         setBuyerIsPrivatePerson(inv.buyer_is_private_person ?? false);
-        setPaidDate(
-          inv.paid_at ? inv.paid_at.split('T')[0] : inv.payment_due_date || inv.issue_date || '',
-        );
         setSelectedIndividualId(inv.buyer_contact_id || '');
-        setSelectedEventId(inv.event_id || null);
-        fetchOrganizationEvents(inv.organization_id || null);
-        if (inv.organization_id) {
-          await fetchOrganizationEvents(inv.organization_id);
-        }
+
         if (inv.buyer_is_private_person) {
           const [firstName = '', ...rest] = String(inv.buyer_name || '').split(' ');
 
@@ -301,7 +276,6 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
 
   const handleSelectOriginalInvoice = async (invoiceId: string) => {
     setRelatedInvoiceId(invoiceId);
-
     if (!invoiceId) {
       setCorrectedInvoiceNumber('');
       setCorrectedInvoiceIssueDate('');
@@ -321,11 +295,6 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
       setCorrectedInvoiceIssueDate(origInvoice.issue_date || '');
       setSelectedOrgId(origInvoice.organization_id || '');
       setSelectedCompanyId(origInvoice.my_company_id || '');
-      setSelectedEventId(origInvoice.event_id || null);
-
-      if (origInvoice.organization_id) {
-        await fetchOrganizationEvents(origInvoice.organization_id);
-      }
 
       const { data: ksefRecord } = await supabase
         .from('ksef_invoices')
@@ -359,28 +328,6 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         );
       }
     }
-  };
-
-  const fetchOrganizationEvents = async (organizationId?: string | null) => {
-    if (!organizationId) {
-      setOrganizationEvents([]);
-      setSelectedEventId(null);
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from('events')
-      .select('id, name, event_date')
-      .eq('organization_id', organizationId)
-      .order('event_date', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching organization events:', error);
-      showSnackbar('Błąd podczas pobierania wydarzeń organizacji', 'error');
-      return;
-    }
-
-    setOrganizationEvents(data || []);
   };
 
   const calculatePaymentDueDate = () => {
@@ -442,21 +389,21 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
   };
 
   const buildInvoiceFooterText = () => {
+    const selectedCompany = myCompanies.find((c) => c.id === selectedCompanyId);
+
     if (invoiceType === 'corrective') {
       const issueDateText = correctedInvoiceIssueDate
         ? new Date(correctedInvoiceIssueDate).toLocaleDateString('pl-PL')
         : '-';
 
-      return `Faktura korygująca odnosi się do faktury ${correctedInvoiceNumber || '-'} z dnia ${issueDateText}. Przyczyna korekty: ${
-        correctionReason || '-'
-      }.`;
+      return `Faktura korygująca odnosi się do faktury ${correctedInvoiceNumber || '-'} z dnia ${issueDateText}.<br /> Przyczyna korekty: ${correctionReason || '-'}.`;
     }
 
     if (!includeDefaultFooterNote) {
       return null;
     }
 
-    return customFooterNote.trim() || null;
+    return selectedCompany?.invoice_footer_text || '';
   };
 
   const handleSubmit = async () => {
@@ -515,7 +462,12 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
       const selectedCompany = myCompanies.find((c) => c.id === selectedCompanyId);
       if (!selectedCompany) throw new Error('Company not found');
 
-      const footerNote = buildInvoiceFooterText();
+      const footerNote =
+        invoiceType === 'corrective'
+          ? buildInvoiceFooterText()
+          : includeDefaultFooterNote
+            ? customFooterNote?.trim() || selectedCompany.invoice_footer_text || ''
+            : null;
 
       const missingSellerFields: string[] = [];
       if (!selectedCompany.legal_name) missingSellerFields.push('nazwa firmy');
@@ -578,22 +530,17 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         selectedCompany.signature_name ||
         '';
 
-      const invoiceData: Record<string, string | number | null> = {
-        event_id: selectedEventId,
+      const invoiceData: Record<string, any> = {
         invoice_number: invoiceNumber,
         invoice_type: invoiceType,
-        is_proforma: invoiceType === 'proforma' ? 'true' : 'false',
-        payment_status: paymentStatus,
-        paid_amount: paymentStatus === 'unpaid' ? 0 : paidAmount,
-        paid_at: paymentStatus === 'unpaid' ? null : paidDate || null,
-        status: paymentStatus === 'paid' ? 'paid' : invoiceStatus,
-        payment_due_date:
-          invoiceStatus === 'paid' ? paidDate || issueDate : calculatePaymentDueDate(),
+        is_proforma: invoiceType === 'proforma',
+        status: invoiceStatus,
         issue_date: issueDate,
         sale_date: saleDate,
         footer_note: footerNote,
         signature_name: signatureName,
         website: website,
+        payment_due_date: calculatePaymentDueDate(),
         organization_id: buyerIsPrivatePerson ? null : selectedOrgId,
         buyer_contact_id: buyerIsPrivatePerson ? selectedIndividualId || null : null,
 
@@ -612,7 +559,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         buyer_city: buyerIsPrivatePerson ? privateBuyer.city : selectedOrg!.city || '',
 
         buyer_country: 'Polska',
-        buyer_is_private_person: buyerIsPrivatePerson ? 'true' : 'false',
+        buyer_is_private_person: buyerIsPrivatePerson,
         my_company_id: selectedCompanyId,
         seller_name: selectedCompany.legal_name,
         seller_nip: selectedCompany.nip,
@@ -640,7 +587,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         invoiceData.corrected_invoice_number = correctedInvoiceNumber;
         invoiceData.corrected_invoice_issue_date = correctedInvoiceIssueDate || null;
         invoiceData.corrected_invoice_ksef_number = correctedInvoiceKsefNumber || null;
-        invoiceData.corrected_invoice_was_in_ksef = correctedInvoiceWasInKsef ? 'true' : 'false';
+        invoiceData.corrected_invoice_was_in_ksef = correctedInvoiceWasInKsef;
       } else {
         invoiceData.related_invoice_id = null;
         invoiceData.correction_reason = null;
@@ -648,7 +595,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
         invoiceData.corrected_invoice_number = null;
         invoiceData.corrected_invoice_issue_date = null;
         invoiceData.corrected_invoice_ksef_number = null;
-        invoiceData.corrected_invoice_was_in_ksef = 'false';
+        invoiceData.corrected_invoice_was_in_ksef = false;
       }
 
       const { error: invoiceError } = await supabase
@@ -693,17 +640,15 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
 
       showSnackbar('Faktura zostala zaktualizowana', 'success');
       router.push(`/crm/invoices/${params.id}`);
-      } catch (err: unknown | Error) {
-      if (err instanceof Error) {
+    } catch (err: any) {
       console.error('Error updating invoice:', err);
       let msg = 'Blad podczas aktualizacji faktury';
-      if (err.message.includes('23505')) {
+      if (err?.code === '23505') {
         msg = 'Faktura o tym numerze juz istnieje. Wybierz inny numer.';
       } else if (err?.message) {
         msg = err.message;
       }
       showSnackbar(msg, 'error');
-      }
     } finally {
       setSaving(false);
     }
@@ -767,7 +712,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
     <div className="min-h-screen bg-[#0a0d1a] p-6">
       <div className="mx-auto max-w-5xl">
         <button
-          onClick={() => router.push('/crm/invoices')}
+          onClick={() => router.back()}
           className="mb-6 flex items-center gap-2 text-[#e5e4e2]/60 hover:text-[#d3bb73]"
         >
           <ArrowLeft className="h-5 w-5" />
@@ -873,14 +818,10 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
               <select
                 value={selectedCompanyId}
                 onChange={(e) => {
-                  const companyId = e.target.value;
-                  setSelectedCompanyId(companyId);
-
-                  const company = myCompanies.find((c) => c.id === companyId);
-
+                  setSelectedCompanyId(e.target.value);
+                  const company = myCompanies.find((c) => c.id === e.target.value);
                   if (company) {
-                    setIssuePlace(company.city || '');
-                    setWebsite(company.website || 'www.mavinci.pl');
+                    setIssuePlace(company.city);
                   }
                 }}
                 disabled={invoiceType === 'corrective' && !!relatedInvoiceId}
@@ -912,7 +853,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
                 <label className="mb-2 block text-sm text-[#e5e4e2]/60">Typ faktury *</label>
                 <select
                   value={invoiceType}
-                  onChange={(e) => setInvoiceType(e.target.value as 'vat' | 'proforma' | 'advance' | 'corrective')}
+                  onChange={(e) => setInvoiceType(e.target.value as any)}
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
                 >
                   <option value="vat">Faktura VAT</option>
@@ -1169,44 +1110,9 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
                 <BuyerSearchInput
                   contacts={organizations}
                   selectedContactId={selectedOrgId}
-                  onContactSelect={(orgId) => {
-                    setSelectedOrgId(orgId);
-                    setSelectedEventId(null);
-                    fetchOrganizationEvents(orgId);
-                  }}
+                  onContactSelect={setSelectedOrgId}
                   onAddNew={() => setShowAddBuyerModal(true)}
                 />
-              )}
-
-              {!buyerIsPrivatePerson && selectedOrgId && (
-                <div className="rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-4">
-                  <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-                    Powiązane wydarzenie
-                  </label>
-
-                  <select
-                    value={selectedEventId || ''}
-                    onChange={(e) => setSelectedEventId(e.target.value || null)}
-                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
-                  >
-                    <option value="">Brak powiązanego wydarzenia</option>
-
-                    {organizationEvents.map((event) => (
-                      <option key={event.id} value={event.id}>
-                        {event.name}
-                        {event.event_date
-                          ? ` — ${new Date(event.event_date).toLocaleDateString('pl-PL')}`
-                          : ''}
-                      </option>
-                    ))}
-                  </select>
-
-                  {organizationEvents.length === 0 && (
-                    <div className="mt-2 text-xs text-[#e5e4e2]/50">
-                      Brak wydarzeń przypisanych do tej organizacji.
-                    </div>
-                  )}
-                </div>
               )}
             </div>
 
@@ -1312,84 +1218,6 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
                 />
               </div>
             </div>
-            {invoiceStatus === 'paid' && (
-              <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-4">
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data opłacenia *</label>
-                <input
-                  type="date"
-                  value={paidDate}
-                  onChange={(e) => setPaidDate(e.target.value)}
-                  className="w-full rounded-lg border border-green-500/30 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
-                />
-
-                <div className="mt-3 rounded-lg border border-green-500/20 bg-green-500/10 p-3 text-sm text-green-400">
-                  Faktura opłacona. Do zapłaty: 0.00 zł
-                </div>
-              </div>
-            )}
-
-            <div className="rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-4">
-              <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-                Status płatności
-              </label>
-
-              <select
-                value={paymentStatus}
-                onChange={(e) => {
-                  const nextStatus = e.target.value as 'unpaid' | 'partial' | 'paid';
-                  setPaymentStatus(nextStatus);
-
-                  if (nextStatus === 'unpaid') {
-                    setPaidAmount(0);
-                  }
-
-                  if (nextStatus === 'paid') {
-                    setPaidAmount(totals.totalGross);
-                    setPaidDate(
-                      (prev) => prev || issueDate || new Date().toISOString().split('T')[0],
-                    );
-                  }
-                }}
-                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
-              >
-                <option value="unpaid">Do zapłaty</option>
-                <option value="partial">Częściowo zapłacono</option>
-                <option value="paid">Zapłacono</option>
-              </select>
-
-              {paymentStatus !== 'unpaid' && (
-                <div className="mt-4 grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data płatności</label>
-                    <input
-                      type="date"
-                      value={paidDate}
-                      onChange={(e) => setPaidDate(e.target.value)}
-                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2]"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Kwota zapłacona</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={paidAmount}
-                      onChange={(e) => setPaidAmount(Number(e.target.value.replace(',', '.')) || 0)}
-                      disabled={paymentStatus === 'paid'}
-                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] disabled:opacity-60"
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div className="mt-4 rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a]/50 p-3 text-sm">
-                <span className="text-[#e5e4e2]/50">Do zapłaty:</span>
-                <span className="ml-2 font-medium text-[#d3bb73]">
-                  {Math.max(totals.totalGross - paidAmount, 0).toFixed(2)} zł
-                </span>
-              </div>
-            </div>
 
             {/* Pozycje */}
             <div className="border-t border-[#d3bb73]/10 pt-6">
@@ -1407,18 +1235,13 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
               <div className="space-y-4">
                 {items.map((item, index) => {
                   const { valueNet, vatAmount, valueGross } = calculateItemValues(item);
-
-                  const vatRate = Number(item.vat_rate ?? 0);
-                  const priceNet = Number(item.price_net ?? 0);
-                  const priceGross = grossFromNet(priceNet, vatRate);
-
                   return (
                     <div
                       key={index}
                       className="rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a] p-4"
                     >
                       <div className="flex items-start gap-4">
-                        <div className="grid flex-1 grid-cols-7 gap-4">
+                        <div className="grid flex-1 grid-cols-6 gap-4">
                           <div className="col-span-2">
                             <label className="mb-1 block text-xs text-[#e5e4e2]/40">Nazwa *</label>
                             <input
@@ -1465,7 +1288,7 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
                             <input
                               type="number"
                               step="0.01"
-                              value={priceNet}
+                              value={item.price_net}
                               onChange={(e) =>
                                 updateItem(index, 'price_net', parseFloat(e.target.value))
                               }
@@ -1474,36 +1297,12 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
                           </div>
 
                           <div>
-                            <label className="mb-1 block text-xs text-[#e5e4e2]/40">
-                              Cena brutto *
-                            </label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={priceGross}
-                              onChange={(e) => {
-                                const gross = Number(e.target.value.replace(',', '.'));
-                                updateItem(index, 'price_net', netFromGross(gross, vatRate));
-                              }}
-                              className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
-                            />
-                          </div>
-
-                          <div>
                             <label className="mb-1 block text-xs text-[#e5e4e2]/40">VAT %</label>
                             <select
                               value={item.vat_rate}
-                              onChange={(e) => {
-                                const nextVatRate = parseInt(e.target.value);
-                                const currentGross = grossFromNet(priceNet, vatRate);
-
-                                updateItem(index, 'vat_rate', nextVatRate);
-                                updateItem(
-                                  index,
-                                  'price_net',
-                                  netFromGross(currentGross, nextVatRate),
-                                );
-                              }}
+                              onChange={(e) =>
+                                updateItem(index, 'vat_rate', parseInt(e.target.value))
+                              }
                               className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2]"
                             >
                               <option value={0}>0%</option>
@@ -1527,12 +1326,10 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
                           <span className="text-[#e5e4e2]/40">Wartosc netto:</span>
                           <span className="ml-2 text-[#e5e4e2]">{valueNet.toFixed(2)} zl</span>
                         </div>
-
                         <div>
                           <span className="text-[#e5e4e2]/40">Kwota VAT:</span>
                           <span className="ml-2 text-[#e5e4e2]">{vatAmount.toFixed(2)} zl</span>
                         </div>
-
                         <div>
                           <span className="text-[#e5e4e2]/40">Wartosc brutto:</span>
                           <span className="ml-2 font-medium text-[#d3bb73]">
@@ -1566,25 +1363,12 @@ export default function EditInvoicePage({ params }: { params: { id: string } }) 
                   <div>
                     <div className="mb-1 text-sm text-[#e5e4e2]/60">Suma brutto</div>
                     <div className="text-2xl font-medium text-[#d3bb73]">
-                      {invoiceStatus === 'paid' ? '0.00' : totals.totalGross.toFixed(2)} zl
+                      {totals.totalGross.toFixed(2)} zl
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-            {paymentStatus !== 'unpaid' && (
-              <div className="mt-4 border-t border-[#d3bb73]/10 pt-4 text-sm">
-                <div className="text-[#e5e4e2]/60">
-                  Zapłacono: <span className="text-green-400">{paidAmount.toFixed(2)} zł</span>
-                </div>
-                <div className="mt-1 text-[#e5e4e2]/60">
-                  Do zapłaty:{' '}
-                  <span className="font-medium text-[#d3bb73]">
-                    {Math.max(totals.totalGross - paidAmount, 0).toFixed(2)} zł
-                  </span>
-                </div>
-              </div>
-            )}
 
             {/* Przyciski */}
             <div className="flex justify-end gap-4 pt-6">

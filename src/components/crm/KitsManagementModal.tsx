@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, X, Trash2, Package, Search, CreditCard as Edit, Eye, Printer, Copy } from 'lucide-react';
+import { Plus, X, Trash2, Package, Search, Edit, Eye, Printer, Copy } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { uploadImage } from '@/lib/storage';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -47,7 +47,6 @@ interface Kit {
   description: string | null;
   thumbnail_url: string | null;
   warehouse_category_id: string | null;
-  quantity: number;
   is_active: boolean;
   created_at: string;
   equipment_kit_items: KitItem[];
@@ -88,7 +87,6 @@ export default function KitsManagementModal({
     description: '',
     thumbnail_url: '',
     warehouse_category_id: '',
-    quantity: 1,
   });
   const [kitItems, setKitItems] = useState<
     { equipment_id: string | null; cable_id: string | null; quantity: number; notes: string }[]
@@ -166,7 +164,6 @@ export default function KitsManagementModal({
         description: kit.description || '',
         thumbnail_url: kit.thumbnail_url || '',
         warehouse_category_id: kit.warehouse_category_id || '',
-        quantity: kit.quantity || 1,
       });
       setKitItems(
         kit.equipment_kit_items.map((item) => ({
@@ -183,7 +180,6 @@ export default function KitsManagementModal({
         description: '',
         thumbnail_url: '',
         warehouse_category_id: '',
-        quantity: 1,
       });
       setKitItems([]);
     }
@@ -296,7 +292,6 @@ export default function KitsManagementModal({
             description: kitForm.description || null,
             thumbnail_url: kitForm.thumbnail_url || null,
             warehouse_category_id: kitForm.warehouse_category_id || null,
-            quantity: kitForm.quantity || 1,
           })
           .eq('id', editingKit.id);
 
@@ -318,7 +313,6 @@ export default function KitsManagementModal({
             description: kitForm.description || null,
             thumbnail_url: kitForm.thumbnail_url || null,
             warehouse_category_id: kitForm.warehouse_category_id || null,
-            quantity: kitForm.quantity || 1,
             created_by: user?.id || null,
           })
           .select()
@@ -503,9 +497,6 @@ export default function KitsManagementModal({
                           )}
                           <p className="mt-1 text-xs text-[#e5e4e2]/40">
                             {kit.equipment_kit_items.length} pozycji
-                            {kit.quantity > 1 && (
-                              <span className="ml-2 text-[#d3bb73]/80">• {kit.quantity} szt.</span>
-                            )}
                           </p>
                         </div>
                         <div className="flex gap-2">
@@ -667,25 +658,6 @@ export default function KitsManagementModal({
                         </option>
                       ))}
                     </select>
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">
-                      Ilość zestawów
-                      <span className="ml-1 text-[#e5e4e2]/40">(ile identycznych kitów)</span>
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={kitForm.quantity}
-                      onChange={(e) =>
-                        setKitForm((prev) => ({
-                          ...prev,
-                          quantity: Math.max(1, parseInt(e.target.value) || 1),
-                        }))
-                      }
-                      className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
-                    />
                   </div>
                 </div>
               </div>
@@ -1040,11 +1012,7 @@ export default function KitsManagementModal({
                       <p className="mb-2 text-[#e5e4e2]/60">{viewingKit.description}</p>
                     )}
                     <p className="text-sm text-[#e5e4e2]/40">
-                      {viewingKit.equipment_kit_items.length} pozycji
-                      {viewingKit.quantity > 1 && (
-                        <span className="ml-1 text-[#d3bb73]/80">• {viewingKit.quantity} szt.</span>
-                      )}
-                      {' '}• Utworzono:{' '}
+                      {viewingKit.equipment_kit_items.length} pozycji • Utworzono:{' '}
                       {new Date(viewingKit.created_at).toLocaleDateString('pl-PL')}
                     </p>
                   </div>

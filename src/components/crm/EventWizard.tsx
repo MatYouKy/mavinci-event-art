@@ -142,8 +142,7 @@ export default function EventWizard({
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [createdEventId, setCreatedEventId] = useState<string | null>(null);
-  const [currentEmployeeId, setCurrentEmployeeId] = useState<string | null>(null);
-  const { addEmployee } = useEventTeam(createdEventId as string);
+  const { addEmployee } = useEventTeam(createdEventId);
   const [createEventMutation] = useCreateEventMutation();
 
   const { list: employeesList } = useEmployees({ activeOnly: true });
@@ -259,36 +258,6 @@ export default function EventWizard({
     const { data } = await supabase.from('organizations').select('id, name, alias').order('name');
     if (data) setOrganizations(data);
   };
-
-  const fetchCurrentEmployee = async () => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    if (!session?.user?.id) return;
-
-    const { data, error } = await supabase
-      .from('employees')
-      .select('id')
-      .eq('auth_user_id', session.user.id)
-      .maybeSingle();
-
-    if (error) {
-      console.error('fetchCurrentEmployee error:', error);
-      return;
-    }
-
-    setCurrentEmployeeId(data?.id ?? null);
-  };
-
-  useEffect(() => {
-    if (isOpen) {
-      fetchOrganizations();
-      fetchContacts();
-      fetchCategories();
-      fetchCurrentEmployee();
-    }
-  }, [isOpen]);
 
   const fetchContacts = async () => {
     const { data } = await supabase
@@ -585,30 +554,12 @@ export default function EventWizard({
 
   const createEvent = async () => {
     setLoading(true);
-
     try {
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
-      if (!session?.user?.id) {
-        throw new Error('Brak aktywnej sesji użytkownika');
-      }
-
-      const { data: currentEmployee, error: employeeError } = await supabase
-        .from('employees')
-        .select('id, auth_user_id, role, permissions')
-        .eq('auth_user_id', session.user.id)
-        .maybeSingle();
-
-      if (employeeError) {
-        throw employeeError;
-      }
-
-      if (!currentEmployee?.id) {
-        throw new Error('Nie znaleziono pracownika powiązanego z zalogowanym użytkownikiem');
-      }
-
+      // Użyj mutation z RTK Query zamiast bezpośredniego insertu
       const eventPayload: any = {
         name: eventData.name,
         organization_id:
@@ -624,55 +575,55 @@ export default function EventWizard({
             ? eventData.category_id
             : null,
         event_date: localDatetimeStringToUTC(eventData.event_date),
-        event_end_date: eventData.event_end_date
-          ? localDatetimeStringToUTC(eventData.event_end_date)
-          : null,
+        event_end_date: localDatetimeStringToUTC(eventData.event_end_date),
         location: eventData.location,
         budget: eventData.budget ? parseFloat(eventData.budget) : null,
         description: eventData.description || null,
         status: eventData.status,
-        created_by: session.user.id,
+        created_by: session?.user?.id || null,
         participants: participants.length > 0 ? participants : [],
         location_id: eventData.location_id || null,
         my_company_id: eventData.my_company_id || null,
       };
 
       const data = await createEventMutation(eventPayload).unwrap();
-
       setCreatedEventId(data.id);
 
-      const { error: assignmentError } = await supabase.from('employee_assignments').insert([
-        {
-          event_id: data.id,
-          employee_id: currentEmployee.id,
-          role: 'Koordynator',
-          status: 'accepted',
-          can_edit_event: true,
-          can_edit_agenda: true,
-          can_edit_tasks: true,
-          can_edit_files: true,
-          can_edit_equipment: true,
-          can_invite_members: true,
-          can_view_budget: true,
-          granted_by: session.user.id,
-          permissions_updated_at: new Date().toISOString(),
-        },
-      ]);
+      // Automatycznie dodaj autora do zespołu z pełnym dostępem (status: accepted)
+      // Używamy bezpośredniego insertu bo addEmployee wysyła zaproszenia emailowe
+      if (session?.user?.id) {
+        const { error: assignmentError } = await supabase.from('employee_assignments').insert([
+          {
+            event_id: data.id,
+            employee_id: session.user.id,
+            role: 'Koordynator',
+            status: 'accepted',
+            can_edit_event: true,
+            can_edit_agenda: true,
+            can_edit_tasks: true,
+            can_edit_files: true,
+            can_edit_equipment: true,
+            can_invite_members: true,
+            can_view_budget: true,
+            granted_by: session.user.id,
+            permissions_updated_at: new Date().toISOString(),
+          },
+        ]);
 
-      if (assignmentError) {
-        console.error('Error adding creator to team:', assignmentError);
-        showSnackbar(
-          'Event utworzony, ale nie udało się automatycznie dodać Cię do zespołu wydarzenia',
-          'error',
-        );
-      } else {
-        showSnackbar('Event utworzony pomyślnie!', 'success');
+        if (assignmentError) {
+          console.error('Error adding creator to team:', assignmentError);
+          showSnackbar(
+            'Uwaga: Nie udało się automatycznie dodać Cię do zespołu wydarzenia',
+            'error',
+          );
+        }
       }
 
+      showSnackbar('Event utworzony pomyślnie!', 'success');
       setCurrentStep(2);
     } catch (err: any) {
       console.error('Error creating event:', err);
-      showSnackbar('Błąd podczas tworzenia eventu: ' + (err?.message || 'Nieznany błąd'), 'error');
+      showSnackbar('Błąd podczas tworzenia eventu: ' + err.message, 'error');
     } finally {
       setLoading(false);
     }
@@ -949,7 +900,7 @@ export default function EventWizard({
               <CompanySelector
                 value={eventData.my_company_id}
                 onChange={(myCompanyId) =>
-                  setEventData((prev) => ({ ...prev, my_company_id: myCompanyId as string }))
+                  setEventData((prev) => ({ ...prev, my_company_id: myCompanyId }))
                 }
                 showAllOption={false}
                 label="Firma realizująca"
@@ -1016,6 +967,7 @@ export default function EventWizard({
                   </button>
                 </div>
               </div>
+
 
               {/* Klient businessowy */}
               {clientType === 'business' && (

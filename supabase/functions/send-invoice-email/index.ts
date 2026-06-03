@@ -155,40 +155,9 @@ Deno.serve(async (req: Request) => {
       .from("my_companies")
       .select("*")
       .eq("is_active", true)
-      .eq("id", invoice.my_company_id)
+      .order("is_default", { ascending: false })
       .limit(1);
-
-    let company = companies?.[0] ?? null;
-
-    if (!company) {
-      // Fallback: try to get company from event
-      if (invoice.event_id) {
-        const { data: evt } = await supabase
-          .from("events")
-          .select("my_company_id")
-          .eq("id", invoice.event_id)
-          .maybeSingle();
-        if (evt?.my_company_id) {
-          const { data: evtCompanies } = await supabase
-            .from("my_companies")
-            .select("*")
-            .eq("is_active", true)
-            .eq("id", evt.my_company_id)
-            .limit(1);
-          company = evtCompanies?.[0] ?? null;
-        }
-      }
-      // Final fallback: default company
-      if (!company) {
-        const { data: defaultCompanies } = await supabase
-          .from("my_companies")
-          .select("*")
-          .eq("is_active", true)
-          .order("is_default", { ascending: false })
-          .limit(1);
-        company = defaultCompanies?.[0] ?? null;
-      }
-    }
+    const company = companies?.[0] ?? null;
 
     let companyLogoDataUri = "";
     let primaryColor = "#d3bb73";
@@ -265,6 +234,8 @@ Deno.serve(async (req: Request) => {
         </div>
       `;
     }
+
+    console.log('[send-invoice-email] Sending from:', emailAccount.email_address, 'with', attachments.length, 'attachments for invoice:', invoiceId);
 
     const relayPayload = {
       smtpConfig: {

@@ -23,7 +23,6 @@ export const allNavigation: NavigationItem[] = [
   { key: 'time-tracking', name: 'Czas pracy', href: '/crm/time-tracking', iconKey: 'time', module: 'time_tracking' },
   { key: 'page', name: 'Strona', href: '/crm/page', iconKey: 'page', module: 'page' },
   { key: 'locations', name: 'Lokalizacje', href: '/crm/locations', iconKey: 'locations', module: 'locations' },
-  { key: 'tenders', name: 'Przetargi', href: '/crm/tenders', iconKey: 'tenders', module: 'tenders' },
 ];
 
 import {
@@ -41,10 +40,9 @@ import {
   Clock,
   BookUser,
   FileSignature,
-  FileSearch,
-  } from 'lucide-react';
+} from 'lucide-react';
 
-export const NavigationIcons: Record<string, unknown> = {
+export const NavigationIcons: Record<string, any> = {
   dashboard: LayoutDashboard,
   calendar: Calendar,
   messages: Mail,
@@ -60,5 +58,4 @@ export const NavigationIcons: Record<string, unknown> = {
   time: Clock,
   page: Globe,
   locations: MapPin,
-  tenders: FileSearch,
 };

@@ -52,7 +52,6 @@ interface Props {
   year: number;
   companyId: string | null;
   onClose: () => void;
-  invoiceData: KSeFInvoice;
 }
 
 interface MatchScore {
@@ -201,7 +200,7 @@ const COL_SCORE = 'w-[260px]';
 const COL_REASONS = 'w-[12%]';
 const COL_ACTION = 'w-[6%]';
 
-export default function BankMatchingSimple({ month, year, companyId, invoiceData, onClose }: Props) {
+export default function BankMatchingSimple({ month, year, companyId, onClose }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [matchingId, setMatchingId] = useState<string | null>(null);

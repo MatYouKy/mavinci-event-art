@@ -10,8 +10,6 @@ type Body = {
   fileName?: string;
   invoiceId?: string;
   eventId?: string | null;
-  organizationId?: string | null;
-  buyerContactId?: string | null;
   createdBy?: string | null;
   previousPdfPath?: string | null;
 };
@@ -83,16 +81,7 @@ async function inlineExternalImages(rawHtml: string): Promise<string> {
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as Body;
-    const {
-      html: rawHtml,
-      fileName,
-      invoiceId,
-      eventId,
-      organizationId,
-      buyerContactId,
-      createdBy,
-      previousPdfPath,
-    } = body;
+    const { html: rawHtml, fileName, invoiceId, eventId, createdBy, previousPdfPath } = body;
 
     if (!rawHtml) {
       return NextResponse.json({ error: 'Brak HTML do wygenerowania PDF' }, { status: 400 });
@@ -143,7 +132,7 @@ export async function POST(req: Request) {
 
       let storagePath: string | null = null;
 
-      if (invoiceId) {
+      if (invoiceId && eventId) {
         const supabase = getSupabaseAdmin();
 
         if (previousPdfPath) {
@@ -155,58 +144,44 @@ export async function POST(req: Request) {
           } catch {}
         }
 
+        const folderId = await getOrCreateInvoiceFolderId({
+          supabase,
+          eventId,
+          createdBy: createdBy ?? null,
+        });
+
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
         const safeName = finalFileName.replace(/\.pdf$/i, '').replace(/[^a-z0-9_-]/gi, '-');
+        storagePath = `${eventId}/documents/faktury/${safeName}-${timestamp}.pdf`;
 
-        if (eventId) {
-          const folderId = await getOrCreateInvoiceFolderId({
-            supabase,
-            eventId,
-            createdBy: createdBy ?? null,
-          });
+        const upload = await supabase.storage.from('event-files').upload(storagePath, pdfBuffer, {
+          contentType: 'application/pdf',
+          upsert: true,
+        });
 
-          storagePath = `${eventId}/documents/faktury/${safeName}-${timestamp}.pdf`;
-
-          const upload = await supabase.storage.from('event-files').upload(storagePath, pdfBuffer, {
-            contentType: 'application/pdf',
-            upsert: true,
-          });
-
-          if (upload.error) {
-            console.error('Invoice PDF upload error:', upload.error);
-            storagePath = null;
-          } else {
-            await supabase.from('event_files').insert([
-              {
-                event_id: eventId,
-                folder_id: folderId,
-                name: finalFileName,
-                original_name: finalFileName,
-                file_path: storagePath,
-                file_size: pdfBuffer.byteLength,
-                mime_type: 'application/pdf',
-                document_type: 'invoice',
-                thumbnail_url: null,
-                uploaded_by: createdBy ?? null,
-              },
-            ]);
-          }
+        if (upload.error) {
+          console.error('Invoice PDF upload error:', upload.error);
+          storagePath = null;
         } else {
-          const ownerSegment = organizationId || buyerContactId || 'general';
-          storagePath = `invoices/${ownerSegment}/${safeName}-${timestamp}.pdf`;
+          const insertFile = await supabase.from('event_files').insert([
+            {
+              event_id: eventId,
+              folder_id: folderId,
+              name: finalFileName,
+              original_name: finalFileName,
+              file_path: storagePath,
+              file_size: pdfBuffer.byteLength,
+              mime_type: 'application/pdf',
+              document_type: 'invoice',
+              thumbnail_url: null,
+              uploaded_by: createdBy ?? null,
+            },
+          ]);
 
-          const upload = await supabase.storage.from('event-files').upload(storagePath, pdfBuffer, {
-            contentType: 'application/pdf',
-            upsert: true,
-          });
-
-          if (upload.error) {
-            console.error('Invoice PDF upload error:', upload.error);
-            storagePath = null;
+          if (insertFile.error) {
+            console.error('event_files insert error:', insertFile.error);
           }
-        }
 
-        if (storagePath) {
           await supabase
             .from('invoices')
             .update({

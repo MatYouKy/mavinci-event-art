@@ -1,4 +1,4 @@
-import { IImageMetadata } from '@/types/image';
+import { ImageMetadata } from '@/lib/supabase/types';
 
 export interface IEmployee {
   signature_thumb: string;
@@ -18,9 +18,9 @@ export interface IEmployee {
   phone_number: string | null;
   phone_private: string | null;
   avatar_url: string | null;
-  avatar_metadata: IImageMetadata | null;
+  avatar_metadata: ImageMetadata | null;
   background_image_url: string | null;
-  background_metadata: IImageMetadata | null;
+  background_metadata: ImageMetadata | null;
   role: string;
   access_level: string;
   access_level_id: string | null;

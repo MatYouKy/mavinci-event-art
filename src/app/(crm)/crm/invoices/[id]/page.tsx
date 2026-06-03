@@ -45,9 +45,6 @@ interface Invoice {
   invoice_number: string;
   invoice_type: string;
   status: string;
-  payment_status: 'unpaid' | 'partial' | 'paid' | null;
-  paid_amount: number | null;
-  paid_at: string | null;
   issue_date: string;
   sale_date: string;
   payment_due_date: string;
@@ -71,7 +68,6 @@ interface Invoice {
   pdf_generated_at: string | null;
   event_id: string | null;
   organization_id: string | null;
-  buyer_contact_id: string | null;
   related_invoice_id: string | null;
   is_proforma: boolean;
   proforma_converted_to_invoice_id: string | null;
@@ -112,12 +108,7 @@ interface RelatedData {
   } | null;
   organization?: { id: string; name: string; nip: string; email?: string } | null;
   primaryContact?: { id: string; name: string; email?: string | null } | null;
-  relatedInvoice?: {
-    id: string;
-    invoice_number: string;
-    invoice_type: string;
-    event_id?: string | null;
-  } | null;
+  relatedInvoice?: { id: string; invoice_number: string; invoice_type: string } | null;
   relatedInvoices?: Array<{
     id: string;
     invoice_number: string;
@@ -147,9 +138,6 @@ export interface InvoiceItem {
   after_value_net?: number | null;
   after_vat_amount?: number | null;
   after_value_gross?: number | null;
-  total_net?: number | null;
-  total_vat?: number | null;
-  total_gross?: number | null;
 }
 
 export default function InvoiceDetailPage({ params }: { params: { id: string } }) {
@@ -175,7 +163,11 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     settlementSummary?: Invoice['settlement_summary'];
   } | null>(null);
 
-  const fetchInvoice = useCallback(async () => {
+  useEffect(() => {
+    fetchInvoice();
+  }, [params.id]);
+
+  const fetchInvoice = async () => {
     try {
       const [invoiceRes, itemsRes] = await Promise.all([
         supabase
@@ -230,7 +222,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           promises.push(
             supabase
               .from('invoices')
-              .select('id, invoice_number, invoice_type, event_id')
+              .select('id, invoice_number, invoice_type')
               .eq('id', invoiceRes.data.related_invoice_id)
               .maybeSingle(),
           );
@@ -273,10 +265,6 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               .eq('id', contactPersonId)
               .maybeSingle();
 
-            if (contactError) {
-              console.error('Error fetching contact:', contactError);
-            }
-
             if (contact) {
               related.primaryContact = {
                 id: contact.id,
@@ -299,11 +287,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     } finally {
       setLoading(false);
     }
-  }, [params.id]);
-
-  useEffect(() => {
-    fetchInvoice();
-  }, [fetchInvoice]);
+  };
 
   useEffect(() => {
     if (!invoice) return;
@@ -387,14 +371,6 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     };
   };
 
-  const handleKsefSuccess = useCallback(async () => {
-    await fetchInvoice();
-  }, [fetchInvoice]);
-
-  const handleKsefError = useCallback((error: string) => {
-    console.error('[KSeF error]', error);
-  }, []);
-
   useEffect(() => {
     if (!invoice) return;
 
@@ -406,48 +382,27 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
   const handleGeneratePDF = async () => {
     if (!invoice) return;
-
     setGenerating(true);
-
     try {
-      const resolvedEventId = invoice.event_id || relatedData.relatedInvoice?.event_id || null;
-
       const { data: freshItems } = await supabase
         .from('invoice_items')
         .select('*')
         .eq('invoice_id', invoice.id)
         .order('position_number', { ascending: true });
 
-      const pdfItems = freshItems || items;
-
       if (freshItems && freshItems.length > 0) {
         setItems(freshItems);
+
         setInvoice((prev) => (prev ? { ...prev, invoice_items: freshItems } : prev));
       }
 
       const finalSettlementData = await buildFinalSettlementData(invoice);
 
-      const pdfAmountToPay =
-        (invoice.invoice_type === 'final' || invoice.invoice_number?.startsWith('FKO/')) &&
-        finalSettlementData.settlementSummary
-          ? Number(finalSettlementData.settlementSummary.remainingGross ?? 0)
-          : Number(invoice.total_gross ?? 0);
-
-      const normalizedPaymentStatus: 'unpaid' | 'partial' | 'paid' =
-        invoice.payment_status || (invoice.status === 'paid' ? 'paid' : 'unpaid');
-
-      const normalizedPaidAmount =
-        normalizedPaymentStatus === 'paid' ? pdfAmountToPay : Number(invoice.paid_amount ?? 0);
-
       const html = buildInvoicePdfHtml({
-        paymentStatus: normalizedPaymentStatus,
-        paidAmount: normalizedPaidAmount,
-        paidAt: invoice.paid_at,
-
         buyerIsPrivatePerson: invoice.buyer_is_private_person,
         footerNote: invoice.footer_note || '',
         signatureName: invoice.signature_name || 'Mateusz Kwiatkowski',
-        website: invoice.website || null,
+        website: invoice.website || 'www.mavinci.pl',
         invoiceNumber: invoice.invoice_number,
         invoiceType:
           invoice.invoice_type === 'proforma' || invoice.is_proforma
@@ -479,7 +434,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
         correctionReason: invoice.correction_reason || undefined,
         correctedInvoiceNumber: invoice.corrected_invoice_number || undefined,
         correctedInvoiceIssueDate: invoice.corrected_invoice_issue_date || undefined,
-        items: pdfItems.map((item: InvoiceItem) => ({
+        items: (freshItems || items).map((item: any) => ({
           positionNumber: item.position_number,
           name: item.name,
           unit: item.unit,
@@ -490,12 +445,11 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           vatAmount: item.vat_amount,
           valueGross: item.value_gross,
         })),
-        invoice_items: (freshItems || invoice.invoice_items || []) as InvoiceItem[],
+        invoice_items: (freshItems || invoice.invoice_items || []) as any,
         isProforma: false,
         settledInvoices: invoice.settled_invoices ?? finalSettlementData.settledInvoices,
         settlementSummary: invoice.settlement_summary ?? finalSettlementData.settlementSummary,
       });
-
       const response = await fetch('/bridge/invoices/invoice-pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -503,9 +457,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           html,
           fileName: `Faktura_${invoice.invoice_number}.pdf`,
           invoiceId: invoice.id,
-          eventId: resolvedEventId,
-          organizationId: invoice.organization_id || null,
-          buyerContactId: invoice.buyer_contact_id || null,
+          eventId: invoice.event_id,
           createdBy: employee?.id ?? null,
           previousPdfPath: pdfPath,
         }),
@@ -517,11 +469,9 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
       }
 
       const result = await response.json();
-
       if (result.base64) {
         setLastBase64(result.base64);
       }
-
       if (result.storagePath) {
         setPdfPath(result.storagePath);
         setInvoice((prev) =>
@@ -531,16 +481,11 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
         );
         showSnackbar('PDF wygenerowany i zapisany', 'success');
       } else {
-        showSnackbar('PDF wygenerowany', 'success');
+        showSnackbar('PDF wygenerowany (brak powiazanego eventu do zapisu)', 'info');
       }
-    } catch (err: unknown | Error) {
-      if (err instanceof Error) {
-        console.error('Error generating PDF:', err);
-        showSnackbar(err.message, 'error');
-      } else {
-        console.error('Error generating PDF:', err);
-        showSnackbar('Nieznany błąd podczas generowania PDF', 'error');
-      }
+    } catch (err: any) {
+      console.error('Error generating PDF:', err);
+      showSnackbar(err.message || 'Blad generowania PDF', 'error');
     } finally {
       setGenerating(false);
     }
@@ -655,37 +600,37 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   const handleStatusChange = async (newStatus: string) => {
     if (!invoice) return;
 
-    const safeStatus = newStatus;
+    let safeStatus = newStatus;
 
-    const updateData: Record<string, string | number | null> = {
-      status: safeStatus,
-    };
+    if (invoice.is_proforma) {
+      const allowed = ['draft', 'proforma', 'cancelled'];
 
-    if (safeStatus === 'paid') {
-      updateData.payment_status = 'paid';
-      updateData.paid_amount = Number(invoice.total_gross ?? 0);
-      updateData.paid_at = new Date().toISOString();
-      updateData.payment_due_date = new Date().toISOString().split('T')[0];
-    }
-
-    if (safeStatus !== 'paid' && invoice.payment_status === 'paid') {
-      updateData.payment_status = 'unpaid';
-      updateData.paid_amount = 0;
-      updateData.paid_at = null;
+      if (!allowed.includes(newStatus)) {
+        safeStatus = 'proforma';
+      }
+    } else {
+      if (newStatus === 'proforma') {
+        safeStatus = 'draft';
+      }
     }
 
     try {
-      const { error } = await supabase.from('invoices').update(updateData).eq('id', params.id);
+      const { error } = await supabase
+        .from('invoices')
+        .update({ status: safeStatus })
+        .eq('id', params.id);
 
       if (error) throw error;
 
-      setInvoice((prev) => (prev ? { ...prev, ...updateData } : null));
-      showSnackbar('Status faktury został zmieniony', 'success');
+      setInvoice((prev) => (prev ? { ...prev, status: safeStatus } : null));
+      showSnackbar('Status faktury zostal zmieniony', 'success');
     } catch (err) {
       console.error('Error updating status:', err);
-      showSnackbar('Błąd podczas zmiany statusu', 'error');
+      showSnackbar('Blad podczas zmiany statusu', 'error');
     }
   };
+
+  const [sendingToKSeF, setSendingToKSeF] = useState(false);
 
   const handleConvertToVAT = () => {
     setShowConvertProformaModal(true);
@@ -817,9 +762,6 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     return labels[type] || 'Faktura VAT';
   }
 
-  const paymentStatus = invoice.payment_status || (invoice.status === 'paid' ? 'paid' : 'unpaid');
-  const paidAmount = Number(invoice.paid_amount ?? 0);
-
   const previewSettlementSummary =
     invoice.settlement_summary ?? finalSettlementPreview?.settlementSummary;
 
@@ -834,72 +776,13 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
     : Number(invoice.total_gross ?? 0);
 
   const companyLogoUrl = invoice?.my_company?.logo_url || invoice?.company_logo_url || null;
-  const money = (value: number) => {
-    const rounded = Number(value.toFixed(2));
-    return Object.is(rounded, -0) ? 0 : rounded;
-  };
-
-  const getCorrectionValues = (item: InvoiceItem) => {
-    const vatRate = Number(item.vat_rate ?? 0);
-
-    const beforeQty = Number(item.before_quantity ?? 0);
-    const beforePrice = Number(item.before_price_net ?? item.price_net ?? 0);
-    const beforeNet = money(Number(item.before_value_net ?? beforeQty * beforePrice));
-    const beforeVat = money(Number(item.before_vat_amount ?? (beforeNet * vatRate) / 100));
-    const beforeGross = money(Number(item.before_value_gross ?? beforeNet + beforeVat));
-
-    const correctionNet = money(Number(item.value_net ?? 0));
-    const correctionVat = money(Number(item.vat_amount ?? (correctionNet * vatRate) / 100));
-    const correctionGross = money(Number(item.value_gross ?? correctionNet + correctionVat));
-
-    const correctionQty =
-      correctionNet !== 0 && beforePrice !== 0
-        ? money(Math.abs(correctionNet / beforePrice))
-        : Math.abs(Number(item.before_quantity ?? 1));
-
-    const correctionPrice =
-      correctionQty !== 0 ? money(correctionNet / correctionQty) : correctionNet;
-
-    return {
-      vatRate,
-
-      beforeQty,
-      beforePrice,
-      beforeNet,
-      beforeVat,
-      beforeGross,
-
-      correctionQty,
-      correctionPrice: -correctionPrice,
-      correctionNet: -correctionNet,
-      correctionVat: -correctionVat,
-      correctionGross: -correctionGross,
-    };
-  };
-
-  const formatSignedMoney = (value?: number) => {
-    const number = Number(value || 0);
-    return `${number > 0 ? '+' : ''}${number.toFixed(2)}`;
-  };
-
-  // const formatSignedQuantity = (value?: number) => {
-  //   const number = Number(value || 0);
-  //   if (!number) return '0';
-  //   return `${number > 0 ? '+' : ''}${number}`;
-  // };
-  const amountToPay =
-    paymentStatus === 'paid'
-      ? 0
-      : paymentStatus === 'partial'
-        ? Math.max(previewAmountToPay - paidAmount, 0)
-        : previewAmountToPay;
 
   return (
     <PermissionGuard module="invoices">
       <div className="min-h-screen bg-[#0a0d1a] p-6">
         <div className="mx-auto max-w-5xl">
           <button
-            onClick={() => router.push('/crm/invoices')}
+            onClick={() => router.back()}
             className="mb-6 flex items-center gap-2 text-[#e5e4e2]/60 hover:text-[#d3bb73]"
           >
             <ArrowLeft className="h-5 w-5" />
@@ -1264,7 +1147,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                     height={256}
                     src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/company-logos/${companyLogoUrl}`}
                     alt="Logo firmy"
-                    className="max-h-32 max-w-[300px] object-contain"
+                    className="h-32 w-auto object-contain"
                   />
                 ) : null}
               </div>
@@ -1324,300 +1207,129 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               </div>
             </div>
 
-            {invoice.invoice_type === 'corrective' &&
-            items.some((i) => i.before_quantity != null) ? (
+            {invoice.invoice_type === 'corrective' && items.some((i) => i.before_quantity != null) ? (
               <div className="mb-8">
-                {invoice.corrected_invoice_number && (
-                  <div className="mb-4 text-center text-sm">
-                    Dotyczy:{' '}
-                    {relatedData.relatedInvoice?.invoice_type === 'final'
-                      ? 'Faktura koncowa'
-                      : 'Faktura'}{' '}
-                    {invoice.corrected_invoice_number} z dnia:{' '}
-                    {invoice.corrected_invoice_issue_date
-                      ? new Date(invoice.corrected_invoice_issue_date).toLocaleDateString('pl-PL')
-                      : '-'}
-                  </div>
-                )}
-                <table className="mb-4 w-full text-sm">
-                  <thead className="bg-gray-100">
-                    <tr>
-                      <th className="border border-gray-300 px-1.5 py-1 text-left">Lp.</th>
-                      <th className="border border-gray-300 px-1.5 py-1 text-left">
-                        Nazwa towaru lub uslugi
-                      </th>
-                      <th className="border border-gray-300 px-1.5 py-1">Jm.</th>
-                      <th className="border border-gray-300 px-1.5 py-1">Ilosc</th>
-                      <th className="border border-gray-300 px-1.5 py-1">Cena netto</th>
-                      <th className="border border-gray-300 px-1.5 py-1">Wartosc netto</th>
-                      <th className="border border-gray-300 px-1.5 py-1">Stawka VAT</th>
-                      <th className="border border-gray-300 px-1.5 py-1">Kwota VAT</th>
-                      <th className="border border-gray-300 px-1.5 py-1">Wartosc brutto</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map((item) => {
-                      const correction = getCorrectionValues(item);
-                      return (
-                        <tr key={item.id} className="group">
-                          <td className="border border-gray-300 px-1.5 py-1 align-top" rowSpan={3}>
-                            {item.position_number}
-                          </td>
-                          <td colSpan={8} className="border border-gray-300 p-0">
-                            <table className="w-full">
-                              <tbody>
-                                <tr>
-                                  <td className="border-b border-gray-200 px-1.5 py-1 text-left">
-                                    <span className="text-xs text-gray-500">Przed korektą:</span>
-                                    <br />
-                                    {item.name}
-                                  </td>
-
-                                  <td className="w-[50px] border-b border-gray-200 px-1.5 py-1 text-center">
-                                    {item.unit}
-                                  </td>
-
-                                  <td className="w-[60px] border-b border-gray-200 px-1.5 py-1 text-right">
-                                    {correction.beforeQty}
-                                  </td>
-
-                                  <td className="w-[80px] border-b border-gray-200 px-1.5 py-1 text-right">
-                                    {correction.beforePrice.toFixed(2)}
-                                  </td>
-
-                                  <td className="w-[90px] border-b border-gray-200 px-1.5 py-1 text-right">
-                                    {correction.beforeNet.toFixed(2)}
-                                  </td>
-
-                                  <td className="w-[50px] border-b border-gray-200 px-1.5 py-1 text-center">
-                                    {item.vat_rate}%
-                                  </td>
-
-                                  <td className="w-[80px] border-b border-gray-200 px-1.5 py-1 text-right">
-                                    {correction.beforeVat.toFixed(2)}
-                                  </td>
-
-                                  <td className="w-[90px] border-b border-gray-200 px-1.5 py-1 text-right">
-                                    {correction.beforeGross.toFixed(2)}
-                                  </td>
-                                </tr>
-
-                                <tr>
-                                  <td className="border-b border-gray-200 px-1.5 py-1 text-left">
-                                    <span className="text-xs text-gray-500">Korekta:</span>
-                                    <br />
-                                    {item.name}
-                                  </td>
-
-                                  <td className="border-b border-gray-200 px-1.5 py-1 text-center">
-                                    {item.unit}
-                                  </td>
-
-                                  <td className="border-b border-gray-200 px-1.5 py-1 text-right">
-                                    {correction.correctionQty}
-                                  </td>
-
-                                  <td className="border-b border-gray-200 px-1.5 py-1 text-right">
-                                    {correction.correctionPrice < 0 ? '' : '-'}
-                                    {Math.abs(correction.correctionPrice).toFixed(2)}
-                                  </td>
-
-                                  <td className="border-b border-gray-200 px-1.5 py-1 text-right">
-                                    {correction.correctionNet < 0 ? '' : '-'}
-                                    {Math.abs(correction.correctionNet).toFixed(2)}
-                                  </td>
-
-                                  <td className="border-b border-gray-200 px-1.5 py-1 text-center">
-                                    {item.vat_rate}%
-                                  </td>
-
-                                  <td className="border-b border-gray-200 px-1.5 py-1 text-right">
-                                    {correction.correctionVat < 0 ? '' : '-'}
-                                    {Math.abs(correction.correctionVat).toFixed(2)}
-                                  </td>
-
-                                  <td className="border-b border-gray-200 px-1.5 py-1 text-right">
-                                    {correction.correctionGross < 0 ? '' : '-'}
-                                    {Math.abs(correction.correctionGross).toFixed(2)}
-                                  </td>
-                                </tr>
-                                {/* <tr className="bg-gray-50 font-medium">
-                                  <td className="px-1.5 py-1 text-left">
-                                    <span className="text-xs">Korekta</span>
-                                  </td>
-                                  <td className="px-1.5 py-1 text-center"></td>
-                                  <td className="px-1.5 py-1 text-right">
-                                    {formatSignedQuantity(correction.correctionQty)}
-                                  </td>
-                                  <td className="px-1.5 py-1 text-right">
-                                    {formatSignedMoney(correction.correctionPrice)}
-                                  </td>
-                                  <td className="px-1.5 py-1 text-right">
-                                    {item.value_net.toFixed(2)}
-                                  </td>
-                                  <td className="px-1.5 py-1 text-center">{item.vat_rate}%</td>
-                                  <td className="px-1.5 py-1 text-right">
-                                    {item.vat_amount.toFixed(2)}
-                                  </td>
-                                  <td className="px-1.5 py-1 text-right">
-                                    {item.value_gross.toFixed(2)}
-                                  </td>
-                                </tr> */}
-                              </tbody>
-                            </table>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-
-                {(() => {
-                  const totalBeforeNet = items.reduce(
-                    (sum, i) => sum + (i.before_quantity ?? 0) * (i.before_price_net ?? 0),
-                    0,
-                  );
-                  const totalAfterNet = items.reduce((sum, i) => {
-                    const aq = i.after_quantity ?? i.before_quantity ?? 0;
-                    const ap = i.after_price_net ?? i.before_price_net ?? 0;
-                    return sum + aq * ap;
-                  }, 0);
-                  const totalBeforeVat = items.reduce(
-                    (sum, i) =>
-                      sum +
-                      Math.round(
-                        (i.before_quantity ?? 0) * (i.before_price_net ?? 0) * i.vat_rate,
-                      ) /
-                        100,
-                    0,
-                  );
-                  const totalAfterVat = items.reduce((sum, i) => {
-                    const aq = i.after_quantity ?? i.before_quantity ?? 0;
-                    const ap = i.after_price_net ?? i.before_price_net ?? 0;
-                    return sum + Math.round(aq * ap * i.vat_rate) / 100;
-                  }, 0);
-                  const totalBeforeGross = totalBeforeNet + totalBeforeVat;
-                  const totalAfterGross = totalAfterNet + totalAfterVat;
+                {items.map((item) => {
+                  const beforeNet = (item.before_quantity ?? 0) * (item.before_price_net ?? 0);
+                  const afterNet = (item.after_quantity ?? item.before_quantity ?? 0) * (item.after_price_net ?? item.before_price_net ?? 0);
+                  const beforeVat = Math.round(beforeNet * item.vat_rate) / 100;
+                  const afterVat = Math.round(afterNet * item.vat_rate) / 100;
                   return (
-                    <table className="mb-4 ml-auto w-auto text-sm">
-                      <tbody>
-                        <tr className="font-medium">
-                          <td className="border border-gray-300 bg-gray-100 px-3 py-1 text-right">
-                            Przed korektą:
-                          </td>
-                          <td className="border border-gray-300 px-3 py-1 text-right">
-                            {totalBeforeNet.toFixed(2)}
-                          </td>
-                          <td className="border border-gray-300 px-3 py-1 text-right">
-                            {totalBeforeVat.toFixed(2)}
-                          </td>
-                          <td className="border border-gray-300 px-3 py-1 text-right">
-                            {totalBeforeGross.toFixed(2)}
-                          </td>
-                        </tr>
-                        <tr className="font-medium">
-                          <td className="border border-gray-300 bg-gray-100 px-3 py-1 text-right">
-                            Korekta:
-                          </td>
-                          <td className="border border-gray-300 px-3 py-1 text-right">
-                            {invoice.total_net.toFixed(2)}
-                          </td>
-                          <td className="border border-gray-300 px-3 py-1 text-right">
-                            {invoice.total_vat.toFixed(2)}
-                          </td>
-                          <td className="border border-gray-300 px-3 py-1 text-right">
-                            {invoice.total_gross.toFixed(2)}
-                          </td>
-                        </tr>
-                        <tr className="font-bold">
-                          <td className="border border-gray-300 bg-gray-100 px-3 py-1 text-right">
-                            Po korekcie:
-                          </td>
-                          <td className="border border-gray-300 px-3 py-1 text-right">
-                            {totalAfterNet.toFixed(2)}
-                          </td>
-                          <td className="border border-gray-300 px-3 py-1 text-right">
-                            {totalAfterVat.toFixed(2)}
-                          </td>
-                          <td className="border border-gray-300 px-3 py-1 text-right">
-                            {totalAfterGross.toFixed(2)}
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
+                    <div key={item.id} className="mb-3 border border-gray-300 p-2 text-sm">
+                      <div className="mb-2 font-medium">
+                        {item.position_number}. {item.name} ({item.unit}, VAT {item.vat_rate}%)
+                      </div>
+                      <table className="w-full text-xs">
+                        <thead className="bg-gray-100">
+                          <tr>
+                            <th className="border border-gray-200 px-1.5 py-1"></th>
+                            <th className="border border-gray-200 px-1.5 py-1">Ilosc</th>
+                            <th className="border border-gray-200 px-1.5 py-1">Cena netto</th>
+                            <th className="border border-gray-200 px-1.5 py-1">Wartosc netto</th>
+                            <th className="border border-gray-200 px-1.5 py-1">Kwota VAT</th>
+                            <th className="border border-gray-200 px-1.5 py-1">Wartosc brutto</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr>
+                            <td className="border border-gray-200 px-1.5 py-1 font-medium">Przed</td>
+                            <td className="border border-gray-200 px-1.5 py-1 text-right">{item.before_quantity ?? 0}</td>
+                            <td className="border border-gray-200 px-1.5 py-1 text-right">{(item.before_price_net ?? 0).toFixed(2)}</td>
+                            <td className="border border-gray-200 px-1.5 py-1 text-right">{beforeNet.toFixed(2)}</td>
+                            <td className="border border-gray-200 px-1.5 py-1 text-right">{beforeVat.toFixed(2)}</td>
+                            <td className="border border-gray-200 px-1.5 py-1 text-right">{(beforeNet + beforeVat).toFixed(2)}</td>
+                          </tr>
+                          <tr>
+                            <td className="border border-gray-200 px-1.5 py-1 font-medium">Po</td>
+                            <td className="border border-gray-200 px-1.5 py-1 text-right">{item.after_quantity ?? item.before_quantity ?? 0}</td>
+                            <td className="border border-gray-200 px-1.5 py-1 text-right">{(item.after_price_net ?? item.before_price_net ?? 0).toFixed(2)}</td>
+                            <td className="border border-gray-200 px-1.5 py-1 text-right">{afterNet.toFixed(2)}</td>
+                            <td className="border border-gray-200 px-1.5 py-1 text-right">{afterVat.toFixed(2)}</td>
+                            <td className="border border-gray-200 px-1.5 py-1 text-right">{(afterNet + afterVat).toFixed(2)}</td>
+                          </tr>
+                          <tr className="bg-gray-50 font-medium">
+                            <td className="border border-gray-200 px-1.5 py-1 font-medium">Roznica</td>
+                            <td className="border border-gray-200 px-1.5 py-1 text-right">{((item.after_quantity ?? item.before_quantity ?? 0) - (item.before_quantity ?? 0)).toFixed(2)}</td>
+                            <td className="border border-gray-200 px-1.5 py-1 text-right">{((item.after_price_net ?? item.before_price_net ?? 0) - (item.before_price_net ?? 0)).toFixed(2)}</td>
+                            <td className="border border-gray-200 px-1.5 py-1 text-right">{item.value_net.toFixed(2)}</td>
+                            <td className="border border-gray-200 px-1.5 py-1 text-right">{item.vat_amount.toFixed(2)}</td>
+                            <td className="border border-gray-200 px-1.5 py-1 text-right">{item.value_gross.toFixed(2)}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
                   );
-                })()}
-
-                <div className="border border-gray-300 bg-gray-100 p-3 text-sm font-bold">
+                })}
+                <div className="border border-gray-300 bg-gray-100 p-2 text-sm font-bold">
                   <div className="flex justify-between">
-                    <span>{invoice.total_gross < 0 ? 'Razem do zwrotu:' : 'Suma korekt:'}</span>
-                    <span>{formatSignedMoney(invoice.total_gross)} PLN</span>
+                    <span>Kwota korekty:</span>
+                    <span>
+                      Netto: {invoice.total_net.toFixed(2)} zl | VAT: {invoice.total_vat.toFixed(2)} zl | Brutto: {invoice.total_gross.toFixed(2)} zl
+                    </span>
                   </div>
                 </div>
               </div>
             ) : (
-              <table className="mb-8 w-full text-sm">
-                <thead className="bg-gray-100">
-                  <tr>
-                    <th className="border border-gray-300 px-1.5 py-1 text-left">Lp.</th>
-                    <th className="border border-gray-300 px-1.5 py-1 text-left">
-                      Nazwa towaru lub uslugi
-                    </th>
-                    <th className="border border-gray-300 px-1.5 py-1">Jm.</th>
-                    <th className="border border-gray-300 px-1.5 py-1">Ilosc</th>
-                    <th className="border border-gray-300 px-1.5 py-1">Cena netto</th>
-                    <th className="border border-gray-300 px-1.5 py-1">Wartosc netto</th>
-                    <th className="border border-gray-300 px-1.5 py-1">Stawka VAT</th>
-                    <th className="border border-gray-300 px-1.5 py-1">Kwota VAT</th>
-                    <th className="border border-gray-300 px-1.5 py-1">Wartosc brutto</th>
+            <table className="mb-8 w-full text-sm">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="border border-gray-300 px-1.5 py-1 text-left">Lp.</th>
+                  <th className="border border-gray-300 px-1.5 py-1 text-left">
+                    Nazwa towaru lub uslugi
+                  </th>
+                  <th className="border border-gray-300 px-1.5 py-1">Jm.</th>
+                  <th className="border border-gray-300 px-1.5 py-1">Ilosc</th>
+                  <th className="border border-gray-300 px-1.5 py-1">Cena netto</th>
+                  <th className="border border-gray-300 px-1.5 py-1">Wartosc netto</th>
+                  <th className="border border-gray-300 px-1.5 py-1">Stawka VAT</th>
+                  <th className="border border-gray-300 px-1.5 py-1">Kwota VAT</th>
+                  <th className="border border-gray-300 px-1.5 py-1">Wartosc brutto</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item) => (
+                  <tr key={item.id}>
+                    <td className="border border-gray-300 px-1.5 py-1">{item.position_number}</td>
+                    <td className="border border-gray-300 px-1.5 py-1">{item.name}</td>
+                    <td className="border border-gray-300 px-1.5 py-1 text-center">{item.unit}</td>
+                    <td className="border border-gray-300 px-1.5 py-1 text-right">
+                      {item.quantity}
+                    </td>
+                    <td className="border border-gray-300 px-1.5 py-1 text-right">
+                      {item.price_net.toFixed(2)}
+                    </td>
+                    <td className="border border-gray-300 px-1.5 py-1 text-right">
+                      {item.value_net.toFixed(2)}
+                    </td>
+                    <td className="border border-gray-300 px-1.5 py-1 text-center">
+                      {item.vat_rate}%
+                    </td>
+                    <td className="border border-gray-300 px-1.5 py-1 text-right">
+                      {item.vat_amount.toFixed(2)}
+                    </td>
+                    <td className="border border-gray-300 px-1.5 py-1 text-right font-medium">
+                      {item.value_gross.toFixed(2)}
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {items.map((item) => (
-                    <tr key={item.id}>
-                      <td className="border border-gray-300 px-1.5 py-1">{item.position_number}</td>
-                      <td className="border border-gray-300 px-1.5 py-1">{item.name}</td>
-                      <td className="border border-gray-300 px-1.5 py-1 text-center">
-                        {item.unit}
-                      </td>
-                      <td className="border border-gray-300 px-1.5 py-1 text-right">
-                        {item.quantity}
-                      </td>
-                      <td className="border border-gray-300 px-1.5 py-1 text-right">
-                        {item.price_net.toFixed(2)}
-                      </td>
-                      <td className="border border-gray-300 px-1.5 py-1 text-right">
-                        {item.value_net.toFixed(2)}
-                      </td>
-                      <td className="border border-gray-300 px-1.5 py-1 text-center">
-                        {item.vat_rate}%
-                      </td>
-                      <td className="border border-gray-300 px-1.5 py-1 text-right">
-                        {item.vat_amount.toFixed(2)}
-                      </td>
-                      <td className="border border-gray-300 px-1.5 py-1 text-right font-medium">
-                        {item.value_gross.toFixed(2)}
-                      </td>
-                    </tr>
-                  ))}
+                ))}
 
-                  <tr className="bg-gray-100 font-bold">
-                    <td colSpan={5} className="border border-gray-300 px-1.5 py-1 text-right">
-                      Razem
-                    </td>
-                    <td className="border border-gray-300 px-1.5 py-1 text-right">
-                      {invoice.total_net.toFixed(2)}
-                    </td>
-                    <td className="border border-gray-300 px-1.5 py-1"></td>
-                    <td className="border border-gray-300 px-1.5 py-1 text-right">
-                      {invoice.total_vat.toFixed(2)}
-                    </td>
-                    <td className="border border-gray-300 px-1.5 py-1 text-right">
-                      {invoice.total_gross.toFixed(2)}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+                <tr className="bg-gray-100 font-bold">
+                  <td colSpan={5} className="border border-gray-300 px-1.5 py-1 text-right">
+                    Razem
+                  </td>
+                  <td className="border border-gray-300 px-1.5 py-1 text-right">
+                    {invoice.total_net.toFixed(2)}
+                  </td>
+                  <td className="border border-gray-300 px-1.5 py-1"></td>
+                  <td className="border border-gray-300 px-1.5 py-1 text-right">
+                    {invoice.total_vat.toFixed(2)}
+                  </td>
+                  <td className="border border-gray-300 px-1.5 py-1 text-right">
+                    {invoice.total_gross.toFixed(2)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
             )}
 
             {previewSettledInvoices.length > 0 && (
@@ -1711,14 +1423,6 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                   <span className="text-gray-600">Termin platnosci:</span>{' '}
                   {new Date(invoice.payment_due_date).toLocaleDateString('pl-PL')}
                 </div>
-                <div className="mb-2">
-                  <span className="text-gray-600">Status płatności:</span>{' '}
-                  {paymentStatus === 'paid'
-                    ? `Zapłacono${invoice.paid_at ? ` (${new Date(invoice.paid_at).toLocaleDateString('pl-PL')})` : ''}`
-                    : paymentStatus === 'partial'
-                      ? `Częściowo zapłacono: ${paidAmount.toFixed(2)} PLN`
-                      : 'Do zapłaty'}
-                </div>
                 <div>
                   <span className="text-gray-600">Numer konta:</span>
                   <div className="font-mono">{invoice.bank_account}</div>
@@ -1731,26 +1435,15 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
               <div>
                 <div className="mb-2">
                   <span className="text-gray-600">
-                    {invoice.invoice_type === 'corrective'
-                      ? 'Kwota korekty:'
-                      : paymentStatus === 'paid'
-                        ? 'Zapłacono:'
-                        : paymentStatus === 'partial'
-                          ? 'Pozostało do zapłaty:'
-                          : 'Do zapłaty:'}
+                    {invoice.invoice_type === 'corrective' ? 'Kwota korekty:' : 'Do zaplaty:'}
                   </span>{' '}
-                  <span className="text-base font-bold">{amountToPay.toFixed(2)} PLN</span>
+                  <span className="text-base font-bold">{previewAmountToPay.toFixed(2)} PLN</span>
                 </div>
               </div>
             </div>
 
             <div className="mb-5 text-[10px] leading-snug text-gray-600">
-              {invoice.footer_note && (
-                <span style={{ whiteSpace: 'pre-wrap', fontWeight: '700' }}>Uwagi:</span>
-              )}{' '}
-              {invoice.footer_note && (
-                <span style={{ whiteSpace: 'pre-wrap' }}>{invoice.footer_note}</span>
-              )}
+              {invoice.footer_note || ''}
             </div>
 
             <div className="flex justify-end">
@@ -1863,8 +1556,10 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
           <KSeFSendModal
             invoiceId={invoice.id}
             invoiceNumber={invoice.invoice_number}
-            onSuccess={handleKsefSuccess}
-            onError={handleKsefError}
+            onSuccess={async () => {
+              await fetchInvoice();
+            }}
+            onError={() => {}}
             onClose={() => setShowKSeFModal(false)}
           />
         )}

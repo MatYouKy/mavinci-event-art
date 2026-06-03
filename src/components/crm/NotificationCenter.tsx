@@ -49,12 +49,9 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [customSoundUrl, setCustomSoundUrl] = useState<string | null>(null);
-  const soundEnabledRef = useRef(true);
-  const customSoundUrlRef = useRef<string | null>(null);
   const prevUnreadCountRef = useRef<number>(0);
   const readyForSoundRef = useRef(false);
   const initialLoadDoneRef = useRef(false);
-  const sessionStartRef = useRef<string>(new Date().toISOString());
   const [absenceModalId, setAbsenceModalId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -66,34 +63,7 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notification_recipients',
-        },
-        (payload) => {
-          const newRow = payload.new as any;
-          const createdAt = newRow?.created_at;
-          if (createdAt && createdAt > sessionStartRef.current && readyForSoundRef.current && soundEnabledRef.current) {
-            playNotificationSound();
-          }
-          fetchNotifications();
-        },
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'notification_recipients',
-        },
-        (payload) => {
-          fetchNotifications();
-        },
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'DELETE',
+          event: '*',
           schema: 'public',
           table: 'notification_recipients',
         },
@@ -125,14 +95,6 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
   }, []);
 
   useEffect(() => {
-    soundEnabledRef.current = soundEnabled;
-  }, [soundEnabled]);
-
-  useEffect(() => {
-    customSoundUrlRef.current = customSoundUrl;
-  }, [customSoundUrl]);
-
-  useEffect(() => {
     if (!initialLoadDoneRef.current) {
       initialLoadDoneRef.current = true;
       prevUnreadCountRef.current = unreadCount;
@@ -142,8 +104,17 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
       return;
     }
 
+    if (!readyForSoundRef.current) {
+      prevUnreadCountRef.current = unreadCount;
+      return;
+    }
+
+    if (unreadCount > prevUnreadCountRef.current && soundEnabled) {
+      playNotificationSound();
+    }
+
     prevUnreadCountRef.current = unreadCount;
-  }, [unreadCount]);
+  }, [unreadCount, soundEnabled]);
 
   const loadUserPreferences = async () => {
     try {
@@ -173,8 +144,8 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
 
   const playNotificationSound = () => {
     try {
-      if (customSoundUrlRef.current) {
-        const audio = new Audio(customSoundUrlRef.current);
+      if (customSoundUrl) {
+        const audio = new Audio(customSoundUrl);
         audio.volume = 0.5;
         audio.play().catch(() => {});
         return;

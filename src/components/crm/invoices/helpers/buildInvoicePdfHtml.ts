@@ -11,14 +11,10 @@ export interface SettledInvoicePdfRef {
 }
 
 interface InvoicePdfData {
-  paymentStatus?: 'unpaid' | 'partial' | 'paid' | null;
-  paidAmount?: number | null;
-  paidAt?: string | null;
-
   buyerIsPrivatePerson: boolean;
   footerNote: string;
   signatureName: string;
-  website?: string | null;
+  website: string;
   invoiceNumber: string;
   invoiceType: string;
   issueDate: string;
@@ -56,7 +52,6 @@ interface InvoicePdfData {
     valueNet: number;
     vatAmount: number;
     valueGross: number;
-    unitPriceNet?: number;
   }>;
   invoice_items?: Array<InvoiceItem>;
   settledInvoices?: SettledInvoicePdfRef[];
@@ -70,12 +65,13 @@ interface InvoicePdfData {
     remainingNet: number;
     remainingVat: number;
     remainingGross: number;
-    unitPriceNet?: number;
   };
 }
 
 function getTypeLabel(type: string, invoiceNumber?: string) {
-  if (type === 'final' || invoiceNumber?.startsWith('FKO/')) return 'Faktura końcowa';
+  if (type === 'final' || invoiceNumber?.startsWith('FKO/')) {
+    return 'Faktura końcowa';
+  }
 
   const labels: Record<string, string> = {
     vat: 'Faktura VAT',
@@ -89,7 +85,7 @@ function getTypeLabel(type: string, invoiceNumber?: string) {
 }
 
 export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
-  const esc = (s: unknown) =>
+  const esc = (s: any) =>
     String(s ?? '')
       .replaceAll('&', '&amp;')
       .replaceAll('<', '&lt;')
@@ -97,89 +93,23 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
       .replaceAll('"', '&quot;')
       .replaceAll("'", '&#039;');
 
-  const formatDate = (value?: string | null) => {
+  const formatDate = (value?: string) => {
     if (!value) return '';
     return new Date(value).toLocaleDateString('pl-PL');
   };
 
-  const money = (value?: number | null) => {
-    const rounded = Number(Number(value || 0).toFixed(2));
-    return Object.is(rounded, -0) ? 0 : rounded;
-  };
-
-  const formatMoney = (value?: number | null) => money(value).toFixed(2);
-
-  const formatSignedMoney = (value?: number | null) => {
-    const number = money(value);
-    return `${number > 0 ? '+' : ''}${number.toFixed(2)}`;
-  };
-
-  const isCorrectiveInvoice = data.invoiceType === 'corrective';
-  const isFinalInvoice =
-    data.invoiceType === 'final' || data.invoiceNumber?.startsWith('FKO/');
-
-  const invoiceTotalToPay =
-    isFinalInvoice && data.settlementSummary
-      ? money(data.settlementSummary.remainingGross)
-      : money(data.totalGross);
-
-  const paymentMethod = data.paymentMethod?.toLowerCase().trim() || '';
-
-  const isCash =
-    paymentMethod === 'gotówka' ||
-    paymentMethod === 'gotowka' ||
-    paymentMethod === 'cash';
-
-  const paymentStatus: 'unpaid' | 'partial' | 'paid' =
-    data.paymentStatus || (isCash ? 'paid' : 'unpaid');
-
-  const paidAmount =
-    paymentStatus === 'paid' ? invoiceTotalToPay : money(data.paidAmount ?? 0);
-
-  const remainingAmount =
-    paymentStatus === 'paid'
-      ? 0
-      : paymentStatus === 'partial'
-        ? Math.max(invoiceTotalToPay - paidAmount, 0)
-        : invoiceTotalToPay;
-
-  const paymentLabel = isCorrectiveInvoice
-    ? data.totalGross < 0
-      ? 'Razem do zwrotu:'
-      : 'Suma korekt:'
-    : paymentStatus === 'paid'
-      ? 'Zapłacono:'
-      : paymentStatus === 'partial'
-        ? 'Pozostało do zapłaty:'
-        : 'Do zapłaty:';
-
-  const paymentInfoHtml =
-    paymentStatus === 'paid'
-      ? `
-        <div style="margin-top: 4px; font-size: 10px; color: #666;">
-          ${data.paidAt ? `Opłacono dnia: ${esc(formatDate(data.paidAt))}` : 'Faktura opłacona'}
-        </div>
-      `
-      : paymentStatus === 'partial'
-        ? `
-          <div style="margin-top: 4px; font-size: 10px; color: #666;">
-            Zapłacono: ${formatMoney(paidAmount)} PLN${
-              data.paidAt ? ` dnia ${esc(formatDate(data.paidAt))}` : ''
-            }
-          </div>
-        `
-        : '';
+  const formatMoney = (value?: number) => Number(value || 0).toFixed(2);
 
   const invoiceItems =
     data.items && data.items.length > 0
       ? data.items
       : data.invoice_items && data.invoice_items.length > 0
-        ? data.invoice_items.map((item: InvoiceItem, idx: number) => ({
+        ? data.invoice_items.map((item: any, idx: number) => ({
             positionNumber: item.position_number ?? idx + 1,
             name: item.name,
             unit: item.unit,
             quantity: Number(item.quantity),
-            priceNet: Number(item.price_net ?? item.price_net ?? 0),
+            priceNet: Number(item.price_net ?? item.unit_price_net ?? 0),
             vatRate: Number(item.vat_rate ?? 0),
             valueNet: Number(item.value_net ?? item.total_net ?? 0),
             vatAmount: Number(item.vat_amount ?? item.total_vat ?? 0),
@@ -187,47 +117,27 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
           }))
         : [];
 
-  const getCorrectionValues = (item: InvoiceItem) => {
-    const vatRate = Number(item.vat_rate ?? 0);
+        const paymentMethod = data.paymentMethod?.toLowerCase().trim() || '';
+const isCash = paymentMethod === 'gotówka' || paymentMethod === 'gotowka' || paymentMethod === 'cash';
 
-    const beforeQty = Number(item.before_quantity ?? 0);
-    const beforePrice = Number(item.before_price_net ?? item.price_net ?? 0);
-    const beforeNet = money(item.before_value_net ?? beforeQty * beforePrice);
-    const beforeVat = money(item.before_vat_amount ?? (beforeNet * vatRate) / 100);
-    const beforeGross = money(item.before_value_gross ?? beforeNet + beforeVat);
+const isCorrectiveInvoice = data.invoiceType === 'corrective';
+const label = isCorrectiveInvoice
+  ? 'Kwota korekty:'
+  : isCash ? 'Zapłacono:' : 'Do zapłaty:';
 
-    const correctionNet = money(item.value_net ?? 0);
-    const correctionVat = money(item.vat_amount ?? (correctionNet * vatRate) / 100);
-    const correctionGross = money(item.value_gross ?? correctionNet + correctionVat);
+const isFinalInvoice =
+  data.invoiceType === 'final' || data.invoiceNumber?.startsWith('FKO/');
 
-    const correctionQty =
-      correctionNet !== 0 && beforePrice !== 0
-        ? money(Math.abs(correctionNet / beforePrice))
-        : Math.abs(Number(item.before_quantity ?? item.quantity ?? 1));
-
-    const correctionPrice =
-      correctionQty !== 0 ? money(correctionNet / correctionQty) : correctionNet;
-
-    return {
-      vatRate,
-      beforeQty,
-      beforePrice,
-      beforeNet,
-      beforeVat,
-      beforeGross,
-      correctionQty,
-      correctionPrice,
-      correctionNet,
-      correctionVat,
-      correctionGross,
-    };
-  };
+  const amountToPay = isFinalInvoice && data.settlementSummary
+  ? data.settlementSummary.remainingGross
+  : data.totalGross;
 
   const finalSettlementHtml =
-    isFinalInvoice && data.settlementSummary
-      ? `
+  isFinalInvoice && data.settlementSummary
+    ? `
       <div class="settlement-box">
         <div class="settlement-title">Rozliczenie zaliczek</div>
+
         <table class="settlement-table">
           <thead>
             <tr>
@@ -260,11 +170,11 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
         </table>
       </div>
     `
-      : '';
+    : '';
 
-  const settledInvoicesHtml =
-    isFinalInvoice && data.settledInvoices?.length
-      ? `
+    const settledInvoicesHtml =
+  isFinalInvoice && data.settledInvoices?.length
+    ? `
       <div class="advance-list">
         <div class="settlement-title">Rozliczane faktury zaliczkowe</div>
         ${data.settledInvoices
@@ -280,17 +190,16 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
           .join('')}
       </div>
     `
-      : '';
+    : '';
 
-  const correctiveItems =
-    isCorrectiveInvoice && data.invoice_items?.some((i) => i.before_quantity != null)
-      ? data.invoice_items
-      : null;
+  const correctiveItems = isCorrectiveInvoice && data.invoice_items?.some((i) => i.before_quantity != null)
+    ? data.invoice_items
+    : null;
 
   const rows = invoiceItems.length
-    ? invoiceItems
-        .map(
-          (item) => `
+  ? invoiceItems
+      .map(
+        (item) => `
           <tr>
             <td>${item.positionNumber}</td>
             <td>${esc(item.name)}</td>
@@ -303,54 +212,74 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
             <td class="right strong">${formatMoney(item.valueGross)}</td>
           </tr>
         `,
-        )
-        .join('')
-    : `
+      )
+      .join('')
+  : `
       <tr>
         <td colspan="9" class="center">Brak pozycji</td>
       </tr>
     `;
 
-  const correctiveItemsHtml = correctiveItems
-    ? correctiveItems
-        .map((item, idx) => {
-          const correction = getCorrectionValues(item);
+  const correctiveItemsHtml = correctiveItems ? correctiveItems.map((item, idx) => {
+    const bQty = Number(item.before_quantity ?? 0);
+    const bPrice = Number(item.before_price_net ?? 0);
+    const bNet = bQty * bPrice;
+    const bVat = Math.round(bNet * item.vat_rate) / 100;
+    const bGross = bNet + bVat;
 
-          return `
-            <tr style="background: #f9fafb;">
-              <td rowspan="2" style="vertical-align: middle;">${idx + 1}</td>
-              <td rowspan="2" style="vertical-align: middle;">${esc(item.name)}</td>
-              <td style="font-size: 9px; color: #666;">Przed korektą</td>
-              <td class="center">${esc(item.unit)}</td>
-              <td class="right">${correction.beforeQty}</td>
-              <td class="right">${formatMoney(correction.beforePrice)}</td>
-              <td class="right">${formatMoney(correction.beforeNet)}</td>
-              <td class="center">${correction.vatRate}%</td>
-              <td class="right">${formatMoney(correction.beforeVat)}</td>
-              <td class="right">${formatMoney(correction.beforeGross)}</td>
-            </tr>
+    const aQty = Number(item.after_quantity ?? bQty);
+    const aPrice = Number(item.after_price_net ?? bPrice);
+    const aNet = aQty * aPrice;
+    const aVat = Math.round(aNet * item.vat_rate) / 100;
+    const aGross = aNet + aVat;
 
-            <tr>
-              <td style="font-size: 9px; color: #666;">Korekta</td>
-              <td class="center">${esc(item.unit)}</td>
-              <td class="right">${correction.correctionQty}</td>
-              <td class="right">${formatMoney(correction.correctionPrice)}</td>
-              <td class="right">${formatMoney(correction.correctionNet)}</td>
-              <td class="center">${correction.vatRate}%</td>
-              <td class="right">${formatMoney(correction.correctionVat)}</td>
-              <td class="right strong">${formatMoney(correction.correctionGross)}</td>
-            </tr>
-          `;
-        })
-        .join('')
-    : '';
+    const dNet = aNet - bNet;
+    const dVat = aVat - bVat;
+    const dGross = aGross - bGross;
+
+    return `
+      <tr style="background: #f9fafb;">
+        <td rowspan="3" style="vertical-align: middle;">${idx + 1}</td>
+        <td rowspan="3" style="vertical-align: middle;">${esc(item.name)}</td>
+        <td style="font-size: 9px; color: #666;">Przed</td>
+        <td class="center">${esc(item.unit)}</td>
+        <td class="right">${bQty}</td>
+        <td class="right">${formatMoney(bPrice)}</td>
+        <td class="right">${formatMoney(bNet)}</td>
+        <td class="center">${item.vat_rate}%</td>
+        <td class="right">${formatMoney(bVat)}</td>
+        <td class="right">${formatMoney(bGross)}</td>
+      </tr>
+      <tr>
+        <td style="font-size: 9px; color: #666;">Po</td>
+        <td class="center">${esc(item.unit)}</td>
+        <td class="right">${aQty}</td>
+        <td class="right">${formatMoney(aPrice)}</td>
+        <td class="right">${formatMoney(aNet)}</td>
+        <td class="center">${item.vat_rate}%</td>
+        <td class="right">${formatMoney(aVat)}</td>
+        <td class="right">${formatMoney(aGross)}</td>
+      </tr>
+      <tr style="background: #f0f0f0; font-weight: 600;">
+        <td style="font-size: 9px;">Korekta</td>
+        <td class="center">${esc(item.unit)}</td>
+        <td class="right">${aQty - bQty !== 0 ? (aQty - bQty > 0 ? '+' : '') + (aQty - bQty) : '0'}</td>
+        <td class="right">${formatMoney(aPrice - bPrice)}</td>
+        <td class="right">${formatMoney(dNet)}</td>
+        <td class="center">${item.vat_rate}%</td>
+        <td class="right">${formatMoney(dVat)}</td>
+        <td class="right strong">${formatMoney(dGross)}</td>
+      </tr>
+    `;
+  }).join('') : '';
 
   return `<!DOCTYPE html>
 <html lang="pl">
+
 <head>
   <meta charset="UTF-8" />
-  <title>${esc(getTypeLabel(data.invoiceType, data.invoiceNumber))} ${esc(data.invoiceNumber)}</title>
-  <style>
+    <title>${esc(getTypeLabel(data.invoiceType, data.invoiceNumber))} ${esc(data.invoiceNumber)}</title>
+     <style>
     @page {
       size: A4;
       margin: 10mm;
@@ -371,6 +300,7 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
       min-height: calc(297mm - 20mm);
       width: calc(210mm - 20mm);
       box-sizing: border-box;
+
       display: flex;
       flex-direction: column;
     }
@@ -460,6 +390,7 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
     }
 
     .preview-banner {
+      width: 100%;
       background: #6b7280;
       color: #ffffff;
       text-align: center;
@@ -559,53 +490,48 @@ export const buildInvoicePdfHtml = (data: InvoicePdfData) => {
     }
 
     .settlement-box {
-      margin-top: 16px;
-    }
+  margin-top: 16px;
+  }
 
-    .settlement-title {
-      font-size: 12px;
-      font-weight: 700;
-      margin-bottom: 6px;
-    }
+  .settlement-title {
+    font-size: 12px;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
 
-    .settlement-table th,
-    .settlement-table td {
-      font-size: 10.5px;
-      padding: 5px 7px;
-    }
+  .settlement-table th,
+  .settlement-table td {
+    font-size: 10.5px;
+    padding: 5px 7px;
+  }
 
-    .settlement-table th:first-child,
-    .settlement-table td:first-child {
-      width: 46%;
-    }
+  .settlement-table th:first-child,
+  .settlement-table td:first-child {
+    width: 46%;
+  }
+      .advance-list {
+    margin-top: 14px;
+    font-size: 11px;
+  }
 
-    .advance-list {
-      margin-top: 14px;
-      font-size: 11px;
-    }
+  .advance-row {
+    border: 1px solid #d1d5db;
+    border-bottom: 0;
+    padding: 5px 7px;
+  }
 
-    .advance-row {
-      border: 1px solid #d1d5db;
-      border-bottom: 0;
-      padding: 5px 7px;
-    }
-
-    .advance-row:last-child {
-      border-bottom: 1px solid #d1d5db;
-    }
+  .advance-row:last-child {
+    border-bottom: 1px solid #d1d5db;
+  }
   </style>
 </head>
 
 <body>
-${!data.buyerIsPrivatePerson && data.invoiceType !== 'proforma'
-  ? `<div class="preview-banner">Wizualizacja</div>`
-  : ''}
-
+${!data.buyerIsPrivatePerson ? '<div class="preview-banner">Wizualizacja</div>' : ''}
   <div class="top">
     <div>
       ${data.companyLogoUrl ? `<img src="${esc(data.companyLogoUrl)}" alt="Logo" class="logo" />` : ''}
     </div>
-
     <div class="meta">
       <div><span class="meta-label">Miejsce wystawienia:</span> <strong>${esc(data.issuePlace)}</strong></div>
       <div><span class="meta-label">Data wystawienia:</span> <strong>${esc(formatDate(data.issueDate))}</strong></div>
@@ -621,7 +547,6 @@ ${!data.buyerIsPrivatePerson && data.invoiceType !== 'proforma'
       <div>${esc(data.sellerStreet)}</div>
       <div>${esc(data.sellerPostalCode)} ${esc(data.sellerCity)}</div>
     </div>
-
     <div class="party party-right">
       <div class="section-label">Nabywca</div>
       <div class="strong">${esc(data.buyerName)}</div>
@@ -632,203 +557,108 @@ ${!data.buyerIsPrivatePerson && data.invoiceType !== 'proforma'
   </div>
 
   <div class="title">
-    ${esc(getTypeLabel(data.invoiceType, data.invoiceNumber))} ${esc(data.invoiceNumber)}
+  ${esc(getTypeLabel(data.invoiceType, data.invoiceNumber))} ${esc(data.invoiceNumber)}
   </div>
 
-  ${
-    isCorrectiveInvoice && data.correctedInvoiceNumber
-      ? `
+  ${isCorrectiveInvoice && data.correctedInvoiceNumber ? `
     <div style="margin-bottom: 14px; font-size: 11px; border: 1px solid #d1d5db; padding: 8px 12px; background: #f9fafb;">
       <span style="color: #666;">Korekta do faktury:</span>
       <strong>${esc(data.correctedInvoiceNumber)}</strong>
       ${data.correctedInvoiceIssueDate ? ` z dnia <strong>${esc(formatDate(data.correctedInvoiceIssueDate))}</strong>` : ''}
       ${data.correctionReason ? `<br/><span style="color: #666;">Przyczyna korekty:</span> ${esc(data.correctionReason)}` : ''}
     </div>
-  `
-      : ''
-  }
+  ` : ''}
 
-  ${
-    correctiveItems
-      ? `
-    <table>
-      <thead>
-        <tr>
-          <th style="width: 2%">Lp.</th>
-          <th style="width: 28%">Nazwa towaru lub usługi</th>
-          <th style="width: 5%; font-size: 9px;"></th>
-          <th style="width: 3%">Jm.</th>
-          <th style="width: 5%">Ilość</th>
-          <th style="width: 10%">Cena netto</th>
-          <th style="width: 12%">Wartość netto</th>
-          <th style="width: 5%">VAT</th>
-          <th style="width: 9%">Kwota VAT</th>
-          <th style="width: 11%">Brutto</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${correctiveItemsHtml}
-      </tbody>
-    </table>
-
-    ${(() => {
-      const totals = correctiveItems.reduce(
-        (sum, item) => {
-          const c = getCorrectionValues(item);
-
-          return {
-            beforeNet: sum.beforeNet + c.beforeNet,
-            beforeVat: sum.beforeVat + c.beforeVat,
-            beforeGross: sum.beforeGross + c.beforeGross,
-            correctionNet: sum.correctionNet + c.correctionNet,
-            correctionVat: sum.correctionVat + c.correctionVat,
-            correctionGross: sum.correctionGross + c.correctionGross,
-          };
-        },
-        {
-          beforeNet: 0,
-          beforeVat: 0,
-          beforeGross: 0,
-          correctionNet: 0,
-          correctionVat: 0,
-          correctionGross: 0,
-        },
-      );
-
-      return `
-        <table style="margin-left: auto; margin-top: 8px; width: auto; font-size: 11px;">
-          <tbody>
-            <tr>
-              <td class="right strong" style="padding: 4px 10px;">Przed korektą:</td>
-              <td class="right" style="padding: 4px 10px;">${formatMoney(totals.beforeNet)}</td>
-              <td class="right" style="padding: 4px 10px;">${formatMoney(totals.beforeVat)}</td>
-              <td class="right" style="padding: 4px 10px;">${formatMoney(totals.beforeGross)}</td>
-            </tr>
-            <tr>
-              <td class="right strong" style="padding: 4px 10px;">Suma korekt:</td>
-              <td class="right" style="padding: 4px 10px;">${formatSignedMoney(totals.correctionNet)}</td>
-              <td class="right" style="padding: 4px 10px;">${formatSignedMoney(totals.correctionVat)}</td>
-              <td class="right" style="padding: 4px 10px;">${formatSignedMoney(totals.correctionGross)}</td>
-            </tr>
-            <tr style="font-weight: 700;">
-              <td class="right strong" style="padding: 4px 10px;">Po korekcie:</td>
-              <td class="right" style="padding: 4px 10px;">${formatMoney(totals.beforeNet + totals.correctionNet)}</td>
-              <td class="right" style="padding: 4px 10px;">${formatMoney(totals.beforeVat + totals.correctionVat)}</td>
-              <td class="right" style="padding: 4px 10px;">${formatMoney(totals.beforeGross + totals.correctionGross)}</td>
-            </tr>
-          </tbody>
-        </table>
-      `;
-    })()}
-  `
-      : `
-    <table>
-      <thead>
-        <tr>
-          <th style="width: 2%">Lp.</th>
-          <th style="width: 38%">Nazwa towaru lub usługi</th>
-          <th style="width: 3%">Jm.</th>
-          <th style="width: 3%">Ilość</th>
-          <th style="width: 10%">Cena netto</th>
-          <th style="width: 12%">Wartość netto</th>
-          <th style="width: 5%">VAT</th>
-          <th style="width: 9%">Kwota VAT</th>
-          <th style="width: 9%">Brutto</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rows}
-        <tr>
-          <td colspan="5" class="right strong">Razem</td>
-          <td class="right strong">${formatMoney(data.totalNet)}</td>
-          <td></td>
-          <td class="right strong">${formatMoney(data.totalVat)}</td>
-          <td class="right strong">${formatMoney(data.totalGross)}</td>
-        </tr>
-      </tbody>
-    </table>
-  `
-  }
+  ${correctiveItems ? `
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 2%">Lp.</th>
+        <th style="width: 28%">Nazwa towaru lub usługi</th>
+        <th style="width: 5%; font-size: 9px;"></th>
+        <th style="width: 3%">Jm.</th>
+        <th style="width: 5%">Ilość</th>
+        <th style="width: 10%">Cena netto</th>
+        <th style="width: 12%">Wartość netto</th>
+        <th style="width: 5%">VAT</th>
+        <th style="width: 9%">Kwota VAT</th>
+        <th style="width: 11%">Brutto</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${correctiveItemsHtml}
+      <tr>
+        <td colspan="6" class="right strong">Kwota korekty</td>
+        <td class="right strong">${formatMoney(data.totalNet)}</td>
+        <td></td>
+        <td class="right strong">${formatMoney(data.totalVat)}</td>
+        <td class="right strong">${formatMoney(data.totalGross)}</td>
+      </tr>
+    </tbody>
+  </table>
+  ` : `
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 2%">Lp.</th>
+        <th style="width: 38%">Nazwa towaru lub usługi</th>
+        <th style="width: 3%">Jm.</th>
+        <th style="width: 3%">Ilość</th>
+        <th style="width: 10%">Cena netto</th>
+        <th style="width: 12%">Wartość netto</th>
+        <th style="width: 5%">VAT</th>
+        <th style="width: 9%">Kwota VAT</th>
+        <th style="width: 9%">Brutto</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rows}
+      <tr>
+        <td colspan="5" class="right strong">Razem</td>
+        <td class="right strong">${formatMoney(data.totalNet)}</td>
+        <td></td>
+        <td class="right strong">${formatMoney(data.totalVat)}</td>
+        <td class="right strong">${formatMoney(data.totalGross)}</td>
+      </tr>
+    </tbody>
+  </table>
+  `}
 
   ${settledInvoicesHtml}
   ${finalSettlementHtml}
 
-  <div class="summary">
-<div class="summary-left">
-  <div>
-    <span class="meta-label">Sposób płatności:</span> ${esc(data.paymentMethod)}
-  </div>
-
-<div style="margin-top: 4px;">
-  <span class="meta-label">Status płatności:</span>
-
-  ${
-    paymentStatus === 'paid'
-      ? `
-        Zapłacono 
-        ${
-          data.paidAt
-            ? `<div style="margin-top: 2px;">
-                <span class="meta-label">Data opłacenia:</span>
-                ${esc(formatDate(data.paidAt))}
-              </div>`
-            : ''
-        }
-      `
-      : paymentStatus === 'partial'
-        ? `Częściowo opłacono`
-        : 'Do zapłaty'
-  }
-</div>
-
-  ${
-    paymentStatus === 'partial'
-      ? `
-        <div style="margin-top: 4px;">
-          <span class="meta-label">Wpłacono:</span>
-          ${formatMoney(paidAmount)} PLN
-        </div>
-      `
-      : ''
-  }
-
-  ${!isCash ? `
+<div class="summary">
+  <div class="summary-left">
     <div>
-      <span class="meta-label">Termin płatności:</span> ${esc(formatDate(data.paymentDueDate))}
+      <span class="meta-label">Sposób płatności:</span> ${esc(data.paymentMethod)}
     </div>
 
-    <div>
-      <span class="meta-label">Numer konta:</span>
-      <span class="bank-box">${esc(data.bankAccount)}</span>
-    </div>
-
-    ${data.bankName ? `
-      <div style="margin-top: 4px;">
-        <span class="meta-label">Nazwa banku:</span> ${esc(data.bankName)}
-      </div>
-    ` : ''}
-  ` : ''}
-</div>
-
-    <div class="summary-right">
+    ${!isCash ? `
       <div>
-        <span class="meta-label">${esc(paymentLabel)}</span>
-        <span class="amount">
-        ${
-          paymentStatus === 'paid'
-            ? formatMoney(paidAmount)
-            : isCorrectiveInvoice
-              ? formatSignedMoney(remainingAmount)
-              : formatMoney(remainingAmount)
-        } PLN
-        </span>
-        ${paymentInfoHtml}
+        <span class="meta-label">Termin płatności:</span> ${esc(formatDate(data.paymentDueDate))}
       </div>
+      <div>
+        <span class="meta-label">Numer konta:</span>
+        <span class="bank-box">${esc(data.bankAccount)}</span>
+      </div>
+      ${data.bankName ? `
+        <div style="margin-top: 4px;">
+          <span class="meta-label">Nazwa banku:</span> ${esc(data.bankName)}
+        </div>
+      ` : ''}
+    ` : ''}
+  </div>
+
+  <div class="summary-right">
+    <div>
+      <span class="meta-label">${esc(label)}</span>
+      <span class="amount">${formatMoney(amountToPay)} PLN</span>
     </div>
   </div>
+</div>
 
   <div class="footer-note">
-    ${data.footerNote ? `<span style="white-space: pre-wrap; font-weight: 700;">Uwagi:</span> ${esc(data.footerNote)}` : ''}
+    ${esc(data.footerNote)}
   </div>
 
   <div class="signature">
@@ -840,7 +670,8 @@ ${!data.buyerIsPrivatePerson && data.invoiceType !== 'proforma'
     </div>
   </div>
 
-  ${data.website ? `<div class="footer-website">${esc(data.website)}</div>` : ''}
+
+  <div class="footer-website">${esc(data.website)}</div>
 </body>
 </html>`;
 };

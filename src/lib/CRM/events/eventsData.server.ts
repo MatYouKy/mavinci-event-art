@@ -93,6 +93,8 @@ if (viewModeError) throw viewModeError;
 
   if (error) throw error;
 
+  console.log('data', data);
+
   const { data: categories, error: categoriesError } = await supabase
   .from('event_categories')
   .select('id, name, color, icon:custom_icons(id, name, svg_code, preview_color)')
