@@ -1,5 +1,3 @@
-export type ImageObjectFit = 'cover' | 'contain' | 'fill' | 'none' | 'scale-down';
-
 export interface IImagePosition {
   posX: number;
   posY: number;
@@ -12,15 +10,16 @@ export interface IUploadSettings {
 }
 
 export interface IScreenMetadata {
-  src?: string;
+  src?: string; // src bywa undefined zanim uploadniesz
   position?: IImagePosition;
-  objectFit?: ImageObjectFit;
+  objectFit?: string;
   upload_settings?: IUploadSettings;
 }
 
+/** Metadata używane przy edycji (zawsze ma objectFit) */
 export interface IScreenMetadataUpload {
   src?: string;
-  objectFit: ImageObjectFit;
+  objectFit: string; // ✅ tylko raz
   position?: IImagePosition;
   upload_settings?: IUploadSettings;
 }
@@ -41,10 +40,13 @@ export interface IImage {
   image_metadata?: IImageMetadata;
 }
 
+/**
+ * To jest obiekt, którym karmisz ImageEditorField / AvatarEditorModal:
+ * { alt, image_metadata: { desktop:{...}, mobile:{...} } }
+ */
 export interface IUploadImage {
-  file?: File;
-  fileUrl?: string;
-  fileFolder?: string;
+  file(file: any, folder: string): unknown;
+  file: any;
   alt?: string;
   image_metadata?: IImageMetadataUpload;
 }

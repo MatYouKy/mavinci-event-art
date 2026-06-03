@@ -395,12 +395,17 @@ export const uploadImageSimple = async (
   maxWidth: number = 2200
 ): Promise<{ success: boolean; url?: string; error?: string }> => {
   try {
+    console.log(`[uploadImageSimple] Uploading: ${file.name}`);
+    console.log(`[uploadImageSimple] Original size: ${(file.size / 1024 / 1024).toFixed(2)}MB`);
+
     // Generate optimized image
     const blob = await compressAndResizeImage(file, {
       maxWidth,
       quality: 0.85,
       format: 'webp',
     });
+
+    console.log(`[uploadImageSimple] Optimized size: ${(blob.size / 1024).toFixed(0)}KB`);
 
     const fileName = `${folder}/${Date.now()}-${Math.random()
       .toString(36)
@@ -425,6 +430,8 @@ export const uploadImageSimple = async (
     const { data: urlData } = supabase.storage
       .from('site-images')
       .getPublicUrl(data.path);
+
+    console.log(`[uploadImageSimple] Upload complete: ${urlData.publicUrl}`);
 
     return {
       success: true,
