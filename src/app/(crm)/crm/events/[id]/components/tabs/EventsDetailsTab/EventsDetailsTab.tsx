@@ -70,7 +70,7 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
   const [showEditClientModal, setShowEditClientModal] = useState(false);
   const router = useRouter();
   const canSeeFullDetails = isAdmin || isCreator || !hasLimitedAccess;
-const canEditEventDetails = isAdmin || isCreator || canEventManage;
+  const canEditEventDetails = isAdmin || isCreator || canEventManage;
 
   const handleUpdateDescription = async (description: string) => {
     // optimistic UI
@@ -354,21 +354,27 @@ const canEditEventDetails = isAdmin || isCreator || canEventManage;
                   <div className="flex items-start gap-3">
                     <Building2 className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
                     <div>
-                      <p className="text-sm text-[#e5e4e2]/60">Klient (Firma)</p>
-                      <a
-                        href={`/crm/contacts/${organization?.id}`}
-                        className="text-[#e5e4e2] hover:text-[#d3bb73]"
+                      <button
+                        type="button"
+                        onClick={() =>
+                          organization?.id && router.push(`/crm/contacts/${organization.id}`)
+                        }
+                        className="text-left text-[#e5e4e2] hover:text-[#d3bb73]"
                       >
                         {organization ? organization.alias || organization.name : 'Brak klienta'}
-                        {organization?.email && (
-                          <div className="mt-1 flex items-center gap-2 text-sm text-[#e5e4e2]/60">
-                            <Mail className="h-3 w-3" />
-                            <a href={`mailto:${organization.email}`} className="text-[#e5e4e2] hover:text-[#d3bb73]">
-                              {organization.email}
-                            </a>
-                          </div>
-                        )}
-                      </a>
+                      </button>
+
+                      {organization?.email && (
+                        <div className="mt-1 flex items-center gap-2 text-sm text-[#e5e4e2]/60">
+                          <Mail className="h-3 w-3" />
+                          <a
+                            href={`mailto:${organization.email}`}
+                            className="text-[#e5e4e2] hover:text-[#d3bb73]"
+                          >
+                            {organization.email}
+                          </a>
+                        </div>
+                      )}
                     </div>
                   </div>
                   {contact && (
@@ -497,7 +503,10 @@ const canEditEventDetails = isAdmin || isCreator || canEventManage;
         //   await refetch();
         // }}
       />
-      <EventDetailsNotes eventDetailsNotes={event.notes || ''} handleUpdateNotes={handleUpdateNotes} />
+      <EventDetailsNotes
+        eventDetailsNotes={event.notes || ''}
+        handleUpdateNotes={handleUpdateNotes}
+      />
     </>
   );
 };
