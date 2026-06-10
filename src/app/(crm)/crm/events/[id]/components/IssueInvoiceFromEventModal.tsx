@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Loader2, FileText, AlertCircle, CheckCircle2, Building2, Info } from 'lucide-react';
+import { X, Loader2, FileText, AlertCircle, CheckCircle2, Building2, Info, Calculator } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { MyCompany } from '@/app/(crm)/crm/settings/my-companies/page';
@@ -27,6 +27,19 @@ interface Offer {
   }>;
 }
 
+interface CalculationSource {
+  id: string;
+  name: string;
+  total_net: number;
+  total_gross: number;
+  items: Array<{
+    name: string;
+    quantity: number;
+    price_net: number;
+    vat_rate: number;
+  }>;
+}
+
 interface EventDetails {
   name: string;
   event_date: string;
@@ -38,6 +51,7 @@ interface EventDetails {
   buyer_street: string | null;
   buyer_postal_code: string | null;
   buyer_city: string | null;
+  financial_source: 'offer' | 'calculation';
 }
 
 export default function IssueInvoiceFromEventModal({
@@ -55,6 +69,9 @@ export default function IssueInvoiceFromEventModal({
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>('');
   const [offers, setOffers] = useState<Offer[]>([]);
   const [selectedOfferId, setSelectedOfferId] = useState<string>('');
+  const [calculations, setCalculations] = useState<CalculationSource[]>([]);
+  const [selectedCalculationId, setSelectedCalculationId] = useState<string>('');
+  const [dataSource, setDataSource] = useState<'offer' | 'calculation'>('offer');
   const [eventDetails, setEventDetails] = useState<EventDetails | null>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
@@ -74,7 +91,6 @@ export default function IssueInvoiceFromEventModal({
     try {
       setLoading(true);
 
-      // Pobierz firmy
       const { data: companies } = await supabase
         .from('my_companies')
         .select('*')
@@ -91,21 +107,12 @@ export default function IssueInvoiceFromEventModal({
         }
       }
 
-      // Pobierz oferty zaakceptowane dla eventu
+      // Pobierz oferty zaakceptowane
       const { data: offersData } = await supabase
         .from('offers')
         .select(`
-          id,
-          offer_number,
-          status,
-          total_net,
-          total_gross,
-          offer_items (
-            name,
-            quantity,
-            price_net,
-            vat_rate
-          )
+          id, offer_number, status, total_net, total_gross,
+          offer_items (name, quantity, price_net, vat_rate)
         `)
         .eq('event_id', eventId)
         .eq('status', 'accepted')
@@ -120,29 +127,47 @@ export default function IssueInvoiceFromEventModal({
         setSelectedOfferId(formattedOffers[0].id);
       }
 
+      // Pobierz zaakceptowane kalkulacje
+      const { data: calcsData } = await supabase
+        .from('event_calculations')
+        .select('id, name, is_accepted, event_calculation_items(name, quantity, unit_price, days, vat_rate)')
+        .eq('event_id', eventId)
+        .eq('is_accepted', true)
+        .order('created_at', { ascending: false });
+
+      if (calcsData && calcsData.length > 0) {
+        const formattedCalcs: CalculationSource[] = calcsData.map((calc: any) => {
+          const items = (calc.event_calculation_items || []).map((it: any) => ({
+            name: it.name,
+            quantity: Number(it.quantity || 0),
+            price_net: Number(it.unit_price || 0) * Number(it.days || 1),
+            vat_rate: Number(it.vat_rate || 23),
+          }));
+          const totalNet = items.reduce(
+            (s: number, it: any) => s + it.quantity * it.price_net, 0,
+          );
+          const totalGross = items.reduce(
+            (s: number, it: any) => s + it.quantity * it.price_net * (1 + it.vat_rate / 100), 0,
+          );
+          return {
+            id: calc.id,
+            name: calc.name,
+            total_net: Math.round(totalNet * 100) / 100,
+            total_gross: Math.round(totalGross * 100) / 100,
+            items,
+          };
+        });
+        setCalculations(formattedCalcs);
+        setSelectedCalculationId(formattedCalcs[0].id);
+      }
+
       // Pobierz szczegóły eventu
       const { data: event } = await supabase
         .from('events')
         .select(`
-          name,
-          event_date,
-          organization_id,
-          contact_person_id,
-          organizations:organization_id (
-            name,
-            nip,
-            street,
-            postal_code,
-            city
-          ),
-          contacts:contact_person_id (
-            first_name,
-            last_name,
-            nip,
-            street,
-            postal_code,
-            city
-          )
+          name, event_date, organization_id, contact_person_id, financial_source,
+          organizations:organization_id (name, nip, street, postal_code, city),
+          contacts:contact_person_id (first_name, last_name, nip, street, postal_code, city)
         `)
         .eq('id', eventId)
         .single();
@@ -150,6 +175,7 @@ export default function IssueInvoiceFromEventModal({
       if (event) {
         const org = event.organizations as any;
         const contact = event.contacts as any;
+        const evtFinancialSource = (event.financial_source as 'offer' | 'calculation') || 'offer';
 
         setEventDetails({
           name: event.name,
@@ -162,9 +188,11 @@ export default function IssueInvoiceFromEventModal({
           buyer_street: org?.street || contact?.street || null,
           buyer_postal_code: org?.postal_code || contact?.postal_code || null,
           buyer_city: org?.city || contact?.city || null,
+          financial_source: evtFinancialSource,
         });
 
-        // Ustaw datę sprzedaży na datę eventu
+        setDataSource(evtFinancialSource);
+
         if (event.event_date) {
           setInvoiceData((prev) => ({
             ...prev,
@@ -187,8 +215,12 @@ export default function IssueInvoiceFromEventModal({
       errors.push('Wybierz firmę wystawiającą fakturę');
     }
 
-    if (!selectedOfferId || offers.length === 0) {
+    if (dataSource === 'offer' && (!selectedOfferId || offers.length === 0)) {
       errors.push('Brak zaakceptowanej oferty dla tego eventu');
+    }
+
+    if (dataSource === 'calculation' && (!selectedCalculationId || calculations.length === 0)) {
+      errors.push('Brak zaakceptowanej kalkulacji dla tego eventu');
     }
 
     if (!eventDetails) {
@@ -201,12 +233,6 @@ export default function IssueInvoiceFromEventModal({
 
     if (!eventDetails?.buyer_street || !eventDetails?.buyer_city || !eventDetails?.buyer_postal_code) {
       errors.push('Klient nie ma kompletnych danych adresowych');
-    }
-
-    // Sprawdź czy firma ma kredencjały KSeF
-    const selectedCompany = myCompanies.find((c) => c.id === selectedCompanyId);
-    if (selectedCompany) {
-      // To sprawdzimy asynchronicznie
     }
 
     setValidationErrors(errors);
@@ -229,7 +255,6 @@ export default function IssueInvoiceFromEventModal({
         ]);
         return false;
       }
-
       return true;
     } catch (err) {
       console.error('Error checking KSeF credentials:', err);
@@ -262,7 +287,6 @@ export default function IssueInvoiceFromEventModal({
   };
 
   const handleIssueInvoice = async () => {
-    // Walidacja
     if (!validateInvoiceData()) {
       showSnackbar('Uzupełnij wszystkie wymagane dane', 'error');
       return;
@@ -278,28 +302,35 @@ export default function IssueInvoiceFromEventModal({
       setLoading(true);
       setSendingToKSeF(true);
 
-      const selectedOffer = offers.find((o) => o.id === selectedOfferId);
       const selectedCompany = myCompanies.find((c) => c.id === selectedCompanyId);
+      if (!selectedCompany || !eventDetails) throw new Error('Brak wymaganych danych');
 
-      if (!selectedOffer || !selectedCompany || !eventDetails) {
-        throw new Error('Brak wymaganych danych');
+      // Determine source items
+      let sourceItems: Array<{ name: string; quantity: number; price_net: number; vat_rate: number }>;
+      let sourceRef: Record<string, any>;
+
+      if (dataSource === 'calculation') {
+        const selectedCalc = calculations.find((c) => c.id === selectedCalculationId);
+        if (!selectedCalc) throw new Error('Brak wybranej kalkulacji');
+        sourceItems = selectedCalc.items;
+        sourceRef = { calculation_id: selectedCalculationId, data_source: 'calculation' };
+      } else {
+        const selectedOffer = offers.find((o) => o.id === selectedOfferId);
+        if (!selectedOffer) throw new Error('Brak wybranej oferty');
+        sourceItems = selectedOffer.items;
+        sourceRef = { offer_id: selectedOfferId, data_source: 'offer' };
       }
 
-      // 1. Wygeneruj numer faktury
       const { data: invoiceNumber, error: numberError } = await supabase.rpc(
         'generate_invoice_number',
         { p_invoice_type: 'vat' }
       );
 
-      if (numberError || !invoiceNumber) {
-        throw new Error('Nie udało się wygenerować numeru faktury');
-      }
+      if (numberError || !invoiceNumber) throw new Error('Nie udało się wygenerować numeru faktury');
 
-      // 2. Określ nabywcę (organizacja lub kontakt)
       const buyerId = eventDetails.organization_id || eventDetails.contact_person_id;
       const buyerName = eventDetails.organization_name || eventDetails.contact_name || '';
 
-      // 3. Utwórz fakturę
       const { data: employee } = await supabase
         .from('employees')
         .select('id')
@@ -320,7 +351,7 @@ export default function IssueInvoiceFromEventModal({
           my_company_id: selectedCompanyId,
           seller_name: selectedCompany.legal_name,
           seller_nip: selectedCompany.nip,
-          seller_street: '', // Uzupełni się z my_companies
+          seller_street: '',
           seller_postal_code: '',
           seller_city: '',
           seller_country: 'Polska',
@@ -339,16 +370,12 @@ export default function IssueInvoiceFromEventModal({
         .select()
         .single();
 
-      if (invoiceError || !invoice) {
-        throw new Error(invoiceError?.message || 'Nie udało się utworzyć faktury');
-      }
+      if (invoiceError || !invoice) throw new Error(invoiceError?.message || 'Nie udało się utworzyć faktury');
 
-      // 4. Dodaj pozycje faktury z oferty
-      const itemsToInsert = selectedOffer.items.map((item, index) => {
+      const itemsToInsert = sourceItems.map((item, index) => {
         const valueNet = item.quantity * item.price_net;
         const vatAmount = Math.round((valueNet * item.vat_rate) / 100 * 100) / 100;
         const valueGross = valueNet + vatAmount;
-
         return {
           invoice_id: invoice.id,
           position_number: index + 1,
@@ -363,15 +390,9 @@ export default function IssueInvoiceFromEventModal({
         };
       });
 
-      const { error: itemsError } = await supabase
-        .from('invoice_items')
-        .insert(itemsToInsert);
+      const { error: itemsError } = await supabase.from('invoice_items').insert(itemsToInsert);
+      if (itemsError) throw new Error('Nie udało się dodać pozycji faktury');
 
-      if (itemsError) {
-        throw new Error('Nie udało się dodać pozycji faktury');
-      }
-
-      // 5. Wyślij do KSeF
       const ksefResponse = await fetch('/bridge/ksef/invoices/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -381,7 +402,6 @@ export default function IssueInvoiceFromEventModal({
       const ksefData = await ksefResponse.json();
 
       if (!ksefResponse.ok) {
-        // Szczegółowe błędy KSeF
         if (ksefData.details) {
           if (Array.isArray(ksefData.details)) {
             throw new Error(`Błędy KSeF:\n${ksefData.details.join('\n')}`);
@@ -392,34 +412,22 @@ export default function IssueInvoiceFromEventModal({
         throw new Error(ksefData.error || 'Nie udało się wysłać faktury do KSeF');
       }
 
-      // 6. Historia
       await supabase.from('invoice_history').insert({
         invoice_id: invoice.id,
         action: 'created_from_event',
         changed_by: employee?.id,
-        changes: {
-          event_id: eventId,
-          offer_id: selectedOfferId,
-          ksef_reference: ksefData.ksef_reference_number,
-        },
+        changes: { event_id: eventId, ...sourceRef, ksef_reference: ksefData.ksef_reference_number },
       });
 
-      showSnackbar(
-        `Faktura ${invoiceNumber} została wystawiona i wysłana do KSeF`,
-        'success'
-      );
-
+      showSnackbar(`Faktura ${invoiceNumber} została wystawiona i wysłana do KSeF`, 'success');
       onSuccess();
       onClose();
     } catch (err: any) {
       console.error('Error issuing invoice:', err);
       const errorMessage = err.message || 'Błąd podczas wystawiania faktury';
       showSnackbar(errorMessage, 'error');
-
-      // Pokaż szczegółowe błędy
       if (errorMessage.includes('\n')) {
-        const errors = errorMessage.split('\n');
-        setValidationErrors(errors);
+        setValidationErrors(errorMessage.split('\n'));
       }
     } finally {
       setLoading(false);
@@ -430,6 +438,10 @@ export default function IssueInvoiceFromEventModal({
   if (!isOpen) return null;
 
   const selectedOffer = offers.find((o) => o.id === selectedOfferId);
+  const selectedCalc = calculations.find((c) => c.id === selectedCalculationId);
+  const hasAnySource = offers.length > 0 || calculations.length > 0;
+  const currentSourceItems = dataSource === 'calculation' ? selectedCalc?.items : selectedOffer?.items;
+  const currentSourceTotal = dataSource === 'calculation' ? selectedCalc?.total_gross : selectedOffer?.total_gross;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -461,7 +473,6 @@ export default function IssueInvoiceFromEventModal({
             </div>
           ) : (
             <div className="space-y-6">
-              {/* Błędy walidacji */}
               {validationErrors.length > 0 && (
                 <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-4">
                   <div className="mb-2 flex items-center gap-2 text-sm font-medium text-red-400">
@@ -496,30 +507,83 @@ export default function IssueInvoiceFromEventModal({
                 </select>
               </div>
 
-              {/* Oferta */}
+              {/* Źródło danych */}
               <div>
                 <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-                  Oferta bazowa *
+                  Źródło pozycji faktury *
                 </label>
-                <select
-                  value={selectedOfferId}
-                  onChange={(e) => setSelectedOfferId(e.target.value)}
-                  disabled={offers.length === 0}
-                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] disabled:opacity-50 focus:border-[#d3bb73] focus:outline-none"
-                >
-                  {offers.length === 0 ? (
-                    <option value="">Brak zaakceptowanych ofert</option>
-                  ) : (
-                    offers.map((offer) => (
-                      <option key={offer.id} value={offer.id}>
-                        {offer.offer_number} - {offer.total_gross.toFixed(2)} zł brutto
-                      </option>
-                    ))
-                  )}
-                </select>
-                {offers.length === 0 && (
+                {(offers.length > 0 || calculations.length > 0) && (
+                  <div className="mb-3 flex gap-2">
+                    {offers.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setDataSource('offer')}
+                        className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm transition-colors ${
+                          dataSource === 'offer'
+                            ? 'border-[#d3bb73] bg-[#d3bb73]/10 text-[#d3bb73]'
+                            : 'border-[#d3bb73]/20 text-[#e5e4e2]/60 hover:border-[#d3bb73]/40'
+                        }`}
+                      >
+                        <FileText className="h-4 w-4" />
+                        Oferta
+                      </button>
+                    )}
+                    {calculations.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setDataSource('calculation')}
+                        className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm transition-colors ${
+                          dataSource === 'calculation'
+                            ? 'border-[#d3bb73] bg-[#d3bb73]/10 text-[#d3bb73]'
+                            : 'border-[#d3bb73]/20 text-[#e5e4e2]/60 hover:border-[#d3bb73]/40'
+                        }`}
+                      >
+                        <Calculator className="h-4 w-4" />
+                        Kalkulacja
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {dataSource === 'offer' ? (
+                  <select
+                    value={selectedOfferId}
+                    onChange={(e) => setSelectedOfferId(e.target.value)}
+                    disabled={offers.length === 0}
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] disabled:opacity-50 focus:border-[#d3bb73] focus:outline-none"
+                  >
+                    {offers.length === 0 ? (
+                      <option value="">Brak zaakceptowanych ofert</option>
+                    ) : (
+                      offers.map((offer) => (
+                        <option key={offer.id} value={offer.id}>
+                          {offer.offer_number} - {offer.total_gross.toFixed(2)} zł brutto
+                        </option>
+                      ))
+                    )}
+                  </select>
+                ) : (
+                  <select
+                    value={selectedCalculationId}
+                    onChange={(e) => setSelectedCalculationId(e.target.value)}
+                    disabled={calculations.length === 0}
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] disabled:opacity-50 focus:border-[#d3bb73] focus:outline-none"
+                  >
+                    {calculations.length === 0 ? (
+                      <option value="">Brak zaakceptowanych kalkulacji</option>
+                    ) : (
+                      calculations.map((calc) => (
+                        <option key={calc.id} value={calc.id}>
+                          {calc.name} - {calc.total_gross.toFixed(2)} zł brutto
+                        </option>
+                      ))
+                    )}
+                  </select>
+                )}
+
+                {!hasAnySource && (
                   <p className="mt-1 text-xs text-red-400">
-                    Musisz najpierw zaakceptować ofertę dla tego eventu
+                    Brak zaakceptowanych ofert ani kalkulacji dla tego eventu
                   </p>
                 )}
               </div>
@@ -563,7 +627,6 @@ export default function IssueInvoiceFromEventModal({
                     className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                   />
                 </div>
-
                 <div>
                   <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
                     Data sprzedaży *
@@ -598,13 +661,13 @@ export default function IssueInvoiceFromEventModal({
               </div>
 
               {/* Pozycje faktury (podgląd) */}
-              {selectedOffer && (
+              {currentSourceItems && currentSourceItems.length > 0 && (
                 <div>
                   <div className="mb-2 text-sm font-medium text-[#e5e4e2]">
-                    Pozycje z oferty ({selectedOffer.items.length})
+                    Pozycje {dataSource === 'calculation' ? 'z kalkulacji' : 'z oferty'} ({currentSourceItems.length})
                   </div>
                   <div className="space-y-2">
-                    {selectedOffer.items.slice(0, 3).map((item, i) => (
+                    {currentSourceItems.slice(0, 3).map((item, i) => (
                       <div
                         key={i}
                         className="rounded border border-[#d3bb73]/10 bg-[#0a0d1a] p-3 text-sm"
@@ -615,21 +678,23 @@ export default function IssueInvoiceFromEventModal({
                         </div>
                       </div>
                     ))}
-                    {selectedOffer.items.length > 3 && (
+                    {currentSourceItems.length > 3 && (
                       <div className="text-center text-xs text-[#e5e4e2]/40">
-                        ... i {selectedOffer.items.length - 3} więcej
+                        ... i {currentSourceItems.length - 3} więcej
                       </div>
                     )}
                   </div>
 
-                  <div className="mt-4 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-4">
-                    <div className="flex justify-between text-lg font-medium">
-                      <span className="text-[#e5e4e2]/60">Razem brutto:</span>
-                      <span className="text-[#d3bb73]">
-                        {selectedOffer.total_gross.toFixed(2)} zł
-                      </span>
+                  {currentSourceTotal != null && (
+                    <div className="mt-4 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 p-4">
+                      <div className="flex justify-between text-lg font-medium">
+                        <span className="text-[#e5e4e2]/60">Razem brutto:</span>
+                        <span className="text-[#d3bb73]">
+                          {currentSourceTotal.toFixed(2)} zł
+                        </span>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               )}
 
@@ -653,7 +718,7 @@ export default function IssueInvoiceFromEventModal({
         <div className="flex justify-between gap-3 border-t border-[#d3bb73]/10 p-6">
           <button
             onClick={handleValidate}
-            disabled={loading || validating || offers.length === 0}
+            disabled={loading || validating || !hasAnySource}
             className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 px-6 py-3 text-[#e5e4e2] hover:bg-[#d3bb73]/5 disabled:opacity-50"
           >
             {validating ? (
@@ -678,7 +743,7 @@ export default function IssueInvoiceFromEventModal({
             </button>
             <button
               onClick={handleIssueInvoice}
-              disabled={loading || validationErrors.length > 0 || offers.length === 0}
+              disabled={loading || validationErrors.length > 0 || !hasAnySource}
               className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
             >
               {sendingToKSeF ? (

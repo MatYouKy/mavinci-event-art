@@ -26,6 +26,8 @@ export interface CalcItem {
   position: number;
   vat_rate: number;
   editing?: boolean;
+  power_watts: number | null;
+  power_source_ref: string | null;
 }
 
 export interface WarehouseEquipment {
@@ -49,4 +51,6 @@ export interface ImportableItem {
   categoryName: string | null;
   autoCategory: Category;
   vat_rate: number;
+  power_watts: number | null;
+  power_source_ref: string | null;
 }

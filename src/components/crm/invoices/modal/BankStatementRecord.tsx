@@ -3,8 +3,8 @@
 import { useMemo, useState } from 'react';
 import { Download, Pencil, Trash2, X } from 'lucide-react';
 import ResponsiveActionBar from '../../ResponsiveActionBar';
-import { AccountType } from '../../KSeFFinancialDashboard';
 
+type AccountType = 'regular' | 'vat' | 'mt940';
 type AccountFilter = 'all' | AccountType;
 type CompanyTab = 'all' | string;
 
@@ -37,7 +37,6 @@ interface Props {
     year: number,
   ) => void;
   onDelete: (statementId: string) => void;
-  canManageBankStatements: boolean;
 }
 
 const MONTHS = [
@@ -71,7 +70,6 @@ export default function BankStatementsListModal({
   onRename,
   onDownload,
   onDelete,
-  canManageBankStatements,
 }: Props) {
   const [selectedCompanyTab, setSelectedCompanyTab] = useState<CompanyTab>('all');
   const [selectedType, setSelectedType] = useState<AccountFilter>('all');
@@ -289,7 +287,7 @@ export default function BankStatementsListModal({
                           {
                             label: 'Pobierz',
                             icon: <Download className="h-4 w-4" />,
-                            show: canManageBankStatements && Boolean(stmt.file_storage_path),
+                            show: Boolean(stmt.file_storage_path),
                             onClick: () =>
                               onDownload(
                                 stmt.id,
@@ -299,14 +297,12 @@ export default function BankStatementsListModal({
                               ),
                           },
                           {
-                            show: canManageBankStatements,
                             label: 'Zmień nazwę',
                             icon: <Pencil className="h-4 w-4" />,
                             onClick: () =>
                               setRenamingStatement({ id: stmt.id, name: stmt.file_name }),
                           },
                           {
-                            show: canManageBankStatements,
                             label: 'Usuń',
                             icon: <Trash2 className="h-4 w-4" />,
                             variant: 'danger',

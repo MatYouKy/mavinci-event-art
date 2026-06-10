@@ -183,23 +183,21 @@ Deno.serve(async (req: Request) => {
     const rejectUrl = `${frontendUrl}/invitation/reject?token=${assignment.invitation_token}`;
     const eventUrl = `${frontendUrl}/crm/events/${event.id}`;
 
-    const eventDateFormatted = new Date(event.event_date).toLocaleString('pl-PL', {
+    const eventDateFormatted = new Date(event.event_date).toLocaleDateString('pl-PL', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
       day: 'numeric',
       hour: '2-digit',
-      minute: '2-digit',
-      timeZone: 'Europe/Warsaw'
+      minute: '2-digit'
     });
 
-    const expiresAt = new Date(assignment.invitation_expires_at).toLocaleString('pl-PL', {
+    const expiresAt = new Date(assignment.invitation_expires_at).toLocaleDateString('pl-PL', {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
       hour: '2-digit',
-      minute: '2-digit',
-      timeZone: 'Europe/Warsaw'
+      minute: '2-digit'
     });
 
     const phasesTableHtml = phaseAssignments && phaseAssignments.length > 0 ? `<div style="margin: 30px 0;">
@@ -241,16 +239,14 @@ Deno.serve(async (req: Request) => {
             month: '2-digit',
             year: 'numeric',
             hour: '2-digit',
-            minute: '2-digit',
-            timeZone: 'Europe/Warsaw'
+            minute: '2-digit'
           });
           const workEnd = new Date(phase.phase_work_end).toLocaleString('pl-PL', {
             day: '2-digit',
             month: '2-digit',
             year: 'numeric',
             hour: '2-digit',
-            minute: '2-digit',
-            timeZone: 'Europe/Warsaw'
+            minute: '2-digit'
           });
 
           return `

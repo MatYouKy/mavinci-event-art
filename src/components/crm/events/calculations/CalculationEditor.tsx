@@ -1,5 +1,6 @@
 import SendCalculationEmailModal from '../../SendCalculationEmailModal';
 import { ImportFromOfferModal } from './ImportFromOfferModal';
+import { AddCalculationItemModal } from './AddCalculationItemModal';
 import { useState } from 'react';
 import { useCallback } from 'react';
 import { useEffect } from 'react';
@@ -23,6 +24,8 @@ import { FileText } from 'lucide-react';
 import { Mail } from 'lucide-react';
 import { Save } from 'lucide-react';
 import { Trash2 } from 'lucide-react';
+import { Zap } from 'lucide-react';
+import { Weight } from 'lucide-react';
 import { fmt } from '../helpers/calculations/calculations.helper';
 
 export function CalculationEditor({
@@ -45,6 +48,7 @@ export function CalculationEditor({
   const [eventName, setEventName] = useState('');
   const [eventDate, setEventDate] = useState<string | null>(null);
   const [showImport, setShowImport] = useState(false);
+  const [addModalCategory, setAddModalCategory] = useState<Category | null>(null);
   const [generatedPdfPath, setGeneratedPdfPath] = useState<string | null>(null);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [showSendEmail, setShowSendEmail] = useState(false);
@@ -54,134 +58,283 @@ export function CalculationEditor({
     id: string;
     name: string;
     email: string | null;
+    phone: string | null;
   } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [{ data: calc }, { data: itemsData }, { data: ev }] = await Promise.all([
-      supabase.from('event_calculations').select('*').eq('id', calculationId).maybeSingle(),
-      supabase
-        .from('event_calculation_items')
-        .select('*')
-        .eq('calculation_id', calculationId)
-        .order('category')
-        .order('position'),
-      supabase
-        .from('events')
-        .select('name, event_date, my_company_id, contact_person_id')
-        .eq('id', eventId)
-        .maybeSingle(),
-    ]);
-    if (calc) {
-      setName(calc.name);
-      setNotes(calc.notes ?? '');
-      setGeneratedPdfPath(calc.generated_pdf_path ?? null);
-    }
-    if (itemsData) {
-      setItems(
-        itemsData.map((r: any) => ({
-          id: r.id,
-          calculation_id: r.calculation_id,
-          category: r.category,
-          name: r.name,
-          description: r.description ?? '',
-          unit: r.unit,
-          quantity: Number(r.quantity),
-          unit_price: Number(r.unit_price),
-          days: Number(r.days),
-          source: r.source,
-          source_ref: r.source_ref,
-          position: r.position,
-          vat_rate: r.vat_rate != null ? Number(r.vat_rate) : DEFAULT_VAT,
-          editing: false,
-        })),
-      );
-    }
-    if (ev) {
-      setEventName(ev.name ?? '');
-      setEventDate(ev.event_date ?? null);
-      const companyQuery = supabase
-        .from('my_companies')
-        .select(
-          'id, name, legal_name, nip, logo_url, street, building_number, apartment_number, postal_code, city, email, phone, website',
-        );
-      const { data: comp } = ev.my_company_id
-        ? await companyQuery.eq('id', ev.my_company_id).maybeSingle()
-        : await companyQuery.eq('is_default', true).eq('is_active', true).maybeSingle();
-      if (comp) {
-        const rawLogo = (comp as any).logo_url as string | null;
-        let resolvedLogo = rawLogo;
-        if (rawLogo && !/^https?:\/\//i.test(rawLogo) && !rawLogo.startsWith('data:')) {
-          const { data: pub } = supabase.storage.from('company-logos').getPublicUrl(rawLogo);
-          resolvedLogo = pub?.publicUrl || rawLogo;
-        }
-        setCompany({ ...comp, logo_url: resolvedLogo });
-      } else {
-        setCompany(null);
+
+    try {
+      const [{ data: calc }, { data: itemsData }, { data: ev }] = await Promise.all([
+        supabase.from('event_calculations').select('*').eq('id', calculationId).maybeSingle(),
+        supabase
+          .from('event_calculation_items')
+          .select('*')
+          .eq('calculation_id', calculationId)
+          .order('category')
+          .order('position'),
+        supabase
+          .from('events')
+          .select('name, event_date, my_company_id, contact_person_id')
+          .eq('id', eventId)
+          .maybeSingle(),
+      ]);
+
+      if (calc) {
+        setName(calc.name);
+        setNotes(calc.notes ?? '');
+        setGeneratedPdfPath(calc.generated_pdf_path ?? null);
       }
 
-      if (ev.contact_person_id) {
-        const { data: contact } = await supabase
-          .from('contacts')
-          .select('id, first_name, last_name, full_name, email')
-          .eq('id', ev.contact_person_id)
-          .maybeSingle();
+      if (itemsData) {
+        const equipmentIds = itemsData
+          .filter((r: any) => r.source === 'warehouse' && r.source_ref)
+          .map((r: any) => r.source_ref as string);
 
-        if (contact) {
-          const contactName =
-            contact.full_name || `${contact.first_name ?? ''} ${contact.last_name ?? ''}`.trim();
+        const equipmentMap: Record<
+          string,
+          { thumbnail_url: string | null; stock_quantity: number; weight_kg: number | null }
+        > = {};
 
-          setPrimaryContact({
-            id: contact.id,
-            name: contactName || 'Kontakt bez nazwy',
-            email: contact.email ?? null,
-          });
+        if (equipmentIds.length > 0) {
+          const { data: eqData, error: eqError } = await supabase
+            .from('equipment_items')
+            .select(
+              `
+                id,
+                thumbnail_url,
+                cable_stock_quantity,
+                weight_kg,
+                warehouse_categories:warehouse_category_id (
+                  id,
+                  name,
+                  special_properties
+                )
+              `,
+            )
+            .in('id', equipmentIds);
 
-          setDefaultEmail(contact.email ?? '');
+          if (eqError) throw eqError;
+
+          const unitItemIds = (eqData ?? [])
+            .filter((eq: any) => Number(eq.cable_stock_quantity ?? 0) <= 0)
+            .map((eq: any) => eq.id);
+
+          const unitCounts: Record<string, number> = {};
+
+          if (unitItemIds.length > 0) {
+            const { data: units, error: unitsError } = await supabase
+              .from('equipment_units')
+              .select('equipment_id')
+              .in('equipment_id', unitItemIds)
+              .eq('status', 'available');
+
+            if (unitsError) throw unitsError;
+
+            for (const unit of units ?? []) {
+              unitCounts[unit.equipment_id] = (unitCounts[unit.equipment_id] || 0) + 1;
+            }
+          }
+
+          for (const eq of eqData ?? []) {
+            const simpleQuantity = Number(eq.cable_stock_quantity ?? 0);
+
+            equipmentMap[eq.id] = {
+              thumbnail_url: eq.thumbnail_url ?? null,
+              stock_quantity: simpleQuantity > 0 ? simpleQuantity : (unitCounts[eq.id] ?? 0),
+              weight_kg: eq.weight_kg != null ? Number(eq.weight_kg) : null,
+            };
+          }
+        }
+
+        setItems(
+          itemsData.map((r: any) => {
+            const eqInfo = r.source_ref ? equipmentMap[r.source_ref] : null;
+
+            return {
+              id: r.id,
+              calculation_id: r.calculation_id,
+              category: r.category,
+              name: r.name,
+              description: r.description ?? '',
+              unit: r.unit,
+              quantity: Number(r.quantity),
+              unit_price: Number(r.unit_price),
+              days: Number(r.days),
+              source: r.source,
+              source_ref: r.source_ref,
+              position: r.position,
+              vat_rate: r.vat_rate != null ? Number(r.vat_rate) : DEFAULT_VAT,
+              power_watts: r.power_watts != null ? Number(r.power_watts) : null,
+              power_source_ref: r.source_ref ?? null,
+              weight_kg: r.weight_kg != null ? Number(r.weight_kg) : (eqInfo?.weight_kg ?? null),
+              thumbnail_url: eqInfo?.thumbnail_url ?? null,
+              stock_quantity: eqInfo?.stock_quantity ?? null,
+              editing: false,
+            };
+          }),
+        );
+      }
+
+      if (ev) {
+        setEventName(ev.name ?? '');
+        setEventDate(ev.event_date ?? null);
+
+        const companyQuery = supabase
+          .from('my_companies')
+          .select(
+            'id, name, legal_name, nip, logo_url, street, building_number, apartment_number, postal_code, city, email, phone, website',
+          );
+
+        const { data: comp } = ev.my_company_id
+          ? await companyQuery.eq('id', ev.my_company_id).maybeSingle()
+          : await companyQuery.eq('is_default', true).eq('is_active', true).maybeSingle();
+
+        if (comp) {
+          const rawLogo = (comp as any).logo_url as string | null;
+          let resolvedLogo = rawLogo;
+
+          if (rawLogo && !/^https?:\/\//i.test(rawLogo) && !rawLogo.startsWith('data:')) {
+            const { data: pub } = supabase.storage.from('company-logos').getPublicUrl(rawLogo);
+            resolvedLogo = pub?.publicUrl || rawLogo;
+          }
+
+          setCompany({ ...comp, logo_url: resolvedLogo });
+        } else {
+          setCompany(null);
+        }
+
+        if (ev.contact_person_id) {
+          const { data: contact } = await supabase
+            .from('contacts')
+            .select('id, first_name, last_name, full_name, email, phone')
+            .eq('id', ev.contact_person_id)
+            .maybeSingle();
+
+          if (contact) {
+            const contactName =
+              contact.full_name || `${contact.first_name ?? ''} ${contact.last_name ?? ''}`.trim();
+
+            setPrimaryContact({
+              id: contact.id,
+              name: contactName || 'Kontakt bez nazwy',
+              email: contact.email ?? null,
+              phone: contact.phone ?? null,
+            });
+
+            setDefaultEmail(contact.email ?? '');
+          } else {
+            setPrimaryContact(null);
+            setDefaultEmail('');
+          }
         } else {
           setPrimaryContact(null);
           setDefaultEmail('');
         }
-      } else {
-        setPrimaryContact(null);
-        setDefaultEmail('');
       }
+    } catch (error) {
+      console.error('Error loading calculation:', error);
+      showSnackbar('Błąd podczas ładowania kalkulacji', 'error');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-  }, [calculationId, eventId]);
+  }, [calculationId, eventId, showSnackbar]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  const addEmptyRow = (category: Category) => {
-    setItems((prev) => [
-      ...prev,
-      {
-        category,
-        name: '',
-        description: '',
-        unit: category === 'staff' ? 'h' : category === 'transport' ? 'km' : 'szt.',
-        quantity: 1,
-        unit_price: 0,
-        days: 1,
-        source: 'manual',
-        position: prev.filter((p) => p.category === category).length,
-        vat_rate: DEFAULT_VAT,
-        editing: true,
-      },
-    ]);
+  const openAddModal = (category: Category) => {
+    setAddModalCategory(category);
+  };
+
+  const persistItem = async (item: CalcItem, position: number): Promise<string | null> => {
+    const row = {
+      calculation_id: calculationId,
+      category: item.category,
+      name: item.name,
+      description: item.description || '',
+      unit: item.unit || 'szt.',
+      quantity: Number(item.quantity) || 0,
+      unit_price: Number(item.unit_price) || 0,
+      days: Number(item.days) || 1,
+      source: item.source,
+      source_ref: item.source_ref ?? null,
+      position,
+      vat_rate: Number(item.vat_rate ?? DEFAULT_VAT),
+      power_watts: item.power_watts ?? null,
+      weight_kg: item.weight_kg ?? null,
+    };
+
+    if (item.id) {
+      const { error } = await supabase
+        .from('event_calculation_items')
+        .update(row)
+        .eq('id', item.id);
+      if (error) {
+        console.error('Error updating item:', error);
+        showSnackbar('Błąd zapisu pozycji', 'error');
+        return null;
+      }
+      return item.id;
+    } else {
+      const { data, error } = await supabase
+        .from('event_calculation_items')
+        .insert(row)
+        .select('id')
+        .single();
+      if (error || !data) {
+        console.error('Error inserting item:', error);
+        showSnackbar('Błąd dodawania pozycji', 'error');
+        return null;
+      }
+      return data.id;
+    }
+  };
+
+  const addItemFromModal = async (item: CalcItem) => {
+    const position = items.filter((it) => it.category === item.category).length;
+    const newId = await persistItem(item, position);
+    if (newId) {
+      setItems((prev) => [...prev, { ...item, id: newId }]);
+      await supabase
+        .from('event_calculations')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', calculationId);
+    }
   };
 
   const updateItem = (index: number, patch: Partial<CalcItem>) => {
     setItems((prev) => prev.map((it, i) => (i === index ? { ...it, ...patch } : it)));
   };
 
-  const removeItem = (index: number) => {
+  const removeItem = async (index: number) => {
+    const item = items[index];
+    if (item?.id) {
+      const { error } = await supabase.from('event_calculation_items').delete().eq('id', item.id);
+      if (error) {
+        showSnackbar('Błąd usuwania pozycji', 'error');
+        return;
+      }
+    }
     setItems((prev) => prev.filter((_, i) => i !== index));
+    await supabase
+      .from('event_calculations')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', calculationId);
   };
 
-  const toggleEdit = (index: number, editing: boolean) => {
+  const toggleEdit = async (index: number, editing: boolean) => {
+    if (!editing) {
+      const item = items[index];
+      if (item) {
+        await persistItem(item, item.position ?? index);
+        await supabase
+          .from('event_calculations')
+          .update({ updated_at: new Date().toISOString() })
+          .eq('id', calculationId);
+      }
+    }
     setItems((prev) => prev.map((it, i) => (i === index ? { ...it, editing } : it)));
   };
 
@@ -234,36 +387,32 @@ export function CalculationEditor({
 
   const handleSave = async () => {
     setSaving(true);
+
     try {
       const { error: updErr } = await supabase
         .from('event_calculations')
-        .update({ name, notes, updated_at: new Date().toISOString() })
+        .update({
+          name,
+          notes,
+          updated_at: new Date().toISOString(),
+        })
         .eq('id', calculationId);
+
       if (updErr) throw updErr;
 
-      await supabase.from('event_calculation_items').delete().eq('calculation_id', calculationId);
+      const itemsToSave = items.map((item, index) => ({
+        ...item,
+        position: index,
+      }));
 
-      if (items.length) {
-        const payload = items.map((it, idx) => ({
-          calculation_id: calculationId,
-          category: it.category,
-          name: it.name,
-          description: it.description || '',
-          unit: it.unit || 'szt.',
-          quantity: Number(it.quantity) || 0,
-          unit_price: Number(it.unit_price) || 0,
-          days: Number(it.days) || 1,
-          source: it.source,
-          source_ref: it.source_ref ?? null,
-          position: idx,
-          vat_rate: Number(it.vat_rate ?? DEFAULT_VAT),
-        }));
-        const { error: insErr } = await supabase.from('event_calculation_items').insert(payload);
-        if (insErr) throw insErr;
+      for (const item of itemsToSave) {
+        await persistItem(item, item.position);
       }
 
       showSnackbar('Zapisano kalkulację', 'success');
-      setItems((prev) => prev.map((it) => ({ ...it, editing: false })));
+
+      setItems(itemsToSave.map((it) => ({ ...it, editing: false })));
+
       await load();
     } catch (e: any) {
       console.error(e);
@@ -289,11 +438,50 @@ export function CalculationEditor({
     });
   };
 
-  const appendImportedItems = (imported: CalcItem[]) => {
-    setItems((prev) => [...prev, ...imported.map((it) => ({ ...it, editing: false }))]);
+  const appendImportedItems = async (imported: CalcItem[]) => {
+    const savedItems: CalcItem[] = [];
+    for (const it of imported) {
+      const position = items.length + savedItems.length;
+      const newId = await persistItem({ ...it, editing: false }, position);
+      if (newId) {
+        savedItems.push({ ...it, id: newId, editing: false });
+      }
+    }
+    if (savedItems.length > 0) {
+      setItems((prev) => [...prev, ...savedItems]);
+      await supabase
+        .from('event_calculations')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', calculationId);
+      showSnackbar(`Zaimportowano ${savedItems.length} pozycji`, 'success');
+    }
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    const { data: employee } = await supabase
+      .from('employees')
+      .select('name, surname, email, phone_number')
+      .eq('auth_user_id', user?.id)
+      .maybeSingle();
+
+    const preparedBy = employee
+      ? {
+          name:
+            [employee.name, employee.surname].filter(Boolean).join(' ') ||
+            user?.email ||
+            'Nieznany użytkownik',
+          email: employee.email ?? user?.email ?? null,
+          phone: employee.phone_number ?? null,
+        }
+      : {
+          name: user?.email ?? 'Nieznany użytkownik',
+          email: user?.email ?? null,
+          phone: null,
+        };
     const html = buildCalculationHtml({
       name,
       notes,
@@ -305,6 +493,9 @@ export function CalculationEditor({
       grandTotal,
       grandTotalGross,
       company,
+      totalPowerWatts,
+      contactPerson: primaryContact,
+      preparedBy,
     });
     const w = window.open('', '_blank');
     if (!w) {
@@ -322,11 +513,32 @@ export function CalculationEditor({
       showSnackbar('Kalkulacja nie zawiera pozycji', 'warning');
       return;
     }
+
     setGeneratingPdf(true);
     try {
       const {
         data: { user },
       } = await supabase.auth.getUser();
+
+      const { data: employee } = await supabase
+        .from('employees')
+        .select('first_name, last_name, full_name, email, phone')
+        .eq('auth_user_id', user?.id)
+        .maybeSingle();
+
+      const preparedBy = employee
+        ? {
+            name:
+              employee.full_name ||
+              `${employee.first_name ?? ''} ${employee.last_name ?? ''}`.trim(),
+            email: employee.email ?? user?.email ?? null,
+            phone: employee.phone ?? null,
+          }
+        : {
+            name: user?.email ?? 'Nieznany użytkownik',
+            email: user?.email ?? null,
+            phone: null,
+          };
 
       const html = buildCalculationHtml({
         name,
@@ -339,6 +551,9 @@ export function CalculationEditor({
         grandTotal,
         grandTotalGross,
         company,
+        totalPowerWatts,
+        contactPerson: primaryContact,
+        preparedBy,
       });
 
       const res = await fetch('/bridge/events/calculations-pdf', {
@@ -377,6 +592,40 @@ export function CalculationEditor({
     }
     setShowSendEmail(true);
   };
+
+  const totalPowerWatts = useMemo(
+    () =>
+      items.reduce(
+        (sum, item) => sum + Number(item.power_watts || 0) * Number(item.quantity || 0),
+        0,
+      ),
+    [items],
+  );
+
+  const totalPowerAmps230 = useMemo(() => {
+    if (totalPowerWatts === 0) return 0;
+    return round2(totalPowerWatts / 230);
+  }, [totalPowerWatts]);
+
+  const totalPowerAmps400 = useMemo(() => {
+    if (totalPowerWatts === 0) return 0;
+    return round2(totalPowerWatts / (400 * 1.732));
+  }, [totalPowerWatts]);
+
+  const totalWeightKg = useMemo(
+    () =>
+      items.reduce(
+        (sum, item) => sum + Number(item.weight_kg || 0) * Number(item.quantity || 0),
+        0,
+      ),
+    [items],
+  );
+
+  const fmtPower = (watts: number) =>
+    watts >= 1000 ? `${(watts / 1000).toFixed(2)} kW` : `${watts.toFixed(0)} W`;
+
+  const fmtWeight = (kg: number) =>
+    kg >= 1000 ? `${(kg / 1000).toFixed(2)} t` : `${kg.toFixed(1)} kg`;
 
   if (loading) {
     return (
@@ -478,7 +727,7 @@ export function CalculationEditor({
           category={cat}
           items={grouped[cat]}
           allItems={items}
-          onAdd={() => addEmptyRow(cat)}
+          onAdd={() => openAddModal(cat)}
           onUpdate={updateItem}
           onRemove={removeItem}
           onToggleEdit={toggleEdit}
@@ -496,22 +745,73 @@ export function CalculationEditor({
         />
       </div>
 
-      <div className="flex flex-wrap items-center justify-end gap-6 rounded-xl border border-[#d3bb73]/30 bg-[#0a0d1a] p-4">
-        <div className="text-right">
-          <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/50">Netto</div>
-          <div className="text-xl font-light text-[#e5e4e2]">{fmt(grandTotal)} PLN</div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/50">VAT</div>
-          <div className="text-xl font-light text-[#e5e4e2]/80">
-            {fmt(round2(grandTotalGross - grandTotal))} PLN
+      <div className="flex flex-wrap items-center justify-between gap-6 rounded-xl border border-[#d3bb73]/30 bg-[#0a0d1a] p-4">
+        {(totalPowerWatts > 0 || totalWeightKg > 0) && (
+          <div className="flex flex-wrap items-center gap-6">
+            {totalPowerWatts > 0 && (
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-amber-400" />
+                  <div>
+                    <div className="text-xs uppercase tracking-wider text-amber-400/70">Pobor mocy</div>
+                    <div className="text-lg font-light text-amber-400">{fmtPower(totalPowerWatts)}</div>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/50">1f / 230V</div>
+                  <div className="text-sm font-light text-[#e5e4e2]/80">
+                    {totalPowerAmps230.toFixed(1)} A
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/50">3f / 400V</div>
+                  <div className="text-sm font-light text-[#e5e4e2]/80">
+                    {totalPowerAmps400.toFixed(1)} A
+                  </div>
+                </div>
+              </div>
+            )}
+            {totalWeightKg > 0 && (
+              <div className="flex items-center gap-2">
+                <Weight className="h-4 w-4 text-sky-400" />
+                <div>
+                  <div className="text-xs uppercase tracking-wider text-sky-400/70">Waga</div>
+                  <div className="text-lg font-light text-sky-400">{fmtWeight(totalWeightKg)}</div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        <div className="flex flex-wrap items-center gap-6">
+          <div className="text-right">
+            <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/50">Netto</div>
+            <div className="text-xl font-light text-[#e5e4e2]">{fmt(grandTotal)} PLN</div>
+          </div>
+          <div className="text-right">
+            <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/50">VAT</div>
+            <div className="text-xl font-light text-[#e5e4e2]/80">
+              {fmt(round2(grandTotalGross - grandTotal))} PLN
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-xs uppercase tracking-wider text-[#d3bb73]">Brutto</div>
+            <div className="text-3xl font-light text-[#d3bb73]">{fmt(grandTotalGross)} PLN</div>
           </div>
         </div>
-        <div className="text-right">
-          <div className="text-xs uppercase tracking-wider text-[#d3bb73]">Brutto</div>
-          <div className="text-3xl font-light text-[#d3bb73]">{fmt(grandTotalGross)} PLN</div>
-        </div>
       </div>
+
+      {generatingPdf && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="flex min-w-[280px] flex-col items-center gap-4 rounded-2xl border border-[#d3bb73]/30 bg-[#1c1f33] px-8 py-7 shadow-2xl">
+            <Loader2 className="h-9 w-9 animate-spin text-[#d3bb73]" />
+
+            <div className="text-center">
+              <div className="text-base font-medium text-[#e5e4e2]">Generuję PDF kalkulacji</div>
+              <div className="mt-1 text-sm text-[#e5e4e2]/50">Proszę chwilę poczekać...</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showImport && (
         <ImportFromOfferModal
@@ -535,6 +835,16 @@ export function CalculationEditor({
           calculationName={name}
           eventName={eventName}
           onClose={() => setShowSendEmail(false)}
+        />
+      )}
+
+      {addModalCategory && (
+        <AddCalculationItemModal
+          category={addModalCategory}
+          existingItems={items}
+          existingCount={items.filter((it) => it.category === addModalCategory).length}
+          onAdd={addItemFromModal}
+          onClose={() => setAddModalCategory(null)}
         />
       )}
     </div>

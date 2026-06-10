@@ -18,8 +18,6 @@ import {
   Check,
   X,
 } from 'lucide-react';
-import { buildAgendaHtml } from '@/app/(crm)/crm/events/[id]/helpers/buildAgendaPdf';
-import { supabaseServer } from '@/lib/supabaseServer';
 import { useEvent } from '../../../hooks/useEvent';
 import { useGetContactByIdQuery } from '@/app/(crm)/crm/contacts/store/clientsApi';
 import { ContactRow, OrganizationRow } from '@/app/(crm)/crm/contacts/types';
@@ -251,7 +249,7 @@ export default function EventAgendaTab({
   }, [startTime, endTime, contact, agendaId]);
 
   const fetchCreatedByEmployee = async () => {
-    const { data: Author } = await supabaseServer
+    const { data: Author } = await supabase
       .from('employees')
       .select('name, surname, phone_number')
       .eq('id', createdById)
@@ -378,7 +376,9 @@ export default function EventAgendaTab({
       if (!b.time) return -1;
 
       const timeToMinutes = (time: string): number => {
-        const [hours, minutes] = time.split(':').map(Number);
+        const normalized = isoToTimeInput(time);
+        const [hours, minutes] = normalized.split(':').map(Number);
+
         let totalMinutes = hours * 60 + minutes;
 
         if (hours < 6) {
@@ -409,6 +409,20 @@ export default function EventAgendaTab({
     const isoStart = buildIsoDateTime(normalizedEventDate, startTimeInput);
     const isoEnd = buildIsoDateTime(normalizedEventDate, endTimeInput);
 
+    const sortedItems = getSortedAgendaItems();
+
+    // Filter out items without title or valid time instead of blocking the entire save
+    const validItems = sortedItems.filter((item) => {
+      const normalizedTime = isoToTimeInput(item.time);
+      const isoTime = buildIsoDateTime(normalizedEventDate, normalizedTime);
+      return isoTime && item.title?.trim();
+    });
+
+    if (validItems.length === 0 && sortedItems.length > 0) {
+      alert('Każdy etap harmonogramu musi mieć poprawną godzinę i tytuł.');
+      return;
+    }
+
     try {
       setSaving(true);
 
@@ -432,6 +446,7 @@ export default function EventAgendaTab({
           .single();
 
         if (agendaError) throw agendaError;
+
         currentAgendaId = newAgenda.id;
         setAgendaId(currentAgendaId);
       } else {
@@ -443,24 +458,27 @@ export default function EventAgendaTab({
             start_time: isoStart,
             end_time: isoEnd,
             client_contact: contact?.full_name || null,
-            modified_after_generation: generatedPdfPath ? true : false,
+            modified_after_generation: Boolean(generatedPdfPath),
           })
           .eq('id', currentAgendaId);
 
         if (updateError) throw updateError;
       }
 
-      // items - czyścimy isEditing i sortujemy
-      await supabase.from('event_agenda_items').delete().eq('agenda_id', currentAgendaId);
+      const { error: deleteItemsError } = await supabase
+        .from('event_agenda_items')
+        .delete()
+        .eq('agenda_id', currentAgendaId);
 
-      if (agendaItems.length > 0) {
-        const sortedItems = getSortedAgendaItems();
+      if (deleteItemsError) throw deleteItemsError;
+
+      if (validItems.length > 0) {
         const { error: itemsError } = await supabase.from('event_agenda_items').insert(
-          sortedItems.map((item, index) => ({
+          validItems.map((item, index) => ({
             agenda_id: currentAgendaId,
-            time: buildIsoDateTime(normalizedEventDate, item.time),
-            title: item.title,
-            description: item.description,
+            time: buildIsoDateTime(normalizedEventDate, isoToTimeInput(item.time)),
+            title: item.title.trim(),
+            description: item.description?.trim() || '',
             order_index: index,
           })),
         );
@@ -468,10 +486,15 @@ export default function EventAgendaTab({
         if (itemsError) throw itemsError;
       }
 
-      // notes
-      await supabase.from('event_agenda_notes').delete().eq('agenda_id', currentAgendaId);
+      const { error: deleteNotesError } = await supabase
+        .from('event_agenda_notes')
+        .delete()
+        .eq('agenda_id', currentAgendaId);
 
-      const flatNotes = flattenNotes(agendaNotes);
+      if (deleteNotesError) throw deleteNotesError;
+
+      const flatNotes = flattenNotes(agendaNotes).filter((note) => note.content?.trim());
+
       if (flatNotes.length > 0) {
         const notesWithIds = new Map<string, string>();
 
@@ -485,7 +508,7 @@ export default function EventAgendaTab({
                   note.parent_id && notesWithIds.has(note.parent_id)
                     ? notesWithIds.get(note.parent_id)
                     : null,
-                content: note.content,
+                content: note.content.trim(),
                 order_index: note.order_index,
                 level: note.level,
               },
@@ -494,11 +517,13 @@ export default function EventAgendaTab({
             .single();
 
           if (noteError) throw noteError;
-          if (note.id) notesWithIds.set(note.id, insertedNote.id);
+
+          if (note.id) {
+            notesWithIds.set(note.id, insertedNote.id);
+          }
         }
       }
 
-      // Invaliduj cache aby odświeżyć historię zmian
       dispatch(
         eventsApi.util.invalidateTags([
           { type: 'EventAgenda', id: eventId },
@@ -507,10 +532,11 @@ export default function EventAgendaTab({
       );
 
       alert('Agenda została zapisana');
+
       await fetchAgenda();
       setEditMode(false);
     } catch (err) {
-      console.error('Error saving agenda:', err);
+      console.error('Error saving agenda:', JSON.stringify(err, null, 2));
       alert('Wystąpił błąd podczas zapisywania agendy');
     } finally {
       setSaving(false);
@@ -557,6 +583,39 @@ export default function EventAgendaTab({
         contactNumber = (contact as any)?.business_phone || (contact as any)?.mobile || '';
       }
 
+      let companyLogoUrl: string | null = null;
+
+      const myCompanyId = (event as any)?.my_company_id ?? null;
+      
+      let companyQuery = supabase
+        .from('my_companies')
+        .select('id, logo_url')
+        .eq('is_active', true);
+
+      
+      if (myCompanyId) {
+        companyQuery = companyQuery.eq('id', myCompanyId);
+      } else {
+        companyQuery = companyQuery.eq('is_default', true);
+      }
+      
+      const { data: companyData, error: companyError } = await companyQuery.maybeSingle();
+      
+      
+      if (companyData?.logo_url) {
+        const rawLogo = companyData.logo_url;
+      
+        if (/^https?:\/\//i.test(rawLogo) || rawLogo.startsWith('data:')) {
+          companyLogoUrl = rawLogo;
+        } else {
+          const { data: publicLogo } = supabase.storage
+            .from('company-logos')
+            .getPublicUrl(rawLogo);
+      
+          companyLogoUrl = publicLogo.publicUrl;
+        }
+      }
+
       const { pdfStart, pdfEnd } = getPdfStartEndFromItems(getSortedAgendaItems());
 
       const htmlPayload = {
@@ -572,6 +631,7 @@ export default function EventAgendaTab({
         lastUpdated: new Date().toISOString(),
         authorName: createdByEmployee?.name || '',
         authorNumber: createdByEmployee?.phone_number || '',
+        companyLogoUrl,
       };
 
       const response = await fetch('/bridge/events/agenda-pdf', {
@@ -885,13 +945,16 @@ export default function EventAgendaTab({
     }
   };
 
-  const actions = useMemo<Action[]>(() => {
+  const actions: Action[] = (() => {
     const result: Action[] = [];
 
     if (canManage && !editMode) {
       result.push({
         label: 'Edytuj agendę',
-        onClick: () => setEditMode(true),
+        onClick: () => {
+          setAgendaItems((prev) => prev.map((item) => ({ ...item, isEditing: true })));
+          setEditMode(true);
+        },
         icon: <List className="h-4 w-4" />,
         variant: 'default',
       });
@@ -957,16 +1020,7 @@ export default function EventAgendaTab({
     }
 
     return result;
-  }, [
-    canManage,
-    editMode,
-    saving,
-    agendaId,
-    generatedPdfPath,
-    modifiedAfterGeneration,
-    pdfExists,
-    generating,
-  ]);
+  })();
 
   const renderNoteEdit = (note: AgendaNote, depth: number = 0) => {
     const indent = depth * 24;

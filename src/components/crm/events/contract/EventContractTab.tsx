@@ -24,6 +24,29 @@ export interface DecisionMaker {
   contact: UnifiedContact;
 }
 
+const formatPrefixedValue = (
+  value?: string | number | null,
+  prefix?: string,
+  suffix?: string,
+) => {
+  const cleanValue = String(value ?? '').trim();
+
+  if (!cleanValue) return '';
+
+  const hasPrefix =
+    prefix &&
+    cleanValue.toUpperCase().startsWith(prefix.toUpperCase());
+
+  const baseValue = hasPrefix
+    ? cleanValue
+    : prefix
+      ? `${prefix} ${cleanValue}`
+      : cleanValue;
+
+  return suffix ? `${baseValue}${suffix}` : baseValue;
+};
+
+
 const getTemplateSettings = (pageSettings: any) => ({
   logoScale: pageSettings?.logoScale ?? 80,
   logoPositionX: pageSettings?.logoPositionX ?? 50,
@@ -430,9 +453,9 @@ export function EventContractTab({ eventId }: { eventId: string }) {
 
         organization_name: organization?.name || '',
         organization_alias: organization?.alias || '',
-        organization_nip: organization?.nip || '',
-        organization_krs: organization?.krs || '',
-        organization_regon: organization?.regon || '',
+        organization_nip: formatPrefixedValue(organization?.nip, 'NIP', ','),
+        organization_krs: formatPrefixedValue(organization?.krs, 'KRS', ','),
+        organization_regon: formatPrefixedValue(organization?.regon, 'REGON', ','),
         organization_legal_form: organization?.legal_form || '',
         organization_address: organization?.address || '',
         organization_city: organization?.city || '',
@@ -460,11 +483,11 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         primary_contact_full_name: primaryContactFullName,
         primary_contact_first_name: primaryContact?.first_name || '',
         primary_contact_last_name: primaryContact?.last_name || '',
-        primary_contact_position: primaryContact?.position || '',
-        primary_contact_email: primaryContactEmail || '',
-        primary_contact_phone: primaryContactPhone || '',
+        primary_contact_position: formatPrefixedValue(primaryContact?.position, '-', '.'),
+        primary_contact_email: formatPrefixedValue(primaryContactEmail, 'e-mail:', ','),
+        primary_contact_phone: formatPrefixedValue(primaryContactPhone, 'telefon:', ','),
 
-        legal_representative_full_name: legalRepresentativeFullName,
+        legal_representative_full_name: formatPrefixedValue(legalRepresentativeFullName, ''),
         legal_representative_first_name: legalRepresentative?.first_name || '',
         legal_representative_last_name: legalRepresentative?.last_name || '',
         legal_representative_email: legalRepresentative?.email || '',
@@ -473,7 +496,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         legal_representative_address: legalRepresentative?.address || '',
         legal_representative_city: legalRepresentative?.city || '',
         legal_representative_postal_code: legalRepresentative?.postal_code || '',
-        legal_representative_title: organization?.legal_representative_title || '',
+        legal_representative_title: formatPrefixedValue(organization?.legal_representative_title, '-', '.'),
 
         decision_makers_list: decisionMakersListHtml,
 

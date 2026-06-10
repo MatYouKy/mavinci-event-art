@@ -148,7 +148,8 @@ export function useOfferWizardLogic(opts: {
   };
 
   const updateOfferItem = async (id: string, patch: any) => {
-    items.updateItem(id, patch);
+    const nextItems = items.updateItem(id, patch);
+    await conflicts.checkCartConflicts(nextItems);
   };
 
   const nextStep = () => setStep((s) => Math.min(4, s + 1));
