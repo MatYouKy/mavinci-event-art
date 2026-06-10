@@ -240,7 +240,7 @@ export default function KSeFIntegrationPanel() {
     null,
   );
   const [matchInvoice, setMatchInvoice] = useState<KSeFInvoice | null>(null);
-
+  const [canManageBankStatements, setCanManageBankStatements] = useState(false);
   const { canManageModule, employee: currentEmployee, isAdmin } = useCurrentEmployee();
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
@@ -1691,6 +1691,7 @@ export default function KSeFIntegrationPanel() {
             setMatchInvoice(null);
             loadInvoices();
           }}
+          canManageBankStatements={canManageBankStatements}
         />
       )}
     </div>

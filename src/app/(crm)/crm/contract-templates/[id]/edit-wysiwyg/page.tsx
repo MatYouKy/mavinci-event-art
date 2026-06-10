@@ -929,9 +929,9 @@ export default function EditTemplateWYSIWYGPage() {
                 className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1 text-sm text-[#e5e4e2]"
               >
                 <option value="/erulers_logo_vect.png">EVENT RULERS (główne)</option>
-                <option value="/logo.png">Mavinci (pełne)</option>
+                <option value="/logo mavinci.svg">Mavinci (pełne)</option>
                 <option value="/logo mavinci-simple.svg">Mavinci (simple)</option>
-                <option value="/signature.png">Mavinci Signature (kolorowe)</option>
+                <option value="/shape-mavinci.svg">Mavinci Shape (kolorowe)</option>
                 <option value="/shape-mavinci-black.svg">Mavinci Shape (czarne)</option>
               </select>
             </div>

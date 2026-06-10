@@ -88,7 +88,7 @@ export default function EventStatusSelectModal({
             disabled={saving}
             className="flex-1 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
           >
-            {saving ? 'Zapisywanie...' : 'Zapisz'}
+            {saving ? 'Zapisywanie…' : 'Zapisz'}
           </button>
           <button
             onClick={onClose}

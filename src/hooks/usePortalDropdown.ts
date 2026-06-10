@@ -37,31 +37,23 @@ export const usePortalDropdown = (options?: UsePortalDropdownOptions) => {
   const updatePosition = useCallback(() => {
     const anchor = anchorRef.current;
     if (!anchor) return;
-  
+
     const rect = anchor.getBoundingClientRect();
-  
+
     const resolvedWidth =
       width === 'trigger'
         ? rect.width
         : typeof width === 'number'
           ? width
           : undefined;
-  
+
     const left =
       align === 'right' && resolvedWidth
         ? rect.right - resolvedWidth
         : rect.left;
-  
-    const menuHeight = 320; // max-h-80 = 20rem = 320px
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const spaceAbove = rect.top;
-  
-    const shouldOpenUp = spaceBelow < menuHeight + offsetY && spaceAbove > spaceBelow;
-  
+
     setPosition({
-      top: shouldOpenUp
-        ? Math.max(8, rect.top - menuHeight - offsetY)
-        : rect.bottom + offsetY,
+      top: rect.bottom + offsetY,
       left,
       width: resolvedWidth,
     });

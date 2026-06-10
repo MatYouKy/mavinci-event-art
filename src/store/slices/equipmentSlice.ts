@@ -8,46 +8,6 @@ import { supabase } from '@/lib/supabase/browser';
 // --- Typy uproszczone na bazie przesłanego schematu ---
 export type UUID = string;
 
-export type PowerPhase = 'single_phase' | 'three_phase';
-
-export interface EquipmentPowerSpecs {
-  power_watts: number | null;
-  current_amps: number | null;
-  voltage_volts: number | null;
-  power_phase: PowerPhase | null;
-
-  input_connector_type_id: UUID | null;
-  output_connector_type_id: UUID | null;
-
-  power_notes: string | null;
-}
-
-export const defaultPowerSpecs: EquipmentPowerSpecs = {
-  power_watts: null,
-  current_amps: null,
-  voltage_volts: 230,
-  power_phase: 'single_phase',
-  input_connector_type_id: null,
-  output_connector_type_id: null,
-  power_notes: null,
-};
-
-export const normalizePowerSpecs = (
-  specs?: Partial<EquipmentPowerSpecs> | null,
-): EquipmentPowerSpecs => ({
-  power_watts: specs?.power_watts ?? null,
-  current_amps: specs?.current_amps ?? null,
-  voltage_volts: specs?.voltage_volts ?? 230,
-  power_phase: specs?.power_phase ?? 'single_phase',
-  input_connector_type_id: specs?.input_connector_type_id ?? null,
-  output_connector_type_id: specs?.output_connector_type_id ?? null,
-  power_notes: specs?.power_notes ?? null,
-});
-
-export const getEquipmentPowerWatts = (equipment: EquipmentItem, quantity = 1): number => {
-  return Number(equipment.power_specs?.power_watts || 0) * quantity;
-};
-
 export interface StorageLocation {
   id: UUID;
   name: string;
@@ -150,7 +110,6 @@ export interface EquipmentItem {
   user_manual_url: string | null;
   weight_kg: number | null;
   dimensions_cm: any | null;
-  power_specs: EquipmentPowerSpecs | null;
   purchase_date: string | null;
   purchase_price: number | null;
   current_value: number | null;
@@ -258,10 +217,7 @@ export const fetchEquipmentDetails = createAsyncThunk(
     }
 
     return {
-      equipment: {
-        ...(eq as EquipmentItem),
-        power_specs: normalizePowerSpecs((eq as any)?.power_specs),
-      } as EquipmentItem,
+      equipment: eq as EquipmentItem,
       equipment_stock: (eq as any)?.equipment_stock ?? [],
       equipment_components: (eq as any)?.equipment_components ?? [],
       equipment_images: (eq as any)?.equipment_images ?? [],
@@ -278,17 +234,9 @@ export const fetchEquipmentDetails = createAsyncThunk(
 export const updateEquipmentItem = createAsyncThunk(
   'equipment/updateEquipmentItem',
   async ({ id, payload }: { id: string; payload: Partial<EquipmentItem> }) => {
-    const normalizedPayload = {
-      ...payload,
-      ...(payload.power_specs !== undefined
-        ? { power_specs: normalizePowerSpecs(payload.power_specs) }
-        : {}),
-    };
-
-    const { error } = await supabase.from('equipment_items').update(normalizedPayload).eq('id', id);
+    const { error } = await supabase.from('equipment_items').update(payload).eq('id', id);
     if (error) throw error;
-
-    return { id, payload: normalizedPayload };
+    return { id, payload };
   },
 );
 

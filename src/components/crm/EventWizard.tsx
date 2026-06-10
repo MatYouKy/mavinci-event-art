@@ -37,7 +37,6 @@ import { useDispatch } from 'react-redux';
 import { eventStatusLabels } from '@/app/(crm)/crm/events/[id]/components/tabs/EventsDetailsTab/EventDetailsAction';
 import { OrganizationSearchSelect } from './events/wizard/OrganizationSearchSelect';
 import { SearchSelect } from './events/wizard/SearchSelect';
-import CompanySelector from './CompanySelector';
 
 const buildEventEquipmentRows = (selectedEquipment: any[], eventId: string) => {
   const mapped = (selectedEquipment ?? [])
@@ -160,10 +159,11 @@ export default function EventWizard({
     description: '',
     status: 'inquiry',
     location_id: '' as string | null,
-    my_company_id: '',
   });
 
-  const [clientType, setClientType] = useState<ClientType>(initialClientType as ClientType);
+  const [clientType, setClientType] = useState<ClientType>(
+    initialClientType as ClientType,
+  );
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
@@ -583,7 +583,6 @@ export default function EventWizard({
         created_by: session?.user?.id || null,
         participants: participants.length > 0 ? participants : [],
         location_id: eventData.location_id || null,
-        my_company_id: eventData.my_company_id || null,
       };
 
       const data = await createEventMutation(eventPayload).unwrap();
@@ -656,7 +655,6 @@ export default function EventWizard({
           status: eventData.status,
           participants: participants.length > 0 ? participants : [],
           location_id: eventData.location_id || null,
-          my_company_id: eventData.my_company_id || null,
         })
         .eq('id', createdEventId);
 
@@ -792,7 +790,6 @@ export default function EventWizard({
       description: '',
       status: 'offer_sent',
       location_id: null,
-      my_company_id: '',
     });
     setShowNewContactForm(false);
     setNewContact({ first_name: '', last_name: '', email: '', phone: '' });
@@ -897,15 +894,6 @@ export default function EventWizard({
                   </div>
                 </div>
               </div>
-              <CompanySelector
-                value={eventData.my_company_id}
-                onChange={(myCompanyId) =>
-                  setEventData((prev) => ({ ...prev, my_company_id: myCompanyId }))
-                }
-                showAllOption={false}
-                label="Firma realizująca"
-                className="w-full"
-              />
 
               <div>
                 <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
@@ -967,7 +955,6 @@ export default function EventWizard({
                   </button>
                 </div>
               </div>
-
 
               {/* Klient businessowy */}
               {clientType === 'business' && (

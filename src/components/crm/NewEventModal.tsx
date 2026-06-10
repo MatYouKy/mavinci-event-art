@@ -1,17 +1,10 @@
 'use client';
 
-import { X, Plus, Building2, User, Briefcase } from 'lucide-react';
+import { X, Plus, Building2, User } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/browser';
 import LocationSelector from './LocationSelector';
 import { utcToLocalDatetimeString, localDatetimeStringToUTC } from '@/lib/utils/dateTimeUtils';
-
-interface MyCompany {
-  id: string;
-  name: string;
-  nip: string;
-  is_default: boolean;
-}
 
 interface NewEventModalProps {
   isOpen: boolean;
@@ -49,7 +42,6 @@ export default function NewEventModal({
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
   const [categories, setCategories] = useState<EventCategory[]>([]);
-  const [myCompanies, setMyCompanies] = useState<MyCompany[]>([]);
   const [showNewOrgForm, setShowNewOrgForm] = useState(false);
   const [newOrgName, setNewOrgName] = useState('');
   const [clientType, setClientType] = useState<'organization' | 'individual'>('organization');
@@ -61,7 +53,6 @@ export default function NewEventModal({
     organization_id: '',
     contact_person_id: '',
     category_id: '',
-    my_company_id: '' as string,
     event_date: initialDate ? utcToLocalDatetimeString(initialDate.toISOString()) : '',
     event_end_date: '',
     location: '',
@@ -75,7 +66,6 @@ export default function NewEventModal({
       fetchOrganizations();
       fetchContacts();
       fetchCategories();
-      fetchMyCompanies();
     }
   }, [isOpen]);
 
@@ -170,32 +160,6 @@ export default function NewEventModal({
     }
   };
 
-  const fetchMyCompanies = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('my_companies')
-        .select('id, name, nip, is_default')
-        .eq('is_active', true)
-        .order('is_default', { ascending: false })
-        .order('name');
-
-      if (error) {
-        console.error('Error fetching companies:', error);
-        return;
-      }
-
-      if (data) {
-        setMyCompanies(data);
-        const defaultCompany = data.find((c) => c.is_default);
-        if (defaultCompany && !formData.my_company_id) {
-          setFormData((prev) => ({ ...prev, my_company_id: defaultCompany.id }));
-        }
-      }
-    } catch (err) {
-      console.error('Error:', err);
-    }
-  };
-
   const handleAddNewOrganization = async () => {
     if (!newOrgName.trim()) {
       alert('Wprowadź nazwę organizacji');
@@ -281,7 +245,6 @@ export default function NewEventModal({
       contact_person_id: contactPersonId && contactPersonId.trim() !== '' ? contactPersonId : null,
       category_id:
         formData.category_id && formData.category_id.trim() !== '' ? formData.category_id : null,
-      my_company_id: formData.my_company_id || null,
       event_date: localDatetimeStringToUTC(formData.event_date),
       event_end_date: localDatetimeStringToUTC(formData.event_end_date),
       location: formData.location || null,
@@ -297,7 +260,6 @@ export default function NewEventModal({
       organization_id: '',
       contact_person_id: '',
       category_id: '',
-      my_company_id: '',
       event_date: '',
       event_end_date: '',
       location: '',
@@ -538,27 +500,6 @@ export default function NewEventModal({
                 ))}
               </select>
             </div>
-
-            {myCompanies.length > 1 && (
-              <div>
-                <label className="mb-2 flex items-center gap-1.5 text-sm text-[#e5e4e2]/70">
-                  <Briefcase className="h-4 w-4" />
-                  Firma realizująca
-                </label>
-                <select
-                  value={formData.my_company_id}
-                  onChange={(e) => setFormData({ ...formData, my_company_id: e.target.value })}
-                  className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
-                >
-                  <option value="">Wybierz firmę</option>
-                  {myCompanies.map((company) => (
-                    <option key={company.id} value={company.id}>
-                      {company.name} (NIP: {company.nip})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
 
             <div className="grid grid-cols-2 gap-4">
               <div>

@@ -184,6 +184,16 @@ const permissionCategories: PermissionCategory[] = [
         label: 'Zarządzanie fakturami KSeF',
         description: 'Może konfigurować integrację z KSeF i zarządzać fakturami',
       },
+      {
+        key: 'bank_statements_view',
+        label: 'Podgląd wyciągów',
+        description: 'Może przeglądać wyciągi bankowe',
+      },
+      {
+        key: 'bank_statements_manage',
+        label: 'Zarządzanie wyciągami',
+        description: 'Może konfigurować integrację z wyciągami bankowymi',
+      },
     ],
   },
   {

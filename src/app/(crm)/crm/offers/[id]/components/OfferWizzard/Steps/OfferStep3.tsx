@@ -1,17 +1,11 @@
 'use client';
 
 import { ShoppingCart, Package, Search } from 'lucide-react';
+import { IProduct } from '@/app/(crm)/crm/offers/types';
 
 interface ProductCategory {
   id: string;
   name: string;
-}
-
-interface Product {
-  id: string;
-  name: string;
-  description: string;
-  base_price: number;
 }
 
 interface OfferItem {
@@ -29,9 +23,9 @@ interface OfferStep3Props {
   setSelectedCategory: (v: string) => void;
 
   categories: ProductCategory[];
-  filteredProducts: Product[];
+  filteredProducts: IProduct[];
 
-  addProductToOffer: (product: Product) => void;
+  addProductToOffer: (product: IProduct) => void;
   removeOfferItem: (itemId: string) => void;
 }
 
@@ -100,9 +94,7 @@ export default function OfferStep3({
               <div className="mb-3 flex items-start justify-between">
                 <div className="flex flex-1 items-center gap-2">
                   <Package
-                    className={`h-5 w-5 ${
-                      isAdded ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/40'
-                    }`}
+                    className={`h-5 w-5 ${isAdded ? 'text-[#d3bb73]' : 'text-[#e5e4e2]/40'}`}
                   />
                   <h4 className="font-medium text-[#e5e4e2]">{product.name}</h4>
                 </div>

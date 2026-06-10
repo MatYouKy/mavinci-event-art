@@ -885,8 +885,6 @@ export default function EventDetailPageClient({
               categories={categories}
               hasOffers={!!offersData && offersData.length > 0}
               offersCount={offersData?.length || 0}
-              contact={contact}
-              organization={organization}
             />
             {canViewCommercials && (
               <>

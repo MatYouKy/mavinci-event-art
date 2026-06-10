@@ -12,7 +12,7 @@ import { OfferStep1 } from './Steps/OfferStep1';
 import { useOfferWizardLogic } from './hooks/useOfferWizzard';
 import OfferStep3 from './Steps/OfferStep3';
 import { ClientType } from '@/app/(crm)/crm/clients/type';
-import { IOfferWizardCustomItem } from '../../../types';
+import { IOfferWizardCustomItem, IProduct } from '../../../types';
 
 interface OfferWizardProps {
   isOpen: boolean;
@@ -117,7 +117,13 @@ export default function OfferWizard({
   });
 
   const calculateTotal = () => {
-    return offerItems.reduce((sum, item) => sum + item.subtotal, 0);
+    return offerItems.reduce((sum, item) => {
+      const quantity = Number(item.quantity ?? 1);
+      const unitPrice = Number(item.unit_price ?? 0);
+      const discount = Number(item.discount_percent ?? 0);
+
+      return sum + quantity * unitPrice * (1 - discount / 100);
+    }, 0);
   };
 
   if (!isOpen) return null;
@@ -205,7 +211,7 @@ export default function OfferWizard({
 
           {step === 1 && (
             <OfferStep1
-              clientType={clientType}
+              clientType={clientType as 'business' | 'individual'}
               setClientType={setClientType}
               clientSearchQuery={clientSearchQuery}
               setClientSearchQuery={setClientSearchQuery}

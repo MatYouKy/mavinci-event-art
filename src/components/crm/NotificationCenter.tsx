@@ -48,10 +48,8 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [customSoundUrl, setCustomSoundUrl] = useState<string | null>(null);
   const prevUnreadCountRef = useRef<number>(0);
-  const readyForSoundRef = useRef(false);
-  const initialLoadDoneRef = useRef(false);
+  const isInitialLoadRef = useRef(true);
   const [absenceModalId, setAbsenceModalId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -95,16 +93,8 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
   }, []);
 
   useEffect(() => {
-    if (!initialLoadDoneRef.current) {
-      initialLoadDoneRef.current = true;
-      prevUnreadCountRef.current = unreadCount;
-      setTimeout(() => {
-        readyForSoundRef.current = true;
-      }, 3000);
-      return;
-    }
-
-    if (!readyForSoundRef.current) {
+    if (isInitialLoadRef.current) {
+      isInitialLoadRef.current = false;
       prevUnreadCountRef.current = unreadCount;
       return;
     }
@@ -134,9 +124,6 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
       if (data?.preferences?.notifications?.soundEnabled !== undefined) {
         setSoundEnabled(data.preferences.notifications.soundEnabled);
       }
-      if (data?.preferences?.notifications?.customSoundUrl) {
-        setCustomSoundUrl(data.preferences.notifications.customSoundUrl);
-      }
     } catch (error) {
       console.error('Error loading user preferences:', error);
     }
@@ -144,13 +131,6 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
 
   const playNotificationSound = () => {
     try {
-      if (customSoundUrl) {
-        const audio = new Audio(customSoundUrl);
-        audio.volume = 0.5;
-        audio.play().catch(() => {});
-        return;
-      }
-
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();
@@ -205,6 +185,7 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
         )
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
+        .limit(100);
 
       if (error) throw error;
 
@@ -474,6 +455,7 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
               <div className="mb-3 flex items-center justify-between">
                 <div>
                   <h3 className="text-lg font-bold text-[#e5e4e2]">Powiadomienia</h3>
+                  <p className="mt-0.5 text-xs text-[#e5e4e2]/40">Wyświetlanie ostatnich 100</p>
                 </div>
                 <button
                   onClick={() => setShowPanel(false)}

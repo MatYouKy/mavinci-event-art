@@ -1155,7 +1155,7 @@ const TechnicalOfferBrochure = ({
 
               <div className="mt-12 space-y-4 border-t border-[#d3bb73]/20 pt-8 text-center">
                 <div className="flex items-center justify-center gap-4">
-                  <Image src="/logo.png" width={48} height={48} alt="Mavinci Logo" />
+                  <Image src="/logo mavinci-simple.svg" width={48} height={48} alt="Mavinci Logo" />
                 </div>
                 <p className="text-[#e5e4e2]/60">www.mavinci.pl</p>
               </div>

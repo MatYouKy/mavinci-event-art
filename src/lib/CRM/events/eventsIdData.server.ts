@@ -161,14 +161,11 @@ export async function fetchEventByIdServer(
   const categoryId = normalizeUuid((event as any).category_id);
   const creatorId = normalizeUuid((event as any).created_by);
   const organizationId = normalizeUuid((event as any).organization_id);
-  const myCompanyId = normalizeUuid((event as any).my_company_id);
 
   const [
     { data: eventCategory, error: eventCategoryError },
     { data: creator, error: creatorError },
     { data: organization, error: organizationError },
-    { data: myCompany, error: myCompanyError },
-    { data: myCompanyBrandLogo, error: myCompanyBrandLogoError },
     { data: currentEmployee, error: currentEmployeeError },
     { data: assignment, error: assignmentError },
     { data: eventEmployees, error: eventEmployeesError },
@@ -196,22 +193,6 @@ export async function fetchEventByIdServer(
           .eq('id', organizationId)
           .maybeSingle()
       : Promise.resolve(emptyResult<OrganizationRow | null>(null)),
-      myCompanyId
-      ? supabase
-          .from('my_companies')
-          .select('id, name, legal_name, nip, email, phone, website, city, logo_url')
-          .eq('id', myCompanyId)
-          .maybeSingle()
-      : Promise.resolve(emptyResult<any | null>(null)),
-    
-    myCompanyId
-      ? supabase
-          .from('company_brandbook_logos')
-          .select('url')
-          .eq('company_id', myCompanyId)
-          .eq('label', 'signature')
-          .maybeSingle()
-      : Promise.resolve(emptyResult<any | null>(null)),
 
     supabase
       .from('employees')
@@ -374,23 +355,8 @@ export async function fetchEventByIdServer(
     };
   }
 
-  const logoPath = myCompanyBrandLogo?.url || (myCompany as any)?.logo_url || null;
-
-const resolvedCompanyLogoUrl =
-  logoPath && !/^https?:\/\//i.test(logoPath) && !logoPath.startsWith('data:')
-    ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/company-logos/${logoPath}`
-    : logoPath;
-
-const realizationCompany = myCompany
-  ? {
-      ...(myCompany as any),
-      logo_url: resolvedCompanyLogoUrl,
-    }
-  : null;
-
   return {
     ...event,
-    my_company: realizationCompany,
     category: eventCategory ?? null,
     creator: (creator as unknown as IEmployee) ?? null,
     organization: (organization as OrganizationRow) ?? null,

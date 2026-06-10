@@ -24,18 +24,6 @@ type Body = {
     lastUpdated: string;
     authorName: string;
     authorNumber: string;
-    companyLogoUrl?: string | null;
-    company?: any;
-    contactPerson?: {
-      name: string;
-      email?: string | null;
-      phone?: string | null;
-    } | null;
-    preparedBy?: {
-      name: string;
-      email?: string | null;
-      phone?: string | null;
-    } | null;
   };
   createdBy?: string | null;
   previousPdfPath?: string | null;
@@ -84,8 +72,6 @@ async function getOrCreateAgendaFolderId({
 }
 
 export async function POST(req: Request) {
-  let browser: Awaited<ReturnType<typeof chromium.launch>> | null = null;
-
   try {
     const body = (await req.json()) as Body;
     const { eventId, agendaId, htmlPayload, eventName, fileName, createdBy, previousPdfPath } = body;
@@ -94,141 +80,112 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Brak wymaganych danych' }, { status: 400 });
     }
 
-    const supabase = getSupabaseAdmin();
+    const html = buildAgendaHtml(htmlPayload);
 
-    const enrichedPayload = { ...htmlPayload };
-
-    if (!enrichedPayload.preparedBy && createdBy) {
-      const { data: employee, error: employeeError } = await supabase
-        .from('employees')
-        .select('name, surname, email, phone_number')
-        .eq('auth_user_id', createdBy)
-        .maybeSingle();
-
-      if (employeeError) {
-        console.error('employee fetch error:', employeeError);
-      }
-
-      if (employee) {
-        enrichedPayload.preparedBy = {
-          name:
-            [employee.name, employee.surname].filter(Boolean).join(' ') ||
-            employee.email ||
-            'Nieznany użytkownik',
-          email: employee.email ?? null,
-          phone: employee.phone_number ?? null,
-        };
-      }
-    }
-
-    const html = buildAgendaHtml(enrichedPayload);
-
-    browser = await chromium.launch({
+    const browser = await chromium.launch({
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--font-render-hinting=medium'],
     });
 
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: 'networkidle' });
+    try {
+      const page = await browser.newPage();
+      await page.setContent(html, { waitUntil: 'networkidle' });
 
-    await page.evaluate(async () => {
-      // @ts-ignore
-      if (document.fonts && document.fonts.ready) {
+      await page.evaluate(async () => {
         // @ts-ignore
-        await document.fonts.ready;
+        if (document.fonts && document.fonts.ready) {
+          // @ts-ignore
+          await document.fonts.ready;
+        }
+        const imgs = Array.from(document.images || []);
+        await Promise.all(
+          imgs.map(
+            (img) =>
+              new Promise<void>((resolve) => {
+                if (img.complete) return resolve();
+                img.onload = () => resolve();
+                img.onerror = () => resolve();
+              }),
+          ),
+        );
+      });
+
+      const pdfBuffer = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        margin: { top: '10mm', right: '10mm', bottom: '20mm', left: '10mm' },
+      });
+
+      const supabase = getSupabaseAdmin();
+
+      if (previousPdfPath) {
+        await supabase.storage.from('event-files').remove([previousPdfPath]);
+        await supabase.from('event_files').delete().eq('file_path', previousPdfPath);
       }
 
-      const imgs = Array.from(document.images || []);
+      const folderId = await getOrCreateAgendaFolderId({
+        supabase,
+        eventId,
+        createdBy: createdBy ?? null,
+      });
 
-      await Promise.all(
-        imgs.map(
-          (img) =>
-            new Promise<void>((resolve) => {
-              if (img.complete) return resolve();
-              img.onload = () => resolve();
-              img.onerror = () => resolve();
-            }),
-        ),
-      );
-    });
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const finalFileName =
+        fileName || `agenda-${eventName.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${timestamp}.pdf`;
 
-    const pdfBuffer = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      margin: { top: '10mm', right: '10mm', bottom: '20mm', left: '10mm' },
-    });
+      // fizyczna ścieżka w storage
+      const storagePath = `${eventId}/documents/agenda/${finalFileName}`;
 
-    if (previousPdfPath) {
-      await supabase.storage.from('event-files').remove([previousPdfPath]);
-      await supabase.from('event_files').delete().eq('file_path', previousPdfPath);
+      const upload = await supabase.storage.from('event-files').upload(storagePath, pdfBuffer, {
+        contentType: 'application/pdf',
+        upsert: false,
+      });
+
+      if (upload.error) {
+        return NextResponse.json({ error: upload.error.message }, { status: 500 });
+      }
+
+      const insertFile = await supabase.from('event_files').insert([
+        {
+          event_id: eventId,
+          folder_id: folderId,
+          name: finalFileName,
+          original_name: finalFileName,
+          file_path: storagePath,
+          file_size: pdfBuffer.byteLength,
+          mime_type: 'application/pdf',
+          document_type: 'agenda',
+          thumbnail_url: null,
+          uploaded_by: createdBy ?? null,
+        },
+      ]);
+
+      if (insertFile.error) {
+        console.error('event_files insert error:', insertFile.error);
+      }
+
+      const upd = await supabase
+        .from('event_agendas')
+        .update({
+          generated_pdf_path: storagePath,
+          generated_pdf_at: new Date().toISOString(),
+          modified_after_generation: false,
+        })
+        .eq('id', agendaId);
+
+      if (upd.error) {
+        console.error('event_agendas update error:', upd.error);
+      }
+
+      return NextResponse.json({
+        ok: true,
+        storagePath,
+        fileName: finalFileName,
+      });
+    } finally {
+      await browser.close();
     }
-
-    const folderId = await getOrCreateAgendaFolderId({
-      supabase,
-      eventId,
-      createdBy: createdBy ?? null,
-    });
-
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-    const safeEventName = (eventName || htmlPayload.eventName || 'agenda')
-      .replace(/[^a-z0-9]/gi, '-')
-      .toLowerCase();
-
-    const finalFileName = fileName || `agenda-${safeEventName}-${timestamp}.pdf`;
-
-    const storagePath = `${eventId}/documents/agenda/${finalFileName}`;
-
-    const upload = await supabase.storage.from('event-files').upload(storagePath, pdfBuffer, {
-      contentType: 'application/pdf',
-      upsert: false,
-    });
-
-    if (upload.error) {
-      return NextResponse.json({ error: upload.error.message }, { status: 500 });
-    }
-
-    const insertFile = await supabase.from('event_files').insert([
-      {
-        event_id: eventId,
-        folder_id: folderId,
-        name: finalFileName,
-        original_name: finalFileName,
-        file_path: storagePath,
-        file_size: pdfBuffer.byteLength,
-        mime_type: 'application/pdf',
-        document_type: 'agenda',
-        thumbnail_url: null,
-        uploaded_by: createdBy ?? null,
-      },
-    ]);
-
-    if (insertFile.error) {
-      console.error('event_files insert error:', insertFile.error);
-    }
-
-    const upd = await supabase
-      .from('event_agendas')
-      .update({
-        generated_pdf_path: storagePath,
-        generated_pdf_at: new Date().toISOString(),
-        modified_after_generation: false,
-      })
-      .eq('id', agendaId);
-
-    if (upd.error) {
-      console.error('event_agendas update error:', upd.error);
-    }
-
-    return NextResponse.json({
-      ok: true,
-      storagePath,
-      fileName: finalFileName,
-    });
   } catch (e: any) {
     console.error('Agenda PDF generate API error:', e);
     return NextResponse.json({ error: e?.message || 'Błąd generowania PDF' }, { status: 500 });
-  } finally {
-    if (browser) {
-      await browser.close();
-    }
   }
 }

@@ -228,6 +228,16 @@ export default function InvoicesPage() {
     employee: currentEmployee,
     sessionUserId,
   } = useCurrentEmployee();
+  
+  const employeePermissions = currentEmployee?.permissions ?? [];
+  
+  const canViewBankStatements =
+    isAdmin ||
+    employeePermissions.includes('bank_statements_view') ||
+    employeePermissions.includes('bank_statements_manage');
+  
+  const canManageBankStatements =
+    isAdmin || employeePermissions.includes('bank_statements_manage');
 
   const allowedCompanyIds = useMemo<string[] | null>(() => {
     if (isAdmin) return null;
@@ -626,7 +636,13 @@ export default function InvoicesPage() {
           </div>
 
           {activeTab === 'dashboard' ? (
-            <KSeFFinancialDashboard />
+            <>
+              <KSeFFinancialDashboard />
+              <div className="mt-8">
+                <h3 className="mb-6 text-xl font-light text-[#e5e4e2]">Faktury lokalne</h3>
+                <FinancialDashboard />
+              </div>
+            </>
           ) : activeTab === 'ksef' ? (
             <KSeFIntegrationPanel />
           ) : activeTab === 'settings' ? (

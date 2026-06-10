@@ -171,14 +171,6 @@ export const allNavigation: NavigationItemDTO[] = [
       },
       {
         key: 'equipment',
-        name: 'Wtyki',
-        href: '/crm/equipment/connectors',
-        iconKey: 'plug',
-        module: 'equipment',
-        permissions: ['equipment_view'],
-      },
-      {
-        key: 'equipment',
         name: 'Kategorie',
         href: '/crm/equipment/categories',
         iconKey: 'folderTree',

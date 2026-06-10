@@ -52,6 +52,8 @@ interface Props {
   year: number;
   companyId: string | null;
   onClose: () => void;
+  invoiceData: KSeFInvoice;
+  canManageBankStatements: boolean;
 }
 
 interface MatchScore {
@@ -59,6 +61,14 @@ interface MatchScore {
   invoice: KSeFInvoice;
   score: number;
   reasons: string[];
+}
+
+interface Props {
+  month: number;
+  year: number;
+  invoice: KSeFInvoice;
+  companyId: string | null;
+  onClose: () => void;
 }
 
 function normalizeText(text?: string | null): string {
@@ -200,91 +210,67 @@ const COL_SCORE = 'w-[260px]';
 const COL_REASONS = 'w-[12%]';
 const COL_ACTION = 'w-[6%]';
 
-export default function BankMatchingSimple({ month, year, companyId, onClose }: Props) {
+export default function BankMatchingSimple({ month, year, companyId, invoiceData, onClose, canManageBankStatements }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [matchingId, setMatchingId] = useState<string | null>(null);
-  const [invoices, setInvoices] = useState<KSeFInvoice[]>([]);
   const { showSnackbar } = useSnackbar();
 
   useEffect(() => {
     void loadData();
-  }, [month, year, companyId]);
+  }, [month, year, invoiceData.id]);
 
   const loadData = async () => {
     try {
       setLoading(true);
-  
-      // 1. Pobierz wszystkie wyciągi z danego roku
-      let statementsQuery = supabase
-        .from('bank_statements')
-        .select('id')
-        .eq('statement_year', year);
-  
-      if (companyId) {
-        statementsQuery = statementsQuery.eq('my_company_id', companyId);
+
+      const monthsToCheck = [
+        { month: month === 1 ? 12 : month - 1, year: month === 1 ? year - 1 : year },
+        { month, year },
+        { month: month === 12 ? 1 : month + 1, year: month === 12 ? year + 1 : year },
+      ];
+
+      const allStatementIds: string[] = [];
+
+      for (const range of monthsToCheck) {
+        let query = supabase
+          .from('bank_statements')
+          .select('id')
+          .eq('statement_month', range.month)
+          .eq('statement_year', range.year);
+
+        if (companyId) {
+          query = query.eq('my_company_id', companyId);
+        }
+
+        const { data: statements, error: statementsError } = await query;
+
+        if (statementsError) throw statementsError;
+
+        if (statements?.length) {
+          allStatementIds.push(...statements.map((s) => s.id));
+        }
       }
-  
-      const { data: statements, error: statementsError } = await statementsQuery;
-  
-      if (statementsError) throw statementsError;
-  
-      const allStatementIds = (statements || []).map((statement) => statement.id);
-  
+
       if (!allStatementIds.length) {
         setTransactions([]);
-      } else {
-        const { data: transactionsData, error: transactionsError } = await supabase
-          .from('bank_transactions')
-          .select('*')
-          .in('statement_id', allStatementIds)
-          .is('matched_invoice_id', null)
-          .eq('transaction_type', 'debit')
-          .order('transaction_date', { ascending: false });
-  
-        if (transactionsError) throw transactionsError;
-  
-        setTransactions((transactionsData || []) as Transaction[]);
+        return;
       }
-  
-      // 2. Pobierz nieopłacone faktury kosztowe z całego roku
-      const yearStart = `${year}-01-01`;
-      const yearEnd = `${year + 1}-01-01`;
-  
-      let invoicesQuery = supabase
-        .from('ksef_invoices')
-        .select(`
-          id,
-          invoice_number,
-          ksef_reference_number,
-          buyer_name,
-          seller_name,
-          issue_date,
-          payment_due_date,
-          gross_amount,
-          payment_status,
-          invoice_type,
-          seller_nip,
-          buyer_nip,
-          my_company_id
-        `)
-        .eq('invoice_type', 'received')
-        .neq('payment_status', 'paid')
-        .gte('issue_date', yearStart)
-        .lt('issue_date', yearEnd);
-  
-      if (companyId) {
-        invoicesQuery = invoicesQuery.eq('my_company_id', companyId);
-      }
-  
-      const { data: invoicesData, error: invoicesError } = await invoicesQuery;
-  
-      if (invoicesError) throw invoicesError;
-  
-      setInvoices((invoicesData || []) as KSeFInvoice[]);
+
+      const { data: transactionsData, error: transactionsError } = await supabase
+        .from('bank_transactions')
+        .select('*')
+        .in('statement_id', allStatementIds)
+        .is('matched_invoice_id', null)
+        .eq('transaction_type', 'debit')
+        .order('transaction_date', { ascending: false });
+
+      if (transactionsError) throw transactionsError;
+
+      setTransactions((transactionsData || []) as Transaction[]);
     } catch (error: any) {
       console.error('Error loading bank matching data:', error);
-      showSnackbar(error.message || 'Błąd podczas ładowania danych do dopasowania', 'error');
+      showSnackbar(error.message || 'Błąd podczas ładowania transakcji', 'error');
     } finally {
       setLoading(false);
     }
@@ -292,13 +278,10 @@ export default function BankMatchingSimple({ month, year, companyId, onClose }: 
 
   const matchScores = useMemo(() => {
     return transactions
-      .flatMap((transaction) =>
-        invoices
-          .map((invoice) => calculateMatchScore(transaction, invoice))
-          .filter((match): match is MatchScore => Boolean(match)),
-      )
-      .sort((a, b) => b.score - a.score);
-  }, [transactions, invoices]);
+      .map((transaction) => calculateMatchScore(transaction, invoiceData))
+      .filter(Boolean)
+      .sort((a, b) => b!.score - a!.score) as MatchScore[];
+  }, [transactions, invoiceData]);
 
   const handleMatch = async (match: MatchScore) => {
     try {
@@ -335,6 +318,16 @@ export default function BankMatchingSimple({ month, year, companyId, onClose }: 
     }
   };
 
+  const contractorName =
+    invoiceData.invoice_type === 'received'
+      ? invoiceData.seller_name || 'Brak danych'
+      : invoiceData.buyer_name || 'Brak danych';
+
+  const contractorNip =
+    invoiceData.invoice_type === 'received'
+      ? invoiceData.seller_nip || 'Brak NIP'
+      : invoiceData.buyer_nip || 'Brak NIP';
+
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4">
       <div className="flex max-h-[90vh] w-full max-w-7xl flex-col overflow-hidden rounded-2xl border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl">
@@ -354,6 +347,102 @@ export default function BankMatchingSimple({ month, year, companyId, onClose }: 
           </button>
         </div>
 
+        <div className="border-b border-[#d3bb73]/10 bg-[#252945] p-6">
+          <div className="mb-4 text-xs uppercase tracking-[0.18em] text-[#e5e4e2]/45">
+            Dopasowywana faktura
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-[#d3bb73]/10">
+            <table className="min-w-full table-fixed border-collapse">
+              <thead>
+                <tr className="border-b border-[#d3bb73]/10 bg-[#1c1f33]/40 text-left">
+                  <th
+                    className={`${COL_CONTRACTOR} px-6 py-4 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60 max-${COL_CONTRACTOR}`}
+                  >
+                    Kontrahent
+                  </th>
+                  <th
+                    className={`${COL_DOC} px-6 py-4 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60 max-${COL_DOC}`}
+                  >
+                    Numer faktury
+                  </th>
+                  <th
+                    className={`${COL_DATE} px-6 py-4 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60`}
+                  >
+                    Data wystawienia
+                  </th>
+                  <th
+                    className={`${COL_AMOUNT} px-6 py-4 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60`}
+                  >
+                    Kwota brutto
+                  </th>
+                  <th className="px-6 py-4 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
+                    Typ
+                  </th>
+                  <th className="px-6 py-4 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
+                    Status płatności
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody>
+                <tr className="bg-[#252945]/40">
+                  <td className={`${COL_CONTRACTOR} px-6 py-5 align-top text-sm text-[#e5e4e2]/80`}>
+                    <div className="truncate">{contractorName}</div>
+                    <div className="mt-1 truncate text-xs text-[#e5e4e2]/40">
+                      NIP: {contractorNip}
+                    </div>
+                  </td>
+
+                  <td
+                    className={`${COL_DOC} max-${COL_DOC} px-6 py-5 align-top text-sm font-medium text-[#e5e4e2]`}
+                  >
+                    <div className="truncate">
+                      {invoiceData.invoice_number || 'Brak numeru faktury'}
+                    </div>
+                    <div className="mt-1 truncate text-xs text-[#e5e4e2]/40">
+                      KSeF: {invoiceData.ksef_reference_number}
+                    </div>
+                  </td>
+
+                  <td className={`${COL_DATE} px-6 py-5 align-top text-sm text-[#e5e4e2]/80`}>
+                    {formatDate(invoiceData.issue_date)}
+                  </td>
+
+                  <td
+                    className={`${COL_AMOUNT} px-6 py-5 align-top text-sm font-medium text-[#d3bb73]`}
+                  >
+                    {formatMoney(invoiceData.gross_amount)}
+                  </td>
+
+                  <td className="px-6 py-5 align-top">
+                    <span className="inline-flex rounded-full bg-[#d3bb73]/10 px-3 py-1 text-xs font-medium text-[#d3bb73]">
+                      Kosztowa
+                    </span>
+                  </td>
+
+                  <td className="px-6 py-5 align-top">
+                    <span
+                      className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${
+                        invoiceData.payment_status === 'paid'
+                          ? 'bg-green-500/20 text-green-400'
+                          : invoiceData.payment_status === 'overdue'
+                            ? 'bg-red-500/20 text-red-400'
+                            : 'bg-orange-500/20 text-orange-400'
+                      }`}
+                    >
+                      {invoiceData.payment_status === 'paid'
+                        ? 'Opłacona'
+                        : invoiceData.payment_status === 'overdue'
+                          ? 'Po terminie'
+                          : 'Nieopłacona'}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
 
         {loading ? (
           <div className="flex min-h-[320px] items-center justify-center">
@@ -507,6 +596,7 @@ export default function BankMatchingSimple({ month, year, companyId, onClose }: 
                         <ResponsiveActionBar
                           actions={[
                             {
+                              show: canManageBankStatements,
                               label: 'Dopasuj',
                               onClick: () => handleMatch(match),
                               variant: 'primary',

@@ -143,7 +143,7 @@ export default function CRMClientLayout({
             </button>
             <Link href="/crm" className="flex items-center gap-3">
               <Image
-                src="/logo.png"
+                src="/logo mavinci-simple.svg"
                 alt="Mavinci"
                 priority
                 width={160}

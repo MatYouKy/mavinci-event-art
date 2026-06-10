@@ -27,7 +27,20 @@ export function useOfferWizardItems() {
     subtotal: 0,
   });
 
-  const total = useMemo(() => calcTotal(offerItems), [offerItems]);
+  const total = useMemo(
+    () =>
+      offerItems.reduce(
+        (sum, item) =>
+          sum +
+          calcSubtotal(
+            Number(item.quantity ?? 1),
+            Number(item.unit_price ?? 0),
+            Number(item.discount_percent ?? 0),
+          ),
+        0,
+      ),
+    [offerItems],
+  );
 
   // ✅ helper żeby zawsze ustawiać i ref, i state
   const setOfferItemsSafe = (next: IOfferItem[]) => {
@@ -87,20 +100,35 @@ export function useOfferWizardItems() {
   };
 
   // ✅ update zwraca next
-  const updateItem = (id: string, patch: Partial<IOfferItem>) => {
+  const updateItem = (id: string, patch: Partial<IOfferItem> & any) => {
     const prev = offerItemsRef.current;
-
+  
     const next = prev.map((i) => {
       if (i.id !== id) return i;
+  
       const updated: any = { ...i, ...patch };
-      updated.subtotal = calcSubtotal(
-        updated.quantity,
-        updated.unit_price,
-        updated.discount_percent || 0,
+  
+      const quantity = Number(updated.quantity ?? 1);
+  
+      const unitPrice = Number(
+        updated.unit_price ??
+          updated.price_net ??
+          updated.price ??
+          updated.base_price ??
+          0,
       );
-      return updated;
+  
+      const discountPercent = Number(updated.discount_percent ?? 0);
+  
+      return {
+        ...updated,
+        unit_price: unitPrice,
+        quantity,
+        discount_percent: discountPercent,
+        subtotal: calcSubtotal(quantity, unitPrice, discountPercent),
+      };
     });
-
+  
     setOfferItemsSafe(next);
     return next;
   };

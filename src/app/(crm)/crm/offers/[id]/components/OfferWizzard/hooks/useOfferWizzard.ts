@@ -148,8 +148,7 @@ export function useOfferWizardLogic(opts: {
   };
 
   const updateOfferItem = async (id: string, patch: any) => {
-    const nextItems = items.updateItem(id, patch);
-    await conflicts.checkCartConflicts(nextItems);
+    items.updateItem(id, patch);
   };
 
   const nextStep = () => setStep((s) => Math.min(4, s + 1));

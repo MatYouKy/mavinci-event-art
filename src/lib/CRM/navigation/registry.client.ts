@@ -26,7 +26,6 @@ import {
   PackageOpen,
   FolderTree,
   FileType,
-  Plug,
 } from 'lucide-react';
 
 /**
@@ -59,7 +58,6 @@ export const NavigationIcons = {
   box: Box,
   layers: Layers,
   cable: Cable,
-  plug: Plug,
   packageOpen: PackageOpen,
   folderTree: FolderTree,
 

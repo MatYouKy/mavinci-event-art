@@ -15,7 +15,7 @@ import {
 import React, { FC, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import EditEventClientModal from '@/components/crm/EditEventClientModal';
-
+import { supabase } from '@/lib/supabase/browser';
 import { logChange } from '../../../helpers/logChange';
 import { EventDestailsDescription } from './EventDetailsDescription';
 import { EventDetailsNotes } from './EventDetailsNotes';
@@ -23,9 +23,6 @@ import { useEvent } from '@/app/(crm)/crm/events/hooks/useEvent';
 import { ContactRow, OrganizationRow } from '@/app/(crm)/crm/contacts/types';
 import { ISimpleContact, ISimpleLocation } from '../../../EventDetailPageClient';
 import { IEvent } from '../../../../type';
-import Image from 'next/image';
-import { EditRealizationCompanyModal } from './EditRealizationCompanyModal';
-import { supabase } from '@/lib/supabase/browser';
 
 interface EventsDetailsTabProps {
   hasLimitedAccess: boolean;
@@ -50,19 +47,9 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
   const { updateEvent, refetch } = useEvent();
 
   const [event, setEvent] = useState<IEvent>(initialEvent);
-  const [realizationCompany, setRealizationCompany] = useState<any>(
-    () => (initialEvent as any).my_company ?? null,
-  );
-  const [showEditCompanyModal, setShowEditCompanyModal] = useState(false);
-
+  
   useEffect(() => {
     setEvent(initialEvent);
-
-    const initialCompany = (initialEvent as any).my_company;
-
-    if (initialCompany) {
-      setRealizationCompany(initialCompany);
-    }
   }, [initialEvent]);
 
   const [showEditClientModal, setShowEditClientModal] = useState(false);
@@ -93,115 +80,11 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
     }
   };
 
-  const handleChangeRealizationCompany = async (companyId: string) => {
-    const { error } = await supabase
-      .from('events')
-      .update({ my_company_id: companyId })
-      .eq('id', event.id);
-
-    if (error) {
-      console.error('Error updating realization company:', error);
-      return;
-    }
-
-    setEvent((prev) => ({
-      ...prev,
-      my_company_id: companyId,
-    }));
-
-    setShowEditCompanyModal(false);
-    await refetch();
-  };
-
-  useEffect(() => {
-    const loadRealizationCompany = async () => {
-      if (!event.my_company_id) {
-        setRealizationCompany(null);
-        return;
-      }
-
-      const { data: companyData, error: companyError } = await supabase
-        .from('my_companies')
-        .select('*')
-        .eq('id', event.my_company_id)
-        .maybeSingle();
-
-      if (companyError) {
-        console.error('Error loading realization company:', companyError);
-        return;
-      }
-
-      const { data: brandLogo, error: brandLogoError } = await supabase
-        .from('company_brandbook_logos')
-        .select('url')
-        .eq('company_id', event.my_company_id)
-        .eq('label', 'signature')
-        .maybeSingle();
-
-      if (brandLogoError) {
-        console.error('Error loading brandbook logo:', brandLogoError);
-      }
-
-      const logoPath = brandLogo?.url || companyData?.logo_url || null;
-
-      const resolvedLogoUrl =
-        logoPath && !/^https?:\/\//i.test(logoPath) && !logoPath.startsWith('data:')
-          ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/company-logos/${logoPath}`
-          : logoPath;
-
-      setRealizationCompany({
-        ...companyData,
-        logo_url: resolvedLogoUrl,
-      });
-    };
-
-    loadRealizationCompany();
-  }, [event.my_company_id]);
-
   return (
     <>
       <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
         <h2 className="mb-4 text-lg font-light text-[#e5e4e2]">Informacje podstawowe</h2>
         <div className="space-y-4">
-          <div className="flex items-start gap-3">
-            <Building2 className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
-
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <p className="text-sm text-[#e5e4e2]/60">Firma realizująca</p>
-
-                {canEventManage && (
-                  <button
-                    onClick={() => setShowEditCompanyModal(true)}
-                    className="flex items-center gap-1 text-xs text-[#d3bb73] hover:text-[#d3bb73]/80"
-                  >
-                    <EditIcon className="h-3 w-3" />
-                    Edytuj
-                  </button>
-                )}
-              </div>
-
-              <div className="mt-1 flex items-center gap-3">
-                {realizationCompany?.logo_url && (
-                  <Image
-                    width={32}
-                    height={32}
-                    src={realizationCompany.logo_url}
-                    alt={realizationCompany.name || 'Logo'}
-                    className="h-8 w-8 shrink-0 object-contain"
-                  />
-                )}
-
-                <div className="min-w-0">
-                  <p className="text-[#e5e4e2]">
-                    {realizationCompany?.legal_name ||
-                      realizationCompany?.name ||
-                      'Brak przypisanej firmy'}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
           <div className="flex items-start gap-3">
             <Calendar className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
             <div>
@@ -332,18 +215,15 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
           {/* Ukryj klienta dla użytkowników z ograniczonym dostępem */}
           {!hasLimitedAccess && isAdmin && (
             <div className="space-y-3">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between">
                 <h3 className="text-sm font-medium text-[#e5e4e2]">Informacje o kliencie</h3>
-
-                {canEventManage && (
-                  <button
-                    onClick={() => setShowEditClientModal(true)}
-                    className="flex items-center gap-1 text-xs text-[#d3bb73] hover:text-[#d3bb73]/80"
-                  >
-                    <EditIcon className="h-3 w-3" />
-                    Edytuj
-                  </button>
-                )}
+                <button
+                  onClick={() => setShowEditClientModal(true)}
+                  className="flex items-center gap-1 text-xs text-[#d3bb73] hover:text-[#d3bb73]/80"
+                >
+                  <EditIcon className="h-3 w-3" />
+                  Edytuj
+                </button>
               </div>
               {event.client_type === 'business' ? (
                 <>
@@ -469,13 +349,6 @@ export const EventsDetailsTab: FC<EventsDetailsTabProps> = ({
           />
         )}
       </div>
-      {showEditCompanyModal && (
-        <EditRealizationCompanyModal
-          currentCompanyId={event.my_company_id}
-          onClose={() => setShowEditCompanyModal(false)}
-          onSave={handleChangeRealizationCompany}
-        />
-      )}
       <EventDestailsDescription
         eventId={event.id}
         handleSaveDescription={handleUpdateDescription}

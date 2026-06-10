@@ -22,15 +22,14 @@ import {
 } from 'lucide-react';
 import { parseMT940, parseJPK_WB, findMatchingInvoices } from '@/lib/bankStatementParsers';
 import BankTransactionsAnalysis from './BankTransactionsAnalysis';
-import BankMatchingSimple from './BankMatchingSimple';
+import BankMatchingSimple, { KSeFInvoice } from './BankMatchingSimple';
 import CompanySelector from './CompanySelector';
 import ResponsiveActionBar from './ResponsiveActionBar';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useDialog } from '@/contexts/DialogContext';
-import { KSeFInvoice } from './BankMatchingSimple';
 import BankStatementsListModal from './invoices/modal/BankStatementRecord';
 
-type AccountType = 'regular' | 'vat' | 'mt940';
+export type AccountType = 'regular' | 'vat' | 'mt940';
 
 interface MonthlySummary {
   id: string;
@@ -80,6 +79,8 @@ function MonthActions({
   selectedCompanyId,
   allowedCompanyIds,
   isAdmin,
+  canViewBankStatements,
+  canManageBankStatements,
   onUpload,
   onDetails,
   onDownload,
@@ -88,16 +89,18 @@ function MonthActions({
   selectedCompanyId: string | null;
   allowedCompanyIds: string[] | null;
   isAdmin: boolean;
+  canViewBankStatements: boolean;
+  canManageBankStatements: boolean;
   onUpload: () => void;
   onDetails: () => void;
   onDownload: (accountType: AccountType) => void;
 }) {
-  const [hasRegular, setHasRegular] = useState(false);
-  const [hasVat, setHasVat] = useState(false);
-  const [hasMt940, setHasMt940] = useState(false);
+  const [hasRegular, setHasRegular] = useState<boolean>(false);
+  const [hasVat, setHasVat] = useState<boolean>(false);
+  const [hasMt940, setHasMt940] = useState<boolean>(false);
 
   useEffect(() => {
-    if (!summary.bank_statement_uploaded) {
+    if (!selectedCompanyId || !summary.bank_statement_uploaded) {
       setHasRegular(false);
       setHasVat(false);
       setHasMt940(false);
@@ -105,85 +108,55 @@ function MonthActions({
     }
 
     const check = async () => {
-      let query = supabase
+      const { data } = await supabase
         .from('bank_statements')
-        .select('account_type, file_storage_path')
+        .select('account_type')
         .eq('statement_month', summary.month)
         .eq('statement_year', summary.year)
-        .not('file_storage_path', 'is', null);
-
-      if (selectedCompanyId) {
-        query = query.eq('my_company_id', selectedCompanyId);
-      } else if (!isAdmin) {
-        if (!allowedCompanyIds || allowedCompanyIds.length === 0) {
-          setHasRegular(false);
-          setHasVat(false);
-          setHasMt940(false);
-          return;
-        }
-
-        query = query.in('my_company_id', allowedCompanyIds);
-      }
-
-      const { data, error } = await query;
-
-      if (error) {
-        console.error('Error checking statements:', error);
-        setHasRegular(false);
-        setHasVat(false);
-        setHasMt940(false);
-        return;
-      }
+        .eq('my_company_id', selectedCompanyId);
 
       const types = (data || []).map((d) => d.account_type);
-
       setHasRegular(types.includes('regular'));
       setHasVat(types.includes('vat'));
       setHasMt940(types.includes('mt940'));
     };
-
-    void check();
-  }, [
-    summary.month,
-    summary.year,
-    summary.bank_statement_uploaded,
-    selectedCompanyId,
-    allowedCompanyIds,
-    isAdmin,
-  ]);
+    check();
+  }, [summary.month, summary.year, selectedCompanyId, summary.bank_statement_uploaded]);
 
   const actions = [
     {
       label: 'Wgraj wyciag',
       onClick: onUpload,
       icon: <Upload className="h-4 w-4" />,
+      show: canManageBankStatements,
     },
     {
       label: 'Szczegoly',
       onClick: onDetails,
       icon: <FileText className="h-4 w-4" />,
+      show: canViewBankStatements,
     },
     {
       label: 'Pobierz wyciag',
       onClick: () => onDownload('regular'),
       icon: <Download className="h-4 w-4" />,
-      show: hasRegular,
+      show: canViewBankStatements && hasRegular,
     },
     {
       label: 'Wyciag VAT',
       onClick: () => onDownload('vat'),
       icon: <Download className="h-4 w-4" />,
-      show: hasVat,
+      show: canViewBankStatements && hasVat,
     },
     {
       label: 'Pobierz wyciag MT940',
       onClick: () => onDownload('mt940'),
       icon: <Download className="h-4 w-4" />,
-      show: hasMt940,
+      show: canViewBankStatements && hasMt940,
     },
   ];
 
-  return <ResponsiveActionBar actions={actions} disabledBackground mobileBreakpoint={4000} />;
+  return <ResponsiveActionBar actions={actions} />;
 }
 
 export default function KSeFFinancialDashboard() {
@@ -208,18 +181,23 @@ export default function KSeFFinancialDashboard() {
   const [showStatementsListModal, setShowStatementsListModal] = useState(false);
   const [allStatements, setAllStatements] = useState<BankStatementRecord[]>([]);
   const [loadingStatements, setLoadingStatements] = useState(false);
-  const [renamingStatement, setRenamingStatement] = useState<{ id: string; name: string } | null>(
-    null,
-  );
+  const [renamingStatement, setRenamingStatement] = useState<{ id: string; name: string } | null>(null);
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
   const { employee: currentEmployee, isAdmin } = useCurrentEmployee();
+
+  const employeePermissions = currentEmployee?.permissions ?? [];
+
+  const canViewBankStatements =
+    isAdmin ||
+    employeePermissions.includes('bank_statements_view') ||
+    employeePermissions.includes('bank_statements_manage');
+
+  const canManageBankStatements = isAdmin || employeePermissions.includes('bank_statements_manage');
   const allowedCompanyIds: string[] | null = (() => {
     if (isAdmin) return null;
-
     const ids = (currentEmployee as any)?.my_company_ids;
-
-    if (!Array.isArray(ids)) return [];
+    if (!Array.isArray(ids) || ids.length === 0) return null;
     return ids as string[];
   })();
 
@@ -230,18 +208,9 @@ export default function KSeFFinancialDashboard() {
   const handleSelectedFile = async (file: File | null, month: number, year: number) => {
     if (!file) return;
 
-    const lowerName = file.name.toLowerCase();
-
-    const isValid =
-      uploadAccountType === 'mt940' ? lowerName.endsWith('.txt') : lowerName.endsWith('.pdf');
-
-    if (!isValid) {
-      showSnackbar(
-        uploadAccountType === 'mt940'
-          ? 'Dla MT940 dozwolony jest tylko plik TXT'
-          : 'Dozwolony jest tylko plik PDF z wyciągiem bankowym',
-        'error',
-      );
+    const isPdf = file.name.toLowerCase().endsWith('.pdf');
+    if (!isPdf) {
+      showSnackbar('Dozwolony jest tylko plik PDF z wyciągiem bankowym', 'error');
       return;
     }
 
@@ -309,10 +278,12 @@ export default function KSeFFinancialDashboard() {
         .order('year', { ascending: false });
 
       if (yearsData) {
-        const uniqueYears = [...new Set(yearsData.map((d) => d.year))];
+        const uniqueYears = Array.from(new Set(yearsData.map((d: { year: number }) => d.year)));
+
         if (!uniqueYears.includes(new Date().getFullYear())) {
           uniqueYears.unshift(new Date().getFullYear());
         }
+
         setAvailableYears(uniqueYears);
       }
     } catch (error: any) {
@@ -324,32 +295,28 @@ export default function KSeFFinancialDashboard() {
   };
 
   const loadAllStatements = async () => {
+    if (!canViewBankStatements) {
+      setAllStatements([]);
+      showSnackbar('Nie masz uprawnien do przeglądania wyciągów bankowych', 'error');
+      return;
+    }
+
     try {
       setLoadingStatements(true);
-
       let query = supabase
         .from('bank_statements')
-        .select(
-          'id, file_name, account_type, statement_month, statement_year, my_company_id, file_storage_path, transactions_count, processed, created_at, my_companies(name)',
-        )
+        .select('id, file_name, account_type, statement_month, statement_year, my_company_id, file_storage_path, transactions_count, processed, created_at, my_companies(name)')
         .order('statement_year', { ascending: false })
         .order('statement_month', { ascending: false });
 
       if (selectedCompanyId) {
         query = query.eq('my_company_id', selectedCompanyId);
-      } else if (!isAdmin) {
-        if (!allowedCompanyIds || allowedCompanyIds.length === 0) {
-          setAllStatements([]);
-          return;
-        }
-
+      } else if (allowedCompanyIds) {
         query = query.in('my_company_id', allowedCompanyIds);
       }
 
       const { data, error } = await query;
-
       if (error) throw error;
-
       setAllStatements((data || []) as unknown as BankStatementRecord[]);
     } catch (error: any) {
       console.error('Error loading statements:', error);
@@ -359,12 +326,7 @@ export default function KSeFFinancialDashboard() {
     }
   };
 
-  const handleDownloadStatement = async (
-    statementId: string,
-    accountType: 'regular' | 'vat' | 'mt940',
-    month: number,
-    year: number,
-  ) => {
+  const handleDownloadStatement = async (statementId: string, accountType: AccountType, month: number, year: number) => {
     try {
       const { data: stmt } = await supabase
         .from('bank_statements')
@@ -385,27 +347,12 @@ export default function KSeFFinancialDashboard() {
         throw new Error('Nie udało się wygenerować linku do pobrania');
       }
 
-      if (accountType !== 'mt940') {
-        window.open(signedUrl.signedUrl, '_blank', 'noopener,noreferrer');
-        return;
-      }
-
-      const response = await fetch(signedUrl.signedUrl);
-      if (!response.ok) {
-        throw new Error('Nie udało się pobrać pliku MT940');
-      }
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-
       const link = document.createElement('a');
-      link.href = url;
-      link.download = stmt.file_name || `mt940-${year}-${month}.txt`;
+      link.href = signedUrl.signedUrl;
+      link.download = stmt.file_name;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-
-      window.URL.revokeObjectURL(url);
     } catch (error: any) {
       console.error('Download error:', error);
       showSnackbar(error.message || 'Błąd pobierania wyciągu', 'error');
@@ -413,10 +360,13 @@ export default function KSeFFinancialDashboard() {
   };
 
   const handleDeleteStatement = async (statementId: string) => {
+    if (!canManageBankStatements) {
+      showSnackbar('Nie masz uprawnień do usuwania wyciągów bankowych', 'error');
+      return;
+    }
     const confirmed = await showConfirm({
       title: 'Usuń wyciąg bankowy',
-      message:
-        'Czy na pewno chcesz usunąć ten wyciąg? Wszystkie powiązane transakcje i dopasowania zostaną usunięte.',
+      message: 'Czy na pewno chcesz usunąć ten wyciąg? Wszystkie powiązane transakcje i dopasowania zostaną usunięte.',
       confirmText: 'Usuń',
       cancelText: 'Anuluj',
     });
@@ -439,9 +389,13 @@ export default function KSeFFinancialDashboard() {
         .select('id, matched_invoice_id')
         .eq('statement_id', statementId);
 
-      const matchedInvoiceIds = [
-        ...new Set((transactions || []).map((t) => t.matched_invoice_id).filter(Boolean)),
-      ];
+      const matchedInvoiceIds = Array.from(
+        new Set(
+          (transactions || [])
+            .map((t: { matched_invoice_id: string | null }) => t.matched_invoice_id)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      );
 
       if (matchedInvoiceIds.length > 0) {
         await supabase
@@ -450,7 +404,10 @@ export default function KSeFFinancialDashboard() {
           .in('id', matchedInvoiceIds);
       }
 
-      const { error } = await supabase.from('bank_statements').delete().eq('id', statementId);
+      const { error } = await supabase
+        .from('bank_statements')
+        .delete()
+        .eq('id', statementId);
 
       if (error) throw error;
 
@@ -493,108 +450,68 @@ export default function KSeFFinancialDashboard() {
   const getStatementsForMonth = async (month: number, year: number, accountType: AccountType) => {
     let query = supabase
       .from('bank_statements')
-      .select('id, file_storage_path, file_name, account_type, my_company_id')
+      .select('id, file_storage_path, file_name, account_type')
       .eq('statement_month', month)
       .eq('statement_year', year)
-      .eq('account_type', accountType)
-      .not('file_storage_path', 'is', null);
+      .eq('account_type', accountType);
 
     if (selectedCompanyId) {
       query = query.eq('my_company_id', selectedCompanyId);
-    } else if (!isAdmin) {
-      if (!allowedCompanyIds || allowedCompanyIds.length === 0) {
-        return [];
-      }
-
-      query = query.in('my_company_id', allowedCompanyIds);
     }
 
-    const { data, error } = await query;
-
-    if (error) throw error;
-
-    return data || [];
+    const { data } = await query.maybeSingle();
+    return data;
   };
 
   const handleDownloadForMonth = async (month: number, year: number, accountType: AccountType) => {
-    const statements = await getStatementsForMonth(month, year, accountType);
-
-    if (!statements.length) {
-      showSnackbar(
-        `Brak wyciągu ${accountType === 'vat' ? 'VAT' : 'bieżącego'} dla tego miesiąca`,
-        'warning',
-      );
+    const stmt = await getStatementsForMonth(month, year, accountType);
+    if (!stmt) {
+      showSnackbar(`Brak wyciągu ${accountType === 'vat' ? 'VAT' : 'bieżącego'} dla tego miesiąca`, 'warning');
       return;
     }
-
-    if (statements.length > 1 && !selectedCompanyId) {
-      showSnackbar(
-        'Dla tego miesiąca jest kilka wyciągów. Wybierz firmę albo użyj listy wyciągów.',
-        'warning',
-      );
-      return;
-    }
-
-    const stmt = statements[0];
-
     await handleDownloadStatement(stmt.id, accountType, month, year);
   };
 
   const handleFileUpload = async (file: File, month: number, year: number) => {
+    if (!canManageBankStatements) {
+      showSnackbar('Nie masz uprawnień do importu wyciągów bankowych', 'error');
+      return;
+    }
     try {
       if (!selectedCompanyId) {
-        showSnackbar('Wybierz firmę przed uploadem wyciągu bankowego', 'error');
+        showSnackbar('Wybierz firmę przed uplodem wyciągu bankowego', 'error');
         return;
       }
 
       setUploadingFile(true);
-      setUploadProgress({ step: 'Wczytywanie pliku...', current: 0, total: 8 });
+      setUploadProgress({ step: 'Wczytywanie pliku PDF...', current: 0, total: 8 });
 
       const lowerName = file.name.toLowerCase();
-      const isMt940 = uploadAccountType === 'mt940';
 
-      if (isMt940) {
-        if (!lowerName.endsWith('.txt')) {
-          throw new Error('Dla MT940 obsługiwane są wyłącznie pliki TXT');
-        }
-      } else if (!lowerName.endsWith('.pdf')) {
+      if (!lowerName.endsWith('.pdf')) {
         throw new Error('Obsługiwane są wyłącznie pliki PDF');
       }
 
       const fileType: 'MT940' = 'MT940';
 
-      setUploadProgress({
-        step: isMt940 ? 'Parsowanie pliku MT940...' : 'Parsowanie PDF...',
-        current: 1,
-        total: 8,
+      setUploadProgress({ step: 'Parsowanie PDF...', current: 1, total: 8 });
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('/bridge/ksef/bank/parse-pdf', {
+        method: 'POST',
+        body: formData,
       });
 
-      let parsedStatement: any;
-      let fileContent = '';
+      const result = await response.json();
 
-      if (isMt940) {
-        fileContent = await file.text();
-        parsedStatement = parseMT940(fileContent);
-      } else {
-        const formData = new FormData();
-        formData.append('file', file);
-
-        const response = await fetch('/bridge/ksef/bank/parse-pdf', {
-          method: 'POST',
-          body: formData,
-        });
-
-        const result = await response.json();
-
-        if (!response.ok || !result?.success) {
-          throw new Error(result?.error || 'Nie udało się sparsować PDF');
-        }
-
-        parsedStatement = result.data;
-        fileContent = parsedStatement?.rawText || '[PDF parsed]';
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.error || 'Nie udało się sparsować PDF');
       }
 
-      const transactions = parsedStatement?.transactions || [];
+      const parsedStatement = result.data;
+      const fileContent = parsedStatement?.rawText || '[PDF parsed]';
 
       setUploadProgress({ step: 'Wyszukiwanie poprzedniego wyciągu...', current: 2, total: 8 });
 
@@ -616,7 +533,6 @@ export default function KSeFFinancialDashboard() {
         const oldStoragePaths = (existingStatements || [])
           .map((s) => s.file_storage_path)
           .filter(Boolean) as string[];
-
         if (oldStoragePaths.length > 0) {
           await supabase.storage.from('bank-statements').remove(oldStoragePaths);
         }
@@ -628,9 +544,13 @@ export default function KSeFFinancialDashboard() {
 
         if (oldTransactionsError) throw oldTransactionsError;
 
-        const oldMatchedInvoiceIds = [
-          ...new Set((oldTransactions || []).map((t) => t.matched_invoice_id).filter(Boolean)),
-        ];
+        const oldMatchedInvoiceIds = Array.from(
+          new Set(
+            (oldTransactions || [])
+              .map((t: { matched_invoice_id: string | null }) => t.matched_invoice_id)
+              .filter((id): id is string => Boolean(id)),
+          ),
+        );
 
         if (oldMatchedInvoiceIds.length > 0) {
           const { error: resetInvoicesError } = await supabase
@@ -661,20 +581,13 @@ export default function KSeFFinancialDashboard() {
 
       setUploadProgress({ step: 'Przesyłanie pliku do magazynu...', current: 4, total: 8 });
 
-      const extension = isMt940 ? 'txt' : 'pdf';
-      const contentType = isMt940 ? 'text/plain' : 'application/pdf';
-
-      const storagePath = `${selectedCompanyId}/${year}/${month}_${uploadAccountType}_${Date.now()}.${extension}`;
-
+      const storagePath = `${selectedCompanyId}/${year}/${month}_${uploadAccountType}_${Date.now()}.pdf`;
       const { error: storageError } = await supabase.storage
         .from('bank-statements')
-        .upload(storagePath, file, {
-          contentType,
-          upsert: true,
-        });
+        .upload(storagePath, file, { contentType: 'application/pdf', upsert: true });
 
       if (storageError) {
-        throw storageError;
+        console.error('Storage upload error:', storageError);
       }
 
       setUploadProgress({ step: 'Zapisywanie nowego wyciągu...', current: 5, total: 8 });
@@ -693,12 +606,12 @@ export default function KSeFFinancialDashboard() {
           statement_year: year,
           my_company_id: selectedCompanyId,
           account_type: uploadAccountType,
-          file_storage_path: storagePath,
-          account_number: parsedStatement?.accountNumber ?? null,
-          opening_balance: parsedStatement?.openingBalance ?? null,
-          closing_balance: parsedStatement?.closingBalance ?? null,
-          currency: parsedStatement?.currency || 'PLN',
-          transactions_count: transactions.length,
+          file_storage_path: storageError ? null : storagePath,
+          account_number: parsedStatement.accountNumber,
+          opening_balance: parsedStatement.openingBalance,
+          closing_balance: parsedStatement.closingBalance,
+          currency: parsedStatement.currency,
+          transactions_count: parsedStatement.transactions.length,
           uploaded_by: user?.id,
           processed: false,
         })
@@ -708,7 +621,7 @@ export default function KSeFFinancialDashboard() {
       if (statementError) throw statementError;
 
       setUploadProgress({
-        step: `Przetwarzanie transakcji (0/${transactions.length})...`,
+        step: `Przetwarzanie transakcji (0/${parsedStatement.transactions.length})...`,
         current: 6,
         total: 8,
       });
@@ -716,12 +629,12 @@ export default function KSeFFinancialDashboard() {
       let matchedCount = 0;
       let unmatchedCount = 0;
 
-      for (let i = 0; i < transactions.length; i++) {
-        const transaction = transactions[i];
+      for (let i = 0; i < parsedStatement.transactions.length; i++) {
+        const transaction = parsedStatement.transactions[i];
 
         if (i % 5 === 0) {
           setUploadProgress({
-            step: `Przetwarzanie transakcji (${i + 1}/${transactions.length})...`,
+            step: `Przetwarzanie transakcji (${i + 1}/${parsedStatement.transactions.length})...`,
             current: 6,
             total: 8,
           });
@@ -757,14 +670,14 @@ export default function KSeFFinancialDashboard() {
         const { error: insertTransactionError } = await supabase.from('bank_transactions').insert({
           statement_id: statement.id,
           transaction_date: transaction.transactionDate,
-          posting_date: transaction.postingDate ?? null,
+          posting_date: transaction.postingDate,
           amount: transaction.amount,
-          currency: transaction.currency || 'PLN',
+          currency: transaction.currency,
           transaction_type: transaction.type,
-          counterparty_name: transaction.counterpartyName ?? null,
-          counterparty_account: transaction.counterpartyAccount ?? null,
-          title: transaction.title ?? null,
-          reference_number: transaction.referenceNumber ?? null,
+          counterparty_name: transaction.counterpartyName,
+          counterparty_account: transaction.counterpartyAccount,
+          title: transaction.title,
+          reference_number: transaction.referenceNumber,
           matched_invoice_id: matchedInvoiceId,
           match_confidence: matchConfidence,
           manual_match: false,
@@ -799,14 +712,12 @@ export default function KSeFFinancialDashboard() {
       );
 
       showSnackbar(
-        `${isMt940 ? 'Plik MT940' : 'Wyciąg PDF'} został przesłany. Transakcji: ${
-          transactions.length
-        }, automatycznie dopasowanych: ${matchedCount}, do weryfikacji: ${unmatchedCount}`,
+        `Wyciąg PDF został podmieniony. Transakcji: ${parsedStatement.transactions.length}, automatycznie dopasowanych: ${matchedCount}, do weryfikacji: ${unmatchedCount}`,
         'success',
       );
     } catch (error: any) {
-      console.error('Error uploading bank statement:', error);
-      showSnackbar(error.message || 'Błąd podczas importu wyciągu', 'error');
+      console.error('Error uploading PDF:', error);
+      showSnackbar(error.message || 'Błąd podczas importu PDF', 'error');
     } finally {
       setUploadingFile(false);
       setUploadProgress({ step: '', current: 0, total: 0 });
@@ -819,18 +730,14 @@ export default function KSeFFinancialDashboard() {
     summaries[0] ||
     null;
 
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const currentMonthNumber = now.getMonth() + 1;
+  const monthsWithData = summaries.filter(
+    (s) => s.invoices_issued_count > 0 || s.invoices_received_count > 0,
+  );
 
-  const displayedSummaries = summaries.filter((summary) => {
-    if (selectedYear < currentYear) return true;
-    if (selectedYear > currentYear) return false;
+  const displayedSummaries =
+    monthsWithData.length > 0 && monthsWithData.length < 12 ? monthsWithData : summaries;
 
-    return summary.month <= currentMonthNumber;
-  });
-
-  const yearTotals = displayedSummaries.reduce(
+  const yearTotals = summaries.reduce(
     (acc, s) => ({
       income: acc.income + s.total_income,
       expenses: acc.expenses + s.total_expenses,
@@ -840,7 +747,6 @@ export default function KSeFFinancialDashboard() {
       unpaid: acc.unpaid + s.invoices_unpaid_count,
       overdue: acc.overdue + s.invoices_overdue_count,
     }),
-
     { income: 0, expenses: 0, issued: 0, received: 0, paid: 0, unpaid: 0, overdue: 0 },
   );
 
@@ -875,16 +781,18 @@ export default function KSeFFinancialDashboard() {
               ))}
             </select>
           </div>
-          <button
-            onClick={() => {
-              loadAllStatements();
-              setShowStatementsListModal(true);
-            }}
-            className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm text-[#e5e4e2] transition-colors hover:border-[#d3bb73]/40 hover:bg-[#252945]"
-          >
-            <List className="h-4 w-4 text-[#d3bb73]" />
-            Lista wyciagow
-          </button>
+          {canViewBankStatements && (
+            <button
+              onClick={() => {
+                loadAllStatements();
+                setShowStatementsListModal(true);
+              }}
+              className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm text-[#e5e4e2] transition-colors hover:border-[#d3bb73]/40 hover:bg-[#252945]"
+            >
+              <List className="h-4 w-4 text-[#d3bb73]" />
+              Lista wyciagow
+            </button>
+          )}
         </div>
       </div>
 
@@ -981,6 +889,13 @@ export default function KSeFFinancialDashboard() {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+        {monthsWithData.length > 0 && monthsWithData.length < 12 && (
+          <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-4 text-sm text-blue-400">
+            <strong>Uwaga:</strong> W roku {selectedYear} masz faktury tylko w{' '}
+            {monthsWithData.length} {monthsWithData.length === 1 ? 'miesiącu' : 'miesiącach'}.
+            Poniżej wyświetlane są tylko miesiące z danymi.
           </div>
         )}
       </div>
@@ -1170,11 +1085,11 @@ export default function KSeFFinancialDashboard() {
                           selectedCompanyId={selectedCompanyId}
                           allowedCompanyIds={allowedCompanyIds}
                           isAdmin={isAdmin}
+                          canViewBankStatements={canViewBankStatements}
+                          canManageBankStatements={canManageBankStatements}
                           onUpload={() => setUploadMonth(summary)}
                           onDetails={() => setSelectedMonth(summary)}
-                          onDownload={(accountType) =>
-                            handleDownloadForMonth(summary.month, summary.year, accountType)
-                          }
+                          onDownload={(accountType: AccountType) => handleDownloadForMonth(summary.month, summary.year, accountType)}
                         />
                       </td>
                     </tr>
@@ -1223,13 +1138,11 @@ export default function KSeFFinancialDashboard() {
                 </div>
                 <div className="rounded-lg bg-[#252945] p-4">
                   <div className="text-sm text-[#e5e4e2]/60">Bilans</div>
-                  <div
-                    className={`mt-1 text-xl font-bold ${
-                      selectedMonth.total_income - selectedMonth.total_expenses >= 0
-                        ? 'text-green-400'
-                        : 'text-red-400'
-                    }`}
-                  >
+                  <div className={`mt-1 text-xl font-bold ${
+                    selectedMonth.total_income - selectedMonth.total_expenses >= 0
+                      ? 'text-green-400'
+                      : 'text-red-400'
+                  }`}>
                     {(selectedMonth.total_income - selectedMonth.total_expenses).toFixed(2)} PLN
                   </div>
                 </div>
@@ -1240,21 +1153,15 @@ export default function KSeFFinancialDashboard() {
                 <div className="flex gap-6">
                   <div className="flex items-center gap-2">
                     <CheckCircle className="h-4 w-4 text-green-400" />
-                    <span className="text-sm text-green-400">
-                      {selectedMonth.invoices_paid_count} oplacone
-                    </span>
+                    <span className="text-sm text-green-400">{selectedMonth.invoices_paid_count} oplacone</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Clock className="h-4 w-4 text-orange-400" />
-                    <span className="text-sm text-orange-400">
-                      {selectedMonth.invoices_unpaid_count} nieoplacone
-                    </span>
+                    <span className="text-sm text-orange-400">{selectedMonth.invoices_unpaid_count} nieoplacone</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <AlertCircle className="h-4 w-4 text-red-400" />
-                    <span className="text-sm text-red-400">
-                      {selectedMonth.invoices_overdue_count} po terminie
-                    </span>
+                    <span className="text-sm text-red-400">{selectedMonth.invoices_overdue_count} po terminie</span>
                   </div>
                 </div>
               </div>
@@ -1319,7 +1226,7 @@ export default function KSeFFinancialDashboard() {
         </div>
       )}
 
-      {uploadMonth && (
+      {uploadMonth && canManageBankStatements && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4">
           <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl">
             <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-6">
@@ -1336,7 +1243,9 @@ export default function KSeFFinancialDashboard() {
 
             <div className="space-y-6 p-6">
               <div className="rounded-lg border border-[#d3bb73]/20 bg-[#252945] p-4">
-                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Typ wyciagu</label>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                  Typ wyciagu
+                </label>
                 <div className="flex gap-4">
                   <label className="flex cursor-pointer items-center gap-2">
                     <input
@@ -1359,17 +1268,6 @@ export default function KSeFFinancialDashboard() {
                       className="h-4 w-4 accent-[#d3bb73]"
                     />
                     <span className="text-sm text-[#e5e4e2]">Konto VAT</span>
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-2">
-                    <input
-                      type="radio"
-                      name="uploadAccountType"
-                      value="mt940"
-                      checked={uploadAccountType === 'mt940'}
-                      onChange={() => setUploadAccountType('mt940')}
-                      className="h-4 w-4 accent-[#d3bb73]"
-                    />
-                    <span className="text-sm text-[#e5e4e2]">MT940</span>
                   </label>
                 </div>
               </div>
@@ -1411,20 +1309,8 @@ export default function KSeFFinancialDashboard() {
                   if (uploadingFile) return;
 
                   const file = e.dataTransfer.files?.[0] ?? null;
-                  if (
-                    file &&
-                    uploadAccountType === 'mt940' &&
-                    !file.name.toLowerCase().endsWith('.txt')
-                  ) {
-                    showSnackbar('Możesz upuscic tylko plik TXT', 'error');
-                    return;
-                  }
-                  if (
-                    file &&
-                    uploadAccountType !== 'mt940' &&
-                    !file.name.toLowerCase().endsWith('.pdf')
-                  ) {
-                    showSnackbar('Możesz upuscic tylko plik PDF', 'error');
+                  if (file && !file.name.toLowerCase().endsWith('.pdf')) {
+                    showSnackbar('Mozesz upuscic tylko plik PDF', 'error');
                     return;
                   }
 
@@ -1447,27 +1333,20 @@ export default function KSeFFinancialDashboard() {
                     {isDragOver ? 'Upusc plik tutaj' : 'Przeslij wyciag bankowy'}
                   </h4>
 
-                  <p className="mt-1 text-xs text-[#e5e4e2]/60">
-                    {uploadAccountType === 'mt940' ? 'Format TXT (.txt)' : 'Format PDF (.pdf)'}
-                  </p>
+                  <p className="mt-1 text-xs text-[#e5e4e2]/60">Format PDF (.pdf)</p>
 
                   <label className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#252945] px-4 py-2 text-sm text-[#e5e4e2] hover:border-[#d3bb73]/40 hover:bg-[#2d3254]">
                     <Upload className="h-4 w-4" />
                     Wybierz plik
                     <input
                       type="file"
-                      accept={uploadAccountType === 'mt940' ? '.txt' : '.pdf'}
+                      accept=".pdf"
                       disabled={uploadingFile}
                       className="hidden"
                       onChange={async (e) => {
-                        const input = e.currentTarget;
-                        const file = input.files?.[0] ?? null;
-
-                        try {
-                          await handleSelectedFile(file, uploadMonth.month, uploadMonth.year);
-                        } finally {
-                          input.value = '';
-                        }
+                        const file = e.target.files?.[0] ?? null;
+                        await handleSelectedFile(file, uploadMonth.month, uploadMonth.year);
+                        e.currentTarget.value = '';
                       }}
                     />
                   </label>
@@ -1520,7 +1399,6 @@ export default function KSeFFinancialDashboard() {
         <BankTransactionsAnalysis
           month={unmatchedModalMonth.month}
           year={unmatchedModalMonth.year}
-          companyId={selectedCompanyId}
           onClose={() => {
             setShowUnmatchedModal(false);
             setUnmatchedModalMonth(null);
@@ -1533,26 +1411,32 @@ export default function KSeFFinancialDashboard() {
         <BankMatchingSimple
           month={unmatchedModalMonth.month}
           year={unmatchedModalMonth.year}
+          invoice={null}
           companyId={selectedCompanyId}
           onClose={() => {
             setShowSimpleMatchModal(false);
             setUnmatchedModalMonth(null);
             loadSummaries();
           }}
+          canManageBankStatements={canManageBankStatements}
+          invoiceData={null as unknown as KSeFInvoice}
         />
       )}
 
-      <BankStatementsListModal
-        open={showStatementsListModal}
-        loading={loadingStatements}
-        statements={allStatements}
-        renamingStatement={renamingStatement}
-        setRenamingStatement={setRenamingStatement}
-        onClose={() => setShowStatementsListModal(false)}
-        onRename={handleRenameStatement}
-        onDownload={handleDownloadStatement}
-        onDelete={handleDeleteStatement}
-      />
+      {canViewBankStatements && (
+        <BankStatementsListModal
+          open={showStatementsListModal}
+          loading={loadingStatements}
+          statements={allStatements}
+          renamingStatement={renamingStatement}
+          setRenamingStatement={setRenamingStatement}
+          onClose={() => setShowStatementsListModal(false)}
+          onRename={handleRenameStatement}
+          onDownload={handleDownloadStatement}
+          onDelete={handleDeleteStatement}
+          canManageBankStatements={canManageBankStatements}
+        />
+      )}
     </div>
   );
 }

@@ -15,7 +15,6 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
-  RefreshCw,
 } from 'lucide-react';
 
 interface InvoiceRelation {
@@ -68,7 +67,6 @@ interface KSeFInvoice {
 interface Props {
   month: number;
   year: number;
-  companyId?: string | null;
   onClose: () => void;
 }
 
@@ -121,7 +119,7 @@ function normalizeForSearch(text?: string | null) {
 type SortField = 'date' | 'amount' | 'counterparty' | 'title' | 'invoice_number' | 'invoice_date' | 'invoice_amount' | 'contractor';
 type SortDirection = 'asc' | 'desc';
 
-export default function BankTransactionsAnalysis({ month, year, companyId, onClose }: Props) {
+export default function BankTransactionsAnalysis({ month, year, onClose }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [ksefInvoices, setKsefInvoices] = useState<KSeFInvoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -134,23 +132,17 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
 
   useEffect(() => {
     loadData();
-  }, [month, year, companyId]);
+  }, [month, year]);
 
   const loadData = async () => {
     try {
       setLoading(true);
 
-      let statementsQuery = supabase
+      const { data: statements, error: statementsError } = await supabase
         .from('bank_statements')
         .select('id')
         .eq('statement_month', month)
         .eq('statement_year', year);
-
-      if (companyId) {
-        statementsQuery = statementsQuery.eq('my_company_id', companyId);
-      }
-
-      const { data: statements, error: statementsError } = await statementsQuery;
 
       if (statementsError) throw statementsError;
 
@@ -189,7 +181,7 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
       const monthEndDate = new Date(year, month, 0);
       const monthEnd = `${year}-${String(month).padStart(2, '0')}-${String(monthEndDate.getDate()).padStart(2, '0')}`;
 
-      let invoicesQuery = supabase
+      const { data: invoicesData, error: invoicesError } = await supabase
         .from('ksef_invoices')
         .select(`
           id,
@@ -206,16 +198,10 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
           ksef_issued_at,
           payment_method
         `)
-        .or(
-          `and(issue_date.gte.${monthStart},issue_date.lte.${monthEnd}),and(issue_date.is.null,ksef_issued_at.gte.${monthStart}T00:00:00,ksef_issued_at.lte.${monthEnd}T23:59:59)`
-        )
+        .gte('issue_date', monthStart)
+        .lte('issue_date', monthEnd)
+        .neq('payment_method', '1')
         .order('issue_date', { ascending: false });
-
-      if (companyId) {
-        invoicesQuery = invoicesQuery.eq('my_company_id', companyId);
-      }
-
-      const { data: invoicesData, error: invoicesError } = await invoicesQuery;
 
       if (invoicesError) throw invoicesError;
 
@@ -709,17 +695,7 @@ export default function BankTransactionsAnalysis({ month, year, companyId, onClo
                     <FileText className="h-4 w-4 text-[#d3bb73]" />
                     <span className="font-medium">Faktury KSeF z miesiąca {month}/{year}</span>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={loadData}
-                      className="flex items-center gap-1.5 rounded-lg border border-[#d3bb73]/20 px-3 py-1.5 text-xs text-[#e5e4e2] hover:bg-[#1c1f33]"
-                      title="Odśwież faktury z bazy danych"
-                    >
-                      <RefreshCw className="h-3.5 w-3.5" />
-                      Pobierz faktury
-                    </button>
-                    <span className="text-sm text-[#e5e4e2]/60">{ksefInvoices.length}</span>
-                  </div>
+                  <span className="text-sm text-[#e5e4e2]/60">{ksefInvoices.length}</span>
                 </div>
 
                 <div className="min-h-0 flex-1 overflow-auto">

@@ -42,8 +42,6 @@ import {
   upsertEquipmentUnit,
   addUnitEvent,
   setCableQuantity,
-  normalizePowerSpecs,
-  defaultPowerSpecs,
 } from '@/store/slices/equipmentSlice';
 
 import { useAppDispatch } from '@/store/hooks';
@@ -114,19 +112,6 @@ export default function EquipmentDetailPage() {
   const [updateEquipmentMutation] = useUpdateEquipmentItemMutation();
   const [deleteEquipmentMutation] = useDeleteEquipmentMutation();
 
-  const handlePowerSpecsChange = (
-    field: keyof typeof defaultPowerSpecs,
-    value: string | number | null,
-  ) => {
-    setEditForm((prev: any) => ({
-      ...prev,
-      power_specs: {
-        ...normalizePowerSpecs(prev.power_specs),
-        [field]: value,
-      },
-    }));
-  };
-
   // Realtime subscription for edit history
   useEffect(() => {
     if (!equipmentId) return;
@@ -155,7 +140,7 @@ export default function EquipmentDetailPage() {
   const loading = eqLoading || unitsLoading;
 
   const unitsCount = equipment?.cable_specs ? equipment.cable_stock_quantity || 0 : units.length;
-
+  
   const stock = useMemo(() => equipment?.equipment_stock?.[0] ?? null, [equipment]);
   const availableUnits = units.filter((u) => u.status === 'available').length;
   const totalUnits = units.length;
@@ -187,7 +172,6 @@ export default function EquipmentDetailPage() {
       cable_connector_out: equipment?.cable_specs?.connector_out ?? '',
       warehouse_category_id: equipment?.warehouse_category_id ?? '',
       storage_location_id: equipment?.storage_location_id ?? '',
-      power_specs: normalizePowerSpecs(equipment?.power_specs),
     });
     setIsEditing(true);
   };
@@ -232,16 +216,6 @@ export default function EquipmentDetailPage() {
             }
           : null;
 
-      const powerSpecs = normalizePowerSpecs({
-        power_watts: toFloat(editForm.power_specs?.power_watts),
-        current_amps: toFloat(editForm.power_specs?.current_amps),
-        voltage_volts: toFloat(editForm.power_specs?.voltage_volts),
-        power_phase: editForm.power_specs?.power_phase || 'single_phase',
-        input_connector_type_id: normalizeUuid(editForm.power_specs?.input_connector_type_id),
-        output_connector_type_id: normalizeUuid(editForm.power_specs?.output_connector_type_id),
-        power_notes: editForm.power_specs?.power_notes || null,
-      });
-
       const payload = removeUndefined({
         name: editForm.name,
         warehouse_category_id: normalizeUuid(editForm.warehouse_category_id),
@@ -258,13 +232,11 @@ export default function EquipmentDetailPage() {
         purchase_date: editForm.purchase_date || null,
         purchase_price: toFloat(editForm.purchase_price),
         current_value: toFloat(editForm.current_value),
-        depreciation_rate: toFloat(editForm.depreciation_rate),
         rental_price_per_day: toFloat(editForm.rental_price_per_day),
         warranty_until: editForm.warranty_until || null,
         serial_number: editForm.serial_number || null,
         barcode: editForm.barcode || null,
         notes: editForm.notes || null,
-        power_specs: powerSpecs,
       });
 
       await updateEquipmentMutation({ id: equipmentId, payload }).unwrap();
@@ -293,7 +265,6 @@ export default function EquipmentDetailPage() {
           new: toFloat(editForm.rental_price_per_day),
         },
         { name: 'serial_number', old: equipment?.serial_number, new: editForm.serial_number },
-        { name: 'power_specs', old: equipment?.power_specs, new: powerSpecs },
       ];
       for (const f of fieldsToLog) await logChange(f.name, f.old, f.new);
 
@@ -460,7 +431,6 @@ export default function EquipmentDetailPage() {
           editForm={editForm}
           isEditing={isEditing}
           onInputChange={handleInputChange}
-          onPowerSpecsChange={handlePowerSpecsChange}
           connectorTypes={connectorTypes}
           warehouseCategories={warehouseCategories}
         />
