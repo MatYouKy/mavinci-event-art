@@ -1,3 +1,7 @@
+import type {
+  IImageMetadata,
+} from '@/types/image';
+
 export type SupabaseRTKError = {
   status: 'SUPABASE_ERROR' | 'UNKNOWN_ERROR';
   data: {
@@ -8,23 +12,6 @@ export type SupabaseRTKError = {
   };
 };
 
-export interface ImagePosition {
-  posX: number;
-  posY: number;
-  scale: number;
-}
-
-export interface ScreenMetadata {
-  src: string;
-  position?: ImagePosition;
-  objectFit?: 'cover' | 'contain' | 'fill' | 'none' | 'scale-down';
-}
-
-export interface ImageMetadata {
-  desktop?: ScreenMetadata;
-  mobile?: ScreenMetadata;
-}
-
 export interface TeamMember {
   id: string;
   name: string;
@@ -32,7 +19,7 @@ export interface TeamMember {
   position?: string;
   image: string;
   alt?: string;
-  image_metadata?: ImageMetadata;
+  image_metadata?: IImageMetadata;
   bio?: string;
   email?: string;
   linkedin?: string;
@@ -47,7 +34,7 @@ export interface TeamMember {
 export interface GalleryImage {
   src: string;
   alt?: string;
-  image_metadata?: ImageMetadata;
+  image_metadata?: IImageMetadata;
 }
 
 export interface AvailableIcon {
@@ -76,7 +63,7 @@ export interface PortfolioProject {
   category: string;
   image: string;
   alt?: string;
-  image_metadata?: ImageMetadata;
+  image_metadata?: IImageMetadata;
   description: string;
   detailed_description?: string;
   order_index: number;

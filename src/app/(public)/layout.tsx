@@ -140,9 +140,9 @@ export const metadata: Metadata = {
   },
 
   icons: {
-    icon: [{ url: '/shape-mavinci.svg', type: 'image/svg+xml' }],
-    shortcut: '/shape-mavinci.svg',
-    apple: '/shape-mavinci.svg',
+    icon: [{ url: '/signature.png', type: 'image/png' }],
+    shortcut: '/signature.png',
+    apple: '/signature.png',
   },
 
   // Dodatkowe meta pod lokalność (nie „czaruje” pozycji, ale wzmacnia sygnały)
