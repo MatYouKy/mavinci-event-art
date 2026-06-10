@@ -116,7 +116,7 @@ export default function FinancialDashboard() {
       if (error) throw error;
 
       const revenue = invoices?.reduce((sum, inv) => {
-        if (inv.invoice_type !== 'corrective') {
+        if (inv.invoice_type !== 'corrective' && inv.invoice_type !== 'advance' && inv.invoice_type !== 'proforma' && !inv.is_proforma) {
           return sum + (inv.total_gross || 0);
         }
         return sum;
@@ -164,7 +164,7 @@ export default function FinancialDashboard() {
       }
 
       const data = monthsMap.get(month)!;
-      if (invoice.invoice_type !== 'corrective') {
+      if (invoice.invoice_type !== 'corrective' && invoice.invoice_type !== 'advance' && invoice.invoice_type !== 'proforma' && !invoice.is_proforma) {
         data.revenue += invoice.total_gross || 0;
       }
     });

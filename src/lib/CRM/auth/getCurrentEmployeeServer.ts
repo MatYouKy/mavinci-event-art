@@ -4,9 +4,18 @@ import { cache } from 'react';
 import { cookies } from 'next/headers';
 
 export async function getCurrentEmployeeServer(): Promise<IEmployee | null> {
-  const supabase = createSupabaseServerClient(cookies());
+  const cookieStore = await cookies();
+  console.log(
+    '[cookies]',
+    cookieStore.getAll().map((c) => c.name)
+  );
+
+  const supabase = createSupabaseServerClient(cookieStore);
 
   const { data, error } = await supabase.auth.getUser();
+  console.log('[auth user]', data.user?.id);
+
+console.log('[auth error]', error);
 
   if (error) {
     if (error.name === 'AuthSessionMissingError') return null;

@@ -24,6 +24,16 @@ export type EventRow = {
   expected_revenue: number | null;
   created_by: string | null;
   created_at: string;
+  my_company_id: string | null;
+my_companies: {
+  id: string;
+  name: string | null;
+  legal_name: string | null;
+  nip: string | null;
+  email: string | null;
+  phone: string | null;
+  logo_url: string | null;
+} | null;
 
   // relacje (to co selectujesz)
   organizations: { name: string | null; alias: string | null } | null;
@@ -62,16 +72,23 @@ if (viewModeError) throw viewModeError;
 
   const { data, error } = await supabase
     .from('events')
-    .select(
-      `
-        id, name, event_date, event_end_date, location, status, category_id,
-        expected_revenue, created_by, created_at,
-        organizations(name, alias),
-        contacts(first_name, last_name),
-        event_categories(name, color),
-        locations(name, formatted_address, address, city, postal_code)
-      `,
-    )
+    .select(`
+      id, name, event_date, event_end_date, location, status, category_id,
+      expected_revenue, created_by, created_at, my_company_id,
+      organizations(name, alias),
+      contacts(first_name, last_name),
+      event_categories(name, color),
+      locations(name, formatted_address, address, city, postal_code),
+      my_companies(
+        id,
+        name,
+        legal_name,
+        nip,
+        email,
+        phone,
+        logo_url
+      )
+    `)
     .order('event_date', { ascending: true });
 
   if (error) throw error;

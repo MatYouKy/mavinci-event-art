@@ -312,10 +312,10 @@ export default function EventsPageClient({
 
   const canViewEventStatus = isUserAdmin || hasScope('events_manage', currentEmployee);
   const canDeleteEvents =
-  isUserAdmin ||
-  hasScope('events_manage', currentEmployee) ||
-  currentEmployee.permissions?.includes('admin') ||
-  currentEmployee.permissions?.includes('events_manage');
+    isUserAdmin ||
+    hasScope('events_manage', currentEmployee) ||
+    currentEmployee.permissions?.includes('admin') ||
+    currentEmployee.permissions?.includes('events_manage');
 
   const canViewEventBudget =
     isUserAdmin ||
@@ -325,6 +325,15 @@ export default function EventsPageClient({
     hasScope('offers_view', currentEmployee) ||
     hasScope('invoices_manage', currentEmployee) ||
     hasScope('invoices_view', currentEmployee);
+
+  const canAddNewEvent =
+    isUserAdmin ||
+    hasScope('events_manage', currentEmployee) ||
+    currentEmployee.role === 'admin' ||
+    currentEmployee.permissions?.includes('events_create');
+
+  console.log('currentEmployee', currentEmployee.permissions);
+  console.log('canAddNewEvent', canAddNewEvent);
 
   // ---- Table widths from prefs (fallback to defaults)
 
@@ -452,7 +461,7 @@ export default function EventsPageClient({
           .eq('created_by', currentUserId);
 
         const createdEventIds = createdEvents?.map((e) => e.id) || [];
-        const allEventIds = [...new Set([...eventIds, ...createdEventIds])];
+        const allEventIds = Array.from(new Set([...eventIds, ...createdEventIds])) as string[];
 
         if (allEventIds.length === 0) {
           setEvents([]);
@@ -663,6 +672,8 @@ export default function EventsPageClient({
     }
   }, [searchParams, router, showSnackbar]);
 
+  console.log('canViewEventStatus', canViewEventStatus);
+
   const renderCell: Record<EventsTableColKey, (event: any) => React.ReactNode> = {
     name: (event) => (
       <>
@@ -745,18 +756,22 @@ export default function EventsPageClient({
         onClick: () => router.push('/crm/event-categories'),
         icon: <Tag className="h-4 w-4" />,
         variant: 'default',
+        show: true,
       });
+    }
 
+    if (canAddNewEvent) {
       arr.push({
         label: 'Nowy event',
         onClick: () => setIsModalOpen(true),
         icon: <Plus className="h-4 w-4" />,
         variant: 'primary',
+        show: true,
       });
     }
 
     return arr;
-  }, [router, setIsModalOpen, canViewEventStatus]);
+  }, [router, canViewEventStatus, canAddNewEvent]);
 
   return (
     <div className="space-y-6">

@@ -198,34 +198,34 @@ export default function ReserveEquipmentModal({
   const loadSubstitutions = async (item: EquipmentItem) => {
     try {
       setLoadingSubstitutions(true);
-
+  
       let warehouseCategoryId = item.warehouse_category_id;
-
+  
       if (!warehouseCategoryId && item.item_type === 'item') {
         const { data: itemData, error: itemError } = await supabase
           .from('equipment_items')
           .select('warehouse_category_id')
           .eq('id', item.item_id)
           .single();
-
+  
         if (itemError) throw itemError;
         warehouseCategoryId = itemData?.warehouse_category_id;
       }
-
+  
       if (!warehouseCategoryId) {
         setSubstitutions([]);
         return;
       }
-
+  
       const { data, error } = await supabase
         .from('equipment_items')
         .select('id, name, brand, model, warehouse_category_id')
         .eq('warehouse_category_id', warehouseCategoryId)
         .neq('id', item.item_id)
         .limit(10);
-
+  
       if (error) throw error;
-
+  
       const itemsWithAvailability = await Promise.all(
         (data || []).map(async (substitute) => {
           const { count, error: countError } = await supabase
@@ -243,11 +243,11 @@ export default function ReserveEquipmentModal({
             available_qty: count || 0,
             required_components: requiredComponents,
           };
-        }),
+        })
       );
 
       const available = itemsWithAvailability.filter(
-        (sub) => sub.available_qty >= item.required_qty,
+        (sub) => sub.available_qty >= item.required_qty
       );
 
       setSubstitutions(available);
@@ -272,10 +272,7 @@ export default function ReserveEquipmentModal({
     const newAccepted = new Set(acceptedShortages);
     newAccepted.add(itemKey);
     setAcceptedShortages(newAccepted);
-    showSnackbar(
-      'Brak sprzętu został zaakceptowany. Zostanie oznaczony w zakładce Sprzęt.',
-      'info',
-    );
+    showSnackbar('Brak sprzętu został zaakceptowany. Zostanie oznaczony w zakładce Sprzęt.', 'info');
   };
 
   const handleResolveConflict = async (item: EquipmentItem) => {
@@ -288,16 +285,14 @@ export default function ReserveEquipmentModal({
     try {
       const { data, error } = await supabase
         .from('equipment_compatible_items')
-        .select(
-          `
+        .select(`
           id,
           compatible_equipment_id,
           compatible_kit_id,
           compatibility_type,
           compatible_equipment:equipment_items!compatible_equipment_id(id, name, model, brand),
           compatible_kit:equipment_kits!compatible_kit_id(id, name, description)
-        `,
-        )
+        `)
         .eq('equipment_id', equipmentId)
         .eq('compatibility_type', 'required');
 
@@ -345,12 +340,14 @@ export default function ReserveEquipmentModal({
 
       if (deleteError) throw deleteError;
 
-      const { error } = await supabase.from('offer_equipment_substitutions').insert({
-        offer_id: offerId,
-        from_item_id: currentConflictItem.item_id,
-        to_item_id: substitutionId,
-        qty: currentConflictItem.required_qty,
-      });
+      const { error } = await supabase
+        .from('offer_equipment_substitutions')
+        .insert({
+          offer_id: offerId,
+          from_item_id: currentConflictItem.item_id,
+          to_item_id: substitutionId,
+          qty: currentConflictItem.required_qty,
+        });
 
       if (error) throw error;
 
@@ -442,7 +439,7 @@ export default function ReserveEquipmentModal({
       const acceptedShortageItems = Array.from(acceptedShortages).map((key) => {
         const { item_type, item_id } = parseItemKey(key);
         const item = equipment.find((e) => buildItemKey(e.item_type, e.item_id) === key);
-
+      
         return {
           item_type,
           item_id,
@@ -460,28 +457,19 @@ export default function ReserveEquipmentModal({
       if (error) throw error;
 
       // Invaliduj cache RTK Query
-      dispatch(
-        eventsApi.util.invalidateTags([
-          { type: 'EventEquipment', id: eventId },
-          { type: 'EventOffers', id: `${eventId}_LIST` },
-          { type: 'EventDetails', id: eventId },
-          { type: 'Events', id: eventId },
-        ]),
-      );
+      dispatch(eventsApi.util.invalidateTags([
+        { type: 'EventEquipment', id: eventId },
+        { type: 'EventOffers', id: `${eventId}_LIST` },
+        { type: 'EventDetails', id: eventId },
+        { type: 'Events', id: eventId },
+      ]));
 
-      const result = data as {
-        success: boolean;
-        reserved_count: number;
-        shortage_count: number;
-        rejected_offers_count: number;
-      };
+      const result = data as { success: boolean; reserved_count: number; shortage_count: number; rejected_offers_count: number };
 
-      if (isServiceOnlyOffer) {
-        showSnackbar('Oferta została zaakceptowana bez rezerwacji sprzętu', 'success');
-      } else if (result.rejected_offers_count > 0) {
+      if (result.rejected_offers_count > 0) {
         showSnackbar(
           `Sprzęt zarezerwowany pomyślnie. Odrzucono ${result.rejected_offers_count} pozostałych ofert.`,
-          'success',
+          'success'
         );
       } else {
         showSnackbar('Sprzęt został zarezerwowany pomyślnie', 'success');
@@ -499,10 +487,7 @@ export default function ReserveEquipmentModal({
 
   const hasUnresolvedConflicts =
     equipment.some((e) => e.has_conflict) && acceptedShortages.size === 0;
-
-  const isServiceOnlyOffer = equipment.length === 0;
-
-  const canConfirm = isServiceOnlyOffer || selectedItems.size > 0 || acceptedShortages.size > 0;
+  const canConfirm = selectedItems.size > 0 || acceptedShortages.size > 0;
 
   if (!open) return null;
 
@@ -544,8 +529,7 @@ export default function ReserveEquipmentModal({
 
                 {equipment.length === 0 ? (
                   <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-4 text-sm text-blue-400">
-                    Ta oferta nie zawiera sprzętu do rezerwacji. Możesz zaakceptować ofertę jako
-                    usługową bez rezerwacji magazynowej.
+                    Brak sprzętu do rezerwacji
                   </div>
                 ) : (
                   <>
@@ -695,12 +679,12 @@ export default function ReserveEquipmentModal({
               {confirming ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  {isServiceOnlyOffer ? 'Akceptuję...' : 'Rezerwuję...'}
+                  Rezerwuję...
                 </>
               ) : (
                 <>
                   <Lock className="h-4 w-4" />
-                  {isServiceOnlyOffer ? 'Zaakceptuj ofertę bez sprzętu' : 'Potwierdź Rezerwację'}
+                  Potwierdź Rezerwację
                 </>
               )}
             </button>
@@ -785,9 +769,7 @@ export default function ReserveEquipmentModal({
                                 </div>
                               )}
                             </div>
-                            <div className="text-sm text-green-400">
-                              Dostępne: {sub.available_qty}
-                            </div>
+                            <div className="text-sm text-green-400">Dostępne: {sub.available_qty}</div>
                           </div>
                         </button>
 
@@ -872,8 +854,7 @@ export default function ReserveEquipmentModal({
                 <div className="flex gap-3">
                   <AlertTriangle className="h-5 w-5 flex-shrink-0 text-yellow-400" />
                   <div className="text-sm text-yellow-400">
-                    Wybrany sprzęt nie będzie działać bez poniższych komponentów. Zalecamy ich
-                    dodanie.
+                    Wybrany sprzęt nie będzie działać bez poniższych komponentów. Zalecamy ich dodanie.
                   </div>
                 </div>
               </div>
@@ -908,8 +889,7 @@ export default function ReserveEquipmentModal({
                           </div>
                           {!isKit && component.compatible_equipment && (
                             <div className="mt-1 text-xs text-[#e5e4e2]/50">
-                              {component.compatible_equipment.brand}{' '}
-                              {component.compatible_equipment.model}
+                              {component.compatible_equipment.brand} {component.compatible_equipment.model}
                             </div>
                           )}
                           {isKit && component.compatible_kit?.description && (

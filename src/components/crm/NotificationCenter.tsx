@@ -48,8 +48,13 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [customSoundUrl, setCustomSoundUrl] = useState<string | null>(null);
+  const soundEnabledRef = useRef(true);
+  const customSoundUrlRef = useRef<string | null>(null);
   const prevUnreadCountRef = useRef<number>(0);
-  const isInitialLoadRef = useRef(true);
+  const readyForSoundRef = useRef(false);
+  const initialLoadDoneRef = useRef(false);
+  const sessionStartRef = useRef<string>(new Date().toISOString());
   const [absenceModalId, setAbsenceModalId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -61,7 +66,34 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notification_recipients',
+        },
+        (payload) => {
+          const newRow = payload.new as any;
+          const createdAt = newRow?.created_at;
+          if (createdAt && createdAt > sessionStartRef.current && readyForSoundRef.current && soundEnabledRef.current) {
+            playNotificationSound();
+          }
+          fetchNotifications();
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'notification_recipients',
+        },
+        (payload) => {
+          fetchNotifications();
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
           schema: 'public',
           table: 'notification_recipients',
         },
@@ -93,18 +125,25 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
   }, []);
 
   useEffect(() => {
-    if (isInitialLoadRef.current) {
-      isInitialLoadRef.current = false;
+    soundEnabledRef.current = soundEnabled;
+  }, [soundEnabled]);
+
+  useEffect(() => {
+    customSoundUrlRef.current = customSoundUrl;
+  }, [customSoundUrl]);
+
+  useEffect(() => {
+    if (!initialLoadDoneRef.current) {
+      initialLoadDoneRef.current = true;
       prevUnreadCountRef.current = unreadCount;
+      setTimeout(() => {
+        readyForSoundRef.current = true;
+      }, 3000);
       return;
     }
 
-    if (unreadCount > prevUnreadCountRef.current && soundEnabled) {
-      playNotificationSound();
-    }
-
     prevUnreadCountRef.current = unreadCount;
-  }, [unreadCount, soundEnabled]);
+  }, [unreadCount]);
 
   const loadUserPreferences = async () => {
     try {
@@ -124,6 +163,9 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
       if (data?.preferences?.notifications?.soundEnabled !== undefined) {
         setSoundEnabled(data.preferences.notifications.soundEnabled);
       }
+      if (data?.preferences?.notifications?.customSoundUrl) {
+        setCustomSoundUrl(data.preferences.notifications.customSoundUrl);
+      }
     } catch (error) {
       console.error('Error loading user preferences:', error);
     }
@@ -131,6 +173,13 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
 
   const playNotificationSound = () => {
     try {
+      if (customSoundUrlRef.current) {
+        const audio = new Audio(customSoundUrlRef.current);
+        audio.volume = 0.5;
+        audio.play().catch(() => {});
+        return;
+      }
+
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();
@@ -185,7 +234,6 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
         )
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
-        .limit(100);
 
       if (error) throw error;
 
@@ -455,7 +503,6 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
               <div className="mb-3 flex items-center justify-between">
                 <div>
                   <h3 className="text-lg font-bold text-[#e5e4e2]">Powiadomienia</h3>
-                  <p className="mt-0.5 text-xs text-[#e5e4e2]/40">Wyświetlanie ostatnich 100</p>
                 </div>
                 <button
                   onClick={() => setShowPanel(false)}

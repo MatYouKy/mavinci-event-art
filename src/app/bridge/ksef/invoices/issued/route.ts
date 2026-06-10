@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getCredentials, supabase } from '@/lib/ksef/db';
-import { getKSeFInvoices } from '../../client';
+import { getKSeFInvoices, getKSeFInvoiceXml } from '../../client';
 import { parsePaymentData } from '../../parsePaymentData';
+import { parseFA3InvoiceXml } from '../../parseInvoiceXml';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -58,83 +59,137 @@ export async function POST(req: Request) {
     );
 
     const invoices = Array.isArray(data?.invoices) ? data.invoices : [];
+    let newCount = 0;
+    let skippedCount = 0;
 
     if (invoices.length > 0) {
-      const rows = invoices.map((inv: any) => {
-        // Próbujemy różne warianty pola terminu płatności
+      // Collect all ksef_reference_numbers from the fetched batch
+      const allKsefRefs = invoices
+        .map((inv: any) =>
+          inv.ksefNumber ||
+          inv.ksefReferenceNumber ||
+          inv.ksef_reference_number ||
+          inv.referenceNumber
+        )
+        .filter(Boolean);
+
+      // Check which invoices already exist in DB - skip those to avoid overwriting payment status
+      const { data: existingInvoices } = await supabase
+        .from('ksef_invoices')
+        .select('ksef_reference_number')
+        .in('ksef_reference_number', allKsefRefs);
+
+      const existingRefs = new Set(
+        (existingInvoices || []).map((e: any) => e.ksef_reference_number)
+      );
+
+      const rows = [];
+
+      for (const inv of invoices) {
+        const ksefRef =
+          inv.ksefNumber ||
+          inv.ksefReferenceNumber ||
+          inv.ksef_reference_number ||
+          inv.referenceNumber;
+
+        if (!ksefRef) continue;
+
+        // Skip invoices that already exist in DB to preserve their payment status
+        if (existingRefs.has(ksefRef)) continue;
+
+        // Fetch full invoice XML for complete data
+        let xmlContent = '';
+        let parsed: ReturnType<typeof parseFA3InvoiceXml> = null;
+        try {
+          xmlContent = await getKSeFInvoiceXml(
+            ksefRef,
+            credentials.access_token,
+            credentials.is_test_environment,
+            { stage: 'invoice-xml-fetch', companyId, ksefRef },
+          );
+          parsed = parseFA3InvoiceXml(xmlContent);
+        } catch (e: any) {
+          console.error(`[KSEF_NEXT] failed to fetch XML for ${ksefRef}:`, e?.message);
+        }
+
+        // Use parsed XML data with fallback to metadata
         const paymentDueDate =
+          parsed?.payment_due_date ||
           inv.paymentDueDate ||
           inv.payment_due_date ||
           inv.TerminPlatnosci ||
           inv.terminPlatnosci ||
           inv.dueDate ||
           inv.PaymentDueDate ||
-          inv.paymentDate ||
-          inv.payment_date ||
-          inv.deadline ||
-          inv.Termin ||
-          inv.termin ||
           null;
 
-        // Próbujemy pobrać stawkę VAT z różnych pól
-        let vatRate = null;
-        if (inv.vatRate) {
-          vatRate = inv.vatRate;
-        } else if (inv.vat_rate) {
-          vatRate = inv.vat_rate;
-        } else if (inv.taxRate) {
-          vatRate = inv.taxRate;
-        } else if (inv.items && Array.isArray(inv.items) && inv.items.length > 0) {
-          // Jeśli nie ma głównej stawki, spróbuj z pierwszej pozycji
-          vatRate = inv.items[0]?.vatRate || inv.items[0]?.vat_rate || inv.items[0]?.taxRate;
+        const paymentMethod =
+          parsed?.payment_method ||
+          inv.paymentMethod ||
+          inv.payment_method ||
+          inv.FormaPlatnosci ||
+          null;
+
+        const bankAccountNumber =
+          parsed?.bank_account_number ||
+          inv.bankAccountNumber ||
+          inv.bank_account_number ||
+          null;
+
+        const paymentDate = parsed?.payment_date || null;
+
+        // Determine payment status
+        const paymentData = parsePaymentData({
+          ...inv,
+          paymentMethod,
+          paymentDueDate,
+          paymentDate,
+          bankAccountNumber,
+        });
+
+        // For immediate payment methods (cash/card), set payment_date to issue_date
+        const effectivePaymentDate =
+          paymentDate ||
+          (paymentData.payment_status === 'paid' && (paymentMethod === '1' || paymentMethod === '2')
+            ? (parsed?.issue_date || inv.issueDate || new Date().toISOString().split('T')[0])
+            : null);
+
+        // VAT rate from items
+        let vatRate: string | null = null;
+        if (parsed?.invoice_items && parsed.invoice_items.length > 0) {
+          vatRate = parsed.invoice_items[0].vat_rate
+            ? `${parsed.invoice_items[0].vat_rate}%`
+            : null;
+        } else if (inv.vatRate) {
+          vatRate = typeof inv.vatRate === 'number' ? `${inv.vatRate}%` : inv.vatRate;
         }
 
-        // Normalizuj stawkę VAT do formatu tekstowego
-        if (vatRate !== null && typeof vatRate === 'number') {
-          if (vatRate === 0) {
-            vatRate = '0%';
-          } else {
-            vatRate = `${vatRate}%`;
-          }
-        } else if (vatRate && typeof vatRate === 'string' && !vatRate.includes('%')) {
-          if (vatRate === '0' || vatRate === 'zw' || vatRate.toLowerCase() === 'zwolniona') {
-            vatRate = vatRate === 'zw' || vatRate.toLowerCase() === 'zwolniona' ? 'zw' : '0%';
-          } else {
-            vatRate = `${vatRate}%`;
-          }
-        }
-
-        // Parsuj dane płatności
-        const paymentData = parsePaymentData(inv);
-
-        return {
-          ksef_reference_number:
-            inv.ksefNumber ||
-            inv.ksefReferenceNumber ||
-            inv.ksef_reference_number ||
-            inv.referenceNumber,
-          invoice_number: inv.invoiceNumber || null,
+        rows.push({
+          ksef_reference_number: ksefRef,
+          my_company_id: companyId,
+          invoice_number: parsed?.invoice_number || inv.invoiceNumber || null,
           invoice_type: 'issued',
-          seller_name: inv.seller?.name || null,
-          buyer_name: inv.buyer?.name || null,
-          net_amount: inv.netAmount ?? null,
-          gross_amount: inv.grossAmount ?? null,
-          vat_amount: inv.vatAmount ?? null,
+          seller_name: parsed?.seller_name || inv.seller?.name || null,
+          seller_nip: parsed?.seller_nip || inv.seller?.nip || null,
+          seller_address: parsed?.seller_address || null,
+          buyer_name: parsed?.buyer_name || inv.buyer?.name || null,
+          buyer_nip: parsed?.buyer_nip || (inv.buyer?.identifier?.type === 'Nip' ? inv.buyer?.identifier?.value : null) || null,
+          buyer_address: parsed?.buyer_address || null,
+          net_amount: parsed?.net_amount ?? inv.netAmount ?? null,
+          gross_amount: parsed?.gross_amount ?? inv.grossAmount ?? null,
+          vat_amount: parsed?.vat_amount ?? inv.vatAmount ?? null,
           vat_rate: vatRate,
-          invoice_items: inv.items || inv.invoiceItems || null,
-          currency: inv.currency || 'PLN',
-          issue_date: inv.issueDate || null,
-          seller_nip: inv.seller?.nip || null,
-          buyer_nip:
-            inv.buyer?.identifier?.type === 'Nip'
-              ? inv.buyer?.identifier?.value || null
-              : null,
-          payment_due_date: paymentData.payment_due_date || paymentDueDate,
-          payment_method: paymentData.payment_method,
-          payment_date: paymentData.payment_date,
-          bank_account_number: paymentData.bank_account_number,
-          payment_status: paymentData.payment_method === '1' ? 'paid' : 'unpaid',
-          xml_content: '',
+          invoice_items: parsed?.invoice_items && parsed.invoice_items.length > 0
+            ? parsed.invoice_items
+            : inv.items || inv.invoiceItems || null,
+          currency: parsed?.currency || inv.currency || 'PLN',
+          issue_date: parsed?.issue_date || inv.issueDate || null,
+          payment_due_date: paymentDueDate,
+          payment_method: paymentMethod,
+          payment_date: effectivePaymentDate,
+          bank_account_number: bankAccountNumber,
+          payment_status: paymentData.payment_status,
+          xml_content: xmlContent,
           sync_status: 'synced',
           sync_error: null,
           ksef_issued_at:
@@ -145,30 +200,29 @@ export async function POST(req: Request) {
             inv.invoiceDate ||
             new Date().toISOString(),
           synced_at: new Date().toISOString(),
-        };
-      });
+        });
+      }
 
-      const validRows = rows.filter((row) => !!row.ksef_reference_number);
-
-      if (validRows.length > 0) {
-        const { error: upsertError } = await supabase
+      if (rows.length > 0) {
+        const { error: insertError } = await supabase
           .from('ksef_invoices')
-          .upsert(validRows, {
-            onConflict: 'ksef_reference_number',
-          });
+          .insert(rows);
 
-        if (upsertError) {
-          console.error('[KSEF_NEXT] issued invoices upsert error', upsertError);
+        if (insertError) {
+          console.error('[KSEF_NEXT] issued invoices insert error', insertError);
 
           return NextResponse.json(
             {
               success: false,
-              error: upsertError.message || 'Błąd zapisu faktur do bazy',
+              error: insertError.message || 'Błąd zapisu faktur do bazy',
             },
             { status: 500 }
           );
         }
       }
+
+      newCount = rows.length;
+      skippedCount = existingRefs.size;
     }
 
     const { error: logError } = await supabase.from('ksef_sync_log').insert({
@@ -185,7 +239,11 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
-      data,
+      data: {
+        ...data,
+        newCount,
+        skippedCount,
+      },
     });
   } catch (error: any) {
     console.error('[KSEF_NEXT] issued invoices route error', error);

@@ -52,6 +52,7 @@ const invoiceCompanyScopes: Array<{ key: string; label: string; description: str
 
 const availableEventTabs = [
   { value: 'overview', label: 'Przegląd', description: 'Podstawowe informacje o wydarzeniu' },
+  { value: 'details', label: 'Szczegóły', description: 'Podstawowe informacje o wydarzeniu' },
   { value: 'phases', label: 'Timeline', description: 'Zarządzanie fazami wydarzenia' },
   { value: 'offer', label: 'Oferta', description: 'Tworzenie i zarządzanie ofertami' },
   { value: 'finances', label: 'Finanse', description: 'Budżet i koszty wydarzenia' },
@@ -121,6 +122,11 @@ const permissionCategories: PermissionCategory[] = [
         label: 'Zarządzanie kategoriami wydarzeń',
         description: 'Może dodawać, edytować i usuwać kategorie wydarzeń',
       },
+      {
+        key: 'events_create',
+        label: 'Tworzenie wydarzeń',
+        description: 'Może tworzyć nowe wydarzenia',
+      }
     ],
   },
   {
@@ -184,16 +190,6 @@ const permissionCategories: PermissionCategory[] = [
         label: 'Zarządzanie fakturami KSeF',
         description: 'Może konfigurować integrację z KSeF i zarządzać fakturami',
       },
-      {
-        key: 'bank_statements_view',
-        label: 'Podgląd wyciągów',
-        description: 'Może przeglądać wyciągi bankowe',
-      },
-      {
-        key: 'bank_statements_manage',
-        label: 'Zarządzanie wyciągami',
-        description: 'Może konfigurować integrację z wyciągami bankowymi',
-      },
     ],
   },
   {
@@ -212,6 +208,17 @@ const permissionCategories: PermissionCategory[] = [
         key: 'website_edit',
         label: 'Edycja treści strony',
         description: 'Może edytować zawartość strony publicznej (portfolio, usługi, zespół)',
+      },
+    ],
+  },
+  {
+    key: 'tenders',
+    label: 'Przetargi',
+    extraPermissions: [
+      {
+        key: 'tenders_view',
+        label: 'Podgląd przetargów',
+        description: 'Może przeglądać przetargi',
       },
     ],
   },
@@ -558,7 +565,6 @@ export default function EmployeePermissionsTab({
         {permissionCategories.map((category) => {
           const isExpanded = expandedCategories.has(category.key);
           const level = getPermissionLevel(category.key);
-          const hasManageLevel = level === 'manage';
 
           return (
             <div
