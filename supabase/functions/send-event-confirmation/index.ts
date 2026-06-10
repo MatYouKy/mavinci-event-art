@@ -316,6 +316,26 @@ function buildConfirmationEmailHtml(data: ConfirmationEmailData): string {
     detailRows.push(buildDetailRow("Typ wydarzenia", data.categoryName));
   }
 
+  if (data.locationName) {
+    detailRows.push(buildDetailRow("Nazwa lokalizacji", data.locationName));
+  }
+  
+  if (data.budgetNet !== null) {
+    detailRows.push(
+      buildDetailRow("Budżet netto", `${Number(data.budgetNet).toFixed(2)} PLN`)
+    );
+  }
+  
+  if (data.budgetGross !== null) {
+    detailRows.push(
+      buildDetailRow("Budżet brutto", `${Number(data.budgetGross).toFixed(2)} PLN`)
+    );
+  }
+  
+  if (data.acceptedByText) {
+    detailRows.push(buildDetailRow("Zaakceptował/a", data.acceptedByText));
+  }
+
   const scopeHtml =
     data.offerItems.length > 0
       ? `

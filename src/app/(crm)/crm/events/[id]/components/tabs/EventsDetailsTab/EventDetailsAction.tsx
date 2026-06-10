@@ -309,6 +309,16 @@ export default function EventDetailsAction({
         return;
       }
 
+      const resolvedEventId = event?.id;
+
+      console.log('[EventDetailsAction] event:', event);
+      console.log('[EventDetailsAction] resolvedEventId:', resolvedEventId);
+
+      if (!resolvedEventId) {
+        showSnackbar('Brak ID wydarzenia - nie można wysłać potwierdzenia', 'error');
+        return;
+      }
+
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-event-confirmation`,
         {
@@ -317,7 +327,11 @@ export default function EventDetailsAction({
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ eventId: event.id }),
+
+          body: JSON.stringify({
+            eventId: event.id,
+            acceptedById: employee?.id ?? null,
+          }),
         },
       );
 
@@ -325,7 +339,10 @@ export default function EventDetailsAction({
       if (result.success === true) {
         showSnackbar(`Wysłano potwierdzenie do ${result.recipientEmail}`, 'success');
       } else {
-        showSnackbar(result.message || result.error || 'Nie udało się wysłać potwierdzenia', 'error');
+        showSnackbar(
+          result.message || result.error || 'Nie udało się wysłać potwierdzenia',
+          'error',
+        );
       }
     } catch (err: any) {
       console.error('[EventDetailsAction] Error sending confirmation email:', err);
@@ -628,7 +645,10 @@ export default function EventDetailsAction({
                 Potwierdzenie email
               </h2>
               <button
-                onClick={() => { setShowSendConfirmation(false); router.refresh(); }}
+                onClick={() => {
+                  setShowSendConfirmation(false);
+                  router.refresh();
+                }}
                 disabled={sendingConfirmationEmail}
                 className="text-[#e5e4e2]/60 hover:text-[#e5e4e2] disabled:opacity-50"
               >
@@ -646,9 +666,7 @@ export default function EventDetailsAction({
             {(contact?.email || organization?.email) && (
               <div className="mb-4 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-3 py-2 text-xs text-[#e5e4e2]/60">
                 Odbiorca:{' '}
-                <span className="text-[#e5e4e2]">
-                  {contact?.email || organization?.email}
-                </span>
+                <span className="text-[#e5e4e2]">{contact?.email || organization?.email}</span>
               </div>
             )}
 
@@ -671,7 +689,10 @@ export default function EventDetailsAction({
                 )}
               </button>
               <button
-                onClick={() => { setShowSendConfirmation(false); router.refresh(); }}
+                onClick={() => {
+                  setShowSendConfirmation(false);
+                  router.refresh();
+                }}
                 disabled={sendingConfirmationEmail}
                 className="rounded-lg px-4 py-2 text-[#e5e4e2]/60 hover:bg-[#1c1f33] disabled:opacity-50"
               >
