@@ -43,7 +43,7 @@ export default function EmployeesPageClient({
   const canViewEmployees = canViewModule('employees');
 
   const { setViewMode } = useUserPreferences();
-  const [localViewMode, setLocalViewMode] = useState<ViewMode>(viewMode);
+  const [localViewMode, setLocalViewMode] = useState<ViewMode>(viewMode || 'grid');
 
   const handleViewModeChange = async (mode: ViewMode) => {
     setLocalViewMode(mode);

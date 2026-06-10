@@ -85,7 +85,7 @@ const availableOrganizationTabs = [
 const permissionCategories: PermissionCategory[] = [
   {
     key: 'equipment',
-    label: 'Sprzęt',
+    label: 'Magazyn',
   },
   {
     key: 'employees',
@@ -97,10 +97,6 @@ const permissionCategories: PermissionCategory[] = [
         description: 'Może zmieniać uprawnienia pracowników',
       },
     ],
-  },
-  {
-    key: 'clients',
-    label: 'Klienci',
   },
   {
     key: 'contacts',
@@ -115,7 +111,7 @@ const permissionCategories: PermissionCategory[] = [
   },
   {
     key: 'events',
-    label: 'Wydarzenia',
+    label: 'Eventy',
     extraPermissions: [
       {
         key: 'event_categories_manage',
