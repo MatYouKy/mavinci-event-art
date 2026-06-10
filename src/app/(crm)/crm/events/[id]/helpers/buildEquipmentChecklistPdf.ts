@@ -33,6 +33,7 @@ export const buildEquipmentChecklistHtml = ({
   authorNumber,
   contactName,
   contactPhone,
+  externalItems,
 }: {
   eventName: string;
   eventDate: string;
@@ -42,6 +43,7 @@ export const buildEquipmentChecklistHtml = ({
   authorNumber: string;
   contactName?: string;
   contactPhone?: string;
+  externalItems?: Array<{ name: string; quantity: number; unit: string }>;
 }) => {
   const esc = (s: any) =>
     String(s ?? '')
@@ -270,6 +272,18 @@ export const buildEquipmentChecklistHtml = ({
                     ${
             isLastPage
               ? `
+              ${
+                externalItems && externalItems.length > 0
+                  ? `
+                <div class="external-items-note">
+                  <div class="external-title">UWAGI — Elementy spoza magazynu (do pozyskania zewnętrznie):</div>
+                  <ul class="external-list">
+                    ${externalItems.map((item) => `<li>${esc(item.name)} — ${item.quantity} ${esc(item.unit)}</li>`).join('')}
+                  </ul>
+                </div>
+              `
+                  : ''
+              }
               <div class="signatures">
                 <div class="signature-box">
                   <div class="signature-line">Osoba po stronie Magazynu</div>
@@ -478,6 +492,37 @@ export const buildEquipmentChecklistHtml = ({
 
     tr.kit td {
       background: #fafafa;
+    }
+
+    .external-items-note {
+      margin-top: 6mm;
+      padding: 3mm 4mm;
+      border: 1px solid #d97706;
+      border-radius: 3px;
+      background: #fffbeb;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    .external-title {
+      font-size: 9px;
+      font-weight: 700;
+      margin-bottom: 2mm;
+      color: #92400e;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .external-list {
+      margin: 0;
+      padding: 0 0 0 4mm;
+      font-size: 9px;
+      line-height: 1.6;
+      color: #78350f;
+    }
+
+    .external-list li {
+      margin-bottom: 1px;
     }
 
     .signatures {

@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { Package, Plus, Printer, AlertTriangle } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Package, Plus, Printer, AlertTriangle, Calculator, Download } from 'lucide-react';
 import { AddEquipmentModal } from '../Modals/AddEquipmentModal';
 import { ChevronDown, Package as PackageIcon, Trash2 } from 'lucide-react';
 import { useEventEquipment } from '../../../hooks';
@@ -279,6 +279,9 @@ export const EventEquipmentTab: React.FC<{
   const [showRentalModal, setShowRentalModal] = useState(false);
   const [currentRowForRental, setCurrentRowForRental] = useState<any>(null);
   const [localChecklistModified, setLocalChecklistModified] = useState(false);
+  const [acceptedCalcId, setAcceptedCalcId] = useState<string | null>(null);
+  const [externalItems, setExternalItems] = useState<Array<{ name: string; quantity: number; unit: string; description: string }>>([]);
+  const [importingFromCalc, setImportingFromCalc] = useState(false);
 
   const { showSnackbar } = useSnackbar();
   const { event, refetch: refetchEvent } = useEvent(initialEvent);
@@ -343,6 +346,56 @@ export const EventEquipmentTab: React.FC<{
 
     checkConflicts();
   }, [eventId]);
+
+  // Sprawdź czy jest zaakceptowana kalkulacja i pobierz elementy spoza magazynu
+  const fetchAcceptedCalculation = useCallback(async () => {
+    if (!eventId) return;
+
+    try {
+      const { data: eventData } = await supabase
+        .from('events')
+        .select('accepted_calculation_id, financial_source')
+        .eq('id', eventId)
+        .maybeSingle();
+
+      if (!eventData?.accepted_calculation_id || eventData?.financial_source !== 'calculation') {
+        setAcceptedCalcId(null);
+        setExternalItems([]);
+        return;
+      }
+
+      setAcceptedCalcId(eventData.accepted_calculation_id);
+
+      const { data: items } = await supabase
+        .from('event_calculation_items')
+        .select('*')
+        .eq('calculation_id', eventData.accepted_calculation_id)
+        .eq('category', 'equipment')
+        .order('position');
+
+      if (!items) return;
+
+      // Elementy spoza magazynu: source !== 'warehouse' i brak source_ref do equipment
+      const external = items.filter(
+        (item: any) => item.source !== 'warehouse' && !item.source_ref,
+      );
+
+      setExternalItems(
+        external.map((item: any) => ({
+          name: item.name,
+          quantity: item.quantity,
+          unit: item.unit || 'szt.',
+          description: item.description || '',
+        })),
+      );
+    } catch (err) {
+      console.error('Error fetching accepted calculation:', err);
+    }
+  }, [eventId]);
+
+  useEffect(() => {
+    fetchAcceptedCalculation();
+  }, [fetchAcceptedCalculation]);
 
   // Tracking PDF checklisty
   const checklistPdfPath = event?.equipment_checklist_pdf_path || null;
@@ -491,6 +544,77 @@ export const EventEquipmentTab: React.FC<{
     await markChecklistAsModified();
   };
 
+  const handleImportFromCalculation = async () => {
+    if (!eventId || !acceptedCalcId) return;
+
+    try {
+      setImportingFromCalc(true);
+
+      const { data: items, error: itemsError } = await supabase
+        .from('event_calculation_items')
+        .select('*')
+        .eq('calculation_id', acceptedCalcId)
+        .eq('category', 'equipment')
+        .order('position');
+
+      if (itemsError) throw itemsError;
+      if (!items || items.length === 0) {
+        showSnackbar('Brak pozycji sprzętowych w kalkulacji', 'info');
+        return;
+      }
+
+      // Filtruj pozycje z magazynu (mają source_ref)
+      const warehouseItems = items.filter((item: any) => item.source === 'warehouse' && item.source_ref);
+
+      if (warehouseItems.length === 0) {
+        showSnackbar('Kalkulacja nie zawiera pozycji z magazynu do zaimportowania', 'info');
+        return;
+      }
+
+      // Sprawdź które z tych pozycji to equipment_items a które kity
+      const equipmentIds = warehouseItems.map((item: any) => item.source_ref).filter(Boolean);
+
+      const { data: equipmentCheck } = await supabase
+        .from('equipment_items')
+        .select('id')
+        .in('id', equipmentIds);
+
+      const { data: kitCheck } = await supabase
+        .from('equipment_kits')
+        .select('id')
+        .in('id', equipmentIds);
+
+      const validItemIds = new Set((equipmentCheck ?? []).map((e: any) => e.id));
+      const validKitIds = new Set((kitCheck ?? []).map((k: any) => k.id));
+
+      const toAdd: SelectedItem[] = [];
+
+      for (const calcItem of warehouseItems) {
+        const ref = calcItem.source_ref;
+        if (!ref) continue;
+
+        if (validItemIds.has(ref)) {
+          toAdd.push({ id: ref, type: 'item', quantity: calcItem.quantity });
+        } else if (validKitIds.has(ref)) {
+          toAdd.push({ id: ref, type: 'kit', quantity: calcItem.quantity });
+        }
+      }
+
+      if (toAdd.length === 0) {
+        showSnackbar('Nie znaleziono sprzętu z magazynu do dodania', 'info');
+        return;
+      }
+
+      await handleAddEquipment(toAdd);
+      showSnackbar(`Zaimportowano ${toAdd.length} pozycji z kalkulacji`, 'success');
+    } catch (err: any) {
+      console.error('Error importing from calculation:', err);
+      showSnackbar(err.message || 'Błąd podczas importu z kalkulacji', 'error');
+    } finally {
+      setImportingFromCalc(false);
+    }
+  };
+
   const handleGenerateChecklist = async () => {
     if (!eventId || !equipment || equipment.length === 0) {
       showSnackbar('Brak sprzętu do wygenerowania checklisty', 'error');
@@ -562,6 +686,7 @@ export const EventEquipmentTab: React.FC<{
         authorNumber: (employee as any)?.phone_number || '-',
         contactName,
         contactPhone,
+        externalItems: externalItems.length > 0 ? externalItems : undefined,
       });
   
       const { default: html2pdf } = await import('html2pdf.js');
@@ -1276,6 +1401,16 @@ export const EventEquipmentTab: React.FC<{
       },
     ];
 
+    if (acceptedCalcId) {
+      result.push({
+        label: importingFromCalc ? 'Importowanie...' : 'Importuj z kalkulacji',
+        onClick: handleImportFromCalculation,
+        icon: <Calculator className="h-4 w-4" />,
+        variant: 'default',
+        disabled: importingFromCalc,
+      });
+    }
+
     // Logika dla PDF checklisty
     if (!checklistPdfPath || checklistModified) {
       // Brak PDF lub są zmiany - pokaż przycisk generuj/regeneruj
@@ -1311,6 +1446,9 @@ export const EventEquipmentTab: React.FC<{
     return result;
   }, [
     setShowAddEquipmentModal,
+    acceptedCalcId,
+    importingFromCalc,
+    handleImportFromCalculation,
     checklistPdfPath,
     checklistModified,
     generatingPdf,
@@ -1406,6 +1544,38 @@ export const EventEquipmentTab: React.FC<{
           >
             Rozwiąż konflikty
           </button>
+        </div>
+      )}
+
+      {externalItems.length > 0 && (
+        <div className="mb-6 rounded-lg border border-amber-500/20 bg-amber-500/5 p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <Download className="h-4 w-4 text-amber-400" />
+            <h3 className="text-sm font-medium text-amber-300">
+              Elementy spoza magazynu (z kalkulacji)
+            </h3>
+          </div>
+          <p className="mb-3 text-xs text-amber-300/70">
+            Poniższe pozycje z zaakceptowanej kalkulacji nie pochodzą z magazynu i wymagają zewnętrznego pozyskania.
+          </p>
+          <div className="space-y-1.5">
+            {externalItems.map((item, idx) => (
+              <div
+                key={idx}
+                className="flex items-center justify-between rounded border border-amber-500/10 bg-[#1c1f33] px-3 py-2"
+              >
+                <div className="min-w-0 flex-1">
+                  <span className="text-sm text-[#e5e4e2]">{item.name}</span>
+                  {item.description && (
+                    <span className="ml-2 text-xs text-[#e5e4e2]/40">{item.description}</span>
+                  )}
+                </div>
+                <span className="ml-4 shrink-0 text-sm font-medium text-amber-300">
+                  {item.quantity} {item.unit}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
