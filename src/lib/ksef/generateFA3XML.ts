@@ -64,6 +64,7 @@ export type FA3PreparedInvoice = {
     splitPayment: boolean;
     number: string;
     type: 'VAT' | 'ZAL' | 'ROZ' | 'KOR' | 'KOR_ZAL' | 'KOR_ROZ';
+    footerNote?: string;
     isFinalInvoice: boolean;
     settledInvoices: FA3SettledInvoice[];
     settlementSummary?: FA3SettlementSummary;
@@ -154,6 +155,17 @@ function normalizeCustomerToken(value?: string | null): string | undefined {
   return normalized || undefined;
 }
 
+function normalizeKsefText(value?: string | null): string | undefined {
+  const normalized = (value || '')
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 512);
+
+  return normalized || undefined;
+}
+
 function formatDate(date: string): string {
   return date.split('T')[0];
 }
@@ -176,6 +188,8 @@ function getVatRateCode(rate: number): string {
       return '23';
   }
 }
+
+
 
 function getPaymentMethodCode(method: string): string {
   const methodUpper = (method || '').toUpperCase();
@@ -360,6 +374,91 @@ function getFa3RodzajFaktury(invoice: any): 'VAT' | 'ZAL' | 'ROZ' | 'KOR' | 'KOR
   return 'VAT';
 }
 
+function buildInvoiceItems(invoice: any): FA3PreparedInvoice['invoice']['items'] {
+  const items: FA3PreparedInvoice['invoice']['items'] = [];
+  const isCorrectiveInvoice = invoice?.invoice_type === 'corrective';
+
+  (invoice?.invoice_items || []).forEach((item: any, index: number) => {
+    const sourceLineNumber = Number(item?.position_number ?? index + 1);
+    const name = pickFirstNonEmpty(item?.name) || '';
+    const unit = pickFirstNonEmpty(item?.unit) || 'szt';
+    const vatRate = Number(item?.vat_rate || 0);
+
+    const hasBefore = item?.before_quantity != null && item?.before_price_net != null;
+
+    if (isCorrectiveInvoice && hasBefore) {
+      const beforeQty = Number(item.before_quantity ?? 0);
+      const beforePriceNet = Number(item.before_price_net ?? 0);
+      const beforeValueNet = Number(item.before_value_net ?? beforeQty * beforePriceNet);
+      const beforeVatAmount = Number(
+        item.before_vat_amount ?? Math.round(beforeValueNet * vatRate) / 100,
+      );
+      const beforeValueGross = Number(item.before_value_gross ?? beforeValueNet + beforeVatAmount);
+
+      items.push({
+        lineNumber: items.length + 1,
+        name,
+        unit,
+        quantity: beforeQty,
+        priceNet: beforePriceNet,
+        valueNet: beforeValueNet,
+        vatRate,
+        vatAmount: beforeVatAmount,
+        valueGross: beforeValueGross,
+        stanPrzed: true,
+      });
+
+      const correctionValueNet = Number(item.value_net ?? 0);
+      const correctionVatAmount = Number(
+        item.vat_amount ?? Math.round(correctionValueNet * vatRate) / 100,
+      );
+      const correctionValueGross = Number(
+        item.value_gross ?? correctionValueNet + correctionVatAmount,
+      );
+
+      const correctionQty =
+        beforeQty > 0
+          ? beforeQty
+          : beforePriceNet !== 0
+            ? Math.abs(correctionValueNet / beforePriceNet)
+            : Math.abs(Number(item.quantity ?? 1));
+
+      const correctionPriceNet =
+        correctionQty !== 0
+          ? Number((correctionValueNet / correctionQty).toFixed(2))
+          : correctionValueNet;
+
+      items.push({
+        lineNumber: items.length + 1,
+        name,
+        unit,
+        quantity: correctionQty,
+        priceNet: correctionPriceNet,
+        valueNet: correctionValueNet,
+        vatRate,
+        vatAmount: correctionVatAmount,
+        valueGross: correctionValueGross,
+      });
+
+      return;
+    }
+
+    items.push({
+      lineNumber: sourceLineNumber,
+      name,
+      unit,
+      quantity: Number(item?.quantity || 0),
+      priceNet: Number(item?.price_net || 0),
+      valueNet: Number(item?.value_net || 0),
+      vatRate,
+      vatAmount: Number(item?.vat_amount || 0),
+      valueGross: Number(item?.value_gross || 0),
+    });
+  });
+
+  return items;
+}
+
 export function prepareFA3Invoice(invoice: any, organization: any): FA3PreparedInvoice {
   const isFinalInvoice =
     invoice?.is_final_invoice === true ||
@@ -449,6 +548,7 @@ export function prepareFA3Invoice(invoice: any, organization: any): FA3PreparedI
       totalGross: Number(invoice?.total_gross || 0),
       bankAccount: normalizeBankAccount(invoice?.bank_account),
       bankName: pickFirstNonEmpty(invoice?.bank_name),
+      footerNote: normalizeKsefText(invoice?.footer_note),
       correction:
         invoice?.invoice_type === 'corrective'
           ? {
@@ -459,17 +559,7 @@ export function prepareFA3Invoice(invoice: any, organization: any): FA3PreparedI
               correctionReason: invoice?.correction_reason || '',
             }
           : undefined,
-      items: (invoice?.invoice_items || []).map((item: any, index: number) => ({
-        lineNumber: Number(item?.position_number ?? index + 1),
-        name: pickFirstNonEmpty(item?.name) || '',
-        unit: pickFirstNonEmpty(item?.unit) || 'szt',
-        quantity: Number(item?.quantity || 0),
-        priceNet: Number(item?.price_net || 0),
-        valueNet: Number(item?.value_net || 0),
-        vatRate: Number(item?.vat_rate || 0),
-        vatAmount: Number(item?.vat_amount || 0),
-        valueGross: Number(item?.value_gross || 0),
-      })),
+      items: buildInvoiceItems(invoice),
     },
   };
 }
@@ -627,6 +717,13 @@ function buildPrzyczynaKorektyXml(data: FA3PreparedInvoice): string {
   return `<PrzyczynaKorekty>${escapeXml(correction.correctionReason)}</PrzyczynaKorekty>`;
 }
 
+function buildTypKorektyXml(data: FA3PreparedInvoice): string {
+  const isCorrectiveType = ['KOR', 'KOR_ZAL', 'KOR_ROZ'].includes(data.invoice.type);
+  if (!isCorrectiveType) return '';
+
+  return `<TypKorekty>1</TypKorekty>`;
+}
+
 function buildFinalInvoiceSettlementXml(data: FA3PreparedInvoice): string {
   if (!data.invoice.isFinalInvoice) return '';
   if (!data.invoice.settledInvoices.length) return '';
@@ -684,27 +781,37 @@ function buildFinalInvoiceItems(
 }
 
 function buildDodatkowyOpisXml(data: FA3PreparedInvoice): string {
-  if (
-    data.invoice.type !== 'ROZ' ||
-    !data.invoice.settlementSummary ||
-    !data.invoice.settledInvoices.length
-  ) {
-    return '';
+  const chunks: string[] = [];
+
+  if (data.invoice.footerNote) {
+    chunks.push(`
+    <DodatkowyOpis>
+      <Klucz>Adnotacje</Klucz>
+      <Wartosc>${escapeXml(data.invoice.footerNote)}</Wartosc>
+    </DodatkowyOpis>`);
   }
 
-  const advanceText = data.invoice.settledInvoices
-    .map((inv) => `${inv.invoiceNumber} (${formatDecimal(inv.totalGross)} PLN brutto)`)
-    .join(', ');
+  if (
+    data.invoice.type === 'ROZ' &&
+    data.invoice.settlementSummary &&
+    data.invoice.settledInvoices.length
+  ) {
+    const advanceText = data.invoice.settledInvoices
+      .map((inv) => `${inv.invoiceNumber} (${formatDecimal(inv.totalGross)} PLN brutto)`)
+      .join(', ');
 
-  const value = `Rozliczono faktury zaliczkowe: ${advanceText}. Do dopłaty: ${formatDecimal(
-    data.invoice.settlementSummary.remainingGross,
-  )} PLN brutto.`;
+    const value = `Rozliczono faktury zaliczkowe: ${advanceText}. Do dopłaty: ${formatDecimal(
+      data.invoice.settlementSummary.remainingGross,
+    )} PLN brutto.`;
 
-  return `
+    chunks.push(`
     <DodatkowyOpis>
       <Klucz>Rozliczenie zaliczek</Klucz>
       <Wartosc>${escapeXml(value)}</Wartosc>
-    </DodatkowyOpis>`;
+    </DodatkowyOpis>`);
+  }
+
+  return chunks.join('');
 }
 
 
@@ -723,27 +830,24 @@ export function generateFA3XML(
   const isCorrectiveType = ['KOR', 'KOR_ZAL', 'KOR_ROZ'].includes(rodzajFaktury);
   const daneFaKorygowanejXml = isCorrectiveType ? buildDaneFaKorygowanejXml(data) : '';
   const przyczynaKorektyXml = isCorrectiveType ? buildPrzyczynaKorektyXml(data) : '';
+  const typKorektyXml = buildTypKorektyXml(data);
   const finalInvoiceSettlementXml = buildFinalInvoiceSettlementXml(data);
   const faTotalNet = data.invoice.totalNet;
   const faTotalVat = data.invoice.totalVat;
   const faTotalGross = data.invoice.totalGross;
   const dodatkowyOpisXml = buildDodatkowyOpisXml(data);
-
-
   
-  const effectiveItems = data.invoice.items;
-
   const invoiceRowsXml = data.invoice.items
   .map(
-    (item) => `
+    (item, index) => `
     <FaWiersz>
-      <NrWierszaFa>${item.lineNumber}</NrWierszaFa>
+      <NrWierszaFa>${index + 1}</NrWierszaFa>
       <P_7>${escapeXml(item.name)}</P_7>
       <P_8A>${escapeXml(item.unit)}</P_8A>
       <P_8B>${formatDecimal(item.quantity)}</P_8B>
       <P_9A>${formatDecimal(item.priceNet)}</P_9A>
       <P_11>${formatDecimal(item.valueNet)}</P_11>
-      <P_12>${getVatRateCode(item.vatRate)}</P_12>
+      <P_12>${getVatRateCode(item.vatRate)}</P_12>${item.stanPrzed ? '\n      <StanPrzed>1</StanPrzed>' : ''}
     </FaWiersz>`,
   )
   .join('\n');
@@ -756,7 +860,6 @@ export function generateFA3XML(
     <DataWytworzeniaFa>${currentDateTime}</DataWytworzeniaFa>
     <SystemInfo>Mavinci CRM v1.0</SystemInfo>
   </Naglowek>
-
   <Podmiot1>
     <DaneIdentyfikacyjne>
       <NIP>${escapeXml(data.seller.nip)}</NIP>
@@ -768,7 +871,6 @@ export function generateFA3XML(
       <AdresL2>${escapeXml(data.seller.postalCode)} ${escapeXml(data.seller.city)}</AdresL2>
     </Adres>${podmiot1Extra}
   </Podmiot1>
-
   <Podmiot2>
     <DaneIdentyfikacyjne>
       ${data.buyer.nip ? `<NIP>${escapeXml(data.buyer.nip)}</NIP>` : ''}
@@ -780,7 +882,6 @@ export function generateFA3XML(
       <AdresL2>${escapeXml(data.buyer.postalCode)} ${escapeXml(data.buyer.city)}</AdresL2>
     </Adres>${podmiot2Extra}${podmiot2Jst}
   </Podmiot2>
-
   <Fa>
     <KodWaluty>PLN</KodWaluty>
     <P_1>${formatDate(data.invoice.issueDate)}</P_1>
@@ -794,6 +895,7 @@ export function generateFA3XML(
     <RodzajFaktury>${rodzajFaktury}</RodzajFaktury>
     ${dodatkowyOpisXml}
     ${przyczynaKorektyXml}
+    ${typKorektyXml}
     ${daneFaKorygowanejXml}
     ${finalInvoiceSettlementXml}
     ${invoiceRowsXml}${paymentXml}
