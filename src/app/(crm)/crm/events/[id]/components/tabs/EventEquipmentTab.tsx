@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Package, Plus, Printer, AlertTriangle, Calculator, Download } from 'lucide-react';
+import { Package, Plus, Printer, AlertTriangle, Calculator, Download, ArrowRightLeft, FileText, Check } from 'lucide-react';
 import { AddEquipmentModal } from '../Modals/AddEquipmentModal';
 import { ChevronDown, Package as PackageIcon, Trash2 } from 'lucide-react';
 import { useEventEquipment } from '../../../hooks';
@@ -281,7 +281,9 @@ export const EventEquipmentTab: React.FC<{
   const [localChecklistModified, setLocalChecklistModified] = useState(false);
   const [acceptedCalcId, setAcceptedCalcId] = useState<string | null>(null);
   const [externalItems, setExternalItems] = useState<Array<{ name: string; quantity: number; unit: string; description: string }>>([]);
+  const [resolvedExternalIndices, setResolvedExternalIndices] = useState<Set<number>>(new Set());
   const [importingFromCalc, setImportingFromCalc] = useState(false);
+  const [replacingExternalIdx, setReplacingExternalIdx] = useState<number | null>(null);
 
   const { showSnackbar } = useSnackbar();
   const { event, refetch: refetchEvent } = useEvent(initialEvent);
@@ -563,7 +565,6 @@ export const EventEquipmentTab: React.FC<{
         return;
       }
 
-      // Filtruj pozycje z magazynu (mają source_ref)
       const warehouseItems = items.filter((item: any) => item.source === 'warehouse' && item.source_ref);
 
       if (warehouseItems.length === 0) {
@@ -571,7 +572,6 @@ export const EventEquipmentTab: React.FC<{
         return;
       }
 
-      // Sprawdź które z tych pozycji to equipment_items a które kity
       const equipmentIds = warehouseItems.map((item: any) => item.source_ref).filter(Boolean);
 
       const { data: equipmentCheck } = await supabase
@@ -594,9 +594,9 @@ export const EventEquipmentTab: React.FC<{
         if (!ref) continue;
 
         if (validItemIds.has(ref)) {
-          toAdd.push({ id: ref, type: 'item', quantity: calcItem.quantity });
+          toAdd.push({ id: ref, type: 'item', quantity: Number(calcItem.quantity) || 1, notes: '' });
         } else if (validKitIds.has(ref)) {
-          toAdd.push({ id: ref, type: 'kit', quantity: calcItem.quantity });
+          toAdd.push({ id: ref, type: 'kit', quantity: Number(calcItem.quantity) || 1, notes: '' });
         }
       }
 
@@ -605,8 +605,51 @@ export const EventEquipmentTab: React.FC<{
         return;
       }
 
-      await handleAddEquipment(toAdd);
-      showSnackbar(`Zaimportowano ${toAdd.length} pozycji z kalkulacji`, 'success');
+      // Merge duplicates (same equipment appearing multiple times in calculation)
+      const merged = mergeSameSelections(toAdd);
+
+      // Check which items already exist in event equipment
+      const existingMap = buildExistingMap(equipment);
+      const toInsert: SelectedItem[] = [];
+      const toUpdate: Array<{ rowId: string; newQty: number }> = [];
+
+      for (const s of merged) {
+        const k = keyOf(s.type as ItemType, s.id) as AvailKey;
+        const existingRow = existingMap.get(k);
+
+        if (!existingRow) {
+          toInsert.push(s);
+        } else {
+          const currentQty = Number(existingRow.quantity ?? 0);
+          toUpdate.push({ rowId: existingRow.id, newQty: currentQty + s.quantity });
+        }
+      }
+
+      let addedCount = 0;
+
+      if (toInsert.length) {
+        const ok = await addEquipment(toInsert);
+        if (!ok) {
+          showSnackbar('Błąd podczas dodawania sprzętu z kalkulacji', 'error');
+          return;
+        }
+        addedCount += toInsert.length;
+      }
+
+      for (const u of toUpdate) {
+        await updateEquipment(u.rowId, { quantity: u.newQty });
+        addedCount++;
+      }
+
+      await refetch();
+      await fetchAvailableEquipment();
+      await markChecklistAsModified();
+
+      showSnackbar(
+        `Zaimportowano ${addedCount} pozycji z kalkulacji` +
+          (toUpdate.length ? ` (${toUpdate.length} zaktualizowano)` : ''),
+        'success',
+      );
     } catch (err: any) {
       console.error('Error importing from calculation:', err);
       showSnackbar(err.message || 'Błąd podczas importu z kalkulacji', 'error');
@@ -614,6 +657,38 @@ export const EventEquipmentTab: React.FC<{
       setImportingFromCalc(false);
     }
   };
+
+  const handleReplaceExternalItem = (idx: number) => {
+    setReplacingExternalIdx(idx);
+    setShowAddEquipmentModal(true);
+  };
+
+  const handleAddEquipmentWithExternalResolve = async (selectedItems: SelectedItem[]) => {
+    await handleAddEquipment(selectedItems);
+
+    if (replacingExternalIdx !== null) {
+      setResolvedExternalIndices((prev) => {
+        const next = new Set(prev);
+        next.add(replacingExternalIdx);
+        return next;
+      });
+      setReplacingExternalIdx(null);
+    }
+  };
+
+  const handleMarkExternalAsUwagi = (idx: number) => {
+    setResolvedExternalIndices((prev) => {
+      const next = new Set(prev);
+      next.add(idx);
+      return next;
+    });
+    showSnackbar('Pozycja zostanie dodana do uwag w checkliście', 'info');
+  };
+
+  const unresolvedExternalItems = useMemo(
+    () => externalItems.filter((_, idx) => !resolvedExternalIndices.has(idx)),
+    [externalItems, resolvedExternalIndices],
+  );
 
   const handleGenerateChecklist = async () => {
     if (!eventId || !equipment || equipment.length === 0) {
@@ -686,7 +761,7 @@ export const EventEquipmentTab: React.FC<{
         authorNumber: (employee as any)?.phone_number || '-',
         contactName,
         contactPhone,
-        externalItems: externalItems.length > 0 ? externalItems : undefined,
+        externalItems: unresolvedExternalItems.length > 0 ? unresolvedExternalItems : undefined,
       });
   
       const { default: html2pdf } = await import('html2pdf.js');
@@ -1554,27 +1629,63 @@ export const EventEquipmentTab: React.FC<{
             <h3 className="text-sm font-medium text-amber-300">
               Elementy spoza magazynu (z kalkulacji)
             </h3>
+            {resolvedExternalIndices.size > 0 && (
+              <span className="text-xs text-emerald-400">
+                ({resolvedExternalIndices.size}/{externalItems.length} rozwiązane)
+              </span>
+            )}
           </div>
           <p className="mb-3 text-xs text-amber-300/70">
-            Poniższe pozycje z zaakceptowanej kalkulacji nie pochodzą z magazynu i wymagają zewnętrznego pozyskania.
+            Poniższe pozycje z zaakceptowanej kalkulacji nie pochodzą z magazynu. Zamień na sprzęt z magazynu lub oznacz jako uwagę w checkliście.
           </p>
           <div className="space-y-1.5">
-            {externalItems.map((item, idx) => (
-              <div
-                key={idx}
-                className="flex items-center justify-between rounded border border-amber-500/10 bg-[#1c1f33] px-3 py-2"
-              >
-                <div className="min-w-0 flex-1">
-                  <span className="text-sm text-[#e5e4e2]">{item.name}</span>
-                  {item.description && (
-                    <span className="ml-2 text-xs text-[#e5e4e2]/40">{item.description}</span>
+            {externalItems.map((item, idx) => {
+              const isResolved = resolvedExternalIndices.has(idx);
+
+              return (
+                <div
+                  key={idx}
+                  className={`flex items-center gap-2 rounded border px-3 py-2 ${
+                    isResolved
+                      ? 'border-emerald-500/20 bg-emerald-500/5'
+                      : 'border-amber-500/10 bg-[#1c1f33]'
+                  }`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <span className={`text-sm ${isResolved ? 'text-[#e5e4e2]/50 line-through' : 'text-[#e5e4e2]'}`}>
+                      {item.name}
+                    </span>
+                    {item.description && (
+                      <span className="ml-2 text-xs text-[#e5e4e2]/40">{item.description}</span>
+                    )}
+                  </div>
+                  <span className={`shrink-0 text-sm font-medium ${isResolved ? 'text-emerald-400' : 'text-amber-300'}`}>
+                    {item.quantity} {item.unit}
+                  </span>
+                  {isResolved ? (
+                    <Check className="h-4 w-4 shrink-0 text-emerald-400" />
+                  ) : (
+                    <ResponsiveActionBar
+                      disabledBackground
+                      actions={[
+                        {
+                          label: 'Zamień na magazyn',
+                          onClick: () => handleReplaceExternalItem(idx),
+                          icon: <ArrowRightLeft className="h-4 w-4" />,
+                          variant: 'primary',
+                        },
+                        {
+                          label: 'Dodaj do uwag',
+                          onClick: () => handleMarkExternalAsUwagi(idx),
+                          icon: <FileText className="h-4 w-4" />,
+                          variant: 'default',
+                        },
+                      ]}
+                    />
                   )}
                 </div>
-                <span className="ml-4 shrink-0 text-sm font-medium text-amber-300">
-                  {item.quantity} {item.unit}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -1634,8 +1745,11 @@ export const EventEquipmentTab: React.FC<{
       {showAddEquipmentModal && (
         <AddEquipmentModal
           isOpen={showAddEquipmentModal}
-          onClose={() => setShowAddEquipmentModal(false)}
-          onAdd={handleAddEquipment}
+          onClose={() => {
+            setShowAddEquipmentModal(false);
+            setReplacingExternalIdx(null);
+          }}
+          onAdd={replacingExternalIdx !== null ? handleAddEquipmentWithExternalResolve : handleAddEquipment}
           availableEquipment={availableEquipment}
           availableKits={availableKits}
           availabilityByKey={availabilityByKey}
