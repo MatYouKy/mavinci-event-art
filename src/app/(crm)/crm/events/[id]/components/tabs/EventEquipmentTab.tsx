@@ -275,6 +275,7 @@ export const EventEquipmentTab: React.FC<{
   const [showAlternativesModal, setShowAlternativesModal] = useState(false);
   const [alternatives, setAlternatives] = useState<any[]>([]);
   const [currentItemForReplacement, setCurrentItemForReplacement] = useState<any>(null);
+  const [replacingConflictIdx, setReplacingConflictIdx] = useState<number | null>(null);
   const [draftQuantity, setDraftQuantity] = useState<number>(1);
   const [showRentalModal, setShowRentalModal] = useState(false);
   const [currentRowForRental, setCurrentRowForRental] = useState<any>(null);
@@ -284,6 +285,14 @@ export const EventEquipmentTab: React.FC<{
   const [resolvedExternalIndices, setResolvedExternalIndices] = useState<Set<number>>(new Set());
   const [importingFromCalc, setImportingFromCalc] = useState(false);
   const [replacingExternalIdx, setReplacingExternalIdx] = useState<number | null>(null);
+  const [importConflicts, setImportConflicts] = useState<Array<{
+    name: string;
+    quantity: number;
+    available: number;
+    equipmentId: string;
+    type: 'item' | 'kit';
+  }>>([]);
+  const [resolvedConflictIndices, setResolvedConflictIndices] = useState<Set<number>>(new Set());
 
   const { showSnackbar } = useSnackbar();
   const { event, refetch: refetchEvent } = useEvent(initialEvent);
@@ -576,16 +585,16 @@ export const EventEquipmentTab: React.FC<{
 
       const { data: equipmentCheck } = await supabase
         .from('equipment_items')
-        .select('id')
+        .select('id, name')
         .in('id', equipmentIds);
 
       const { data: kitCheck } = await supabase
         .from('equipment_kits')
-        .select('id')
+        .select('id, name')
         .in('id', equipmentIds);
 
-      const validItemIds = new Set((equipmentCheck ?? []).map((e: any) => e.id));
-      const validKitIds = new Set((kitCheck ?? []).map((k: any) => k.id));
+      const validItems = new Map((equipmentCheck ?? []).map((e: any) => [e.id, e.name]));
+      const validKits = new Map((kitCheck ?? []).map((k: any) => [k.id, k.name]));
 
       const toAdd: SelectedItem[] = [];
 
@@ -593,9 +602,9 @@ export const EventEquipmentTab: React.FC<{
         const ref = calcItem.source_ref;
         if (!ref) continue;
 
-        if (validItemIds.has(ref)) {
+        if (validItems.has(ref)) {
           toAdd.push({ id: ref, type: 'item', quantity: Number(calcItem.quantity) || 1, notes: '' });
-        } else if (validKitIds.has(ref)) {
+        } else if (validKits.has(ref)) {
           toAdd.push({ id: ref, type: 'kit', quantity: Number(calcItem.quantity) || 1, notes: '' });
         }
       }
@@ -605,23 +614,49 @@ export const EventEquipmentTab: React.FC<{
         return;
       }
 
-      // Merge duplicates (same equipment appearing multiple times in calculation)
       const merged = mergeSameSelections(toAdd);
 
-      // Check which items already exist in event equipment
       const existingMap = buildExistingMap(equipment);
       const toInsert: SelectedItem[] = [];
       const toUpdate: Array<{ rowId: string; newQty: number }> = [];
+      const conflicts: Array<{ name: string; quantity: number; available: number; equipmentId: string; type: 'item' | 'kit' }> = [];
 
       for (const s of merged) {
         const k = keyOf(s.type as ItemType, s.id) as AvailKey;
         const existingRow = existingMap.get(k);
+        const avail = (availabilityByKey as Record<string, AvailabilityUI> | undefined)?.[k];
+        const { maxAdd, maxSet } = getUiLimits(avail);
 
-        if (!existingRow) {
-          toInsert.push(s);
+        const currentQty = Number(existingRow?.quantity ?? 0);
+        const requestedQty = s.quantity;
+        const finalQty = currentQty + requestedQty;
+
+        const itemName = (s.type === 'item' ? validItems.get(s.id) : validKits.get(s.id)) || 'Nieznany';
+
+        if (avail && maxSet > 0 && finalQty > maxSet) {
+          conflicts.push({
+            name: itemName,
+            quantity: requestedQty,
+            available: Math.max(0, maxAdd),
+            equipmentId: s.id,
+            type: s.type as 'item' | 'kit',
+          });
+
+          // Import what's available
+          const canAdd = Math.max(0, maxAdd);
+          if (canAdd > 0) {
+            if (!existingRow) {
+              toInsert.push({ ...s, quantity: canAdd });
+            } else {
+              toUpdate.push({ rowId: existingRow.id, newQty: currentQty + canAdd });
+            }
+          }
         } else {
-          const currentQty = Number(existingRow.quantity ?? 0);
-          toUpdate.push({ rowId: existingRow.id, newQty: currentQty + s.quantity });
+          if (!existingRow) {
+            toInsert.push(s);
+          } else {
+            toUpdate.push({ rowId: existingRow.id, newQty: finalQty });
+          }
         }
       }
 
@@ -645,11 +680,20 @@ export const EventEquipmentTab: React.FC<{
       await fetchAvailableEquipment();
       await markChecklistAsModified();
 
-      showSnackbar(
-        `Zaimportowano ${addedCount} pozycji z kalkulacji` +
-          (toUpdate.length ? ` (${toUpdate.length} zaktualizowano)` : ''),
-        'success',
-      );
+      if (conflicts.length > 0) {
+        setImportConflicts(conflicts);
+        setResolvedConflictIndices(new Set());
+        showSnackbar(
+          `Zaimportowano ${addedCount} pozycji, ale ${conflicts.length} ma niewystarczający stan magazynowy`,
+          'warning',
+        );
+      } else {
+        showSnackbar(
+          `Zaimportowano ${addedCount} pozycji z kalkulacji` +
+            (toUpdate.length ? ` (${toUpdate.length} zaktualizowano)` : ''),
+          'success',
+        );
+      }
     } catch (err: any) {
       console.error('Error importing from calculation:', err);
       showSnackbar(err.message || 'Błąd podczas importu z kalkulacji', 'error');
@@ -689,6 +733,51 @@ export const EventEquipmentTab: React.FC<{
     () => externalItems.filter((_, idx) => !resolvedExternalIndices.has(idx)),
     [externalItems, resolvedExternalIndices],
   );
+
+  const handleResolveConflictWithAlternative = (idx: number) => {
+    const conflict = importConflicts[idx];
+    if (!conflict) return;
+
+    setReplacingConflictIdx(idx);
+    const row = {
+      equipment_id: conflict.type === 'item' ? conflict.equipmentId : null,
+      kit_id: conflict.type === 'kit' ? conflict.equipmentId : null,
+      equipment: conflict.type === 'item' ? { id: conflict.equipmentId, name: conflict.name } : null,
+      kit: conflict.type === 'kit' ? { id: conflict.equipmentId, name: conflict.name } : null,
+    };
+    setCurrentItemForReplacement(row);
+    handleSuggestAlternative(row);
+  };
+
+  const handleResolveConflictWithRental = (idx: number) => {
+    const conflict = importConflicts[idx];
+    if (!conflict) return;
+
+    const row = {
+      id: conflict.equipmentId,
+      equipment_id: conflict.type === 'item' ? conflict.equipmentId : null,
+      kit_id: conflict.type === 'kit' ? conflict.equipmentId : null,
+      equipment: conflict.type === 'item' ? { id: conflict.equipmentId, name: conflict.name } : null,
+      kit: conflict.type === 'kit' ? { id: conflict.equipmentId, name: conflict.name } : null,
+      item_name: conflict.name,
+      quantity: conflict.quantity,
+    };
+    handleMarkAsRental(row);
+    setResolvedConflictIndices((prev) => {
+      const next = new Set(prev);
+      next.add(idx);
+      return next;
+    });
+  };
+
+  const handleDismissConflict = (idx: number) => {
+    setResolvedConflictIndices((prev) => {
+      const next = new Set(prev);
+      next.add(idx);
+      return next;
+    });
+    showSnackbar('Konflikt oznaczony jako rozwiązany', 'info');
+  };
 
   const handleGenerateChecklist = async () => {
     if (!eventId || !equipment || equipment.length === 0) {
@@ -1276,6 +1365,14 @@ export const EventEquipmentTab: React.FC<{
       setShowAlternativesModal(false);
       setAlternatives([]);
       setCurrentItemForReplacement(null);
+      if (replacingConflictIdx !== null) {
+        setResolvedConflictIndices((prev) => {
+          const next = new Set(prev);
+          next.add(replacingConflictIdx);
+          return next;
+        });
+        setReplacingConflictIdx(null);
+      }
       await refetch();
     } catch (err: any) {
       console.error('Error replacing equipment:', err);
@@ -1690,11 +1787,82 @@ export const EventEquipmentTab: React.FC<{
         </div>
       )}
 
-      {(equipment || []).length === 0 ? (
-        <div className="py-12 text-center">
-          <Package className="mx-auto mb-4 h-12 w-12 text-[#e5e4e2]/20" />
-          <p className="text-[#e5e4e2]/60">Brak przypisanego sprzętu</p>
+      {importConflicts.length > 0 && (
+        <div className="mb-6 rounded-lg border border-red-500/20 bg-red-500/5 p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-red-400" />
+            <h3 className="text-sm font-medium text-red-300">
+              Braki magazynowe (z importu kalkulacji)
+            </h3>
+            {resolvedConflictIndices.size > 0 && (
+              <span className="text-xs text-emerald-400">
+                ({resolvedConflictIndices.size}/{importConflicts.length} rozwiązane)
+              </span>
+            )}
+          </div>
+          <p className="mb-3 text-xs text-red-300/70">
+            Poniższe pozycje z kalkulacji przekraczają dostępny stan magazynowy w wybranym terminie. Zaimportowano maksymalną dostępną ilość.
+          </p>
+          <div className="space-y-1.5">
+            {importConflicts.map((conflict, idx) => {
+              const isResolved = resolvedConflictIndices.has(idx);
+              const deficit = conflict.quantity - conflict.available;
+
+              return (
+                <div
+                  key={idx}
+                  className={`flex items-center gap-2 rounded border px-3 py-2 ${
+                    isResolved
+                      ? 'border-emerald-500/20 bg-emerald-500/5'
+                      : 'border-red-500/10 bg-[#1c1f33]'
+                  }`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <span className={`text-sm ${isResolved ? 'text-[#e5e4e2]/50 line-through' : 'text-[#e5e4e2]'}`}>
+                      {conflict.name}
+                    </span>
+                    {!isResolved && (
+                      <span className="ml-2 text-xs text-red-300/70">
+                        brakuje {deficit} szt. (potrzeba: {conflict.quantity}, dostępne: {conflict.available})
+                      </span>
+                    )}
+                  </div>
+                  {isResolved ? (
+                    <Check className="h-4 w-4 shrink-0 text-emerald-400" />
+                  ) : (
+                    <ResponsiveActionBar
+                      disabledBackground
+                      actions={[
+                        {
+                          label: 'Szukaj alternatywy',
+                          onClick: () => handleResolveConflictWithAlternative(idx),
+                          icon: <ArrowRightLeft className="h-4 w-4" />,
+                          variant: 'primary',
+                        },
+                        {
+                          label: 'Oznacz jako rental',
+                          onClick: () => handleResolveConflictWithRental(idx),
+                          icon: <Package className="h-4 w-4" />,
+                          variant: 'default',
+                        },
+                        {
+                          label: 'Zamknij',
+                          onClick: () => handleDismissConflict(idx),
+                          icon: <Check className="h-4 w-4" />,
+                          variant: 'default',
+                        },
+                      ]}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
+      )}
+
+      {(equipment || []).length === 0 ? (
+          <p className="text-[#e5e4e2]/60">Brak przypisanego sprzętu</p>
       ) : (
         <div className="space-y-4">
           {/* MANUAL: KITY */}
@@ -1766,6 +1934,7 @@ export const EventEquipmentTab: React.FC<{
                   setShowAlternativesModal(false);
                   setAlternatives([]);
                   setCurrentItemForReplacement(null);
+                  setReplacingConflictIdx(null);
                 }}
                 className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
               >
