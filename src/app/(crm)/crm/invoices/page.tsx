@@ -552,7 +552,7 @@ export default function InvoicesPage() {
     searchTerm,
     filterType,
     filterStatus,
-    filterCompany,
+    selectedCompanyIds,
     isAdmin,
     allowedCompanyIds,
     hasAnyInvoiceCompanyPerm,
