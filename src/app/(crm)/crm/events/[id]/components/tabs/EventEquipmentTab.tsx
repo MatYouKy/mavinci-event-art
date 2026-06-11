@@ -1,7 +1,17 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Package, Plus, Printer, AlertTriangle, Calculator, Download, ArrowRightLeft, FileText, Check } from 'lucide-react';
+import {
+  Package,
+  Plus,
+  Printer,
+  AlertTriangle,
+  Calculator,
+  Download,
+  ArrowRightLeft,
+  FileText,
+  Check,
+} from 'lucide-react';
 import { AddEquipmentModal } from '../Modals/AddEquipmentModal';
 import { ChevronDown, Package as PackageIcon, Trash2 } from 'lucide-react';
 import { useEventEquipment } from '../../../hooks';
@@ -30,7 +40,6 @@ import { useDialog } from '@/contexts/DialogContext';
 import { ISimpleContact } from '../../EventDetailPageClient';
 import SelectRentalEquipmentModal from '@/components/crm/SelectRentalEquipmentModal';
 import NextImage from 'next/image';
-
 
 const KitItemRow = ({
   thumb,
@@ -282,17 +291,21 @@ export const EventEquipmentTab: React.FC<{
   const [currentRowForRental, setCurrentRowForRental] = useState<any>(null);
   const [localChecklistModified, setLocalChecklistModified] = useState(false);
   const [acceptedCalcId, setAcceptedCalcId] = useState<string | null>(null);
-  const [externalItems, setExternalItems] = useState<Array<{ name: string; quantity: number; unit: string; description: string }>>([]);
+  const [externalItems, setExternalItems] = useState<
+    Array<{ name: string; quantity: number; unit: string; description: string }>
+  >([]);
   const [resolvedExternalIndices, setResolvedExternalIndices] = useState<Set<number>>(new Set());
   const [importingFromCalc, setImportingFromCalc] = useState(false);
   const [replacingExternalIdx, setReplacingExternalIdx] = useState<number | null>(null);
-  const [importConflicts, setImportConflicts] = useState<Array<{
-    name: string;
-    quantity: number;
-    available: number;
-    equipmentId: string;
-    type: 'item' | 'kit';
-  }>>([]);
+  const [importConflicts, setImportConflicts] = useState<
+    Array<{
+      name: string;
+      quantity: number;
+      available: number;
+      equipmentId: string;
+      type: 'item' | 'kit';
+    }>
+  >([]);
   const [resolvedConflictIndices, setResolvedConflictIndices] = useState<Set<number>>(new Set());
 
   const { showSnackbar } = useSnackbar();
@@ -306,9 +319,9 @@ export const EventEquipmentTab: React.FC<{
 
   const markChecklistAsModified = async () => {
     setLocalChecklistModified(true);
-  
+
     if (!eventId) return;
-  
+
     try {
       await supabase
         .from('events')
@@ -318,8 +331,6 @@ export const EventEquipmentTab: React.FC<{
       console.error('Error marking checklist as modified:', err);
     }
   };
-
-  
 
   useEffect(() => {
     const checkConflicts = async () => {
@@ -388,9 +399,7 @@ export const EventEquipmentTab: React.FC<{
       if (!items) return;
 
       // Elementy spoza magazynu: source !== 'warehouse' i brak source_ref do equipment
-      const external = items.filter(
-        (item: any) => item.source !== 'warehouse' && !item.source_ref,
-      );
+      const external = items.filter((item: any) => item.source !== 'warehouse' && !item.source_ref);
 
       setExternalItems(
         external.map((item: any) => ({
@@ -575,7 +584,9 @@ export const EventEquipmentTab: React.FC<{
         return;
       }
 
-      const warehouseItems = items.filter((item: any) => item.source === 'warehouse' && item.source_ref);
+      const warehouseItems = items.filter(
+        (item: any) => item.source === 'warehouse' && item.source_ref,
+      );
 
       if (warehouseItems.length === 0) {
         showSnackbar('Kalkulacja nie zawiera pozycji z magazynu do zaimportowania', 'info');
@@ -604,7 +615,12 @@ export const EventEquipmentTab: React.FC<{
         if (!ref) continue;
 
         if (validItems.has(ref)) {
-          toAdd.push({ id: ref, type: 'item', quantity: Number(calcItem.quantity) || 1, notes: '' });
+          toAdd.push({
+            id: ref,
+            type: 'item',
+            quantity: Number(calcItem.quantity) || 1,
+            notes: '',
+          });
         } else if (validKits.has(ref)) {
           toAdd.push({ id: ref, type: 'kit', quantity: Number(calcItem.quantity) || 1, notes: '' });
         }
@@ -620,7 +636,13 @@ export const EventEquipmentTab: React.FC<{
       const existingMap = buildExistingMap(equipment);
       const toInsert: SelectedItem[] = [];
       const toUpdate: Array<{ rowId: string; newQty: number }> = [];
-      const conflicts: Array<{ name: string; quantity: number; available: number; equipmentId: string; type: 'item' | 'kit' }> = [];
+      const conflicts: Array<{
+        name: string;
+        quantity: number;
+        available: number;
+        equipmentId: string;
+        type: 'item' | 'kit';
+      }> = [];
       let alreadyUpToDate = 0;
 
       for (const s of merged) {
@@ -632,7 +654,8 @@ export const EventEquipmentTab: React.FC<{
         const currentQty = Number(existingRow?.quantity ?? 0);
         const targetQty = s.quantity;
 
-        const itemName = (s.type === 'item' ? validItems.get(s.id) : validKits.get(s.id)) || 'Nieznany';
+        const itemName =
+          (s.type === 'item' ? validItems.get(s.id) : validKits.get(s.id)) || 'Nieznany';
 
         if (existingRow && currentQty >= targetQty) {
           alreadyUpToDate++;
@@ -705,10 +728,7 @@ export const EventEquipmentTab: React.FC<{
         if (toInsert.length) parts.push(`${toInsert.length} dodano`);
         if (toUpdate.length) parts.push(`${toUpdate.length} zaktualizowano`);
         if (alreadyUpToDate) parts.push(`${alreadyUpToDate} bez zmian`);
-        showSnackbar(
-          `Zsynchronizowano z kalkulacją: ${parts.join(', ')}`,
-          'success',
-        );
+        showSnackbar(`Zsynchronizowano z kalkulacją: ${parts.join(', ')}`, 'success');
       }
     } catch (err: any) {
       console.error('Error importing from calculation:', err);
@@ -760,7 +780,8 @@ export const EventEquipmentTab: React.FC<{
     const row = {
       equipment_id: conflict.type === 'item' ? conflict.equipmentId : null,
       kit_id: conflict.type === 'kit' ? conflict.equipmentId : null,
-      equipment: conflict.type === 'item' ? { id: conflict.equipmentId, name: conflict.name } : null,
+      equipment:
+        conflict.type === 'item' ? { id: conflict.equipmentId, name: conflict.name } : null,
       kit: conflict.type === 'kit' ? { id: conflict.equipmentId, name: conflict.name } : null,
       _conflictDeficit: deficit,
     };
@@ -776,7 +797,8 @@ export const EventEquipmentTab: React.FC<{
       id: conflict.equipmentId,
       equipment_id: conflict.type === 'item' ? conflict.equipmentId : null,
       kit_id: conflict.type === 'kit' ? conflict.equipmentId : null,
-      equipment: conflict.type === 'item' ? { id: conflict.equipmentId, name: conflict.name } : null,
+      equipment:
+        conflict.type === 'item' ? { id: conflict.equipmentId, name: conflict.name } : null,
       kit: conflict.type === 'kit' ? { id: conflict.equipmentId, name: conflict.name } : null,
       item_name: conflict.name,
       quantity: conflict.quantity,
@@ -803,32 +825,32 @@ export const EventEquipmentTab: React.FC<{
       showSnackbar('Brak sprzętu do wygenerowania checklisty', 'error');
       return;
     }
-  
+
     try {
       setGeneratingPdf(true);
-  
+
       // 0. Usuń poprzedni PDF jeśli istnieje
       if (checklistPdfPath) {
         try {
           // Usuń z storage
           await supabase.storage.from('event-files').remove([checklistPdfPath]);
-  
+
           // Usuń z event_files
           await supabase.from('event_files').delete().eq('file_path', checklistPdfPath);
         } catch (deleteError) {
           console.warn('Błąd podczas usuwania poprzedniego PDF checklisty:', deleteError);
         }
       }
-  
+
       const equipmentData = (equipment as any[])
         .filter((row) => !row?.removed_from_offer)
         .map((row) => {
           const d = getEventEquipmentDisplay(row);
-  
+
           // ✅ klucz: zawartość kitu tylko gdy expand_kit_in_checklist
           const expand = !!row?.expand_kit_in_checklist;
           const kitItems = expand ? extractKitItemsFromRow(row) : [];
-  
+
           return {
             sortIsKit: !!d.isKit,
             sortName: String(d.name || '').toLocaleLowerCase('pl-PL'),
@@ -849,17 +871,17 @@ export const EventEquipmentTab: React.FC<{
           if (a.sortIsKit !== b.sortIsKit) {
             return a.sortIsKit ? -1 : 1; // zestawy najpierw
           }
-  
+
           return a.sortName.localeCompare(b.sortName, 'pl');
         })
         .map((item) => item.data);
-  
+
       const eventDateFormatted = new Date(eventDate).toLocaleDateString('pl-PL');
-  
+
       // ✅ Pobierz dane kontaktu w zależności od typu klienta
       let contactName = contact?.full_name || '-';
       let contactPhone = contact?.phone || '-';
-  
+
       const html = buildEquipmentChecklistHtml({
         eventName: event?.name || 'Wydarzenie',
         eventDate: eventDateFormatted,
@@ -871,14 +893,14 @@ export const EventEquipmentTab: React.FC<{
         contactPhone,
         externalItems: unresolvedExternalItems.length > 0 ? unresolvedExternalItems : undefined,
       });
-  
+
       const { default: html2pdf } = await import('html2pdf.js');
       const html2pdfFn: any = (html2pdf as any) || html2pdf;
-  
+
       // ✅ ważne: w html2pdf najlepiej przekazać element, nie “div wrapper”
       const element = document.createElement('div');
       element.innerHTML = html;
-  
+
       const opt: any = {
         margin: [10, 10, 1, 10],
         filename: `checklista-${String(event?.name || 'event')
@@ -887,38 +909,38 @@ export const EventEquipmentTab: React.FC<{
         image: { type: 'jpeg' as const, quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-  
+
         // ✅ to jest kluczowe przy "nie tnij wierszy"
         pagebreak: { mode: ['css', 'legacy'] },
       };
-  
+
       const worker = html2pdfFn().from(element).set(opt).toPdf();
       const pdfBlob: Blob = await worker.output('blob');
-  
+
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
       const safeEventName = String(event?.name || 'event')
         .replace(/[^a-z0-9]/gi, '-')
         .toLowerCase();
-  
+
       const fileName = `checklista-sprzetu-${safeEventName.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-${timestamp}.pdf`;
       const storagePath = `${eventId}/${fileName}`;
-  
+
       const { error: uploadError } = await supabase.storage
         .from('event-files')
         .upload(storagePath, pdfBlob, { contentType: 'application/pdf', upsert: false });
-  
+
       if (uploadError) {
         console.error('Upload error:', uploadError);
         showSnackbar('Błąd podczas zapisywania pliku', 'error');
         return;
       }
-  
+
       const { data: folderId } = await supabase.rpc('get_or_create_documents_subfolder', {
         p_event_id: eventId,
         p_required_permission: null,
         p_created_by: employee?.id ?? null,
       });
-  
+
       await supabase.from('event_files').insert([
         {
           event_id: eventId,
@@ -933,7 +955,7 @@ export const EventEquipmentTab: React.FC<{
           uploaded_by: employee?.id ?? null,
         },
       ]);
-  
+
       // Zapisz ścieżkę PDF w tabeli events
       await supabase
         .from('events')
@@ -943,15 +965,15 @@ export const EventEquipmentTab: React.FC<{
           equipment_checklist_modified: false,
         })
         .eq('id', eventId);
-  
+
       // Odśwież dane wydarzenia
       await refetchEvent();
-  
+
       showSnackbar(
         'Checklista sprzętu została wygenerowana i zapisana w zakładce Pliki',
         'success',
       );
-  
+
       worker.save();
     } catch (error) {
       console.error('Error generating checklist:', error);
@@ -1384,23 +1406,24 @@ export const EventEquipmentTab: React.FC<{
 
         if (updateError) throw updateError;
       } else {
-        const { error: insertError } = await supabase
-          .from('event_equipment')
-          .insert({
-            event_id: eventId,
-            equipment_id: alternativeId,
-            kit_id: null,
-            quantity: finalQty,
-            status: 'reserved',
-            is_optional: false,
-            auto_added: false,
-            notes: `Alternatywa dla: ${oldName} → ${newEquipment?.name || alternativeId}`,
-          });
+        const { error: insertError } = await supabase.from('event_equipment').insert({
+          event_id: eventId,
+          equipment_id: alternativeId,
+          kit_id: null,
+          quantity: finalQty,
+          status: 'reserved',
+          is_optional: false,
+          auto_added: false,
+          notes: `Alternatywa dla: ${oldName} → ${newEquipment?.name || alternativeId}`,
+        });
 
         if (insertError) throw insertError;
       }
 
-      showSnackbar(`Sprzęt zamieniony: ${oldName} → ${newEquipment?.name} (${finalQty} szt.)`, 'success');
+      showSnackbar(
+        `Sprzęt zamieniony: ${oldName} → ${newEquipment?.name} (${finalQty} szt.)`,
+        'success',
+      );
       setShowAlternativesModal(false);
       setAlternatives([]);
       setCurrentItemForReplacement(null);
@@ -1780,7 +1803,8 @@ export const EventEquipmentTab: React.FC<{
             )}
           </div>
           <p className="mb-3 text-xs text-amber-300/70">
-            Poniższe pozycje z zaakceptowanej kalkulacji nie pochodzą z magazynu. Zamień na sprzęt z magazynu lub oznacz jako uwagę w checkliście.
+            Poniższe pozycje z zaakceptowanej kalkulacji nie pochodzą z magazynu. Zamień na sprzęt z
+            magazynu lub oznacz jako uwagę w checkliście.
           </p>
           <div className="space-y-1.5">
             {externalItems.map((item, idx) => {
@@ -1796,14 +1820,18 @@ export const EventEquipmentTab: React.FC<{
                   }`}
                 >
                   <div className="min-w-0 flex-1">
-                    <span className={`text-sm ${isResolved ? 'text-[#e5e4e2]/50 line-through' : 'text-[#e5e4e2]'}`}>
+                    <span
+                      className={`text-sm ${isResolved ? 'text-[#e5e4e2]/50 line-through' : 'text-[#e5e4e2]'}`}
+                    >
                       {item.name}
                     </span>
                     {item.description && (
                       <span className="ml-2 text-xs text-[#e5e4e2]/40">{item.description}</span>
                     )}
                   </div>
-                  <span className={`shrink-0 text-sm font-medium ${isResolved ? 'text-emerald-400' : 'text-amber-300'}`}>
+                  <span
+                    className={`shrink-0 text-sm font-medium ${isResolved ? 'text-emerald-400' : 'text-amber-300'}`}
+                  >
                     {item.quantity} {item.unit}
                   </span>
                   {isResolved ? (
@@ -1811,6 +1839,7 @@ export const EventEquipmentTab: React.FC<{
                   ) : (
                     <ResponsiveActionBar
                       disabledBackground
+                      mobileBreakpoint={4000}
                       actions={[
                         {
                           label: 'Zamień na magazyn',
@@ -1848,7 +1877,8 @@ export const EventEquipmentTab: React.FC<{
             )}
           </div>
           <p className="mb-3 text-xs text-red-300/70">
-            Poniższe pozycje z kalkulacji przekraczają dostępny stan magazynowy w wybranym terminie. Zaimportowano maksymalną dostępną ilość.
+            Poniższe pozycje z kalkulacji przekraczają dostępny stan magazynowy w wybranym terminie.
+            Zaimportowano maksymalną dostępną ilość.
           </p>
           <div className="space-y-1.5">
             {importConflicts.map((conflict, idx) => {
@@ -1865,12 +1895,15 @@ export const EventEquipmentTab: React.FC<{
                   }`}
                 >
                   <div className="min-w-0 flex-1">
-                    <span className={`text-sm ${isResolved ? 'text-[#e5e4e2]/50 line-through' : 'text-[#e5e4e2]'}`}>
+                    <span
+                      className={`text-sm ${isResolved ? 'text-[#e5e4e2]/50 line-through' : 'text-[#e5e4e2]'}`}
+                    >
                       {conflict.name}
                     </span>
                     {!isResolved && (
                       <span className="ml-2 text-xs text-red-300/70">
-                        brakuje {deficit} szt. (potrzeba: {conflict.quantity}, dostępne: {conflict.available})
+                        brakuje {deficit} szt. (potrzeba: {conflict.quantity}, dostępne:{' '}
+                        {conflict.available})
                       </span>
                     )}
                   </div>
@@ -1879,6 +1912,7 @@ export const EventEquipmentTab: React.FC<{
                   ) : (
                     <ResponsiveActionBar
                       disabledBackground
+                      mobileBreakpoint={4000}
                       actions={[
                         {
                           label: 'Szukaj alternatywy',
@@ -1909,7 +1943,7 @@ export const EventEquipmentTab: React.FC<{
       )}
 
       {(equipment || []).length === 0 ? (
-          <p className="text-[#e5e4e2]/60">Brak przypisanego sprzętu</p>
+        <p className="text-[#e5e4e2]/60">Brak przypisanego sprzętu</p>
       ) : (
         <div className="space-y-4">
           {/* MANUAL: KITY */}
@@ -1964,7 +1998,11 @@ export const EventEquipmentTab: React.FC<{
             setShowAddEquipmentModal(false);
             setReplacingExternalIdx(null);
           }}
-          onAdd={replacingExternalIdx !== null ? handleAddEquipmentWithExternalResolve : handleAddEquipment}
+          onAdd={
+            replacingExternalIdx !== null
+              ? handleAddEquipmentWithExternalResolve
+              : handleAddEquipment
+          }
           availableEquipment={availableEquipment}
           availableKits={availableKits}
           availabilityByKey={availabilityByKey}
@@ -2022,64 +2060,62 @@ export const EventEquipmentTab: React.FC<{
                 const termAvail = alt.available_in_term ?? alt.available_qty ?? 0;
                 const isAvailable = termAvail >= alternativeQuantity;
                 return (
-                <div
-                  key={alt.id}
-                  className={`flex items-center justify-between rounded-lg border p-4 transition-colors ${
-                    isAvailable
-                      ? 'border-[#d3bb73]/10 bg-[#0f1119] hover:border-[#d3bb73]/30'
-                      : 'border-red-500/20 bg-red-500/5'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    {alt.thumbnail_url ? (
-                      <Image
-                        src={alt.thumbnail_url}
-                        alt={alt.name}
-                        className="h-12 w-12 rounded border border-[#d3bb73]/20 object-cover"
-                        width={48}
-                        height={48}
-                      />
-                    ) : (
-                      <div className="flex h-12 w-12 items-center justify-center rounded border border-[#d3bb73]/20 bg-[#1c1f33]">
-                        <Package className="h-6 w-6 text-[#e5e4e2]/30" />
-                      </div>
-                    )}
-
-                    <div>
-                      <div className="font-medium text-[#e5e4e2]">{alt.name}</div>
-                      <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/50">
-                        {alt.brand && <span>{alt.brand}</span>}
-                        {alt.model && (
-                          <>
-                            {alt.brand && <span>•</span>}
-                            <span>{alt.model}</span>
-                          </>
-                        )}
-                      </div>
-                      <div className="mt-1 flex items-center gap-2 text-xs">
-                        <span className={termAvail > 0 ? 'text-green-400' : 'text-red-400'}>
-                          Dostępne w terminie: {termAvail} szt.
-                        </span>
-                        <span className="text-[#e5e4e2]/30">•</span>
-                        <span className="text-[#e5e4e2]/40">
-                          Ogółem: {alt.total_qty} szt.
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => handleReplaceEquipment(alt.id, alternativeQuantity)}
-                    disabled={!isAvailable}
-                    className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                  <div
+                    key={alt.id}
+                    className={`flex items-center justify-between rounded-lg border p-4 transition-colors ${
                       isAvailable
-                        ? 'bg-[#d3bb73] text-[#1c1f33] hover:bg-[#d3bb73]/90'
-                        : 'cursor-not-allowed bg-[#e5e4e2]/10 text-[#e5e4e2]/30'
+                        ? 'border-[#d3bb73]/10 bg-[#0f1119] hover:border-[#d3bb73]/30'
+                        : 'border-red-500/20 bg-red-500/5'
                     }`}
                   >
-                    {isAvailable ? 'Wybierz' : 'Niedostępne'}
-                  </button>
-                </div>
+                    <div className="flex items-center gap-3">
+                      {alt.thumbnail_url ? (
+                        <Image
+                          src={alt.thumbnail_url}
+                          alt={alt.name}
+                          className="h-12 w-12 rounded border border-[#d3bb73]/20 object-cover"
+                          width={48}
+                          height={48}
+                        />
+                      ) : (
+                        <div className="flex h-12 w-12 items-center justify-center rounded border border-[#d3bb73]/20 bg-[#1c1f33]">
+                          <Package className="h-6 w-6 text-[#e5e4e2]/30" />
+                        </div>
+                      )}
+
+                      <div>
+                        <div className="font-medium text-[#e5e4e2]">{alt.name}</div>
+                        <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/50">
+                          {alt.brand && <span>{alt.brand}</span>}
+                          {alt.model && (
+                            <>
+                              {alt.brand && <span>•</span>}
+                              <span>{alt.model}</span>
+                            </>
+                          )}
+                        </div>
+                        <div className="mt-1 flex items-center gap-2 text-xs">
+                          <span className={termAvail > 0 ? 'text-green-400' : 'text-red-400'}>
+                            Dostępne w terminie: {termAvail} szt.
+                          </span>
+                          <span className="text-[#e5e4e2]/30">•</span>
+                          <span className="text-[#e5e4e2]/40">Ogółem: {alt.total_qty} szt.</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => handleReplaceEquipment(alt.id, alternativeQuantity)}
+                      disabled={!isAvailable}
+                      className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                        isAvailable
+                          ? 'bg-[#d3bb73] text-[#1c1f33] hover:bg-[#d3bb73]/90'
+                          : 'cursor-not-allowed bg-[#e5e4e2]/10 text-[#e5e4e2]/30'
+                      }`}
+                    >
+                      {isAvailable ? 'Wybierz' : 'Niedostępne'}
+                    </button>
+                  </div>
                 );
               })}
             </div>

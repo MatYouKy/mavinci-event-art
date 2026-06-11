@@ -7,6 +7,17 @@ import { parseFA3InvoiceXml } from '../../parseInvoiceXml';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const normalizeKsefDate = (value: unknown): string | null => {
+  if (!value) return null;
+
+  const raw = String(value).trim();
+
+  const tagMatch = raw.match(/<Termin[^>]*>(.*?)<\/Termin>/);
+  const date = (tagMatch?.[1] || raw).trim();
+
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+};
+
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null);
@@ -113,15 +124,17 @@ export async function POST(req: Request) {
         }
 
         // Use parsed XML data with fallback to metadata
-        const paymentDueDate =
-          parsed?.payment_due_date ||
-          inv.paymentDueDate ||
-          inv.payment_due_date ||
-          inv.TerminPlatnosci ||
-          inv.terminPlatnosci ||
-          inv.dueDate ||
-          inv.PaymentDueDate ||
-          null;
+        const rawPaymentDueDate =
+        parsed?.payment_due_date ||
+        inv.paymentDueDate ||
+        inv.payment_due_date ||
+        inv.TerminPlatnosci ||
+        inv.terminPlatnosci ||
+        inv.dueDate ||
+        inv.PaymentDueDate ||
+        null;
+      
+      const paymentDueDate = normalizeKsefDate(rawPaymentDueDate);
 
         const paymentMethod =
           parsed?.payment_method ||
@@ -136,7 +149,7 @@ export async function POST(req: Request) {
           inv.bank_account_number ||
           null;
 
-        const paymentDate = parsed?.payment_date || null;
+          const paymentDate = normalizeKsefDate(parsed?.payment_date || null);
 
         // Determine payment status
         const paymentData = parsePaymentData({
@@ -148,10 +161,13 @@ export async function POST(req: Request) {
         });
 
         // For immediate payment methods (cash/card), set payment_date to issue_date
+        const issueDate = normalizeKsefDate(parsed?.issue_date || inv.issueDate || null);
+
+        
         const effectivePaymentDate =
           paymentDate ||
           (paymentData.payment_status === 'paid' && (paymentMethod === '1' || paymentMethod === '2')
-            ? (parsed?.issue_date || inv.issueDate || new Date().toISOString().split('T')[0])
+            ? issueDate || new Date().toISOString().split('T')[0]
             : null);
 
         // VAT rate from items
@@ -183,7 +199,7 @@ export async function POST(req: Request) {
             ? parsed.invoice_items
             : inv.items || inv.invoiceItems || null,
           currency: parsed?.currency || inv.currency || 'PLN',
-          issue_date: parsed?.issue_date || inv.issueDate || null,
+          issue_date: issueDate,
           payment_due_date: paymentDueDate,
           payment_method: paymentMethod,
           payment_date: effectivePaymentDate,

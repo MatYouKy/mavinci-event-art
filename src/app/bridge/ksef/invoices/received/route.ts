@@ -7,6 +7,20 @@ import { parseFA3InvoiceXml } from '../../parseInvoiceXml';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const normalizeDate = (value: any): string | null => {
+  if (!value) return null;
+
+  const raw = String(value).trim();
+
+  const xmlMatch = raw.match(/>(\d{4}-\d{2}-\d{2})</);
+  if (xmlMatch) return xmlMatch[1];
+
+  const dateMatch = raw.match(/\d{4}-\d{2}-\d{2}/);
+  if (dateMatch) return dateMatch[0];
+
+  return null;
+};
+
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null);
@@ -112,17 +126,6 @@ export async function POST(req: Request) {
           console.error(`[KSEF_NEXT] failed to fetch XML for ${ksefRef}:`, e?.message);
         }
 
-        // Use parsed XML data with fallback to metadata
-        const paymentDueDate =
-          parsed?.payment_due_date ||
-          inv.paymentDueDate ||
-          inv.payment_due_date ||
-          inv.TerminPlatnosci ||
-          inv.terminPlatnosci ||
-          inv.dueDate ||
-          inv.PaymentDueDate ||
-          null;
-
         const paymentMethod =
           parsed?.payment_method ||
           inv.paymentMethod ||
@@ -136,7 +139,23 @@ export async function POST(req: Request) {
           inv.bank_account_number ||
           null;
 
-        const paymentDate = parsed?.payment_date || null;
+          const paymentDueDate = normalizeDate(
+            parsed?.payment_due_date ||
+              inv.paymentDueDate ||
+              inv.payment_due_date ||
+              inv.TerminPlatnosci ||
+              inv.terminPlatnosci ||
+              inv.dueDate ||
+              inv.PaymentDueDate
+          );
+          
+          const issueDate = normalizeDate(
+            parsed?.issue_date || inv.issueDate
+          );
+          
+          const paymentDate = normalizeDate(
+            parsed?.payment_date
+          );
 
         // Determine payment status
         const paymentData = parsePaymentData({
@@ -164,6 +183,26 @@ export async function POST(req: Request) {
           vatRate = typeof inv.vatRate === 'number' ? `${inv.vatRate}%` : inv.vatRate;
         }
 
+        if (
+          String(paymentDueDate || '').includes('<Termin') ||
+          String(parsed?.payment_due_date || '').includes('<Termin')
+        ) {
+          console.error('[KSEF DEBUG DATE]', {
+            ksefRef,
+            parsedPaymentDueDate: parsed?.payment_due_date,
+            paymentDueDate,
+            issueDate: parsed?.issue_date,
+            rawInv: {
+              paymentDueDate: inv.paymentDueDate,
+              payment_due_date: inv.payment_due_date,
+              TerminPlatnosci: inv.TerminPlatnosci,
+              terminPlatnosci: inv.terminPlatnosci,
+              dueDate: inv.dueDate,
+              PaymentDueDate: inv.PaymentDueDate,
+            },
+          });
+        }
+
         rows.push({
           ksef_reference_number: ksefRef,
           my_company_id: companyId,
@@ -183,10 +222,10 @@ export async function POST(req: Request) {
             ? parsed.invoice_items
             : inv.items || inv.invoiceItems || null,
           currency: parsed?.currency || inv.currency || 'PLN',
-          issue_date: parsed?.issue_date || inv.issueDate || null,
+          issue_date: issueDate,
           payment_due_date: paymentDueDate,
-          payment_method: paymentMethod,
           payment_date: effectivePaymentDate,
+          payment_method: paymentMethod,
           bank_account_number: bankAccountNumber,
           payment_status: paymentData.payment_status,
           xml_content: xmlContent,
