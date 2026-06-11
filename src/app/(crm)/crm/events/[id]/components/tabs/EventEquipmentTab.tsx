@@ -620,47 +620,59 @@ export const EventEquipmentTab: React.FC<{
       const toInsert: SelectedItem[] = [];
       const toUpdate: Array<{ rowId: string; newQty: number }> = [];
       const conflicts: Array<{ name: string; quantity: number; available: number; equipmentId: string; type: 'item' | 'kit' }> = [];
+      let alreadyUpToDate = 0;
 
       for (const s of merged) {
         const k = keyOf(s.type as ItemType, s.id) as AvailKey;
         const existingRow = existingMap.get(k);
         const avail = (availabilityByKey as Record<string, AvailabilityUI> | undefined)?.[k];
-        const { maxAdd, maxSet } = getUiLimits(avail);
+        const { maxSet } = getUiLimits(avail);
 
         const currentQty = Number(existingRow?.quantity ?? 0);
-        const requestedQty = s.quantity;
-        const finalQty = currentQty + requestedQty;
+        const targetQty = s.quantity;
 
         const itemName = (s.type === 'item' ? validItems.get(s.id) : validKits.get(s.id)) || 'Nieznany';
 
-        if (avail && maxSet > 0 && finalQty > maxSet) {
+        if (existingRow && currentQty >= targetQty) {
+          alreadyUpToDate++;
+          continue;
+        }
+
+        if (avail && maxSet > 0 && targetQty > maxSet) {
+          const availableQty = Math.max(0, maxSet);
           conflicts.push({
             name: itemName,
-            quantity: requestedQty,
-            available: Math.max(0, maxAdd),
+            quantity: targetQty,
+            available: availableQty,
             equipmentId: s.id,
             type: s.type as 'item' | 'kit',
           });
 
-          // Import what's available
-          const canAdd = Math.max(0, maxAdd);
-          if (canAdd > 0) {
+          if (availableQty > currentQty) {
             if (!existingRow) {
-              toInsert.push({ ...s, quantity: canAdd });
+              toInsert.push({ ...s, quantity: availableQty });
             } else {
-              toUpdate.push({ rowId: existingRow.id, newQty: currentQty + canAdd });
+              toUpdate.push({ rowId: existingRow.id, newQty: availableQty });
             }
           }
         } else {
           if (!existingRow) {
             toInsert.push(s);
           } else {
-            toUpdate.push({ rowId: existingRow.id, newQty: finalQty });
+            toUpdate.push({ rowId: existingRow.id, newQty: targetQty });
           }
         }
       }
 
       let addedCount = 0;
+
+      if (toInsert.length === 0 && toUpdate.length === 0 && conflicts.length === 0) {
+        showSnackbar(
+          `Sprzęt jest już zsynchronizowany z kalkulacją (${alreadyUpToDate} pozycji aktualnych)`,
+          'info',
+        );
+        return;
+      }
 
       if (toInsert.length) {
         const ok = await addEquipment(toInsert);
@@ -684,13 +696,16 @@ export const EventEquipmentTab: React.FC<{
         setImportConflicts(conflicts);
         setResolvedConflictIndices(new Set());
         showSnackbar(
-          `Zaimportowano ${addedCount} pozycji, ale ${conflicts.length} ma niewystarczający stan magazynowy`,
+          `Zsynchronizowano ${addedCount} pozycji, ale ${conflicts.length} ma niewystarczający stan magazynowy`,
           'warning',
         );
       } else {
+        const parts: string[] = [];
+        if (toInsert.length) parts.push(`${toInsert.length} dodano`);
+        if (toUpdate.length) parts.push(`${toUpdate.length} zaktualizowano`);
+        if (alreadyUpToDate) parts.push(`${alreadyUpToDate} bez zmian`);
         showSnackbar(
-          `Zaimportowano ${addedCount} pozycji z kalkulacji` +
-            (toUpdate.length ? ` (${toUpdate.length} zaktualizowano)` : ''),
+          `Zsynchronizowano z kalkulacją: ${parts.join(', ')}`,
           'success',
         );
       }
