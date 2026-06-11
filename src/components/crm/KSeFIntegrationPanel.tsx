@@ -211,7 +211,11 @@ const getVatRateLabel = (invoice: KSeFInvoice) => {
   return '23%';
 };
 
-export default function KSeFIntegrationPanel() {
+interface KSeFIntegrationPanelProps {
+  filterCompanyIds?: string[] | null;
+}
+
+export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrationPanelProps) {
   const [allCredentials, setAllCredentials] = useState<KSeFCredentials[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -254,6 +258,14 @@ export default function KSeFIntegrationPanel() {
 
     return ids as string[];
   }, [currentEmployee, isAdmin]);
+
+  useEffect(() => {
+    if (filterCompanyIds && filterCompanyIds.length >= 1) {
+      setSelectedCompanyId(filterCompanyIds[0]);
+    } else if (filterCompanyIds === null || (filterCompanyIds && filterCompanyIds.length === 0)) {
+      setSelectedCompanyId(null);
+    }
+  }, [filterCompanyIds]);
 
   const canManageKSeF = useMemo(() => canManageModule('ksef'), [canManageModule]);
 
@@ -981,6 +993,7 @@ export default function KSeFIntegrationPanel() {
         <div className="rounded-xl border border-[#d3bb73]/20 bg-[#252945] p-3">
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div className="grid flex-1 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[minmax(260px,360px)_auto_auto] xl:items-center">
+              {!filterCompanyIds ? (
               <div>
                 <label className="mb-1 block text-xs text-[#e5e4e2]/50">Firma KSeF</label>
                 <select
@@ -997,6 +1010,7 @@ export default function KSeFIntegrationPanel() {
                   ))}
                 </select>
               </div>
+              ) : null}
 
               {selectedCredentials && (
                 <div>

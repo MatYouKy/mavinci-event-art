@@ -186,7 +186,11 @@ function MonthActions({
   return <ResponsiveActionBar actions={actions} disabledBackground mobileBreakpoint={4000} />;
 }
 
-export default function KSeFFinancialDashboard() {
+interface KSeFFinancialDashboardProps {
+  filterCompanyIds?: string[] | null;
+}
+
+export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinancialDashboardProps) {
   const [summaries, setSummaries] = useState<MonthlySummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState<MonthlySummary | null>(null);
@@ -222,6 +226,16 @@ export default function KSeFFinancialDashboard() {
     if (!Array.isArray(ids)) return [];
     return ids as string[];
   })();
+
+  useEffect(() => {
+    if (filterCompanyIds && filterCompanyIds.length === 1) {
+      setSelectedCompanyId(filterCompanyIds[0]);
+    } else if (filterCompanyIds && filterCompanyIds.length > 1) {
+      setSelectedCompanyId(filterCompanyIds[0]);
+    } else if (filterCompanyIds === null || (filterCompanyIds && filterCompanyIds.length === 0)) {
+      setSelectedCompanyId(null);
+    }
+  }, [filterCompanyIds]);
 
   useEffect(() => {
     loadSummaries();
@@ -855,12 +869,14 @@ export default function KSeFFinancialDashboard() {
         </div>
 
         <div className="flex items-center gap-4">
-          <CompanySelector
-            value={selectedCompanyId}
-            onChange={setSelectedCompanyId}
-            showAllOption={true}
-            className="w-64"
-          />
+          {!filterCompanyIds && (
+            <CompanySelector
+              value={selectedCompanyId}
+              onChange={setSelectedCompanyId}
+              showAllOption={true}
+              className="w-64"
+            />
+          )}
           <div className="flex items-center gap-3">
             <label className="text-sm text-[#e5e4e2]/60">Rok rozliczeniowy:</label>
             <select
