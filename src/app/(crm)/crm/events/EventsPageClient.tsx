@@ -18,6 +18,7 @@ import {
   List,
   User,
   Table2,
+  AlertCircle,
 } from 'lucide-react';
 import EventWizard from '@/components/crm/EventWizard';
 import { supabase } from '@/lib/supabase/browser';
@@ -111,6 +112,23 @@ const statusColors: Record<string, string> = {
   cancelled: 'bg-red-500/20 text-red-400 border-red-500/30',
   ready_for_live: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
 };
+
+const SETTLED_STATUSES = new Set(['invoiced', 'cancelled']);
+
+type PastUrgency = 'red' | 'orange' | null;
+
+function getPastUrgency(event: any): PastUrgency {
+  if (SETTLED_STATUSES.has(event.status)) return null;
+  const eventEndDate = event.event_end_date || event.event_date;
+  if (!eventEndDate) return null;
+  const end = new Date(eventEndDate);
+  end.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (end >= today) return null;
+  const daysPast = Math.floor((today.getTime() - end.getTime()) / (1000 * 60 * 60 * 24));
+  return daysPast > 7 ? 'red' : 'orange';
+}
 
 const stop = (e: React.MouseEvent) => {
   e.preventDefault();
@@ -550,9 +568,10 @@ export default function EventsPageClient({
 
     if (!showPastEvents) {
       result = result.filter((event) => {
-        const eventDate = new Date(event.event_date);
-        eventDate.setHours(0, 0, 0, 0);
-        return eventDate >= today;
+        const endDate = new Date(event.event_end_date || event.event_date);
+        endDate.setHours(0, 0, 0, 0);
+        if (endDate >= today) return true;
+        return !SETTLED_STATUSES.has(event.status);
       });
     }
 
@@ -820,7 +839,7 @@ export default function EventsPageClient({
                   ? 'bg-[#d3bb73]/20 text-[#d3bb73]'
                   : 'bg-[#0f1117] text-[#e5e4e2]/70 hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]'
               }`}
-              title={showPastEvents ? 'Ukryj przeszłe' : 'Pokaż przeszłe'}
+              title={showPastEvents ? 'Ukryj rozliczone' : 'Pokaż rozliczone'}
             >
               <Calendar className="h-4 w-4" />
             </button>
@@ -873,13 +892,13 @@ export default function EventsPageClient({
             (() => {
               const today = new Date();
               today.setHours(0, 0, 0, 0);
-              const pastEventsCount = events.filter((event) => {
-                const eventDate = new Date(event.event_date);
-                eventDate.setHours(0, 0, 0, 0);
-                return eventDate < today;
+              const settledPastCount = events.filter((event) => {
+                const endDate = new Date(event.event_end_date || event.event_date);
+                endDate.setHours(0, 0, 0, 0);
+                return endDate < today && SETTLED_STATUSES.has(event.status);
               }).length;
-              return pastEventsCount > 0 ? (
-                <span className="text-[#e5e4e2]/40">(ukryto {pastEventsCount})</span>
+              return settledPastCount > 0 ? (
+                <span className="text-[#e5e4e2]/40">(ukryto {settledPastCount} rozliczonych)</span>
               ) : null;
             })()}
         </div>
@@ -1001,7 +1020,7 @@ export default function EventsPageClient({
             }`}
           >
             <Calendar className="h-4 w-4" />
-            {showPastEvents ? 'Ukryj przeszłe eventy' : 'Pokaż przeszłe eventy'}
+            {showPastEvents ? 'Ukryj rozliczone' : 'Pokaż rozliczone'}
           </button>
 
           <div className="text-sm text-[#e5e4e2]/50">
@@ -1207,11 +1226,19 @@ export default function EventsPageClient({
               </thead>
 
               <tbody>
-                {filteredEvents.map((event) => (
+                {filteredEvents.map((event) => {
+                  const urgency = getPastUrgency(event);
+                  return (
                   <tr
                     key={event.id}
                     onClick={() => router.push(`/crm/events/${event.id}`)}
-                    className="cursor-pointer border-b border-[#d3bb73]/5 text-[#e5e4e2] hover:bg-[#0f1117]"
+                    className={`cursor-pointer border-b border-[#d3bb73]/5 text-[#e5e4e2] hover:bg-[#0f1117] ${
+                      urgency === 'red'
+                        ? 'bg-red-500/5'
+                        : urgency === 'orange'
+                          ? 'bg-orange-500/5'
+                          : ''
+                    }`}
                   >
                     {colOrder.map((key) => {
                       if (key === 'budget' && !canViewEventBudget) return null;
@@ -1234,12 +1261,20 @@ export default function EventsPageClient({
                           className={cellClassMap[key]}
                           onClick={key === 'actions' ? stop : undefined}
                         >
-                          {renderCell[key](event)}
+                          <div className="flex items-center gap-1.5">
+                            {key === 'name' && urgency && (
+                              <AlertCircle
+                                className={`h-4 w-4 flex-shrink-0 ${urgency === 'red' ? 'text-red-500' : 'text-orange-500'}`}
+                              />
+                            )}
+                            <div className="min-w-0 flex-1">{renderCell[key](event)}</div>
+                          </div>
                         </td>
                       );
                     })}
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1292,11 +1327,12 @@ export default function EventsPageClient({
           }
         >
           {filteredEvents.map((event, index) => {
-            const eventDate = new Date(event.event_date);
+            const eventDate = new Date(event.event_end_date || event.event_date);
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             eventDate.setHours(0, 0, 0, 0);
             const isPast = eventDate < today;
+            const urgency = getPastUrgency(event);
 
             const clientLabel = getOrgLabel(event.organizations, event.contacts);
             const isContactClient = !event.organizations && !!getContactLabel(event.contacts);
@@ -1307,10 +1343,23 @@ export default function EventsPageClient({
                   key={`${event.id}-grid-${index}`}
                   onClick={() => router.push(`/crm/events/${event.id}`)}
                   className={`relative flex cursor-pointer flex-col rounded-xl border bg-[#1c1f33] p-4 transition-all hover:border-[#d3bb73]/30 md:p-6 ${
-                    isPast ? 'border-[#e5e4e2]/5 opacity-70' : 'border-[#d3bb73]/10'
+                    urgency === 'red'
+                      ? 'border-red-500/60 ring-1 ring-red-500/30'
+                      : urgency === 'orange'
+                        ? 'border-orange-500/40'
+                        : isPast
+                          ? 'border-[#e5e4e2]/5 opacity-70'
+                          : 'border-[#d3bb73]/10'
                   }`}
                 >
-                  {/* TWÓJ OBECNY GRID CONTENT 1:1 */}
+                  {urgency && (
+                    <div className="absolute right-3 top-3">
+                      <AlertCircle
+                        className={`h-5 w-5 ${urgency === 'red' ? 'text-red-500' : 'text-orange-500'}`}
+                        title={urgency === 'red' ? 'Nierozliczony >7 dni' : 'Nierozliczony'}
+                      />
+                    </div>
+                  )}
                   <div className="mb-3 flex items-start justify-between gap-3">
                     <h3 className="line-clamp-2 flex-1 text-base font-medium text-[#e5e4e2]">
                       {event.name}
@@ -1417,10 +1466,24 @@ export default function EventsPageClient({
               <div
                 key={`${event.id}-list-${index}`}
                 className={`relative cursor-pointer rounded-xl border bg-[#1c1f33] p-2 transition-all hover:border-[#d3bb73]/30 sm:p-4 md:p-6 ${
-                  isPast ? 'border-[#e5e4e2]/5 opacity-70' : 'border-[#d3bb73]/10'
+                  urgency === 'red'
+                    ? 'border-red-500/60 ring-1 ring-red-500/30'
+                    : urgency === 'orange'
+                      ? 'border-orange-500/40'
+                      : isPast
+                        ? 'border-[#e5e4e2]/5 opacity-70'
+                        : 'border-[#d3bb73]/10'
                 }`}
                 onClick={() => router.push(`/crm/events/${event.id}`)}
               >
+                {urgency && (
+                  <div className="absolute right-3 top-3 md:right-4 md:top-4">
+                    <AlertCircle
+                      className={`h-5 w-5 ${urgency === 'red' ? 'text-red-500' : 'text-orange-500'}`}
+                      title={urgency === 'red' ? 'Nierozliczony >7 dni' : 'Nierozliczony'}
+                    />
+                  </div>
+                )}
                 {/* TWÓJ OBECNY LIST CONTENT 1:1 */}
                 <div className="flex items-start justify-between gap-1 sm:gap-2">
                   <div className="min-w-0 flex-1">
