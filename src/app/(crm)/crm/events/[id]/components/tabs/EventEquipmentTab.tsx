@@ -276,6 +276,7 @@ export const EventEquipmentTab: React.FC<{
   const [alternatives, setAlternatives] = useState<any[]>([]);
   const [currentItemForReplacement, setCurrentItemForReplacement] = useState<any>(null);
   const [replacingConflictIdx, setReplacingConflictIdx] = useState<number | null>(null);
+  const [alternativeQuantity, setAlternativeQuantity] = useState<number>(1);
   const [draftQuantity, setDraftQuantity] = useState<number>(1);
   const [showRentalModal, setShowRentalModal] = useState(false);
   const [currentRowForRental, setCurrentRowForRental] = useState<any>(null);
@@ -754,11 +755,14 @@ export const EventEquipmentTab: React.FC<{
     if (!conflict) return;
 
     setReplacingConflictIdx(idx);
+    const deficit = Math.max(1, conflict.quantity - conflict.available);
+    setAlternativeQuantity(deficit);
     const row = {
       equipment_id: conflict.type === 'item' ? conflict.equipmentId : null,
       kit_id: conflict.type === 'kit' ? conflict.equipmentId : null,
       equipment: conflict.type === 'item' ? { id: conflict.equipmentId, name: conflict.name } : null,
       kit: conflict.type === 'kit' ? { id: conflict.equipmentId, name: conflict.name } : null,
+      _conflictDeficit: deficit,
     };
     setCurrentItemForReplacement(row);
     handleSuggestAlternative(row);
@@ -1344,7 +1348,7 @@ export const EventEquipmentTab: React.FC<{
     }
   };
 
-  const handleReplaceEquipment = async (alternativeId: string) => {
+  const handleReplaceEquipment = async (alternativeId: string, qty?: number) => {
     try {
       if (!currentItemForReplacement) return;
 
@@ -1362,21 +1366,41 @@ export const EventEquipmentTab: React.FC<{
 
       if (fetchError) throw fetchError;
 
-      const { error: updateError } = await supabase
-        .from('event_equipment')
-        .update({
-          equipment_id: alternativeId,
-          kit_id: null,
-          status: 'reserved',
-          is_optional: false,
-          auto_added: false,
-          notes: `Zamieniono z: ${oldName} → ${newEquipment?.name || alternativeId}`,
-        })
-        .eq('id', currentItemForReplacement.id);
+      const finalQty = qty || alternativeQuantity || 1;
 
-      if (updateError) throw updateError;
+      if (currentItemForReplacement.id) {
+        const { error: updateError } = await supabase
+          .from('event_equipment')
+          .update({
+            equipment_id: alternativeId,
+            kit_id: null,
+            status: 'reserved',
+            is_optional: false,
+            auto_added: false,
+            quantity: finalQty,
+            notes: `Zamieniono z: ${oldName} → ${newEquipment?.name || alternativeId}`,
+          })
+          .eq('id', currentItemForReplacement.id);
 
-      showSnackbar(`Sprzęt zamieniony: ${oldName} → ${newEquipment?.name}`, 'success');
+        if (updateError) throw updateError;
+      } else {
+        const { error: insertError } = await supabase
+          .from('event_equipment')
+          .insert({
+            event_id: eventId,
+            equipment_id: alternativeId,
+            kit_id: null,
+            quantity: finalQty,
+            status: 'reserved',
+            is_optional: false,
+            auto_added: false,
+            notes: `Alternatywa dla: ${oldName} → ${newEquipment?.name || alternativeId}`,
+          });
+
+        if (insertError) throw insertError;
+      }
+
+      showSnackbar(`Sprzęt zamieniony: ${oldName} → ${newEquipment?.name} (${finalQty} szt.)`, 'success');
       setShowAlternativesModal(false);
       setAlternatives([]);
       setCurrentItemForReplacement(null);
@@ -1510,11 +1534,16 @@ export const EventEquipmentTab: React.FC<{
 
           if (availableError) throw availableError;
 
+          const avKey = `item-${alt.id}` as const;
+          const avail = (availabilityByKey as Record<string, any>)?.[avKey];
+
           return {
             ...alt,
             total_qty: totalQty || 0,
             available_qty: availableQty || 0,
             reserved_qty: Math.max((totalQty || 0) - (availableQty || 0), 0),
+            available_in_term: avail?.available_in_term ?? availableQty ?? 0,
+            max_add: avail?.max_add ?? availableQty ?? 0,
           };
         }),
       );
@@ -1528,6 +1557,9 @@ export const EventEquipmentTab: React.FC<{
 
       setAlternatives(enrichedAlternatives);
       setCurrentItemForReplacement(row);
+      if (!row._conflictDeficit) {
+        setAlternativeQuantity(Number(row.quantity) || 1);
+      }
       setShowAlternativesModal(true);
     } catch (err: any) {
       console.error('Error suggesting alternatives:', err);
@@ -1964,15 +1996,39 @@ export const EventEquipmentTab: React.FC<{
                   <span className="font-medium text-[#e5e4e2]">
                     {currentItemForReplacement?.equipment?.name || 'Nieznany'}
                   </span>
+                  {currentItemForReplacement?._conflictDeficit && (
+                    <span className="ml-2 text-[#e5e4e2]/50">
+                      (brakuje {currentItemForReplacement._conflictDeficit} szt.)
+                    </span>
+                  )}
                 </div>
               </div>
             )}
 
+            <div className="mb-3 flex items-center gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-3">
+              <span className="text-sm text-[#e5e4e2]/60">Ilość:</span>
+              <input
+                type="number"
+                min={1}
+                value={alternativeQuantity}
+                onChange={(e) => setAlternativeQuantity(Math.max(1, Number(e.target.value) || 1))}
+                className="w-20 rounded-md border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-1.5 text-center text-sm text-[#e5e4e2] outline-none focus:border-[#d3bb73]/50"
+              />
+              <span className="text-xs text-[#e5e4e2]/40">szt.</span>
+            </div>
+
             <div className="max-h-[60vh] space-y-2 overflow-y-auto">
-              {alternatives.map((alt) => (
+              {alternatives.map((alt) => {
+                const termAvail = alt.available_in_term ?? alt.available_qty ?? 0;
+                const isAvailable = termAvail >= alternativeQuantity;
+                return (
                 <div
                   key={alt.id}
-                  className="flex items-center justify-between rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4 transition-colors hover:border-[#d3bb73]/30"
+                  className={`flex items-center justify-between rounded-lg border p-4 transition-colors ${
+                    isAvailable
+                      ? 'border-[#d3bb73]/10 bg-[#0f1119] hover:border-[#d3bb73]/30'
+                      : 'border-red-500/20 bg-red-500/5'
+                  }`}
                 >
                   <div className="flex items-center gap-3">
                     {alt.thumbnail_url ? (
@@ -1999,24 +2055,33 @@ export const EventEquipmentTab: React.FC<{
                             <span>{alt.model}</span>
                           </>
                         )}
-                        {alt.warehouse_categories && (
-                          <>
-                            <span>•</span>
-                            <span>{alt.warehouse_categories.name}</span>
-                          </>
-                        )}
+                      </div>
+                      <div className="mt-1 flex items-center gap-2 text-xs">
+                        <span className={termAvail > 0 ? 'text-green-400' : 'text-red-400'}>
+                          Dostępne w terminie: {termAvail} szt.
+                        </span>
+                        <span className="text-[#e5e4e2]/30">•</span>
+                        <span className="text-[#e5e4e2]/40">
+                          Ogółem: {alt.total_qty} szt.
+                        </span>
                       </div>
                     </div>
                   </div>
 
                   <button
-                    onClick={() => handleReplaceEquipment(alt.id)}
-                    className="rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+                    onClick={() => handleReplaceEquipment(alt.id, alternativeQuantity)}
+                    disabled={!isAvailable}
+                    className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                      isAvailable
+                        ? 'bg-[#d3bb73] text-[#1c1f33] hover:bg-[#d3bb73]/90'
+                        : 'cursor-not-allowed bg-[#e5e4e2]/10 text-[#e5e4e2]/30'
+                    }`}
                   >
-                    Wybierz
+                    {isAvailable ? 'Wybierz' : 'Niedostępne'}
                   </button>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
