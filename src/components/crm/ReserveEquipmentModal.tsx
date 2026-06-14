@@ -487,7 +487,8 @@ export default function ReserveEquipmentModal({
 
   const hasUnresolvedConflicts =
     equipment.some((e) => e.has_conflict) && acceptedShortages.size === 0;
-  const canConfirm = selectedItems.size > 0 || acceptedShortages.size > 0;
+  const noEquipmentNeeded = equipment.length === 0;
+  const canConfirm = noEquipmentNeeded || selectedItems.size > 0 || acceptedShortages.size > 0;
 
   if (!open) return null;
 
@@ -523,13 +524,15 @@ export default function ReserveEquipmentModal({
             ) : (
               <>
                 <p className="mb-6 text-sm text-[#e5e4e2]/60">
-                  Poniższy sprzęt zostanie wstępnie zarezerwowany dla tego eventu. Status oferty
-                  zmieni się na <span className="font-medium text-green-400">Zaakceptowana</span>.
+                  {equipment.length === 0
+                    ? 'Ta oferta nie zawiera pozycji sprzętowych. Po potwierdzeniu status oferty zmieni się na '
+                    : 'Poniższy sprzęt zostanie wstępnie zarezerwowany dla tego eventu. Status oferty zmieni się na '}
+                  <span className="font-medium text-green-400">Zaakceptowana</span>.
                 </p>
 
                 {equipment.length === 0 ? (
                   <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-4 text-sm text-blue-400">
-                    Brak sprzętu do rezerwacji
+                    Ta oferta nie wymaga rezerwacji sprzętu. Możesz ją potwierdzić bez przypisanego sprzętu.
                   </div>
                 ) : (
                   <>
@@ -684,7 +687,7 @@ export default function ReserveEquipmentModal({
               ) : (
                 <>
                   <Lock className="h-4 w-4" />
-                  Potwierdź Rezerwację
+                  {noEquipmentNeeded ? 'Potwierdź Ofertę' : 'Potwierdź Rezerwację'}
                 </>
               )}
             </button>
