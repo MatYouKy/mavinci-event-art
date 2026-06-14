@@ -27,6 +27,7 @@ import { Trash2 } from 'lucide-react';
 import { Zap } from 'lucide-react';
 import { Weight } from 'lucide-react';
 import { fmt } from '../helpers/calculations/calculations.helper';
+import FullScreenLoader from '@/components/UI/Loader/CustomModalLoader';
 
 export function CalculationEditor({
   calculationId,
@@ -494,7 +495,13 @@ export function CalculationEditor({
       grandTotalGross,
       company,
       totalPowerWatts,
-      contactPerson: primaryContact,
+      contactPerson: primaryContact
+        ? {
+            name: primaryContact.name,
+            email: primaryContact.email ?? '',
+            phone: primaryContact.phone ?? '',
+          }
+        : null,
       preparedBy,
     });
     const w = window.open('', '_blank');
@@ -552,7 +559,13 @@ export function CalculationEditor({
         grandTotalGross,
         company,
         totalPowerWatts,
-        contactPerson: primaryContact,
+        contactPerson: primaryContact
+          ? {
+              name: primaryContact.name,
+              email: primaryContact.email ?? '',
+              phone: primaryContact.phone ?? '',
+            }
+          : null,
         preparedBy,
       });
 
@@ -753,18 +766,26 @@ export function CalculationEditor({
                 <div className="flex items-center gap-2">
                   <Zap className="h-4 w-4 text-amber-400" />
                   <div>
-                    <div className="text-xs uppercase tracking-wider text-amber-400/70">Pobor mocy</div>
-                    <div className="text-lg font-light text-amber-400">{fmtPower(totalPowerWatts)}</div>
+                    <div className="text-xs uppercase tracking-wider text-amber-400/70">
+                      Pobor mocy
+                    </div>
+                    <div className="text-lg font-light text-amber-400">
+                      {fmtPower(totalPowerWatts)}
+                    </div>
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/50">1f / 230V</div>
+                  <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/50">
+                    1f / 230V
+                  </div>
                   <div className="text-sm font-light text-[#e5e4e2]/80">
                     {totalPowerAmps230.toFixed(1)} A
                   </div>
                 </div>
                 <div>
-                  <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/50">3f / 400V</div>
+                  <div className="text-xs uppercase tracking-wider text-[#e5e4e2]/50">
+                    3f / 400V
+                  </div>
                   <div className="text-sm font-light text-[#e5e4e2]/80">
                     {totalPowerAmps400.toFixed(1)} A
                   </div>
@@ -800,18 +821,11 @@ export function CalculationEditor({
         </div>
       </div>
 
-      {generatingPdf && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className="flex min-w-[280px] flex-col items-center gap-4 rounded-2xl border border-[#d3bb73]/30 bg-[#1c1f33] px-8 py-7 shadow-2xl">
-            <Loader2 className="h-9 w-9 animate-spin text-[#d3bb73]" />
-
-            <div className="text-center">
-              <div className="text-base font-medium text-[#e5e4e2]">Generuję PDF kalkulacji</div>
-              <div className="mt-1 text-sm text-[#e5e4e2]/50">Proszę chwilę poczekać...</div>
-            </div>
-          </div>
-        </div>
-      )}
+      <FullScreenLoader
+        show={generatingPdf}
+        title="Generuję PDF kalkulacji"
+        description="Proszę chwilę poczekać..."
+      />
 
       {showImport && (
         <ImportFromOfferModal

@@ -2,19 +2,12 @@
 
 import { useState, useEffect, DragEvent, useMemo } from 'react';
 import Link from 'next/link';
-import {
-  GripVertical,
-  RotateCcw,
-  Settings,
-  Home,
-  ChevronDown,
-  ChevronRight,
-} from 'lucide-react';
+import { GripVertical, RotateCcw, Settings, Home, ChevronDown, ChevronRight } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useGetUnreadCountQuery } from '@/store/api/messagesApi';
 import { NavigationIcons } from '@/lib/CRM/navigation/registry.client';
-
+import { useGlobalLoader } from '@/contexts/GlobalLoaderContext';
 interface NavigationItem {
   key: string;
   name: string;
@@ -44,7 +37,6 @@ interface Props {
   onOrderChange: (newOrder: NavigationItem[]) => void;
 }
 
-
 export default function NavigationManager({
   navigation,
   initialUnreadMessagesCount,
@@ -56,10 +48,26 @@ export default function NavigationManager({
   onOrderChange,
 }: Props) {
   const { showSnackbar } = useSnackbar();
-  const { data: unreadMessagesCount = initialUnreadMessagesCount } = useGetUnreadCountQuery(undefined, {
-    pollingInterval: 60000, // co minutę
-    refetchOnMountOrArgChange: true,
-  });
+
+  const { showLoader } = useGlobalLoader();
+
+  const handleNavigate = (href: string, name: string) => {
+    if (pathname === href) {
+      onClose?.();
+      return;
+    }
+  
+    showLoader('Wczytuję stronę', name);
+    onClose?.();
+  };
+
+  const { data: unreadMessagesCount = initialUnreadMessagesCount } = useGetUnreadCountQuery(
+    undefined,
+    {
+      pollingInterval: 60000, // co minutę
+      refetchOnMountOrArgChange: true,
+    },
+  );
 
   const [isEditMode, setIsEditMode] = useState(false);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -201,8 +209,6 @@ export default function NavigationManager({
     setIsEditMode(false);
   };
 
-  
-
   const toggleExpanded = (key: string) => {
     setExpandedItems((prev) => {
       const newSet = new Set(prev);
@@ -322,7 +328,7 @@ export default function NavigationManager({
               {item.key === 'messages' && !isEditMode ? (
                 <Link
                   href={item.href}
-                  onClick={onClose}
+                  onClick={() => handleNavigate(item.href, item.name)}
                   className={`flex items-center ${
                     sidebarCollapsed ? 'justify-center' : 'gap-3'
                   } relative rounded-lg px-4 py-3 text-sm font-light transition-all duration-200 ${
@@ -377,7 +383,7 @@ export default function NavigationManager({
 
                   {isExpanded && !sidebarCollapsed && (
                     <ul className="ml-4 mt-1 space-y-1 border-l border-[#d3bb73]/10 pl-4">
-                      {item.children.map((child) => {
+                      {item.children?.map((child) => {
                         const childIsActive = isRouteActive(child.href);
                         const ChildIcon = getIcon(child);
 
@@ -385,7 +391,7 @@ export default function NavigationManager({
                           <li key={child.href}>
                             <Link
                               href={child.href}
-                              onClick={onClose}
+                              onClick={() => handleNavigate(child.href, child.name)}
                               className={`flex items-center gap-3 rounded-lg px-4 py-2 text-sm font-light transition-all duration-200 ${
                                 childIsActive
                                   ? 'bg-[#d3bb73]/20 text-[#d3bb73]'
@@ -404,7 +410,7 @@ export default function NavigationManager({
               ) : (
                 <Link
                   href={item.href}
-                  onClick={onClose}
+                  onClick={() => handleNavigate(item.href, item.name)}
                   className={`flex items-center ${
                     sidebarCollapsed ? 'justify-center' : 'gap-3'
                   } relative rounded-lg px-4 py-3 text-sm font-light transition-all duration-200 ${

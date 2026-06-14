@@ -13,38 +13,36 @@ import {
   Globe,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
+import { IEmployee } from '@/app/(crm)/crm/employees/type';
+import { EmployeeAvatar } from '../EmployeeAvatar';
 
-interface EmployeeData {
-  id: string;
-  name: string;
-  surname: string;
-  nickname?: string | null;
-  email: string;
-  role: string;
-  access_level: string;
-  avatar_url: string | null;
-  avatar_metadata?: {
-    desktop?: {
-      position?: {
-        posX: number;
-        posY: number;
-        scale: number;
-      };
-      objectFit?: string;
-    };
-  };
-}
+// interface EmployeeData {
+//   id: string;
+//   name: string;
+//   surname: string;
+//   nickname?: string | null;
+//   email: string;
+//   role: string;
+//   access_level: string;
+//   avatar_url: string | null;
+//   avatar_metadata?: {
+//     desktop?: {
+//       position?: {
+//         posX: number;
+//         posY: number;
+//         scale: number;
+//       };
+//       objectFit?: string;
+//     };
+//   };
+// }
 
-export default function UserMenu({
-  initialEmployee,
-}: {
-  initialEmployee: EmployeeData | null;
-}) {
+export default function UserMenu({ initialEmployee }: { initialEmployee: IEmployee | null }) {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
 
   // ✅ od razu masz dane – bez “migania”
-  const [employee, setEmployee] = useState<EmployeeData | null>(initialEmployee);
+  const [employee, setEmployee] = useState<IEmployee | null>(initialEmployee);
   const [userEmail, setUserEmail] = useState<string>(initialEmployee?.email || '');
 
   // ✅ nie blokuj renderu, bo SSR już dał dane
@@ -80,7 +78,9 @@ export default function UserMenu({
 
       const { data: employeeData } = await supabase
         .from('employees')
-        .select('id, name, surname, nickname, email, role, access_level, avatar_url, avatar_metadata')
+        .select(
+          'id, name, surname, nickname, email, role, access_level, avatar_url, avatar_metadata',
+        )
         .eq('email', session.user.email)
         .maybeSingle();
 
@@ -157,12 +157,7 @@ export default function UserMenu({
         <div className="flex items-center gap-3">
           {employee?.avatar_url ? (
             <div className="h-10 w-10 overflow-hidden rounded-full border-2 border-[#d3bb73]/30">
-              <img
-                src={employee.avatar_url}
-                alt={getDisplayName()}
-                className="h-full w-full"
-                style={getAvatarStyle()}
-              />
+              <EmployeeAvatar employee={employee} size={40} />
             </div>
           ) : (
             <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-[#d3bb73]/30 bg-gradient-to-br from-[#d3bb73] to-[#d3bb73]/60">
@@ -172,7 +167,9 @@ export default function UserMenu({
 
           <div className="hidden text-left md:block">
             <p className="text-sm font-medium leading-tight text-[#e5e4e2]">{getDisplayName()}</p>
-            {employee?.role && <p className="text-xs text-[#e5e4e2]/60">{getRoleName(employee.role)}</p>}
+            {employee?.role && (
+              <p className="text-xs text-[#e5e4e2]/60">{getRoleName(employee.role)}</p>
+            )}
           </div>
         </div>
 
@@ -184,186 +181,181 @@ export default function UserMenu({
       </button>
 
       {isOpen && (
-  <>
-    <div className="absolute right-0 top-14 z-50 w-80 overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] shadow-2xl">
-      <div className="border-b border-[#d3bb73]/20 bg-gradient-to-br from-[#d3bb73]/10 to-transparent p-4">
-        <div className="mb-3 flex items-center gap-3">
-          {employee?.avatar_url ? (
-            <div className="h-12 w-12 overflow-hidden rounded-full border-2 border-[#d3bb73]/30">
-              <img
-                src={employee.avatar_url}
-                alt={getDisplayName()}
-                className="h-full w-full"
-                style={getAvatarStyle()}
-              />
-            </div>
-          ) : (
-            <div className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-[#d3bb73]/30 bg-gradient-to-br from-[#d3bb73] to-[#d3bb73]/60">
-              <span className="font-bold text-[#1c1f33]">{getInitials()}</span>
-            </div>
-          )}
+        <>
+          <div className="absolute right-0 top-14 z-50 w-80 overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] shadow-2xl">
+            <div className="border-b border-[#d3bb73]/20 bg-gradient-to-br from-[#d3bb73]/10 to-transparent p-4">
+              <div className="mb-3 flex items-center gap-3">
+                {employee?.avatar_url ? (
+                  <div className="h-12 w-12 overflow-hidden rounded-full border-2 border-[#d3bb73]/30">
+                    <EmployeeAvatar employee={employee} size={48} />
+                  </div>
+                ) : (
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-[#d3bb73]/30 bg-gradient-to-br from-[#d3bb73] to-[#d3bb73]/60">
+                    <span className="font-bold text-[#1c1f33]">{getInitials()}</span>
+                  </div>
+                )}
 
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-base font-semibold text-[#e5e4e2]">
-              {getDisplayName()}
-            </p>
-            <p className="truncate text-sm text-[#e5e4e2]/60">{userEmail}</p>
-          </div>
-        </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-base font-semibold text-[#e5e4e2]">
+                    {getDisplayName()}
+                  </p>
+                  <p className="truncate text-sm text-[#e5e4e2]/60">{userEmail}</p>
+                </div>
+              </div>
 
-        {employee && (
-          <div className="flex items-center gap-2 text-xs">
-            <span className="rounded-full bg-[#d3bb73]/20 px-2 py-1 text-[#d3bb73]">
-              {getRoleName(employee.role)}
-            </span>
-            {employee.access_level &&
-              employee.role !== 'admin' &&
-              employee.access_level !== 'admin' && (
-                <span
-                  className={`rounded-full bg-[#0f1119] px-2 py-1 ${getAccessLevelColor(
-                    employee.access_level,
-                  )}`}
-                >
-                  {employee.access_level === 'full' || employee.access_level === 'admin'
-                    ? 'Pełny dostęp'
-                    : employee.access_level === 'limited'
-                      ? 'Ograniczony'
-                      : employee.access_level === 'manager'
-                        ? 'Manager'
-                        : 'Tylko odczyt'}
-                </span>
+              {employee && (
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="rounded-full bg-[#d3bb73]/20 px-2 py-1 text-[#d3bb73]">
+                    {getRoleName(employee.role)}
+                  </span>
+                  {employee.access_level &&
+                    employee.role !== 'admin' &&
+                    employee.access_level !== 'admin' && (
+                      <span
+                        className={`rounded-full bg-[#0f1119] px-2 py-1 ${getAccessLevelColor(
+                          employee.access_level,
+                        )}`}
+                      >
+                        {employee.access_level === 'full' || employee.access_level === 'admin'
+                          ? 'Pełny dostęp'
+                          : employee.access_level === 'limited'
+                            ? 'Ograniczony'
+                            : employee.access_level === 'manager'
+                              ? 'Manager'
+                              : 'Tylko odczyt'}
+                      </span>
+                    )}
+                </div>
               )}
-          </div>
-        )}
-      </div>
+            </div>
 
-      <div className="p-2">
-        <button
-          onClick={() => {
-            if (employee?.id) {
-              router.push(`/crm/employees/${employee.id}`);
-            }
-            setIsOpen(false);
-          }}
-          className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-[#d3bb73]/10"
-        >
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#d3bb73]/10 transition-colors group-hover:bg-[#d3bb73]/20">
-            <User className="h-4 w-4 text-[#d3bb73]" />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-medium text-[#e5e4e2]">Mój profil</p>
-            <p className="text-xs text-[#e5e4e2]/60">Edytuj dane osobowe</p>
-          </div>
-        </button>
+            <div className="p-2">
+              <button
+                onClick={() => {
+                  if (employee?.id) {
+                    router.push(`/crm/employees/${employee.id}`);
+                  }
+                  setIsOpen(false);
+                }}
+                className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-[#d3bb73]/10"
+              >
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#d3bb73]/10 transition-colors group-hover:bg-[#d3bb73]/20">
+                  <User className="h-4 w-4 text-[#d3bb73]" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-[#e5e4e2]">Mój profil</p>
+                  <p className="text-xs text-[#e5e4e2]/60">Edytuj dane osobowe</p>
+                </div>
+              </button>
 
-        <button
-          onClick={() => {
-            router.push('/crm/settings');
-            setIsOpen(false);
-          }}
-          className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-[#d3bb73]/10"
-        >
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#d3bb73]/10 transition-colors group-hover:bg-[#d3bb73]/20">
-            <Settings className="h-4 w-4 text-[#d3bb73]" />
+              <button
+                onClick={() => {
+                  router.push('/crm/settings');
+                  setIsOpen(false);
+                }}
+                className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-[#d3bb73]/10"
+              >
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#d3bb73]/10 transition-colors group-hover:bg-[#d3bb73]/20">
+                  <Settings className="h-4 w-4 text-[#d3bb73]" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-[#e5e4e2]">Ustawienia</p>
+                  <p className="text-xs text-[#e5e4e2]/60">Hasło, preferencje i powiadomienia</p>
+                </div>
+              </button>
+
+              {employee?.role === 'admin' && (
+                <>
+                  <div className="my-2 h-px bg-[#d3bb73]/20" />
+
+                  <button
+                    onClick={() => {
+                      router.push('/crm/admin/security');
+                      setIsOpen(false);
+                    }}
+                    className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-[#d3bb73]/10"
+                  >
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/10 transition-colors group-hover:bg-red-500/20">
+                      <Shield className="h-4 w-4 text-red-400" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-[#e5e4e2]">Bezpieczeństwo</p>
+                      <p className="text-xs text-[#e5e4e2]/60">Uprawnienia i dostęp</p>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      router.push('/crm/admin/logs');
+                      setIsOpen(false);
+                    }}
+                    className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-[#d3bb73]/10"
+                  >
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/10 transition-colors group-hover:bg-blue-500/20">
+                      <FileText className="h-4 w-4 text-blue-400" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-[#e5e4e2]">Logi aktywności</p>
+                      <p className="text-xs text-[#e5e4e2]/60">Historia zmian</p>
+                    </div>
+                  </button>
+                </>
+              )}
+
+              <div className="my-2 h-px bg-[#d3bb73]/20" />
+
+              <button
+                onClick={() => {
+                  router.push('/crm/help');
+                  setIsOpen(false);
+                }}
+                className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-[#d3bb73]/10"
+              >
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#d3bb73]/10 transition-colors group-hover:bg-[#d3bb73]/20">
+                  <HelpCircle className="h-4 w-4 text-[#d3bb73]" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-[#e5e4e2]">Pomoc i wsparcie</p>
+                  <p className="text-xs text-[#e5e4e2]/60">Dokumentacja i FAQ</p>
+                </div>
+              </button>
+
+              <div className="my-2 h-px bg-[#d3bb73]/20" />
+
+              <button
+                onClick={() => {
+                  router.push('/');
+                  setIsOpen(false);
+                }}
+                className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-[#d3bb73]/10"
+              >
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#d3bb73]/10 transition-colors group-hover:bg-[#d3bb73]/20">
+                  <Globe className="h-4 w-4 text-[#d3bb73]" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-[#e5e4e2]">Powrót do strony</p>
+                  <p className="text-xs text-[#e5e4e2]/60">Strona główna Mavinci</p>
+                </div>
+              </button>
+
+              <div className="my-2 h-px bg-[#d3bb73]/20" />
+
+              <button
+                onClick={handleLogout}
+                className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-red-500/10"
+              >
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/10 transition-colors group-hover:bg-red-500/20">
+                  <LogOut className="h-4 w-4 text-red-400" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-red-400">Wyloguj się</p>
+                  <p className="text-xs text-[#e5e4e2]/60">Zakończ sesję</p>
+                </div>
+              </button>
+            </div>
           </div>
-          <div className="flex-1">
-            <p className="text-sm font-medium text-[#e5e4e2]">Ustawienia</p>
-            <p className="text-xs text-[#e5e4e2]/60">Hasło, preferencje i powiadomienia</p>
-          </div>
-        </button>
-
-        {employee?.role === 'admin' && (
-          <>
-            <div className="my-2 h-px bg-[#d3bb73]/20" />
-
-            <button
-              onClick={() => {
-                router.push('/crm/admin/security');
-                setIsOpen(false);
-              }}
-              className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-[#d3bb73]/10"
-            >
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/10 transition-colors group-hover:bg-red-500/20">
-                <Shield className="h-4 w-4 text-red-400" />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-medium text-[#e5e4e2]">Bezpieczeństwo</p>
-                <p className="text-xs text-[#e5e4e2]/60">Uprawnienia i dostęp</p>
-              </div>
-            </button>
-
-            <button
-              onClick={() => {
-                router.push('/crm/admin/logs');
-                setIsOpen(false);
-              }}
-              className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-[#d3bb73]/10"
-            >
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/10 transition-colors group-hover:bg-blue-500/20">
-                <FileText className="h-4 w-4 text-blue-400" />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-medium text-[#e5e4e2]">Logi aktywności</p>
-                <p className="text-xs text-[#e5e4e2]/60">Historia zmian</p>
-              </div>
-            </button>
-          </>
-        )}
-
-        <div className="my-2 h-px bg-[#d3bb73]/20" />
-
-        <button
-          onClick={() => {
-            router.push('/crm/help');
-            setIsOpen(false);
-          }}
-          className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-[#d3bb73]/10"
-        >
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#d3bb73]/10 transition-colors group-hover:bg-[#d3bb73]/20">
-            <HelpCircle className="h-4 w-4 text-[#d3bb73]" />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-medium text-[#e5e4e2]">Pomoc i wsparcie</p>
-            <p className="text-xs text-[#e5e4e2]/60">Dokumentacja i FAQ</p>
-          </div>
-        </button>
-
-        <div className="my-2 h-px bg-[#d3bb73]/20" />
-
-        <button
-          onClick={() => {
-            router.push('/');
-            setIsOpen(false);
-          }}
-          className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-[#d3bb73]/10"
-        >
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#d3bb73]/10 transition-colors group-hover:bg-[#d3bb73]/20">
-            <Globe className="h-4 w-4 text-[#d3bb73]" />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-medium text-[#e5e4e2]">Powrót do strony</p>
-            <p className="text-xs text-[#e5e4e2]/60">Strona główna Mavinci</p>
-          </div>
-        </button>
-
-        <div className="my-2 h-px bg-[#d3bb73]/20" />
-
-        <button
-          onClick={handleLogout}
-          className="group flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-red-500/10"
-        >
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/10 transition-colors group-hover:bg-red-500/20">
-            <LogOut className="h-4 w-4 text-red-400" />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-medium text-red-400">Wyloguj się</p>
-            <p className="text-xs text-[#e5e4e2]/60">Zakończ sesję</p>
-          </div>
-        </button>
-      </div>
-    </div>
-  </>
-)}
+        </>
+      )}
     </div>
   );
 }

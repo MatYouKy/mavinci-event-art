@@ -284,13 +284,15 @@ export function EventContractTab({ eventId }: { eventId: string }) {
 
       // Normalize template as expected type or null
       template = template
-        ? (template as {
+        ? (template as unknown as {
             id: string;
             name: string;
             content: string;
             content_html: string;
             page_settings: any;
-          })
+            created_at: string;
+            updated_at: string;
+          } | null)
         : null;
 
       if (!template && !event.selected_contract_template_id) {
@@ -299,7 +301,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         return;
       }
 
-      const finalTemplateId = event.selected_contract_template_id || template.id;
+      const finalTemplateId = event.selected_contract_template_id || template?.id || '';
 
       const { data: selectedTemplate, error: selectedTemplateError } = await supabase
         .from('contract_templates')

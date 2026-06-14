@@ -12,6 +12,7 @@ import { fetchUnreadCountServer } from '@/lib/CRM/messages/unreadCounter';
 import { fetchNotificationsServer } from '@/lib/CRM/notifications/fetchNotificationsServer';
 import { getNavigationForUserServer } from '@/lib/CRM/navigation/getNavigationForUser.server';
 import { cookies } from 'next/headers';
+import { GlobalLoaderProvider, RouteLoaderReset } from '@/contexts/GlobalLoaderContext';
 
 export const metadata: Metadata = {
   title: 'Mavinci CRM',
@@ -41,18 +42,21 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="pl">
       <body>
-        <CrmProviders>
-          <PreferencesClientProvider employeeId={employee.id} initialPreferences={preferences}>
-            <CRMClientLayout
-              employee={employee}
-              initialUnreadMessagesCount={unreadCount}
-              initialNotifications={notifications}
-              initialNavigation={navigation}
-            >
-              {children}
-            </CRMClientLayout>
-          </PreferencesClientProvider>
-        </CrmProviders>
+        <GlobalLoaderProvider>
+          <RouteLoaderReset />
+          <CrmProviders>
+            <PreferencesClientProvider employeeId={employee.id} initialPreferences={preferences}>
+              <CRMClientLayout
+                employee={employee}
+                initialUnreadMessagesCount={unreadCount}
+                initialNotifications={notifications}
+                initialNavigation={navigation}
+              >
+                {children}
+              </CRMClientLayout>
+            </PreferencesClientProvider>
+          </CrmProviders>
+        </GlobalLoaderProvider>
       </body>
     </html>
   );

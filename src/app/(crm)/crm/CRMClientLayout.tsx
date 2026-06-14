@@ -159,7 +159,7 @@ export default function CRMClientLayout({
 
           <div className="flex items-center gap-4">
             <NotificationCenter initialNotifications={initialNotifications} />
-            <UserMenu initialEmployee={employee} />
+            <UserMenu initialEmployee={employee as unknown as IEmployee} />
           </div>
         </div>
       </header>
@@ -178,7 +178,7 @@ export default function CRMClientLayout({
               sidebarCollapsed={sidebarCollapsed}
               employeeId={employee?.id || null}
               onClose={() => setSidebarOpen(false)}
-              onOrderChange={(newOrder: NavigationItem[]) => setNavigation(newOrder)}
+              onOrderChange={(newOrder: any) => setNavigation(newOrder as unknown as NavigationItem[])}
             />
 
             <button

@@ -31,6 +31,7 @@ import { ViewMode } from '../settings/page';
 import { EventCategoryRow, EventRow } from '@/lib/CRM/events/eventsData.server';
 import { IEmployee } from '../employees/type';
 import { hasScope } from './[id]/helpers/hasScope';
+import FullScreenLoader from '@/components/UI/Loader/CustomModalLoader';
 
 const moveKey = (arr: EventsTableColKey[], from: EventsTableColKey, to: EventsTableColKey) => {
   const a = [...arr];
@@ -317,6 +318,9 @@ export default function EventsPageClient({
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [eventToDelete, setEventToDelete] = useState<any>(null);
 
+  const [openingEvent, setOpeningEvent] = useState(false);
+  const [openingEventName, setOpeningEventName] = useState('');
+
   const [viewMode, setLocalViewMode] = useState<ViewMode>(initialViewMode as ViewMode);
 
   const modulePrefs = (getModulePrefs?.('events') ?? {}) as any;
@@ -429,6 +433,13 @@ export default function EventsPageClient({
       supabase.removeChannel(channel);
     };
   }, []);
+
+  const handleOpenEvent = (event: any) => {
+    setOpeningEventName(event?.name || '');
+    setOpeningEvent(true);
+
+    router.push(`/crm/events/${event.id}`);
+  };
 
   useEffect(() => {
     applyFiltersAndSort();
@@ -1229,50 +1240,50 @@ export default function EventsPageClient({
                 {filteredEvents.map((event) => {
                   const urgency = getPastUrgency(event);
                   return (
-                  <tr
-                    key={event.id}
-                    onClick={() => router.push(`/crm/events/${event.id}`)}
-                    className={`cursor-pointer border-b border-[#d3bb73]/5 text-[#e5e4e2] hover:bg-[#0f1117] ${
-                      urgency === 'red'
-                        ? 'bg-red-500/5'
-                        : urgency === 'orange'
-                          ? 'bg-orange-500/5'
-                          : ''
-                    }`}
-                  >
-                    {colOrder.map((key) => {
-                      if (key === 'budget' && !canViewEventBudget) return null;
-                      if (key === 'status' && !canViewEventStatus) return null;
+                    <tr
+                      key={event.id}
+                      onClick={() => handleOpenEvent(event)}
+                      className={`cursor-pointer border-b border-[#d3bb73]/5 text-[#e5e4e2] hover:bg-[#0f1117] ${
+                        urgency === 'red'
+                          ? 'bg-red-500/5'
+                          : urgency === 'orange'
+                            ? 'bg-orange-500/5'
+                            : ''
+                      }`}
+                    >
+                      {colOrder.map((key) => {
+                        if (key === 'budget' && !canViewEventBudget) return null;
+                        if (key === 'status' && !canViewEventStatus) return null;
 
-                      const cellClassMap: Record<EventsTableColKey, string> = {
-                        name: 'px-3 py-3',
-                        client: 'px-3 py-3 text-[#e5e4e2]/80',
-                        date: 'px-3 py-3 text-[#e5e4e2]/80',
-                        location: 'px-3 py-3',
-                        status: 'px-3 py-3',
-                        category: 'px-3 py-3 text-[#e5e4e2]/80',
-                        budget: 'px-3 py-3 text-right text-[#e5e4e2]/80',
-                        actions: 'px-3 py-3 text-right',
-                      };
+                        const cellClassMap: Record<EventsTableColKey, string> = {
+                          name: 'px-3 py-3',
+                          client: 'px-3 py-3 text-[#e5e4e2]/80',
+                          date: 'px-3 py-3 text-[#e5e4e2]/80',
+                          location: 'px-3 py-3',
+                          status: 'px-3 py-3',
+                          category: 'px-3 py-3 text-[#e5e4e2]/80',
+                          budget: 'px-3 py-3 text-right text-[#e5e4e2]/80',
+                          actions: 'px-3 py-3 text-right',
+                        };
 
-                      return (
-                        <td
-                          key={key}
-                          className={cellClassMap[key]}
-                          onClick={key === 'actions' ? stop : undefined}
-                        >
-                          <div className="flex items-center gap-1.5">
-                            {key === 'name' && urgency && (
-                              <AlertCircle
-                                className={`h-4 w-4 flex-shrink-0 ${urgency === 'red' ? 'text-red-500' : 'text-orange-500'}`}
-                              />
-                            )}
-                            <div className="min-w-0 flex-1">{renderCell[key](event)}</div>
-                          </div>
-                        </td>
-                      );
-                    })}
-                  </tr>
+                        return (
+                          <td
+                            key={key}
+                            className={cellClassMap[key]}
+                            onClick={key === 'actions' ? stop : undefined}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              {key === 'name' && urgency && (
+                                <AlertCircle
+                                  className={`h-4 w-4 flex-shrink-0 ${urgency === 'red' ? 'text-red-500' : 'text-orange-500'}`}
+                                />
+                              )}
+                              <div className="min-w-0 flex-1">{renderCell[key](event)}</div>
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
                   );
                 })}
               </tbody>
@@ -1341,7 +1352,7 @@ export default function EventsPageClient({
               return (
                 <div
                   key={`${event.id}-grid-${index}`}
-                  onClick={() => router.push(`/crm/events/${event.id}`)}
+                  onClick={() => handleOpenEvent(event)}
                   className={`relative flex cursor-pointer flex-col rounded-xl border bg-[#1c1f33] p-4 transition-all hover:border-[#d3bb73]/30 md:p-6 ${
                     urgency === 'red'
                       ? 'border-red-500/60 ring-1 ring-red-500/30'
@@ -1356,7 +1367,7 @@ export default function EventsPageClient({
                     <div className="absolute right-3 top-3">
                       <AlertCircle
                         className={`h-5 w-5 ${urgency === 'red' ? 'text-red-500' : 'text-orange-500'}`}
-                        title={urgency === 'red' ? 'Nierozliczony >7 dni' : 'Nierozliczony'}
+                        aria-label={urgency === 'red' ? 'Nierozliczony >7 dni' : 'Nierozliczony'}
                       />
                     </div>
                   )}
@@ -1474,13 +1485,13 @@ export default function EventsPageClient({
                         ? 'border-[#e5e4e2]/5 opacity-70'
                         : 'border-[#d3bb73]/10'
                 }`}
-                onClick={() => router.push(`/crm/events/${event.id}`)}
+                onClick={() => handleOpenEvent(event)}
               >
                 {urgency && (
                   <div className="absolute right-3 top-3 md:right-4 md:top-4">
                     <AlertCircle
                       className={`h-5 w-5 ${urgency === 'red' ? 'text-red-500' : 'text-orange-500'}`}
-                      title={urgency === 'red' ? 'Nierozliczony >7 dni' : 'Nierozliczony'}
+                      aria-label={urgency === 'red' ? 'Nierozliczony >7 dni' : 'Nierozliczony'}
                     />
                   </div>
                 )}
@@ -1625,6 +1636,16 @@ export default function EventsPageClient({
           })}
         </div>
       )}
+
+      <FullScreenLoader
+        show={openingEvent}
+        title="Wczytuję event"
+        description={
+          openingEventName
+            ? `Pobieram dane wydarzenia: ${openingEventName}`
+            : 'Pobieram dane wydarzenia...'
+        }
+      />
 
       <EventWizard
         isOpen={isModalOpen}
