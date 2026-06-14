@@ -105,12 +105,12 @@ interface XmlParsedData {
 }
 
 function getXmlTag(src: string, tag: string): string | null {
-  const m = src.match(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`));
+  const m = src.match(new RegExp(`<(?:[a-zA-Z0-9_]+:)?${tag}\\b[^>]*>([\\s\\S]*?)<\\/(?:[a-zA-Z0-9_]+:)?${tag}>`));
   return m ? m[1].trim() : null;
 }
 
 function getXmlBlock(src: string, tag: string): string | null {
-  const m = src.match(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, 's'));
+  const m = src.match(new RegExp(`<(?:[a-zA-Z0-9_]+:)?${tag}\\b[^>]*>([\\s\\S]*?)<\\/(?:[a-zA-Z0-9_]+:)?${tag}>`, 's'));
   return m ? m[1] : null;
 }
 
@@ -183,9 +183,15 @@ function parseFullXml(xml: string | null | undefined): XmlParsedData {
     const vatAmountRaw = getXmlTag(fa, 'P_14_1') || getXmlTag(fa, 'P_14_2') || getXmlTag(fa, 'P_14_3');
     const grossAmountRaw = getXmlTag(fa, 'P_15') || getXmlTag(xml, 'P_15');
 
-    const platnosc = getXmlBlock(xml, 'Platnosc') || getXmlBlock(fa, 'Platnosc') || '';
+    const platnosc = getXmlBlock(fa, 'Platnosc') || getXmlBlock(xml, 'Platnosc') || '';
     const formaPlatnosci = getXmlTag(platnosc, 'FormaPlatnosci');
-    const terminPlatnosci = getXmlTag(platnosc, 'TerminPlatnosci');
+
+    // TerminPlatnosci can be a simple date or contain a <Termin> child
+    const terminPlatnosciRaw = getXmlTag(platnosc, 'TerminPlatnosci');
+    const terminPlatnosci = terminPlatnosciRaw
+      ? (getXmlTag(terminPlatnosciRaw, 'Termin') || terminPlatnosciRaw.replace(/<[^>]+>/g, '').trim())
+      : null;
+
     const zaplacono = getXmlTag(platnosc, 'Zaplacono');
 
     let paymentInfo: string | null = null;
@@ -197,12 +203,12 @@ function parseFullXml(xml: string | null | undefined): XmlParsedData {
       paymentInfo = null;
     }
 
-    const rachunek = getXmlBlock(xml, 'RachunekBankowy') || getXmlBlock(platnosc, 'RachunekBankowy') || '';
+    const rachunek = getXmlBlock(platnosc, 'RachunekBankowy') || getXmlBlock(fa, 'RachunekBankowy') || getXmlBlock(xml, 'RachunekBankowy') || '';
     const bankAccountNumber = getXmlTag(rachunek, 'NrRB') || getXmlTag(rachunek, 'NrRachunku');
     const bankSwift = getXmlTag(rachunek, 'SWIFT') || getXmlTag(rachunek, 'KodSWIFT');
-    const bankName = getXmlTag(rachunek, 'NazwaBanku') || getXmlTag(rachunek, 'RachunekWlasnyBanku');
+    const bankName = getXmlTag(rachunek, 'NazwaBanku') || getXmlTag(rachunek, 'OpisRachunku') || getXmlTag(rachunek, 'RachunekWlasnyBanku');
 
-    const wierszRegex = /<FaWiersz\b[^>]*>([\s\S]*?)<\/FaWiersz>/g;
+    const wierszRegex = /<(?:[a-zA-Z0-9_]+:)?FaWiersz\b[^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9_]+:)?FaWiersz>/g;
     const items: any[] = [];
     let match: RegExpExecArray | null;
     while ((match = wierszRegex.exec(xml)) !== null) {

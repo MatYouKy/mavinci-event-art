@@ -39,17 +39,17 @@ export interface ParsedInvoiceItem {
 }
 
 function getTag(src: string, tag: string): string | null {
-  const m = src.match(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`));
+  const m = src.match(new RegExp(`<(?:[a-zA-Z0-9_]+:)?${tag}\\b[^>]*>([\\s\\S]*?)<\\/(?:[a-zA-Z0-9_]+:)?${tag}>`));
   return m ? m[1].trim() : null;
 }
 
 function getTagContent(src: string, tag: string): string | null {
-  const m = src.match(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, 's'));
+  const m = src.match(new RegExp(`<(?:[a-zA-Z0-9_]+:)?${tag}\\b[^>]*>([\\s\\S]*?)<\\/(?:[a-zA-Z0-9_]+:)?${tag}>`, 's'));
   return m ? m[1] : null;
 }
 
 function getAllBlocks(src: string, tag: string): string[] {
-  const regex = new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'g');
+  const regex = new RegExp(`<(?:[a-zA-Z0-9_]+:)?${tag}\\b[^>]*>([\\s\\S]*?)<\\/(?:[a-zA-Z0-9_]+:)?${tag}>`, 'g');
   const blocks: string[] = [];
   let match: RegExpExecArray | null;
   while ((match = regex.exec(src)) !== null) {
@@ -165,10 +165,16 @@ export function parseFA3InvoiceXml(xml: string): ParsedInvoiceXml | null {
       };
     });
 
-    // Payment (Platnosc)
-    const platnosc = getTagContent(xml, 'Platnosc') || getTagContent(fa, 'Platnosc') || '';
+    // Payment (Platnosc) - FA3: located under Fa/Platnosc
+    const platnosc = getTagContent(fa, 'Platnosc') || getTagContent(xml, 'Platnosc') || '';
     const formaPlatnosci = getTag(platnosc, 'FormaPlatnosci');
-    const terminPlatnosci = getTag(platnosc, 'TerminPlatnosci');
+
+    // TerminPlatnosci can be a simple date or contain a <Termin> child
+    const terminPlatnosciRaw = getTag(platnosc, 'TerminPlatnosci');
+    const terminPlatnosci = terminPlatnosciRaw
+      ? (getTag(terminPlatnosciRaw, 'Termin') || terminPlatnosciRaw.replace(/<[^>]+>/g, '').trim())
+      : null;
+
     const zaplacono = getTag(platnosc, 'Zaplacono');
     const znacznikZaplacono = getTag(platnosc, 'ZnacznikZaplatyCzesciowej');
 
@@ -182,11 +188,11 @@ export function parseFA3InvoiceXml(xml: string): ParsedInvoiceXml | null {
       paymentInfo = 'Brak zapłaty';
     }
 
-    // Bank account (RachunekBankowy)
-    const rachunek = getTagContent(xml, 'RachunekBankowy') || getTagContent(platnosc, 'RachunekBankowy') || '';
+    // Bank account - FA3: located under Fa/Platnosc/RachunekBankowy
+    const rachunek = getTagContent(platnosc, 'RachunekBankowy') || getTagContent(fa, 'RachunekBankowy') || getTagContent(xml, 'RachunekBankowy') || '';
     const bankAccountNumber = getTag(rachunek, 'NrRB') || getTag(rachunek, 'NrRachunku');
     const bankSwift = getTag(rachunek, 'SWIFT') || getTag(rachunek, 'KodSWIFT');
-    const bankName = getTag(rachunek, 'NazwaBanku') || getTag(rachunek, 'RachunekWlasnyBanku');
+    const bankName = getTag(rachunek, 'NazwaBanku') || getTag(rachunek, 'OpisRachunku') || getTag(rachunek, 'RachunekWlasnyBanku');
 
     return {
       seller_name: sellerName || null,
