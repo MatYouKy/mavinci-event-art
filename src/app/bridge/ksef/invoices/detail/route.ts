@@ -101,6 +101,9 @@ export async function POST(req: Request) {
       grossAmount: parsed.gross_amount ?? invoiceRow.gross_amount,
     });
 
+    // Preserve user-set payment_status and payment_date (don't overwrite manual changes)
+    const userSetPaid = invoiceRow.payment_status === 'paid' && invoiceRow.payment_date;
+
     const updateData: Record<string, any> = {
       xml_content: xmlContent,
       seller_address: parsed.seller_address || invoiceRow.seller_address || null,
@@ -108,11 +111,19 @@ export async function POST(req: Request) {
       payment_due_date: paymentDueDate,
       payment_method: paymentMethod,
       bank_account_number: bankAccountNumber,
-      payment_status: paymentData.payment_status,
       invoice_items: parsed.invoice_items && parsed.invoice_items.length > 0
         ? parsed.invoice_items
         : invoiceRow.invoice_items || null,
     };
+
+    // Only update payment_status/payment_date if user hasn't manually marked as paid
+    if (!userSetPaid) {
+      updateData.payment_status = paymentData.payment_status;
+      // For card/cash payments (methods 1, 2), set payment_date
+      if (paymentData.payment_status === 'paid' && (paymentMethod === '1' || paymentMethod === '2')) {
+        updateData.payment_date = paymentDueDate || parsed.issue_date || invoiceRow.issue_date || null;
+      }
+    }
 
     if (parsed.seller_name && !invoiceRow.seller_name) {
       updateData.seller_name = parsed.seller_name;

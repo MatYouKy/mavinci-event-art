@@ -167,7 +167,7 @@ export async function POST(req: Request) {
         const effectivePaymentDate =
           paymentDate ||
           (paymentData.payment_status === 'paid' && (paymentMethod === '1' || paymentMethod === '2')
-            ? issueDate || new Date().toISOString().split('T')[0]
+            ? paymentDueDate || issueDate || new Date().toISOString().split('T')[0]
             : null);
 
         // VAT rate from items
