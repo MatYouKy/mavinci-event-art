@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { X, FileText, Loader, Plus, Trash2, Search, Building, Calendar } from 'lucide-react';
+import { X, FileText, Loader, Plus, Trash2, Search, Building, Building2, Calendar } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import {
@@ -68,6 +68,13 @@ interface OrgOpt {
   name: string;
 }
 
+interface MyCompanyOpt {
+  id: string;
+  name: string;
+  nip: string;
+  is_default: boolean;
+}
+
 type ContextMode = 'event' | 'organization';
 
 const today = () => new Date().toISOString().split('T')[0];
@@ -116,10 +123,31 @@ export default function FinalInvoiceWizardModal({
 
   const [creating, setCreating] = useState(false);
 
+  const [myCompanies, setMyCompanies] = useState<MyCompanyOpt[]>([]);
+  const [manualCompanyId, setManualCompanyId] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from('my_companies')
+        .select('id, name, nip, is_default')
+        .eq('is_active', true)
+        .order('is_default', { ascending: false })
+        .order('name');
+      const list = (data ?? []) as MyCompanyOpt[];
+      setMyCompanies(list);
+      if (!manualCompanyId && list.length > 0) {
+        const def = list.find((c) => c.is_default) || list[0];
+        setManualCompanyId(def.id);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const myCompanyId = useMemo(() => {
-    const sel = candidates.find((c) => selectedIds.has(c.id));
-    return sel?.my_company_id ?? null;
-  }, [candidates, selectedIds]);
+    const fromCandidate = candidates.find((c) => selectedIds.has(c.id))?.my_company_id;
+    return fromCandidate || manualCompanyId;
+  }, [candidates, selectedIds, manualCompanyId]);
 
   useEffect(() => {
     (async () => {
@@ -231,10 +259,13 @@ export default function FinalInvoiceWizardModal({
       if (initialEventId) {
         const { data: ev } = await supabase
           .from('events')
-          .select('name')
+          .select('name, my_company_id')
           .eq('id', initialEventId)
           .maybeSingle();
         setLockedEventName(ev?.name ?? null);
+        if (ev?.my_company_id) {
+          setManualCompanyId(ev.my_company_id);
+        }
 
         const { data: offer } = await supabase
           .from('offers')
@@ -387,7 +418,7 @@ export default function FinalInvoiceWizardModal({
       const result = await createFinalInvoice({
         eventId: mode === 'event' ? eventId : ref.event_id,
         organizationId: mode === 'organization' ? organizationId : ref.organization_id,
-        myCompanyId: ref.my_company_id,
+        myCompanyId: myCompanyId || ref.my_company_id,
         customNumber: useCustomNumber ? customNumber : undefined,
         issueDate,
         saleDate,
@@ -611,6 +642,26 @@ export default function FinalInvoiceWizardModal({
                 </div>
               )}
             </>
+          )}
+
+          {myCompanies.length > 1 && (
+            <div>
+              <label className="mb-2 flex items-center gap-2 text-sm text-[#e5e4e2]/60">
+                <Building2 className="h-4 w-4 text-[#d3bb73]" />
+                Firma wystawiajaca fakture
+              </label>
+              <select
+                value={manualCompanyId || ''}
+                onChange={(e) => setManualCompanyId(e.target.value || null)}
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+              >
+                {myCompanies.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} (NIP: {c.nip}){c.is_default ? ' *' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
 
           <div>

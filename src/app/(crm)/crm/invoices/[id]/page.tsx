@@ -761,7 +761,13 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
       });
     }
 
-    if (invoice?.status === 'draft' && !invoice?.is_proforma) {
+    const canSendToKSeF =
+      !invoice?.is_proforma &&
+      invoice?.status !== 'cancelled' &&
+      !invoice?.buyer_is_private_person &&
+      (!invoice?.ksef_status || invoice.ksef_status === 'rejected');
+
+    if (canSendToKSeF) {
       nextActions.push({
         label: 'Wyslij do KSeF',
         icon: <Send className="h-4 w-4" />,
