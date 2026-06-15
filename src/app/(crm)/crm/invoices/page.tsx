@@ -563,9 +563,12 @@ export default function InvoicesPage() {
     sortDirection,
   ]);
 
-  const totalNet = filteredInvoices.reduce((sum, inv) => sum + Number(inv.total_net), 0);
-  const totalGross = filteredInvoices.reduce((sum, inv) => sum + Number(inv.total_gross), 0);
-  const paidAmount = filteredInvoices
+  const summaryInvoices = filteredInvoices.filter(
+    (inv) => inv.invoice_type !== 'proforma' && inv.invoice_type !== 'advance'
+  );
+  const totalNet = summaryInvoices.reduce((sum, inv) => sum + Number(inv.total_net), 0);
+  const totalGross = summaryInvoices.reduce((sum, inv) => sum + Number(inv.total_gross), 0);
+  const paidAmount = summaryInvoices
     .filter((inv) => inv.status === 'paid')
     .reduce((sum, inv) => sum + Number(inv.total_gross), 0);
 
