@@ -19,6 +19,7 @@ import {
   User,
   Table2,
   AlertCircle,
+  PencilLine,
 } from 'lucide-react';
 import EventWizard from '@/components/crm/EventWizard';
 import { supabase } from '@/lib/supabase/browser';
@@ -32,6 +33,7 @@ import { EventCategoryRow, EventRow } from '@/lib/CRM/events/eventsData.server';
 import { IEmployee } from '../employees/type';
 import { hasScope } from './[id]/helpers/hasScope';
 import FullScreenLoader from '@/components/UI/Loader/CustomModalLoader';
+import { eventStatusLabels } from './[id]/components/tabs/EventsDetailsTab/EventDetailsAction';
 
 const moveKey = (arr: EventsTableColKey[], from: EventsTableColKey, to: EventsTableColKey) => {
   const a = [...arr];
@@ -101,7 +103,7 @@ const getMapsHref = (loc?: any, fallback?: string) => {
   return q ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}` : null;
 };
 
-const statusColors: Record<string, string> = {
+export const statusColors: Record<string, string> = {
   offer_sent: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
   offer_accepted: 'bg-green-500/20 text-green-400 border-green-500/30',
   in_preparation: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
@@ -111,10 +113,11 @@ const statusColors: Record<string, string> = {
   offer_to_send: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
   inquiry: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
   cancelled: 'bg-red-500/20 text-red-400 border-red-500/30',
+  settled: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
   ready_for_live: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
 };
 
-const SETTLED_STATUSES = new Set(['invoiced', 'cancelled']);
+const SETTLED_STATUSES = new Set(['settled', 'cancelled']);
 
 type PastUrgency = 'red' | 'orange' | null;
 
@@ -149,16 +152,16 @@ type EventsTableColKey =
   | 'budget'
   | 'actions';
 
-const DEFAULT_EVENTS_COL_WIDTHS: Record<EventsTableColKey, number> = {
-  name: 280,
-  client: 220,
-  date: 140,
-  location: 320,
-  status: 170,
-  category: 180,
-  budget: 140,
-  actions: 120,
-};
+  const DEFAULT_EVENTS_COL_WIDTHS: Record<EventsTableColKey, number> = {
+    name: 400,
+    client: 180,
+    date: 110,
+    location: 220,
+    status: 140,
+    category: 130,
+    budget: 110,
+    actions: 150,
+  };
 
 const DEFAULT_COL_ORDER: EventsTableColKey[] = [
   'name',
@@ -318,6 +321,11 @@ export default function EventsPageClient({
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [eventToDelete, setEventToDelete] = useState<any>(null);
 
+  const [statusModalOpen, setStatusModalOpen] = useState(false);
+  const [eventToChangeStatus, setEventToChangeStatus] = useState<any>(null);
+  const [draftStatus, setDraftStatus] = useState<string>('inquiry');
+  const [savingStatus, setSavingStatus] = useState(false);
+
   const [openingEvent, setOpeningEvent] = useState(false);
   const [openingEventName, setOpeningEventName] = useState('');
 
@@ -353,10 +361,6 @@ export default function EventsPageClient({
     hasScope('events_manage', currentEmployee) ||
     currentEmployee.role === 'admin' ||
     currentEmployee.permissions?.includes('events_create');
-
-  console.log('currentEmployee', currentEmployee.permissions);
-  console.log('canAddNewEvent', canAddNewEvent);
-
   // ---- Table widths from prefs (fallback to defaults)
 
   const [colWidths, setColWidths] = useState<Record<EventsTableColKey, number>>(() => ({
@@ -622,6 +626,42 @@ export default function EventsPageClient({
     }
   };
 
+  const handleStatusClick = (e: React.MouseEvent | null, event: any) => {
+    if (e) e.stopPropagation();
+
+    setEventToChangeStatus(event);
+    setDraftStatus(event.status || 'inquiry');
+    setStatusModalOpen(true);
+  };
+
+  const handleStatusConfirm = async () => {
+    if (!eventToChangeStatus?.id) return;
+
+    try {
+      setSavingStatus(true);
+
+      const { error } = await supabase
+        .from('events')
+        .update({
+          status: draftStatus,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', eventToChangeStatus.id);
+
+      if (error) throw error;
+
+      showSnackbar('Status wydarzenia został zmieniony', 'success');
+      setStatusModalOpen(false);
+      setEventToChangeStatus(null);
+      await fetchEvents();
+    } catch (err: any) {
+      console.error('Error updating event status:', err);
+      showSnackbar(err.message || 'Błąd podczas zmiany statusu', 'error');
+    } finally {
+      setSavingStatus(false);
+    }
+  };
+
   const handleSaveEvent = async (eventData: any) => {
     try {
       const {
@@ -702,8 +742,6 @@ export default function EventsPageClient({
     }
   }, [searchParams, router, showSnackbar]);
 
-  console.log('canViewEventStatus', canViewEventStatus);
-
   const renderCell: Record<EventsTableColKey, (event: any) => React.ReactNode> = {
     name: (event) => (
       <>
@@ -767,11 +805,21 @@ export default function EventsPageClient({
           mobileBreakpoint={2000}
           actions={[
             {
-              label: 'Usuń',
-              onClick: () => handleDeleteClick(null, event),
-              icon: <Trash2 className="h-4 w-4" />,
-              variant: 'danger',
+              label: 'Zmień status',
+              onClick: () => handleStatusClick(null, event),
+              icon: <PencilLine className="h-4 w-4" />,
+              variant: 'default',
             },
+            ...(canDeleteEvents
+              ? [
+                  {
+                    label: 'Usuń',
+                    onClick: () => handleDeleteClick(null, event),
+                    icon: <Trash2 className="h-4 w-4" />,
+                    variant: 'danger' as const,
+                  },
+                ]
+              : []),
           ]}
         />
       ) : null,
@@ -935,6 +983,7 @@ export default function EventsPageClient({
             className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-4 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/50 focus:outline-none"
           >
             <option value="all">Wszystkie statusy</option>
+            <option value="settled">Rozliczony</option>
             <option value="offer_sent">Oferta wysłana</option>
             <option value="offer_accepted">Zaakceptowana</option>
             <option value="in_preparation">Przygotowanie</option>
@@ -1096,6 +1145,7 @@ export default function EventsPageClient({
                   <option value="in_progress">W trakcie</option>
                   <option value="completed">Zakończony</option>
                   <option value="invoiced">Rozliczony</option>
+                  <option value="settled">Rozliczony</option>
                   <option value="offer_to_send">Oferta do wysłania</option>
                   <option value="inquiry">Zapytanie</option>
                   <option value="cancelled">Anulowany</option>
@@ -1177,16 +1227,15 @@ export default function EventsPageClient({
                       budget: 'Budżet',
                       actions: 'Akcje',
                     };
-
                     const minMap: Partial<Record<EventsTableColKey, number>> = {
-                      name: 200,
-                      client: 160,
-                      date: 120,
-                      location: 220,
-                      status: 140,
-                      category: 140,
-                      budget: 120,
-                      actions: 100,
+                      name: 180,
+                      client: 140,
+                      date: 100,
+                      location: 170,
+                      status: 120,
+                      category: 110,
+                      budget: 100,
+                      actions: 140,
                     };
 
                     const align: 'left' | 'right' =
@@ -1256,14 +1305,14 @@ export default function EventsPageClient({
                         if (key === 'status' && !canViewEventStatus) return null;
 
                         const cellClassMap: Record<EventsTableColKey, string> = {
-                          name: 'px-3 py-3',
-                          client: 'px-3 py-3 text-[#e5e4e2]/80',
-                          date: 'px-3 py-3 text-[#e5e4e2]/80',
-                          location: 'px-3 py-3',
-                          status: 'px-3 py-3',
-                          category: 'px-3 py-3 text-[#e5e4e2]/80',
-                          budget: 'px-3 py-3 text-right text-[#e5e4e2]/80',
-                          actions: 'px-3 py-3 text-right',
+                          name: 'px-2 py-2',
+                          client: 'px-2 py-2 text-[#e5e4e2]/80',
+                          date: 'px-2 py-2 text-[#e5e4e2]/80',
+                          location: 'px-2 py-2',
+                          status: 'px-2 py-2',
+                          category: 'px-2 py-2 text-[#e5e4e2]/80',
+                          budget: 'px-2 py-2 text-right text-[#e5e4e2]/80',
+                          actions: 'px-2 py-2 text-right whitespace-nowrap',
                         };
 
                         return (
@@ -1401,6 +1450,12 @@ export default function EventsPageClient({
                                 onClick: () => handleDeleteClick(null, event),
                                 icon: <Trash2 className="h-4 w-4" />,
                                 variant: 'danger',
+                              },
+                              {
+                                label: 'Zmień status',
+                                onClick: () => handleStatusClick(null, event),
+                                icon: <PencilLine className="h-4 w-4" />,
+                                variant: 'default',
                               },
                             ]}
                             disabledBackground
@@ -1591,6 +1646,12 @@ export default function EventsPageClient({
                               icon: <Trash2 className="h-4 w-4" />,
                               variant: 'danger',
                             },
+                            {
+                              label: 'Zmień status',
+                              onClick: () => handleStatusClick(null, event),
+                              icon: <PencilLine className="h-4 w-4" />,
+                              variant: 'default',
+                            },
                           ]}
                           disabledBackground
                         />
@@ -1652,6 +1713,60 @@ export default function EventsPageClient({
         onClose={() => setIsModalOpen(false)}
         onSuccess={fetchEvents}
       />
+
+      <Modal
+        open={statusModalOpen}
+        onClose={() => {
+          if (savingStatus) return;
+          setStatusModalOpen(false);
+          setEventToChangeStatus(null);
+        }}
+        title="Zmień status wydarzenia"
+      >
+        <div className="space-y-6">
+          <div>
+            <p className="mb-2 text-sm text-[#e5e4e2]/70">
+              Event: <strong className="text-[#d3bb73]">{eventToChangeStatus?.name || '—'}</strong>
+            </p>
+
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nowy status</label>
+
+            <select
+              value={draftStatus}
+              onChange={(e) => setDraftStatus(e.target.value)}
+              disabled={savingStatus}
+              className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1117] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:opacity-50"
+            >
+              {Object.entries(eventStatusLabels).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label as string}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 border-t border-[#d3bb73]/20 pt-4">
+            <button
+              onClick={() => {
+                setStatusModalOpen(false);
+                setEventToChangeStatus(null);
+              }}
+              disabled={savingStatus}
+              className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] hover:bg-[#d3bb73]/5 disabled:opacity-50"
+            >
+              Anuluj
+            </button>
+
+            <button
+              onClick={handleStatusConfirm}
+              disabled={savingStatus || draftStatus === eventToChangeStatus?.status}
+              className="rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
+            >
+              {savingStatus ? 'Zapisywanie...' : 'Zapisz status'}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal open={deleteModalOpen} onClose={() => setDeleteModalOpen(false)} title="Usuń event">
         <div className="space-y-6">

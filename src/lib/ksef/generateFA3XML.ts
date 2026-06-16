@@ -80,6 +80,7 @@ export type FA3PreparedInvoice = {
     totalGross: number;
     bankAccount?: string;
     bankName?: string;
+    bankSwiftCode?: string;
     correction?: FA3CorrectionData;
     items: Array<{
       lineNumber: number;
@@ -99,6 +100,11 @@ export type FA3PreparedInvoice = {
 type GenerateFA3XMLOptions = {
   debug?: boolean;
 };
+
+function normalizeSwift(swift?: string | null): string | undefined {
+  const value = (swift || '').replace(/\s+/g, '').toUpperCase();
+  return value || undefined;
+}
 
 function pickFirstNonEmpty(...values: Array<string | null | undefined>): string | undefined {
   for (const value of values) {
@@ -361,10 +367,19 @@ function buildPaymentXml(data: FA3PreparedInvoice): string {
       ${
         data.invoice.bankAccount
           ? `
-      <RachunekBankowy>
-        <NrRB>${escapeXml(data.invoice.bankAccount)}</NrRB>
-        ${data.invoice.bankName ? `<NazwaBanku>${escapeXml(data.invoice.bankName)}</NazwaBanku>` : ''}
-      </RachunekBankowy>`
+<RachunekBankowy>
+  <NrRB>${escapeXml(data.invoice.bankAccount)}</NrRB>
+  ${
+    data.invoice.bankSwiftCode
+      ? `<SWIFT>${escapeXml(data.invoice.bankSwiftCode)}</SWIFT>`
+      : ''
+  }
+  ${
+    data.invoice.bankName
+      ? `<NazwaBanku>${escapeXml(data.invoice.bankName)}</NazwaBanku>`
+      : ''
+  }
+</RachunekBankowy>`
           : ''
       }
     </Platnosc>`;
@@ -580,6 +595,18 @@ export function prepareFA3Invoice(invoice: any, organization: any): FA3PreparedI
       totalGross: Number(invoice?.total_gross || 0),
       bankAccount: normalizeBankAccount(invoice?.bank_account),
       bankName: pickFirstNonEmpty(invoice?.bank_name),
+      bankSwiftCode: normalizeSwift(
+        pickFirstNonEmpty(
+          invoice?.bank_swift_code,
+          invoice?.bankSwiftCode,
+          invoice?.seller_bank_swift_code,
+          invoice?.sellerBankSwiftCode,
+          invoice?.my_company?.bank_swift_code,
+          invoice?.myCompany?.bankSwiftCode,
+          organization?.bank_swift_code,
+          organization?.bankSwiftCode,
+        ),
+      ),
       footerNote: normalizeKsefText(invoice?.footer_note),
       correction:
         invoice?.invoice_type === 'corrective'
@@ -801,9 +828,10 @@ function buildFinalInvoiceItems(
     const valueNet = Number((item.valueNet * ratio).toFixed(2));
     const vatAmount = Number((item.vatAmount * ratio).toFixed(2));
     const valueGross = Number((item.valueGross * ratio).toFixed(2));
-
+  
     return {
       ...item,
+      name: `${item.name} - rozliczenie końcowe po zaliczkach`,
       priceNet: Number((item.priceNet * ratio).toFixed(2)),
       valueNet,
       vatAmount,
@@ -864,12 +892,28 @@ export function generateFA3XML(
   const przyczynaKorektyXml = isCorrectiveType ? buildPrzyczynaKorektyXml(data) : '';
   const typKorektyXml = buildTypKorektyXml(data);
   const finalInvoiceSettlementXml = buildFinalInvoiceSettlementXml(data);
-  const faTotalNet = data.invoice.totalNet;
-  const faTotalVat = data.invoice.totalVat;
-  const faTotalGross = data.invoice.totalGross;
-  const dodatkowyOpisXml = buildDodatkowyOpisXml(data);
+
+  const isFinalSettlementInvoice =
+  data.invoice.type === 'ROZ' && !!data.invoice.settlementSummary;
+
+const faTotalNet = isFinalSettlementInvoice
+  ? data.invoice.settlementSummary!.remainingNet
+  : data.invoice.totalNet;
+
+const faTotalVat = isFinalSettlementInvoice
+  ? data.invoice.settlementSummary!.remainingVat
+  : data.invoice.totalVat;
+
+const faTotalGross = isFinalSettlementInvoice
+  ? data.invoice.settlementSummary!.remainingGross
+  : data.invoice.totalGross;
+
+const invoiceItemsForXml = data.invoice.items;
+
+const dodatkowyOpisXml = buildDodatkowyOpisXml(data);
+
   
-  const invoiceRowsXml = data.invoice.items
+  const invoiceRowsXml = invoiceItemsForXml
   .map(
     (item, index) => `
     <FaWiersz>
@@ -883,6 +927,13 @@ export function generateFA3XML(
     </FaWiersz>`,
   )
   .join('\n');
+
+  const rozliczenieXml = isFinalSettlementInvoice
+  ? `
+    <Rozliczenie>
+      <DoZaplaty>${formatDecimal(faTotalGross)}</DoZaplaty>
+    </Rozliczenie>`
+  : '';
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Faktura xmlns="http://crd.gov.pl/wzor/2025/06/25/13775/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
@@ -930,7 +981,9 @@ export function generateFA3XML(
     ${typKorektyXml}
     ${daneFaKorygowanejXml}
     ${finalInvoiceSettlementXml}
-    ${invoiceRowsXml}${paymentXml}
+    ${invoiceRowsXml}
+    ${rozliczenieXml}
+    ${paymentXml}
   </Fa>
 </Faktura>`;
 

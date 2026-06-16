@@ -53,38 +53,42 @@ export const buildEquipmentChecklistHtml = ({
       .replaceAll('"', '&quot;')
       .replaceAll("'", '&#039;');
 
-  const renderMainLabel = (item: EquipmentItem) => {
-    const brand = item.brand?.trim();
-    const model = item.model?.trim();
-    const name = item.name?.trim();
-
-    const brandModel = brand && model ? `${brand} - ${model}` : brand ? brand : model ? model : '';
-
-    const mainBoldLabel = item.is_kit ? name || '—' : brandModel || name || '—';
-
-    const secondaryName = item.is_kit
-      ? ''
-      : name && name !== mainBoldLabel
-        ? `<em>${esc(name)}</em>`
-        : '';
-
-    const extra = item.cable_length ? ` <span class="muted">(${esc(item.cable_length)}m)</span>` : '';
-
-    return `
-      <div class="bm">${esc(mainBoldLabel)}</div>
-      ${
-        secondaryName || item.is_kit || extra
-          ? `
+      const renderMainLabel = (item: EquipmentItem) => {
+        const brand = item.brand?.trim();
+        const model = item.model?.trim();
+        const name = item.name?.trim();
+      
+        const brandModel = [brand, model].filter(Boolean).join(' - ');
+        const extra = item.cable_length
+          ? ` <span class="muted">(${esc(item.cable_length)}m)</span>`
+          : '';
+      
+        // ZESTAWY zostają jak były
+        if (item.is_kit) {
+          return `
+            <div class="bm">${esc(name || '—')}</div>
             <div class="nm">
-              ${secondaryName}
+              <span class="tag">(ZESTAW)</span>
               ${extra}
-              ${item.is_kit ? ` <span class="tag">(ZESTAW)</span>` : ''}
             </div>
-          `
-          : ''
-      }
-    `;
-  };
+          `;
+        }
+      
+        // POJEDYNCZY SPRZĘT: nazwa pogrubiona, marka/model pod spodem
+        return `
+          <div class="bm">${esc(name || brandModel || '—')}</div>
+          ${
+            brandModel || extra
+              ? `
+                <div class="nm">
+                  ${brandModel ? `<em>${esc(brandModel)}</em>` : ''}
+                  ${extra}
+                </div>
+              `
+              : ''
+          }
+        `;
+      };
 
   const getRowUnits = (item: EquipmentItem) => {
     if (item.is_kit && item.expand_kit_in_checklist && item.kit_items?.length) {

@@ -27,6 +27,7 @@ export interface MyCompany {
   phone: string;
   bank_account?: string;
   bank_name?: string;
+  bank_swift_code?: string;
   vat_bank_account?: string;
   vat_bank_name?: string;
   website?: string;
@@ -376,6 +377,7 @@ function CompanyModal({
     phone: company?.phone || '',
     bank_account: company?.bank_account || '',
     bank_name: company?.bank_name || '',
+    bank_swift_code: company?.bank_swift_code || '',
     vat_bank_account: company?.vat_bank_account || '',
     vat_bank_name: company?.vat_bank_name || '',
     website: company?.website || '',
@@ -720,6 +722,16 @@ function CompanyModal({
                 onChange={(e) => setFormData({ ...formData, vat_bank_name: e.target.value })}
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
                 placeholder="PKO BP"
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="mb-2 block text-sm text-[#e5e4e2]">Kod SWIFT konta bankowego</label>
+              <input
+                type="text"
+                value={formData.bank_swift_code}
+                onChange={(e) => setFormData({ ...formData, bank_swift_code: e.target.value })}
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                placeholder="PKOBPPLPW"
               />
             </div>
 

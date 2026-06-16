@@ -4,44 +4,44 @@
   <Naglowek>
     <KodFormularza kodSystemowy="FA (3)" wersjaSchemy="1-0E">FA</KodFormularza>
     <WariantFormularza>3</WariantFormularza>
-    <DataWytworzeniaFa>2026-06-16T08:14:37.684Z</DataWytworzeniaFa>
+    <DataWytworzeniaFa>2026-06-16T19:28:37.591Z</DataWytworzeniaFa>
     <SystemInfo>Mavinci CRM v1.0</SystemInfo>
   </Naglowek>
   <Podmiot1>
     <DaneIdentyfikacyjne>
-      <NIP>9840217338</NIP>
-      <Nazwa>NASTROJOWO Dominika Kwiatkowska</Nazwa>
+      <NIP>7394011583</NIP>
+      <Nazwa>MAVINCI SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ</Nazwa>
     </DaneIdentyfikacyjne>
     <Adres>
       <KodKraju>PL</KodKraju>
-      <AdresL1>Zagrzewo 24  /14</AdresL1>
-      <AdresL2>13-100 Zagrzewo</AdresL2>
+      <AdresL1>Marcina Kasprzaka 15 /66</AdresL1>
+      <AdresL2>10-057 Olsztyn</AdresL2>
     </Adres>
   </Podmiot1>
   <Podmiot2>
     <DaneIdentyfikacyjne>
-      <NIP>7010389871</NIP>
-      <Nazwa>TARIFA SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ</Nazwa>
+      <NIP>7370003477</NIP>
+      <Nazwa>TYMBARK-MWS SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ</Nazwa>
     </DaneIdentyfikacyjne>
     <Adres>
       <KodKraju>PL</KodKraju>
-      <AdresL1>ALEJE JEROZOLIMSKIE 85/21</AdresL1>
-      <AdresL2>02-001 WARSZAWA</AdresL2>
+      <AdresL1>TYMBARK 156</AdresL1>
+      <AdresL2>34-650 TYMBARK</AdresL2>
     </Adres>
-    <NrKlienta>TARIFA</NrKlienta>
-    <IDNabywcy>TARIFA</IDNabywcy>
+    <NrKlienta>TYMBARK - OLSZTYNEK</NrKlienta>
+    <IDNabywcy>TYMBARK - OLSZTYNEK</IDNabywcy>
     <JST>2</JST>
     <GV>2</GV>
   </Podmiot2>
   <Fa>
     <KodWaluty>PLN</KodWaluty>
     <P_1>2026-06-16</P_1>
-    <P_1M>Zagrzewo</P_1M>
-    <P_2>FKO/1/2026</P_2>
+    <P_1M>Olsztyn</P_1M>
+    <P_2>FKO/5/2026</P_2>
     <P_6>2026-06-16</P_6>
-    <P_13_1>10945.53</P_13_1>
-    <P_14_1>2517.47</P_14_1>
-    <P_15>13463.00</P_15>
+    <P_13_1>11600.00</P_13_1>
+    <P_14_1>2668.00</P_14_1>
+    <P_15>14268.00</P_15>
 
     <Adnotacje>
       <P_16>2</P_16>
@@ -63,26 +63,30 @@
 
     <DodatkowyOpis>
       <Klucz>Rozliczenie zaliczek</Klucz>
-      <Wartosc>Rozliczono faktury zaliczkowe: ZAL/2/2026 (5000.00 PLN brutto). Do dopłaty: 8463.00 PLN brutto.</Wartosc>
+      <Wartosc>Rozliczono faktury zaliczkowe: ZAL/4/2026 (21402.00 PLN brutto). Do dopłaty: 14268.00 PLN brutto.</Wartosc>
     </DodatkowyOpis>
 
 
 
 
     <FakturaZaliczkowa>
-      <NrKSeFZN>1</NrKSeFZN>
-      <NrFaZaliczkowej>ZAL/2/2026</NrFaZaliczkowej>
+      <NrKSeFFaZaliczkowej>7394011583-20260611-550D73000009-77</NrKSeFFaZaliczkowej>
     </FakturaZaliczkowa>
 
     <FaWiersz>
       <NrWierszaFa>1</NrWierszaFa>
-      <P_7>Wynajem Dekoracji</P_7>
+      <P_7>Obsługa integracji firmowej</P_7>
       <P_8A>szt.</P_8A>
       <P_8B>1.00</P_8B>
-      <P_9A>10945.53</P_9A>
-      <P_11>10945.53</P_11>
+      <P_9A>29000.00</P_9A>
+      <P_11>29000.00</P_11>
       <P_12>23</P_12>
     </FaWiersz>
+
+    <Rozliczenie>
+      <DoZaplaty>14268.00</DoZaplaty>
+    </Rozliczenie>
+
     <Platnosc>
 
       <TerminPlatnosci>
@@ -92,7 +96,7 @@
       <FormaPlatnosci>6</FormaPlatnosci>
 
       <RachunekBankowy>
-        <NrRB>80102036130000600201732221</NrRB>
+        <NrRB>12102035410000550204086815</NrRB>
         <NazwaBanku>PKO BP</NazwaBanku>
       </RachunekBankowy>
     </Platnosc>

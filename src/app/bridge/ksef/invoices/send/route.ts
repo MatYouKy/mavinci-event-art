@@ -526,7 +526,13 @@ const normalizedInvoiceForXml = {
       : Number(invoice.paid_amount ?? 0),
 };
 
+console.log('organization bank swift:', organization?.bank_swift_code, organization?.bankSwiftCode);
+
+console.log('invoice bank swift:', invoice?.bank_swift_code, invoice?.bankSwiftCode);
+
         const preparedInvoice = prepareFA3Invoice(normalizedInvoiceForXml, organization);
+
+        console.log('prepared bank swift:', preparedInvoice.invoice.bankSwiftCode);
         const validation = validatePreparedFA3Invoice(preparedInvoice);
 
         if (!validation.valid) {

@@ -47,6 +47,7 @@ export interface CreateFinalInvoiceOptions {
   sellerData?: Record<string, any> | null;
   paymentMethod?: string | null;
   bankAccount?: string | null;
+  bankSwiftCode?: string | null;
   issuePlace?: string | null;
   notes?: string | null;
 }
@@ -216,6 +217,7 @@ export async function createFinalInvoice(opts: CreateFinalInvoiceOptions): Promi
       payment_method: opts.paymentMethod ?? null,
       bank_account: opts.bankAccount ?? null,
       bank_name: opts.bankName ?? null,
+      bank_swift_code: opts.bankSwiftCode ?? null,
       issue_place: opts.issuePlace ?? null,
       notes: finalNotes || null,
       internal_notes: internalMarker,

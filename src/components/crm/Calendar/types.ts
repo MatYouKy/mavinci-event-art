@@ -25,6 +25,7 @@ export type EventStatus =
   | 'in_progress'
   | 'completed'
   | 'cancelled'
+  | 'settled'
   | 'invoiced';
 
 export interface EquipmentBooking {

@@ -15,6 +15,7 @@ import {
   Printer,
   Mail,
   X,
+  CircleDollarSign,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -36,6 +37,7 @@ export const eventStatusLabels: Record<EventStatus, string> = {
   completed: 'Zrealizowany',
   cancelled: 'Anulowany',
   invoiced: 'Zafakturowany',
+  settled: 'Rozliczony',
 };
 
 export const statusBadgeClasses: Record<EventStatus, string> = {
@@ -49,6 +51,7 @@ export const statusBadgeClasses: Record<EventStatus, string> = {
   completed: 'bg-green-500/10 text-green-300 border-green-500/20',
   cancelled: 'bg-red-500/10 text-red-300 border-red-500/20',
   invoiced: 'bg-[#d3bb73]/10 text-[#d3bb73] border-[#d3bb73]/20',
+  settled: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20',
 };
 
 const statusIcon = (s: EventStatus) => {
@@ -70,6 +73,8 @@ const statusIcon = (s: EventStatus) => {
       return <CheckCircle2 className="h-4 w-4" />;
     case 'cancelled':
       return <XCircle className="h-4 w-4" />;
+    case 'settled':
+      return <CircleDollarSign className="h-4 w-4" />;
     case 'invoiced':
       return <Receipt className="h-4 w-4" />;
     default:

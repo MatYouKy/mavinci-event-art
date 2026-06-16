@@ -82,8 +82,8 @@ const KitItemRow = ({
             <NextImage
               src={thumb}
               alt={name}
-              width={100}
-              height={100}
+              width={300}
+              height={300}
               className="h-auto cursor-pointer rounded-lg object-contain transition-all"
             />
           }

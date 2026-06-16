@@ -61,7 +61,10 @@ interface CandidateInvoice {
   event?: { name: string | null } | null;
   organization?: { id: string; name: string } | null;
   invoice_items?: {
+    id?: string;
+    invoice_id?: string;
     name: string;
+    unit?: string | null;
     quantity: number;
     price_net: number;
     vat_rate: number;
@@ -86,6 +89,7 @@ interface MyCompanyOpt {
   is_default: boolean;
   bank_name: string | null;
   bank_account: string | null;
+  bank_swift_code: string | null;
 }
 
 type ContextMode = 'event' | 'organization';
@@ -165,7 +169,7 @@ export default function FinalInvoiceWizardModal({
     (async () => {
       const { data } = await supabase
         .from('my_companies')
-        .select('id, name, nip, is_default, bank_name, bank_account')
+        .select('id, name, nip, is_default, bank_name, bank_account, bank_swift_code')
         .eq('is_active', true)
         .order('is_default', { ascending: false })
         .order('name');
@@ -248,6 +252,7 @@ export default function FinalInvoiceWizardModal({
       seller_name, seller_nip, seller_street, seller_postal_code, seller_city, seller_country,
       invoice_items (
         name,
+        unit,
         quantity,
         price_net,
         vat_rate
@@ -291,27 +296,33 @@ export default function FinalInvoiceWizardModal({
       if (initialEventId) {
         const { data: ev } = await supabase
           .from('events')
-          .select('name, my_company_id')
+          .select('name, my_company_id, budget_net')
           .eq('id', initialEventId)
           .maybeSingle();
-        setLockedEventName(ev?.name ?? null);
-        if (ev?.my_company_id) {
-          setManualCompanyId(ev.my_company_id);
-        }
 
-        const { data: offer } = await supabase
-          .from('offers')
-          .select('subtotal, tax_amount, total_amount')
-          .eq('event_id', initialEventId)
-          .eq('status', 'accepted')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (offer) {
-          const net = Number(offer.subtotal ?? 0);
-          const vat = Number(offer.tax_amount ?? 0);
-          setOfferNet(net);
-          setOfferVatAmount(vat);
+        setLockedEventName(ev?.name ?? null);
+
+        const eventBudgetNet = Number(ev?.budget_net ?? 0);
+
+        if (eventBudgetNet > 0) {
+          setOfferNet(eventBudgetNet);
+          setOfferVatAmount(round2(eventBudgetNet * 0.23));
+        } else {
+          const { data: offer } = await supabase
+            .from('offers')
+            .select('subtotal, tax_amount, total_amount')
+            .eq('event_id', initialEventId)
+            .eq('status', 'accepted')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (offer) {
+            const net = Number(offer.subtotal ?? 0);
+            const vat = Number(offer.tax_amount ?? 0);
+            setOfferNet(net);
+            setOfferVatAmount(vat);
+          }
         }
       }
       if (initialOrganizationId) {
@@ -325,36 +336,62 @@ export default function FinalInvoiceWizardModal({
     })();
   }, [locked, initialEventId, initialOrganizationId]);
 
-  useEffect(() => {
-    if (!locked) return;
-    if (!offerNet && !candidates.length) return;
-
-    const selectedAdvanceNet = round2(
-      candidates.filter((c) => selectedIds.has(c.id)).reduce((s, i) => s + Number(i.total_net), 0),
-    );
-
-    const priceNet = offerNet > 0 ? offerNet : 0;
-    const remainingNet = round2(offerNet - selectedAdvanceNet);
-    const firstSelected = candidates.find((c) => selectedIds.has(c.id));
-
-    const sourceItemName =
-      firstSelected?.invoice_items?.[0]?.name || 'Rozliczenie usługi zgodnie z umową';
-
-    setItems([
-      {
-        name: remainingNet > 0 ? sourceItemName : `Rozliczenie końcowe: ${sourceItemName}`,
-        unit: 'szt.',
-        quantity: 1,
-        price_net: priceNet,
-        vat_rate: 23,
-      },
-    ]);
-  }, [locked, offerNet, candidates, selectedIds]);
-
   const selectedInvoices = useMemo(
     () => candidates.filter((c) => selectedIds.has(c.id)),
     [candidates, selectedIds],
   );
+
+  const selectedInvoiceKey = useMemo(
+    () => selectedInvoices.map((i) => i.id).sort().join('|'),
+    [selectedInvoices],
+  );
+
+  useEffect(() => {
+    if (!locked) return;
+    if (!selectedInvoices.length) return;
+  
+    const firstSelected = selectedInvoices[0];
+    const sourceItems = firstSelected.invoice_items ?? [];
+  
+    setEditingValues({});
+  
+    if (!sourceItems.length) {
+      setItems([
+        {
+          name: firstSelected.invoice_number
+            ? `Rozliczenie końcowe do ${firstSelected.invoice_number}`
+            : 'Rozliczenie usługi zgodnie z umową',
+          unit: 'szt.',
+          quantity: 1,
+          price_net: offerNet > 0 ? offerNet : 0,
+          vat_rate: 23,
+        },
+      ]);
+      return;
+    }
+  
+    const sourceTotalNet = round2(
+      sourceItems.reduce(
+        (sum, item) => sum + Number(item.quantity || 0) * Number(item.price_net || 0),
+        0,
+      ),
+    );
+  
+    const targetTotalNet = offerNet > 0 ? offerNet : sourceTotalNet;
+    const multiplier = sourceTotalNet > 0 ? targetTotalNet / sourceTotalNet : 1;
+  
+    setItems(
+      sourceItems.map((item) => ({
+        name: item.name || 'Rozliczenie usługi zgodnie z umową',
+        unit: item.unit || 'szt.',
+        quantity: Number(item.quantity || 1),
+        price_net: round2(Number(item.price_net || 0) * multiplier),
+        vat_rate: Number(item.vat_rate || 23),
+      })),
+    );
+  }, [locked, selectedInvoiceKey, offerNet]);
+
+  
 
   useEffect(() => {
     if (companyTouched) return;
@@ -516,6 +553,7 @@ export default function FinalInvoiceWizardModal({
 
         bankName: selectedCompany?.bank_name ?? ref.bank_name ?? null,
         bankAccount: selectedCompany?.bank_account ?? ref.bank_account ?? null,
+        bankSwiftCode: selectedCompany?.bank_swift_code ?? null,
 
         settledInvoices: settledRefs,
         buyerData: {
