@@ -31,6 +31,8 @@ import {
   debugFA3PreparedInvoice,
 } from '../../../../../lib/ksef/generateFA3XML';
 
+const DEBUG_XML_ONLY = process.env.NODE_ENV !== 'production';
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
@@ -505,7 +507,26 @@ export async function POST(request: NextRequest) {
           ? await enrichFinalInvoiceSettledInvoicesWithKsefNumbers(supabase, invoice)
           : invoice;
 
-        const preparedInvoice = prepareFA3Invoice(invoiceForXml, organization);
+          const normalizedPaymentDate =
+  invoice.paid_at
+    ? String(invoice.paid_at).split('T')[0]
+    : invoice.payment_date
+      ? String(invoice.payment_date).split('T')[0]
+      : invoice.payment_status === 'paid'
+        ? String(invoice.payment_due_date || invoice.issue_date).split('T')[0]
+        : null;
+
+const normalizedInvoiceForXml = {
+  ...invoiceForXml,
+  payment_date: normalizedPaymentDate,
+  paid_at: invoice.paid_at,
+  paid_amount:
+    invoice.payment_status === 'paid'
+      ? Number(invoice.paid_amount ?? invoice.total_gross ?? 0)
+      : Number(invoice.paid_amount ?? 0),
+};
+
+        const preparedInvoice = prepareFA3Invoice(normalizedInvoiceForXml, organization);
         const validation = validatePreparedFA3Invoice(preparedInvoice);
 
         if (!validation.valid) {
@@ -524,8 +545,17 @@ export async function POST(request: NextRequest) {
 
         const xmlContent = generateFA3XML(preparedInvoice, { debug: true });
 
-        emitProgress('xml', 'completed');
 
+        if (DEBUG_XML_ONLY) {        
+          emitResult({
+            success: true,
+            xmlContent,
+            preparedInvoice,
+          });
+          controller.close();
+          return;
+        }
+        emitProgress('xml', 'completed');
         // Auth
         currentStep = 'auth';
         emitProgress('auth', 'active', { message: 'Sprawdzanie aktywnej autoryzacji KSeF' });

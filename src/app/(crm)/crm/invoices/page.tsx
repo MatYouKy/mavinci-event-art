@@ -293,6 +293,14 @@ export default function InvoicesPage() {
   const canManageInvoices = useMemo(() => canManageModule('invoices'), [canManageModule]);
 
   const handleDeleteInvoice = async (invoice: Invoice) => {
+    if (invoice.ksef_status === 'accepted') {
+      showSnackbar(
+        `Nie można usunąć faktury ${invoice.invoice_number}, ponieważ została już wysłana do KSeF.`,
+        'error',
+      );
+      return;
+    }
+
     if (!isAdmin && canManageInvoices) {
       const confirmed = await showConfirm({
         title: 'Wymagane potwierdzenie administratora',
@@ -312,14 +320,17 @@ export default function InvoicesPage() {
     }
 
     try {
-      const { error } = await supabase.from('invoices').delete().eq('id', invoice.id);
-
+      const { error } = await supabase.rpc('delete_local_invoice_and_repair_numbering', {
+        p_invoice_id: invoice.id,
+      });
+      
       if (error) throw error;
-      showSnackbar('Faktura zostala usunieta', 'success');
+
+      showSnackbar('Faktura została usunięta', 'success');
       fetchInvoices();
     } catch (err) {
       console.error('Error deleting invoice:', err);
-      showSnackbar('Blad podczas usuwania faktury', 'error');
+      showSnackbar('Błąd podczas usuwania faktury', 'error');
     }
   };
 
@@ -564,7 +575,7 @@ export default function InvoicesPage() {
   ]);
 
   const summaryInvoices = filteredInvoices.filter(
-    (inv) => inv.invoice_type !== 'proforma' && inv.invoice_type !== 'advance'
+    (inv) => inv.invoice_type !== 'proforma' && inv.invoice_type !== 'advance',
   );
   const totalNet = summaryInvoices.reduce((sum, inv) => sum + Number(inv.total_net), 0);
   const totalGross = summaryInvoices.reduce((sum, inv) => sum + Number(inv.total_gross), 0);
@@ -624,12 +635,16 @@ export default function InvoicesPage() {
                             : 'text-[#e5e4e2]/70 hover:bg-[#e5e4e2]/5'
                         }`}
                       >
-                        <div className={`flex h-4 w-4 items-center justify-center rounded border ${
-                          selectedCompanyIds.size === 0
-                            ? 'border-[#d3bb73] bg-[#d3bb73]'
-                            : 'border-[#e5e4e2]/30'
-                        }`}>
-                          {selectedCompanyIds.size === 0 && <Check className="h-3 w-3 text-[#1c1f33]" />}
+                        <div
+                          className={`flex h-4 w-4 items-center justify-center rounded border ${
+                            selectedCompanyIds.size === 0
+                              ? 'border-[#d3bb73] bg-[#d3bb73]'
+                              : 'border-[#e5e4e2]/30'
+                          }`}
+                        >
+                          {selectedCompanyIds.size === 0 && (
+                            <Check className="h-3 w-3 text-[#1c1f33]" />
+                          )}
                         </div>
                         Wszystkie firmy
                       </button>
@@ -656,11 +671,11 @@ export default function InvoicesPage() {
                                 : 'text-[#e5e4e2]/70 hover:bg-[#e5e4e2]/5'
                             }`}
                           >
-                            <div className={`flex h-4 w-4 items-center justify-center rounded border ${
-                              isChecked
-                                ? 'border-[#d3bb73] bg-[#d3bb73]'
-                                : 'border-[#e5e4e2]/30'
-                            }`}>
+                            <div
+                              className={`flex h-4 w-4 items-center justify-center rounded border ${
+                                isChecked ? 'border-[#d3bb73] bg-[#d3bb73]' : 'border-[#e5e4e2]/30'
+                              }`}
+                            >
                               {isChecked && <Check className="h-3 w-3 text-[#1c1f33]" />}
                             </div>
                             {company.name}
@@ -727,9 +742,13 @@ export default function InvoicesPage() {
           </div>
 
           {activeTab === 'dashboard' ? (
-            <KSeFFinancialDashboard filterCompanyIds={selectedCompanyIds.size > 0 ? Array.from(selectedCompanyIds) : null} />
+            <KSeFFinancialDashboard
+              filterCompanyIds={selectedCompanyIds.size > 0 ? Array.from(selectedCompanyIds) : null}
+            />
           ) : activeTab === 'ksef' ? (
-            <KSeFIntegrationPanel filterCompanyIds={selectedCompanyIds.size > 0 ? Array.from(selectedCompanyIds) : null} />
+            <KSeFIntegrationPanel
+              filterCompanyIds={selectedCompanyIds.size > 0 ? Array.from(selectedCompanyIds) : null}
+            />
           ) : activeTab === 'settings' ? (
             <InvoiceSettingsTab />
           ) : (
@@ -931,56 +950,56 @@ export default function InvoicesPage() {
                         <tr>
                           <th
                             onClick={() => handleSort('invoice_number')}
-                            className="cursor-pointer px-6 py-4 text-left text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60 transition-colors hover:text-[#d3bb73]"
+                            className="cursor-pointer px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60 transition-colors hover:text-[#d3bb73]"
                           >
                             Numer {getSortIcon('invoice_number')}
                           </th>
                           <th
                             onClick={() => handleSort('invoice_type')}
-                            className="cursor-pointer px-6 py-4 text-left text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60 transition-colors hover:text-[#d3bb73]"
+                            className="cursor-pointer px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60 transition-colors hover:text-[#d3bb73]"
                           >
                             Typ
                           </th>
                           <th
                             onClick={() => handleSort('buyer_name')}
-                            className="px-6 py-4 text-left text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60"
+                            className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60"
                           >
                             Nabywca
                           </th>
-                          <th className="hidden px-6 py-4 text-left text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60 lg:table-cell">
+                          <th className="hidden px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60 lg:table-cell">
                             Firma
                           </th>
                           <th
                             onClick={() => handleSort('issue_date')}
-                            className="px-6 py-4 text-left text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60"
+                            className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60"
                           >
                             Data wystawienia
                           </th>
                           <th
                             onClick={() => handleSort('payment_due_date')}
-                            className="px-6 py-4 text-left text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60"
+                            className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60"
                           >
                             Termin platnosci
                           </th>
                           <th
                             onClick={() => handleSort('total_net')}
-                            className="px-6 py-4 text-right text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60"
+                            className="px-3 py-2 text-right text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60"
                           >
                             Netto
                           </th>
                           <th
                             onClick={() => handleSort('total_gross')}
-                            className="px-6 py-4 text-right text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60"
+                            className="px-3 py-2 text-right text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60"
                           >
                             Brutto
                           </th>
                           <th
                             onClick={() => handleSort('status')}
-                            className="px-6 py-4 text-left text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60"
+                            className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60"
                           >
                             Status
                           </th>
-                          <th className="px-6 py-4 text-right text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
+                          <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
                             Akcje
                           </th>
                         </tr>
@@ -992,7 +1011,7 @@ export default function InvoicesPage() {
                             className={`cursor-pointer transition-colors ${getRowColor(invoice)}`}
                             onClick={() => router.push(`/crm/invoices/${invoice.id}`)}
                           >
-                            <td className="whitespace-nowrap px-6 py-3.5">
+                            <td className="whitespace-nowrap px-4 py-3.5">
                               <div className="font-medium text-[#e5e4e2]">
                                 {invoice.invoice_number}
                               </div>
@@ -1002,10 +1021,10 @@ export default function InvoicesPage() {
                                 </div>
                               )}
                             </td>
-                            <td className="whitespace-nowrap px-6 py-3.5">
+                            <td className="whitespace-nowrap px-3 py-3.5">
                               {getTypeBadge(invoice.invoice_type)}
                             </td>
-                            <td className="px-6 py-3.5">
+                            <td className="px-3 py-3.5">
                               <div className="max-w-[200px] truncate text-[#e5e4e2]">
                                 {invoice.buyer_name}
                               </div>
@@ -1043,7 +1062,7 @@ export default function InvoicesPage() {
                                 zl
                               </div>
                             </td>
-                            <td className="whitespace-nowrap px-6 py-3.5">
+                            <td className="whitespace-nowrap px-3 py-3.5">
                               <div className="flex items-center gap-2">
                                 {getStatusBadge(invoice.status)}
                                 {invoice.ksef_status && (

@@ -4,10 +4,9 @@
   <Naglowek>
     <KodFormularza kodSystemowy="FA (3)" wersjaSchemy="1-0E">FA</KodFormularza>
     <WariantFormularza>3</WariantFormularza>
-    <DataWytworzeniaFa>2026-06-01T19:34:04.122Z</DataWytworzeniaFa>
+    <DataWytworzeniaFa>2026-06-16T08:14:37.684Z</DataWytworzeniaFa>
     <SystemInfo>Mavinci CRM v1.0</SystemInfo>
   </Naglowek>
-
   <Podmiot1>
     <DaneIdentyfikacyjne>
       <NIP>9840217338</NIP>
@@ -18,41 +17,31 @@
       <AdresL1>Zagrzewo 24  /14</AdresL1>
       <AdresL2>13-100 Zagrzewo</AdresL2>
     </Adres>
-    <DaneKontaktowe>
-      <Email>kontakt@nastrojowo.pl</Email>
-      <Telefon>+48 697682721</Telefon>
-    </DaneKontaktowe>
   </Podmiot1>
-
   <Podmiot2>
     <DaneIdentyfikacyjne>
-      <NIP>7394011583</NIP>
-      <Nazwa>MAVINCI SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ</Nazwa>
+      <NIP>7010389871</NIP>
+      <Nazwa>TARIFA SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ</Nazwa>
     </DaneIdentyfikacyjne>
     <Adres>
       <KodKraju>PL</KodKraju>
-      <AdresL1>MARCINA KASPRZAKA 15/66</AdresL1>
-      <AdresL2>10-057 OLSZTYN</AdresL2>
+      <AdresL1>ALEJE JEROZOLIMSKIE 85/21</AdresL1>
+      <AdresL2>02-001 WARSZAWA</AdresL2>
     </Adres>
-    <DaneKontaktowe>
-      <Email>finanse@mavinci.pl</Email>
-      <Telefon>698212279</Telefon>
-    </DaneKontaktowe>
-    <NrKlienta>MAVINCI</NrKlienta>
-    <IDNabywcy>MAVINCI</IDNabywcy>
+    <NrKlienta>TARIFA</NrKlienta>
+    <IDNabywcy>TARIFA</IDNabywcy>
     <JST>2</JST>
     <GV>2</GV>
   </Podmiot2>
-
   <Fa>
     <KodWaluty>PLN</KodWaluty>
-    <P_1>2026-06-01</P_1>
+    <P_1>2026-06-16</P_1>
     <P_1M>Zagrzewo</P_1M>
-    <P_2>4/2026</P_2>
-    <P_6>2026-06-01</P_6>
-    <P_13_1>200.00</P_13_1>
-    <P_14_1>46.00</P_14_1>
-    <P_15>246.00</P_15>
+    <P_2>FKO/1/2026</P_2>
+    <P_6>2026-06-16</P_6>
+    <P_13_1>10945.53</P_13_1>
+    <P_14_1>2517.47</P_14_1>
+    <P_15>13463.00</P_15>
 
     <Adnotacje>
       <P_16>2</P_16>
@@ -70,31 +59,36 @@
         <P_PMarzyN>1</P_PMarzyN>
       </PMarzy>
     </Adnotacje>
-    <RodzajFaktury>VAT</RodzajFaktury>
+    <RodzajFaktury>ROZ</RodzajFaktury>
 
     <DodatkowyOpis>
-      <Klucz>Adnotacje</Klucz>
-      <Wartosc>Błędna numeracja</Wartosc>
+      <Klucz>Rozliczenie zaliczek</Klucz>
+      <Wartosc>Rozliczono faktury zaliczkowe: ZAL/2/2026 (5000.00 PLN brutto). Do dopłaty: 8463.00 PLN brutto.</Wartosc>
     </DodatkowyOpis>
 
 
 
 
+    <FakturaZaliczkowa>
+      <NrKSeFZN>1</NrKSeFZN>
+      <NrFaZaliczkowej>ZAL/2/2026</NrFaZaliczkowej>
+    </FakturaZaliczkowa>
 
     <FaWiersz>
       <NrWierszaFa>1</NrWierszaFa>
-      <P_7>Wynajem sprzętu</P_7>
+      <P_7>Wynajem Dekoracji</P_7>
       <P_8A>szt.</P_8A>
       <P_8B>1.00</P_8B>
-      <P_9A>200.00</P_9A>
-      <P_11>200.00</P_11>
+      <P_9A>10945.53</P_9A>
+      <P_11>10945.53</P_11>
       <P_12>23</P_12>
     </FaWiersz>
     <Platnosc>
 
       <TerminPlatnosci>
-        <Termin>2026-06-08</Termin>
+        <Termin>2026-06-30</Termin>
       </TerminPlatnosci>
+
       <FormaPlatnosci>6</FormaPlatnosci>
 
       <RachunekBankowy>

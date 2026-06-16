@@ -824,7 +824,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   }
 
   const paymentStatus = invoice.payment_status || (invoice.status === 'paid' ? 'paid' : 'unpaid');
-  const paidAmount = Number(invoice.paid_amount ?? 0);
+
 
   const previewSettlementSummary =
     invoice.settlement_summary ?? finalSettlementPreview?.settlementSummary;
@@ -893,9 +893,13 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
   //   if (!number) return '0';
   //   return `${number > 0 ? '+' : ''}${number}`;
   // };
-  const amountToPay =
+  const paidAmount = Number(invoice.paid_amount ?? 0);
+
+  const amountToDisplay =
     paymentStatus === 'paid'
-      ? 0
+      ? paidAmount > 0
+        ? paidAmount
+        : previewAmountToPay
       : paymentStatus === 'partial'
         ? Math.max(previewAmountToPay - paidAmount, 0)
         : previewAmountToPay;
@@ -1745,7 +1749,7 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
                           ? 'Pozostało do zapłaty:'
                           : 'Do zapłaty:'}
                   </span>{' '}
-                  <span className="text-base font-bold">{amountToPay.toFixed(2)} PLN</span>
+                  <span className="text-base font-bold">{amountToDisplay.toFixed(2)} PLN</span>
                 </div>
               </div>
             </div>

@@ -1,7 +1,17 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { X, FileText, Loader, Plus, Trash2, Search, Building, Building2, Calendar } from 'lucide-react';
+import {
+  X,
+  FileText,
+  Loader,
+  Plus,
+  Trash2,
+  Search,
+  Building,
+  Building2,
+  Calendar,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import {
@@ -39,6 +49,7 @@ interface CandidateInvoice {
   buyer_contact_person: string | null;
   payment_method: string | null;
   bank_account: string | null;
+  bank_name: string | null;
   issue_place: string | null;
   my_company_id: string | null;
   seller_name: string | null;
@@ -73,9 +84,30 @@ interface MyCompanyOpt {
   name: string;
   nip: string;
   is_default: boolean;
+  bank_name: string | null;
+  bank_account: string | null;
 }
 
 type ContextMode = 'event' | 'organization';
+
+const normalizeDecimalInput = (value: string) => {
+  return value
+    .replace(/[^\d,.-]/g, '')
+    .replace('.', ',')
+    .replace(/(,.*),/g, '$1');
+};
+
+const parseDecimalInput = (value: string) => {
+  const normalized = value.replace(',', '.');
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const formatDecimalInput = (value: number) => {
+  return Number(value || 0)
+    .toFixed(2)
+    .replace('.', ',');
+};
 
 const today = () => new Date().toISOString().split('T')[0];
 const plus14 = () => {
@@ -122,6 +154,9 @@ export default function FinalInvoiceWizardModal({
   ]);
 
   const [creating, setCreating] = useState(false);
+  const [companyTouched, setCompanyTouched] = useState(false);
+
+  const [editingValues, setEditingValues] = useState<Record<string, string>>({});
 
   const [myCompanies, setMyCompanies] = useState<MyCompanyOpt[]>([]);
   const [manualCompanyId, setManualCompanyId] = useState<string | null>(null);
@@ -130,24 +165,19 @@ export default function FinalInvoiceWizardModal({
     (async () => {
       const { data } = await supabase
         .from('my_companies')
-        .select('id, name, nip, is_default')
+        .select('id, name, nip, is_default, bank_name, bank_account')
         .eq('is_active', true)
         .order('is_default', { ascending: false })
         .order('name');
+
       const list = (data ?? []) as MyCompanyOpt[];
       setMyCompanies(list);
-      if (!manualCompanyId && list.length > 0) {
-        const def = list.find((c) => c.is_default) || list[0];
-        setManualCompanyId(def.id);
-      }
     })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const myCompanyId = useMemo(() => {
-    const fromCandidate = candidates.find((c) => selectedIds.has(c.id))?.my_company_id;
-    return fromCandidate || manualCompanyId;
-  }, [candidates, selectedIds, manualCompanyId]);
+    return manualCompanyId || candidates.find((c) => selectedIds.has(c.id))?.my_company_id || null;
+  }, [manualCompanyId, candidates, selectedIds]);
 
   useEffect(() => {
     (async () => {
@@ -165,8 +195,10 @@ export default function FinalInvoiceWizardModal({
           .from('invoices')
           .select('id')
           .eq('invoice_number', data)
+          .eq('my_company_id', myCompanyId)
           .maybeSingle();
-        setAutoPreview(existing ? `${data} (zajete)` : (data as string));
+
+        setAutoPreview(existing ? `${data} (zajęte)` : (data as string));
       }
     })();
   }, [myCompanyId]);
@@ -306,15 +338,11 @@ export default function FinalInvoiceWizardModal({
     const firstSelected = candidates.find((c) => selectedIds.has(c.id));
 
     const sourceItemName =
-      firstSelected?.invoice_items?.[0]?.name ||
-      'Rozliczenie usługi zgodnie z umową';
-    
+      firstSelected?.invoice_items?.[0]?.name || 'Rozliczenie usługi zgodnie z umową';
+
     setItems([
       {
-        name:
-          remainingNet > 0
-            ? sourceItemName
-            : `Rozliczenie końcowe: ${sourceItemName}`,
+        name: remainingNet > 0 ? sourceItemName : `Rozliczenie końcowe: ${sourceItemName}`,
         unit: 'szt.',
         quantity: 1,
         price_net: priceNet,
@@ -327,6 +355,36 @@ export default function FinalInvoiceWizardModal({
     () => candidates.filter((c) => selectedIds.has(c.id)),
     [candidates, selectedIds],
   );
+
+  useEffect(() => {
+    if (companyTouched) return;
+
+    const eventCompanyId = manualCompanyId;
+    if (eventCompanyId) return;
+
+    const companyIdsFromInvoices = Array.from(
+      new Set(candidates.map((c) => c.my_company_id).filter(Boolean)),
+    ) as string[];
+
+    if (companyIdsFromInvoices.length === 1) {
+      setManualCompanyId(companyIdsFromInvoices[0]);
+      return;
+    }
+
+    if (companyIdsFromInvoices.length > 1) {
+      showSnackbar(
+        'Wybrane faktury zaliczkowe pochodzą z różnych firm. Nie można ich rozliczyć jedną fakturą końcową.',
+        'error',
+      );
+      return;
+    }
+
+    const defaultCompany = myCompanies.find((c) => c.is_default) || myCompanies[0];
+
+    if (defaultCompany?.id) {
+      setManualCompanyId(defaultCompany.id);
+    }
+  }, [candidates, myCompanies, companyTouched, manualCompanyId, showSnackbar]);
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -347,6 +405,25 @@ export default function FinalInvoiceWizardModal({
   const updateItem = (idx: number, patch: Partial<FinalInvoiceItemInput>) =>
     setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
 
+  const updateGross = (idx: number, grossValue: number) => {
+    setItems((prev) =>
+      prev.map((it, i) => {
+        if (i !== idx) return it;
+
+        const quantity = Number(it.quantity || 1);
+        const vatRate = Number(it.vat_rate || 0);
+        const gross = Number(grossValue || 0);
+
+        const priceNet = quantity > 0 ? round2(gross / quantity / (1 + vatRate / 100)) : 0;
+
+        return {
+          ...it,
+          price_net: priceNet,
+        };
+      }),
+    );
+  };
+
   const totals = useMemo(() => {
     const net = round2(items.reduce((s, i) => s + i.quantity * i.price_net, 0));
     const vat = round2(
@@ -364,12 +441,12 @@ export default function FinalInvoiceWizardModal({
     () => round2(selectedInvoices.reduce((s, i) => s + Number(i.total_net), 0)),
     [selectedInvoices],
   );
-  
+
   const settledVat = useMemo(
     () => round2(selectedInvoices.reduce((s, i) => s + Number(i.total_vat), 0)),
     [selectedInvoices],
   );
-  
+
   const remainingNet = round2(totals.net - settledNet);
   const remainingVat = round2(totals.vat - settledVat);
   const remainingGross = round2(totals.gross - settledGross);
@@ -377,7 +454,7 @@ export default function FinalInvoiceWizardModal({
 
   const fillItemsFromOffer = () => {
     if (!offerNet) return;
-  
+
     setItems([
       {
         name: 'Rozliczenie usługi zgodnie z umową',
@@ -415,15 +492,31 @@ export default function FinalInvoiceWizardModal({
         invoice_type: i.invoice_type,
       }));
 
+      const uniqueCompanyIds = Array.from(
+        new Set(selectedInvoices.map((i) => i.my_company_id).filter(Boolean)),
+      );
+
+      if (uniqueCompanyIds.length > 1) {
+        showSnackbar('Nie można wystawić faktury końcowej dla zaliczek z różnych firm.', 'error');
+        return;
+      }
+
+      const selectedCompany = myCompanies.find((c) => c.id === myCompanyId);
+
       const result = await createFinalInvoice({
         eventId: mode === 'event' ? eventId : ref.event_id,
         organizationId: mode === 'organization' ? organizationId : ref.organization_id,
         myCompanyId: myCompanyId || ref.my_company_id,
+
         customNumber: useCustomNumber ? customNumber : undefined,
         issueDate,
         saleDate,
         paymentDueDate,
         items,
+
+        bankName: selectedCompany?.bank_name ?? ref.bank_name ?? null,
+        bankAccount: selectedCompany?.bank_account ?? ref.bank_account ?? null,
+
         settledInvoices: settledRefs,
         buyerData: {
           buyer_name: ref.buyer_name,
@@ -445,7 +538,6 @@ export default function FinalInvoiceWizardModal({
           seller_country: ref.seller_country,
         },
         paymentMethod: ref.payment_method,
-        bankAccount: ref.bank_account,
         issuePlace: ref.issue_place,
       });
 
@@ -652,7 +744,10 @@ export default function FinalInvoiceWizardModal({
               </label>
               <select
                 value={manualCompanyId || ''}
-                onChange={(e) => setManualCompanyId(e.target.value || null)}
+                onChange={(e) => {
+                  setCompanyTouched(true);
+                  setManualCompanyId(e.target.value || null);
+                }}
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
               >
                 {myCompanies.map((c) => (
@@ -784,21 +879,48 @@ export default function FinalInvoiceWizardModal({
                             value={it.quantity}
                             min={0}
                             step={0.01}
-                            onChange={(e) =>
-                              updateItem(idx, { quantity: Number(e.target.value) || 0 })
-                            }
+                            onChange={(e) => updateItem(idx, { quantity: Number(e.target.value) })}
                             className="w-full rounded border border-transparent bg-transparent px-2 py-1 text-right text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none"
                           />
                         </td>
                         <td className="px-2 py-1">
                           <input
-                            type="number"
-                            value={it.price_net}
-                            min={0}
-                            step={0.01}
-                            onChange={(e) =>
-                              updateItem(idx, { price_net: Number(e.target.value) || 0 })
+                            type="text"
+                            inputMode="decimal"
+                            value={
+                              editingValues[`net-${idx}`] ?? String(it.price_net).replace('.', ',')
                             }
+                            onChange={(e) => {
+                              const value = normalizeDecimalInput(e.target.value);
+
+                              setEditingValues((prev) => ({
+                                ...prev,
+                                [`net-${idx}`]: value,
+                              }));
+
+                              if (value === '' || value === '-' || value.endsWith(',')) return;
+
+                              updateItem(idx, {
+                                price_net: parseDecimalInput(value),
+                              });
+                            }}
+                            onBlur={() => {
+                              const raw = editingValues[`net-${idx}`];
+
+                              if (raw == null) return;
+
+                              const parsed = parseDecimalInput(raw);
+
+                              updateItem(idx, {
+                                price_net: parsed,
+                              });
+
+                              setEditingValues((prev) => {
+                                const next = { ...prev };
+                                delete next[`net-${idx}`];
+                                return next;
+                              });
+                            }}
                             className="w-full rounded border border-transparent bg-transparent px-2 py-1 text-right text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none"
                           />
                         </td>
@@ -809,21 +931,49 @@ export default function FinalInvoiceWizardModal({
                             min={0}
                             max={100}
                             step={1}
-                            onChange={(e) =>
-                              updateItem(idx, { vat_rate: Number(e.target.value) || 0 })
-                            }
+                            onChange={(e) => updateItem(idx, { vat_rate: Number(e.target.value) })}
                             className="w-full rounded border border-transparent bg-transparent px-2 py-1 text-right text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none"
                           />
                         </td>
-                        <td className="px-2 py-1 text-right text-[#e5e4e2]">
-                          {valueGross.toFixed(2)}
+                        <td className="px-2 py-1">
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={editingValues[`gross-${idx}`] ?? formatDecimalInput(valueGross)}
+                            onChange={(e) => {
+                              const value = normalizeDecimalInput(e.target.value);
+
+                              setEditingValues((prev) => ({
+                                ...prev,
+                                [`gross-${idx}`]: value,
+                              }));
+
+                              if (value === '' || value === '-' || value.endsWith(',')) return;
+
+                              updateGross(idx, parseDecimalInput(value));
+                            }}
+                            onBlur={() => {
+                              const raw = editingValues[`gross-${idx}`];
+
+                              if (raw == null) return;
+
+                              updateGross(idx, parseDecimalInput(raw));
+
+                              setEditingValues((prev) => {
+                                const next = { ...prev };
+                                delete next[`gross-${idx}`];
+                                return next;
+                              });
+                            }}
+                            className="w-full rounded border border-transparent bg-transparent px-2 py-1 text-right text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none"
+                          />
                         </td>
                         <td className="px-2 py-1">
                           <button
                             type="button"
                             onClick={() => removeItem(idx)}
                             disabled={items.length === 1}
-                            className="rounded p-1 text-[#e5e4e2]/40 transition-colors hover:bg-red-500/10 hover:text-red-400 disabled:opacity-30"
+                            className="rounded p-1 text-red-500 transition-colors hover:bg-red-500/10 hover:text-red-400 disabled:opacity-60"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
@@ -837,64 +987,58 @@ export default function FinalInvoiceWizardModal({
           </div>
 
           <div className="overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a]">
-  <table className="w-full text-sm">
-    <thead className="bg-[#1c1f33] text-xs uppercase tracking-wider text-[#e5e4e2]/40">
-      <tr>
-        <th className="px-4 py-3 text-left">Rozliczenie</th>
-        <th className="px-4 py-3 text-right">Netto</th>
-        <th className="px-4 py-3 text-right">VAT</th>
-        <th className="px-4 py-3 text-right">Brutto</th>
-      </tr>
-    </thead>
+            <table className="w-full text-sm">
+              <thead className="bg-[#1c1f33] text-xs uppercase tracking-wider text-[#e5e4e2]/40">
+                <tr>
+                  <th className="px-4 py-3 text-left">Rozliczenie</th>
+                  <th className="px-4 py-3 text-right">Netto</th>
+                  <th className="px-4 py-3 text-right">VAT</th>
+                  <th className="px-4 py-3 text-right">Brutto</th>
+                </tr>
+              </thead>
 
-    <tbody className="divide-y divide-[#d3bb73]/10">
-      <tr>
-        <td className="px-4 py-3 font-medium text-[#e5e4e2]">
-          Wartość faktury końcowej
-        </td>
-        <td className="px-4 py-3 text-right text-[#e5e4e2]">
-          {totals.net.toFixed(2)} PLN
-        </td>
-        <td className="px-4 py-3 text-right text-[#e5e4e2]/70">
-          {totals.vat.toFixed(2)} PLN
-        </td>
-        <td className="px-4 py-3 text-right font-semibold text-[#e5e4e2]">
-          {totals.gross.toFixed(2)} PLN
-        </td>
-      </tr>
+              <tbody className="divide-y divide-[#d3bb73]/10">
+                <tr>
+                  <td className="px-4 py-3 font-medium text-[#e5e4e2]">Wartość faktury końcowej</td>
+                  <td className="px-4 py-3 text-right text-[#e5e4e2]">
+                    {totals.net.toFixed(2)} PLN
+                  </td>
+                  <td className="px-4 py-3 text-right text-[#e5e4e2]/70">
+                    {totals.vat.toFixed(2)} PLN
+                  </td>
+                  <td className="px-4 py-3 text-right font-semibold text-[#e5e4e2]">
+                    {totals.gross.toFixed(2)} PLN
+                  </td>
+                </tr>
 
-      <tr>
-        <td className="px-4 py-3 font-medium text-[#e5e4e2]">
-          Rozliczone zaliczki
-        </td>
-        <td className="px-4 py-3 text-right text-[#e5e4e2]">
-          {settledNet.toFixed(2)} PLN
-        </td>
-        <td className="px-4 py-3 text-right text-[#e5e4e2]/70">
-          {settledVat.toFixed(2)} PLN
-        </td>
-        <td className="px-4 py-3 text-right font-semibold text-[#e5e4e2]">
-          {settledGross.toFixed(2)} PLN
-        </td>
-      </tr>
+                <tr>
+                  <td className="px-4 py-3 font-medium text-[#e5e4e2]">Rozliczone zaliczki</td>
+                  <td className="px-4 py-3 text-right text-[#e5e4e2]">
+                    {settledNet.toFixed(2)} PLN
+                  </td>
+                  <td className="px-4 py-3 text-right text-[#e5e4e2]/70">
+                    {settledVat.toFixed(2)} PLN
+                  </td>
+                  <td className="px-4 py-3 text-right font-semibold text-[#e5e4e2]">
+                    {settledGross.toFixed(2)} PLN
+                  </td>
+                </tr>
 
-      <tr className="bg-[#d3bb73]/5">
-        <td className="px-4 py-4 font-semibold text-[#d3bb73]">
-          Do dopłaty
-        </td>
-        <td className="px-4 py-4 text-right font-semibold text-[#d3bb73]">
-          {remainingNet.toFixed(2)} PLN
-        </td>
-        <td className="px-4 py-4 text-right font-semibold text-[#d3bb73]">
-          {remainingVat.toFixed(2)} PLN
-        </td>
-        <td className="px-4 py-4 text-right text-lg font-bold text-[#d3bb73]">
-          {remainingGross.toFixed(2)} PLN
-        </td>
-      </tr>
-    </tbody>
-  </table>
-</div>
+                <tr className="bg-[#d3bb73]/5">
+                  <td className="px-4 py-4 font-semibold text-[#d3bb73]">Do dopłaty</td>
+                  <td className="px-4 py-4 text-right font-semibold text-[#d3bb73]">
+                    {remainingNet.toFixed(2)} PLN
+                  </td>
+                  <td className="px-4 py-4 text-right font-semibold text-[#d3bb73]">
+                    {remainingVat.toFixed(2)} PLN
+                  </td>
+                  <td className="px-4 py-4 text-right text-lg font-bold text-[#d3bb73]">
+                    {remainingGross.toFixed(2)} PLN
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>

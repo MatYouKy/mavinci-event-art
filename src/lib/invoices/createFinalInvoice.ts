@@ -31,6 +31,7 @@ export interface CreateFinalInvoiceOptions {
   saleDate?: string;
   paymentDueDate?: string;
   items: FinalInvoiceItemInput[];
+  bankName?: string | null;
   settledInvoices: SettledInvoiceRef[];
   buyerData: {
     buyer_name: string;
@@ -214,6 +215,7 @@ export async function createFinalInvoice(opts: CreateFinalInvoiceOptions): Promi
 
       payment_method: opts.paymentMethod ?? null,
       bank_account: opts.bankAccount ?? null,
+      bank_name: opts.bankName ?? null,
       issue_place: opts.issuePlace ?? null,
       notes: finalNotes || null,
       internal_notes: internalMarker,

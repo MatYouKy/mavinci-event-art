@@ -72,6 +72,9 @@ export type FA3PreparedInvoice = {
     saleDate: string;
     paymentDueDate: string;
     paymentMethod: string;
+    paymentDate?: string | null;
+    paidAmount?: number | null;
+    paymentStatus?: 'unpaid' | 'partial' | 'paid' | null;
     totalNet: number;
     totalVat: number;
     totalGross: number;
@@ -305,23 +308,49 @@ function buildAdnotacjeXml(data: FA3PreparedInvoice): string {
 }
 
 function buildPaymentXml(data: FA3PreparedInvoice): string {
-  const hasPayment =
-    !!data.invoice.paymentDueDate ||
-    !!data.invoice.paymentMethod ||
-    !!data.invoice.bankAccount;
+  const paymentDueDate = data.invoice.paymentDueDate
+    ? formatDate(data.invoice.paymentDueDate)
+    : null;
 
-  if (!hasPayment) {
-    return '';
-  }
+  const paymentDate = data.invoice.paymentDate
+    ? formatDate(data.invoice.paymentDate)
+    : null;
+
+  const isPaid = data.invoice.paymentStatus === 'paid';
+  const paidAmount = Number(data.invoice.paidAmount ?? 0);
+  const totalGross = Number(data.invoice.totalGross ?? 0);
+
+  const amountPaid = isPaid
+    ? paidAmount > 0
+      ? paidAmount
+      : totalGross
+    : paidAmount;
+
+  const hasPayment =
+    !!paymentDueDate ||
+    !!paymentDate ||
+    !!data.invoice.paymentMethod ||
+    !!data.invoice.bankAccount ||
+    amountPaid > 0;
+
+  if (!hasPayment) return '';
 
   return `
     <Platnosc>
       ${
-        data.invoice.paymentDueDate
+        paymentDueDate
           ? `
       <TerminPlatnosci>
-        <Termin>${formatDate(data.invoice.paymentDueDate)}</Termin>
+        <Termin>${paymentDueDate}</Termin>
       </TerminPlatnosci>`
+          : ''
+      }
+      ${
+        paymentDate && amountPaid > 0
+          ? `
+      <ZaplataCzesciowa>1</ZaplataCzesciowa>
+      <DataZaplaty>${paymentDate}</DataZaplaty>
+      <KwotaZaplaty>${formatDecimal(amountPaid)}</KwotaZaplaty>`
           : ''
       }
       ${
@@ -542,6 +571,9 @@ export function prepareFA3Invoice(invoice: any, organization: any): FA3PreparedI
       issueDate: invoice?.issue_date || '',
       saleDate: invoice?.sale_date || '',
       paymentDueDate: invoice?.payment_due_date || '',
+      paymentDate: invoice?.paid_at || invoice?.payment_date || null,
+      paidAmount: Number(invoice?.paid_amount ?? 0),
+      paymentStatus: invoice?.payment_status ?? null,
       paymentMethod: pickFirstNonEmpty(invoice?.payment_method) || 'przelew',
       totalNet: Number(invoice?.total_net || 0),
       totalVat: Number(invoice?.total_vat || 0),
