@@ -88,8 +88,8 @@ export default function SendInvoiceEmailModal({
     to: clientEmail,
     subject: `Faktura ${invoiceNumber} wizualizacja`,
     message: `Dzień dobry,
-W załączeniu przesyłam wizualizację faktury ${invoiceNumber}.
-W razie pytań proszę o kontakt.`,
+    W załączeniu przesyłam wizualizację faktury ${invoiceNumber}, która została wysłana do KSeF.
+    W razie pytań proszę o kontakt.`,
   });
 
   useEffect(() => {
@@ -100,7 +100,9 @@ W razie pytań proszę o kontakt.`,
 
   useEffect(() => {
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return;
       const { data: defaultAcc } = await supabase
         .from('employee_email_accounts')
@@ -157,14 +159,14 @@ W razie pytań proszę o kontakt.`,
         .eq('invoice_id', invoiceId)
         .order('position_number'),
     ]);
-  
+
     if (invoiceRes.error || !invoiceRes.data) {
       throw new Error('Nie znaleziono faktury');
     }
-  
+
     const invoice = invoiceRes.data as InvoiceData;
     const items = (itemsRes.data || []) as InvoiceItem[];
-  
+
     const html = buildInvoicePdfHtml({
       buyerIsPrivatePerson: invoice.buyer_nip ? false : true,
       isProforma: invoice.is_proforma,
@@ -208,7 +210,7 @@ W razie pytań proszę o kontakt.`,
         valueGross: item.value_gross,
       })),
     });
-  
+
     const response = await fetch('/bridge/invoices/invoice-pdf', {
       method: 'POST',
       headers: {
@@ -219,18 +221,18 @@ W razie pytań proszę o kontakt.`,
         fileName: `Faktura_${invoiceNumber}.pdf`,
       }),
     });
-  
+
     if (!response.ok) {
       const error = await response.json().catch(() => null);
       throw new Error(error?.error || 'Nie udało się wygenerować PDF');
     }
-  
+
     const result = await response.json();
-  
+
     if (!result?.base64) {
       throw new Error('Route nie zwrócił zawartości PDF');
     }
-  
+
     return {
       base64: result.base64,
       filename: result.filename || `Faktura_${invoiceNumber}.pdf`,
@@ -332,7 +334,10 @@ W razie pytań proszę o kontakt.`,
       onClose();
     } catch (error: unknown | Error) {
       console.error('Error sending email:', error);
-      showSnackbar(error instanceof Error ? error.message : 'Nieznany błąd podczas wysyłania email', 'error');
+      showSnackbar(
+        error instanceof Error ? error.message : 'Nieznany błąd podczas wysyłania email',
+        'error',
+      );
       setLoading(false);
     }
   };

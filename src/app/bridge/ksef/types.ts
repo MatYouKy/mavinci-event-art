@@ -127,6 +127,9 @@ export interface KSeFSessionStatusResponse {
 }
 
 export interface KSeFSessionInvoiceStatus {
+  invoicingDate: string | undefined;
+  acquisitionDate: string | undefined;
+  ksefNumber: string | undefined;
   invoiceReferenceNumber?: string;
   ksefReferenceNumber?: string;
   acquisitionTimestamp?: string;

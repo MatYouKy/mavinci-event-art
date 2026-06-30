@@ -124,13 +124,17 @@ app.post('/api/send-email', verifyAuth, async (req, res) => {
       return emails.length ? emails.join(', ') : undefined;
     };
     
+    const fromEmail = smtpConfig.username;
+    const replyToEmail = smtpConfig.replyTo || smtpConfig.from || replyTo;
+    
     const mailOptions = {
-      from: `"${smtpConfig.fromName}" <${smtpConfig.from}>`,
+      from: `"${smtpConfig.fromName || fromEmail}" <${fromEmail}>`,
       to: normalizeEmailList(to),
       cc: normalizeEmailList(cc),
       bcc: normalizeEmailList(bcc),
       subject,
       html: body,
+      replyTo: replyToEmail,
       attachments: attachments.map((att) => ({
         filename: att.filename,
         content: Buffer.from(att.content, 'base64'),
@@ -138,18 +142,13 @@ app.post('/api/send-email', verifyAuth, async (req, res) => {
         contentDisposition: att.contentDisposition || 'attachment',
       })),
     };
-    
-    if (replyTo) {
-      mailOptions.replyTo = replyTo;
-    }
 
-    if (attachments && attachments.length > 0) {
-      mailOptions.attachments = attachments.map((att) => ({
-        filename: att.filename,
-        content: Buffer.from(att.content, 'base64'),
-        contentType: att.contentType || 'application/octet-stream',
-      }));
-    }
+    console.log('MAIL FROM DEBUG:', {
+      smtpUsername: smtpConfig.username,
+      smtpFrom: smtpConfig.from,
+      finalFrom: mailOptions.from,
+      replyTo: mailOptions.replyTo,
+    });
 
     console.log('📮 Sending email...');
     const info = await transporter.sendMail(mailOptions);

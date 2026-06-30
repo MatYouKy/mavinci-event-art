@@ -472,8 +472,7 @@ export function CalculationEditor({
     const preparedBy = employee
       ? {
           name:
-            [employee.name, employee.surname].filter(Boolean).join(' ') ||
-            user?.email ||
+            [employee.name, employee.surname].filter(Boolean).join(' ') ??
             'Nieznany użytkownik',
           email: employee.email ?? user?.email ?? null,
           phone: employee.phone_number ?? null,
@@ -483,6 +482,7 @@ export function CalculationEditor({
           email: user?.email ?? null,
           phone: null,
         };
+
     const html = buildCalculationHtml({
       name,
       notes,

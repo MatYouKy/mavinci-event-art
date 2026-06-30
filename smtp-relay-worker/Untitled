@@ -1,0 +1,12 @@
+➜  smtp-relay-worker git:(main) ✗ yarn deploy:vps
+yarn run v1.22.19
+warning package.json: No license field
+$ chmod +x deploy-vps.sh && ./deploy-vps.sh
+chmod: deploy-vps.sh: No such file or directory
+error Command failed with exit code 1.
+info Visit https://yarnpkg.com/en/docs/cli/run for documentation about this command.
+➜  smtp-relay-worker git:(main) ✗ chmod +x deploy-vps.sh
+./deploy-vps.sh
+chmod: deploy-vps.sh: No such file or directory
+zsh: no such file or directory: ./deploy-vps.sh
+➜  smtp-relay-worker git:(main) ✗ 

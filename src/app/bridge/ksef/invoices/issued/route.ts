@@ -97,126 +97,287 @@ export async function POST(req: Request) {
       const rows = [];
 
       for (const inv of invoices) {
-        const ksefRef =
-          inv.ksefNumber ||
-          inv.ksefReferenceNumber ||
-          inv.ksef_reference_number ||
-          inv.referenceNumber;
-
-        if (!ksefRef) continue;
-
-        // Skip invoices that already exist in DB to preserve their payment status
-        if (existingRefs.has(ksefRef)) continue;
-
-        // Fetch full invoice XML for complete data
-        let xmlContent = '';
-        let parsed: ReturnType<typeof parseFA3InvoiceXml> = null;
         try {
-          xmlContent = await getKSeFInvoiceXml(
-            ksefRef,
-            credentials.access_token,
-            credentials.is_test_environment,
-            { stage: 'invoice-xml-fetch', companyId, ksefRef },
-          );
-          parsed = parseFA3InvoiceXml(xmlContent);
-        } catch (e: any) {
-          console.error(`[KSEF_NEXT] failed to fetch XML for ${ksefRef}:`, e?.message);
-        }
-
-        // Use parsed XML data with fallback to metadata
-        const rawPaymentDueDate =
-        parsed?.payment_due_date ||
-        inv.paymentDueDate ||
-        inv.payment_due_date ||
-        inv.TerminPlatnosci ||
-        inv.terminPlatnosci ||
-        inv.dueDate ||
-        inv.PaymentDueDate ||
-        null;
+          const ksefRef =
+            inv.ksefNumber ||
+            inv.ksefReferenceNumber ||
+            inv.ksef_reference_number ||
+            inv.referenceNumber;
       
-      const paymentDueDate = normalizeKsefDate(rawPaymentDueDate);
-
-        const paymentMethod =
-          parsed?.payment_method ||
-          inv.paymentMethod ||
-          inv.payment_method ||
-          inv.FormaPlatnosci ||
-          null;
-
-        const bankAccountNumber =
-          parsed?.bank_account_number ||
-          inv.bankAccountNumber ||
-          inv.bank_account_number ||
-          null;
-
-          const paymentDate = normalizeKsefDate(parsed?.payment_date || null);
-
-        // Determine payment status
-        const paymentData = parsePaymentData({
-          ...inv,
-          paymentMethod,
-          paymentDueDate,
-          paymentDate,
-          bankAccountNumber,
-        });
-
-        // For immediate payment methods (cash/card), set payment_date to issue_date
-        const issueDate = normalizeKsefDate(parsed?.issue_date || inv.issueDate || null);
-
-        
-        const effectivePaymentDate =
-          paymentDate ||
-          (paymentData.payment_status === 'paid' && (paymentMethod === '1' || paymentMethod === '2')
-            ? paymentDueDate || issueDate || new Date().toISOString().split('T')[0]
-            : null);
-
-        // VAT rate from items
-        let vatRate: string | null = null;
-        if (parsed?.invoice_items && parsed.invoice_items.length > 0) {
-          vatRate = parsed.invoice_items[0].vat_rate
-            ? `${parsed.invoice_items[0].vat_rate}%`
-            : null;
-        } else if (inv.vatRate) {
-          vatRate = typeof inv.vatRate === 'number' ? `${inv.vatRate}%` : inv.vatRate;
-        }
-
-        rows.push({
-          ksef_reference_number: ksefRef,
-          my_company_id: companyId,
-          invoice_number: parsed?.invoice_number || inv.invoiceNumber || null,
-          invoice_type: 'issued',
-          seller_name: parsed?.seller_name || inv.seller?.name || null,
-          seller_nip: parsed?.seller_nip || inv.seller?.nip || null,
-          seller_address: parsed?.seller_address || null,
-          buyer_name: parsed?.buyer_name || inv.buyer?.name || null,
-          buyer_nip: parsed?.buyer_nip || (inv.buyer?.identifier?.type === 'Nip' ? inv.buyer?.identifier?.value : null) || null,
-          buyer_address: parsed?.buyer_address || null,
-          net_amount: parsed?.net_amount ?? inv.netAmount ?? null,
-          gross_amount: parsed?.gross_amount ?? inv.grossAmount ?? null,
-          vat_amount: parsed?.vat_amount ?? inv.vatAmount ?? null,
-          vat_rate: vatRate,
-          invoice_items: parsed?.invoice_items && parsed.invoice_items.length > 0
-            ? parsed.invoice_items
-            : inv.items || inv.invoiceItems || null,
-          currency: parsed?.currency || inv.currency || 'PLN',
-          issue_date: issueDate,
-          payment_due_date: paymentDueDate,
-          payment_method: paymentMethod,
-          payment_date: effectivePaymentDate,
-          bank_account_number: bankAccountNumber,
-          payment_status: paymentData.payment_status,
-          xml_content: xmlContent,
-          sync_status: 'synced',
-          sync_error: null,
-          ksef_issued_at:
-            inv.acquisitionDate ||
-            inv.invoicingDate ||
+          if (!ksefRef) continue;
+      
+          let xmlContent = '';
+          let parsed: ReturnType<typeof parseFA3InvoiceXml> = null;
+      
+          try {
+            xmlContent = await getKSeFInvoiceXml(
+              ksefRef,
+              credentials.access_token,
+              credentials.is_test_environment,
+              {
+                stage: 'invoice-xml-fetch',
+                companyId,
+                ksefRef,
+              },
+            );
+      
+            parsed = parseFA3InvoiceXml(xmlContent);
+          } catch (e: any) {
+            console.error(
+              `[KSEF_NEXT] failed to fetch XML for ${ksefRef}:`,
+              e?.message,
+            );
+          }
+      
+          const invoiceNumber =
+            parsed?.invoice_number ||
+            inv.invoiceNumber ||
+            inv.invoice_number ||
+            null;
+      
+          /**
+           * Jeśli faktura już istnieje w ksef_invoices,
+           * spróbuj uzupełnić lokalną fakturę o numer KSeF.
+           */
+          if (existingRefs.has(ksefRef)) {
+            try {
+              if (invoiceNumber) {
+                const { data: localInvoice } = await supabase
+                  .from('invoices')
+                  .select('id, ksef_reference_number, ksef_status')
+                  .eq('invoice_number', invoiceNumber)
+                  .maybeSingle();
+      
+                if (
+                  localInvoice &&
+                  !localInvoice.ksef_reference_number
+                ) {
+                  await supabase
+                    .from('invoices')
+                    .update({
+                      ksef_reference_number: ksefRef,
+                      ksef_status: 'accepted',
+                      ksef_error: null,
+                      updated_at: new Date().toISOString(),
+                    })
+                    .eq('id', localInvoice.id);
+      
+                  console.log(
+                    `[KSEF_SYNC] Updated local invoice ${invoiceNumber} with KSeF ref ${ksefRef}`,
+                  );
+                }
+              }
+            } catch (err) {
+              console.error(
+                `[KSEF_SYNC] failed updating local invoice for ${invoiceNumber}`,
+                err,
+              );
+            }
+      
+            continue;
+          }
+      
+          const rawPaymentDueDate =
+            parsed?.payment_due_date ||
+            inv.paymentDueDate ||
+            inv.payment_due_date ||
+            inv.TerminPlatnosci ||
+            inv.terminPlatnosci ||
+            inv.dueDate ||
+            inv.PaymentDueDate ||
+            null;
+      
+          const paymentDueDate = normalizeKsefDate(rawPaymentDueDate);
+      
+          const paymentMethod =
+            parsed?.payment_method ||
+            inv.paymentMethod ||
+            inv.payment_method ||
+            inv.FormaPlatnosci ||
+            null;
+      
+          const bankAccountNumber =
+            parsed?.bank_account_number ||
+            inv.bankAccountNumber ||
+            inv.bank_account_number ||
+            null;
+      
+          const paymentDate = normalizeKsefDate(
+            parsed?.payment_date || null,
+          );
+      
+          const paymentData = parsePaymentData({
+            ...inv,
+            paymentMethod,
+            paymentDueDate,
+            paymentDate,
+            bankAccountNumber,
+          });
+      
+          const issueDate = normalizeKsefDate(
+            parsed?.issue_date ||
             inv.issueDate ||
-            inv.acquisitionTimestamp ||
-            inv.invoiceDate ||
-            new Date().toISOString(),
-          synced_at: new Date().toISOString(),
-        });
+            null,
+          );
+      
+          const effectivePaymentDate =
+            paymentDate ||
+            (
+              paymentData.payment_status === 'paid' &&
+              (paymentMethod === '1' || paymentMethod === '2')
+            )
+              ? (
+                  paymentDueDate ||
+                  issueDate ||
+                  new Date().toISOString().split('T')[0]
+                )
+              : null;
+      
+          let vatRate: string | null = null;
+      
+          if (
+            parsed?.invoice_items &&
+            parsed.invoice_items.length > 0
+          ) {
+            vatRate = parsed.invoice_items[0].vat_rate
+              ? `${parsed.invoice_items[0].vat_rate}%`
+              : null;
+          } else if (inv.vatRate) {
+            vatRate =
+              typeof inv.vatRate === 'number'
+                ? `${inv.vatRate}%`
+                : inv.vatRate;
+          }
+      
+          /**
+           * Dodatkowo spróbuj znaleźć lokalną fakturę
+           * po numerze i od razu ją zsynchronizować.
+           */
+          let localInvoiceId: string | null = null;
+      
+          if (invoiceNumber) {
+            try {
+              const { data: localInvoice } = await supabase
+                .from('invoices')
+                .select('id')
+                .eq('invoice_number', invoiceNumber)
+                .maybeSingle();
+      
+              if (localInvoice?.id) {
+                localInvoiceId = localInvoice.id;
+      
+                await supabase
+                  .from('invoices')
+                  .update({
+                    ksef_reference_number: ksefRef,
+                    ksef_status: 'accepted',
+                    ksef_error: null,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('id', localInvoice.id);
+              }
+            } catch (err) {
+              console.error(
+                `[KSEF_SYNC] failed linking invoice ${invoiceNumber}`,
+                err,
+              );
+            }
+          }
+      
+          rows.push({
+            invoice_id: localInvoiceId,
+            ksef_reference_number: ksefRef,
+            my_company_id: companyId,
+            invoice_number: invoiceNumber,
+            invoice_type: 'issued',
+      
+            seller_name:
+              parsed?.seller_name ||
+              inv.seller?.name ||
+              null,
+      
+            seller_nip:
+              parsed?.seller_nip ||
+              inv.seller?.nip ||
+              null,
+      
+            seller_address:
+              parsed?.seller_address ||
+              null,
+      
+            buyer_name:
+              parsed?.buyer_name ||
+              inv.buyer?.name ||
+              null,
+      
+            buyer_nip:
+              parsed?.buyer_nip ||
+              (
+                inv.buyer?.identifier?.type === 'Nip'
+                  ? inv.buyer?.identifier?.value
+                  : null
+              ) ||
+              null,
+      
+            buyer_address:
+              parsed?.buyer_address ||
+              null,
+      
+            net_amount:
+              parsed?.net_amount ??
+              inv.netAmount ??
+              null,
+      
+            gross_amount:
+              parsed?.gross_amount ??
+              inv.grossAmount ??
+              null,
+      
+            vat_amount:
+              parsed?.vat_amount ??
+              inv.vatAmount ??
+              null,
+      
+            vat_rate: vatRate,
+      
+            invoice_items:
+              parsed?.invoice_items?.length
+                ? parsed.invoice_items
+                : inv.items || inv.invoiceItems || null,
+      
+            currency:
+              parsed?.currency ||
+              inv.currency ||
+              'PLN',
+      
+            issue_date: issueDate,
+            payment_due_date: paymentDueDate,
+            payment_method: paymentMethod,
+            payment_date: effectivePaymentDate,
+            bank_account_number: bankAccountNumber,
+            payment_status: paymentData.payment_status,
+      
+            xml_content: xmlContent,
+      
+            sync_status: 'synced',
+            sync_error: null,
+      
+            ksef_issued_at:
+              inv.acquisitionDate ||
+              inv.invoicingDate ||
+              inv.issueDate ||
+              inv.acquisitionTimestamp ||
+              inv.invoiceDate ||
+              new Date().toISOString(),
+      
+            synced_at: new Date().toISOString(),
+          });
+        } catch (err) {
+          console.error(
+            '[KSEF_SYNC] invoice processing error:',
+            err,
+          );
+        }
       }
 
       if (rows.length > 0) {

@@ -13,6 +13,7 @@
     "pm2:logs": "pm2 logs smtp-relay-worker",
     "pm2:status": "pm2 status",
     "deploy": "chmod +x deploy-worker.sh && ./deploy-worker.sh",
+    "deploy:vps": "chmod +x deploy-smtp-relay.sh && ./deploy-smtp-relay.sh",
     "test": "chmod +x test-local.sh && ./test-local.sh",
     "check": "chmod +x check-config.sh && ./check-config.sh",
     "compare": "chmod +x compare-secrets.sh && ./compare-secrets.sh",

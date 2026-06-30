@@ -31,6 +31,7 @@ import InvoiceDetailsModal from './InvoiceDetailsModal';
 import BankMatchingSimple from './BankMatchingSimple';
 import CompanySelector from './CompanySelector';
 import { useDialog } from '@/contexts/DialogContext';
+import FullScreenLoader from '../UI/Loader/CustomModalLoader';
 
 type KSeFViewMode = 'table' | 'list';
 
@@ -1692,6 +1693,12 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
           </div>
         </div>
       )}
+
+      <FullScreenLoader
+        show={syncing}
+        title="Synchronizacja KSeF"
+        description="Proszę poczekać..."
+      />
 
       {showSetup && (
         <KSeFSetupModal

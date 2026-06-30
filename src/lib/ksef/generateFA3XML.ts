@@ -318,33 +318,20 @@ function buildPaymentXml(data: FA3PreparedInvoice): string {
     ? formatDate(data.invoice.paymentDueDate)
     : null;
 
-  const paymentDate = data.invoice.paymentDate
-    ? formatDate(data.invoice.paymentDate)
-    : null;
-
-  const isPaid = data.invoice.paymentStatus === 'paid';
-  const paidAmount = Number(data.invoice.paidAmount ?? 0);
-  const totalGross = Number(data.invoice.totalGross ?? 0);
-
-  const amountPaid = isPaid
-    ? paidAmount > 0
-      ? paidAmount
-      : totalGross
-    : paidAmount;
+  const shouldShowPaymentDueDate =
+    data.invoice.paymentStatus !== 'paid' && !!paymentDueDate;
 
   const hasPayment =
-    !!paymentDueDate ||
-    !!paymentDate ||
+    shouldShowPaymentDueDate ||
     !!data.invoice.paymentMethod ||
-    !!data.invoice.bankAccount ||
-    amountPaid > 0;
+    !!data.invoice.bankAccount;
 
   if (!hasPayment) return '';
 
   return `
     <Platnosc>
       ${
-        paymentDueDate
+        shouldShowPaymentDueDate
           ? `
       <TerminPlatnosci>
         <Termin>${paymentDueDate}</Termin>
@@ -352,34 +339,27 @@ function buildPaymentXml(data: FA3PreparedInvoice): string {
           : ''
       }
       ${
-        paymentDate && amountPaid > 0
-          ? `
-      <ZaplataCzesciowa>1</ZaplataCzesciowa>
-      <DataZaplaty>${paymentDate}</DataZaplaty>
-      <KwotaZaplaty>${formatDecimal(amountPaid)}</KwotaZaplaty>`
-          : ''
-      }
-      ${
         data.invoice.paymentMethod
-          ? `<FormaPlatnosci>${getPaymentMethodCode(data.invoice.paymentMethod)}</FormaPlatnosci>`
+          ? `
+      <FormaPlatnosci>${getPaymentMethodCode(data.invoice.paymentMethod)}</FormaPlatnosci>`
           : ''
       }
       ${
         data.invoice.bankAccount
           ? `
-<RachunekBankowy>
-  <NrRB>${escapeXml(data.invoice.bankAccount)}</NrRB>
-  ${
-    data.invoice.bankSwiftCode
-      ? `<SWIFT>${escapeXml(data.invoice.bankSwiftCode)}</SWIFT>`
-      : ''
-  }
-  ${
-    data.invoice.bankName
-      ? `<NazwaBanku>${escapeXml(data.invoice.bankName)}</NazwaBanku>`
-      : ''
-  }
-</RachunekBankowy>`
+      <RachunekBankowy>
+        <NrRB>${escapeXml(data.invoice.bankAccount)}</NrRB>
+        ${
+          data.invoice.bankSwiftCode
+            ? `<SWIFT>${escapeXml(data.invoice.bankSwiftCode)}</SWIFT>`
+            : ''
+        }
+        ${
+          data.invoice.bankName
+            ? `<NazwaBanku>${escapeXml(data.invoice.bankName)}</NazwaBanku>`
+            : ''
+        }
+      </RachunekBankowy>`
           : ''
       }
     </Platnosc>`;
@@ -510,6 +490,8 @@ export function prepareFA3Invoice(invoice: any, organization: any): FA3PreparedI
     invoice?.invoice_type === 'final' ||
     String(invoice?.invoice_number || '').startsWith('FKO/');
 
+    console.log('SETTLED INVOICES RAW:', invoice?.settled_invoices);
+
     const settledInvoices: FA3SettledInvoice[] = Array.isArray(invoice?.settled_invoices)
     ? invoice.settled_invoices.map((inv: any) => ({
         id: inv.id,
@@ -522,6 +504,12 @@ export function prepareFA3Invoice(invoice: any, organization: any): FA3PreparedI
         ksefReferenceNumber:
           inv.ksefReferenceNumber ??
           inv.ksef_reference_number ??
+          inv.ksefNumber ??
+          inv.ksef_number ??
+          inv.ksefId ??
+          inv.ksef_id ??
+          inv.referenceNumber ??
+          inv.reference_number ??
           null,
       }))
     : [];
@@ -851,6 +839,27 @@ function buildDodatkowyOpisXml(data: FA3PreparedInvoice): string {
     </DodatkowyOpis>`);
   }
 
+  if (data.invoice.paymentStatus === 'paid') {
+    const paymentDate = data.invoice.paymentDate
+      ? formatDate(data.invoice.paymentDate)
+      : undefined;
+
+    const paidAmount =
+      Number(data.invoice.paidAmount ?? 0) > 0
+        ? Number(data.invoice.paidAmount)
+        : Number(data.invoice.totalGross ?? 0);
+
+    chunks.push(`
+    <DodatkowyOpis>
+      <Klucz>Status płatności</Klucz>
+      <Wartosc>${escapeXml(
+        `Opłacono${paymentDate ? ` dnia ${paymentDate}` : ''}, kwota ${formatDecimal(
+          paidAmount,
+        )} PLN`,
+      )}</Wartosc>
+    </DodatkowyOpis>`);
+  }
+
   if (
     data.invoice.type === 'ROZ' &&
     data.invoice.settlementSummary &&
@@ -910,9 +919,31 @@ const faTotalGross = isFinalSettlementInvoice
 
 const invoiceItemsForXml = data.invoice.items;
 
-const dodatkowyOpisXml = buildDodatkowyOpisXml(data);
+const isAdvanceInvoice = data.invoice.type === 'ZAL';
 
-  
+const zamowienieXml = isAdvanceInvoice
+  ? `
+    <Zamowienie>
+      <WartoscZamowienia>${formatDecimal(data.invoice.totalGross)}</WartoscZamowienia>
+      ${data.invoice.items
+        .map(
+          (item, index) => `
+      <ZamowienieWiersz>
+        <NrWierszaZam>${index + 1}</NrWierszaZam>
+        <P_7Z>${escapeXml(item.name)}</P_7Z>
+        <P_8AZ>${escapeXml(item.unit)}</P_8AZ>
+        <P_8BZ>${formatDecimal(item.quantity)}</P_8BZ>
+        <P_9AZ>${formatDecimal(item.priceNet)}</P_9AZ>
+        <P_11NettoZ>${formatDecimal(item.valueNet)}</P_11NettoZ>
+        <P_11VatZ>${formatDecimal(item.vatAmount)}</P_11VatZ>
+        <P_12Z>${getVatRateCode(item.vatRate)}</P_12Z>
+      </ZamowienieWiersz>`,
+        )
+        .join('')}
+    </Zamowienie>`
+  : '';
+
+const dodatkowyOpisXml = buildDodatkowyOpisXml(data);  
   const invoiceRowsXml = invoiceItemsForXml
   .map(
     (item, index) => `
@@ -984,6 +1015,7 @@ const dodatkowyOpisXml = buildDodatkowyOpisXml(data);
     ${invoiceRowsXml}
     ${rozliczenieXml}
     ${paymentXml}
+    ${zamowienieXml}
   </Fa>
 </Faktura>`;
 

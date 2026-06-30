@@ -32,6 +32,7 @@ import {
 } from '../../../../../lib/ksef/generateFA3XML';
 
 const DEBUG_XML_ONLY = process.env.NODE_ENV !== 'production';
+// const DEBUG_XML_ONLY = false;
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -669,6 +670,11 @@ console.log('invoice bank swift:', invoice?.bank_swift_code, invoice?.bankSwiftC
 
         emitProgress('encrypt', 'completed');
 
+        console.log(
+          'SEND RESPONSE:',
+          JSON.stringify(sendResponse, null, 2),
+        );
+
         // Poll
         currentStep = 'poll';
         const maxRetries = 15;
@@ -694,22 +700,35 @@ console.log('invoice bank swift:', invoice?.bank_swift_code, invoice?.bankSwiftC
               { action: 'check-invoice-status', invoiceId, myCompanyId: invoice.my_company_id, attempt: i + 1 },
             );
 
+            console.log(
+              'SESSION INVOICES RESPONSE:',
+              JSON.stringify(sessionInvoices, null, 2),
+            );
+
             const inv = sessionInvoices.invoices?.[0];
             if (!inv) continue;
 
-            if (inv.ksefReferenceNumber) {
-              ksefNumber = inv.ksefReferenceNumber;
-              acquisitionTimestamp = inv.acquisitionTimestamp;
-              emitProgress('poll', 'completed', { message: 'KSeF nadał numer referencyjny' });
-              break;
-            }
-
-            if (inv.invoiceReferenceNumber) {
-              ksefNumber = inv.invoiceReferenceNumber;
-              acquisitionTimestamp = inv.acquisitionTimestamp;
-              emitProgress('poll', 'completed', { message: 'KSeF nadał numer referencyjny' });
-              break;
-            }
+            const foundKsefNumber =
+            inv.ksefNumber ||
+            inv.ksefReferenceNumber ||
+            inv.invoiceReferenceNumber ||
+            null;
+          
+          if (foundKsefNumber) {
+            ksefNumber = foundKsefNumber;
+          
+            acquisitionTimestamp =
+              inv.acquisitionDate ||
+              inv.acquisitionTimestamp ||
+              inv.invoicingDate ||
+              undefined;
+          
+            emitProgress('poll', 'completed', {
+              message: 'KSeF nadał numer referencyjny',
+            });
+          
+            break;
+          }
 
             const rawStatus = inv.status;
             if (rawStatus && typeof rawStatus === 'object') {
@@ -735,11 +754,32 @@ console.log('invoice bank swift:', invoice?.bank_swift_code, invoice?.bankSwiftC
         currentStep = 'save';
         emitProgress('save', 'active', { message: 'Zapisywanie wyniku wysyłki' });
 
-        const isRejected = !ksefNumber && !!rejectionMessage;
         const finalRefNumber = ksefNumber ?? null;
         const finalTimestamp = ksefNumber
           ? acquisitionTimestamp || sendResponse.timestamp || new Date().toISOString()
           : null;
+
+        const isRejected = !!rejectionMessage;
+        const isPending = !ksefNumber && !rejectionMessage;
+
+        await supabase.from('invoices').update({
+          status: isRejected
+            ? 'draft'
+            : isPending
+              ? 'processing'
+              : 'issued',
+        
+          ksef_status: isRejected
+            ? 'rejected'
+            : isPending
+              ? 'pending'
+              : 'accepted',
+        
+          ksef_reference_number: finalRefNumber,
+          ksef_error: rejectionMessage ?? null,
+          ksef_sent_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
 
         const { data: ksefInvoice, error: ksefError } = await createOrUpdateKsefInvoiceRecord({
           supabase,
