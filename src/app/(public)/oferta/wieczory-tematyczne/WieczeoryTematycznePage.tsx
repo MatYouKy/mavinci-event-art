@@ -1,34 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import {
-  Wine,
-  Sparkles,
-  Music,
-  Camera,
-  Utensils,
-  Users,
-  Palette,
-  Star,
-  Clock,
-  Award,
-  Heart,
-  Edit,
-  Save,
-  X,
-  Plus,
-  Trash2,
-  ArrowUp,
-  ArrowDown,
-  ChevronLeft,
-  ChevronRight,
-  XCircle,
-} from 'lucide-react';
+import { Wine, Sparkles, Music, Camera, Utensils, Users, Palette, Star, Clock, Award, Heart, CreditCard as Edit, Save, X, Plus, Trash2, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, XCircle } from 'lucide-react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabase/browser';
 import { useEditMode } from '@/contexts/EditModeContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { uploadImage } from '@/lib/storage';
+import { SimpleImageUploader } from '@/components/SimpleImageUploader';
+import { IUploadImage } from '@/types/image';
 
 interface GalleryImage {
   id: string;
@@ -118,6 +98,12 @@ export default function WieczeoryTematycznePage() {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [currentGalleryIndex, setCurrentGalleryIndex] = useState(0);
 
+  // Pending file uploads
+  const [pendingIntroFile, setPendingIntroFile] = useState<File | null>(null);
+  const [pendingSeoFile, setPendingSeoFile] = useState<File | null>(null);
+  const [pendingThemeFiles, setPendingThemeFiles] = useState<Record<number, File>>({});
+  const [pendingGalleryFiles, setPendingGalleryFiles] = useState<Record<string, File>>({});
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -178,15 +164,56 @@ export default function WieczeoryTematycznePage() {
   const handleSave = async () => {
     setSaving(true);
     try {
+      // Upload pending files
+      let finalIntroImage = introImage;
+      let finalSeoImage = seoImage;
+      const finalThemes = [...themes];
+      const finalGallery = [...gallery];
+
+      if (pendingIntroFile) {
+        const url = await uploadImage(pendingIntroFile, 'themed-party');
+        if (url) finalIntroImage = url;
+      }
+
+      if (pendingSeoFile) {
+        const url = await uploadImage(pendingSeoFile, 'themed-party');
+        if (url) finalSeoImage = url;
+      }
+
+      for (const [idxStr, file] of Object.entries(pendingThemeFiles)) {
+        const url = await uploadImage(file, 'themed-party');
+        if (url) finalThemes[Number(idxStr)] = { ...finalThemes[Number(idxStr)], image: url };
+      }
+
+      for (const [id, file] of Object.entries(pendingGalleryFiles)) {
+        const url = await uploadImage(file, 'themed-party');
+        if (url) {
+          const idx = finalGallery.findIndex((img) => img.id === id);
+          if (idx >= 0) finalGallery[idx] = { ...finalGallery[idx], image_url: url };
+        }
+      }
+
+      // Update local state with final URLs
+      setIntroImage(finalIntroImage);
+      setSeoImage(finalSeoImage);
+      setThemes(finalThemes);
+      setGallery(finalGallery);
+
+      // Clear pending files
+      setPendingIntroFile(null);
+      setPendingSeoFile(null);
+      setPendingThemeFiles({});
+      setPendingGalleryFiles({});
+
       // Save gallery
       try {
         await supabase.from('themed_party_gallery').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-        for (let i = 0; i < gallery.length; i++) {
+        for (let i = 0; i < finalGallery.length; i++) {
           await supabase.from('themed_party_gallery').insert({
-            image_url: gallery[i].image_url,
-            alt_text: gallery[i].alt_text,
-            caption: gallery[i].caption,
-            category: gallery[i].category,
+            image_url: finalGallery[i].image_url,
+            alt_text: finalGallery[i].alt_text,
+            caption: finalGallery[i].caption,
+            category: finalGallery[i].category,
             order_index: i,
             is_visible: true,
           });
@@ -198,15 +225,15 @@ export default function WieczeoryTematycznePage() {
         await supabase.from('themed_party_content').delete().neq('id', '00000000-0000-0000-0000-000000000000');
 
         await supabase.from('themed_party_content').insert([
-          { section_key: 'intro', body_text: introText, subheading: introText2, image_url: introImage, order_index: 0 },
-          { section_key: 'themes', items_json: themes, order_index: 1 },
-          { section_key: 'seo_text', body_text: seoText, image_url: seoImage, order_index: 2 },
+          { section_key: 'intro', body_text: introText, subheading: introText2, image_url: finalIntroImage, order_index: 0 },
+          { section_key: 'themes', items_json: finalThemes, order_index: 1 },
+          { section_key: 'seo_text', body_text: seoText, image_url: finalSeoImage, order_index: 2 },
         ]);
       } catch { /* table may not exist */ }
 
       showSnackbar('Zmiany zapisane!', 'success');
     } catch (error: any) {
-      showSnackbar('Błąd zapisu: ' + error.message, 'error');
+      showSnackbar('Blad zapisu: ' + error.message, 'error');
     } finally {
       setSaving(false);
     }
@@ -324,17 +351,17 @@ export default function WieczeoryTematycznePage() {
               </div>
               <div className="relative aspect-[4/3] overflow-hidden rounded-2xl border border-[#d3bb73]/20">
                 {isEditing ? (
-                  <div className="flex h-full flex-col items-center justify-center gap-3 bg-[#1c1f33]/50 p-4">
-                    <Image src={introImage} alt="" fill className="object-cover opacity-40" sizes="50vw" />
-                    <div className="relative z-10 w-full">
-                      <label className="mb-1 block text-xs text-[#e5e4e2]/60">URL zdjęcia intro</label>
-                      <input
-                        type="text"
-                        value={introImage}
-                        onChange={(e) => setIntroImage(e.target.value)}
-                        className="w-full rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
-                      />
-                    </div>
+                  <div className="flex h-full flex-col items-center justify-center bg-[#1c1f33]/50 p-4">
+                    <SimpleImageUploader
+                      onImageSelect={(data: IUploadImage) => {
+                        if (data.file) {
+                          setPendingIntroFile(data.file);
+                          setIntroImage(URL.createObjectURL(data.file));
+                        }
+                      }}
+                      initialImage={{ src: introImage, alt: 'Intro' }}
+                      showPreview={true}
+                    />
                   </div>
                 ) : (
                   <>
@@ -389,7 +416,16 @@ export default function WieczeoryTematycznePage() {
                       <div className="space-y-2">
                         <input value={theme.title} onChange={(e) => updateTheme(idx, 'title', e.target.value)} className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33]/40 px-2 py-1 text-sm font-medium text-[#d3bb73] outline-none focus:border-[#d3bb73]" />
                         <textarea value={theme.description} onChange={(e) => updateTheme(idx, 'description', e.target.value)} rows={2} className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33]/40 px-2 py-1 text-xs text-[#e5e4e2]/70 outline-none focus:border-[#d3bb73]" />
-                        <input value={theme.image} onChange={(e) => updateTheme(idx, 'image', e.target.value)} placeholder="URL zdjęcia" className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33]/40 px-2 py-1 text-xs text-[#e5e4e2]/50 outline-none focus:border-[#d3bb73]" />
+                        <SimpleImageUploader
+                          onImageSelect={(data: IUploadImage) => {
+                            if (data.file) {
+                              setPendingThemeFiles((prev) => ({ ...prev, [idx]: data.file! }));
+                              updateTheme(idx, 'image', URL.createObjectURL(data.file));
+                            }
+                          }}
+                          initialImage={{ src: theme.image, alt: theme.title }}
+                          showPreview={true}
+                        />
                       </div>
                     ) : (
                       <>
@@ -424,11 +460,17 @@ export default function WieczeoryTematycznePage() {
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {gallery.map((img, idx) => (
                     <div key={img.id} className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]/50 p-3">
-                      <div className="relative mb-3 aspect-[4/3] overflow-hidden rounded-lg">
-                        <Image src={img.image_url} alt={img.alt_text} fill sizes="33vw" className="object-cover" loading="lazy" />
-                      </div>
-                      <div className="space-y-2">
-                        <input value={img.image_url} onChange={(e) => updateGalleryImage(img.id, 'image_url', e.target.value)} placeholder="URL zdjęcia" className="w-full rounded border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1 text-xs text-[#e5e4e2] outline-none focus:border-[#d3bb73]" />
+                      <SimpleImageUploader
+                        onImageSelect={(data: IUploadImage) => {
+                          if (data.file) {
+                            setPendingGalleryFiles((prev) => ({ ...prev, [img.id]: data.file! }));
+                            updateGalleryImage(img.id, 'image_url', URL.createObjectURL(data.file));
+                          }
+                        }}
+                        initialImage={{ src: img.image_url, alt: img.alt_text }}
+                        showPreview={true}
+                      />
+                      <div className="mt-3 space-y-2">
                         <input value={img.alt_text} onChange={(e) => updateGalleryImage(img.id, 'alt_text', e.target.value)} placeholder="Alt text (SEO)" className="w-full rounded border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1 text-xs text-[#e5e4e2] outline-none focus:border-[#d3bb73]" />
                         <input value={img.caption} onChange={(e) => updateGalleryImage(img.id, 'caption', e.target.value)} placeholder="Podpis" className="w-full rounded border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1 text-xs text-[#e5e4e2] outline-none focus:border-[#d3bb73]" />
                         <div className="flex gap-2">
@@ -547,12 +589,17 @@ export default function WieczeoryTematycznePage() {
             <div className="grid items-center gap-12 lg:grid-cols-2">
               <div className="relative aspect-[4/3] overflow-hidden rounded-2xl border border-[#d3bb73]/15">
                 {isEditing ? (
-                  <div className="flex h-full flex-col items-center justify-center gap-3 bg-[#1c1f33]/50 p-4">
-                    <Image src={seoImage} alt="" fill className="object-cover opacity-40" sizes="50vw" />
-                    <div className="relative z-10 w-full">
-                      <label className="mb-1 block text-xs text-[#e5e4e2]/60">URL zdjęcia SEO</label>
-                      <input type="text" value={seoImage} onChange={(e) => setSeoImage(e.target.value)} className="w-full rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] outline-none focus:border-[#d3bb73]" />
-                    </div>
+                  <div className="flex h-full flex-col items-center justify-center bg-[#1c1f33]/50 p-4">
+                    <SimpleImageUploader
+                      onImageSelect={(data: IUploadImage) => {
+                        if (data.file) {
+                          setPendingSeoFile(data.file);
+                          setSeoImage(URL.createObjectURL(data.file));
+                        }
+                      }}
+                      initialImage={{ src: seoImage, alt: 'SEO' }}
+                      showPreview={true}
+                    />
                   </div>
                 ) : (
                   <Image src={seoImage} alt="Profesjonalne oświetlenie i efekty specjalne na imprezach tematycznych" fill sizes="(max-width: 1024px) 100vw, 50vw" className="object-cover" loading="lazy" />
