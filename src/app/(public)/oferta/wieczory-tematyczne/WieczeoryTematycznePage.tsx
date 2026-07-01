@@ -78,21 +78,84 @@ const defaultFaq = [
   { question: 'Czy zajmujecie się też cateringiem i alkoholem?', answer: 'Tak - koordynujemy catering tematyczny, bary koktajlowe, food trucki i stacje kulinarne.' },
 ];
 
-export default function WieczeoryTematycznePage() {
+interface ServerDataRow {
+  id: string;
+  name: string;
+  desktop_url: string | null;
+  alt_text: string | null;
+  image_metadata: Record<string, any> | null;
+  order_index: number | null;
+  [key: string]: any;
+}
+
+interface Props {
+  serverData?: ServerDataRow[];
+}
+
+function parseServerData(data: ServerDataRow[]) {
+  let introImage = 'https://images.pexels.com/photos/3171837/pexels-photo-3171837.jpeg?auto=compress&cs=tinysrgb&w=800';
+  let introText = 'Organizujemy profesjonalne wieczory tematyczne, bale kostiumowe, imprezy z motywem przewodnim i eventy scenograficzne dla firm i klientów indywidualnych w całej Polsce. Tworzymy immersyjne doświadczenia, które przenoszą gości w inny świat.';
+  let introText2 = 'Zapewniamy kompletną produkcję wieczoru tematycznego: scenografię, dekoracje, oświetlenie, nagłośnienie, catering tematyczny, animacje, pokazy artystyczne i profesjonalnego konferansjera.';
+  let seoImage = 'https://images.pexels.com/photos/2306281/pexels-photo-2306281.jpeg?auto=compress&cs=tinysrgb&w=800';
+  let seoText = 'Specjalizujemy się w organizacji wieczorów tematycznych dla firm, korporacji, agencji eventowych i klientów indywidualnych. Nasze imprezy z motywem przewodnim to kompletne doświadczenia sensoryczne - od scenografii i dekoracji, przez muzykę i oświetlenie, po catering tematyczny i animacje angażujące wszystkich gości.';
+  let themes: ThemeItem[] = DEFAULT_THEMES;
+  let gallery: GalleryImage[] = DEFAULT_GALLERY;
+
+  if (!data || data.length === 0) {
+    return { introImage, introText, introText2, seoImage, seoText, themes, gallery };
+  }
+
+  for (const row of data) {
+    const meta = row.image_metadata;
+    if (row.name === 'intro') {
+      if (row.desktop_url) introImage = row.desktop_url;
+      if (meta?.text) introText = meta.text;
+      if (meta?.text2) introText2 = meta.text2;
+    } else if (row.name === 'seo') {
+      if (row.desktop_url) seoImage = row.desktop_url;
+      if (meta?.text) seoText = meta.text;
+    } else if (row.name === 'themes') {
+      if (meta?.items && Array.isArray(meta.items)) {
+        themes = meta.items as ThemeItem[];
+      }
+    }
+  }
+
+  const galleryRows = data
+    .filter((r) => r.name?.startsWith('gallery-'))
+    .sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
+
+  if (galleryRows.length > 0) {
+    gallery = galleryRows.map((r, idx) => ({
+      id: r.id,
+      image_url: r.desktop_url || '',
+      alt_text: r.alt_text || '',
+      caption: (r.image_metadata as any)?.caption || '',
+      category: (r.image_metadata as any)?.category || 'general',
+      order_index: idx,
+      is_visible: true,
+    }));
+  }
+
+  return { introImage, introText, introText2, seoImage, seoText, themes, gallery };
+}
+
+export default function WieczeoryTematycznePage({ serverData = [] }: Props) {
   const { isEditMode } = useEditMode();
   const { showSnackbar } = useSnackbar();
+
+  const initial = parseServerData(serverData);
 
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // Editable state
-  const [themes, setThemes] = useState<ThemeItem[]>(DEFAULT_THEMES);
-  const [gallery, setGallery] = useState<GalleryImage[]>(DEFAULT_GALLERY);
-  const [introText, setIntroText] = useState('Organizujemy profesjonalne wieczory tematyczne, bale kostiumowe, imprezy z motywem przewodnim i eventy scenograficzne dla firm i klientów indywidualnych w całej Polsce. Tworzymy immersyjne doświadczenia, które przenoszą gości w inny świat.');
-  const [introText2, setIntroText2] = useState('Zapewniamy kompletną produkcję wieczoru tematycznego: scenografię, dekoracje, oświetlenie, nagłośnienie, catering tematyczny, animacje, pokazy artystyczne i profesjonalnego konferansjera.');
-  const [introImage, setIntroImage] = useState('https://images.pexels.com/photos/3171837/pexels-photo-3171837.jpeg?auto=compress&cs=tinysrgb&w=800');
-  const [seoText, setSeoText] = useState('Specjalizujemy się w organizacji wieczorów tematycznych dla firm, korporacji, agencji eventowych i klientów indywidualnych. Nasze imprezy z motywem przewodnim to kompletne doświadczenia sensoryczne - od scenografii i dekoracji, przez muzykę i oświetlenie, po catering tematyczny i animacje angażujące wszystkich gości.');
-  const [seoImage, setSeoImage] = useState('https://images.pexels.com/photos/2306281/pexels-photo-2306281.jpeg?auto=compress&cs=tinysrgb&w=800');
+  const [themes, setThemes] = useState<ThemeItem[]>(initial.themes);
+  const [gallery, setGallery] = useState<GalleryImage[]>(initial.gallery);
+  const [introText, setIntroText] = useState(initial.introText);
+  const [introText2, setIntroText2] = useState(initial.introText2);
+  const [introImage, setIntroImage] = useState(initial.introImage);
+  const [seoText, setSeoText] = useState(initial.seoText);
+  const [seoImage, setSeoImage] = useState(initial.seoImage);
 
   // Lightbox
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -132,10 +195,6 @@ export default function WieczeoryTematycznePage() {
   };
 
   const STORAGE_SECTION = 'themed-party';
-
-  useEffect(() => {
-    fetchData();
-  }, []);
 
   useEffect(() => {
     if (isEditMode && !isEditing) {
