@@ -12,6 +12,8 @@ import {
   Award,
   Heart,
 } from 'lucide-react';
+import Image from 'next/image';
+import ThemedPartyGallery from './ThemedPartyGallery';
 
 const themes = [
   {
@@ -19,72 +21,84 @@ const themes = [
     description:
       'Kasyno rozrywkowe, neonowe dekoracje, hostessy, dress code glamour. Stoły do ruletki, blackjacka i pokera. Muzyka lounge i koktajle.',
     keywords: 'impreza Las Vegas, wieczór kasynowy, event kasyno, impreza glamour',
+    image: 'https://images.pexels.com/photos/787961/pexels-photo-787961.jpeg?auto=compress&cs=tinysrgb&w=600',
   },
   {
     title: 'Wieczór w klimacie PRL',
     description:
       'Dekoracje z epoki, plakaty propagandowe, bar mleczny, muzyka lat 60-80. Zabawy i konkursy w stylu retro. Dress code robotniczy lub dyskotekowy.',
     keywords: 'impreza PRL, wieczór retro, event lata 80, zabawa w stylu PRL',
+    image: 'https://images.pexels.com/photos/1763075/pexels-photo-1763075.jpeg?auto=compress&cs=tinysrgb&w=600',
   },
   {
     title: 'Wieczór kryminalny - Murder Mystery',
     description:
       'Gra fabularna z rozwiązywaniem zagadki kryminalnej. Profesjonalni aktorzy, rekwizyty, scenografia detektywistyczna. Interaktywna zabawa dla zespołu.',
     keywords: 'murder mystery, wieczór kryminalny, gra detektywistyczna, zagadka kryminalna event',
+    image: 'https://images.pexels.com/photos/5699456/pexels-photo-5699456.jpeg?auto=compress&cs=tinysrgb&w=600',
   },
   {
     title: 'Wieczór James Bond / Casino Royale',
     description:
       'Elegancki wieczór agentów. Stroje wieczorowe, koktajle, kasyno, pokazy kaskaderskie. Muzyka filmowa na żywo i pokaz Aston Martina.',
     keywords: 'impreza James Bond, wieczór Casino Royale, event szpiegowski, gala agentów',
+    image: 'https://images.pexels.com/photos/2263436/pexels-photo-2263436.jpeg?auto=compress&cs=tinysrgb&w=600',
   },
   {
     title: 'Wieczór Gatsby / Lata 20.',
     description:
       'Szalone lata dwudzieste: art deco, frędzelki, charleston, jazz na żywo, bąbelki szampana. Prohibicja bar z koktajlami epoki.',
     keywords: 'impreza Gatsby, wieczór lat 20, event art deco, charleston party',
+    image: 'https://images.pexels.com/photos/1540406/pexels-photo-1540406.jpeg?auto=compress&cs=tinysrgb&w=600',
   },
   {
     title: 'Wieczór meksykański - Fiesta',
     description:
       'Kolorowe dekoracje, pinata, mariachi, tacos i margarita. Sombreros, kaktusy, papel picado. Taneczna atmosfera fiesty.',
     keywords: 'impreza meksykańska, wieczór fiesta, event meksyk, mexican party firmowa',
+    image: 'https://images.pexels.com/photos/1267697/pexels-photo-1267697.jpeg?auto=compress&cs=tinysrgb&w=600',
   },
   {
     title: 'Wieczór hawajski - Aloha Party',
     description:
       'Tropikalne dekoracje, leje z kwiatów, tiki bar, koktajle egzotyczne. Taniec hula, konkurs limbo, muzyka reggae i chillout.',
     keywords: 'impreza hawajska, wieczór aloha, event tropikalny, hawaiian party',
+    image: 'https://images.pexels.com/photos/2774556/pexels-photo-2774556.jpeg?auto=compress&cs=tinysrgb&w=600',
   },
   {
     title: 'Wieczór disco / lata 80.',
     description:
       'Kula dyskotekowa, neony, retro muzyka, karaoke. Dress code fluorescencyjny, konkursy taneczne. DJ z hitami lat 70-80.',
     keywords: 'impreza disco, wieczór lat 80, event retro disco, disco party firmowa',
+    image: 'https://images.pexels.com/photos/1190298/pexels-photo-1190298.jpeg?auto=compress&cs=tinysrgb&w=600',
   },
   {
     title: 'Wieczór w stylu Hollywood',
     description:
       'Czerwony dywan, Oscary firmowe, paparazzi, fotobudka filmowa. Gala z wręczeniem nagród, oprawa jak na wielkim festiwalu.',
     keywords: 'impreza Hollywood, wieczór filmowy, gala oscarowa, event czerwony dywan',
+    image: 'https://images.pexels.com/photos/1387174/pexels-photo-1387174.jpeg?auto=compress&cs=tinysrgb&w=600',
   },
   {
     title: 'Wieczór sportowy - Olimpiada firmowa',
     description:
       'Rywalizacja drużynowa w dyscyplinach sportowych i zabawowych. Ceremonia otwarcia, medale, hymn firmowy. Integracja przez sport.',
     keywords: 'olimpiada firmowa, event sportowy, wieczór sportowy, team building sport',
+    image: 'https://images.pexels.com/photos/3621104/pexels-photo-3621104.jpeg?auto=compress&cs=tinysrgb&w=600',
   },
   {
     title: 'Wieczór w stylu włoskim - Dolce Vita',
     description:
       'Romantyczna atmosfera Włoch: wino, ser, oliwa. Muzyka italiana na żywo, dekoracje toskańskie, pokaz gotowania pasta.',
     keywords: 'impreza włoska, wieczór dolce vita, event italia, italian party firmowa',
+    image: 'https://images.pexels.com/photos/1579739/pexels-photo-1579739.jpeg?auto=compress&cs=tinysrgb&w=600',
   },
   {
     title: 'Wieczór maskaradowy - Wenecja',
     description:
       'Maski weneckie, kostiumy karnawałowe, złoto i purpura. Muzyka barokowa, pokazy cyrkowe, tajemnicza atmosfera balu maskowego.',
     keywords: 'bal maskowy, wieczór wenecki, maskarada firmowa, karnawał wenecki event',
+    image: 'https://images.pexels.com/photos/1283219/pexels-photo-1283219.jpeg?auto=compress&cs=tinysrgb&w=600',
   },
 ];
 
@@ -130,6 +144,7 @@ const process = [
 const equipment = [
   {
     category: 'Scenografia i dekoracje',
+    image: 'https://images.pexels.com/photos/1616113/pexels-photo-1616113.jpeg?auto=compress&cs=tinysrgb&w=600',
     items: [
       'Dekoracje tematyczne wielkoformatowe',
       'Elementy scenografii 3D i rzeźby',
@@ -141,6 +156,7 @@ const equipment = [
   },
   {
     category: 'Oświetlenie i efekty',
+    image: 'https://images.pexels.com/photos/1105666/pexels-photo-1105666.jpeg?auto=compress&cs=tinysrgb&w=600',
     items: [
       'Oświetlenie architektoniczne LED RGB',
       'Moving heady i wash do efektów scenicznych',
@@ -152,6 +168,7 @@ const equipment = [
   },
   {
     category: 'Nagłośnienie i multimedia',
+    image: 'https://images.pexels.com/photos/1763067/pexels-photo-1763067.jpeg?auto=compress&cs=tinysrgb&w=600',
     items: [
       'System nagłośnienia PA profesjonalny',
       'DJ z oprawą muzyczną tematyczną',
@@ -163,6 +180,7 @@ const equipment = [
   },
   {
     category: 'Atrakcje i animacje',
+    image: 'https://images.pexels.com/photos/2747449/pexels-photo-2747449.jpeg?auto=compress&cs=tinysrgb&w=600',
     items: [
       'Fotobudka tematyczna z rekwizytami',
       'Kasyno rozrywkowe (ruletka, blackjack, poker)',
@@ -307,30 +325,43 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
 export default function WieczeoryTematycznePage() {
   return (
     <main className="min-h-screen bg-[#0f1119]">
-      {/* Intro Section */}
+      {/* Intro Section with image */}
       <section className="border-b border-[#d3bb73]/10 px-6 py-20">
-        <div className="mx-auto max-w-5xl">
-          <h2 className="mb-8 text-center text-3xl font-light text-[#e5e4e2] md:text-4xl">
-            Wieczory tematyczne na eventy firmowe i prywatne
-          </h2>
-          <div className="space-y-6 text-lg leading-relaxed text-[#e5e4e2]/80">
-            <p>
-              Organizujemy profesjonalne wieczory tematyczne, bale kostiumowe, imprezy z motywem
-              przewodnim i eventy scenograficzne dla firm i klientów indywidualnych w całej Polsce.
-              Tworzymy immersyjne doświadczenia, które przenoszą gości w inny świat - od eleganckich
-              lat 20. przez dziki Las Vegas po futurystyczny cyberpunk.
-            </p>
-            <p>
-              Zapewniamy kompletną produkcję wieczoru tematycznego: scenografię, dekoracje,
-              oświetlenie, nagłośnienie, catering tematyczny, animacje, pokazy artystyczne i
-              profesjonalnego konferansjera. Każdy event jest autorskim projektem dopasowanym do
-              okazji, grupy i budżetu.
-            </p>
+        <div className="mx-auto max-w-7xl">
+          <div className="grid items-center gap-12 lg:grid-cols-2">
+            <div>
+              <h2 className="mb-8 text-3xl font-light text-[#e5e4e2] md:text-4xl">
+                Wieczory tematyczne na eventy firmowe i prywatne
+              </h2>
+              <div className="space-y-6 text-lg leading-relaxed text-[#e5e4e2]/80">
+                <p>
+                  Organizujemy profesjonalne wieczory tematyczne, bale kostiumowe, imprezy z motywem
+                  przewodnim i eventy scenograficzne dla firm i klientów indywidualnych w całej Polsce.
+                  Tworzymy immersyjne doświadczenia, które przenoszą gości w inny świat.
+                </p>
+                <p>
+                  Zapewniamy kompletną produkcję wieczoru tematycznego: scenografię, dekoracje,
+                  oświetlenie, nagłośnienie, catering tematyczny, animacje, pokazy artystyczne i
+                  profesjonalnego konferansjera.
+                </p>
+              </div>
+            </div>
+            <div className="relative aspect-[4/3] overflow-hidden rounded-2xl border border-[#d3bb73]/20">
+              <Image
+                src="https://images.pexels.com/photos/3171837/pexels-photo-3171837.jpeg?auto=compress&cs=tinysrgb&w=800"
+                alt="Wieczór tematyczny - profesjonalna oprawa imprezy firmowej z dekoracjami"
+                fill
+                sizes="(max-width: 1024px) 100vw, 50vw"
+                className="object-cover"
+                priority
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#0f1119]/40 to-transparent" />
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Themes Grid */}
+      {/* Themes Grid with images */}
       <section className="border-b border-[#d3bb73]/10 bg-[#1c1f33]/30 px-6 py-20">
         <div className="mx-auto max-w-7xl">
           <h2 className="mb-4 text-center text-3xl font-light text-[#e5e4e2] md:text-4xl">
@@ -344,10 +375,23 @@ export default function WieczeoryTematycznePage() {
             {themes.map((theme, idx) => (
               <div
                 key={idx}
-                className="group rounded-xl border border-[#d3bb73]/10 bg-[#0f1119] p-6 transition-all duration-300 hover:border-[#d3bb73]/40 hover:shadow-lg hover:shadow-[#d3bb73]/5"
+                className="group overflow-hidden rounded-xl border border-[#d3bb73]/10 bg-[#0f1119] transition-all duration-300 hover:border-[#d3bb73]/40 hover:shadow-lg hover:shadow-[#d3bb73]/5"
               >
-                <h3 className="mb-3 text-lg font-medium text-[#d3bb73]">{theme.title}</h3>
-                <p className="text-sm leading-relaxed text-[#e5e4e2]/70">{theme.description}</p>
+                <div className="relative aspect-[16/9] overflow-hidden">
+                  <Image
+                    src={theme.image}
+                    alt={theme.title}
+                    fill
+                    sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                    className="object-cover transition-transform duration-500 group-hover:scale-110"
+                    loading="lazy"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#0f1119] via-[#0f1119]/20 to-transparent" />
+                </div>
+                <div className="p-5">
+                  <h3 className="mb-2 text-lg font-medium text-[#d3bb73]">{theme.title}</h3>
+                  <p className="text-sm leading-relaxed text-[#e5e4e2]/70">{theme.description}</p>
+                </div>
               </div>
             ))}
           </div>
@@ -361,22 +405,40 @@ export default function WieczeoryTematycznePage() {
         </div>
       </section>
 
-      {/* Occasions Section */}
-      <section className="border-b border-[#d3bb73]/10 px-6 py-20">
+      {/* Gallery Section */}
+      <ThemedPartyGallery images={[]} />
+
+      {/* Occasions Section with banner image */}
+      <section className="border-b border-[#d3bb73]/10 bg-[#1c1f33]/30 px-6 py-20">
         <div className="mx-auto max-w-7xl">
-          <h2 className="mb-4 text-center text-3xl font-light text-[#e5e4e2] md:text-4xl">
-            Na jakie okazje organizujemy wieczory tematyczne
-          </h2>
-          <p className="mx-auto mb-12 max-w-3xl text-center text-[#e5e4e2]/60">
-            Wieczór tematyczny sprawdzi się na każdej imprezie - od kameralnej kolacji po
-            wielką galę
-          </p>
+          <div className="mb-12 overflow-hidden rounded-2xl border border-[#d3bb73]/15">
+            <div className="relative h-48 w-full md:h-64">
+              <Image
+                src="https://images.pexels.com/photos/2608517/pexels-photo-2608517.jpeg?auto=compress&cs=tinysrgb&w=1200"
+                alt="Eventy firmowe i imprezy tematyczne - organizacja wieczorów dla firm"
+                fill
+                sizes="100vw"
+                className="object-cover"
+                loading="lazy"
+              />
+              <div className="absolute inset-0 bg-gradient-to-r from-[#0f1119]/80 via-[#0f1119]/50 to-[#0f1119]/80" />
+              <div className="absolute inset-0 flex flex-col items-center justify-center px-6">
+                <h2 className="text-center text-3xl font-light text-[#e5e4e2] md:text-4xl">
+                  Na jakie okazje organizujemy wieczory tematyczne
+                </h2>
+                <p className="mt-4 max-w-3xl text-center text-[#e5e4e2]/70">
+                  Wieczór tematyczny sprawdzi się na każdej imprezie - od kameralnej kolacji po
+                  wielką galę
+                </p>
+              </div>
+            </div>
+          </div>
 
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {occasions.map((occasion, idx) => (
               <div
                 key={idx}
-                className="rounded-xl border border-[#d3bb73]/15 bg-[#1c1f33]/50 p-6"
+                className="rounded-xl border border-[#d3bb73]/15 bg-[#0f1119]/50 p-6"
               >
                 <h3 className="mb-3 text-lg font-medium text-[#e5e4e2]">{occasion.title}</h3>
                 <p className="text-sm leading-relaxed text-[#e5e4e2]/60">
@@ -389,7 +451,7 @@ export default function WieczeoryTematycznePage() {
       </section>
 
       {/* Benefits Section */}
-      <section className="border-b border-[#d3bb73]/10 bg-[#1c1f33]/30 px-6 py-20">
+      <section className="border-b border-[#d3bb73]/10 px-6 py-20">
         <div className="mx-auto max-w-7xl">
           <h2 className="mb-12 text-center text-3xl font-light text-[#e5e4e2] md:text-4xl">
             Dlaczego warto wybrać nasze wieczory tematyczne
@@ -418,8 +480,8 @@ export default function WieczeoryTematycznePage() {
         </div>
       </section>
 
-      {/* Equipment Section */}
-      <section className="border-b border-[#d3bb73]/10 px-6 py-20">
+      {/* Equipment Section with images */}
+      <section className="border-b border-[#d3bb73]/10 bg-[#1c1f33]/30 px-6 py-20">
         <div className="mx-auto max-w-7xl">
           <h2 className="mb-4 text-center text-3xl font-light text-[#e5e4e2] md:text-4xl">
             Co dostarczamy na wieczór tematyczny
@@ -432,27 +494,63 @@ export default function WieczeoryTematycznePage() {
             {equipment.map((group, idx) => (
               <div
                 key={idx}
-                className="rounded-xl border border-[#d3bb73]/15 bg-[#1c1f33]/50 p-6"
+                className="overflow-hidden rounded-xl border border-[#d3bb73]/15 bg-[#0f1119]/50"
               >
-                <h3 className="mb-4 border-b border-[#d3bb73]/20 pb-3 text-xl font-medium text-[#d3bb73]">
-                  {group.category}
-                </h3>
-                <ul className="space-y-2">
-                  {group.items.map((item, itemIdx) => (
-                    <li key={itemIdx} className="flex items-start gap-2 text-[#e5e4e2]/80">
-                      <span className="mt-2 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#d3bb73]" />
-                      {item}
-                    </li>
-                  ))}
-                </ul>
+                <div className="relative h-40 w-full">
+                  <Image
+                    src={group.image}
+                    alt={group.category}
+                    fill
+                    sizes="(max-width: 768px) 100vw, 50vw"
+                    className="object-cover"
+                    loading="lazy"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#0f1119] to-[#0f1119]/30" />
+                  <h3 className="absolute bottom-4 left-6 text-xl font-medium text-[#d3bb73]">
+                    {group.category}
+                  </h3>
+                </div>
+                <div className="p-6 pt-4">
+                  <ul className="space-y-2">
+                    {group.items.map((item, itemIdx) => (
+                      <li key={itemIdx} className="flex items-start gap-2 text-[#e5e4e2]/80">
+                        <span className="mt-2 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#d3bb73]" />
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </div>
             ))}
           </div>
         </div>
       </section>
 
+      {/* Showcase image divider */}
+      <section className="border-b border-[#d3bb73]/10">
+        <div className="relative h-64 w-full md:h-80">
+          <Image
+            src="https://images.pexels.com/photos/2747449/pexels-photo-2747449.jpeg?auto=compress&cs=tinysrgb&w=1200"
+            alt="Oprawa artystyczna wieczoru tematycznego - pokazy i animacje eventowe"
+            fill
+            sizes="100vw"
+            className="object-cover"
+            loading="lazy"
+          />
+          <div className="absolute inset-0 bg-[#0f1119]/60" />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-center">
+              <p className="text-2xl font-light text-[#e5e4e2] md:text-3xl">
+                Tworzymy niezapomniane doświadczenia
+              </p>
+              <p className="mt-3 text-[#d3bb73]">Od koncepcji po realizację</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Process Section */}
-      <section className="border-b border-[#d3bb73]/10 bg-[#1c1f33]/30 px-6 py-20">
+      <section className="border-b border-[#d3bb73]/10 px-6 py-20">
         <div className="mx-auto max-w-4xl">
           <h2 className="mb-12 text-center text-3xl font-light text-[#e5e4e2] md:text-4xl">
             Jak organizujemy wieczór tematyczny
@@ -467,7 +565,7 @@ export default function WieczeoryTematycznePage() {
                   <div className="relative z-10 flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full border-2 border-[#d3bb73] bg-[#0f1119] text-lg font-bold text-[#d3bb73]">
                     {item.step}
                   </div>
-                  <div className="flex-1 rounded-xl border border-[#d3bb73]/10 bg-[#0f1119] p-5">
+                  <div className="flex-1 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]/50 p-5">
                     <h3 className="mb-2 text-lg font-medium text-[#e5e4e2]">{item.title}</h3>
                     <p className="text-sm leading-relaxed text-[#e5e4e2]/70">
                       {item.description}
@@ -481,28 +579,28 @@ export default function WieczeoryTematycznePage() {
       </section>
 
       {/* Stats Section */}
-      <section className="border-b border-[#d3bb73]/10 px-6 py-20">
+      <section className="border-b border-[#d3bb73]/10 bg-[#1c1f33]/30 px-6 py-20">
         <div className="mx-auto max-w-7xl">
           <h2 className="mb-12 text-center text-3xl font-light text-[#e5e4e2] md:text-4xl">
             Wieczory tematyczne w liczbach
           </h2>
           <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
-            <div className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]/50 p-6 text-center">
+            <div className="rounded-xl border border-[#d3bb73]/20 bg-[#0f1119]/50 p-6 text-center">
               <Award className="mx-auto mb-3 h-8 w-8 text-[#d3bb73]" />
               <div className="text-3xl font-bold text-[#d3bb73]">500+</div>
               <p className="mt-2 text-sm text-[#e5e4e2]/60">Zrealizowanych wieczorów tematycznych</p>
             </div>
-            <div className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]/50 p-6 text-center">
+            <div className="rounded-xl border border-[#d3bb73]/20 bg-[#0f1119]/50 p-6 text-center">
               <Users className="mx-auto mb-3 h-8 w-8 text-[#d3bb73]" />
               <div className="text-3xl font-bold text-[#d3bb73]">50 000+</div>
               <p className="mt-2 text-sm text-[#e5e4e2]/60">Zadowolonych uczestników imprez</p>
             </div>
-            <div className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]/50 p-6 text-center">
+            <div className="rounded-xl border border-[#d3bb73]/20 bg-[#0f1119]/50 p-6 text-center">
               <Star className="mx-auto mb-3 h-8 w-8 text-[#d3bb73]" />
               <div className="text-3xl font-bold text-[#d3bb73]">40+</div>
               <p className="mt-2 text-sm text-[#e5e4e2]/60">Gotowych tematyk do wyboru</p>
             </div>
-            <div className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]/50 p-6 text-center">
+            <div className="rounded-xl border border-[#d3bb73]/20 bg-[#0f1119]/50 p-6 text-center">
               <Clock className="mx-auto mb-3 h-8 w-8 text-[#d3bb73]" />
               <div className="text-3xl font-bold text-[#d3bb73]">12 lat</div>
               <p className="mt-2 text-sm text-[#e5e4e2]/60">Doświadczenia w eventach tematycznych</p>
@@ -512,7 +610,7 @@ export default function WieczeoryTematycznePage() {
       </section>
 
       {/* FAQ Section */}
-      <section className="border-b border-[#d3bb73]/10 bg-[#1c1f33]/30 px-6 py-20">
+      <section className="border-b border-[#d3bb73]/10 px-6 py-20">
         <div className="mx-auto max-w-4xl">
           <h2 className="mb-12 text-center text-3xl font-light text-[#e5e4e2] md:text-4xl">
             Najczęściej zadawane pytania o wieczory tematyczne
@@ -522,7 +620,7 @@ export default function WieczeoryTematycznePage() {
             {faq.map((item, idx) => (
               <details
                 key={idx}
-                className="group rounded-xl border border-[#d3bb73]/10 bg-[#0f1119]/50 transition-colors open:border-[#d3bb73]/30"
+                className="group rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33]/50 transition-colors open:border-[#d3bb73]/30"
               >
                 <summary className="cursor-pointer list-none px-6 py-5 text-[#e5e4e2] transition-colors hover:text-[#d3bb73]">
                   <div className="flex items-center justify-between">
@@ -541,37 +639,45 @@ export default function WieczeoryTematycznePage() {
         </div>
       </section>
 
-      {/* Keywords-rich text section */}
-      <section className="border-b border-[#d3bb73]/10 px-6 py-20">
-        <div className="mx-auto max-w-5xl">
-          <h2 className="mb-8 text-center text-3xl font-light text-[#e5e4e2] md:text-4xl">
-            Profesjonalna organizacja imprez tematycznych
-          </h2>
-          <div className="space-y-6 text-base leading-relaxed text-[#e5e4e2]/70">
-            <p>
-              Specjalizujemy się w organizacji wieczorów tematycznych dla firm, korporacji,
-              agencji eventowych i klientów indywidualnych. Nasze imprezy z motywem przewodnim
-              to kompletne doświadczenia sensoryczne - od scenografii i dekoracji, przez muzykę
-              i oświetlenie, po catering tematyczny i animacje angażujące wszystkich gości.
-            </p>
-            <p>
-              Realizujemy eventy tematyczne na terenie całej Polski - w hotelach, salach
-              bankietowych, restauracjach, loftach, plenerach i nietypowych lokalizacjach.
-              Dysponujemy własnym magazynem scenografii, pracownią dekoratorską i zespołem
-              techników, co pozwala nam realizować nawet najbardziej wymagające projekty.
-            </p>
-            <p>
-              Wśród naszych klientów znajdują się firmy z branży IT, farmaceutycznej,
-              finansowej, automotive, FMCG i rozrywkowej. Organizujemy wieczory tematyczne
-              jako integracje firmowe, bale karnawałowe, kolacje tematyczne, gale z
-              wręczeniem nagród, launch party, jubileusze i eventy motywacyjne.
-            </p>
-            <p>
-              Każdy wieczór tematyczny to autorski projekt - nie korzystamy z gotowych
-              schematów. Nasz zespół scenografów, dekoratorów, reżyserów eventowych i
-              producentów tworzy unikalne koncepty dopasowane do charakteru firmy, okazji
-              i oczekiwań klienta.
-            </p>
+      {/* Keywords-rich text section with image */}
+      <section className="border-b border-[#d3bb73]/10 bg-[#1c1f33]/30 px-6 py-20">
+        <div className="mx-auto max-w-7xl">
+          <div className="grid items-center gap-12 lg:grid-cols-2">
+            <div className="relative aspect-[4/3] overflow-hidden rounded-2xl border border-[#d3bb73]/15">
+              <Image
+                src="https://images.pexels.com/photos/2306281/pexels-photo-2306281.jpeg?auto=compress&cs=tinysrgb&w=800"
+                alt="Profesjonalne oświetlenie i efekty specjalne na imprezach tematycznych"
+                fill
+                sizes="(max-width: 1024px) 100vw, 50vw"
+                className="object-cover"
+                loading="lazy"
+              />
+            </div>
+            <div>
+              <h2 className="mb-8 text-3xl font-light text-[#e5e4e2] md:text-4xl">
+                Profesjonalna organizacja imprez tematycznych
+              </h2>
+              <div className="space-y-5 text-base leading-relaxed text-[#e5e4e2]/70">
+                <p>
+                  Specjalizujemy się w organizacji wieczorów tematycznych dla firm, korporacji,
+                  agencji eventowych i klientów indywidualnych. Nasze imprezy z motywem przewodnim
+                  to kompletne doświadczenia sensoryczne - od scenografii i dekoracji, przez muzykę
+                  i oświetlenie, po catering tematyczny i animacje angażujące wszystkich gości.
+                </p>
+                <p>
+                  Realizujemy eventy tematyczne na terenie całej Polski - w hotelach, salach
+                  bankietowych, restauracjach, loftach, plenerach i nietypowych lokalizacjach.
+                  Dysponujemy własnym magazynem scenografii, pracownią dekoratorską i zespołem
+                  techników.
+                </p>
+                <p>
+                  Każdy wieczór tematyczny to autorski projekt - nie korzystamy z gotowych
+                  schematów. Nasz zespół scenografów, dekoratorów, reżyserów eventowych i
+                  producentów tworzy unikalne koncepty dopasowane do charakteru firmy, okazji
+                  i oczekiwań klienta.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </section>
