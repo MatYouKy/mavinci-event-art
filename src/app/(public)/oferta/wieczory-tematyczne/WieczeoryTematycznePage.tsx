@@ -98,13 +98,38 @@ export default function WieczeoryTematycznePage() {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [currentGalleryIndex, setCurrentGalleryIndex] = useState(0);
 
-  // Pending file uploads
-  const [pendingIntroFile, setPendingIntroFile] = useState<File | null>(null);
-  const [pendingSeoFile, setPendingSeoFile] = useState<File | null>(null);
-  const [pendingThemeFiles, setPendingThemeFiles] = useState<Record<number, File>>({});
-  const [pendingGalleryFiles, setPendingGalleryFiles] = useState<Record<string, File>>({});
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
+  // Per-image upload states (keyed by identifier like 'intro', 'seo', 'theme-0', 'gallery-abc')
+  const [uploadingImages, setUploadingImages] = useState<Record<string, { status: 'uploading' | 'success' | 'error'; progress: number }>>({});
+
+  const getUploadState = (key: string) => uploadingImages[key] || { status: 'idle' as const, progress: 0 };
+  const getStatusProp = (key: string): 'idle' | 'uploading' | 'success' | 'error' => {
+    const state = getUploadState(key);
+    if (state.status === 'uploading') return 'uploading';
+    if (state.status === 'success') return 'success';
+    if (state.status === 'error') return 'error';
+    return 'idle';
+  };
+
+  const uploadImmediately = async (file: File, key: string): Promise<string | null> => {
+    setUploadingImages((prev) => ({ ...prev, [key]: { status: 'uploading', progress: 20 } }));
+    try {
+      setUploadingImages((prev) => ({ ...prev, [key]: { status: 'uploading', progress: 50 } }));
+      const url = await uploadImage(file, 'themed-party');
+      setUploadingImages((prev) => ({ ...prev, [key]: { status: 'success', progress: 100 } }));
+      showSnackbar('Zdjecie zaladowane pomyslnie!', 'success');
+      setTimeout(() => {
+        setUploadingImages((prev) => { const next = { ...prev }; delete next[key]; return next; });
+      }, 3000);
+      return url;
+    } catch (err: any) {
+      setUploadingImages((prev) => ({ ...prev, [key]: { status: 'error', progress: 0 } }));
+      showSnackbar('Blad uploadu: ' + (err?.message || 'Nieznany blad'), 'error');
+      setTimeout(() => {
+        setUploadingImages((prev) => { const next = { ...prev }; delete next[key]; return next; });
+      }, 4000);
+      return null;
+    }
+  };
 
   useEffect(() => {
     fetchData();
@@ -165,111 +190,33 @@ export default function WieczeoryTematycznePage() {
 
   const handleSave = async () => {
     setSaving(true);
-    setUploadStatus('uploading');
-    setUploadProgress(0);
-
-    const totalFiles = (pendingIntroFile ? 1 : 0) + (pendingSeoFile ? 1 : 0) +
-      Object.keys(pendingThemeFiles).length + Object.keys(pendingGalleryFiles).length;
-    let uploadedCount = 0;
-
-    const updateProgress = () => {
-      uploadedCount++;
-      setUploadProgress(Math.round((uploadedCount / Math.max(totalFiles, 1)) * 80));
-    };
-
     try {
-      let finalIntroImage = introImage;
-      let finalSeoImage = seoImage;
-      const finalThemes = [...themes];
-      const finalGallery = [...gallery];
-
-      if (totalFiles > 0) {
-        showSnackbar(`Uploadowanie ${totalFiles} ${totalFiles === 1 ? 'pliku' : 'plikow'}...`, 'info');
-      }
-
-      if (pendingIntroFile) {
-        const url = await uploadImage(pendingIntroFile, 'themed-party');
-        if (url) finalIntroImage = url;
-        updateProgress();
-      }
-
-      if (pendingSeoFile) {
-        const url = await uploadImage(pendingSeoFile, 'themed-party');
-        if (url) finalSeoImage = url;
-        updateProgress();
-      }
-
-      for (const [idxStr, file] of Object.entries(pendingThemeFiles)) {
-        const url = await uploadImage(file, 'themed-party');
-        if (url) finalThemes[Number(idxStr)] = { ...finalThemes[Number(idxStr)], image: url };
-        updateProgress();
-      }
-
-      for (const [id, file] of Object.entries(pendingGalleryFiles)) {
-        const url = await uploadImage(file, 'themed-party');
-        if (url) {
-          const idx = finalGallery.findIndex((img) => img.id === id);
-          if (idx >= 0) finalGallery[idx] = { ...finalGallery[idx], image_url: url };
-        }
-        updateProgress();
-      }
-
-      setUploadProgress(85);
-
-      setIntroImage(finalIntroImage);
-      setSeoImage(finalSeoImage);
-      setThemes(finalThemes);
-      setGallery(finalGallery);
-
-      setPendingIntroFile(null);
-      setPendingSeoFile(null);
-      setPendingThemeFiles({});
-      setPendingGalleryFiles({});
-
-      setUploadProgress(90);
-
       try {
         await supabase.from('themed_party_gallery').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-        for (let i = 0; i < finalGallery.length; i++) {
+        for (let i = 0; i < gallery.length; i++) {
           await supabase.from('themed_party_gallery').insert({
-            image_url: finalGallery[i].image_url,
-            alt_text: finalGallery[i].alt_text,
-            caption: finalGallery[i].caption,
-            category: finalGallery[i].category,
+            image_url: gallery[i].image_url,
+            alt_text: gallery[i].alt_text,
+            caption: gallery[i].caption,
+            category: gallery[i].category,
             order_index: i,
             is_visible: true,
           });
         }
       } catch { /* table may not exist */ }
 
-      setUploadProgress(95);
-
       try {
         await supabase.from('themed_party_content').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-
         await supabase.from('themed_party_content').insert([
-          { section_key: 'intro', body_text: introText, subheading: introText2, image_url: finalIntroImage, order_index: 0 },
-          { section_key: 'themes', items_json: finalThemes, order_index: 1 },
-          { section_key: 'seo_text', body_text: seoText, image_url: finalSeoImage, order_index: 2 },
+          { section_key: 'intro', body_text: introText, subheading: introText2, image_url: introImage, order_index: 0 },
+          { section_key: 'themes', items_json: themes, order_index: 1 },
+          { section_key: 'seo_text', body_text: seoText, image_url: seoImage, order_index: 2 },
         ]);
       } catch { /* table may not exist */ }
 
-      setUploadProgress(100);
-      setUploadStatus('success');
       showSnackbar('Zmiany zapisane pomyslnie!', 'success');
-
-      setTimeout(() => {
-        setUploadStatus('idle');
-        setUploadProgress(0);
-      }, 3000);
     } catch (error: any) {
-      setUploadStatus('error');
-      setUploadProgress(0);
       showSnackbar('Blad zapisu: ' + error.message, 'error');
-
-      setTimeout(() => {
-        setUploadStatus('idle');
-      }, 4000);
     } finally {
       setSaving(false);
     }
@@ -351,20 +298,6 @@ export default function WieczeoryTematycznePage() {
                   {saving ? 'Zapisywanie...' : 'Zapisz wszystko'}
                 </button>
               </div>
-              {uploadStatus === 'uploading' && uploadProgress > 0 && (
-                <div className="mt-3 w-full">
-                  <div className="flex items-center justify-between text-xs text-[#e5e4e2]/60 mb-1">
-                    <span>Upload plikow...</span>
-                    <span>{uploadProgress}%</span>
-                  </div>
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-[#1c1f33]">
-                    <div
-                      className="h-full rounded-full bg-[#d3bb73] transition-all duration-500 ease-out"
-                      style={{ width: `${uploadProgress}%` }}
-                    />
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         )}
@@ -403,16 +336,16 @@ export default function WieczeoryTematycznePage() {
                 {isEditing ? (
                   <div className="h-full w-full">
                     <SimpleImageUploader
-                      onImageSelect={(data: IUploadImage) => {
+                      onImageSelect={async (data: IUploadImage) => {
                         if (data.file) {
-                          setPendingIntroFile(data.file);
-                          setIntroImage(URL.createObjectURL(data.file));
+                          const url = await uploadImmediately(data.file, 'intro');
+                          if (url) setIntroImage(url);
                         }
                       }}
                       initialImage={{ src: introImage, alt: 'Intro' }}
                       showPreview={true}
-                      uploadStatus={uploadStatus}
-                      uploadProgress={uploadProgress}
+                      uploadStatus={getStatusProp('intro')}
+                      uploadProgress={getUploadState('intro').progress}
                     />
                   </div>
                 ) : (
@@ -470,16 +403,16 @@ export default function WieczeoryTematycznePage() {
                         <textarea value={theme.description} onChange={(e) => updateTheme(idx, 'description', e.target.value)} rows={2} className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33]/40 px-2 py-1 text-xs text-[#e5e4e2]/70 outline-none focus:border-[#d3bb73]" />
                         <div className="h-40 w-full">
                           <SimpleImageUploader
-                            onImageSelect={(data: IUploadImage) => {
+                            onImageSelect={async (data: IUploadImage) => {
                               if (data.file) {
-                                setPendingThemeFiles((prev) => ({ ...prev, [idx]: data.file! }));
-                                updateTheme(idx, 'image', URL.createObjectURL(data.file));
+                                const url = await uploadImmediately(data.file, `theme-${idx}`);
+                                if (url) updateTheme(idx, 'image', url);
                               }
                             }}
                             initialImage={{ src: theme.image, alt: theme.title }}
                             showPreview={true}
-                            uploadStatus={uploadStatus}
-                            uploadProgress={uploadProgress}
+                            uploadStatus={getStatusProp(`theme-${idx}`)}
+                            uploadProgress={getUploadState(`theme-${idx}`).progress}
                           />
                         </div>
                       </div>
@@ -518,16 +451,16 @@ export default function WieczeoryTematycznePage() {
                     <div key={img.id} className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]/50 p-3">
                       <div className="h-40 w-full">
                         <SimpleImageUploader
-                          onImageSelect={(data: IUploadImage) => {
+                          onImageSelect={async (data: IUploadImage) => {
                             if (data.file) {
-                              setPendingGalleryFiles((prev) => ({ ...prev, [img.id]: data.file! }));
-                              updateGalleryImage(img.id, 'image_url', URL.createObjectURL(data.file));
+                              const url = await uploadImmediately(data.file, `gallery-${img.id}`);
+                              if (url) updateGalleryImage(img.id, 'image_url', url);
                             }
                           }}
                           initialImage={{ src: img.image_url, alt: img.alt_text }}
                           showPreview={true}
-                          uploadStatus={uploadStatus}
-                          uploadProgress={uploadProgress}
+                          uploadStatus={getStatusProp(`gallery-${img.id}`)}
+                          uploadProgress={getUploadState(`gallery-${img.id}`).progress}
                         />
                       </div>
                       <div className="mt-3 space-y-2">
@@ -651,16 +584,16 @@ export default function WieczeoryTematycznePage() {
                 {isEditing ? (
                   <div className="h-full w-full">
                     <SimpleImageUploader
-                      onImageSelect={(data: IUploadImage) => {
+                      onImageSelect={async (data: IUploadImage) => {
                         if (data.file) {
-                          setPendingSeoFile(data.file);
-                          setSeoImage(URL.createObjectURL(data.file));
+                          const url = await uploadImmediately(data.file, 'seo');
+                          if (url) setSeoImage(url);
                         }
                       }}
                       initialImage={{ src: seoImage, alt: 'SEO' }}
                       showPreview={true}
-                      uploadStatus={uploadStatus}
-                      uploadProgress={uploadProgress}
+                      uploadStatus={getStatusProp('seo')}
+                      uploadProgress={getUploadState('seo').progress}
                     />
                   </div>
                 ) : (

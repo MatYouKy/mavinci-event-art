@@ -228,12 +228,14 @@ export function SimpleImageUploader({
           {isUploading && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm">
               <div className="mb-3 h-8 w-8 animate-spin rounded-full border-2 border-[#d3bb73]/30 border-t-[#d3bb73]" />
-              <p className="text-sm font-medium text-[#e5e4e2]">Przetwarzanie...</p>
+              <p className="text-sm font-medium text-[#e5e4e2]">
+                {uploadStatus === 'uploading' ? 'Uploadowanie...' : 'Przetwarzanie...'}
+              </p>
             </div>
           )}
 
           {/* Success indicator */}
-          {(uploadStatus === 'success' || localStatus === 'ready') && (
+          {(uploadStatus === 'success' || (localStatus === 'ready' && uploadStatus !== 'uploading')) && (
             <div className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-md bg-green-600/90 px-2 py-1 backdrop-blur-sm">
               <CheckCircle className="h-3.5 w-3.5 text-white" />
               <span className="text-xs font-medium text-white">Gotowe</span>
