@@ -15,6 +15,7 @@ import PortfolioFeaturesEditor from '@/components/PortfolioFeaturesEditor';
 import { uploadImage } from '@/lib/storage';
 import { IUploadImage } from '@/types/image';
 import { CategoryBreadcrumb } from '@/components/CategoryBreadcrumb';
+import Image from 'next/image';
 
 const MOCK_PROJECTS: PortfolioProject[] = [
   {
@@ -580,9 +581,11 @@ export default function PortfolioDetailClient() {
                   <div className="relative">
                     <div className="absolute inset-0 bg-gradient-to-br from-[#d3bb73]/20 to-[#800020]/20 rounded-3xl blur-3xl"></div>
                     <div className="relative rounded-3xl overflow-hidden border border-[#d3bb73]/20">
-                      <img
+                      <Image
                         src={previewImage}
                         alt={project.alt || title}
+                        width={1000}
+                        height={1000}
                         className="w-full h-full object-cover"
                       />
                     </div>
@@ -703,10 +706,12 @@ export default function PortfolioDetailClient() {
                       onClick={() => openLightbox(index)}
                       className="group relative aspect-[4/3] overflow-hidden rounded-xl border border-[#d3bb73]/10 hover:border-[#d3bb73]/30 transition-all duration-300 cursor-pointer"
                     >
-                      <img
+                      <Image
                         src={image.image_metadata?.desktop?.src || image.src}
                         alt={image.alt || `Zdjęcie z wydarzenia ${index + 1}`}
                         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                        width={1000}
+                        height={1000}
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-[#0f1119]/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                         <div className="absolute bottom-4 left-4 right-4">
@@ -785,10 +790,12 @@ export default function PortfolioDetailClient() {
 
             {/* Image */}
             <div className="relative max-w-7xl max-h-[90vh] mx-4">
-              <img
+              <Image
                 src={gallery[currentImageIndex]?.image_metadata?.desktop?.src || gallery[currentImageIndex]?.src}
                 alt={gallery[currentImageIndex]?.alt || `Zdjęcie ${currentImageIndex + 1}`}
                 className="max-w-full max-h-[90vh] object-contain"
+                width={1000}
+                height={1000}
               />
 
               {/* Image Caption */}
