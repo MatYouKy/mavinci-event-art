@@ -21,6 +21,8 @@ import ThemedPartyCityGallery from './ThemedPartyCityGallery';
 import ThemedPartyCityProcess from './ThemedPartyCityProcess';
 import ThemedPartyCityFAQ from './ThemedPartyCityFAQ';
 import ThemedPartyCityCTA from './ThemedPartyCityCTA';
+import ThemedPartyCityThemes from './ThemedPartyCityThemes';
+import ThemedPartyCitySharedGallery from './ThemedPartyCitySharedGallery';
 
 function capitalize(value: string) {
   if (!value) return value;
@@ -89,6 +91,38 @@ async function loadCityData(city: string) {
   const EXCEPTIONS: Record<string, PolishCityCases> = await loadCityCasesFromDb();
   const cityCases = getPolishCityCasesSmart(city, EXCEPTIONS);
 
+  // Fetch shared themed-party data (themes + gallery from main page)
+  let sharedThemes: any[] = [];
+  let sharedGallery: any[] = [];
+  try {
+    const { data: sharedData } = await supabase
+      .from('site_images')
+      .select('*')
+      .eq('section', 'themed-party')
+      .eq('is_active', true)
+      .order('order_index');
+
+    if (sharedData && sharedData.length > 0) {
+      const themesRow = sharedData.find((r: any) => r.name === 'themes');
+      if (themesRow?.image_metadata?.items && Array.isArray(themesRow.image_metadata.items)) {
+        sharedThemes = themesRow.image_metadata.items;
+      }
+
+      const galleryRows = sharedData
+        .filter((r: any) => r.name?.startsWith('gallery-'))
+        .sort((a: any, b: any) => (a.order_index || 0) - (b.order_index || 0));
+
+      if (galleryRows.length > 0) {
+        sharedGallery = galleryRows.map((r: any) => ({
+          id: r.id,
+          image_url: r.desktop_url || '',
+          alt_text: r.alt_text || '',
+          caption: r.image_metadata?.caption || '',
+        }));
+      }
+    }
+  } catch { /* site_images may not have themed-party data yet */ }
+
   const image =
     cityContent?.hero_image_url ||
     cityPageSeo?.og_image ||
@@ -127,6 +161,8 @@ async function loadCityData(city: string) {
     metaTitle,
     cityContent,
     gallery: gallery || [],
+    sharedThemes,
+    sharedGallery,
   };
 }
 
@@ -179,6 +215,8 @@ export default async function ThemedPartyCityPage({ params }: { params: { miasto
     city,
     cityContent,
     gallery,
+    sharedThemes,
+    sharedGallery,
   } = data;
 
   const canonicalUrl = `https://mavinci.pl/oferta/wieczory-tematyczne/${city.locality}`;
@@ -340,6 +378,14 @@ export default async function ThemedPartyCityPage({ params }: { params: { miasto
         <ThemedPartyCityEquipment cityCases={cityCases} content={cityContent} />
 
         <ThemedPartyCityBenefits cityCases={cityCases} content={cityContent} />
+
+        {sharedThemes.length > 0 && (
+          <ThemedPartyCityThemes themes={sharedThemes} cityCases={cityCases} />
+        )}
+
+        {sharedGallery.length > 0 && (
+          <ThemedPartyCitySharedGallery images={sharedGallery} cityCases={cityCases} />
+        )}
 
         {gallery.length > 0 && <ThemedPartyCityGallery images={gallery} cityCases={cityCases} />}
 
