@@ -103,6 +103,8 @@ export default function WieczeoryTematycznePage() {
   const [pendingSeoFile, setPendingSeoFile] = useState<File | null>(null);
   const [pendingThemeFiles, setPendingThemeFiles] = useState<Record<number, File>>({});
   const [pendingGalleryFiles, setPendingGalleryFiles] = useState<Record<string, File>>({});
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
 
   useEffect(() => {
     fetchData();
@@ -163,26 +165,44 @@ export default function WieczeoryTematycznePage() {
 
   const handleSave = async () => {
     setSaving(true);
+    setUploadStatus('uploading');
+    setUploadProgress(0);
+
+    const totalFiles = (pendingIntroFile ? 1 : 0) + (pendingSeoFile ? 1 : 0) +
+      Object.keys(pendingThemeFiles).length + Object.keys(pendingGalleryFiles).length;
+    let uploadedCount = 0;
+
+    const updateProgress = () => {
+      uploadedCount++;
+      setUploadProgress(Math.round((uploadedCount / Math.max(totalFiles, 1)) * 80));
+    };
+
     try {
-      // Upload pending files
       let finalIntroImage = introImage;
       let finalSeoImage = seoImage;
       const finalThemes = [...themes];
       const finalGallery = [...gallery];
 
+      if (totalFiles > 0) {
+        showSnackbar(`Uploadowanie ${totalFiles} ${totalFiles === 1 ? 'pliku' : 'plikow'}...`, 'info');
+      }
+
       if (pendingIntroFile) {
         const url = await uploadImage(pendingIntroFile, 'themed-party');
         if (url) finalIntroImage = url;
+        updateProgress();
       }
 
       if (pendingSeoFile) {
         const url = await uploadImage(pendingSeoFile, 'themed-party');
         if (url) finalSeoImage = url;
+        updateProgress();
       }
 
       for (const [idxStr, file] of Object.entries(pendingThemeFiles)) {
         const url = await uploadImage(file, 'themed-party');
         if (url) finalThemes[Number(idxStr)] = { ...finalThemes[Number(idxStr)], image: url };
+        updateProgress();
       }
 
       for (const [id, file] of Object.entries(pendingGalleryFiles)) {
@@ -191,21 +211,23 @@ export default function WieczeoryTematycznePage() {
           const idx = finalGallery.findIndex((img) => img.id === id);
           if (idx >= 0) finalGallery[idx] = { ...finalGallery[idx], image_url: url };
         }
+        updateProgress();
       }
 
-      // Update local state with final URLs
+      setUploadProgress(85);
+
       setIntroImage(finalIntroImage);
       setSeoImage(finalSeoImage);
       setThemes(finalThemes);
       setGallery(finalGallery);
 
-      // Clear pending files
       setPendingIntroFile(null);
       setPendingSeoFile(null);
       setPendingThemeFiles({});
       setPendingGalleryFiles({});
 
-      // Save gallery
+      setUploadProgress(90);
+
       try {
         await supabase.from('themed_party_gallery').delete().neq('id', '00000000-0000-0000-0000-000000000000');
         for (let i = 0; i < finalGallery.length; i++) {
@@ -220,7 +242,8 @@ export default function WieczeoryTematycznePage() {
         }
       } catch { /* table may not exist */ }
 
-      // Save content sections
+      setUploadProgress(95);
+
       try {
         await supabase.from('themed_party_content').delete().neq('id', '00000000-0000-0000-0000-000000000000');
 
@@ -231,9 +254,22 @@ export default function WieczeoryTematycznePage() {
         ]);
       } catch { /* table may not exist */ }
 
-      showSnackbar('Zmiany zapisane!', 'success');
+      setUploadProgress(100);
+      setUploadStatus('success');
+      showSnackbar('Zmiany zapisane pomyslnie!', 'success');
+
+      setTimeout(() => {
+        setUploadStatus('idle');
+        setUploadProgress(0);
+      }, 3000);
     } catch (error: any) {
+      setUploadStatus('error');
+      setUploadProgress(0);
       showSnackbar('Blad zapisu: ' + error.message, 'error');
+
+      setTimeout(() => {
+        setUploadStatus('idle');
+      }, 4000);
     } finally {
       setSaving(false);
     }
@@ -315,6 +351,20 @@ export default function WieczeoryTematycznePage() {
                   {saving ? 'Zapisywanie...' : 'Zapisz wszystko'}
                 </button>
               </div>
+              {uploadStatus === 'uploading' && uploadProgress > 0 && (
+                <div className="mt-3 w-full">
+                  <div className="flex items-center justify-between text-xs text-[#e5e4e2]/60 mb-1">
+                    <span>Upload plikow...</span>
+                    <span>{uploadProgress}%</span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-[#1c1f33]">
+                    <div
+                      className="h-full rounded-full bg-[#d3bb73] transition-all duration-500 ease-out"
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -351,7 +401,7 @@ export default function WieczeoryTematycznePage() {
               </div>
               <div className="relative aspect-[4/3] overflow-hidden rounded-2xl border border-[#d3bb73]/20">
                 {isEditing ? (
-                  <div className="flex h-full flex-col items-center justify-center bg-[#1c1f33]/50 p-4">
+                  <div className="h-full w-full">
                     <SimpleImageUploader
                       onImageSelect={(data: IUploadImage) => {
                         if (data.file) {
@@ -361,6 +411,8 @@ export default function WieczeoryTematycznePage() {
                       }}
                       initialImage={{ src: introImage, alt: 'Intro' }}
                       showPreview={true}
+                      uploadStatus={uploadStatus}
+                      uploadProgress={uploadProgress}
                     />
                   </div>
                 ) : (
@@ -416,16 +468,20 @@ export default function WieczeoryTematycznePage() {
                       <div className="space-y-2">
                         <input value={theme.title} onChange={(e) => updateTheme(idx, 'title', e.target.value)} className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33]/40 px-2 py-1 text-sm font-medium text-[#d3bb73] outline-none focus:border-[#d3bb73]" />
                         <textarea value={theme.description} onChange={(e) => updateTheme(idx, 'description', e.target.value)} rows={2} className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33]/40 px-2 py-1 text-xs text-[#e5e4e2]/70 outline-none focus:border-[#d3bb73]" />
-                        <SimpleImageUploader
-                          onImageSelect={(data: IUploadImage) => {
-                            if (data.file) {
-                              setPendingThemeFiles((prev) => ({ ...prev, [idx]: data.file! }));
-                              updateTheme(idx, 'image', URL.createObjectURL(data.file));
-                            }
-                          }}
-                          initialImage={{ src: theme.image, alt: theme.title }}
-                          showPreview={true}
-                        />
+                        <div className="h-40 w-full">
+                          <SimpleImageUploader
+                            onImageSelect={(data: IUploadImage) => {
+                              if (data.file) {
+                                setPendingThemeFiles((prev) => ({ ...prev, [idx]: data.file! }));
+                                updateTheme(idx, 'image', URL.createObjectURL(data.file));
+                              }
+                            }}
+                            initialImage={{ src: theme.image, alt: theme.title }}
+                            showPreview={true}
+                            uploadStatus={uploadStatus}
+                            uploadProgress={uploadProgress}
+                          />
+                        </div>
                       </div>
                     ) : (
                       <>
@@ -460,16 +516,20 @@ export default function WieczeoryTematycznePage() {
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {gallery.map((img, idx) => (
                     <div key={img.id} className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]/50 p-3">
-                      <SimpleImageUploader
-                        onImageSelect={(data: IUploadImage) => {
-                          if (data.file) {
-                            setPendingGalleryFiles((prev) => ({ ...prev, [img.id]: data.file! }));
-                            updateGalleryImage(img.id, 'image_url', URL.createObjectURL(data.file));
-                          }
-                        }}
-                        initialImage={{ src: img.image_url, alt: img.alt_text }}
-                        showPreview={true}
-                      />
+                      <div className="h-40 w-full">
+                        <SimpleImageUploader
+                          onImageSelect={(data: IUploadImage) => {
+                            if (data.file) {
+                              setPendingGalleryFiles((prev) => ({ ...prev, [img.id]: data.file! }));
+                              updateGalleryImage(img.id, 'image_url', URL.createObjectURL(data.file));
+                            }
+                          }}
+                          initialImage={{ src: img.image_url, alt: img.alt_text }}
+                          showPreview={true}
+                          uploadStatus={uploadStatus}
+                          uploadProgress={uploadProgress}
+                        />
+                      </div>
                       <div className="mt-3 space-y-2">
                         <input value={img.alt_text} onChange={(e) => updateGalleryImage(img.id, 'alt_text', e.target.value)} placeholder="Alt text (SEO)" className="w-full rounded border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1 text-xs text-[#e5e4e2] outline-none focus:border-[#d3bb73]" />
                         <input value={img.caption} onChange={(e) => updateGalleryImage(img.id, 'caption', e.target.value)} placeholder="Podpis" className="w-full rounded border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1 text-xs text-[#e5e4e2] outline-none focus:border-[#d3bb73]" />
@@ -589,7 +649,7 @@ export default function WieczeoryTematycznePage() {
             <div className="grid items-center gap-12 lg:grid-cols-2">
               <div className="relative aspect-[4/3] overflow-hidden rounded-2xl border border-[#d3bb73]/15">
                 {isEditing ? (
-                  <div className="flex h-full flex-col items-center justify-center bg-[#1c1f33]/50 p-4">
+                  <div className="h-full w-full">
                     <SimpleImageUploader
                       onImageSelect={(data: IUploadImage) => {
                         if (data.file) {
@@ -599,6 +659,8 @@ export default function WieczeoryTematycznePage() {
                       }}
                       initialImage={{ src: seoImage, alt: 'SEO' }}
                       showPreview={true}
+                      uploadStatus={uploadStatus}
+                      uploadProgress={uploadProgress}
                     />
                   </div>
                 ) : (
