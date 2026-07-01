@@ -131,6 +131,8 @@ export default function WieczeoryTematycznePage() {
     }
   };
 
+  const STORAGE_SECTION = 'themed-party';
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -155,64 +157,117 @@ export default function WieczeoryTematycznePage() {
   }, [lightboxOpen, gallery.length]);
 
   const fetchData = async () => {
-    try {
-      const { data: galleryData } = await supabase
-        .from('themed_party_gallery')
-        .select('*')
-        .eq('is_visible', true)
-        .order('order_index');
-      if (galleryData && galleryData.length > 0) setGallery(galleryData);
-    } catch { /* table may not exist */ }
+    const { data, error } = await supabase
+      .from('site_images')
+      .select('*')
+      .eq('section', STORAGE_SECTION)
+      .eq('is_active', true)
+      .order('order_index');
 
-    try {
-      const { data: contentData } = await supabase
-        .from('themed_party_content')
-        .select('*')
-        .order('order_index');
-      if (contentData && contentData.length > 0) {
-        for (const row of contentData) {
-          if (row.section_key === 'intro') {
-            if (row.body_text) setIntroText(row.body_text);
-            if (row.image_url) setIntroImage(row.image_url);
-            if (row.subheading) setIntroText2(row.subheading);
-          }
-          if (row.section_key === 'seo_text') {
-            if (row.body_text) setSeoText(row.body_text);
-            if (row.image_url) setSeoImage(row.image_url);
-          }
-          if (row.section_key === 'themes' && row.items_json) {
-            setThemes(row.items_json as ThemeItem[]);
-          }
+    if (error || !data || data.length === 0) return;
+
+    for (const row of data) {
+      const meta = row.image_metadata as Record<string, any> | null;
+      if (row.name === 'intro') {
+        if (row.desktop_url) setIntroImage(row.desktop_url);
+        if (meta?.text) setIntroText(meta.text);
+        if (meta?.text2) setIntroText2(meta.text2);
+      } else if (row.name === 'seo') {
+        if (row.desktop_url) setSeoImage(row.desktop_url);
+        if (meta?.text) setSeoText(meta.text);
+      } else if (row.name === 'themes') {
+        if (meta?.items && Array.isArray(meta.items)) {
+          setThemes(meta.items as ThemeItem[]);
         }
+      } else if (row.name?.startsWith('gallery-')) {
+        // Gallery items collected below
       }
-    } catch { /* table may not exist */ }
+    }
+
+    const galleryRows = data
+      .filter((r) => r.name?.startsWith('gallery-'))
+      .sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
+
+    if (galleryRows.length > 0) {
+      setGallery(
+        galleryRows.map((r, idx) => ({
+          id: r.id,
+          image_url: r.desktop_url || '',
+          alt_text: r.alt_text || '',
+          caption: (r.image_metadata as any)?.caption || '',
+          category: (r.image_metadata as any)?.category || 'general',
+          order_index: idx,
+          is_visible: true,
+        }))
+      );
+    }
   };
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      try {
-        await supabase.from('themed_party_gallery').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-        for (let i = 0; i < gallery.length; i++) {
-          await supabase.from('themed_party_gallery').insert({
-            image_url: gallery[i].image_url,
-            alt_text: gallery[i].alt_text,
-            caption: gallery[i].caption,
-            category: gallery[i].category,
-            order_index: i,
-            is_visible: true,
-          });
-        }
-      } catch { /* table may not exist */ }
+      // Delete all existing themed-party rows
+      const { error: delErr } = await supabase
+        .from('site_images')
+        .delete()
+        .eq('section', STORAGE_SECTION);
 
-      try {
-        await supabase.from('themed_party_content').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-        await supabase.from('themed_party_content').insert([
-          { section_key: 'intro', body_text: introText, subheading: introText2, image_url: introImage, order_index: 0 },
-          { section_key: 'themes', items_json: themes, order_index: 1 },
-          { section_key: 'seo_text', body_text: seoText, image_url: seoImage, order_index: 2 },
-        ]);
-      } catch { /* table may not exist */ }
+      if (delErr) {
+        showSnackbar('Blad zapisu: ' + delErr.message, 'error');
+        setSaving(false);
+        return;
+      }
+
+      const rows: any[] = [
+        {
+          section: STORAGE_SECTION,
+          name: 'intro',
+          desktop_url: introImage,
+          alt_text: 'Intro wieczory tematyczne',
+          image_metadata: { text: introText, text2: introText2 },
+          order_index: 0,
+          is_active: true,
+        },
+        {
+          section: STORAGE_SECTION,
+          name: 'themes',
+          desktop_url: '',
+          alt_text: 'Themes data',
+          image_metadata: { items: themes },
+          order_index: 1,
+          is_active: true,
+        },
+        {
+          section: STORAGE_SECTION,
+          name: 'seo',
+          desktop_url: seoImage,
+          alt_text: 'SEO wieczory tematyczne',
+          image_metadata: { text: seoText },
+          order_index: 2,
+          is_active: true,
+        },
+      ];
+
+      // Gallery rows
+      gallery.forEach((img, idx) => {
+        rows.push({
+          section: STORAGE_SECTION,
+          name: `gallery-${idx}`,
+          desktop_url: img.image_url,
+          alt_text: img.alt_text || '',
+          image_metadata: { caption: img.caption, category: img.category },
+          order_index: 100 + idx,
+          is_active: true,
+        });
+      });
+
+      const { error: insertErr } = await supabase.from('site_images').insert(rows);
+
+      if (insertErr) {
+        showSnackbar('Blad zapisu: ' + insertErr.message, 'error');
+        setSaving(false);
+        return;
+      }
 
       showSnackbar('Zmiany zapisane pomyslnie!', 'success');
     } catch (error: any) {
