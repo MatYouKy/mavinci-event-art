@@ -12,6 +12,12 @@ async function getHeroImageServer(section: string, pageSlug: string, citySlug?: 
     about: 'about_page_images',
     portfolio: 'portfolio_page_images',
     dj: 'dj_hero_page_images',
+    streaming: 'streaming_page_images',
+    integracje: 'integracje_page_images',
+    'symulatory-vr': 'symulatory-vr_page_images',
+    'quizy-teleturnieje': 'quizy-teleturnieje_page_images',
+    'technika-sceniczna': 'technika-sceniczna_page_images',
+    'wieczory-tematyczne': 'wieczory-tematyczne_page_images',
   };
 
   const pageTableName = dedicatedTables[cleanSection] || 'service_hero_images';
@@ -27,11 +33,35 @@ async function getHeroImageServer(section: string, pageSlug: string, citySlug?: 
 
   if (error) {
     console.error(`Hero fetch error for section=${section} table=${pageTableName}`, error);
-    // fallback na defaulty zamiast throw (żeby strona działała)
-    return getHeroDefaults(section);
   }
 
-  if (!pageImage) {
+  if (error || !pageImage) {
+    // fallback: try site_images table (old system)
+    const { data: siteImg } = await supabase
+      .from('site_images')
+      .select('*')
+      .eq('section', section)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (siteImg) {
+      return {
+        imageUrl: siteImg.desktop_url ?? '',
+        opacity: siteImg.opacity ?? 0.2,
+        position: {
+          posX: siteImg.image_metadata?.desktop?.position?.posX ?? 0,
+          posY: siteImg.image_metadata?.desktop?.position?.posY ?? 0,
+          scale: siteImg.image_metadata?.desktop?.position?.scale ?? 1,
+        },
+        title: siteImg.title ?? '',
+        description: siteImg.description ?? '',
+        labelText: siteImg.label_text ?? '',
+        labelIcon: siteImg.label_icon ?? '',
+        buttonText: siteImg.button_text ?? 'Zobacz inne oferty',
+        whiteWordsCount: siteImg.white_words_count ?? 2,
+      };
+    }
+
     return getHeroDefaults(section);
   }
 

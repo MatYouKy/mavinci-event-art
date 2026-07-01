@@ -41,21 +41,21 @@ export function PageHeroImage({
     resetPosition,
   } = useHeroImage(section, {
     pageSlug,
-    defaultOpacity: 0.2,
+    defaultImage,
+    defaultOpacity,
   });
   const [stableSrc, setStableSrc] = useState<string>(() => {
     return typeof defaultImage === 'string' && defaultImage.trim() ? defaultImage : '';
   });
 
   useEffect(() => {
-    if (typeof imageUrl === 'string' && imageUrl.trim()) {
+    if (typeof imageUrl === 'string' && imageUrl.trim() && imageUrl !== stableSrc) {
       setStableSrc(imageUrl);
     }
   }, [imageUrl]);
 
   useEffect(() => {
-    // jeśli zmienił się default (np. inna strona), też aktualizuj
-    if (typeof defaultImage === 'string' && defaultImage.trim()) {
+    if (typeof defaultImage === 'string' && defaultImage.trim() && defaultImage !== stableSrc) {
       setStableSrc(defaultImage);
     }
   }, [defaultImage]);
@@ -302,7 +302,7 @@ export function PageHeroImage({
         </div>
       )}
 
-      {loading && (
+      {loading && !stableSrc && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="h-16 w-16 animate-spin rounded-full border-4 border-[#d3bb73] border-t-transparent" />
         </div>
