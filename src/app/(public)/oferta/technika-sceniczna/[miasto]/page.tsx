@@ -22,6 +22,7 @@ import TechStageCityCTA from './TechStageCityCTA';
 import TechStageCityIntro from './TechStageCityIntro';
 import TechnicalStageFeatures from '../sections/TechnicalStageFeatures';
 import TechnicalStagePackages from '../sections/TechnicalStagePackages';
+import TechnicalStageGallery from '../sections/TechnicalStageGallery';
 
 function capitalize(value: string) {
   if (!value) return value;
@@ -355,6 +356,8 @@ export default async function TechStageCityPage({ params }: { params: { miasto: 
         <TechStageCityEquipment cityCases={cityCases} content={cityContent} />
 
         <TechStageCityBenefits cityCases={cityCases} content={cityContent} />
+
+        <TechnicalStageGallery />
 
         {gallery.length > 0 && <TechStageCityGallery images={gallery} cityCases={cityCases} />}
 
