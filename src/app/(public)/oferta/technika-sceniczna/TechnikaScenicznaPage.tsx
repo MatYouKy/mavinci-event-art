@@ -8,6 +8,7 @@ import TechnicalStageServices from './sections/TechnicalStageServices';
 import TechnicalStageGallery from './sections/TechnicalStageGallery';
 import TechnicalStagePackages from './sections/TechnicalStagePackages';
 import TechnicalStageCTA from './sections/TechnicalStageCTA';
+import TechnicalStageEventTypes from './sections/TechnicalStageEventTypes';
 import { RelatedServicesSection } from '../konferencje/sections/RelatedServicesSection';
 import TechStageCityProcess from './[miasto]/TechStageCityProcess';
 import TechStageCityBenefits from './[miasto]/TechStageCityBenefits';
@@ -48,6 +49,7 @@ export default function TechnikaScenicznaPage() {
   return (
     <main className="min-h-screen bg-[#0f1119]">
       <TechnicalStageFeatures />
+      <TechnicalStageEventTypes />
       {/* <TechnicalStageServices /> */}
       <TechStageCityBenefits />
       <TechStageCityProcess />
