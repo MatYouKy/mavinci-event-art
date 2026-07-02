@@ -348,7 +348,7 @@ export default async function TechStageCityPage({ params }: { params: { miasto: 
           defaultDescription={description}
         />
 
-        <TechStageCityIntro cityCases={cityCases} content={cityContent} />
+        <TechStageCityIntro cityCases={cityCases} content={cityContent} citySlug={city.locality} />
 
         <TechnicalStageFeatures />
 
