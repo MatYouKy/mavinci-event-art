@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Upload, Trash2, X, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Upload, Trash2, X, Loader2, ChevronLeft, ChevronRight, Type, Save } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -22,6 +22,8 @@ export default function TechnicalStageGallery() {
   const [uploading, setUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [editingAltId, setEditingAltId] = useState<string | null>(null);
+  const [altValue, setAltValue] = useState('');
 
   useEffect(() => {
     fetchImages();
@@ -122,6 +124,33 @@ export default function TechnicalStageGallery() {
     }
   };
 
+  const handleAltEdit = (image: GalleryImage) => {
+    setEditingAltId(image.id);
+    setAltValue(image.title || '');
+  };
+
+  const handleAltSave = async () => {
+    if (!editingAltId) return;
+    try {
+      const { error } = await supabase
+        .from('technical_stage_gallery')
+        .update({ title: altValue })
+        .eq('id', editingAltId);
+
+      if (error) throw error;
+      setImages((prev) =>
+        prev.map((img) => (img.id === editingAltId ? { ...img, title: altValue } : img)),
+      );
+      showSnackbar('Alt text zapisany', 'success');
+    } catch (error) {
+      console.error('Error saving alt:', error);
+      showSnackbar('Błąd zapisu alt', 'error');
+    } finally {
+      setEditingAltId(null);
+      setAltValue('');
+    }
+  };
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
@@ -218,24 +247,73 @@ export default function TechnicalStageGallery() {
                     whileInView={{ opacity: 1, scale: 1 }}
                     viewport={{ once: true }}
                     transition={{ delay: index * 0.1 }}
-                    className="group relative aspect-[4/3] overflow-hidden rounded-2xl"
+                    className="group relative overflow-hidden rounded-2xl"
                   >
-                    <img
-                      src={image.image_url}
-                      alt={image.title || `Zdjęcie ${index + 1}`}
-                      className="h-full w-full cursor-pointer object-cover transition-transform duration-500 group-hover:scale-110"
-                      onClick={() => setSelectedIndex(index)}
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDelete(image.id);
-                      }}
-                      className="absolute right-4 top-4 rounded-full bg-red-500/80 p-2 opacity-0 backdrop-blur-sm transition-opacity hover:bg-red-500 group-hover:opacity-100"
-                    >
-                      <Trash2 className="h-4 w-4 text-white" />
-                    </button>
+                    <div className="relative aspect-[4/3]">
+                      <img
+                        src={image.image_url}
+                        alt={image.title || `Zdjęcie ${index + 1}`}
+                        className="h-full w-full cursor-pointer object-cover transition-transform duration-500 group-hover:scale-110"
+                        onClick={() => setSelectedIndex(index)}
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
+                      <div className="absolute right-3 top-3 flex gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAltEdit(image);
+                          }}
+                          className="rounded-full bg-[#d3bb73]/80 p-2 backdrop-blur-sm transition-colors hover:bg-[#d3bb73]"
+                          title="Edytuj alt text"
+                        >
+                          <Type className="h-4 w-4 text-[#1c1f33]" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(image.id);
+                          }}
+                          className="rounded-full bg-red-500/80 p-2 backdrop-blur-sm transition-opacity hover:bg-red-500"
+                        >
+                          <Trash2 className="h-4 w-4 text-white" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {editingAltId === image.id ? (
+                      <div className="flex gap-2 border-t border-[#d3bb73]/10 bg-[#1c1f33] p-3">
+                        <input
+                          type="text"
+                          value={altValue}
+                          onChange={(e) => setAltValue(e.target.value)}
+                          placeholder="Opisz zdjęcie (alt text SEO)"
+                          className="flex-1 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] placeholder:text-[#e5e4e2]/40 focus:border-[#d3bb73] focus:outline-none"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleAltSave();
+                            if (e.key === 'Escape') { setEditingAltId(null); setAltValue(''); }
+                          }}
+                        />
+                        <button
+                          onClick={handleAltSave}
+                          className="rounded-lg bg-[#d3bb73] px-3 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+                        >
+                          <Save className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => { setEditingAltId(null); setAltValue(''); }}
+                          className="rounded-lg border border-[#d3bb73]/30 px-3 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : image.title ? (
+                      <div className="border-t border-[#d3bb73]/10 bg-[#1c1f33]/50 px-3 py-2">
+                        <p className="truncate text-xs text-[#e5e4e2]/50">
+                          <span className="text-[#d3bb73]/60">alt:</span> {image.title}
+                        </p>
+                      </div>
+                    ) : null}
                   </motion.div>
                 ))}
               </div>
