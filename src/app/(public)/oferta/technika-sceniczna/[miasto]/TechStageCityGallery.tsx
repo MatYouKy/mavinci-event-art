@@ -101,7 +101,7 @@ export default function TechStageCityGallery({ images: initialImages, cityCases 
                 </button>
               )}
 
-              {editingAltId === img.id ? (
+              {canEdit && editingAltId === img.id ? (
                 <div className="flex gap-2 border-t border-[#d3bb73]/10 bg-[#1c1f33] p-3">
                   <input
                     type="text"
