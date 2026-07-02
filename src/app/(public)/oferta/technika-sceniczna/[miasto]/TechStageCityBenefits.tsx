@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabase/browser';
 import { useWebsiteEdit } from '@/hooks/useWebsiteEdit';
 import { useSnackbar } from '@/contexts/SnackbarContext';
-import { CheckCircle, CreditCard as Edit2, Save, X, Plus, Trash2, Loader2 } from 'lucide-react';
+import { CheckCircle, CreditCard as Edit2, Save, X, Plus, Trash2, Loader2, Database } from 'lucide-react';
 import { PolishCityCases } from '@/lib/polishCityCases';
 
 function capitalize(value: string) {
@@ -80,6 +80,7 @@ export default function TechStageCityBenefits({ cityCases, content }: Props) {
   const [editForm, setEditForm] = useState<Partial<Benefit>>({});
   const [saving, setSaving] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [seeding, setSeeding] = useState(false);
 
   const citySlug = cityCases?.nominative?.toLowerCase() || null;
 
@@ -130,7 +131,35 @@ export default function TechStageCityBenefits({ cityCases, content }: Props) {
     }
   };
 
+  const seedDefaults = async () => {
+    setSeeding(true);
+    try {
+      const rows = defaultBenefits.map((b) => ({
+        title: b.title,
+        description: b.description,
+        order_index: b.order_index,
+        city_slug: citySlug,
+        is_visible: true,
+      }));
+
+      const { error } = await supabase.from('techstage_benefits').insert(rows);
+      if (error) throw error;
+
+      await fetchBenefits();
+      showSnackbar('Zainicjowano korzyści w bazie danych', 'success');
+    } catch (error) {
+      console.error('Error seeding benefits:', error);
+      showSnackbar('Błąd inicjalizacji - sprawdź czy tabela istnieje w bazie', 'error');
+    } finally {
+      setSeeding(false);
+    }
+  };
+
   const handleEdit = (benefit: Benefit) => {
+    if (usingDefaults) {
+      showSnackbar('Najpierw zainicjuj dane w bazie (przycisk powyżej)', 'error');
+      return;
+    }
     setEditingId(benefit.id);
     setEditForm({ title: benefit.title, description: benefit.description });
   };
@@ -180,6 +209,10 @@ export default function TechStageCityBenefits({ cityCases, content }: Props) {
   };
 
   const handleAdd = async () => {
+    if (usingDefaults) {
+      await seedDefaults();
+      return;
+    }
     setAdding(true);
     try {
       const maxOrder =
@@ -229,11 +262,25 @@ export default function TechStageCityBenefits({ cityCases, content }: Props) {
           <div className="mx-auto mb-6 h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent" />
         </motion.div>
 
-        {canEdit && !usingDefaults && (
-          <div className="mb-8 flex justify-center">
+        {canEdit && (
+          <div className="mb-8 flex flex-wrap items-center justify-center gap-3">
+            {usingDefaults && (
+              <button
+                onClick={seedDefaults}
+                disabled={seeding}
+                className="flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-6 py-3 text-sm font-medium text-emerald-400 transition-colors hover:bg-emerald-500/20 disabled:opacity-50"
+              >
+                {seeding ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Database className="h-4 w-4" />
+                )}
+                Zainicjuj w bazie
+              </button>
+            )}
             <button
               onClick={handleAdd}
-              disabled={adding}
+              disabled={adding || seeding}
               className="flex items-center gap-2 rounded-full border border-[#d3bb73]/30 bg-[#d3bb73]/10 px-6 py-3 text-sm font-medium text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20 disabled:opacity-50"
             >
               {adding ? (
@@ -256,7 +303,7 @@ export default function TechStageCityBenefits({ cityCases, content }: Props) {
               transition={{ delay: index * 0.08 }}
               className="group relative rounded-xl p-4 transition-all duration-300 hover:bg-[#1c1f33]/50 sm:p-5"
             >
-              {canEdit && !usingDefaults && editingId !== benefit.id && (
+              {canEdit && editingId !== benefit.id && (
                 <div className="absolute right-2 top-2 z-20 flex gap-2 opacity-0 transition-opacity group-hover:opacity-100">
                   <button
                     onClick={() => handleEdit(benefit)}
@@ -264,12 +311,14 @@ export default function TechStageCityBenefits({ cityCases, content }: Props) {
                   >
                     <Edit2 className="h-3.5 w-3.5 text-[#d3bb73]" />
                   </button>
-                  <button
-                    onClick={() => handleDelete(benefit.id)}
-                    className="rounded-full bg-red-500/10 p-2 backdrop-blur-sm transition-colors hover:bg-red-500/20"
-                  >
-                    <Trash2 className="h-3.5 w-3.5 text-red-400" />
-                  </button>
+                  {!usingDefaults && (
+                    <button
+                      onClick={() => handleDelete(benefit.id)}
+                      className="rounded-full bg-red-500/10 p-2 backdrop-blur-sm transition-colors hover:bg-red-500/20"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                    </button>
+                  )}
                 </div>
               )}
 
