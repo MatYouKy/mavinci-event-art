@@ -7,6 +7,7 @@ import { useWebsiteEdit } from '@/hooks/useWebsiteEdit';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { CustomIcon } from '@/components/UI/CustomIcon/CustomIcon';
 import { CreditCard as Edit2, Save, X, Plus, Trash2, Upload, Loader2, Zap } from 'lucide-react';
+import Image from 'next/image';
 
 interface Feature {
   id: string;
@@ -139,19 +140,15 @@ export default function TechnicalStageFeatures() {
   const handleAdd = async () => {
     setAdding(true);
     try {
-      const maxOrder = features.length > 0
-        ? Math.max(...features.map(f => f.order_index))
-        : 0;
+      const maxOrder = features.length > 0 ? Math.max(...features.map((f) => f.order_index)) : 0;
 
-      const { error } = await supabase
-        .from('technical_stage_features')
-        .insert({
-          title: 'Nowa funkcja',
-          description: 'Opis funkcji',
-          icon_id: null,
-          order_index: maxOrder + 1,
-          is_visible: true,
-        });
+      const { error } = await supabase.from('technical_stage_features').insert({
+        title: 'Nowa funkcja',
+        description: 'Opis funkcji',
+        icon_id: null,
+        order_index: maxOrder + 1,
+        is_visible: true,
+      });
 
       if (error) throw error;
       await fetchFeatures();
@@ -200,7 +197,9 @@ export default function TechnicalStageFeatures() {
           viewport={{ once: true }}
           className="mb-10 text-center sm:mb-16"
         >
-          <h2 className="mb-4 text-3xl font-light text-[#e5e4e2] sm:text-4xl md:text-5xl">Co oferujemy?</h2>
+          <h2 className="mb-4 text-3xl font-light text-[#e5e4e2] sm:text-4xl md:text-5xl">
+            Co oferujemy?
+          </h2>
           <div className="mx-auto mb-6 h-1 w-24 bg-gradient-to-r from-transparent via-[#d3bb73] to-transparent" />
           <p className="mx-auto max-w-2xl text-base font-light text-[#e5e4e2]/70 sm:text-lg">
             Kompleksowe rozwiązania techniczne dla Twojego eventu
@@ -239,129 +238,149 @@ export default function TechnicalStageFeatures() {
             </div>
           </div>
         )}
+        <div className="hidden md:block">
+          <AnimatePresence mode="wait">
+            {features.length > 0 && features[activeTab] && (
+              <motion.div
+                key={features[activeTab].id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="mb-12"
+              >
+                {editingId === features[activeTab].id ? (
+                  <div className="mx-auto max-w-2xl space-y-4 rounded-2xl border border-[#d3bb73]/20 bg-[#0f1119] p-6">
+                    <input
+                      type="text"
+                      value={editForm.title || ''}
+                      onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-3 text-lg text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                      placeholder="Tytuł"
+                    />
+                    <textarea
+                      value={editForm.description || ''}
+                      onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                      rows={5}
+                      placeholder="Opis szczegółowy"
+                    />
 
-        <AnimatePresence mode="wait">
-          {features.length > 0 && features[activeTab] && (
-            <motion.div
-              key={features[activeTab].id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-              className="mb-12"
-            >
-              {editingId === features[activeTab].id ? (
-                <div className="mx-auto max-w-2xl space-y-4 rounded-2xl border border-[#d3bb73]/20 bg-[#0f1119] p-6">
-                  <input
-                    type="text"
-                    value={editForm.title || ''}
-                    onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
-                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-3 text-lg text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-                    placeholder="Tytuł"
-                  />
-                  <textarea
-                    value={editForm.description || ''}
-                    onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-3 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-                    rows={5}
-                    placeholder="Opis szczegółowy"
-                  />
-
-                  <div>
-                    <label className="mb-2 block text-xs text-[#e5e4e2]/60">Zdjęcie</label>
-                    {editForm.image_url && (
-                      <div className="relative mb-3 aspect-video max-w-sm overflow-hidden rounded-lg">
-                        <img src={editForm.image_url} alt="" className="h-full w-full object-cover" />
-                        <button
-                          onClick={() => setEditForm({ ...editForm, image_url: null })}
-                          className="absolute right-2 top-2 rounded-full bg-red-500/80 p-1 text-white"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                    )}
-                    <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-[#d3bb73]/30 bg-[#1c1f33] px-4 py-3 text-sm text-[#d3bb73]/70 transition-colors hover:border-[#d3bb73]/50">
-                      {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                      <span>{uploading ? 'Ładowanie...' : 'Dodaj zdjęcie'}</span>
-                      <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" disabled={uploading} />
-                    </label>
-                  </div>
-
-                  <div className="flex gap-2 pt-2">
-                    <button
-                      onClick={handleSave}
-                      disabled={saving}
-                      className="flex flex-1 items-center justify-center gap-2 rounded-full bg-[#d3bb73] py-2.5 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
-                    >
-                      {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                      Zapisz
-                    </button>
-                    <button
-                      onClick={handleCancel}
-                      className="flex flex-1 items-center justify-center gap-2 rounded-full border border-[#d3bb73]/40 py-2.5 text-sm font-medium text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
-                    >
-                      <X className="h-4 w-4" />
-                      Anuluj
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="mx-auto max-w-4xl">
-                  <div className="relative overflow-hidden rounded-2xl border border-[#d3bb73]/10 bg-[#0f1119]/80 p-6 sm:p-10">
-                    {canEdit && (
-                      <div className="absolute right-4 top-4 z-20 flex gap-2">
-                        <button
-                          onClick={() => handleEdit(features[activeTab])}
-                          className="rounded-full bg-[#d3bb73]/10 p-2 backdrop-blur-sm transition-colors hover:bg-[#d3bb73]/20"
-                        >
-                          <Edit2 className="h-4 w-4 text-[#d3bb73]" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(features[activeTab].id)}
-                          className="rounded-full bg-red-500/10 p-2 backdrop-blur-sm transition-colors hover:bg-red-500/20"
-                        >
-                          <Trash2 className="h-4 w-4 text-red-400" />
-                        </button>
-                      </div>
-                    )}
-
-                    <div className="flex flex-col gap-6 sm:flex-row sm:gap-10">
-                      <div className="flex-1">
-                        <div className="mb-4 inline-flex items-center justify-center rounded-xl bg-[#d3bb73]/10 p-3 text-[#d3bb73] ring-1 ring-[#d3bb73]/20 sm:p-4">
-                          {features[activeTab].icon_id ? (
-                            <CustomIcon iconId={features[activeTab].icon_id!} className="h-7 w-7 sm:h-8 sm:w-8" />
-                          ) : (
-                            <Zap className="h-7 w-7 sm:h-8 sm:w-8" />
-                          )}
-                        </div>
-
-                        <h3 className="mb-3 text-xl font-light text-[#e5e4e2] sm:mb-4 sm:text-2xl">
-                          {features[activeTab].title}
-                        </h3>
-
-                        <p className="text-sm leading-relaxed text-[#e5e4e2]/70 sm:text-base">
-                          {features[activeTab].description}
-                        </p>
-                      </div>
-
-                      {features[activeTab].image_url && (
-                        <div className="flex-shrink-0 sm:w-64 md:w-80">
-                          <div className="aspect-[4/3] overflow-hidden rounded-xl">
-                            <img
-                              src={features[activeTab].image_url!}
-                              alt={features[activeTab].title}
-                              className="h-full w-full object-cover transition-transform duration-300 hover:scale-105"
-                            />
-                          </div>
+                    <div>
+                      <label className="mb-2 block text-xs text-[#e5e4e2]/60">Zdjęcie</label>
+                      {editForm.image_url && (
+                        <div className="relative mb-3 aspect-video max-w-sm overflow-hidden rounded-lg">
+                          <Image
+                            src={editForm.image_url}
+                            alt=""
+                            className="h-full w-full object-cover"
+                            width={500}
+                            height={500}
+                          />
                         </div>
                       )}
+                      <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-[#d3bb73]/30 bg-[#1c1f33] px-4 py-3 text-sm text-[#d3bb73]/70 transition-colors hover:border-[#d3bb73]/50">
+                        {uploading ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Upload className="h-4 w-4" />
+                        )}
+                        <span>{uploading ? 'Ładowanie...' : 'Dodaj zdjęcie'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageUpload}
+                          className="hidden"
+                          disabled={uploading}
+                        />
+                      </label>
+                    </div>
+
+                    <div className="flex gap-2 pt-2">
+                      <button
+                        onClick={handleSave}
+                        disabled={saving}
+                        className="flex flex-1 items-center justify-center gap-2 rounded-full bg-[#d3bb73] py-2.5 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
+                      >
+                        {saving ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Save className="h-4 w-4" />
+                        )}
+                        Zapisz
+                      </button>
+                      <button
+                        onClick={handleCancel}
+                        className="flex flex-1 items-center justify-center gap-2 rounded-full border border-[#d3bb73]/40 py-2.5 text-sm font-medium text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
+                      >
+                        <X className="h-4 w-4" />
+                        Anuluj
+                      </button>
                     </div>
                   </div>
-                </div>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
+                ) : (
+                  <div className="mx-auto max-w-4xl">
+                    <div className="relative overflow-hidden rounded-2xl border border-[#d3bb73]/10 bg-[#0f1119]/80 p-6 sm:p-10">
+                      {canEdit && (
+                        <div className="absolute right-4 top-4 z-20 flex gap-2">
+                          <button
+                            onClick={() => handleEdit(features[activeTab])}
+                            className="rounded-full bg-[#d3bb73]/10 p-2 backdrop-blur-sm transition-colors hover:bg-[#d3bb73]/20"
+                          >
+                            <Edit2 className="h-4 w-4 text-[#d3bb73]" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(features[activeTab].id)}
+                            className="rounded-full bg-red-500/10 p-2 backdrop-blur-sm transition-colors hover:bg-red-500/20"
+                          >
+                            <Trash2 className="h-4 w-4 text-red-400" />
+                          </button>
+                        </div>
+                      )}
+
+                      <div className="flex flex-col gap-6 sm:flex-row sm:gap-10">
+                        <div className="flex-1">
+                          <div className="mb-4 inline-flex items-center justify-center rounded-xl bg-[#d3bb73]/10 p-3 text-[#d3bb73] ring-1 ring-[#d3bb73]/20 sm:p-4">
+                            {features[activeTab].icon_id ? (
+                              <CustomIcon
+                                iconId={features[activeTab].icon_id!}
+                                className="h-7 w-7 sm:h-8 sm:w-8"
+                              />
+                            ) : (
+                              <Zap className="h-7 w-7 sm:h-8 sm:w-8" />
+                            )}
+                          </div>
+
+                          <h3 className="mb-3 text-xl font-light text-[#e5e4e2] sm:mb-4 sm:text-2xl">
+                            {features[activeTab].title}
+                          </h3>
+
+                          <p className="text-sm leading-relaxed text-[#e5e4e2]/70 sm:text-base">
+                            {features[activeTab].description}
+                          </p>
+                        </div>
+
+                        {features[activeTab].image_url && (
+                          <div className="flex-shrink-0 sm:w-64 md:w-80">
+                            <div className="aspect-[4/3] overflow-hidden rounded-xl">
+                              <Image
+                                src={features[activeTab].image_url!}
+                                alt={features[activeTab].title}
+                                className="h-full w-full object-cover transition-transform duration-300 hover:scale-105"
+                                width={500}
+                                height={500}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
         <div className="grid gap-3 sm:gap-4 md:grid-cols-2 lg:grid-cols-4">
           {features.map((feature, index) => (
@@ -387,10 +406,12 @@ export default function TechnicalStageFeatures() {
 
                 {feature.image_url && (
                   <div className="mb-3 aspect-[3/2] overflow-hidden rounded-lg sm:mb-4">
-                    <img
+                    <Image
                       src={feature.image_url}
                       alt={feature.title}
                       className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      width={500}
+                      height={500}
                     />
                   </div>
                 )}
@@ -404,9 +425,11 @@ export default function TechnicalStageFeatures() {
                 </p>
               </div>
 
-              <div className={`absolute bottom-0 left-0 h-0.5 bg-gradient-to-r from-[#d3bb73] to-[#c5a960] transition-all duration-300 ${
-                activeTab === index ? 'w-full' : 'w-0 group-hover:w-full'
-              }`} />
+              <div
+                className={`absolute bottom-0 left-0 h-0.5 bg-gradient-to-r from-[#d3bb73] to-[#c5a960] transition-all duration-300 ${
+                  activeTab === index ? 'w-full' : 'w-0 group-hover:w-full'
+                }`}
+              />
             </motion.div>
           ))}
         </div>
