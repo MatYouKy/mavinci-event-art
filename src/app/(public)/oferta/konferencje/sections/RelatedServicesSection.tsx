@@ -165,7 +165,7 @@ export const RelatedServicesSection: FC<RelatedServicesSectionProps> = ({
                         }
                       >
                         <Image
-                          src={item.thumbnail_url}
+                          src={item.thumbnail_url || ''}
                           alt={item.name}
                           className="h-full w-full object-cover"
                           width={100}
@@ -256,7 +256,7 @@ export const RelatedServicesSection: FC<RelatedServicesSectionProps> = ({
             showArrows
             renderItem={(item, idx) => {
               if (!item) return null;
-              const Icon = iconMap[item?.icon] || Package;
+              const Icon = iconMap[item?.icon as keyof typeof iconMap] || Package;
 
               return (
                 <Link
@@ -277,7 +277,7 @@ export const RelatedServicesSection: FC<RelatedServicesSectionProps> = ({
                       }
                     >
                       <Image
-                        src={item.thumbnail_url}
+                        src={item.thumbnail_url || ''}
                         alt={item.name}
                         className="h-full w-full object-cover"
                         width={100}

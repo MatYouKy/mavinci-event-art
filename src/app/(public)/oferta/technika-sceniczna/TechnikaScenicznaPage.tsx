@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabase/browser';
 import { useEditMode } from '@/contexts/EditModeContext';
 import TechnicalStageFeatures from './sections/TechnicalStageFeatures';
@@ -15,7 +14,6 @@ export default function TechnikaScenicznaPage() {
   const { isEditMode } = useEditMode();
   const [relatedServices, setRelatedServices] = useState<any[]>([]);
   const [allServiceItems, setAllServiceItems] = useState<any[]>([]);
-  const [selectedServiceIds, setSelectedServiceIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadData();
@@ -38,7 +36,6 @@ export default function TechnikaScenicznaPage() {
 
       if (relatedServicesRes.data) {
         setRelatedServices(relatedServicesRes.data.map((r) => r.service_item));
-        setSelectedServiceIds(new Set(relatedServicesRes.data.map((r) => r.service_item_id)));
       }
       if (allServiceItemsRes.data) setAllServiceItems(allServiceItemsRes.data);
     } catch (error) {
@@ -54,10 +51,7 @@ export default function TechnikaScenicznaPage() {
       <TechnicalStagePackages />
       <RelatedServicesSection
         isEditMode={isEditMode}
-        selectedServiceIds={selectedServiceIds}
-        setSelectedServiceIds={setSelectedServiceIds}
         allServiceItems={allServiceItems}
-        loadData={loadData}
         relatedServices={relatedServices}
         tableName="technical_stage_related_services"
       />
