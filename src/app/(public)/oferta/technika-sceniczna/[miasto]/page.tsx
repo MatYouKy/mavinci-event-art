@@ -352,7 +352,6 @@ export default async function TechStageCityPage({ params }: { params: { miasto: 
 
         <TechnicalStageFeatures />
 
-        <TechnicalStageEventTypes />
 {/* 
         <TechStageCityEquipment cityCases={cityCases} content={cityContent} /> */}
 
@@ -368,6 +367,7 @@ export default async function TechStageCityPage({ params }: { params: { miasto: 
 
         <CityMapEmbed query={`${cityCases.nominative}, Polska`} />
 
+        <TechnicalStageEventTypes />
         <TechStageCityCTA cityCases={cityCases} content={cityContent} />
       </div>
     </PageLayout>

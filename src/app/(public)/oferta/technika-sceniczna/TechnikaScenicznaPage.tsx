@@ -49,7 +49,6 @@ export default function TechnikaScenicznaPage() {
   return (
     <main className="min-h-screen bg-[#0f1119]">
       <TechnicalStageFeatures />
-      <TechnicalStageEventTypes />
       {/* <TechnicalStageServices /> */}
       <TechStageCityBenefits />
       <TechStageCityProcess />
@@ -61,6 +60,7 @@ export default function TechnikaScenicznaPage() {
         relatedServices={relatedServices}
         tableName="technical_stage_related_services"
       />
+      <TechnicalStageEventTypes />
       <TechnicalStageCTA />
     </main>
   );
