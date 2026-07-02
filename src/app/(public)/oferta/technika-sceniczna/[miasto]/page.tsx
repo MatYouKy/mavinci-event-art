@@ -351,9 +351,9 @@ export default async function TechStageCityPage({ params }: { params: { miasto: 
 
         <TechnicalStageFeatures />
 
-        <TechnicalStagePackages />
-
-        <TechStageCityEquipment cityCases={cityCases} content={cityContent} />
+        {/* <TechnicalStagePackages /> */}
+{/* 
+        <TechStageCityEquipment cityCases={cityCases} content={cityContent} /> */}
 
         <TechStageCityBenefits cityCases={cityCases} content={cityContent} />
 

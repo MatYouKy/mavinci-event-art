@@ -6,8 +6,8 @@ function capitalize(value: string) {
 }
 
 type Props = {
-  cityCases: PolishCityCases;
-  content: any;
+  cityCases?: PolishCityCases | null;
+  content?: any;
 };
 
 const defaultProcess = [
@@ -50,12 +50,18 @@ const defaultProcess = [
 ];
 
 export default function TechStageCityProcess({ cityCases, content }: Props) {
-  const prep = cityCases.locative_preposition || 'w';
+  const hasCity = !!cityCases;
+
   const heading =
-    content?.process_heading || `Jak realizujemy technikę sceniczną ${prep} ${capitalize(cityCases.locative)}`;
+    content?.process_heading ||
+    (hasCity
+      ? `Jak realizujemy technikę sceniczną ${
+          cityCases.locative_preposition || 'w'
+        } ${capitalize(cityCases.locative)}`
+      : 'Jak realizujemy technikę sceniczną');
 
   const process =
-    content?.process_json && Array.isArray(content.process_json) && content.process_json.length > 0
+    Array.isArray(content?.process_json) && content.process_json.length > 0
       ? content.process_json
       : defaultProcess;
 
@@ -76,11 +82,17 @@ export default function TechStageCityProcess({ cityCases, content }: Props) {
                 className="relative flex gap-6 md:items-center md:gap-12"
               >
                 <div className="relative z-10 flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full border-2 border-[#d3bb73] bg-[#0f1119] text-lg font-bold text-[#d3bb73]">
-                  {item.step || idx + 1}
+                  {item.step ?? idx + 1}
                 </div>
+
                 <div className="flex-1 rounded-xl border border-[#d3bb73]/10 bg-[#0f1119] p-5">
-                  <h3 className="mb-2 text-lg font-medium text-[#e5e4e2]">{item.title}</h3>
-                  <p className="text-sm leading-relaxed text-[#e5e4e2]/70">{item.description}</p>
+                  <h3 className="mb-2 text-lg font-medium text-[#e5e4e2]">
+                    {item.title}
+                  </h3>
+
+                  <p className="text-sm leading-relaxed text-[#e5e4e2]/70">
+                    {item.description}
+                  </p>
                 </div>
               </div>
             ))}

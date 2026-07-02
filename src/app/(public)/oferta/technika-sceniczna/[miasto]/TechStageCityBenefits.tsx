@@ -7,8 +7,8 @@ function capitalize(value: string) {
 }
 
 type Props = {
-  cityCases: PolishCityCases;
-  content: any;
+  cityCases?: PolishCityCases | null;
+  content?: any;
 };
 
 const defaultBenefits = [
@@ -28,7 +28,7 @@ const defaultBenefits = [
       'Od projektu technicznego i rideru, przez logistykę i montaż, po realizację i demontaż. Jeden wykonawca - pełna odpowiedzialność.',
   },
   {
-    title: 'Realizacje 50-50 000 osób',
+    title: 'Realizacje 50–50 000 osób',
     description:
       'Skalowalne rozwiązania dla eventów kameralnych, konferencji korporacyjnych i wielkich festiwali. Dobieramy sprzęt do potrzeb i budżetu.',
   },
@@ -45,13 +45,18 @@ const defaultBenefits = [
 ];
 
 export default function TechStageCityBenefits({ cityCases, content }: Props) {
-  const prep = cityCases.locative_preposition || 'w';
+  const hasCity = !!cityCases;
+
   const heading =
     content?.benefits_heading ||
-    `Dlaczego warto wybrać nas ${prep} ${capitalize(cityCases.locative)}`;
+    (hasCity
+      ? `Dlaczego warto wybrać nas ${
+          cityCases.locative_preposition || 'w'
+        } ${capitalize(cityCases.locative)}`
+      : 'Dlaczego warto wybrać nas');
 
   const benefits =
-    content?.benefits_json && Array.isArray(content.benefits_json) && content.benefits_json.length > 0
+    Array.isArray(content?.benefits_json) && content.benefits_json.length > 0
       ? content.benefits_json
       : defaultBenefits;
 
@@ -68,9 +73,15 @@ export default function TechStageCityBenefits({ cityCases, content }: Props) {
               <div className="flex-shrink-0">
                 <CheckCircle className="h-6 w-6 text-[#d3bb73]" />
               </div>
+
               <div>
-                <h3 className="mb-1 font-medium text-[#e5e4e2]">{benefit.title}</h3>
-                <p className="text-sm leading-relaxed text-[#e5e4e2]/60">{benefit.description}</p>
+                <h3 className="mb-1 font-medium text-[#e5e4e2]">
+                  {benefit.title}
+                </h3>
+
+                <p className="text-sm leading-relaxed text-[#e5e4e2]/60">
+                  {benefit.description}
+                </p>
               </div>
             </div>
           ))}

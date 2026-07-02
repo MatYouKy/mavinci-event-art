@@ -9,6 +9,8 @@ import TechnicalStageGallery from './sections/TechnicalStageGallery';
 import TechnicalStagePackages from './sections/TechnicalStagePackages';
 import TechnicalStageCTA from './sections/TechnicalStageCTA';
 import { RelatedServicesSection } from '../konferencje/sections/RelatedServicesSection';
+import TechStageCityProcess from './[miasto]/TechStageCityProcess';
+import TechStageCityBenefits from './[miasto]/TechStageCityBenefits';
 
 export default function TechnikaScenicznaPage() {
   const { isEditMode } = useEditMode();
@@ -46,7 +48,9 @@ export default function TechnikaScenicznaPage() {
   return (
     <main className="min-h-screen bg-[#0f1119]">
       <TechnicalStageFeatures />
-      <TechnicalStageServices />
+      {/* <TechnicalStageServices /> */}
+      <TechStageCityBenefits />
+      <TechStageCityProcess />
       <TechnicalStageGallery />
       <TechnicalStagePackages />
       <RelatedServicesSection

@@ -23,7 +23,7 @@ export default function TechStageCityCTA({ cityCases, content }: Props) {
     content?.cta_description ||
     `Skontaktuj się z nami - przygotujemy indywidualną wycenę obsługi technicznej dopasowaną do Twojego wydarzenia ${prep} ${capitalize(cityCases.locative)}. Bezpłatna konsultacja i oferta w 48h.`;
 
-  const phone = content?.cta_phone || '+48 123 456 789';
+  const phone = content?.cta_phone || '+48 698 212 279';
 
   return (
     <section className="px-6 py-24">
