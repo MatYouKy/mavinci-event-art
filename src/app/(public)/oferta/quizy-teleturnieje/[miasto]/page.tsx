@@ -45,13 +45,15 @@ async function loadCityData(city: string) {
   let heroImage: { image_url: string } | null = null;
   try {
     const { data } = await supabase
-      .from('quiz_page_images')
+      .from('quizy-teleturnieje_page_images')
       .select('image_url')
       .eq('is_active', true)
       .eq('section', 'hero')
       .maybeSingle();
     heroImage = data;
-  } catch { /* table may not exist yet */ }
+  } catch {
+    /* table may not exist yet */
+  }
 
   const { hasWebsiteEdit } = await getUserPermissions();
 
@@ -74,7 +76,9 @@ async function loadCityData(city: string) {
       .eq('is_active', true)
       .maybeSingle();
     cityContent = cc;
-  } catch { /* table may not exist yet */ }
+  } catch {
+    /* table may not exist yet */
+  }
 
   try {
     const { data: gal } = await supabase
@@ -84,7 +88,9 @@ async function loadCityData(city: string) {
       .eq('is_active', true)
       .order('display_order');
     gallery = gal || [];
-  } catch { /* table may not exist yet */ }
+  } catch {
+    /* table may not exist yet */
+  }
 
   const EXCEPTIONS: Record<string, PolishCityCases> = await loadCityCasesFromDb();
   const cityCases = getPolishCityCasesSmart(city, EXCEPTIONS);
@@ -127,6 +133,7 @@ async function loadCityData(city: string) {
     metaTitle,
     cityContent,
     gallery: gallery || [],
+    cityPageSeo,
   };
 }
 
@@ -179,144 +186,190 @@ export default async function QuizCityPage({ params }: { params: { miasto: strin
     city,
     cityContent,
     gallery,
+    cityPageSeo,
   } = data;
 
   const canonicalUrl = `https://mavinci.pl/oferta/quizy-teleturnieje/${city.locality}`;
   const pageSlug = `oferta/quizy-teleturnieje/${city.locality}`;
   const prep = cityCases.locative_preposition || 'w';
 
-  const customSchema = cityContent?.custom_schema || (globalConfig
+  const schemaConfig = cityPageSeo?.custom_schema || {};
+
+  const schemaOffers =
+    Array.isArray(schemaConfig.offers) && schemaConfig.offers.length > 0
+      ? schemaConfig.offers
+      : [
+          {
+            name: 'Quiz firmowy i integracyjny',
+            description:
+              'Interaktywny quiz dla firm, zespołów i uczestników eventu z pytaniami dopasowanymi do branży, okazji lub charakteru wydarzenia.',
+          },
+          {
+            name: 'Teleturniej eventowy na żywo',
+            description:
+              'Teleturniej prowadzony na żywo z oprawą sceniczną, prowadzącym, systemem odpowiedzi, punktacją i rywalizacją drużynową.',
+          },
+          {
+            name: 'Quiz muzyczny i filmowy',
+            description:
+              'Multimedialny quiz z pytaniami muzycznymi, filmowymi, obrazami, fragmentami audio i konkurencjami zespołowymi.',
+          },
+          {
+            name: 'Gry integracyjne dla firm',
+            description:
+              'Formaty rozrywkowe wspierające integrację zespołu, rywalizację, współpracę i zaangażowanie uczestników wydarzenia.',
+          },
+          {
+            name: 'System buzzerów i głosowania',
+            description:
+              'Obsługa quizów z wykorzystaniem buzzerów, systemów odpowiedzi, ekranów wyników oraz prowadzenia punktacji na żywo.',
+          },
+          {
+            name: 'Kompleksowa realizacja quizu',
+            description:
+              'Przygotowanie scenariusza, pytań, prowadzenia, oprawy technicznej, nagłośnienia, multimediów i koordynacji całego quizu.',
+          },
+        ];
+
+  const schemaFaq =
+    Array.isArray(schemaConfig.faq) && schemaConfig.faq.length > 0
+      ? schemaConfig.faq.filter((item: any) => item.question && item.answer)
+      : [];
+
+  const customSchema = globalConfig
     ? {
         '@context': 'https://schema.org',
-        '@type': 'Service',
-        name: `Quizy i teleturnieje ${prep} ${capitalize(cityCases.locative)}`,
-        description,
-        url: canonicalUrl,
-        image,
-        provider: {
-          '@type': 'LocalBusiness',
-          name: globalConfig.organization_name,
-          telephone: globalConfig.telephone,
-          email: globalConfig.email,
-          url: globalConfig.organization_url,
-          logo: globalConfig.organization_logo,
-          priceRange: globalConfig.price_range || '$$-$$$',
-          address: {
-            '@type': 'PostalAddress',
-            streetAddress: globalConfig.street_address,
-            addressLocality: globalConfig.locality,
-            postalCode: globalConfig.postal_code,
-            addressRegion: globalConfig.region,
-            addressCountry: globalConfig.country,
+        '@graph': [
+          {
+            '@type': 'WebPage',
+            '@id': `${canonicalUrl}#webpage`,
+            url: canonicalUrl,
+            name: cityPageSeo?.title || title,
+            description,
+            inLanguage: 'pl-PL',
+            isPartOf: {
+              '@type': 'WebSite',
+              '@id': 'https://mavinci.pl/#website',
+              name: 'MAVINCI Event & ART',
+              url: 'https://mavinci.pl',
+            },
+            about: {
+              '@id': `${canonicalUrl}#service`,
+            },
           },
-          sameAs: [
-            globalConfig.facebook_url,
-            globalConfig.instagram_url,
-            globalConfig.linkedin_url,
-            globalConfig.youtube_url,
-            globalConfig.twitter_url,
-          ].filter(Boolean),
-        },
-        areaServed: {
-          '@type': 'Place',
-          name: city.name,
-          address: {
-            '@type': 'PostalAddress',
-            addressLocality: cityCases.nominative,
-            postalCode: city.postal_code,
-            addressRegion: city.region,
-            addressCountry: 'PL',
+          {
+            '@type': 'LocalBusiness',
+            '@id': 'https://mavinci.pl/#organization',
+            name: globalConfig.organization_name,
+            url: globalConfig.organization_url,
+            logo: globalConfig.organization_logo,
+            image,
+            telephone: globalConfig.telephone,
+            email: globalConfig.email,
+            priceRange: schemaConfig.priceRange || globalConfig.price_range || '$$-$$$',
+            address: {
+              '@type': 'PostalAddress',
+              streetAddress: globalConfig.street_address,
+              addressLocality: globalConfig.locality,
+              postalCode: globalConfig.postal_code,
+              addressRegion: globalConfig.region,
+              addressCountry: globalConfig.country || 'PL',
+            },
+            sameAs: [
+              globalConfig.facebook_url,
+              globalConfig.instagram_url,
+              globalConfig.linkedin_url,
+              globalConfig.youtube_url,
+              globalConfig.twitter_url,
+            ].filter(Boolean),
           },
-        },
-        serviceType: 'Quizy, teleturnieje i gry integracyjne',
-        audience: {
-          '@type': 'BusinessAudience',
-          audienceType: `Firmy, agencje eventowe, działy HR i organizatorzy integracji ${prep} ${capitalize(cityCases.locative)}`,
-        },
-        hasOfferCatalog: {
-          '@type': 'OfferCatalog',
-          name: `Formaty quizowe i teleturnieje ${prep} ${capitalize(cityCases.locative)}`,
-          itemListElement: [
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Teleturniej telewizyjny na żywo',
-                description:
-                  'Profesjonalny teleturniej w stylu programów TV. Scenografia, oświetlenie, nagłośnienie, ' +
-                  'prowadzący z doświadczeniem telewizyjnym. Formaty: Familiada, Milionerzy, Jeopardy.',
+          {
+            '@type': 'Service',
+            '@id': `${canonicalUrl}#service`,
+            name: `Quizy i teleturnieje ${prep} ${capitalize(cityCases.locative)}`,
+            description,
+            url: canonicalUrl,
+            image,
+            serviceType:
+              schemaConfig.serviceType || 'Quizy, teleturnieje i gry integracyjne na eventy',
+            provider: {
+              '@id': 'https://mavinci.pl/#organization',
+            },
+            areaServed: {
+              '@type': 'Place',
+              name: cityCases.nominative,
+              address: {
+                '@type': 'PostalAddress',
+                addressLocality: cityCases.nominative,
+                postalCode: city.postal_code,
+                addressRegion: city.region,
+                addressCountry: 'PL',
               },
+            },
+            audience: {
+              '@type': 'BusinessAudience',
+              audienceType:
+                schemaConfig.audienceType ||
+                `Firmy, działy HR, agencje eventowe i organizatorzy integracji ${prep} ${capitalize(
+                  cityCases.locative,
+                )}`,
+            },
+            hasOfferCatalog: {
+              '@id': `${canonicalUrl}#offer-catalog`,
+            },
+            offers: {
+              '@type': 'Offer',
               availability: 'https://schema.org/InStock',
             },
-            {
+          },
+          {
+            '@type': 'OfferCatalog',
+            '@id': `${canonicalUrl}#offer-catalog`,
+            name: `Quizy, teleturnieje i gry integracyjne ${prep} ${capitalize(
+              cityCases.locative,
+            )}`,
+            itemListElement: schemaOffers.map((offer: any) => ({
               '@type': 'Offer',
+              availability: 'https://schema.org/InStock',
               itemOffered: {
                 '@type': 'Service',
-                name: 'Quiz firmowy i integracyjny',
-                description:
-                  'Quizy tematyczne dopasowane do firmy i branży. Pytania o firmie, branży, pop-kulturze. ' +
-                  'System buzzers, tablice wyników, rywalizacja drużynowa.',
+                name: offer.name,
+                description: offer.description,
+                areaServed: {
+                  '@type': 'Place',
+                  name: cityCases.nominative,
+                },
+                provider: {
+                  '@id': 'https://mavinci.pl/#organization',
+                },
               },
-              availability: 'https://schema.org/InStock',
-            },
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Gry zespołowe i team building',
-                description:
-                  'Gry kooperacyjne i rywalizacyjne dla zespołów. Escape room live, gry planszowe XXL, ' +
-                  'challenge technologiczne, gry miejskie.',
-              },
-              availability: 'https://schema.org/InStock',
-            },
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Karaoke show i muzyczne gry',
-                description:
-                  'Karaoke z profesjonalnym nagłośnieniem, Name That Tune, muzyczne quizy, ' +
-                  'lip sync battle. Prowadzący DJ z animacją.',
-              },
-              availability: 'https://schema.org/InStock',
-            },
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Quizy multimedialne z aplikacją',
-                description:
-                  'Interaktywne quizy na smartfonach uczestników. System głosowania w czasie rzeczywistym, ' +
-                  'ranking live na ekranie, pytania z multimediami.',
-              },
-              availability: 'https://schema.org/InStock',
-            },
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Eventy tematyczne i wieczory quizowe',
-                description:
-                  'Wieczory tematyczne: kryminalne, PRL, lata 80., filmowe. Kompletna oprawa: ' +
-                  'scenografia, kostiumy, rekwizyty, catering tematyczny.',
-              },
-              availability: 'https://schema.org/InStock',
-            },
-          ],
-        },
-        offers: {
-          '@type': 'Offer',
-          availability: 'https://schema.org/InStock',
-        },
+            })),
+          },
+          ...(schemaFaq.length > 0
+            ? [
+                {
+                  '@type': 'FAQPage',
+                  '@id': `${canonicalUrl}#faq`,
+                  mainEntity: schemaFaq.map((item: any) => ({
+                    '@type': 'Question',
+                    name: item.question,
+                    acceptedAnswer: {
+                      '@type': 'Answer',
+                      text: item.answer,
+                    },
+                  })),
+                },
+              ]
+            : []),
+        ],
       }
-    : undefined);
+    : undefined;
 
   return (
     <PageLayout pageSlug={pageSlug} customSchema={customSchema} cookieStore={cookies()}>
       <EditableHeroSectionServer
         whiteWordsCount={2}
-        section="quiz-hero"
+        section="quizy-teleturnieje-hero"
         pageSlug={pageSlug}
         initialImageUrl={image}
         initialTitle={cityContent?.hero_title || title}

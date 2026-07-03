@@ -13,6 +13,16 @@ interface PageMetadataModalProps {
   pageName: string;
 }
 
+type SchemaOffer = {
+  name: string;
+  description: string;
+};
+
+type SchemaFaq = {
+  question: string;
+  answer: string;
+};
+
 export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageMetadataModalProps) {
   const [metadata, setMetadata] = useState<any>(null);
   const [keywords, setKeywords] = useState<string[]>([]);
@@ -23,6 +33,13 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
   const [isSaving, setIsSaving] = useState(false);
   const [availableImages, setAvailableImages] = useState<any[]>([]);
   const [showImagePicker, setShowImagePicker] = useState(false);
+
+  const [serviceType, setServiceType] = useState('');
+  const [audienceType, setAudienceType] = useState('');
+  const [priceRange, setPriceRange] = useState('');
+  const [offers, setOffers] = useState<SchemaOffer[]>([]);
+  const [faq, setFaq] = useState<SchemaFaq[]>([]);
+
   const { showSnackbar } = useSnackbar();
 
   const isEdit = !!metadata?.id;
@@ -34,6 +51,14 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, pageSlug]);
+
+  const resetSchemaFields = () => {
+    setServiceType('');
+    setAudienceType('');
+    setPriceRange('');
+    setOffers([]);
+    setFaq([]);
+  };
 
   const loadAvailableImages = async () => {
     const { data, error } = await supabase
@@ -60,34 +85,103 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
     }
 
     if (data) {
+      const customSchema = data.custom_schema || {};
+
       setMetadata(data);
       setKeywords(data.keywords || []);
       setTitle(data.title || '');
       setDescription(data.description || '');
       setOgImage(data.og_image || '');
+
+      setServiceType(customSchema.serviceType || '');
+      setAudienceType(customSchema.audienceType || '');
+      setPriceRange(customSchema.priceRange || '');
+      setOffers(Array.isArray(customSchema.offers) ? customSchema.offers : []);
+      setFaq(Array.isArray(customSchema.faq) ? customSchema.faq : []);
     } else {
       setMetadata(null);
       setKeywords([]);
       setTitle('');
       setDescription('');
       setOgImage('');
+      resetSchemaFields();
     }
   };
 
   const handleAddKeyword = () => {
-    const trimmed = newKeyword.trim();
-    if (trimmed && !keywords.includes(trimmed)) {
-      setKeywords((prev) => [...prev, trimmed]);
-      setNewKeyword('');
-    }
+    const items = newKeyword
+      .split(/[,\r\n;]+/)
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+
+    if (!items.length) return;
+
+    setKeywords((prev) => {
+      const existing = new Set(prev.map((k) => k.toLowerCase()));
+
+      const toAdd = items.filter((item) => {
+        const normalized = item.toLowerCase();
+
+        if (existing.has(normalized)) {
+          return false;
+        }
+
+        existing.add(normalized);
+        return true;
+      });
+
+      return [...prev, ...toAdd];
+    });
+
+    setNewKeyword('');
   };
 
   const handleRemoveKeyword = (keyword: string) => {
     setKeywords((prev) => prev.filter((k) => k !== keyword));
   };
 
+  const handleAddOffer = () => {
+    setOffers((prev) => [...prev, { name: '', description: '' }]);
+  };
+
+  const handleRemoveOffer = (index: number) => {
+    setOffers((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleUpdateOffer = (index: number, field: keyof SchemaOffer, value: string) => {
+    setOffers((prev) =>
+      prev.map((offer, i) => (i === index ? { ...offer, [field]: value } : offer)),
+    );
+  };
+
+  const handleAddFaq = () => {
+    setFaq((prev) => [...prev, { question: '', answer: '' }]);
+  };
+
+  const handleRemoveFaq = (index: number) => {
+    setFaq((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleUpdateFaq = (index: number, field: keyof SchemaFaq, value: string) => {
+    setFaq((prev) => prev.map((item, i) => (i === index ? { ...item, [field]: value } : item)));
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
+
+    const cleanedOffers = offers
+      .map((offer) => ({
+        name: offer.name.trim(),
+        description: offer.description.trim(),
+      }))
+      .filter((offer) => offer.name || offer.description);
+
+    const cleanedFaq = faq
+      .map((item) => ({
+        question: item.question.trim(),
+        answer: item.answer.trim(),
+      }))
+      .filter((item) => item.question && item.answer);
 
     const payload = {
       page_slug: pageSlug,
@@ -95,6 +189,14 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
       description: description || null,
       keywords,
       og_image: ogImage || null,
+      custom_schema: {
+        schemaMode: 'service',
+        serviceType: serviceType || null,
+        audienceType: audienceType || null,
+        priceRange: priceRange || null,
+        offers: cleanedOffers,
+        faq: cleanedFaq,
+      },
       is_active: true,
       updated_at: new Date().toISOString(),
     };
@@ -106,6 +208,7 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
         .from('schema_org_page_metadata')
         .update(payload)
         .eq('id', metadata.id);
+
       error = result.error;
     } else {
       const result = await supabase.from('schema_org_page_metadata').insert(payload);
@@ -131,6 +234,7 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
 
     try {
       const pathToRevalidate = `/${pageSlug}`;
+
       await fetch('/bridge/revalidate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -150,8 +254,7 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33]">
-        {/* HEADER */}
-        <div className="sticky top-0 flex items-center justify-between border-b border-[#d3bb73]/20 bg-[#1c1f33] p-6">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#d3bb73]/20 bg-[#1c1f33] p-6">
           <div>
             <h2 className="text-2xl font-light text-[#e5e4e2]">
               {isEdit ? 'Edytujesz metadane strony' : 'Dodajesz metadane strony'}
@@ -160,6 +263,7 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
               {pageName} <span className="text-[#e5e4e2]/40">({pageSlug})</span>
             </p>
           </div>
+
           <button
             onClick={onClose}
             className="text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
@@ -168,13 +272,9 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
           </button>
         </div>
 
-        {/* BODY */}
         <div className="space-y-6 p-6">
-          {/* Title */}
           <div>
-            <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-              Tytuł strony (opcjonalny)
-            </label>
+            <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Tytuł strony</label>
             <input
               type="text"
               value={title}
@@ -184,10 +284,9 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
             />
           </div>
 
-          {/* Description */}
           <div>
             <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-              Meta Description (opcjonalny)
+              Meta Description
             </label>
             <textarea
               value={description}
@@ -198,10 +297,9 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
             />
           </div>
 
-          {/* OG Image */}
           <div>
             <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-              Open Graph Image (opcjonalny)
+              Open Graph Image
             </label>
 
             <div className="space-y-3">
@@ -219,6 +317,7 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
                     availableImages.map((img) => (
                       <button
                         key={img.id}
+                        type="button"
                         onClick={() => {
                           setOgImage(img.desktop_url);
                           setShowImagePicker(false);
@@ -236,6 +335,7 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
                           height={1000}
                           className="h-full w-full object-cover"
                         />
+
                         {ogImage === img.desktop_url && (
                           <div className="absolute inset-0 flex items-center justify-center bg-[#d3bb73]/20">
                             <div className="rounded-full bg-[#d3bb73] p-2 text-[#1c1f33]">✓</div>
@@ -254,7 +354,7 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
               {ogImage && (
                 <div className="relative">
                   <Image
-                    src={ogImage as string}
+                    src={ogImage}
                     alt="Selected OG Image"
                     width={1000}
                     height={1000}
@@ -262,6 +362,7 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
                     className="max-h-40 w-full rounded border border-[#d3bb73]/20 object-cover"
                   />
                   <button
+                    type="button"
                     onClick={() => setOgImage('')}
                     className="absolute right-2 top-2 rounded-full bg-[#800020] p-2 text-white hover:bg-[#800020]/80"
                   >
@@ -280,11 +381,8 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
             </div>
           </div>
 
-          {/* Keywords */}
           <div>
-            <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-              Słowa kluczowe (keywords)
-            </label>
+            <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Słowa kluczowe</label>
 
             <div className="mb-3 flex gap-2">
               <input
@@ -292,10 +390,11 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
                 value={newKeyword}
                 onChange={(e) => setNewKeyword(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddKeyword())}
-                placeholder="Wpisz słowo kluczowe..."
+                placeholder="Wpisz słowo kluczowe lub wklej listę po przecinku..."
                 className="flex-1 rounded border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
               />
               <button
+                type="button"
                 onClick={handleAddKeyword}
                 className="flex items-center gap-2 rounded bg-[#d3bb73] px-4 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
               >
@@ -308,11 +407,12 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
               <div className="flex flex-wrap gap-2">
                 {keywords.map((keyword, index) => (
                   <div
-                    key={index}
+                    key={`${keyword}-${index}`}
                     className="flex items-center gap-2 rounded-full border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5"
                   >
                     <span className="text-sm text-[#e5e4e2]">{keyword}</span>
                     <button
+                      type="button"
                       onClick={() => handleRemoveKeyword(keyword)}
                       className="text-[#800020] hover:text-[#800020]/80"
                     >
@@ -326,27 +426,169 @@ export function PageMetadataModal({ isOpen, onClose, pageSlug, pageName }: PageM
             )}
           </div>
 
-          {/* Info */}
+          <div className="rounded border border-[#d3bb73]/20 bg-[#0f1119] p-4">
+            <h3 className="mb-4 text-lg font-medium text-[#d3bb73]">
+              Dane strukturalne Schema.org
+            </h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Typ usługi</label>
+                <input
+                  type="text"
+                  value={serviceType}
+                  onChange={(e) => setServiceType(e.target.value)}
+                  placeholder="np. Technika sceniczna i obsługa techniczna eventów"
+                  className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                  Grupa odbiorców
+                </label>
+                <input
+                  type="text"
+                  value={audienceType}
+                  onChange={(e) => setAudienceType(e.target.value)}
+                  placeholder="np. Firmy, agencje eventowe, organizatorzy konferencji"
+                  className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">Zakres cen</label>
+                <input
+                  type="text"
+                  value={priceRange}
+                  onChange={(e) => setPriceRange(e.target.value)}
+                  placeholder="np. $$-$$$"
+                  className="w-full rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
+                />
+              </div>
+
+              <div>
+                <div className="mb-3 flex items-center justify-between">
+                  <label className="block text-sm font-medium text-[#e5e4e2]">
+                    Oferty/usługi w katalogu
+                  </label>
+                </div>
+
+                <div className="space-y-3">
+                  {offers.map((offer, index) => (
+                    <div
+                      key={index}
+                      className="rounded border border-[#d3bb73]/10 bg-[#1c1f33] p-3"
+                    >
+                      <input
+                        type="text"
+                        value={offer.name}
+                        onChange={(e) => handleUpdateOffer(index, 'name', e.target.value)}
+                        placeholder="Nazwa usługi"
+                        className="mb-2 w-full rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
+                      />
+
+                      <textarea
+                        value={offer.description}
+                        onChange={(e) => handleUpdateOffer(index, 'description', e.target.value)}
+                        rows={2}
+                        placeholder="Opis usługi"
+                        className="w-full rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveOffer(index)}
+                        className="mt-2 flex items-center gap-1 text-sm text-[#800020] hover:text-[#800020]/80"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        Usuń usługę
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddOffer}
+                  className="mt-3 flex w-full items-center justify-center gap-2 rounded border border-dashed border-[#d3bb73]/30 bg-[#d3bb73]/10 px-4 py-3 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"
+                >
+                  <Plus className="h-4 w-4" />
+                  Dodaj kolejną usługę
+                </button>
+              </div>
+
+              <div>
+                <div className="mb-3 flex items-center justify-between">
+                  <label className="block text-sm font-medium text-[#e5e4e2]">FAQ do schema</label>
+                </div>
+
+                <div className="space-y-3">
+                  {faq.map((item, index) => (
+                    <div
+                      key={index}
+                      className="rounded border border-[#d3bb73]/10 bg-[#1c1f33] p-3"
+                    >
+                      <input
+                        type="text"
+                        value={item.question}
+                        onChange={(e) => handleUpdateFaq(index, 'question', e.target.value)}
+                        placeholder="Pytanie"
+                        className="mb-2 w-full rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
+                      />
+
+                      <textarea
+                        value={item.answer}
+                        onChange={(e) => handleUpdateFaq(index, 'answer', e.target.value)}
+                        rows={2}
+                        placeholder="Odpowiedź"
+                        className="w-full rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] outline-none focus:border-[#d3bb73]"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveFaq(index)}
+                        className="mt-2 flex items-center gap-1 text-sm text-[#800020] hover:text-[#800020]/80"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        Usuń FAQ
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddFaq}
+                  className="mt-3 flex w-full items-center justify-center gap-2 rounded border border-dashed border-[#d3bb73]/30 bg-[#d3bb73]/10 px-4 py-3 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"
+                >
+                  <Plus className="h-4 w-4" />
+                  Dodaj kolejne pytanie
+                </button>
+              </div>
+            </div>
+          </div>
+
           <div className="rounded border border-[#d3bb73]/20 bg-[#0f1119] p-4">
             <h3 className="mb-2 font-medium text-[#d3bb73]">Informacja</h3>
             <ul className="space-y-1 text-sm text-[#e5e4e2]/60">
               <li>• Keywords są używane w meta tags dla SEO</li>
               <li>• Title i Description nadpisują wartości domyślne jeśli są wypełnione</li>
               <li>• OG Image jest używany dla podglądów na social media</li>
-              <li>• Wszystkie pola są opcjonalne</li>
+              <li>• Schema.org zasila dane strukturalne widoczne dla Google</li>
             </ul>
           </div>
         </div>
 
-        {/* FOOTER */}
         <div className="sticky bottom-0 flex justify-end gap-3 border-t border-[#d3bb73]/20 bg-[#1c1f33] p-6">
           <button
+            type="button"
             onClick={onClose}
             className="rounded bg-[#800020]/20 px-6 py-2 text-[#e5e4e2] transition-colors hover:bg-[#800020]/30"
           >
             Anuluj
           </button>
+
           <button
+            type="button"
             onClick={handleSave}
             disabled={isSaving}
             className="flex items-center gap-2 rounded bg-[#d3bb73] px-6 py-2 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"

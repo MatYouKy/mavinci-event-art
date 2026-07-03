@@ -232,10 +232,7 @@ export default function DJPage() {
       )}
       <RelatedServicesSection
         isEditMode={isEditMode}
-        selectedServiceIds={selectedServiceIds}
-        setSelectedServiceIds={setSelectedServiceIds}
         allServiceItems={allServiceItems}
-        loadData={fetchData}
         relatedServices={relatedServices}
         tableName="dj_related_services"
       />

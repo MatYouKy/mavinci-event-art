@@ -48,13 +48,15 @@ async function loadCityData(city: string) {
   let heroImage: { image_url: string } | null = null;
   try {
     const { data } = await supabase
-      .from('techstage_page_images')
+      .from('technika-sceniczna_page_images')
       .select('image_url')
       .eq('is_active', true)
       .eq('section', 'hero')
       .maybeSingle();
     heroImage = data;
-  } catch { /* table may not exist yet */ }
+  } catch {
+    /* table may not exist yet */
+  }
 
   const { hasWebsiteEdit } = await getUserPermissions();
 
@@ -77,7 +79,9 @@ async function loadCityData(city: string) {
       .eq('is_active', true)
       .maybeSingle();
     cityContent = cc;
-  } catch { /* table may not exist yet */ }
+  } catch {
+    /* table may not exist yet */
+  }
 
   try {
     const { data: gal } = await supabase
@@ -87,7 +91,9 @@ async function loadCityData(city: string) {
       .eq('is_active', true)
       .order('display_order');
     gallery = gal || [];
-  } catch { /* table may not exist yet */ }
+  } catch {
+    /* table may not exist yet */
+  }
 
   const EXCEPTIONS: Record<string, PolishCityCases> = await loadCityCasesFromDb();
   const cityCases = getPolishCityCasesSmart(city, EXCEPTIONS);
@@ -129,6 +135,7 @@ async function loadCityData(city: string) {
     cityCases,
     metaTitle,
     cityContent,
+    cityPageSeo,
     gallery: gallery || [],
   };
 }
@@ -182,144 +189,187 @@ export default async function TechStageCityPage({ params }: { params: { miasto: 
     city,
     cityContent,
     gallery,
+    cityPageSeo,
   } = data;
 
   const canonicalUrl = `https://mavinci.pl/oferta/technika-sceniczna/${city.locality}`;
   const pageSlug = `oferta/technika-sceniczna/${city.locality}`;
   const prep = cityCases.locative_preposition || 'w';
 
-  const customSchema = cityContent?.custom_schema || (globalConfig
+  const schemaConfig = cityPageSeo?.custom_schema || {};
+
+  const schemaOffers =
+    Array.isArray(schemaConfig.offers) && schemaConfig.offers.length > 0
+      ? schemaConfig.offers
+      : [
+          {
+            name: 'Nagłośnienie eventowe i koncertowe',
+            description:
+              'Profesjonalne systemy nagłośnienia liniowego i punktowego, monitory sceniczne, mikrofony oraz realizacja dźwięku FOH.',
+          },
+          {
+            name: 'Oświetlenie sceniczne i eventowe',
+            description:
+              'Projektowanie i realizacja oświetlenia scenicznego, dekoracyjnego oraz architekturalnego podczas eventów.',
+          },
+          {
+            name: 'Ekrany LED i multimedia',
+            description:
+              'Ekrany LED, multimedia, prezentacje, realizacja obrazu oraz wsparcie techniczne dla konferencji i eventów.',
+          },
+          {
+            name: 'Sceny, podesty i konstrukcje',
+            description:
+              'Sceny modułowe, podesty sceniczne, schody, konstrukcje aluminiowe oraz infrastruktura techniczna wydarzeń.',
+          },
+          {
+            name: 'Rigging i podwieszenia',
+            description:
+              'Obsługa techniczna podwieszeń, konstrukcji, systemów scenicznych oraz elementów oświetlenia i nagłośnienia.',
+          },
+          {
+            name: 'Realizacja techniczna eventów',
+            description:
+              'Kompleksowa obsługa techniczna wydarzeń od projektu, przez montaż, realizację, aż po demontaż.',
+          },
+        ];
+
+  const schemaFaq =
+    Array.isArray(schemaConfig.faq) && schemaConfig.faq.length > 0
+      ? schemaConfig.faq.filter((item: any) => item.question && item.answer)
+      : [];
+
+  const customSchema = globalConfig
     ? {
         '@context': 'https://schema.org',
-        '@type': 'Service',
-        name: `Technika sceniczna ${prep} ${capitalize(cityCases.locative)}`,
-        description,
-        url: canonicalUrl,
-        image,
-        provider: {
-          '@type': 'LocalBusiness',
-          name: globalConfig.organization_name,
-          telephone: globalConfig.telephone,
-          email: globalConfig.email,
-          url: globalConfig.organization_url,
-          logo: globalConfig.organization_logo,
-          priceRange: globalConfig.price_range || '$$-$$$',
-          address: {
-            '@type': 'PostalAddress',
-            streetAddress: globalConfig.street_address,
-            addressLocality: globalConfig.locality,
-            postalCode: globalConfig.postal_code,
-            addressRegion: globalConfig.region,
-            addressCountry: globalConfig.country,
+        '@graph': [
+          {
+            '@type': 'WebPage',
+            '@id': `${canonicalUrl}#webpage`,
+            url: canonicalUrl,
+            name: cityPageSeo?.title || title,
+            description,
+            inLanguage: 'pl-PL',
+            isPartOf: {
+              '@type': 'WebSite',
+              '@id': 'https://mavinci.pl/#website',
+              name: 'MAVINCI Event & ART',
+              url: 'https://mavinci.pl',
+            },
+            about: {
+              '@id': `${canonicalUrl}#service`,
+            },
           },
-          sameAs: [
-            globalConfig.facebook_url,
-            globalConfig.instagram_url,
-            globalConfig.linkedin_url,
-            globalConfig.youtube_url,
-            globalConfig.twitter_url,
-          ].filter(Boolean),
-        },
-        areaServed: {
-          '@type': 'Place',
-          name: city.name,
-          address: {
-            '@type': 'PostalAddress',
-            addressLocality: cityCases.nominative,
-            postalCode: city.postal_code,
-            addressRegion: city.region,
-            addressCountry: 'PL',
+          {
+            '@type': 'LocalBusiness',
+            '@id': 'https://mavinci.pl/#organization',
+            name: globalConfig.organization_name,
+            url: globalConfig.organization_url,
+            logo: globalConfig.organization_logo,
+            image,
+            telephone: globalConfig.telephone,
+            email: globalConfig.email,
+            priceRange: schemaConfig.priceRange || globalConfig.price_range || '$$-$$$',
+            address: {
+              '@type': 'PostalAddress',
+              streetAddress: globalConfig.street_address,
+              addressLocality: globalConfig.locality,
+              postalCode: globalConfig.postal_code,
+              addressRegion: globalConfig.region,
+              addressCountry: globalConfig.country || 'PL',
+            },
+            sameAs: [
+              globalConfig.facebook_url,
+              globalConfig.instagram_url,
+              globalConfig.linkedin_url,
+              globalConfig.youtube_url,
+              globalConfig.twitter_url,
+            ].filter(Boolean),
           },
-        },
-        serviceType: 'Technika sceniczna i obsługa techniczna eventów',
-        audience: {
-          '@type': 'BusinessAudience',
-          audienceType: `Firmy, agencje eventowe, organizatorzy konferencji i koncertów ${prep} ${capitalize(cityCases.locative)}`,
-        },
-        hasOfferCatalog: {
-          '@type': 'OfferCatalog',
-          name: `Usługi techniki scenicznej ${prep} ${capitalize(cityCases.locative)}`,
-          itemListElement: [
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Nagłośnienie eventowe i koncertowe',
-                description:
-                  'Profesjonalne systemy nagłośnienia liniowego i punktowego. Systemy L-Acoustics, d&b audiotechnik, JBL. ' +
-                  'Realizacja dźwięku FOH i monitorów scenicznych.',
+          {
+            '@type': 'Service',
+            '@id': `${canonicalUrl}#service`,
+            name: `Technika sceniczna ${prep} ${capitalize(cityCases.locative)}`,
+            description,
+            url: canonicalUrl,
+            image,
+            serviceType:
+              schemaConfig.serviceType || 'Technika sceniczna i obsługa techniczna eventów',
+            provider: {
+              '@id': 'https://mavinci.pl/#organization',
+            },
+            areaServed: {
+              '@type': 'Place',
+              name: cityCases.nominative,
+              address: {
+                '@type': 'PostalAddress',
+                addressLocality: cityCases.nominative,
+                postalCode: city.postal_code,
+                addressRegion: city.region,
+                addressCountry: 'PL',
               },
+            },
+            audience: {
+              '@type': 'BusinessAudience',
+              audienceType:
+                schemaConfig.audienceType ||
+                `Firmy, agencje eventowe, organizatorzy konferencji i koncertów ${prep} ${capitalize(
+                  cityCases.locative,
+                )}`,
+            },
+            hasOfferCatalog: {
+              '@id': `${canonicalUrl}#offer-catalog`,
+            },
+            offers: {
+              '@type': 'Offer',
               availability: 'https://schema.org/InStock',
             },
-            {
+          },
+          {
+            '@type': 'OfferCatalog',
+            '@id': `${canonicalUrl}#offer-catalog`,
+            name: `Usługi techniki scenicznej ${prep} ${capitalize(cityCases.locative)}`,
+            itemListElement: schemaOffers.map((offer: any) => ({
               '@type': 'Offer',
+              availability: 'https://schema.org/InStock',
               itemOffered: {
                 '@type': 'Service',
-                name: 'Oświetlenie sceniczne i architekturalne',
-                description:
-                  'Projektowanie i realizacja oświetlenia eventowego. Moving heady, wash, spot, blinder, LED bar. ' +
-                  'Konsolety MA Lighting, Avolites. Efekty specjalne.',
+                name: offer.name,
+                description: offer.description,
+                areaServed: {
+                  '@type': 'Place',
+                  name: cityCases.nominative,
+                },
+                provider: {
+                  '@id': 'https://mavinci.pl/#organization',
+                },
               },
-              availability: 'https://schema.org/InStock',
-            },
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Ekrany LED i multimedia',
-                description:
-                  'Ściany LED indoor/outdoor, projektory laserowe, mapping 3D, content wideo. ' +
-                  'Serwery Disguise, Resolume. Interaktywne instalacje multimedialne.',
-              },
-              availability: 'https://schema.org/InStock',
-            },
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Konstrukcje sceniczne i rigging',
-                description:
-                  'Sceny mobilne, podesty, konstrukcje aluminiowe, ground support, rigging punktowy i liniowy. ' +
-                  'Certyfikowane systemy zawieszenia do 2 ton na punkt.',
-              },
-              availability: 'https://schema.org/InStock',
-            },
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Zasilanie i infrastruktura',
-                description:
-                  'Agregaty prądotwórcze, rozdzielnice, okablowanie siłowe i sygnałowe. ' +
-                  'Kompleksowa infrastruktura techniczna dla eventów plenerowych i halowych.',
-              },
-              availability: 'https://schema.org/InStock',
-            },
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Realizacja techniczna eventów',
-                description:
-                  'Koordynacja techniczna wydarzeń, kierownik techniczny, operatorzy dźwięku i światła. ' +
-                  'Pełna obsługa techniczna od briefu po demontaż.',
-              },
-              availability: 'https://schema.org/InStock',
-            },
-          ],
-        },
-        offers: {
-          '@type': 'Offer',
-          availability: 'https://schema.org/InStock',
-        },
+            })),
+          },
+          ...(schemaFaq.length > 0
+            ? [
+                {
+                  '@type': 'FAQPage',
+                  '@id': `${canonicalUrl}#faq`,
+                  mainEntity: schemaFaq.map((item: any) => ({
+                    '@type': 'Question',
+                    name: item.question,
+                    acceptedAnswer: {
+                      '@type': 'Answer',
+                      text: item.answer,
+                    },
+                  })),
+                },
+              ]
+            : []),
+        ],
       }
-    : undefined);
-
+    : undefined;
   return (
     <PageLayout pageSlug={pageSlug} customSchema={customSchema} cookieStore={cookies()}>
       <EditableHeroSectionServer
         whiteWordsCount={2}
-        section="techstage-hero"
+        section="technika-sceniczna-hero"
         pageSlug={pageSlug}
         initialImageUrl={image}
         initialTitle={cityContent?.hero_title || title}
@@ -352,7 +402,7 @@ export default async function TechStageCityPage({ params }: { params: { miasto: 
 
         <TechnicalStageFeatures />
 
-{/* 
+        {/* 
         <TechStageCityEquipment cityCases={cityCases} content={cityContent} /> */}
 
         <TechStageCityBenefits cityCases={cityCases} content={cityContent} />

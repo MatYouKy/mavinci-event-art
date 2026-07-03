@@ -150,6 +150,13 @@ export default async function EditableHeroSectionServer({
   initialTitle,
   initialDescription,
   whiteWordsCount,
+}: {
+  section: string;
+  pageSlug: string;
+  initialImageUrl: string;
+  initialTitle: string;
+  initialDescription: string;
+  whiteWordsCount: number;
 }) {
   noStore();
   const heroData = await getHeroImageServer(section, pageSlug);

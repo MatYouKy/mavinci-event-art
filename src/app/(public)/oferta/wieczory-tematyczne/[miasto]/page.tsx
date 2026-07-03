@@ -47,13 +47,15 @@ async function loadCityData(city: string) {
   let heroImage: { image_url: string } | null = null;
   try {
     const { data } = await supabase
-      .from('themed_party_page_images')
+    .from('wieczory-tematyczne_page_images')
       .select('image_url')
       .eq('is_active', true)
       .eq('section', 'hero')
       .maybeSingle();
     heroImage = data;
-  } catch { /* table may not exist yet */ }
+  } catch {
+    /* table may not exist yet */
+  }
 
   const { hasWebsiteEdit } = await getUserPermissions();
 
@@ -76,7 +78,9 @@ async function loadCityData(city: string) {
       .eq('is_active', true)
       .maybeSingle();
     cityContent = cc;
-  } catch { /* table may not exist yet */ }
+  } catch {
+    /* table may not exist yet */
+  }
 
   try {
     const { data: gal } = await supabase
@@ -86,7 +90,9 @@ async function loadCityData(city: string) {
       .eq('is_active', true)
       .order('display_order');
     gallery = gal || [];
-  } catch { /* table may not exist yet */ }
+  } catch {
+    /* table may not exist yet */
+  }
 
   const EXCEPTIONS: Record<string, PolishCityCases> = await loadCityCasesFromDb();
   const cityCases = getPolishCityCasesSmart(city, EXCEPTIONS);
@@ -121,7 +127,9 @@ async function loadCityData(city: string) {
         }));
       }
     }
-  } catch { /* site_images may not have themed-party data yet */ }
+  } catch {
+    /* site_images may not have themed-party data yet */
+  }
 
   const image =
     cityContent?.hero_image_url ||
@@ -163,6 +171,7 @@ async function loadCityData(city: string) {
     gallery: gallery || [],
     sharedThemes,
     sharedGallery,
+    cityPageSeo,
   };
 }
 
@@ -217,126 +226,181 @@ export default async function ThemedPartyCityPage({ params }: { params: { miasto
     gallery,
     sharedThemes,
     sharedGallery,
+    cityPageSeo,
   } = data;
 
   const canonicalUrl = `https://mavinci.pl/oferta/wieczory-tematyczne/${city.locality}`;
   const pageSlug = `oferta/wieczory-tematyczne/${city.locality}`;
   const prep = cityCases.locative_preposition || 'w';
 
-  const customSchema = cityContent?.custom_schema || (globalConfig
+  const schemaConfig = cityPageSeo?.custom_schema || {};
+
+  const schemaOffers =
+    Array.isArray(schemaConfig.offers) && schemaConfig.offers.length > 0
+      ? schemaConfig.offers
+      : [
+          {
+            name: 'Casino Night',
+            description:
+              'Wieczór tematyczny w klimacie kasyna z ruletką, blackjackiem, pokerem, profesjonalnymi krupierami i oprawą Las Vegas.',
+          },
+          {
+            name: 'Impreza w stylu Hollywood',
+            description:
+              'Gala firmowa w stylu Hollywood z czerwonym dywanem, elegancką scenografią, oprawą fotograficzną i prowadzeniem wydarzenia.',
+          },
+          {
+            name: 'Wieczór w stylu PRL',
+            description:
+              'Impreza tematyczna w klimacie PRL z dekoracjami z epoki, muzyką, quizami, konkursami i charakterystyczną oprawą.',
+          },
+          {
+            name: 'Great Gatsby i lata 20.',
+            description:
+              'Elegancki wieczór firmowy w stylu lat 20., z klimatem art déco, muzyką, dekoracjami i scenografią bankietową.',
+          },
+          {
+            name: 'Dziki Zachód / Western',
+            description:
+              'Impreza tematyczna w klimacie westernu z dekoracjami saloonu, konkursami, muzyką country i animacjami dla uczestników.',
+          },
+          {
+            name: 'Kompleksowa realizacja wieczoru tematycznego',
+            description:
+              'Przygotowanie koncepcji, scenariusza, dekoracji, atrakcji, prowadzenia, oprawy technicznej i koordynacji całego wydarzenia.',
+          },
+        ];
+
+  const schemaFaq =
+    Array.isArray(schemaConfig.faq) && schemaConfig.faq.length > 0
+      ? schemaConfig.faq.filter((item: any) => item.question && item.answer)
+      : [];
+
+  const customSchema = globalConfig
     ? {
         '@context': 'https://schema.org',
-        '@type': 'Service',
-        name: `Wieczory tematyczne ${prep} ${capitalize(cityCases.locative)}`,
-        description,
-        url: canonicalUrl,
-        image,
-        provider: {
-          '@type': 'LocalBusiness',
-          name: globalConfig.organization_name,
-          telephone: globalConfig.telephone,
-          email: globalConfig.email,
-          url: globalConfig.organization_url,
-          logo: globalConfig.organization_logo,
-          priceRange: globalConfig.price_range || '$$-$$$',
-          address: {
-            '@type': 'PostalAddress',
-            streetAddress: globalConfig.street_address,
-            addressLocality: globalConfig.locality,
-            postalCode: globalConfig.postal_code,
-            addressRegion: globalConfig.region,
-            addressCountry: globalConfig.country,
+        '@graph': [
+          {
+            '@type': 'WebPage',
+            '@id': `${canonicalUrl}#webpage`,
+            url: canonicalUrl,
+            name: cityPageSeo?.title || title,
+            description,
+            inLanguage: 'pl-PL',
+            isPartOf: {
+              '@type': 'WebSite',
+              '@id': 'https://mavinci.pl/#website',
+              name: 'MAVINCI Event & ART',
+              url: 'https://mavinci.pl',
+            },
+            about: {
+              '@id': `${canonicalUrl}#service`,
+            },
           },
-          sameAs: [
-            globalConfig.facebook_url,
-            globalConfig.instagram_url,
-            globalConfig.linkedin_url,
-            globalConfig.youtube_url,
-            globalConfig.twitter_url,
-          ].filter(Boolean),
-        },
-        areaServed: {
-          '@type': 'Place',
-          name: city.name,
-          address: {
-            '@type': 'PostalAddress',
-            addressLocality: cityCases.nominative,
-            postalCode: city.postal_code,
-            addressRegion: city.region,
-            addressCountry: 'PL',
+          {
+            '@type': 'LocalBusiness',
+            '@id': 'https://mavinci.pl/#organization',
+            name: globalConfig.organization_name,
+            url: globalConfig.organization_url,
+            logo: globalConfig.organization_logo,
+            image,
+            telephone: globalConfig.telephone,
+            email: globalConfig.email,
+            priceRange: schemaConfig.priceRange || globalConfig.price_range || '$$-$$$',
+            address: {
+              '@type': 'PostalAddress',
+              streetAddress: globalConfig.street_address,
+              addressLocality: globalConfig.locality,
+              postalCode: globalConfig.postal_code,
+              addressRegion: globalConfig.region,
+              addressCountry: globalConfig.country || 'PL',
+            },
+            sameAs: [
+              globalConfig.facebook_url,
+              globalConfig.instagram_url,
+              globalConfig.linkedin_url,
+              globalConfig.youtube_url,
+              globalConfig.twitter_url,
+            ].filter(Boolean),
           },
-        },
-        serviceType: 'Wieczory tematyczne i imprezy firmowe',
-        audience: {
-          '@type': 'BusinessAudience',
-          audienceType: `Firmy, agencje eventowe, organizatorzy imprez ${prep} ${capitalize(cityCases.locative)}`,
-        },
-        hasOfferCatalog: {
-          '@type': 'OfferCatalog',
-          name: `Wieczory tematyczne ${prep} ${capitalize(cityCases.locative)}`,
-          itemListElement: [
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Casino Night',
-                description: 'Wieczór w klimacie kasyna - stoły do ruletki, blackjacka, pokera. Profesjonalni krupierzy, dekoracje, oświetlenie.',
+          {
+            '@type': 'Service',
+            '@id': `${canonicalUrl}#service`,
+            name: `Wieczory tematyczne ${prep} ${capitalize(cityCases.locative)}`,
+            description,
+            url: canonicalUrl,
+            image,
+            serviceType: schemaConfig.serviceType || 'Wieczory tematyczne i imprezy firmowe',
+            provider: {
+              '@id': 'https://mavinci.pl/#organization',
+            },
+            areaServed: {
+              '@type': 'Place',
+              name: cityCases.nominative,
+              address: {
+                '@type': 'PostalAddress',
+                addressLocality: cityCases.nominative,
+                postalCode: city.postal_code,
+                addressRegion: city.region,
+                addressCountry: 'PL',
               },
+            },
+            audience: {
+              '@type': 'BusinessAudience',
+              audienceType:
+                schemaConfig.audienceType ||
+                `Firmy, agencje eventowe, działy HR i organizatorzy imprez ${prep} ${capitalize(
+                  cityCases.locative,
+                )}`,
+            },
+            hasOfferCatalog: {
+              '@id': `${canonicalUrl}#offer-catalog`,
+            },
+            offers: {
+              '@type': 'Offer',
               availability: 'https://schema.org/InStock',
             },
-            {
+          },
+          {
+            '@type': 'OfferCatalog',
+            '@id': `${canonicalUrl}#offer-catalog`,
+            name: `Wieczory tematyczne i imprezy firmowe ${prep} ${capitalize(cityCases.locative)}`,
+            itemListElement: schemaOffers.map((offer: any) => ({
               '@type': 'Offer',
+              availability: 'https://schema.org/InStock',
               itemOffered: {
                 '@type': 'Service',
-                name: 'Impreza w stylu Hollywood',
-                description: 'Gala w stylu Hollywood - czerwony dywan, Oscar ceremony, paparazzi, scenografia filmowa.',
+                name: offer.name,
+                description: offer.description,
+                areaServed: {
+                  '@type': 'Place',
+                  name: cityCases.nominative,
+                },
+                provider: {
+                  '@id': 'https://mavinci.pl/#organization',
+                },
               },
-              availability: 'https://schema.org/InStock',
-            },
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Wieczór w stylu PRL',
-                description: 'Impreza w klimacie PRL - dekoracje z epoki, bar mleczny, muzyka lat 70/80, quizy tematyczne.',
-              },
-              availability: 'https://schema.org/InStock',
-            },
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Dziki Zachód / Western',
-                description: 'Wieczór w klimacie Dzikiego Zachodu - saloon, rodeo mechaniczne, pokazy lasso, country music.',
-              },
-              availability: 'https://schema.org/InStock',
-            },
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Lata 20-te / Great Gatsby',
-                description: 'Elegancki wieczór w stylu lat 20-tych - jazz band, charleston, art deco, cocktail bar.',
-              },
-              availability: 'https://schema.org/InStock',
-            },
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Impreza tropikalna / Hawajska',
-                description: 'Tropikalna atmosfera - dekoracje egzotyczne, bary tiki, pokazy ognia, muzyka na żywo.',
-              },
-              availability: 'https://schema.org/InStock',
-            },
-          ],
-        },
-        offers: {
-          '@type': 'Offer',
-          availability: 'https://schema.org/InStock',
-        },
+            })),
+          },
+          ...(schemaFaq.length > 0
+            ? [
+                {
+                  '@type': 'FAQPage',
+                  '@id': `${canonicalUrl}#faq`,
+                  mainEntity: schemaFaq.map((item: any) => ({
+                    '@type': 'Question',
+                    name: item.question,
+                    acceptedAnswer: {
+                      '@type': 'Answer',
+                      text: item.answer,
+                    },
+                  })),
+                },
+              ]
+            : []),
+        ],
       }
-    : undefined);
+    : undefined;
 
   return (
     <PageLayout pageSlug={pageSlug} customSchema={customSchema} cookieStore={cookies()}>
@@ -373,15 +437,15 @@ export default async function ThemedPartyCityPage({ params }: { params: { miasto
 
         <ThemedPartyCityIntro cityCases={cityCases} content={cityContent} />
 
+        {sharedThemes.length > 0 && (
+          <ThemedPartyCityThemes themes={sharedThemes} cityCases={cityCases} />
+        )}
         <ThemedPartyCityServices cityCases={cityCases} content={cityContent} />
 
         <ThemedPartyCityEquipment cityCases={cityCases} content={cityContent} />
 
         <ThemedPartyCityBenefits cityCases={cityCases} content={cityContent} />
 
-        {sharedThemes.length > 0 && (
-          <ThemedPartyCityThemes themes={sharedThemes} cityCases={cityCases} />
-        )}
 
         {sharedGallery.length > 0 && (
           <ThemedPartyCitySharedGallery images={sharedGallery} cityCases={cityCases} />

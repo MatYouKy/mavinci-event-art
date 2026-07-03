@@ -130,6 +130,7 @@ export default function EditableHeroWithMetadata({
 
   const getTableName = () => {
     const cleanSection = section.replace('-hero', '');
+
     const dedicatedTables: Record<string, string> = {
       konferencje: 'konferencje_page_images',
       kasyno: 'kasyno_page_images',
@@ -138,7 +139,14 @@ export default function EditableHeroWithMetadata({
       about: 'about_page_images',
       portfolio: 'portfolio_page_images',
       dj: 'dj_hero_page_images',
+      streaming: 'streaming_page_images',
+      integracje: 'integracje_page_images',
+      'symulatory-vr': 'symulatory-vr_page_images',
+      'quizy-teleturnieje': 'quizy-teleturnieje_page_images',
+      'technika-sceniczna': 'technika-sceniczna_page_images',
+      'wieczory-tematyczne': 'wieczory-tematyczne_page_images',
     };
+
     return dedicatedTables[cleanSection] || 'service_hero_images';
   };
 
@@ -211,9 +219,17 @@ export default function EditableHeroWithMetadata({
   const handleSave = async () => {
     try {
       setSaving(true);
-      const tableName = getTableName();
+  
+      const normalizedPageSlug = pageSlug.replace(/^\/+/, '').replace(/\/+$/, '');
+      const slugParts = normalizedPageSlug.split('/').filter(Boolean);
+  
+      const isCityPage =
+        slugParts[0] === 'oferta' &&
+        slugParts.length >= 3;
+  
+      const tableName = isCityPage ? 'service_hero_images' : getTableName();
       const isUniversalTable = tableName === 'service_hero_images';
-
+  
       const dataToSave = {
         title,
         description,
@@ -222,30 +238,51 @@ export default function EditableHeroWithMetadata({
         button_text: buttonText,
         white_words_count: whiteWordsCount,
         updated_at: new Date().toISOString(),
+        is_active: true,
       };
-
-      let query = supabase.from(tableName).update(dataToSave);
-
+  
+      let existingQuery = supabase.from(tableName).select('id');
+  
       if (isUniversalTable) {
-        query = query.eq('page_slug', pageSlug);
+        existingQuery = existingQuery.eq('page_slug', normalizedPageSlug);
       } else {
-        query = query.eq('section', 'hero');
+        existingQuery = existingQuery.eq('section', 'hero');
       }
-
-      const { error } = await query;
-
-      if (error) {
-        throw error;
+  
+      const { data: existing, error: existingError } = await existingQuery.maybeSingle();
+  
+      if (existingError) {
+        throw existingError;
       }
-
+  
+      let result;
+  
+      if (existing?.id) {
+        result = await supabase
+          .from(tableName)
+          .update(dataToSave)
+          .eq('id', existing.id);
+      } else {
+        result = await supabase.from(tableName).insert({
+          ...dataToSave,
+          ...(isUniversalTable
+            ? { page_slug: normalizedPageSlug }
+            : { section: 'hero' }),
+        });
+      }
+  
+      if (result.error) {
+        throw result.error;
+      }
+  
       showSnackbar('Zmiany zapisane pomyślnie', 'success');
-
+  
       await loadCurrentData();
-
+  
       setIsEditing(false);
-
       router.refresh();
     } catch (error) {
+      console.error('Hero save error:', error);
       showSnackbar('Błąd podczas zapisywania zmian', 'error');
     } finally {
       setSaving(false);
@@ -261,16 +298,31 @@ export default function EditableHeroWithMetadata({
 
   useEffect(() => {
     const fetchCurrentIcon = async () => {
-      if (!labelIcon) return;
+      if (!labelIcon) {
+        setCurrentIcon(null);
+        return;
+      }
 
-      const { data } = await supabase
-        .from('custom_icons')
-        .select('svg_code')
-        .eq('id', labelIcon)
-        .maybeSingle();
+      const isUuid =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          labelIcon,
+        );
+
+      const query = supabase.from('custom_icons').select('id, svg_code').limit(1);
+
+      const { data } = isUuid
+        ? await query.eq('id', labelIcon).maybeSingle()
+        : await query.eq('name', labelIcon).maybeSingle();
 
       if (data) {
-        setCurrentIcon(data);
+        setCurrentIcon({ svg_code: data.svg_code });
+
+        // naprawia starą wartość typu "Wine" na UUID w stanie
+        if (!isUuid) {
+          setLabelIcon(data.id);
+        }
+      } else {
+        setCurrentIcon(null);
       }
     };
 

@@ -127,6 +127,7 @@ async function loadCityData(city: string) {
     metaTitle,
     cityContent,
     gallery: gallery || [],
+    cityPageSeo,
   };
 }
 
@@ -179,138 +180,182 @@ export default async function StreamingCityPage({ params }: { params: { miasto: 
     city,
     cityContent,
     gallery,
+    cityPageSeo,
   } = data;
 
   const canonicalUrl = `https://mavinci.pl/oferta/streaming/${city.locality}`;
   const pageSlug = `oferta/streaming/${city.locality}`;
   const prep = cityCases.locative_preposition || 'w';
 
-  const customSchema = cityContent?.custom_schema || (globalConfig
+  const schemaConfig = cityPageSeo?.custom_schema || {};
+
+  const schemaOffers =
+    Array.isArray(schemaConfig.offers) && schemaConfig.offers.length > 0
+      ? schemaConfig.offers
+      : [
+          {
+            name: 'Realizacja wielokamerowa',
+            description:
+              'Profesjonalna realizacja wideo z kilku kamer, reżyserka wizji, miks obrazu na żywo oraz obsługa wydarzeń online i hybrydowych.',
+          },
+          {
+            name: 'Streaming konferencji i eventów',
+            description:
+              'Transmisje live na YouTube, Vimeo, Zoom, Teams lub dedykowane platformy z monitoringiem jakości i wsparciem technicznym.',
+          },
+          {
+            name: 'Kamery i reżyserka wizji',
+            description:
+              'Obsługa kamer, operatorzy, stanowisko realizatora, przełączanie źródeł obrazu, nagrywanie programu oraz materiałów z kamer.',
+          },
+          {
+            name: 'Oprawa graficzna transmisji',
+            description:
+              'Belki z podpisami, logotypy, plansze, animacje, countdown, grafika live i elementy wizualne zgodne z identyfikacją wydarzenia.',
+          },
+          {
+            name: 'Nagrywanie i postprodukcja',
+            description:
+              'Nagranie wydarzenia, montaż skrótów, przygotowanie materiałów po konferencji oraz eksport nagrań do dalszej publikacji.',
+          },
+          {
+            name: 'Ekrany LED i multimedia',
+            description:
+              'Obsługa ekranów LED, telewizorów, projektorów, prezentacji, multimediów i sygnałów wideo podczas wydarzeń.',
+          },
+        ];
+  
+  const schemaFaq =
+    Array.isArray(schemaConfig.faq) && schemaConfig.faq.length > 0
+      ? schemaConfig.faq.filter((item: any) => item.question && item.answer)
+      : [];
+  
+  const customSchema = globalConfig
     ? {
         '@context': 'https://schema.org',
-        '@type': 'Service',
-        name: `Streaming i transmisje live ${prep} ${capitalize(cityCases.locative)}`,
-        description,
-        url: canonicalUrl,
-        image,
-        provider: {
-          '@type': 'LocalBusiness',
-          name: globalConfig.organization_name,
-          telephone: globalConfig.telephone,
-          email: globalConfig.email,
-          url: globalConfig.organization_url,
-          logo: globalConfig.organization_logo,
-          priceRange: globalConfig.price_range || '$$-$$$',
-          address: {
-            '@type': 'PostalAddress',
-            streetAddress: globalConfig.street_address,
-            addressLocality: globalConfig.locality,
-            postalCode: globalConfig.postal_code,
-            addressRegion: globalConfig.region,
-            addressCountry: globalConfig.country,
+        '@graph': [
+          {
+            '@type': 'WebPage',
+            '@id': `${canonicalUrl}#webpage`,
+            url: canonicalUrl,
+            name: cityPageSeo?.title || title,
+            description,
+            inLanguage: 'pl-PL',
+            isPartOf: {
+              '@type': 'WebSite',
+              '@id': 'https://mavinci.pl/#website',
+              name: 'MAVINCI Event & ART',
+              url: 'https://mavinci.pl',
+            },
+            about: {
+              '@id': `${canonicalUrl}#service`,
+            },
           },
-          sameAs: [
-            globalConfig.facebook_url,
-            globalConfig.instagram_url,
-            globalConfig.linkedin_url,
-            globalConfig.youtube_url,
-            globalConfig.twitter_url,
-          ].filter(Boolean),
-        },
-        areaServed: {
-          '@type': 'Place',
-          name: city.name,
-          address: {
-            '@type': 'PostalAddress',
-            addressLocality: cityCases.nominative,
-            postalCode: city.postal_code,
-            addressRegion: city.region,
-            addressCountry: 'PL',
+          {
+            '@type': 'LocalBusiness',
+            '@id': 'https://mavinci.pl/#organization',
+            name: globalConfig.organization_name,
+            url: globalConfig.organization_url,
+            logo: globalConfig.organization_logo,
+            image,
+            telephone: globalConfig.telephone,
+            email: globalConfig.email,
+            priceRange: schemaConfig.priceRange || globalConfig.price_range || '$$-$$$',
+            address: {
+              '@type': 'PostalAddress',
+              streetAddress: globalConfig.street_address,
+              addressLocality: globalConfig.locality,
+              postalCode: globalConfig.postal_code,
+              addressRegion: globalConfig.region,
+              addressCountry: globalConfig.country || 'PL',
+            },
+            sameAs: [
+              globalConfig.facebook_url,
+              globalConfig.instagram_url,
+              globalConfig.linkedin_url,
+              globalConfig.youtube_url,
+              globalConfig.twitter_url,
+            ].filter(Boolean),
           },
-        },
-        serviceType: 'Streaming i realizacja transmisji live',
-        audience: {
-          '@type': 'BusinessAudience',
-          audienceType: `Firmy, agencje eventowe, organizatorzy konferencji ${prep} ${capitalize(cityCases.locative)}`,
-        },
-        hasOfferCatalog: {
-          '@type': 'OfferCatalog',
-          name: `Usługi streamingowe ${prep} ${capitalize(cityCases.locative)}`,
-          itemListElement: [
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Realizacja wielokamerowa 4K',
-                description:
-                  'Profesjonalna realizacja wielokamerowa w rozdzielczości 4K. Kamery Sony, Blackmagic, gimble, ' +
-                  'steadicam. Reżyserka wizji na żywo z miksowaniem obrazu.',
+          {
+            '@type': 'Service',
+            '@id': `${canonicalUrl}#service`,
+            name: `Streaming i transmisje live ${prep} ${capitalize(cityCases.locative)}`,
+            description,
+            url: canonicalUrl,
+            image,
+            serviceType:
+              schemaConfig.serviceType || 'Streaming, realizacja wideo i transmisje live',
+            provider: {
+              '@id': 'https://mavinci.pl/#organization',
+            },
+            areaServed: {
+              '@type': 'Place',
+              name: cityCases.nominative,
+              address: {
+                '@type': 'PostalAddress',
+                addressLocality: cityCases.nominative,
+                postalCode: city.postal_code,
+                addressRegion: city.region,
+                addressCountry: 'PL',
               },
+            },
+            audience: {
+              '@type': 'BusinessAudience',
+              audienceType:
+                schemaConfig.audienceType ||
+                `Firmy, instytucje, agencje eventowe i organizatorzy konferencji ${prep} ${capitalize(
+                  cityCases.locative,
+                )}`,
+            },
+            hasOfferCatalog: {
+              '@id': `${canonicalUrl}#offer-catalog`,
+            },
+            offers: {
+              '@type': 'Offer',
               availability: 'https://schema.org/InStock',
             },
-            {
+          },
+          {
+            '@type': 'OfferCatalog',
+            '@id': `${canonicalUrl}#offer-catalog`,
+            name: `Usługi streamingu i realizacji wideo ${prep} ${capitalize(cityCases.locative)}`,
+            itemListElement: schemaOffers.map((offer: any) => ({
               '@type': 'Offer',
+              availability: 'https://schema.org/InStock',
               itemOffered: {
                 '@type': 'Service',
-                name: 'Transmisje live na platformy streamingowe',
-                description:
-                  'Transmisja na żywo na YouTube, Vimeo, Teams, Zoom, dedykowane platformy. ' +
-                  'Enkodery sprzętowe, backup łącza, monitoring jakości streamu.',
+                name: offer.name,
+                description: offer.description,
+                areaServed: {
+                  '@type': 'Place',
+                  name: cityCases.nominative,
+                },
+                provider: {
+                  '@id': 'https://mavinci.pl/#organization',
+                },
               },
-              availability: 'https://schema.org/InStock',
-            },
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Ściany LED i telebimy eventowe',
-                description:
-                  'Wynajem i montaż ścian LED, telebimów, ekranów projekcyjnych. ' +
-                  'Dowolne rozmiary, piksel pitch od 1.9mm do 5.9mm, wewnętrzne i zewnętrzne.',
-              },
-              availability: 'https://schema.org/InStock',
-            },
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Oprawa graficzna transmisji',
-                description:
-                  'Grafika live: belki, thirds, animowane przejścia, logotypy, plansza oczekiwania, ' +
-                  'countdown, CG w czasie rzeczywistym.',
-              },
-              availability: 'https://schema.org/InStock',
-            },
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Nagrywanie i postprodukcja',
-                description:
-                  'Nagranie ISO każdej kamery, nagranie miksu programowego, postprodukcja, ' +
-                  'koloryzacja, montaż highlightów i relacji.',
-              },
-              availability: 'https://schema.org/InStock',
-            },
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Infrastruktura sieciowa i łącza',
-                description:
-                  'Dedykowane łącza internetowe, bonding 4G/5G, enkodery NDI/SDI, ' +
-                  'sieć produkcyjna z redundancją i monitoringiem bitrate.',
-              },
-              availability: 'https://schema.org/InStock',
-            },
-          ],
-        },
-        offers: {
-          '@type': 'Offer',
-          availability: 'https://schema.org/InStock',
-        },
+            })),
+          },
+          ...(schemaFaq.length > 0
+            ? [
+                {
+                  '@type': 'FAQPage',
+                  '@id': `${canonicalUrl}#faq`,
+                  mainEntity: schemaFaq.map((item: any) => ({
+                    '@type': 'Question',
+                    name: item.question,
+                    acceptedAnswer: {
+                      '@type': 'Answer',
+                      text: item.answer,
+                    },
+                  })),
+                },
+              ]
+            : []),
+        ],
       }
-    : undefined);
+    : undefined;
 
   return (
     <PageLayout pageSlug={pageSlug} customSchema={customSchema} cookieStore={cookies()}>

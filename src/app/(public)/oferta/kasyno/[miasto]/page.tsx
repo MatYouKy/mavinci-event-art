@@ -126,6 +126,7 @@ async function loadCityData(city: string) {
     cityCases,
     metaTitle,
     cityContent,
+    cityPageSeo,
     gallery: gallery || [],
   };
 }
@@ -179,144 +180,182 @@ export default async function CasinoCityPage({ params }: { params: { miasto: str
     city,
     cityContent,
     gallery,
+    cityPageSeo,
   } = data;
 
   const canonicalUrl = `https://mavinci.pl/oferta/kasyno/${city.locality}`;
   const pageSlug = `oferta/kasyno/${city.locality}`;
   const prep = cityCases.locative_preposition || 'w';
 
-  const customSchema = cityContent?.custom_schema || (globalConfig
+  const schemaConfig = cityPageSeo?.custom_schema || {};
+
+const schemaOffers =
+  Array.isArray(schemaConfig.offers) && schemaConfig.offers.length > 0
+    ? schemaConfig.offers
+    : [
+        {
+          name: 'Ruletka eventowa',
+          description:
+            'Profesjonalny stół do ruletki z obsługą krupiera, żetonami i nauką zasad dla uczestników wydarzenia.',
+        },
+        {
+          name: 'Blackjack',
+          description:
+            'Stół do blackjacka z profesjonalnym wyposażeniem i krupierem prowadzącym grę w formule rozrywkowej.',
+        },
+        {
+          name: "Poker Texas Hold'em",
+          description:
+            'Organizacja rozrywkowych turniejów pokerowych z profesjonalnymi kartami, żetonami i obsługą dealerską.',
+        },
+        {
+          name: 'Koło fortuny',
+          description:
+            'Eventowe koło fortuny z możliwością personalizacji pól, nagród i brandingu firmowego.',
+        },
+        {
+          name: 'Event w stylu Las Vegas',
+          description:
+            'Kompleksowa oprawa imprezy tematycznej Las Vegas z dekoracjami, stołami kasynowymi i obsługą krupierską.',
+        },
+      ];
+
+const schemaFaq =
+  Array.isArray(schemaConfig.faq) && schemaConfig.faq.length > 0
+    ? schemaConfig.faq.filter((item: any) => item.question && item.answer)
+    : [];
+
+    const customSchema = globalConfig
     ? {
         '@context': 'https://schema.org',
-        '@type': 'Service',
-        name: `Kasyno rozrywkowe ${prep} ${capitalize(cityCases.locative)}`,
-        description,
-        url: canonicalUrl,
-        image,
-        provider: {
-          '@type': 'LocalBusiness',
-          name: globalConfig.organization_name,
-          telephone: globalConfig.telephone,
-          email: globalConfig.email,
-          url: globalConfig.organization_url,
-          logo: globalConfig.organization_logo,
-          priceRange: globalConfig.price_range || '$$-$$$',
-          address: {
-            '@type': 'PostalAddress',
-            streetAddress: globalConfig.street_address,
-            addressLocality: globalConfig.locality,
-            postalCode: globalConfig.postal_code,
-            addressRegion: globalConfig.region,
-            addressCountry: globalConfig.country,
+        '@graph': [
+          {
+            '@type': 'WebPage',
+            '@id': `${canonicalUrl}#webpage`,
+            url: canonicalUrl,
+            name: cityPageSeo?.title || title,
+            description,
+            inLanguage: 'pl-PL',
+            isPartOf: {
+              '@type': 'WebSite',
+              '@id': 'https://mavinci.pl/#website',
+              name: 'MAVINCI Event & ART',
+              url: 'https://mavinci.pl',
+            },
+            about: {
+              '@id': `${canonicalUrl}#service`,
+            },
           },
-          sameAs: [
-            globalConfig.facebook_url,
-            globalConfig.instagram_url,
-            globalConfig.linkedin_url,
-            globalConfig.youtube_url,
-            globalConfig.twitter_url,
-          ].filter(Boolean),
-        },
-        areaServed: {
-          '@type': 'Place',
-          name: city.name,
-          address: {
-            '@type': 'PostalAddress',
-            addressLocality: cityCases.nominative,
-            postalCode: city.postal_code,
-            addressRegion: city.region,
-            addressCountry: 'PL',
+          {
+            '@type': 'LocalBusiness',
+            '@id': 'https://mavinci.pl/#organization',
+            name: globalConfig.organization_name,
+            url: globalConfig.organization_url,
+            logo: globalConfig.organization_logo,
+            image,
+            telephone: globalConfig.telephone,
+            email: globalConfig.email,
+            priceRange: schemaConfig.priceRange || globalConfig.price_range || '$$-$$$',
+            address: {
+              '@type': 'PostalAddress',
+              streetAddress: globalConfig.street_address,
+              addressLocality: globalConfig.locality,
+              postalCode: globalConfig.postal_code,
+              addressRegion: globalConfig.region,
+              addressCountry: globalConfig.country || 'PL',
+            },
+            sameAs: [
+              globalConfig.facebook_url,
+              globalConfig.instagram_url,
+              globalConfig.linkedin_url,
+              globalConfig.youtube_url,
+              globalConfig.twitter_url,
+            ].filter(Boolean),
           },
-        },
-        serviceType: 'Kasyno rozrywkowe na eventy',
-        audience: {
-          '@type': 'BusinessAudience',
-          audienceType: `Firmy, agencje eventowe, organizatorzy imprez ${prep} ${capitalize(cityCases.locative)}`,
-        },
-        hasOfferCatalog: {
-          '@type': 'OfferCatalog',
-          name: `Gry kasynowe i atrakcje ${prep} ${capitalize(cityCases.locative)}`,
-          itemListElement: [
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Ruletka',
-                description:
-                  'Profesjonalne stoły do ruletki europejskiej i amerykańskiej. Autentyczne koła, żetony ' +
-                  'i doświadczeni krupierzy. Nauka zasad w pakiecie.',
+          {
+            '@type': 'Service',
+            '@id': `${canonicalUrl}#service`,
+            name: `Kasyno rozrywkowe ${prep} ${capitalize(cityCases.locative)}`,
+            description,
+            url: canonicalUrl,
+            image,
+            serviceType: schemaConfig.serviceType || 'Kasyno rozrywkowe na eventy',
+            provider: {
+              '@id': 'https://mavinci.pl/#organization',
+            },
+            areaServed: {
+              '@type': 'Place',
+              name: cityCases.nominative,
+              address: {
+                '@type': 'PostalAddress',
+                addressLocality: cityCases.nominative,
+                postalCode: city.postal_code,
+                addressRegion: city.region,
+                addressCountry: 'PL',
               },
+            },
+            audience: {
+              '@type': 'BusinessAudience',
+              audienceType:
+                schemaConfig.audienceType ||
+                `Firmy, agencje eventowe i organizatorzy imprez ${prep} ${capitalize(
+                  cityCases.locative,
+                )}`,
+            },
+            hasOfferCatalog: {
+              '@id': `${canonicalUrl}#offer-catalog`,
+            },
+            offers: {
+              '@type': 'Offer',
               availability: 'https://schema.org/InStock',
             },
-            {
+          },
+          {
+            '@type': 'OfferCatalog',
+            '@id': `${canonicalUrl}#offer-catalog`,
+            name: `Atrakcje kasynowe ${prep} ${capitalize(cityCases.locative)}`,
+            itemListElement: schemaOffers.map((offer: any) => ({
               '@type': 'Offer',
+              availability: 'https://schema.org/InStock',
               itemOffered: {
                 '@type': 'Service',
-                name: 'Blackjack',
-                description:
-                  'Stoły do blackjacka z profesjonalnym suknem i wyposażeniem. Krupierzy uczą zasad ' +
-                  'i prowadzą gry dla grup o różnym poziomie zaawansowania.',
+                name: offer.name,
+                description: offer.description,
+                areaServed: {
+                  '@type': 'Place',
+                  name: cityCases.nominative,
+                },
+                provider: {
+                  '@id': 'https://mavinci.pl/#organization',
+                },
               },
-              availability: 'https://schema.org/InStock',
-            },
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Poker Texas Hold\'em',
-                description:
-                  'Turnieje pokerowe z profesjonalną organizacją. Stoły turniejowe, żetony clay, ' +
-                  'karty plastikowe i doświadczeni dealerzy.',
-              },
-              availability: 'https://schema.org/InStock',
-            },
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Koło fortuny',
-                description:
-                  'Spektakularne koło fortuny z nagrodami. Personalizowane segmenty, branding firmowy, ' +
-                  'oświetlenie sceniczne. Hit każdej imprezy integracyjnej.',
-              },
-              availability: 'https://schema.org/InStock',
-            },
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Kości i gry stołowe',
-                description:
-                  'Craps, Sic Bo, punto banco i inne gry stołowe. Profesjonalne stoły z obsługą ' +
-                  'krupierską i nauką zasad dla uczestników.',
-              },
-              availability: 'https://schema.org/InStock',
-            },
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Event tematyczny Las Vegas',
-                description:
-                  'Kompletna impreza w stylu Las Vegas: dekoracje, oświetlenie neonowe, hostessy, ' +
-                  'dress code, nagrody dla najlepszych graczy.',
-              },
-              availability: 'https://schema.org/InStock',
-            },
-          ],
-        },
-        offers: {
-          '@type': 'Offer',
-          availability: 'https://schema.org/InStock',
-        },
+            })),
+          },
+          ...(schemaFaq.length > 0
+            ? [
+                {
+                  '@type': 'FAQPage',
+                  '@id': `${canonicalUrl}#faq`,
+                  mainEntity: schemaFaq.map((item: any) => ({
+                    '@type': 'Question',
+                    name: item.question,
+                    acceptedAnswer: {
+                      '@type': 'Answer',
+                      text: item.answer,
+                    },
+                  })),
+                },
+              ]
+            : []),
+        ],
       }
-    : undefined);
+    : undefined;
 
   return (
     <PageLayout pageSlug={pageSlug} customSchema={customSchema} cookieStore={cookies()}>
       <EditableHeroSectionServer
         whiteWordsCount={2}
-        section="casino-hero"
+        section="kasyno-hero"
         pageSlug={pageSlug}
         initialImageUrl={image}
         initialTitle={cityContent?.hero_title || title}

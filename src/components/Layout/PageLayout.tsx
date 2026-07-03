@@ -9,12 +9,18 @@ interface PageLayoutProps {
   cookieStore: any;
 }
 
-export default async function PageLayout({ children, pageSlug, customSchema, cookieStore }: PageLayoutProps) {
+export default async function PageLayout({
+  children,
+  pageSlug,
+  customSchema,
+  cookieStore,
+}: PageLayoutProps) {
   const schemaData = customSchema ?? (await buildSchemaJsonLdForSlug(pageSlug, cookieStore));
+  // console.log('schemaData', JSON.stringify(schemaData, null, 2));
 
   return (
     <>
-      {/* {schemaData && <JsonLd data={schemaData} />} */}
+      {schemaData && <JsonLd data={schemaData} />}
       {children}
     </>
   );

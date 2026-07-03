@@ -336,7 +336,7 @@ export default function DJGalleryEditor() {
               {canEdit && isEditMode && (
                 <div className="mt-4 space-y-2">
                   <p className="text-sm text-[#e5e4e2]/40">
-                    Kliknij "Dodaj zdjęcia" lub przeciągnij pliki tutaj
+                    Kliknij &quot;Dodaj zdjęcia&quot; lub przeciągnij pliki tutaj
                   </p>
                   <div className="flex items-center justify-center gap-2 text-xs text-[#e5e4e2]/30">
                     <Upload className="h-4 w-4" />

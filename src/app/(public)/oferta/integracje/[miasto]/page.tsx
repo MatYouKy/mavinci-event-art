@@ -45,13 +45,15 @@ async function loadCityData(city: string) {
   let heroImage: { image_url: string } | null = null;
   try {
     const { data } = await supabase
-      .from('themed_party_page_images')
+      .from('integracje_page_images')
       .select('image_url')
       .eq('is_active', true)
       .eq('section', 'hero')
       .maybeSingle();
     heroImage = data;
-  } catch { /* table may not exist yet */ }
+  } catch {
+    /* table may not exist yet */
+  }
 
   const { hasWebsiteEdit } = await getUserPermissions();
 
@@ -73,7 +75,9 @@ async function loadCityData(city: string) {
       .eq('is_active', true)
       .maybeSingle();
     cityContent = cc;
-  } catch { /* table may not exist yet */ }
+  } catch {
+    /* table may not exist yet */
+  }
 
   const EXCEPTIONS: Record<string, PolishCityCases> = await loadCityCasesFromDb();
   const cityCases = getPolishCityCasesSmart(city, EXCEPTIONS);
@@ -108,7 +112,9 @@ async function loadCityData(city: string) {
         }));
       }
     }
-  } catch { /* site_images may not have integrations data yet */ }
+  } catch {
+    /* site_images may not have integrations data yet */
+  }
 
   const image =
     cityContent?.hero_image_url ||
@@ -149,6 +155,7 @@ async function loadCityData(city: string) {
     cityContent,
     sharedTypes,
     sharedGallery,
+    cityPageSeo,
   };
 }
 
@@ -202,108 +209,177 @@ export default async function IntegrationsCityPage({ params }: { params: { miast
     cityContent,
     sharedTypes,
     sharedGallery,
+    cityPageSeo,
   } = data;
 
   const canonicalUrl = `https://mavinci.pl/oferta/integracje/${city.locality}`;
   const pageSlug = `oferta/integracje/${city.locality}`;
   const prep = cityCases.locative_preposition || 'w';
 
-  const customSchema = cityContent?.custom_schema || (globalConfig
+  const schemaConfig = cityPageSeo?.custom_schema || {};
+
+  const schemaOffers =
+    Array.isArray(schemaConfig.offers) && schemaConfig.offers.length > 0
+      ? schemaConfig.offers
+      : [
+          {
+            name: 'Gry terenowe i fabularne',
+            description:
+              'Scenariusze integracyjne z fabułą, zadaniami zespołowymi, zagadkami i rywalizacją w terenie.',
+          },
+          {
+            name: 'Integracje outdoor',
+            description:
+              'Plenerowe integracje firmowe, olimpiady zespołowe, aktywności terenowe i programy team buildingowe.',
+          },
+          {
+            name: 'Integracje indoor',
+            description:
+              'Integracje w hotelach, salach konferencyjnych i przestrzeniach eventowych: quizy, gry zespołowe, warsztaty i animacje.',
+          },
+          {
+            name: 'Team building dla firm',
+            description:
+              'Programy wzmacniające współpracę, komunikację, zaangażowanie i relacje w zespole.',
+          },
+          {
+            name: 'Wieczory firmowe z programem',
+            description:
+              'Kompleksowa organizacja wieczorów integracyjnych z prowadzeniem, konkursami, oprawą techniczną i atrakcjami.',
+          },
+        ];
+
+  const schemaFaq =
+    Array.isArray(schemaConfig.faq) && schemaConfig.faq.length > 0
+      ? schemaConfig.faq.filter((item: any) => item.question && item.answer)
+      : [];
+
+  const customSchema = globalConfig
     ? {
         '@context': 'https://schema.org',
-        '@type': 'Service',
-        name: `Integracje firmowe ${prep} ${capitalize(cityCases.locative)}`,
-        description,
-        url: canonicalUrl,
-        image,
-        provider: {
-          '@type': 'LocalBusiness',
-          name: globalConfig.organization_name,
-          telephone: globalConfig.telephone,
-          email: globalConfig.email,
-          url: globalConfig.organization_url,
-          logo: globalConfig.organization_logo,
-          priceRange: globalConfig.price_range || '$$-$$$',
-          address: {
-            '@type': 'PostalAddress',
-            streetAddress: globalConfig.street_address,
-            addressLocality: globalConfig.locality,
-            postalCode: globalConfig.postal_code,
-            addressRegion: globalConfig.region,
-            addressCountry: globalConfig.country,
+        '@graph': [
+          {
+            '@type': 'WebPage',
+            '@id': `${canonicalUrl}#webpage`,
+            url: canonicalUrl,
+            name: cityPageSeo?.title || title,
+            description,
+            inLanguage: 'pl-PL',
+            isPartOf: {
+              '@type': 'WebSite',
+              '@id': 'https://mavinci.pl/#website',
+              name: 'MAVINCI Event & ART',
+              url: 'https://mavinci.pl',
+            },
+            about: {
+              '@id': `${canonicalUrl}#service`,
+            },
           },
-          sameAs: [
-            globalConfig.facebook_url,
-            globalConfig.instagram_url,
-            globalConfig.linkedin_url,
-            globalConfig.youtube_url,
-            globalConfig.twitter_url,
-          ].filter(Boolean),
-        },
-        areaServed: {
-          '@type': 'Place',
-          name: city.name,
-          address: {
-            '@type': 'PostalAddress',
-            addressLocality: cityCases.nominative,
-            postalCode: city.postal_code,
-            addressRegion: city.region,
-            addressCountry: 'PL',
+          {
+            '@type': 'LocalBusiness',
+            '@id': 'https://mavinci.pl/#organization',
+            name: globalConfig.organization_name,
+            url: globalConfig.organization_url,
+            logo: globalConfig.organization_logo,
+            image,
+            telephone: globalConfig.telephone,
+            email: globalConfig.email,
+            priceRange: schemaConfig.priceRange || globalConfig.price_range || '$$-$$$',
+            address: {
+              '@type': 'PostalAddress',
+              streetAddress: globalConfig.street_address,
+              addressLocality: globalConfig.locality,
+              postalCode: globalConfig.postal_code,
+              addressRegion: globalConfig.region,
+              addressCountry: globalConfig.country || 'PL',
+            },
+            sameAs: [
+              globalConfig.facebook_url,
+              globalConfig.instagram_url,
+              globalConfig.linkedin_url,
+              globalConfig.youtube_url,
+              globalConfig.twitter_url,
+            ].filter(Boolean),
           },
-        },
-        serviceType: 'Integracje firmowe i team building',
-        audience: {
-          '@type': 'BusinessAudience',
-          audienceType: `Firmy, korporacje, agencje eventowe ${prep} ${capitalize(cityCases.locative)}`,
-        },
-        hasOfferCatalog: {
-          '@type': 'OfferCatalog',
-          name: `Integracje firmowe ${prep} ${capitalize(cityCases.locative)}`,
-          itemListElement: [
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Gry terenowe i fabularne',
-                description: 'Scenariusze integracyjne z fabula, zagadkami i zadaniami zespolowymi w plenerze.',
+          {
+            '@type': 'Service',
+            '@id': `${canonicalUrl}#service`,
+            name: `Integracje firmowe ${prep} ${capitalize(cityCases.locative)}`,
+            description,
+            url: canonicalUrl,
+            image,
+            serviceType:
+              schemaConfig.serviceType || 'Integracje firmowe, team building i eventy integracyjne',
+            provider: {
+              '@id': 'https://mavinci.pl/#organization',
+            },
+            areaServed: {
+              '@type': 'Place',
+              name: cityCases.nominative,
+              address: {
+                '@type': 'PostalAddress',
+                addressLocality: cityCases.nominative,
+                postalCode: city.postal_code,
+                addressRegion: city.region,
+                addressCountry: 'PL',
               },
+            },
+            audience: {
+              '@type': 'BusinessAudience',
+              audienceType:
+                schemaConfig.audienceType ||
+                `Firmy, działy HR, korporacje, agencje eventowe i organizatorzy integracji ${prep} ${capitalize(
+                  cityCases.locative,
+                )}`,
+            },
+            hasOfferCatalog: {
+              '@id': `${canonicalUrl}#offer-catalog`,
+            },
+            offers: {
+              '@type': 'Offer',
               availability: 'https://schema.org/InStock',
             },
-            {
+          },
+          {
+            '@type': 'OfferCatalog',
+            '@id': `${canonicalUrl}#offer-catalog`,
+            name: `Integracje firmowe i team building ${prep} ${capitalize(cityCases.locative)}`,
+            itemListElement: schemaOffers.map((offer: any) => ({
               '@type': 'Offer',
+              availability: 'https://schema.org/InStock',
               itemOffered: {
                 '@type': 'Service',
-                name: 'Integracje outdoor',
-                description: 'Survival light, biegi z przeszkodami, olimpiady firmowe na swiezym powietrzu.',
+                name: offer.name,
+                description: offer.description,
+                areaServed: {
+                  '@type': 'Place',
+                  name: cityCases.nominative,
+                },
+                provider: {
+                  '@id': 'https://mavinci.pl/#organization',
+                },
               },
-              availability: 'https://schema.org/InStock',
-            },
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Integracje indoor',
-                description: 'Mobilny escape room, zagadki logiczne, gry planszowe XXL, warsztaty kreatywne.',
-              },
-              availability: 'https://schema.org/InStock',
-            },
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Wieczory firmowe z programem',
-                description: 'Imprezy firmowe z animatorami, konkursami i eventami integracyjnymi.',
-              },
-              availability: 'https://schema.org/InStock',
-            },
-          ],
-        },
-        offers: {
-          '@type': 'Offer',
-          availability: 'https://schema.org/InStock',
-        },
+            })),
+          },
+          ...(schemaFaq.length > 0
+            ? [
+                {
+                  '@type': 'FAQPage',
+                  '@id': `${canonicalUrl}#faq`,
+                  mainEntity: schemaFaq.map((item: any) => ({
+                    '@type': 'Question',
+                    name: item.question,
+                    acceptedAnswer: {
+                      '@type': 'Answer',
+                      text: item.answer,
+                    },
+                  })),
+                },
+              ]
+            : []),
+        ],
       }
-    : undefined);
+    : undefined;
 
   return (
     <PageLayout pageSlug={pageSlug} customSchema={customSchema} cookieStore={cookies()}>

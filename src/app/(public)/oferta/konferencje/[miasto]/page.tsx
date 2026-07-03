@@ -62,7 +62,7 @@ async function loadCityData(city: string) {
     .eq('page_slug', `oferta/konferencje/${city}`)
     .maybeSingle();
 
-  if (cityPageSeoError) console.error('SSR SEO error:', cityPageSeoError);  
+  if (cityPageSeoError) console.error('SSR SEO error:', cityPageSeoError);
 
   const EXCEPTIONS: Record<string, PolishCityCases> = await loadCityCasesFromDb();
 
@@ -78,7 +78,8 @@ async function loadCityData(city: string) {
   const defaultDescription = `Profesjonalna obsługa konferencji ${cityCases.locative_preposition ? cityCases.locative_preposition : 'w'} ${capitalize(cityCases.locative)}: nagłośnienie, multimedia, streaming live, realizacja wideo. Kompleksowe wsparcie techniczne dla wydarzeń biznesowych ${cityCases.locative_preposition ? cityCases.locative_preposition : 'w'} ${capitalize(cityCases.locative)} i okolicach.`;
 
   const title = defaultTitle;
-  const metaTitle = cityPageSeo?.title || `${title} - Profesjonalne Nagłośnienie i Multimedia | MAVINCI`;
+  const metaTitle =
+    cityPageSeo?.title || `${title} - Profesjonalne Nagłośnienie i Multimedia | MAVINCI`;
 
   const description = defaultDescription || cityPageSeo?.seo_description;
   const keywords =
@@ -96,6 +97,8 @@ async function loadCityData(city: string) {
     keywords,
     cityCases,
     metaTitle,
+    cityPageSeo,
+    customSchema: cityPageSeo?.custom_schema || {},
   };
 }
 
@@ -110,7 +113,8 @@ export async function generateMetadata({
     return { title: 'Obsługa Konferencji - MAVINCI Event & ART' };
   }
 
-  const { title, description, keywords, canonicalUrl, image, cityCases, metaTitle } = data;
+  const { title, description, keywords, canonicalUrl, image, cityCases, metaTitle, cityPageSeo } =
+    data;
   // const metaTitle = `${title} - Profesjonalne Nagłośnienie i Multimedia | MAVINCI`;
 
   return {
@@ -139,7 +143,8 @@ export default async function CityConferencePage({ params }: { params: { miasto:
   const data = await loadCityData(params.miasto);
   if (!data) notFound();
 
-  const { cityCases, globalConfig, hasWebsiteEdit, image, description, title, city } = data;
+  const { cityCases, globalConfig, hasWebsiteEdit, image, description, title, city, cityPageSeo } =
+    data;
 
   const canonicalUrl = `https://mavinci.pl/oferta/konferencje/${city.locality}`;
 
@@ -147,141 +152,177 @@ export default async function CityConferencePage({ params }: { params: { miasto:
 
   const pageSlug = `oferta/konferencje/${city.locality}`;
 
-  // ✅ Naprawione schema: priceRange NIE w Offer
+  const schemaConfig = cityPageSeo?.custom_schema || {};
+
+  const schemaOffers =
+    Array.isArray(schemaConfig.offers) && schemaConfig.offers.length > 0
+      ? schemaConfig.offers
+      : [
+          {
+            name: 'Nagłośnienie konferencyjne',
+            description:
+              'Profesjonalne systemy nagłośnienia konferencyjnego, mikrofony bezprzewodowe, mikrofony nagłowne, miksery cyfrowe oraz realizacja dźwięku podczas wydarzeń biznesowych.',
+          },
+          {
+            name: 'Multimedia i prezentacje',
+            description:
+              'Obsługa prezentacji, ekranów, projektorów, telewizorów, przełączanie źródeł obrazu oraz wsparcie techniczne dla prelegentów.',
+          },
+          {
+            name: 'Streaming i transmisje online',
+            description:
+              'Realizacja transmisji konferencji na żywo, streaming na YouTube, Zoom, Teams lub Vimeo, realizacja wielokamerowa i nagrywanie wydarzenia.',
+          },
+          {
+            name: 'Realizacja wideo',
+            description:
+              'Obsługa kamer, reżyserka wizji, miks obrazu na żywo, nagrania konferencji oraz przygotowanie materiałów po wydarzeniu.',
+          },
+          {
+            name: 'Oświetlenie konferencyjne',
+            description:
+              'Oświetlenie sceny, prelegentów, strefy wystąpień oraz dekoracyjne oświetlenie przestrzeni konferencyjnej.',
+          },
+          {
+            name: 'Koordynacja techniczna konferencji',
+            description:
+              'Pełna obsługa techniczna wydarzenia: planowanie, montaż, próby techniczne, realizacja, nadzór techniczny i demontaż.',
+          },
+        ];
+
+  const schemaFaq =
+    Array.isArray(schemaConfig.faq) && schemaConfig.faq.length > 0
+      ? schemaConfig.faq.filter((item: any) => item.question && item.answer)
+      : [];
+
   const customSchema = globalConfig
     ? {
         '@context': 'https://schema.org',
-        '@type': 'Service',
-
-        name: `Obsługa Konferencji ${cityCases.locative_preposition ? cityCases.locative_preposition : 'w'} ${capitalize(cityCases.locative)}`,
-        description,
-
-        url: canonicalUrl,
-        image: image,
-
-        provider: {
-          '@type': 'LocalBusiness',
-          name: globalConfig.organization_name,
-          telephone: globalConfig.telephone,
-          email: globalConfig.email,
-          url: globalConfig.organization_url,
-          logo: globalConfig.organization_logo,
-          priceRange: globalConfig.price_range || '$$-$$$',
-
-          address: {
-            '@type': 'PostalAddress',
-            streetAddress: globalConfig.street_address,
-            addressLocality: globalConfig.locality,
-            postalCode: globalConfig.postal_code,
-            addressRegion: globalConfig.region,
-            addressCountry: globalConfig.country,
+        '@graph': [
+          {
+            '@type': 'WebPage',
+            '@id': `${canonicalUrl}#webpage`,
+            url: canonicalUrl,
+            name: cityPageSeo?.title || title,
+            description,
+            inLanguage: 'pl-PL',
+            isPartOf: {
+              '@type': 'WebSite',
+              '@id': 'https://mavinci.pl/#website',
+              name: 'MAVINCI Event & ART',
+              url: 'https://mavinci.pl',
+            },
+            about: {
+              '@id': `${canonicalUrl}#service`,
+            },
           },
-
-          sameAs: [
-            globalConfig.facebook_url,
-            globalConfig.instagram_url,
-            globalConfig.linkedin_url,
-            globalConfig.youtube_url,
-            globalConfig.twitter_url,
-          ].filter(Boolean),
-        },
-
-        areaServed: {
-          '@type': 'Place',
-          name: city.name,
-          address: {
-            '@type': 'PostalAddress',
-            addressLocality: cityCases.nominative, // ✅ poprawnie
-            postalCode: city.postal_code,
-            addressRegion: city.region,
-            addressCountry: 'PL',
+          {
+            '@type': 'LocalBusiness',
+            '@id': 'https://mavinci.pl/#organization',
+            name: globalConfig.organization_name,
+            url: globalConfig.organization_url,
+            logo: globalConfig.organization_logo,
+            image,
+            telephone: globalConfig.telephone,
+            email: globalConfig.email,
+            priceRange: schemaConfig.priceRange || globalConfig.price_range || '$$-$$$',
+            address: {
+              '@type': 'PostalAddress',
+              streetAddress: globalConfig.street_address,
+              addressLocality: globalConfig.locality,
+              postalCode: globalConfig.postal_code,
+              addressRegion: globalConfig.region,
+              addressCountry: globalConfig.country || 'PL',
+            },
+            sameAs: [
+              globalConfig.facebook_url,
+              globalConfig.instagram_url,
+              globalConfig.linkedin_url,
+              globalConfig.youtube_url,
+              globalConfig.twitter_url,
+            ].filter(Boolean),
           },
-        },
-
-        serviceType: 'Techniczna obsługa konferencji',
-
-        audience: {
-          '@type': 'BusinessAudience',
-          audienceType: `Firmy, instytucje, organizatorzy konferencji ${cityCases.locative_preposition ? cityCases.locative_preposition : 'w'} ${capitalize(cityCases.locative)}`,
-        },
-
-        hasOfferCatalog: {
-          '@type': 'OfferCatalog',
-          name: `Zakres obsługi technicznej konferencji ${cityCases.locative_preposition ? cityCases.locative_preposition : 'w'} ${capitalize(cityCases.locative)}`,
-          itemListElement: [
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Audio i nagłośnienie konferencyjne',
-                description:
-                  'Profesjonalne systemy nagłośnienia dostosowane do wielkości i akustyki sali. ' +
-                  'Mikrofony bezprzewodowe, miksery cyfrowe, realizator dźwięku oraz nagranie ścieżki audio eventu.',
+          {
+            '@type': 'Service',
+            '@id': `${canonicalUrl}#service`,
+            name: `Obsługa konferencji ${
+              cityCases.locative_preposition || 'w'
+            } ${capitalize(cityCases.locative)}`,
+            description,
+            url: canonicalUrl,
+            image,
+            serviceType:
+              schemaConfig.serviceType || 'Techniczna obsługa konferencji i wydarzeń biznesowych',
+            provider: {
+              '@id': 'https://mavinci.pl/#organization',
+            },
+            areaServed: {
+              '@type': 'Place',
+              name: cityCases.nominative,
+              address: {
+                '@type': 'PostalAddress',
+                addressLocality: cityCases.nominative,
+                postalCode: city.postal_code,
+                addressRegion: city.region,
+                addressCountry: 'PL',
               },
+            },
+            audience: {
+              '@type': 'BusinessAudience',
+              audienceType:
+                schemaConfig.audienceType ||
+                `Firmy, instytucje, agencje eventowe i organizatorzy konferencji ${
+                  cityCases.locative_preposition || 'w'
+                } ${capitalize(cityCases.locative)}`,
+            },
+            hasOfferCatalog: {
+              '@id': `${canonicalUrl}#offer-catalog`,
+            },
+            offers: {
+              '@type': 'Offer',
               availability: 'https://schema.org/InStock',
             },
-            {
+          },
+          {
+            '@type': 'OfferCatalog',
+            '@id': `${canonicalUrl}#offer-catalog`,
+            name: `Zakres obsługi konferencji ${
+              cityCases.locative_preposition || 'w'
+            } ${capitalize(cityCases.locative)}`,
+            itemListElement: schemaOffers.map((offer: any) => ({
               '@type': 'Offer',
+              availability: 'https://schema.org/InStock',
               itemOffered: {
                 '@type': 'Service',
-                name: 'Wideo i obraz',
-                description:
-                  'Wielokamerowa realizacja konferencji, projektory Full HD i 4K, ekrany projekcyjne oraz ściany LED. ' +
-                  'Pełna reżyserka wideo i miks wizji na żywo.',
+                name: offer.name,
+                description: offer.description,
+                areaServed: {
+                  '@type': 'Place',
+                  name: cityCases.nominative,
+                },
+                provider: {
+                  '@id': 'https://mavinci.pl/#organization',
+                },
               },
-              availability: 'https://schema.org/InStock',
-            },
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Oświetlenie sceniczne i konferencyjne',
-                description:
-                  'Profesjonalne oświetlenie LED sceny, prelegentów i publiczności. ' +
-                  'Sterowanie DMX, oświetlenie dekoracyjne oraz mapping świetlny.',
-              },
-              availability: 'https://schema.org/InStock',
-            },
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Prezentacje i multimedia',
-                description:
-                  'Obsługa prezentacji multimedialnych, playout slajdów, przełączanie źródeł, grafika live ' +
-                  'oraz wsparcie techniczne prelegentów podczas wystąpień.',
-              },
-              availability: 'https://schema.org/InStock',
-            },
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Streaming i transmisje online',
-                description:
-                  'Transmisje konferencji na żywo (YouTube, Zoom, Teams, Vimeo), realizacja wielokamerowa, ' +
-                  'enkodery sprzętowe, backup internetu oraz postprodukcja nagrań.',
-              },
-              availability: 'https://schema.org/InStock',
-            },
-            {
-              '@type': 'Offer',
-              itemOffered: {
-                '@type': 'Service',
-                name: 'Logistyka i koordynacja techniczna',
-                description:
-                  'Kierownik techniczny wydarzenia, audyt i wizja lokalna sali, transport, montaż sprzętu, ' +
-                  'próby techniczne, obsługa w trakcie eventu oraz demontaż.',
-              },
-              availability: 'https://schema.org/InStock',
-            },
-          ],
-        },
-
-        offers: {
-          '@type': 'Offer',
-          availability: 'https://schema.org/InStock',
-        },
+            })),
+          },
+          ...(schemaFaq.length > 0
+            ? [
+                {
+                  '@type': 'FAQPage',
+                  '@id': `${canonicalUrl}#faq`,
+                  mainEntity: schemaFaq.map((item: any) => ({
+                    '@type': 'Question',
+                    name: item.question,
+                    acceptedAnswer: {
+                      '@type': 'Answer',
+                      text: item.answer,
+                    },
+                  })),
+                },
+              ]
+            : []),
+        ],
       }
     : undefined;
 

@@ -4,11 +4,12 @@ export const revalidate = 0;
 import { buildMetadataForSlug } from '@/lib/seo-helpers';
 import OfferLayout from '../OfferLayout';
 import DJPage from './DJPage';
+import { cookies } from 'next/headers';
 
 const pageSlug = 'oferta/dj-eventowy';
 
 export async function generateMetadata() {
-  return buildMetadataForSlug(pageSlug);
+  return buildMetadataForSlug(pageSlug, cookies());
 }
 
 export default async function Page() {
