@@ -192,31 +192,33 @@ export function EventContractTab({ eventId }: { eventId: string }) {
       if (eventError) throw eventError;
       if (!event) throw new Error('Nie znaleziono wydarzenia');
 
-      const { data: decisionMakers, error: decisionMakersError } = await supabase
-        .from('organization_decision_makers')
-        .select(
-          `
-            id,
-            title,
-            can_sign_contracts,
-            notes,
-            contact:contact_id(
+      let decisionMakers: any[] | null = null;
+      if (event.organization_id) {
+        const { data, error: decisionMakersError } = await supabase
+          .from('organization_decision_makers')
+          .select(
+            `
               id,
-              first_name,
-              last_name,
-              full_name,
-              email,
-              phone,
-              mobile,
-              position
-            )
-          `,
-        )
-        .eq('organization_id', event.organization_id);
+              title,
+              can_sign_contracts,
+              notes,
+              contact:contact_id(
+                id,
+                first_name,
+                last_name,
+                full_name,
+                email,
+                phone,
+                mobile,
+                position
+              )
+            `,
+          )
+          .eq('organization_id', event.organization_id);
 
-      if (decisionMakersError) throw decisionMakersError;
-
-      if (eventError) throw eventError;
+        if (decisionMakersError) throw decisionMakersError;
+        decisionMakers = data;
+      }
 
       const { data: existingContract } = await supabase
         .from('contracts')
