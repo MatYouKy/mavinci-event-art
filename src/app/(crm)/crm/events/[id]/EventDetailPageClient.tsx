@@ -156,6 +156,7 @@ const statusColors: Record<string, string> = {
   completed: 'bg-green-500/10 text-green-400 border-green-500/20',
   cancelled: 'bg-red-500/10 text-red-400 border-red-500/20',
   invoiced: 'bg-[#d3bb73]/10 text-[#d3bb73] border-[#d3bb73]/20',
+  settled: 'bg-[#d3bb73]/10 text-[#d3bb73] border-[#d3bb73]/20',
 };
 
 export const statusLabels: Record<EventStatus, string> = {
@@ -169,6 +170,7 @@ export const statusLabels: Record<EventStatus, string> = {
   invoiced: 'Rozliczony',
   inquiry: 'Zapytanie',
   offer_to_send: 'Oferta do wysłania',
+  settled: 'Rozliczony',
 };
 
 export interface ISimpleLocation {
