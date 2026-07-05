@@ -294,7 +294,8 @@ export function EventContractTab({ eventId }: { eventId: string }) {
           } | null)
         : null;
 
-      const finalTemplateId = event.selected_contract_template_id || template?.id || '';
+      const rawTemplateId = event.selected_contract_template_id || template?.id || '';
+      const finalTemplateId = rawTemplateId && rawTemplateId !== 'null' ? rawTemplateId : '';
 
       if (!finalTemplateId) {
         setTemplateId(null);
@@ -653,8 +654,6 @@ export function EventContractTab({ eventId }: { eventId: string }) {
 
       // If no variables loaded yet (first template pick), do full reload
       if (Object.keys(variables).length === 0) {
-        setSelectedTemplateId(newTemplateId);
-        setTemplateId(newTemplateId);
         await fetchContractData();
         return;
       }
