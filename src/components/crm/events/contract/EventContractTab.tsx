@@ -90,7 +90,6 @@ export function EventContractTab({ eventId }: { eventId: string }) {
   const [originalTemplate, setOriginalTemplate] = useState('');
   const [variables, setVariables] = useState<Record<string, string>>({});
   const [editedVariables, setEditedVariables] = useState<Record<string, string>>({});
-  const [templateExists, setTemplateExists] = useState(false);
   const [contractStatus, setContractStatus] = useState<ContractStatus>('draft');
   const [contractId, setContractId] = useState<string | null>(null);
   const [templateId, setTemplateId] = useState<string | null>(null);
@@ -295,13 +294,14 @@ export function EventContractTab({ eventId }: { eventId: string }) {
           } | null)
         : null;
 
-      if (!template && !event.selected_contract_template_id) {
-        setTemplateExists(false);
+      const finalTemplateId = event.selected_contract_template_id || template?.id || '';
+
+      if (!finalTemplateId) {
+        setTemplateId(null);
+        setSelectedTemplateId(null);
         setLoading(false);
         return;
       }
-
-      const finalTemplateId = event.selected_contract_template_id || template?.id || '';
 
       const { data: selectedTemplate, error: selectedTemplateError } = await supabase
         .from('contract_templates')
@@ -314,7 +314,6 @@ export function EventContractTab({ eventId }: { eventId: string }) {
 
       template = selectedTemplate;
 
-      setTemplateExists(true);
       setTemplateId(template.id);
       setSelectedTemplateId(template.id);
 
@@ -651,6 +650,15 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         .eq('id', eventId);
 
       if (eventTemplateError) throw eventTemplateError;
+
+      // If no variables loaded yet (first template pick), do full reload
+      if (Object.keys(variables).length === 0) {
+        setSelectedTemplateId(newTemplateId);
+        setTemplateId(newTemplateId);
+        await fetchContractData();
+        return;
+      }
+
       const { data: template, error } = await supabase
         .from('contract_templates')
         .select('id, name, content, content_html, page_settings')
@@ -723,13 +731,19 @@ export function EventContractTab({ eventId }: { eventId: string }) {
   };
 
   const handlePrint = async () => {
+    if (!templateId && !selectedTemplateId) {
+      showSnackbar('Wybierz szablon umowy przed wygenerowaniem PDF', 'error');
+      return;
+    }
+
     setIsGeneratingPdf(true);
     let currentContractId = contractId;
 
     // 1) upewnij się, że contract istnieje (zostawiam jak u Ciebie)
     if (!currentContractId) {
-      if (!templateId) {
-        showSnackbar('Brak szablonu umowy dla tej kategorii wydarzenia', 'error');
+      if (!templateId && !selectedTemplateId) {
+        showSnackbar('Wybierz szablon umowy przed wygenerowaniem PDF', 'error');
+        setIsGeneratingPdf(false);
         return;
       }
 
@@ -914,8 +928,8 @@ export function EventContractTab({ eventId }: { eventId: string }) {
   const handleStatusChange = async (newStatus: ContractStatus) => {
     try {
       if (!contractId) {
-        if (!templateId) {
-          showSnackbar('Brak szablonu umowy dla tej kategorii wydarzenia', 'error');
+        if (!templateId && !selectedTemplateId) {
+          showSnackbar('Wybierz szablon umowy przed zmianą statusu', 'error');
           return;
         }
 
@@ -1120,22 +1134,43 @@ export function EventContractTab({ eventId }: { eventId: string }) {
     );
   }
 
-  if (!templateExists) {
+  if (!selectedTemplateId) {
     return (
-      <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-8">
-        <div className="text-center">
-          <FileText className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
-          <h3 className="mb-2 text-xl text-[#e5e4e2]">Brak szablonu umowy</h3>
-          <p className="mb-4 text-[#e5e4e2]/60">
-            Dla tej kategorii wydarzenia nie został przypisany szablon umowy.
-          </p>
-          <p className="text-sm text-[#e5e4e2]/40">
-            Przejdź do{' '}
-            <a href="/crm/event-categories" className="text-[#d3bb73] hover:underline">
-              kategorii wydarzeń
-            </a>{' '}
-            aby przypisać szablon.
-          </p>
+      <div className="space-y-6">
+        <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-8">
+          <div className="text-center">
+            <FileText className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
+            <h3 className="mb-2 text-xl text-[#e5e4e2]">Wybierz szablon umowy</h3>
+            <p className="mb-6 text-[#e5e4e2]/60">
+              Dla tej kategorii wydarzenia nie został przypisany domyślny szablon. Wybierz szablon z listy poniżej.
+            </p>
+
+            {availableTemplates.length > 0 ? (
+              <div className="mx-auto max-w-md">
+                <select
+                  value=""
+                  onChange={(e) => handleTemplateChange(e.target.value)}
+                  className="w-full cursor-pointer rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-sm text-[#e5e4e2] transition-all hover:border-[#d3bb73]/40 focus:outline-none focus:ring-2 focus:ring-[#d3bb73]"
+                >
+                  <option value="" disabled className="bg-[#1c1f33] text-[#e5e4e2]/50">
+                    Wybierz szablon...
+                  </option>
+                  {availableTemplates.map((t) => (
+                    <option key={t.id} value={t.id} className="bg-[#1c1f33] text-[#e5e4e2]">
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <p className="text-sm text-[#e5e4e2]/40">
+                Brak aktywnych szablonów umów.{' '}
+                <a href="/crm/event-categories" className="text-[#d3bb73] hover:underline">
+                  Dodaj szablony
+                </a>
+              </p>
+            )}
+          </div>
         </div>
       </div>
     );
