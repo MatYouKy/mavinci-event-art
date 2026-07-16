@@ -53,10 +53,10 @@ const defaultFilters: TenderFiltersState = {
   search: '',
   source: '',
   status: '',
-  isMatched: 'all',
+  isMatched: 'matched',
   isWatched: false,
   showHidden: false,
-  showExpired: false,
+  showExpired: true,
   minScore: 0,
   sortBy: 'smart',
   sortDir: 'desc',
@@ -94,6 +94,8 @@ export default function TendersPage() {
         query = query.or('is_matched.eq.true,is_watched.eq.true,manual_relevance.eq.relevant');
       } else if (filters.isMatched === 'unmatched') {
         query = query.eq('is_matched', false);
+      } else if (filters.isMatched === 'smart') {
+        query = query.or('is_matched.eq.true,is_watched.eq.true,manual_relevance.eq.relevant');
       }
 
       if (filters.isWatched) {
@@ -104,11 +106,10 @@ export default function TendersPage() {
         query = query.or('is_hidden.eq.false,is_hidden.is.null');
       }
 
-      if (!filters.showExpired) {
+      if (filters.showExpired === false) {
         const now = new Date().toISOString();
-      
         query = query.or(
-          `submission_deadline.gte.${now},submission_deadline.is.null,is_watched.eq.true,manual_relevance.eq.relevant`,
+          `submission_deadline.gte.${now},submission_deadline.is.null`,
         );
       }
 
