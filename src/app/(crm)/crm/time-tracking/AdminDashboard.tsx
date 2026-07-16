@@ -12,9 +12,11 @@ import {
   Filter,
   Download,
   ChevronDown,
-  User,
+  ChevronLeft,
   ChevronRight,
+  User,
   ExternalLink,
+  Check,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -120,44 +122,99 @@ export default function AdminDashboard() {
     };
   };
 
-  const [dateFrom, setDateFrom] = useState(() => getCurrentWeekRange().from);
-  const [dateTo, setDateTo] = useState(() => getCurrentWeekRange().to);
-  const [selectedEmployee, setSelectedEmployee] = useState<string>('all');
   const [selectedPeriod, setSelectedPeriod] = useState<'week' | 'month' | 'year' | 'custom'>(
     () => {
       if (typeof window !== 'undefined') {
-        return (localStorage.getItem('time-tracking-period') as 'week' | 'month' | 'year' | 'custom') || 'week';
+        return (localStorage.getItem('time-tracking-period') as 'week' | 'month' | 'year' | 'custom') || 'month';
       }
-      return 'week';
+      return 'month';
     }
   );
 
+  const [periodOffset, setPeriodOffset] = useState(0);
+  const [selectedEmployee, setSelectedEmployee] = useState<string>('all');
+
+  // Custom range local state (not applied until user confirms)
+  const [customFrom, setCustomFrom] = useState(() => getCurrentMonthRange().from);
+  const [customTo, setCustomTo] = useState(() => getCurrentMonthRange().to);
+
+  // Committed (applied) date range
+  const [dateFrom, setDateFrom] = useState(() => getCurrentMonthRange().from);
+  const [dateTo, setDateTo] = useState(() => getCurrentMonthRange().to);
+
+  const getWeekRange = (offset: number) => {
+    const today = new Date();
+    const dayOfWeek = today.getDay();
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1) + offset * 7);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    return { from: formatLocalDate(monday), to: formatLocalDate(sunday) };
+  };
+
+  const getMonthRange = (offset: number) => {
+    const today = new Date();
+    const target = new Date(today.getFullYear(), today.getMonth() + offset, 1);
+    const firstDay = new Date(target.getFullYear(), target.getMonth(), 1);
+    const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0);
+    return { from: formatLocalDate(firstDay), to: formatLocalDate(lastDay) };
+  };
+
+  const getYearRange = (offset: number) => {
+    const today = new Date();
+    const year = today.getFullYear() + offset;
+    return { from: formatLocalDate(new Date(year, 0, 1)), to: formatLocalDate(new Date(year, 11, 31)) };
+  };
+
+  const computeRangeForPeriod = (period: 'week' | 'month' | 'year', offset: number) => {
+    if (period === 'week') return getWeekRange(offset);
+    if (period === 'month') return getMonthRange(offset);
+    return getYearRange(offset);
+  };
+
   const handlePeriodChange = (period: 'week' | 'month' | 'year' | 'custom') => {
     setSelectedPeriod(period);
+    setPeriodOffset(0);
     if (typeof window !== 'undefined') {
       localStorage.setItem('time-tracking-period', period);
     }
+    if (period !== 'custom') {
+      const range = computeRangeForPeriod(period, 0);
+      setDateFrom(range.from);
+      setDateTo(range.to);
+    }
+  };
+
+  const navigatePeriod = (direction: -1 | 1) => {
+    if (selectedPeriod === 'custom') return;
+    const newOffset = periodOffset + direction;
+    setPeriodOffset(newOffset);
+    const range = computeRangeForPeriod(selectedPeriod, newOffset);
+    setDateFrom(range.from);
+    setDateTo(range.to);
+  };
+
+  const applyCustomRange = () => {
+    setDateFrom(customFrom);
+    setDateTo(customTo);
+  };
+
+  const getPeriodLabel = () => {
+    if (selectedPeriod === 'custom') return 'Własny zakres';
+    const from = new Date(dateFrom + 'T00:00:00');
+    const to = new Date(dateTo + 'T00:00:00');
+    if (selectedPeriod === 'week') {
+      return `${from.toLocaleDateString('pl-PL', { day: '2-digit', month: 'short' })} - ${to.toLocaleDateString('pl-PL', { day: '2-digit', month: 'short', year: 'numeric' })}`;
+    }
+    if (selectedPeriod === 'month') {
+      return from.toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' });
+    }
+    return from.getFullYear().toString();
   };
 
   useEffect(() => {
     fetchData();
-  }, [dateFrom, dateTo, selectedEmployee, selectedPeriod]);
-
-  useEffect(() => {
-    if (selectedPeriod === 'week') {
-      const range = getCurrentWeekRange();
-      setDateFrom(range.from);
-      setDateTo(range.to);
-    } else if (selectedPeriod === 'month') {
-      const range = getCurrentMonthRange();
-      setDateFrom(range.from);
-      setDateTo(range.to);
-    } else if (selectedPeriod === 'year') {
-      const range = getCurrentYearRange();
-      setDateFrom(range.from);
-      setDateTo(range.to);
-    }
-  }, [selectedPeriod]);
+  }, [dateFrom, dateTo, selectedEmployee]);
 
   // Realtime subscription dla admin dashboard
   useEffect(() => {
@@ -415,94 +472,97 @@ export default function AdminDashboard() {
       </div>
 
       <div className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
-        <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
-          <div>
-            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Okres</label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => handlePeriodChange('week')}
-                className={`rounded-lg px-3 py-2 text-sm transition-colors ${
-                  selectedPeriod === 'week'
-                    ? 'bg-[#d3bb73] text-[#1c1f33]'
-                    : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#0f1119]/80'
-                }`}
+        <div className="mb-6 space-y-4">
+          {/* Period selector row */}
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-[#e5e4e2]/60">Okres:</label>
+              <select
+                value={selectedPeriod}
+                onChange={(e) => handlePeriodChange(e.target.value as any)}
+                className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
               >
-                Tydzień
-              </button>
-              <button
-                onClick={() => handlePeriodChange('month')}
-                className={`rounded-lg px-3 py-2 text-sm transition-colors ${
-                  selectedPeriod === 'month'
-                    ? 'bg-[#d3bb73] text-[#1c1f33]'
-                    : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#0f1119]/80'
-                }`}
+                <option value="week">Tydzien</option>
+                <option value="month">Miesi&#x105;c</option>
+                <option value="year">Rok</option>
+                <option value="custom">W&#x142;asny zakres</option>
+              </select>
+            </div>
+
+            {selectedPeriod !== 'custom' && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => navigatePeriod(-1)}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] text-[#e5e4e2] transition-colors hover:border-[#d3bb73]/40 hover:text-[#d3bb73]"
+                  title="Poprzedni"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <span className="min-w-[180px] text-center text-sm font-medium text-[#e5e4e2] capitalize">
+                  {getPeriodLabel()}
+                </span>
+                <button
+                  onClick={() => navigatePeriod(1)}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] text-[#e5e4e2] transition-colors hover:border-[#d3bb73]/40 hover:text-[#d3bb73]"
+                  title="Nastepny"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+
+            <div className="ml-auto flex items-center gap-2">
+              <label className="text-sm text-[#e5e4e2]/60">Pracownik:</label>
+              <select
+                value={selectedEmployee}
+                onChange={(e) => setSelectedEmployee(e.target.value)}
+                className="rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
               >
-                Miesiąc
-              </button>
-              <button
-                onClick={() => handlePeriodChange('year')}
-                className={`rounded-lg px-3 py-2 text-sm transition-colors ${
-                  selectedPeriod === 'year'
-                    ? 'bg-[#d3bb73] text-[#1c1f33]'
-                    : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#0f1119]/80'
-                }`}
-              >
-                Rok
-              </button>
-              <button
-                onClick={() => handlePeriodChange('custom')}
-                className={`rounded-lg px-3 py-2 text-sm transition-colors ${
-                  selectedPeriod === 'custom'
-                    ? 'bg-[#d3bb73] text-[#1c1f33]'
-                    : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#0f1119]/80'
-                }`}
-              >
-                Własny
-              </button>
+                <option value="all">Wszyscy pracownicy</option>
+                {employees.map((emp) => (
+                  <option key={emp.id} value={emp.id}>
+                    {emp.name} {emp.surname}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
-          <div>
-            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Od</label>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => {
-                setDateFrom(e.target.value);
-                handlePeriodChange('custom');
-              }}
-              className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
-            />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Do</label>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => {
-                setDateTo(e.target.value);
-                handlePeriodChange('custom');
-              }}
-              className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
-            />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Pracownik</label>
-            <select
-              value={selectedEmployee}
-              onChange={(e) => setSelectedEmployee(e.target.value)}
-              className="w-full rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
-            >
-              <option value="all">Wszyscy pracownicy</option>
-              {employees.map((emp) => (
-                <option key={emp.id} value={emp.id}>
-                  {emp.name} {emp.surname}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Custom date range (only shown when custom is selected) */}
+          {selectedPeriod === 'custom' && (
+            <div className="flex flex-wrap items-end gap-4 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4">
+              <div>
+                <label className="mb-1 block text-xs text-[#e5e4e2]/60">Od</label>
+                <input
+                  type="date"
+                  value={customFrom}
+                  onChange={(e) => setCustomFrom(e.target.value)}
+                  className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-[#e5e4e2]/60">Do</label>
+                <input
+                  type="date"
+                  value={customTo}
+                  onChange={(e) => setCustomTo(e.target.value)}
+                  className="rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/30 focus:outline-none"
+                />
+              </div>
+              <button
+                onClick={applyCustomRange}
+                className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+              >
+                <Check className="h-4 w-4" />
+                Zastosuj
+              </button>
+              <span className="text-xs text-[#e5e4e2]/40">
+                {dateFrom === customFrom && dateTo === customTo
+                  ? `Aktywny: ${new Date(dateFrom + 'T00:00:00').toLocaleDateString('pl-PL')} - ${new Date(dateTo + 'T00:00:00').toLocaleDateString('pl-PL')}`
+                  : 'Kliknij "Zastosuj" aby zaladowac dane'}
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
