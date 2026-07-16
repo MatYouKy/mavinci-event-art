@@ -225,30 +225,51 @@ async function fetchTEDNotices(
 ): Promise<TenderRecord[]> {
   const tenders: TenderRecord[] = [];
   const seenIds = new Set<string>();
-  const dateFrom = getDateFrom(30);
 
-  // TED Search API v3 uses expert query syntax.
-  // cpv-code field supports filtering. We build an OR query for all our CPV divisions.
-  // Format: "PD>={date} AND CY=PL AND cpv-code=[code1 OR code2 OR ...]"
+  // TED Search API v3 - tested and verified format.
+  // Uses expert query syntax with POST to /v3/notices/search
+  // Country field: organisation-country-buyer=POL (3-letter ISO code)
+  // CPV filter: classification-cpv=XX* (wildcard for division)
+  // Notice type: notice-type=cn-standard (contract notices)
   const cpvDivisions = [
     ...new Set(cpvCodes.map((c) => c.replace("-", "").substring(0, 2))),
   ];
 
-  // Build queries: one with CPV filter, one broad (to catch by keywords)
-  const queries: string[] = [`PD>=${dateFrom} AND CY=PL`];
+  const queries: string[] = [];
+
+  // CPV-specific queries (main value)
   if (cpvDivisions.length > 0) {
-    const cpvFilter = cpvDivisions.map((d) => `${d}*`).join(" OR ");
-    queries.push(`PD>=${dateFrom} AND CY=PL AND cpv-code=[${cpvFilter}]`);
+    for (const div of cpvDivisions) {
+      queries.push(
+        `organisation-country-buyer=POL AND notice-type=cn-standard AND classification-cpv=${div}*`
+      );
+    }
   }
+
+  // Also a broad Polish contract notices query
+  queries.push(
+    "organisation-country-buyer=POL AND notice-type=cn-standard"
+  );
+
+  const TED_FIELDS = [
+    "notice-title",
+    "publication-date",
+    "classification-cpv",
+    "buyer-name",
+    "deadline-receipt-request",
+  ];
 
   for (const query of queries) {
     try {
       const searchBody = {
         query,
-        pageSize,
-        pageNum: 1,
-        sortField: "PD",
-        sortOrder: "desc",
+        fields: TED_FIELDS,
+        page: 1,
+        limit: Math.min(pageSize, 100),
+        scope: "ACTIVE",
+        paginationMode: "PAGE_NUMBER",
+        checkQuerySyntax: false,
+        onlyLatestVersions: true,
       };
 
       const response = await fetch(
@@ -265,70 +286,67 @@ async function fetchTEDNotices(
 
       if (!response.ok) {
         const text = await response.text().catch(() => "");
-        console.warn(`TED query error (${query}): ${response.status} - ${text.substring(0, 200)}`);
+        console.warn(
+          `TED query error (${query.substring(0, 60)}): ${response.status} - ${text.substring(0, 200)}`
+        );
         continue;
       }
 
       const data = await response.json();
-      const notices = data.notices || data.results || [];
+      const notices = data.notices || [];
 
       if (!Array.isArray(notices)) continue;
 
       for (const notice of notices) {
-        const externalId =
-          notice.noticeId ||
-          notice["ND"] ||
-          notice.id ||
-          notice.documentNumber ||
-          "";
+        const externalId = notice["publication-number"] || "";
         if (!externalId || seenIds.has(String(externalId))) continue;
         seenIds.add(String(externalId));
 
+        // CPV codes come as array of strings
         const cpvCodesArr: string[] = [];
-        if (notice.cpvCodes) {
-          cpvCodesArr.push(
-            ...(Array.isArray(notice.cpvCodes)
-              ? notice.cpvCodes.map((c: unknown) => String(c))
-              : [String(notice.cpvCodes)])
-          );
+        const rawCpv = notice["classification-cpv"];
+        if (Array.isArray(rawCpv)) {
+          // Deduplicate CPV codes (TED often duplicates per lot)
+          const uniqueCpv = [...new Set(rawCpv.map((c: unknown) => String(c)))];
+          cpvCodesArr.push(...uniqueCpv);
         }
-        if (notice["CPV"]) cpvCodesArr.push(String(notice["CPV"]));
-        if (notice.cpv) cpvCodesArr.push(String(notice.cpv));
+
+        // Title is an object with language keys: {pol: ["..."], eng: ["..."]}
+        const titleObj = notice["notice-title"] || {};
+        const titleArr =
+          titleObj["pol"] || titleObj["eng"] || Object.values(titleObj)[0];
+        const title = Array.isArray(titleArr) ? titleArr[0] : String(titleArr || "");
+
+        // Buyer name is similarly structured
+        const buyerObj = notice["buyer-name"] || {};
+        const buyerArr =
+          buyerObj["pol"] || buyerObj["eng"] || Object.values(buyerObj)[0];
+        const buyerName = Array.isArray(buyerArr) ? buyerArr[0] : String(buyerArr || "");
+
+        // Deadline
+        const deadlineArr = notice["deadline-receipt-request"];
+        const deadline = Array.isArray(deadlineArr)
+          ? deadlineArr[0]
+          : deadlineArr || null;
+
+        // Publication date
+        const pubDate = notice["publication-date"] || null;
 
         tenders.push({
           external_id: String(externalId),
           source: "ted",
-          title: notice.title || notice["TI"] || notice.titleEnglish || "",
-          description:
-            notice.description ||
-            notice.summary ||
-            notice["TX"] ||
-            notice.shortDescription ||
-            "",
-          contracting_authority:
-            notice.buyerName ||
-            notice["AA"] ||
-            notice.contractingAuthority ||
-            notice.caName ||
-            "",
+          title,
+          description: title, // TED search doesn't return full description
+          contracting_authority: buyerName,
           cpv_codes: cpvCodesArr,
-          location:
-            notice.town ||
-            notice["TW"] ||
-            notice.place ||
-            notice.city ||
-            "Polska",
-          publication_date: notice.publicationDate || notice["PD"] || null,
-          submission_deadline:
-            notice.deadline || notice["DT"] || notice.timeLimit || null,
-          estimated_value: Number(
-            notice.estimatedValue ||
-              notice.totalValue ||
-              notice.valueEuro ||
-              0
-          ),
-          currency: notice.currency || "EUR",
-          source_url: `https://ted.europa.eu/en/notice/-/detail/${encodeURIComponent(String(externalId))}`,
+          location: "Polska",
+          publication_date: pubDate
+            ? pubDate.replace("Z", "")
+            : null,
+          submission_deadline: deadline || null,
+          estimated_value: 0,
+          currency: "EUR",
+          source_url: `https://ted.europa.eu/pl/notice/-/detail/${encodeURIComponent(String(externalId))}`,
           raw_data: notice,
         });
       }
@@ -342,21 +360,58 @@ async function fetchTEDNotices(
 
 async function fetchBazaKonkurencyjnosci(
   cpvCodes: string[],
-  pageSize = 100
+  _pageSize = 100
 ): Promise<TenderRecord[]> {
   const tenders: TenderRecord[] = [];
-  const seenIds = new Set<string>();
-  const dateFrom = getDateFrom(30);
 
-  // Baza Konkurencyjnosci API:
-  // GET https://bazakonkurencyjnosci.funduszeeuropejskie.gov.pl/api/announcements
-  // Params: dateFrom, limit, orderBy, orderType, cpvList (comma-separated CPV codes)
+  // Baza Konkurencyjnosci (bazakonkurencyjnosci.funduszeeuropejskie.gov.pl)
+  // requires OAuth2 authentication via Keycloak (id.funduszeeuropejskie.gov.pl).
+  // There is no public API. This function attempts to use the API with optional
+  // credentials from environment variables.
+  const clientId = Deno.env.get("BAZA_KONKURENCYJNOSCI_CLIENT_ID");
+  const clientSecret = Deno.env.get("BAZA_KONKURENCYJNOSCI_CLIENT_SECRET");
+
+  if (!clientId || !clientSecret) {
+    console.warn(
+      "Baza Konkurencyjnosci: Brak konfiguracji API (BAZA_KONKURENCYJNOSCI_CLIENT_ID, BAZA_KONKURENCYJNOSCI_CLIENT_SECRET). Pomijam."
+    );
+    return tenders;
+  }
+
   try {
+    // Obtain OAuth2 token from Keycloak
+    const tokenResponse = await fetch(
+      "https://id.funduszeeuropejskie.gov.pl/realms/39465bb8-204c-446c-aeed-70db65bc9607/protocol/openid-connect/token",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "client_credentials",
+          client_id: clientId,
+          client_secret: clientSecret,
+        }),
+      }
+    );
+
+    if (!tokenResponse.ok) {
+      console.warn(
+        `Baza Konkurencyjnosci: Token error ${tokenResponse.status}`
+      );
+      return tenders;
+    }
+
+    const tokenData = await tokenResponse.json();
+    const accessToken = tokenData.access_token;
+
+    if (!accessToken) {
+      console.warn("Baza Konkurencyjnosci: Nie otrzymano tokenu");
+      return tenders;
+    }
+
+    // Fetch announcements with the token
     const params = new URLSearchParams({
-      dateFrom,
-      limit: String(pageSize),
-      orderBy: "publication_date",
-      orderType: "desc",
+      page: "1",
+      limit: "100",
     });
 
     if (cpvCodes.length > 0) {
@@ -368,13 +423,13 @@ async function fetchBazaKonkurencyjnosci(
     const response = await fetch(searchUrl, {
       headers: {
         Accept: "application/json",
-        "User-Agent": "TenderMonitor/1.0",
+        Authorization: `Bearer ${accessToken}`,
       },
     });
 
     if (!response.ok) {
       console.warn(
-        `Baza Konkurencyjnosci API returned ${response.status} - skipping`
+        `Baza Konkurencyjnosci API: ${response.status} - ${await response.text().catch(() => "")}`
       );
       return tenders;
     }
@@ -384,6 +439,7 @@ async function fetchBazaKonkurencyjnosci(
       data.data || data.announcements || data.items || data.results || [];
 
     if (Array.isArray(notices)) {
+      const seenIds = new Set<string>();
       for (const notice of notices) {
         const externalId =
           notice.id || notice.number || notice.announcementId || "";
@@ -403,17 +459,6 @@ async function fetchBazaKonkurencyjnosci(
           );
         }
         if (notice.cpvCode) cpvCodesArr.push(String(notice.cpvCode));
-        if (notice.cpvList && Array.isArray(notice.cpvList)) {
-          cpvCodesArr.push(
-            ...notice.cpvList.map((c: unknown) =>
-              String(
-                typeof c === "object" && c !== null && "code" in c
-                  ? (c as Record<string, unknown>).code
-                  : c
-              )
-            )
-          );
-        }
 
         tenders.push({
           external_id: String(externalId),
