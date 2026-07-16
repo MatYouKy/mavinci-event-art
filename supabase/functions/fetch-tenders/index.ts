@@ -32,12 +32,23 @@ interface FilterConfig {
   max_days_to_deadline: number;
 }
 
+const HARD_NEGATIVE_CPV_PREFIXES = ["45"];
+
 function calculateRelevanceScore(
   tender: TenderRecord,
   config: FilterConfig
 ): number {
   let score = 0;
-  const textToSearch = `${tender.title} ${tender.description}`.toLowerCase();
+  const textToSearch = `${tender.title} ${tender.description} ${tender.contracting_authority}`.toLowerCase();
+
+  const hasHardNegativeCpv = tender.cpv_codes.some((cpv) =>
+    HARD_NEGATIVE_CPV_PREFIXES.some((prefix) =>
+      cpv.replace("-", "").startsWith(prefix)
+    )
+  );
+  if (hasHardNegativeCpv) {
+    score -= 50;
+  }
 
   for (const keyword of config.positive_keywords) {
     if (textToSearch.includes(keyword.toLowerCase())) {
@@ -47,7 +58,7 @@ function calculateRelevanceScore(
 
   for (const keyword of config.negative_keywords) {
     if (textToSearch.includes(keyword.toLowerCase())) {
-      score -= 20;
+      score -= 25;
     }
   }
 
@@ -57,56 +68,105 @@ function calculateRelevanceScore(
       for (const targetCpv of config.cpv_codes) {
         const targetBase = targetCpv.split("-")[0];
         if (cpvBase === targetBase) {
-          score += 25;
+          score += 35;
         } else if (cpvBase.substring(0, 4) === targetBase.substring(0, 4)) {
-          score += 10;
+          score += 15;
         }
       }
+    }
+  }
+
+  if (tender.submission_deadline) {
+    const deadline = new Date(tender.submission_deadline);
+    const now = new Date();
+    const daysLeft = Math.ceil(
+      (deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+    );
+    if (daysLeft < 0) {
+      score -= 100;
+    } else if (daysLeft <= 7) {
+      score += 10;
     }
   }
 
   return Math.max(0, Math.min(100, score));
 }
 
-async function fetchBZPNotices(pageSize = 50): Promise<TenderRecord[]> {
+function getDateFrom(days: number): string {
+  const d = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  return d.toISOString().split("T")[0];
+}
+
+async function fetchBZPNotices(
+  cpvCodes: string[],
+  pageSize = 100
+): Promise<TenderRecord[]> {
   const tenders: TenderRecord[] = [];
+  const seenIds = new Set<string>();
+  const dateFrom = getDateFrom(30);
 
-  try {
-    const today = new Date();
-    const weekAgo = new Date(today.getTime() - 14 * 24 * 60 * 60 * 1000);
-    const dateFrom = weekAgo.toISOString().split("T")[0];
+  // BZP Board/Search supports `cpvCode` param for filtering by main CPV code division.
+  // We batch by CPV 2-digit divisions extracted from our configured codes.
+  const cpvDivisions = [
+    ...new Set(cpvCodes.map((c) => c.replace("-", "").substring(0, 2))),
+  ];
 
-    const url = `https://ezamowienia.gov.pl/mo-board/api/v1/Board/Search?noticeType=ContractNotice&publicationDateFrom=${dateFrom}&size=${pageSize}&sort=publicationDate,desc`;
+  // Also do one broad search without CPV filter to catch notices that might match by keywords
+  const searchBatches: Array<{ cpvCode?: string; label: string }> = [
+    { label: "broad" },
+  ];
+  for (const div of cpvDivisions) {
+    searchBatches.push({ cpvCode: div, label: `CPV ${div}` });
+  }
 
-    const response = await fetch(url, {
-      headers: {
-        Accept: "application/json",
-        "User-Agent": "TenderMonitor/1.0",
-      },
-    });
+  for (const batch of searchBatches) {
+    try {
+      let url = `https://ezamowienia.gov.pl/mo-board/api/v1/Board/Search?noticeType=ContractNotice&publicationDateFrom=${dateFrom}&size=${pageSize}&sort=publicationDate,desc`;
+      if (batch.cpvCode) {
+        url += `&cpvCode=${batch.cpvCode}`;
+      }
 
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      throw new Error(
-        `BZP API error: ${response.status} ${response.statusText} - ${text.substring(0, 200)}`
-      );
-    }
+      const response = await fetch(url, {
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "TenderMonitor/1.0",
+        },
+      });
 
-    const data = await response.json();
-    const notices = data.content || data.notices || data.results || [];
+      if (!response.ok) {
+        console.warn(`BZP batch ${batch.label} error: ${response.status}`);
+        continue;
+      }
 
-    if (Array.isArray(notices)) {
+      const data = await response.json();
+      const notices = data.content || data.notices || data.results || [];
+
+      if (!Array.isArray(notices)) continue;
+
       for (const notice of notices) {
-        const cpvCodes: string[] = [];
-        if (notice.cpvCode) cpvCodes.push(String(notice.cpvCode));
+        const cpvCodesArr: string[] = [];
+        if (notice.cpvCode) cpvCodesArr.push(String(notice.cpvCode));
         if (notice.cpvCodes && Array.isArray(notice.cpvCodes)) {
-          cpvCodes.push(...notice.cpvCodes.map((c: unknown) => String(typeof c === 'object' && c !== null && 'code' in c ? (c as Record<string, unknown>).code : c)));
+          cpvCodesArr.push(
+            ...notice.cpvCodes.map((c: unknown) =>
+              String(
+                typeof c === "object" && c !== null && "code" in c
+                  ? (c as Record<string, unknown>).code
+                  : c
+              )
+            )
+          );
         }
-        if (notice.mainCpvCode) cpvCodes.push(String(notice.mainCpvCode));
+        if (notice.mainCpvCode) cpvCodesArr.push(String(notice.mainCpvCode));
 
         const externalId =
-          notice.bzpNumber || notice.noticeNumber || notice.id || notice.number || "";
-        if (!externalId) continue;
+          notice.bzpNumber ||
+          notice.noticeNumber ||
+          notice.id ||
+          notice.number ||
+          "";
+        if (!externalId || seenIds.has(String(externalId))) continue;
+        seenIds.add(String(externalId));
 
         tenders.push({
           external_id: String(externalId),
@@ -129,7 +189,7 @@ async function fetchBZPNotices(pageSize = 50): Promise<TenderRecord[]> {
             notice.organisationName ||
             notice.contractingAuthority?.name ||
             "",
-          cpv_codes: cpvCodes,
+          cpv_codes: cpvCodesArr,
           location:
             notice.city ||
             notice.location ||
@@ -151,69 +211,89 @@ async function fetchBZPNotices(pageSize = 50): Promise<TenderRecord[]> {
           raw_data: notice,
         });
       }
+    } catch (error) {
+      console.error(`BZP batch ${batch.label} fetch error:`, error);
     }
-  } catch (error) {
-    console.error("BZP fetch error:", error);
-    throw error;
   }
 
   return tenders;
 }
 
-async function fetchTEDNotices(pageSize = 50): Promise<TenderRecord[]> {
+async function fetchTEDNotices(
+  cpvCodes: string[],
+  pageSize = 100
+): Promise<TenderRecord[]> {
   const tenders: TenderRecord[] = [];
+  const seenIds = new Set<string>();
+  const dateFrom = getDateFrom(30);
 
-  try {
-    const today = new Date();
-    const weekAgo = new Date(today.getTime() - 14 * 24 * 60 * 60 * 1000);
-    const dateFrom = weekAgo.toISOString().split("T")[0];
+  // TED Search API v3 uses expert query syntax.
+  // cpv-code field supports filtering. We build an OR query for all our CPV divisions.
+  // Format: "PD>={date} AND CY=PL AND cpv-code=[code1 OR code2 OR ...]"
+  const cpvDivisions = [
+    ...new Set(cpvCodes.map((c) => c.replace("-", "").substring(0, 2))),
+  ];
 
-    const searchBody = {
-      query: `PD>=${dateFrom} AND CY=PL`,
-      pageSize: pageSize,
-      pageNum: 1,
-      sortField: "PD",
-      sortOrder: "desc",
-    };
+  // Build queries: one with CPV filter, one broad (to catch by keywords)
+  const queries: string[] = [`PD>=${dateFrom} AND CY=PL`];
+  if (cpvDivisions.length > 0) {
+    const cpvFilter = cpvDivisions.map((d) => `${d}*`).join(" OR ");
+    queries.push(`PD>=${dateFrom} AND CY=PL AND cpv-code=[${cpvFilter}]`);
+  }
 
-    const response = await fetch(
-      "https://api.ted.europa.eu/v3/notices/search",
-      {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(searchBody),
-      }
-    );
+  for (const query of queries) {
+    try {
+      const searchBody = {
+        query,
+        pageSize,
+        pageNum: 1,
+        sortField: "PD",
+        sortOrder: "desc",
+      };
 
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      throw new Error(
-        `TED API error: ${response.status} ${response.statusText} - ${text.substring(0, 200)}`
+      const response = await fetch(
+        "https://api.ted.europa.eu/v3/notices/search",
+        {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(searchBody),
+        }
       );
-    }
 
-    const data = await response.json();
-    const notices = data.notices || data.results || [];
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        console.warn(`TED query error (${query}): ${response.status} - ${text.substring(0, 200)}`);
+        continue;
+      }
 
-    if (Array.isArray(notices)) {
+      const data = await response.json();
+      const notices = data.notices || data.results || [];
+
+      if (!Array.isArray(notices)) continue;
+
       for (const notice of notices) {
         const externalId =
-          notice.noticeId || notice["ND"] || notice.id || notice.documentNumber || "";
-        if (!externalId) continue;
+          notice.noticeId ||
+          notice["ND"] ||
+          notice.id ||
+          notice.documentNumber ||
+          "";
+        if (!externalId || seenIds.has(String(externalId))) continue;
+        seenIds.add(String(externalId));
 
-        const cpvCodes: string[] = [];
+        const cpvCodesArr: string[] = [];
         if (notice.cpvCodes) {
-          cpvCodes.push(
+          cpvCodesArr.push(
             ...(Array.isArray(notice.cpvCodes)
               ? notice.cpvCodes.map((c: unknown) => String(c))
               : [String(notice.cpvCodes)])
           );
         }
-        if (notice["CPV"]) cpvCodes.push(String(notice["CPV"]));
-        if (notice.cpv) cpvCodes.push(String(notice.cpv));
+        if (notice["CPV"]) cpvCodesArr.push(String(notice["CPV"]));
+        if (notice.cpv) cpvCodesArr.push(String(notice.cpv));
 
         tenders.push({
           external_id: String(externalId),
@@ -231,39 +311,59 @@ async function fetchTEDNotices(pageSize = 50): Promise<TenderRecord[]> {
             notice.contractingAuthority ||
             notice.caName ||
             "",
-          cpv_codes: cpvCodes,
+          cpv_codes: cpvCodesArr,
           location:
-            notice.town || notice["TW"] || notice.place || notice.city || "Polska",
+            notice.town ||
+            notice["TW"] ||
+            notice.place ||
+            notice.city ||
+            "Polska",
           publication_date: notice.publicationDate || notice["PD"] || null,
-          submission_deadline: notice.deadline || notice["DT"] || notice.timeLimit || null,
+          submission_deadline:
+            notice.deadline || notice["DT"] || notice.timeLimit || null,
           estimated_value: Number(
-            notice.estimatedValue || notice.totalValue || notice.valueEuro || 0
+            notice.estimatedValue ||
+              notice.totalValue ||
+              notice.valueEuro ||
+              0
           ),
           currency: notice.currency || "EUR",
           source_url: `https://ted.europa.eu/en/notice/-/detail/${encodeURIComponent(String(externalId))}`,
           raw_data: notice,
         });
       }
+    } catch (error) {
+      console.error(`TED query error:`, error);
     }
-  } catch (error) {
-    console.error("TED fetch error:", error);
-    throw error;
   }
 
   return tenders;
 }
 
 async function fetchBazaKonkurencyjnosci(
-  pageSize = 50
+  cpvCodes: string[],
+  pageSize = 100
 ): Promise<TenderRecord[]> {
   const tenders: TenderRecord[] = [];
+  const seenIds = new Set<string>();
+  const dateFrom = getDateFrom(30);
 
+  // Baza Konkurencyjnosci API:
+  // GET https://bazakonkurencyjnosci.funduszeeuropejskie.gov.pl/api/announcements
+  // Params: dateFrom, limit, orderBy, orderType, cpvList (comma-separated CPV codes)
   try {
-    const today = new Date();
-    const weekAgo = new Date(today.getTime() - 14 * 24 * 60 * 60 * 1000);
-    const dateFrom = weekAgo.toISOString().split("T")[0];
+    const params = new URLSearchParams({
+      dateFrom,
+      limit: String(pageSize),
+      orderBy: "publication_date",
+      orderType: "desc",
+    });
 
-    const searchUrl = `https://bazakonkurencyjnosci.funduszeeuropejskie.gov.pl/api/announcements?dateFrom=${dateFrom}&limit=${pageSize}&orderBy=publication_date&orderType=desc`;
+    if (cpvCodes.length > 0) {
+      params.set("cpvList", cpvCodes.join(","));
+    }
+
+    const searchUrl = `https://bazakonkurencyjnosci.funduszeeuropejskie.gov.pl/api/announcements?${params.toString()}`;
 
     const response = await fetch(searchUrl, {
       headers: {
@@ -274,7 +374,7 @@ async function fetchBazaKonkurencyjnosci(
 
     if (!response.ok) {
       console.warn(
-        `Baza Konkurencyjnosci API returned ${response.status} - skipping source`
+        `Baza Konkurencyjnosci API returned ${response.status} - skipping`
       );
       return tenders;
     }
@@ -285,31 +385,49 @@ async function fetchBazaKonkurencyjnosci(
 
     if (Array.isArray(notices)) {
       for (const notice of notices) {
-        const externalId = notice.id || notice.number || notice.announcementId || "";
-        if (!externalId) continue;
+        const externalId =
+          notice.id || notice.number || notice.announcementId || "";
+        if (!externalId || seenIds.has(String(externalId))) continue;
+        seenIds.add(String(externalId));
 
-        const cpvCodes: string[] = [];
+        const cpvCodesArr: string[] = [];
         if (notice.cpvCodes && Array.isArray(notice.cpvCodes)) {
-          cpvCodes.push(
+          cpvCodesArr.push(
             ...notice.cpvCodes.map((c: unknown) =>
-              String(typeof c === "object" && c !== null && "code" in c ? (c as Record<string, unknown>).code : c)
+              String(
+                typeof c === "object" && c !== null && "code" in c
+                  ? (c as Record<string, unknown>).code
+                  : c
+              )
             )
           );
         }
-        if (notice.cpvCode) cpvCodes.push(String(notice.cpvCode));
+        if (notice.cpvCode) cpvCodesArr.push(String(notice.cpvCode));
+        if (notice.cpvList && Array.isArray(notice.cpvList)) {
+          cpvCodesArr.push(
+            ...notice.cpvList.map((c: unknown) =>
+              String(
+                typeof c === "object" && c !== null && "code" in c
+                  ? (c as Record<string, unknown>).code
+                  : c
+              )
+            )
+          );
+        }
 
         tenders.push({
           external_id: String(externalId),
           source: "baza_konkurencyjnosci",
           title: notice.title || notice.name || notice.subject || "",
-          description: notice.description || notice.content || notice.text || "",
+          description:
+            notice.description || notice.content || notice.text || "",
           contracting_authority:
             notice.beneficiary ||
             notice.publisher ||
             notice.company ||
             notice.organizationName ||
             "",
-          cpv_codes: cpvCodes,
+          cpv_codes: cpvCodesArr,
           location:
             notice.location ||
             notice.province ||
@@ -317,7 +435,10 @@ async function fetchBazaKonkurencyjnosci(
             notice.voivodeship ||
             "",
           publication_date:
-            notice.publicationDate || notice.createdAt || notice.publishDate || null,
+            notice.publicationDate ||
+            notice.createdAt ||
+            notice.publishDate ||
+            null,
           submission_deadline:
             notice.submissionDeadline ||
             notice.offerDeadline ||
@@ -334,7 +455,6 @@ async function fetchBazaKonkurencyjnosci(
     }
   } catch (error) {
     console.error("Baza Konkurencyjnosci fetch error:", error);
-    throw error;
   }
 
   return tenders;
@@ -378,6 +498,7 @@ Deno.serve(async (req: Request) => {
         count: number;
         new: number;
         updated: number;
+        matched: number;
         error?: string;
       }
     > = {};
@@ -404,22 +525,24 @@ Deno.serve(async (req: Request) => {
 
         switch (source) {
           case "bzp":
-            tenders = await fetchBZPNotices();
+            tenders = await fetchBZPNotices(config.cpv_codes);
             break;
           case "ted":
-            tenders = await fetchTEDNotices();
+            tenders = await fetchTEDNotices(config.cpv_codes);
             break;
           case "baza_konkurencyjnosci":
-            tenders = await fetchBazaKonkurencyjnosci();
+            tenders = await fetchBazaKonkurencyjnosci(config.cpv_codes);
             break;
         }
 
         let newCount = 0;
         let updatedCount = 0;
+        let matchedCount = 0;
 
         for (const tender of tenders) {
           const relevanceScore = calculateRelevanceScore(tender, config);
           const isMatched = relevanceScore >= config.min_relevance_score;
+          if (isMatched) matchedCount++;
 
           const record = {
             ...tender,
@@ -480,10 +603,13 @@ Deno.serve(async (req: Request) => {
           count: tenders.length,
           new: newCount,
           updated: updatedCount,
+          matched: matchedCount,
         };
       } catch (sourceError) {
         const errorMsg =
-          sourceError instanceof Error ? sourceError.message : String(sourceError);
+          sourceError instanceof Error
+            ? sourceError.message
+            : String(sourceError);
         console.error(`Error fetching ${source}:`, errorMsg);
 
         if (logId) {
@@ -502,6 +628,7 @@ Deno.serve(async (req: Request) => {
           count: 0,
           new: 0,
           updated: 0,
+          matched: 0,
           error: errorMsg,
         };
       }
