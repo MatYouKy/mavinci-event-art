@@ -30,6 +30,7 @@ import {
   Calendar as CalendarIcon,
   List,
   RefreshCw,
+  Copy,
 } from 'lucide-react';
 import * as Icons from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
@@ -62,6 +63,7 @@ import {
   useGetEventByIdQuery,
   useGetEventOffersQuery,
   useUpdateEventMutation,
+  useCreateEventMutation,
   useDeleteEventOfferMutation,
 } from '../store/api/eventsApi';
 import { useEventEquipment, useEventOffers, useEventTeam } from '../hooks';
@@ -436,6 +438,46 @@ export default function EventDetailPageClient({
     }
   };
 
+  const [createEvent] = useCreateEventMutation();
+
+  const handleDuplicateEvent = async () => {
+    if (!event) return;
+
+    const confirmed = await showConfirm(
+      'Duplikuj wydarzenie',
+      `Czy chcesz zduplikować wydarzenie "${event.name}"? Zostaną skopiowane wszystkie dane podstawowe, ale NIE zostaną skopiowane: przypisani ludzie, pliki i dokumenty.`,
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const duplicatedEvent: Record<string, unknown> = {
+        name: `${event.name} (kopia)`,
+        description: event.description || null,
+        event_date: event.event_date,
+        event_end_date: event.event_end_date || null,
+        location_id: event.location_id || null,
+        status: 'draft',
+        notes: event.notes || null,
+        category_id: event.category_id || null,
+        organization_id: event.organization_id || null,
+        contact_person_id: event.contact_person_id || null,
+        my_company_id: event.my_company_id || null,
+        client_type: event.client_type || 'business',
+        expected_revenue: event.expected_revenue || null,
+        estimated_costs: event.estimated_costs || null,
+      };
+
+      const result = await createEvent(duplicatedEvent as Partial<IEvent>).unwrap();
+
+      showSnackbar('Wydarzenie zostało zduplikowane', 'success');
+      router.push(`/crm/events/${result.id}`);
+    } catch (err) {
+      console.error('Error duplicating event:', err);
+      showSnackbar('Wystąpił błąd podczas duplikowania', 'error');
+    }
+  };
+
   // const handleAddEmployee = async (
   //   employeeId: string,
   //   role: string,
@@ -614,6 +656,13 @@ export default function EventDetailPageClient({
         show: canEventManage,
       },
       {
+        label: 'Duplikuj',
+        onClick: handleDuplicateEvent,
+        icon: <Copy className="h-4 w-4" />,
+        variant: 'default',
+        show: canEventManage,
+      },
+      {
         label: 'Usuń',
         onClick: handleDeleteEvent,
         icon: <Trash2 className="h-4 w-4" />,
@@ -621,7 +670,7 @@ export default function EventDetailPageClient({
         show: isAdmin,
       },
     ];
-  }, [setShowEditEventModal, handleDeleteEvent, isAdmin, canEventManage]);
+  }, [setShowEditEventModal, handleDeleteEvent, handleDuplicateEvent, isAdmin, canEventManage]);
 
   const latestOffer = useMemo(() => {
     if (!offersData?.length) return null;
