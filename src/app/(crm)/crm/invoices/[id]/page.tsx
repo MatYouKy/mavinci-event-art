@@ -679,6 +679,28 @@ export default function InvoiceDetailPage({ params }: { params: { id: string } }
 
       if (error) throw error;
 
+      // When a regular/final/corrective invoice is marked as paid, set event to 'settled'
+      if (
+        safeStatus === 'paid' &&
+        invoice.event_id &&
+        !invoice.is_proforma &&
+        invoice.invoice_type !== 'proforma' &&
+        (invoice.invoice_type === 'vat' || invoice.invoice_type === 'corrective')
+      ) {
+        const { error: eventError } = await supabase
+          .from('events')
+          .update({
+            status: 'settled',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', invoice.event_id)
+          .not('status', 'in', '("settled","cancelled")');
+
+        if (eventError) {
+          console.warn('Error syncing event to settled:', eventError);
+        }
+      }
+
       setInvoice((prev) => (prev ? { ...prev, ...updateData } : null));
       showSnackbar('Status faktury został zmieniony', 'success');
     } catch (err) {

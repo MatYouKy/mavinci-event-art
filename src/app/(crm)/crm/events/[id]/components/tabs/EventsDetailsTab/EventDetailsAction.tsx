@@ -275,6 +275,26 @@ export default function EventDetailsAction({
 
       if (error) throw error;
 
+      // When event becomes 'settled', mark all linked non-proforma invoices as paid
+      if (draftStatus === 'settled' && currentStatus !== 'settled') {
+        const { error: invoiceError } = await supabase
+          .from('invoices')
+          .update({
+            status: 'paid',
+            payment_status: 'paid',
+            paid_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('event_id', event.id)
+          .not('status', 'in', '("paid","cancelled")')
+          .neq('invoice_type', 'proforma')
+          .or('is_proforma.is.null,is_proforma.eq.false');
+
+        if (invoiceError) {
+          console.warn('Error syncing invoices to paid:', invoiceError);
+        }
+      }
+
       setCurrentStatus(draftStatus);
       showSnackbar(`Status eventu: ${eventStatusLabels[draftStatus]}`, 'success');
       setStatusEditActive(false);
