@@ -9,15 +9,32 @@
       "resizeMode": "contain",
       "backgroundColor": "#0f1119"
     },
-    "assetBundlePatterns": [
-      "**/*"
+    "assetBundlePatterns": ["**/*"],
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#d3bb73",
+          "sounds": []
+        }
+      ]
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.mavinci.crm"
+      "bundleIdentifier": "com.mavinci.crm",
+      "infoPlist": {
+        "UIBackgroundModes": ["remote-notification"]
+      }
     },
     "android": {
-      "package": "com.mavinci.crm"
+      "package": "com.mavinci.crm",
+      "googleServicesFile": "./google-services.json",
+      "permissions": ["RECEIVE_BOOT_COMPLETED", "VIBRATE", "WAKE_LOCK"]
+    },
+    "notification": {
+      "iosDisplayInForeground": true,
+      "color": "#d3bb73"
     }
   }
 }

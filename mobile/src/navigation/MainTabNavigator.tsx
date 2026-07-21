@@ -10,7 +10,7 @@ import { useAuth } from '../contexts/AuthContext';
 import DashboardScreen from '../screens/DashboardScreen';
 import CalendarScreen from '../screens/CalendarScreen';
 import TasksStackNavigator from './TasksStackNavigator';
-import ClientsScreen from '../screens/ClientsScreen';
+import EquipmentScreen from '../screens/EquipmentScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import CustomDrawer from '../components/CustomDrawer';
 
@@ -18,7 +18,7 @@ export type MainTabParamList = {
   Dashboard: undefined;
   Calendar: undefined;
   Tasks: undefined;
-  Clients: undefined;
+  Equipment: undefined;
   Settings: undefined;
 };
 
@@ -173,11 +173,11 @@ export default function MainTabNavigator() {
           }}
         />
         <Tab.Screen
-          name="Clients"
-          component={ClientsScreen}
+          name="Equipment"
+          component={EquipmentScreen}
           options={{
-            title: 'Klienci',
-            tabBarIcon: ({ color, size }) => <Feather name="users" color={color} size={size} />,
+            title: 'Sprzęt',
+            tabBarIcon: ({ color, size }) => <Feather name="package" color={color} size={size} />,
           }}
         />
         <Tab.Screen

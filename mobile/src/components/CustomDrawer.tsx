@@ -63,7 +63,7 @@ export default function CustomDrawer({ visible, onClose, navigation, currentScre
     { icon: 'home', label: 'Dashboard', screen: 'Dashboard' },
     { icon: 'calendar', label: 'Kalendarz', screen: 'Calendar' },
     { icon: 'check-square', label: 'Zadania', screen: 'Tasks' },
-    { icon: 'users', label: 'Klienci', screen: 'Clients' },
+    { icon: 'box', label: 'Sprzęt', screen: 'Equipment' },
     { icon: 'settings', label: 'Ustawienia', screen: 'Settings' },
   ];
 

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,8 @@ import {
 import { Calendar, DateData } from 'react-native-calendars';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, typography } from '../theme';
-import { useGetCalendarEventsQuery } from '../../../../src/store/api/calendarApi';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
 interface CalendarEvent {
   id: string;
@@ -21,212 +22,280 @@ interface CalendarEvent {
   status: string;
   color?: string;
   location?: string;
-  organization?: { name: string } | null;
-  category?: { name: string; color?: string } | null;
   is_meeting?: boolean;
 }
 
 const STATUS_COLORS: Record<string, string> = {
   pending: colors.status.warning,
   confirmed: colors.status.info,
+  in_progress: '#7c3aed',
   completed: colors.status.success,
   cancelled: colors.status.error,
   meeting: colors.primary.gold,
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  pending: 'W trakcie',
+  pending: 'Oczekujące',
   confirmed: 'Potwierdzone',
+  in_progress: 'W trakcie',
   completed: 'Zakończone',
   cancelled: 'Anulowane',
   meeting: 'Spotkanie',
 };
 
 export default function CalendarScreen() {
+  const { employee } = useAuth();
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(
     new Date().toISOString().split('T')[0]
   );
 
-  const { data: events = [], isLoading, refetch } = useGetCalendarEventsQuery();
+  const fetchEvents = useCallback(async () => {
+    if (!employee?.id) return;
+    setIsLoading(true);
+
+    try {
+      const { data: assignedRows } = await supabase
+        .from('employee_assignments')
+        .select('event_id')
+        .eq('employee_id', employee.id);
+
+      const assignedIds = (assignedRows ?? []).map((r) => r.event_id).filter(Boolean);
+
+      let allEvents: CalendarEvent[] = [];
+
+      if (assignedIds.length > 0) {
+        const { data: eventData } = await supabase
+          .from('events')
+          .select('id, name, event_date, event_end_date, status, location')
+          .in('id', assignedIds);
+
+        if (eventData) {
+          allEvents = eventData.map((e) => ({
+            ...e,
+            is_meeting: false,
+          }));
+        }
+      }
+
+      const { data: ownEvents } = await supabase
+        .from('events')
+        .select('id, name, event_date, event_end_date, status, location')
+        .eq('created_by', employee.id);
+
+      if (ownEvents) {
+        const existingIds = new Set(allEvents.map((e) => e.id));
+        for (const e of ownEvents) {
+          if (!existingIds.has(e.id)) {
+            allEvents.push({ ...e, is_meeting: false });
+          }
+        }
+      }
+
+      const { data: meetings } = await supabase
+        .from('meetings')
+        .select('id, title, datetime_start, datetime_end, location_text')
+        .is('deleted_at', null)
+        .eq('created_by', employee.id);
+
+      if (meetings) {
+        for (const m of meetings) {
+          allEvents.push({
+            id: m.id,
+            name: m.title ?? 'Spotkanie',
+            event_date: m.datetime_start,
+            event_end_date: m.datetime_end,
+            status: 'meeting',
+            location: m.location_text ?? undefined,
+            is_meeting: true,
+          });
+        }
+      }
+
+      const { data: participantRows } = await supabase
+        .from('meeting_participants')
+        .select('meeting_id')
+        .eq('employee_id', employee.id);
+
+      if (participantRows && participantRows.length > 0) {
+        const meetingIds = participantRows.map((r) => r.meeting_id).filter(Boolean);
+        const existingMeetingIds = new Set(
+          allEvents.filter((e) => e.is_meeting).map((e) => e.id)
+        );
+
+        const missingIds = meetingIds.filter((id) => !existingMeetingIds.has(id));
+        if (missingIds.length > 0) {
+          const { data: participantMeetings } = await supabase
+            .from('meetings')
+            .select('id, title, datetime_start, datetime_end, location_text')
+            .is('deleted_at', null)
+            .in('id', missingIds);
+
+          if (participantMeetings) {
+            for (const m of participantMeetings) {
+              allEvents.push({
+                id: m.id,
+                name: m.title ?? 'Spotkanie',
+                event_date: m.datetime_start,
+                event_end_date: m.datetime_end,
+                status: 'meeting',
+                location: m.location_text ?? undefined,
+                is_meeting: true,
+              });
+            }
+          }
+        }
+      }
+
+      setEvents(allEvents);
+    } catch (error) {
+      console.error('Error fetching calendar events:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [employee?.id]);
+
+  useEffect(() => {
+    fetchEvents();
+  }, [fetchEvents]);
 
   const markedDates = useMemo(() => {
-    const marked: any = {};
+    const marks: Record<string, any> = {};
 
-    events.forEach((event) => {
-      const date = event.event_date.split('T')[0];
-      if (!marked[date]) {
-        marked[date] = {
-          marked: true,
-          dots: [],
-        };
+    for (const event of events) {
+      const date = event.event_date?.split('T')[0];
+      if (!date) continue;
+
+      const color = STATUS_COLORS[event.status] || colors.primary.gold;
+
+      if (!marks[date]) {
+        marks[date] = { dots: [{ color }] };
+      } else if (marks[date].dots.length < 3) {
+        marks[date].dots.push({ color });
       }
-      marked[date].dots.push({
-        color: event.color || STATUS_COLORS[event.status] || colors.primary.gold,
-      });
-    });
+    }
 
-    marked[selectedDate] = {
-      ...marked[selectedDate],
-      selected: true,
-      selectedColor: colors.primary.gold,
-    };
+    if (selectedDate) {
+      marks[selectedDate] = {
+        ...marks[selectedDate],
+        selected: true,
+        selectedColor: colors.primary.gold + '33',
+      };
+    }
 
-    return marked;
+    return marks;
   }, [events, selectedDate]);
 
   const eventsForSelectedDate = useMemo(() => {
-    return events.filter((event) => {
-      const eventDate = event.event_date.split('T')[0];
-      return eventDate === selectedDate;
-    });
+    if (!selectedDate) return [];
+    return events
+      .filter((e) => e.event_date?.startsWith(selectedDate))
+      .sort(
+        (a, b) =>
+          new Date(a.event_date).getTime() - new Date(b.event_date).getTime()
+      );
   }, [events, selectedDate]);
 
-  const onDayPress = (day: DateData) => {
-    setSelectedDate(day.dateString);
-  };
-
-  const formatTime = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString('pl-PL', {
+  const renderEvent = ({ item }: { item: CalendarEvent }) => {
+    const statusColor = STATUS_COLORS[item.status] || colors.text.tertiary;
+    const time = new Date(item.event_date).toLocaleTimeString('pl-PL', {
       hour: '2-digit',
       minute: '2-digit',
     });
-  };
-
-  const renderEventItem = ({ item }: { item: CalendarEvent }) => {
-    const statusColor = item.color || STATUS_COLORS[item.status] || colors.primary.gold;
 
     return (
       <TouchableOpacity style={styles.eventCard}>
         <View style={[styles.eventIndicator, { backgroundColor: statusColor }]} />
         <View style={styles.eventContent}>
-          <View style={styles.eventHeader}>
-            <Text style={styles.eventTitle} numberOfLines={1}>
-              {item.name}
-            </Text>
-            <View
-              style={[
-                styles.statusBadge,
-                { backgroundColor: statusColor + '20', borderColor: statusColor },
-              ]}
-            >
+          <Text style={styles.eventTime}>{time}</Text>
+          <Text style={styles.eventTitle} numberOfLines={1}>
+            {item.name}
+          </Text>
+          {item.location && (
+            <View style={styles.eventLocationRow}>
+              <Feather name="map-pin" size={12} color={colors.text.tertiary} />
+              <Text style={styles.eventLocation} numberOfLines={1}>
+                {item.location}
+              </Text>
+            </View>
+          )}
+          <View style={styles.eventStatusRow}>
+            <View style={[styles.statusBadge, { backgroundColor: statusColor + '22' }]}>
               <Text style={[styles.statusText, { color: statusColor }]}>
                 {STATUS_LABELS[item.status] || item.status}
               </Text>
             </View>
-          </View>
-
-          <View style={styles.eventDetails}>
-            <View style={styles.detailRow}>
-              <Feather name="clock" size={14} color={colors.text.secondary} />
-              <Text style={styles.detailText}>
-                {formatTime(item.event_date)}
-                {item.event_end_date && ` - ${formatTime(item.event_end_date)}`}
-              </Text>
-            </View>
-
-            {item.location && (
-              <View style={styles.detailRow}>
-                <Feather name="map-pin" size={14} color={colors.text.secondary} />
-                <Text style={styles.detailText} numberOfLines={1}>
-                  {item.location}
-                </Text>
-              </View>
-            )}
-
-            {item.organization && (
-              <View style={styles.detailRow}>
-                <Feather name="briefcase" size={14} color={colors.text.secondary} />
-                <Text style={styles.detailText} numberOfLines={1}>
-                  {item.organization.name}
-                </Text>
-              </View>
-            )}
-
-            {item.category && (
-              <View style={styles.detailRow}>
-                <Feather name="tag" size={14} color={colors.text.secondary} />
-                <Text style={styles.detailText}>{item.category.name}</Text>
-              </View>
-            )}
           </View>
         </View>
       </TouchableOpacity>
     );
   };
 
-  const renderEmptyState = () => (
-    <View style={styles.emptyState}>
-      <Feather name="calendar" size={64} color={colors.text.tertiary} />
-      <Text style={styles.emptyTitle}>Brak wydarzeń</Text>
-      <Text style={styles.emptySubtitle}>
-        Nie masz żadnych wydarzeń zaplanowanych na ten dzień
-      </Text>
-    </View>
-  );
-
-  const selectedDateFormatted = new Date(selectedDate + 'T00:00:00').toLocaleDateString(
-    'pl-PL',
-    {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    }
-  );
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary.gold} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       <Calendar
         current={selectedDate}
-        onDayPress={onDayPress}
-        markedDates={markedDates}
+        onDayPress={(day: DateData) => setSelectedDate(day.dateString)}
         markingType="multi-dot"
+        markedDates={markedDates}
         theme={{
-          calendarBackground: colors.background.secondary,
+          backgroundColor: colors.background.primary,
+          calendarBackground: colors.background.primary,
           textSectionTitleColor: colors.text.secondary,
           selectedDayBackgroundColor: colors.primary.gold,
-          selectedDayTextColor: colors.background.primary,
+          selectedDayTextColor: '#000',
           todayTextColor: colors.primary.gold,
           dayTextColor: colors.text.primary,
-          textDisabledColor: colors.text.disabled,
+          textDisabledColor: colors.text.tertiary + '66',
           monthTextColor: colors.text.primary,
-          textMonthFontSize: typography.fontSizes.lg,
-          textDayFontSize: typography.fontSizes.md,
-          textMonthFontWeight: typography.fontWeights.bold,
           arrowColor: colors.primary.gold,
-          dotColor: colors.primary.gold,
+          textDayFontWeight: '500',
+          textMonthFontWeight: '700',
+          textDayHeaderFontWeight: '600',
         }}
         style={styles.calendar}
       />
 
-      <View style={styles.eventsContainer}>
-        <View style={styles.eventsHeader}>
-          <Text style={styles.selectedDateText}>{selectedDateFormatted}</Text>
-          <Text style={styles.eventCount}>
-            {eventsForSelectedDate.length}{' '}
-            {eventsForSelectedDate.length === 1 ? 'wydarzenie' : 'wydarzeń'}
-          </Text>
-        </View>
+      <View style={styles.eventsSection}>
+        <Text style={styles.sectionTitle}>
+          {selectedDate === new Date().toISOString().split('T')[0]
+            ? 'Dzisiaj'
+            : new Date(selectedDate + 'T00:00:00').toLocaleDateString('pl-PL', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+              })}
+          {eventsForSelectedDate.length > 0 &&
+            ` (${eventsForSelectedDate.length})`}
+        </Text>
 
-        {isLoading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.primary.gold} />
+        {eventsForSelectedDate.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Feather name="calendar" size={32} color={colors.text.tertiary} />
+            <Text style={styles.emptyText}>Brak wydarzeń w tym dniu</Text>
           </View>
         ) : (
           <FlatList
             data={eventsForSelectedDate}
-            renderItem={renderEventItem}
             keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.eventsList}
-            ListEmptyComponent={renderEmptyState}
+            renderItem={renderEvent}
             refreshControl={
               <RefreshControl
                 refreshing={isLoading}
-                onRefresh={refetch}
+                onRefresh={fetchEvents}
                 tintColor={colors.primary.gold}
               />
             }
+            contentContainerStyle={styles.eventsList}
           />
         )}
       </View>
@@ -239,41 +308,37 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background.primary,
   },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background.primary,
+  },
   calendar: {
     borderBottomWidth: 1,
     borderBottomColor: colors.border.default,
   },
-  eventsContainer: {
+  eventsSection: {
     flex: 1,
-    backgroundColor: colors.background.primary,
+    paddingTop: spacing.md,
   },
-  eventsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border.default,
-  },
-  selectedDateText: {
-    fontSize: typography.fontSizes.md,
-    fontWeight: typography.fontWeights.semiBold,
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
     color: colors.text.primary,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm,
     textTransform: 'capitalize',
   },
-  eventCount: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.text.secondary,
-  },
   eventsList: {
-    padding: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.lg,
   },
   eventCard: {
     flexDirection: 'row',
     backgroundColor: colors.background.secondary,
     borderRadius: 12,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
     overflow: 'hidden',
   },
   eventIndicator: {
@@ -283,63 +348,49 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: spacing.md,
   },
-  eventHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
+  eventTime: {
+    fontSize: 12,
+    color: colors.text.tertiary,
+    marginBottom: 4,
   },
   eventTitle: {
-    flex: 1,
-    fontSize: typography.fontSizes.md,
-    fontWeight: typography.fontWeights.semiBold,
+    fontSize: 15,
+    fontWeight: '600',
     color: colors.text.primary,
-    marginRight: spacing.sm,
+    marginBottom: 4,
   },
-  statusBadge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-  },
-  statusText: {
-    fontSize: typography.fontSizes.xs,
-    fontWeight: typography.fontWeights.medium,
-  },
-  eventDetails: {
-    gap: spacing.xs,
-  },
-  detailRow: {
+  eventLocationRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: 4,
+    marginBottom: 6,
   },
-  detailText: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.text.secondary,
+  eventLocation: {
+    fontSize: 12,
+    color: colors.text.tertiary,
     flex: 1,
+  },
+  eventStatusRow: {
+    flexDirection: 'row',
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: '600',
   },
   emptyState: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing.xl * 2,
-    gap: spacing.md,
+    paddingTop: spacing.xl,
   },
-  emptyTitle: {
-    fontSize: typography.fontSizes.lg,
-    fontWeight: typography.fontWeights.semiBold,
-    color: colors.text.secondary,
-  },
-  emptySubtitle: {
-    fontSize: typography.fontSizes.md,
+  emptyText: {
+    marginTop: spacing.sm,
+    fontSize: 14,
     color: colors.text.tertiary,
-    textAlign: 'center',
-    paddingHorizontal: spacing.xl,
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });
