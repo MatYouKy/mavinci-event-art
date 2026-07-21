@@ -221,7 +221,7 @@ export default function InvoicesPage() {
     eventId: string | null;
     organizationId: string | null;
   }>({ eventId: null, organizationId: null });
-  const [sortKey, setSortKey] = useState<SortKey>('invoice_number');
+  const [sortKey, setSortKey] = useState<SortKey>('issue_date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [showSummaryDrawer, setShowSummaryDrawer] = useState(false);
 
