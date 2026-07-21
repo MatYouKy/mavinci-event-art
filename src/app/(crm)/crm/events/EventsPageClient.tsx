@@ -20,6 +20,7 @@ import {
   Table2,
   AlertCircle,
   PencilLine,
+  Copy,
 } from 'lucide-react';
 import EventWizard from '@/components/crm/EventWizard';
 import { supabase } from '@/lib/supabase/browser';
@@ -152,16 +153,16 @@ type EventsTableColKey =
   | 'budget'
   | 'actions';
 
-  const DEFAULT_EVENTS_COL_WIDTHS: Record<EventsTableColKey, number> = {
-    name: 400,
-    client: 180,
-    date: 110,
-    location: 220,
-    status: 140,
-    category: 130,
-    budget: 110,
-    actions: 150,
-  };
+const DEFAULT_EVENTS_COL_WIDTHS: Record<EventsTableColKey, number> = {
+  name: 400,
+  client: 180,
+  date: 110,
+  location: 220,
+  status: 140,
+  category: 130,
+  budget: 110,
+  actions: 150,
+};
 
 const DEFAULT_COL_ORDER: EventsTableColKey[] = [
   'name',
@@ -326,6 +327,10 @@ export default function EventsPageClient({
   const [draftStatus, setDraftStatus] = useState<string>('inquiry');
   const [savingStatus, setSavingStatus] = useState(false);
 
+  const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
+  const [eventToDuplicate, setEventToDuplicate] = useState<any>(null);
+  const [duplicatingEvent, setDuplicatingEvent] = useState(false);
+
   const [openingEvent, setOpeningEvent] = useState(false);
   const [openingEventName, setOpeningEventName] = useState('');
 
@@ -399,6 +404,80 @@ export default function EventsPageClient({
         colWidths,
       },
     });
+  };
+
+  const handleDuplicateClick = (e: React.MouseEvent | null, event: any) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    if (duplicatingEvent) return;
+
+    setEventToDuplicate(event);
+    setDuplicateModalOpen(true);
+  };
+
+  const handleDuplicateConfirm = async () => {
+    if (!eventToDuplicate?.id || duplicatingEvent) return;
+
+    try {
+      setDuplicatingEvent(true);
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.user?.id) {
+        throw new Error('Brak aktywnej sesji użytkownika');
+      }
+
+      const duplicatedEvent = {
+        name: `${eventToDuplicate.name} (kopia)`,
+        description: eventToDuplicate.description || null,
+        event_date: eventToDuplicate.event_date,
+        event_end_date: eventToDuplicate.event_end_date || null,
+        location_id: eventToDuplicate.location_id || null,
+        location: eventToDuplicate.location || null,
+        status: 'inquiry',
+        notes: eventToDuplicate.notes || null,
+        category_id: eventToDuplicate.category_id || null,
+        organization_id: eventToDuplicate.organization_id || null,
+        contact_person_id: eventToDuplicate.contact_person_id || null,
+        my_company_id: eventToDuplicate.my_company_id || null,
+        client_type: eventToDuplicate.client_type || 'business',
+        expected_revenue: eventToDuplicate.expected_revenue ?? null,
+        estimated_costs: eventToDuplicate.estimated_costs ?? null,
+        budget: eventToDuplicate.budget ?? null,
+        created_by: session.user.id,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from('events')
+        .insert(duplicatedEvent)
+        .select('id, name')
+        .single();
+
+      if (error) throw error;
+
+      showSnackbar('Wydarzenie zostało zduplikowane', 'success');
+
+      setDuplicateModalOpen(false);
+      setEventToDuplicate(null);
+
+      await fetchEvents();
+
+      if (data?.id) {
+        router.push(`/crm/events/${data.id}`);
+      }
+    } catch (err: any) {
+      console.error('Error duplicating event:', err);
+
+      showSnackbar(err?.message || 'Wystąpił błąd podczas duplikowania wydarzenia', 'error');
+    } finally {
+      setDuplicatingEvent(false);
+    }
   };
 
   const canViewCommercials =
@@ -799,17 +878,34 @@ export default function EventsPageClient({
     ),
 
     actions: (event) =>
-      canDeleteEvents ? (
+      canAddNewEvent || canViewEventStatus || canDeleteEvents ? (
         <ResponsiveActionBar
           disabledBackground
           mobileBreakpoint={2000}
           actions={[
-            {
-              label: 'Zmień status',
-              onClick: () => handleStatusClick(null, event),
-              icon: <PencilLine className="h-4 w-4" />,
-              variant: 'default',
-            },
+            ...(canAddNewEvent
+              ? [
+                  {
+                    label: 'Duplikuj',
+                    onClick: () => handleDuplicateClick(null, event),
+                    icon: <Copy className="h-4 w-4" />,
+                    variant: 'default' as const,
+                    disabled: duplicatingEvent,
+                  },
+                ]
+              : []),
+
+            ...(canViewEventStatus
+              ? [
+                  {
+                    label: 'Zmień status',
+                    onClick: () => handleStatusClick(null, event),
+                    icon: <PencilLine className="h-4 w-4" />,
+                    variant: 'default' as const,
+                  },
+                ]
+              : []),
+
             ...(canDeleteEvents
               ? [
                   {
@@ -1426,37 +1522,85 @@ export default function EventsPageClient({
                     </h3>
 
                     <div className="flex items-center gap-2">
-                      <div className="hidden md:block">
-                        {canViewEventStatus && (
-                          <button
-                            onClick={(e) => {
-                              stop(e);
-                              handleDeleteClick(e, event);
-                            }}
-                            className="flex-shrink-0 rounded-lg bg-red-500/10 p-2 text-red-500 transition-colors hover:bg-red-500/20"
-                            title="Usuń event"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                      <div className="hidden md:block" onClick={stop}>
+                        {(canAddNewEvent || canViewEventStatus || canDeleteEvents) && (
+                          <ResponsiveActionBar
+                            disabledBackground
+                            mobileBreakpoint={2000}
+                            actions={[
+                              ...(canAddNewEvent
+                                ? [
+                                    {
+                                      label: 'Duplikuj',
+                                      onClick: () => handleDuplicateClick(null, event),
+                                      icon: <Copy className="h-4 w-4" />,
+                                      variant: 'default' as const,
+                                    },
+                                  ]
+                                : []),
+
+                              ...(canViewEventStatus
+                                ? [
+                                    {
+                                      label: 'Zmień status',
+                                      onClick: () => handleStatusClick(null, event),
+                                      icon: <PencilLine className="h-4 w-4" />,
+                                      variant: 'default' as const,
+                                    },
+                                  ]
+                                : []),
+
+                              ...(canDeleteEvents
+                                ? [
+                                    {
+                                      label: 'Usuń',
+                                      onClick: () => handleDeleteClick(null, event),
+                                      icon: <Trash2 className="h-4 w-4" />,
+                                      variant: 'danger' as const,
+                                    },
+                                  ]
+                                : []),
+                            ]}
+                          />
                         )}
                       </div>
 
-                      <div className="md:hidden">
-                        {canViewEventStatus && (
+                      <div className="md:hidden" onClick={stop}>
+                        {(canAddNewEvent || canViewEventStatus || canDeleteEvents) && (
                           <ResponsiveActionBar
                             actions={[
-                              {
-                                label: 'Usuń',
-                                onClick: () => handleDeleteClick(null, event),
-                                icon: <Trash2 className="h-4 w-4" />,
-                                variant: 'danger',
-                              },
-                              {
-                                label: 'Zmień status',
-                                onClick: () => handleStatusClick(null, event),
-                                icon: <PencilLine className="h-4 w-4" />,
-                                variant: 'default',
-                              },
+                              ...(canAddNewEvent
+                                ? [
+                                    {
+                                      label: 'Duplikuj',
+                                      onClick: () => handleDuplicateClick(null, event),
+                                      icon: <Copy className="h-4 w-4" />,
+                                      variant: 'default' as const,
+                                    },
+                                  ]
+                                : []),
+
+                              ...(canViewEventStatus
+                                ? [
+                                    {
+                                      label: 'Zmień status',
+                                      onClick: () => handleStatusClick(null, event),
+                                      icon: <PencilLine className="h-4 w-4" />,
+                                      variant: 'default' as const,
+                                    },
+                                  ]
+                                : []),
+
+                              ...(canDeleteEvents
+                                ? [
+                                    {
+                                      label: 'Usuń',
+                                      onClick: () => handleDeleteClick(null, event),
+                                      icon: <Trash2 className="h-4 w-4" />,
+                                      variant: 'danger' as const,
+                                    },
+                                  ]
+                                : []),
                             ]}
                             disabledBackground
                           />
@@ -1637,21 +1781,41 @@ export default function EventsPageClient({
                     </div>
 
                     <div className="md:hidden" onClick={stop}>
-                      {canViewCommercials && (
+                      {(canAddNewEvent || canViewEventStatus || canDeleteEvents) && (
                         <ResponsiveActionBar
                           actions={[
-                            {
-                              label: 'Usuń',
-                              onClick: () => handleDeleteClick(null, event),
-                              icon: <Trash2 className="h-4 w-4" />,
-                              variant: 'danger',
-                            },
-                            {
-                              label: 'Zmień status',
-                              onClick: () => handleStatusClick(null, event),
-                              icon: <PencilLine className="h-4 w-4" />,
-                              variant: 'default',
-                            },
+                            ...(canAddNewEvent
+                              ? [
+                                  {
+                                    label: 'Duplikuj',
+                                    onClick: () => handleDuplicateClick(null, event),
+                                    icon: <Copy className="h-4 w-4" />,
+                                    variant: 'default' as const,
+                                  },
+                                ]
+                              : []),
+
+                            ...(canViewEventStatus
+                              ? [
+                                  {
+                                    label: 'Zmień status',
+                                    onClick: () => handleStatusClick(null, event),
+                                    icon: <PencilLine className="h-4 w-4" />,
+                                    variant: 'default' as const,
+                                  },
+                                ]
+                              : []),
+
+                            ...(canDeleteEvents
+                              ? [
+                                  {
+                                    label: 'Usuń',
+                                    onClick: () => handleDeleteClick(null, event),
+                                    icon: <Trash2 className="h-4 w-4" />,
+                                    variant: 'danger' as const,
+                                  },
+                                ]
+                              : []),
                           ]}
                           disabledBackground
                         />
@@ -1713,6 +1877,67 @@ export default function EventsPageClient({
         onClose={() => setIsModalOpen(false)}
         onSuccess={fetchEvents}
       />
+
+      <Modal
+        open={duplicateModalOpen}
+        onClose={() => {
+          if (duplicatingEvent) return;
+
+          setDuplicateModalOpen(false);
+          setEventToDuplicate(null);
+        }}
+        title="Duplikuj wydarzenie"
+      >
+        <div className="space-y-6">
+          <div className="flex items-start gap-4">
+            <div className="rounded-full bg-[#d3bb73]/10 p-3">
+              <Copy className="h-6 w-6 text-[#d3bb73]" />
+            </div>
+
+            <div>
+              <h3 className="mb-2 text-lg font-medium text-[#e5e4e2]">
+                Czy chcesz zduplikować to wydarzenie?
+              </h3>
+
+              <p className="mb-3 text-[#e5e4e2]/70">
+                Event: <strong className="text-[#d3bb73]">{eventToDuplicate?.name || '—'}</strong>
+              </p>
+
+              <p className="text-sm leading-relaxed text-[#e5e4e2]/60">
+                Zostaną skopiowane dane podstawowe wydarzenia, klient, lokalizacja, kategoria,
+                terminy, przychód i koszty.
+              </p>
+
+              <p className="mt-2 text-sm leading-relaxed text-[#e5e4e2]/60">
+                Nie zostaną skopiowani przypisani pracownicy, pliki, dokumenty, zadania, oferty ani
+                pozostałe dane powiązane.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 border-t border-[#d3bb73]/20 pt-4">
+            <button
+              onClick={() => {
+                setDuplicateModalOpen(false);
+                setEventToDuplicate(null);
+              }}
+              disabled={duplicatingEvent}
+              className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/5 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Anuluj
+            </button>
+
+            <button
+              onClick={handleDuplicateConfirm}
+              disabled={duplicatingEvent}
+              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Copy className="h-4 w-4" />
+              {duplicatingEvent ? 'Duplikowanie...' : 'Duplikuj'}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         open={statusModalOpen}
