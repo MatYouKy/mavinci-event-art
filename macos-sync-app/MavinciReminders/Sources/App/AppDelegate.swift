@@ -10,6 +10,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Properties
 
     private var statusItem: NSStatusItem?
+    private var onboardingWindowController: NSWindowController?
     private var syncManager: SyncManager { SyncManager.shared }
     private let eventStore = EKEventStore()
 
@@ -28,7 +29,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Request Reminders access then run initial sync
         Task {
             await requestRemindersAccess()
-            await performInitialSync()
+
+            let onboardingCompleted = UserDefaults.standard.bool(
+                forKey: "onboardingCompleted"
+            )
+
+            if onboardingCompleted {
+                await performInitialSync()
+            } else {
+                print("[AppDelegate] Skipping initial sync — onboarding not completed")
+
+                await MainActor.run {
+                    self.showOnboardingWindow()
+                }
+            }
         }
 
         // Start periodic status item updates
@@ -45,6 +59,43 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
         return true
+    }
+
+    // MARK: - Onboarding
+
+    @MainActor
+    private func showOnboardingWindow() {
+        if let existingWindow = onboardingWindowController?.window {
+            NSApp.activate(ignoringOtherApps: true)
+            existingWindow.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let onboardingView = OnboardingView { [weak self] in
+            guard let self else { return }
+
+            self.onboardingWindowController?.close()
+            self.onboardingWindowController = nil
+
+            Task {
+                await self.performInitialSync()
+            }
+        }
+
+        let hostingController = NSHostingController(rootView: onboardingView)
+
+        let window = NSWindow(contentViewController: hostingController)
+        window.title = "Konfiguracja Mavinci Reminders"
+        window.styleMask = [.titled, .closable]
+        window.isReleasedWhenClosed = false
+        window.center()
+
+        let windowController = NSWindowController(window: window)
+        onboardingWindowController = windowController
+
+        NSApp.activate(ignoringOtherApps: true)
+        windowController.showWindow(nil)
+        window.makeKeyAndOrderFront(nil)
     }
 
     // MARK: - Reminders Access
@@ -373,99 +424,5 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func quitAction() {
         NSApplication.shared.terminate(nil)
-    }
-}
-
-// MARK: - SyncManager (Shared Singleton Stub)
-
-/// Core sync manager — coordinates between CRM API and EventKit.
-/// Full implementation lives in Sources/Sync/SyncManager.swift
-class SyncManager: ObservableObject {
-    static let shared = SyncManager()
-
-    @Published var isSyncing: Bool = false
-    @Published var isPaused: Bool = false
-    @Published var isConnected: Bool = false
-    @Published var lastSyncDate: Date? = nil
-    @Published var activeRemindersCount: Int = 0
-    @Published var errorCount: Int = 0
-    @Published var remindersAccessGranted: Bool = false
-
-    private var syncTimer: Timer?
-    private var syncIntervalMinutes: Int {
-        let stored = UserDefaults.standard.integer(forKey: "syncIntervalMinutes")
-        return stored > 0 ? stored : 15
-    }
-
-    private init() {
-        startPeriodicSync()
-    }
-
-    // MARK: - Sync Operations
-
-    func syncNow() async {
-        guard !isSyncing, !isPaused, remindersAccessGranted else { return }
-
-        await MainActor.run {
-            isSyncing = true
-        }
-
-        defer {
-            Task { @MainActor in
-                self.isSyncing = false
-                self.lastSyncDate = Date()
-            }
-        }
-
-        do {
-            // TODO: Implement full CRM ↔ Reminders sync logic
-            // 1. Fetch tasks from Mavinci CRM API
-            // 2. Fetch existing reminders from EventKit
-            // 3. Diff and reconcile
-            // 4. Create/update/complete reminders
-            // 5. Push completion status back to CRM
-
-            try await Task.sleep(nanoseconds: 500_000_000) // Placeholder
-
-            await MainActor.run {
-                self.isConnected = true
-                self.errorCount = 0
-            }
-
-            print("[SyncManager] Sync completed successfully")
-        } catch {
-            await MainActor.run {
-                self.errorCount += 1
-                self.isConnected = false
-            }
-            print("[SyncManager] Sync failed: \(error.localizedDescription)")
-        }
-    }
-
-    func togglePause() {
-        isPaused.toggle()
-
-        if isPaused {
-            syncTimer?.invalidate()
-            syncTimer = nil
-            print("[SyncManager] Sync paused")
-        } else {
-            startPeriodicSync()
-            print("[SyncManager] Sync resumed")
-        }
-    }
-
-    // MARK: - Periodic Sync
-
-    private func startPeriodicSync() {
-        syncTimer?.invalidate()
-        let interval = TimeInterval(syncIntervalMinutes * 60)
-
-        syncTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            Task {
-                await self.syncNow()
-            }
-        }
     }
 }

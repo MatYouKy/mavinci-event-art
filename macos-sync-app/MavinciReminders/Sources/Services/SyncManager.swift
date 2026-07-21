@@ -35,6 +35,7 @@ final class SyncManager: ObservableObject {
     @Published var errorCount: Int = 0
     @Published var lastError: String?
     @Published var connectionStatus: ConnectionStatus = .disconnected
+    @Published var remindersAccessGranted: Bool = false
 
     // MARK: - Private Properties
 
@@ -199,11 +200,18 @@ final class SyncManager: ObservableObject {
                 connectionStatus = .connected
             }
             // If coming back from disconnected state, trigger sync
-            if wasDisconnected && !isPaused {
+            // only after the first-run onboarding has been completed.
+            let onboardingCompleted = UserDefaults.standard.bool(
+                forKey: "onboardingCompleted"
+            )
+
+            if wasDisconnected && !isPaused && onboardingCompleted {
                 logger.info("Network restored — triggering sync")
                 Task {
                     await syncNow()
                 }
+            } else if wasDisconnected && !onboardingCompleted {
+                logger.info("Network available — waiting for onboarding completion")
             }
         } else {
             if !isPaused {
@@ -218,6 +226,8 @@ final class SyncManager: ObservableObject {
     /// Performs a full bidirectional sync between the CRM and local Reminders.
     /// Guarded against concurrent execution. Skips if paused or network unavailable.
     func syncNow() async {
+        print("[SyncManager] syncNow started")
+
         // Guard: prevent concurrent syncs
         let shouldProceed: Bool = syncQueue.sync {
             if isSyncInProgress { return false }
@@ -226,7 +236,7 @@ final class SyncManager: ObservableObject {
         }
 
         guard shouldProceed else {
-            logger.debug("Sync skipped — already in progress")
+            print("[SyncManager] Sync skipped — already in progress")
             return
         }
 
@@ -238,15 +248,17 @@ final class SyncManager: ObservableObject {
 
         // Guard: paused
         guard !isPaused else {
-            logger.debug("Sync skipped — paused")
+            print("[SyncManager] Sync skipped — paused")
             return
         }
 
         // Guard: network
         guard isNetworkAvailable else {
-            logger.debug("Sync skipped — no network")
+            print("[SyncManager] Sync skipped — no network")
             return
         }
+
+        print("[SyncManager] Network available")
 
         await MainActor.run {
             isSyncing = true
@@ -269,7 +281,9 @@ final class SyncManager: ObservableObject {
         }
 
         do {
+            print("[SyncManager] Starting performSync")
             try await performSync()
+            print("[SyncManager] performSync completed")
             retryCount = 0
             await MainActor.run {
                 self.lastError = nil
@@ -283,7 +297,9 @@ final class SyncManager: ObservableObject {
 
     private func performSync() async throws {
         // Step 1: Fetch tasks from CRM API (with retry)
+        print("[SyncManager] Fetching tasks from CRM")
         let tasksResponse = try await fetchTasksWithRetry()
+        print("[SyncManager] CRM tasks fetched")
 
         // Step 2: Validate response — if not success, do NOT mark reminders as completed
         guard tasksResponse.success else {
@@ -295,7 +311,9 @@ final class SyncManager: ObservableObject {
         let crmTasks = tasksResponse.tasks ?? []
 
         // Step 3: Get all local reminders from the list
+        print("[SyncManager] Fetching local reminders")
         let reminders = await remindersService.getAllRemindersInList()
+        print("[SyncManager] Local reminders fetched: \(reminders.count)")
 
         // Step 4: Build lookup maps
         var reminderByTaskId: [String: EKReminder] = [:]
@@ -565,7 +583,13 @@ final class SyncManager: ObservableObject {
 
                 // Only retry on transient failures
                 switch error {
-                case .networkError, .serverError(let code) where code >= 500:
+                case .networkError:
+                    let delay = pow(2.0, Double(attempt)) // 1s, 2s, 4s
+                    logger.warning("Fetch attempt \(attempt + 1) failed, retrying in \(delay)s: \(error.localizedDescription)")
+                    try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                    continue
+
+                case .serverError(let code) where code >= 500:
                     let delay = pow(2.0, Double(attempt)) // 1s, 2s, 4s
                     logger.warning("Fetch attempt \(attempt + 1) failed, retrying in \(delay)s: \(error.localizedDescription)")
                     try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))

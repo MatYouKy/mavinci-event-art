@@ -164,15 +164,25 @@ final class CRMAPIClient {
 
     /// Builds the sync endpoint URL with the token as a query parameter.
     private func buildSyncURL() throws -> URL {
+        print("[CRMAPIClient] buildSyncURL started")
+
         let base = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        print("[CRMAPIClient] Configured base URL: \(base.isEmpty ? "<EMPTY>" : base)")
 
         guard !base.isEmpty else {
+            print("[CRMAPIClient] Base URL is empty")
             throw CRMAPIError.invalidURL
         }
 
+        print("[CRMAPIClient] Base URL loaded: \(!base.isEmpty)")
+        print("[CRMAPIClient] Reading token from Keychain…")
+
         guard let token = KeychainService.shared.loadToken(), !token.isEmpty else {
+            print("[CRMAPIClient] No token found in Keychain")
             throw CRMAPIError.noToken
         }
+
+        print("[CRMAPIClient] Token loaded from Keychain")
 
         // Ensure HTTPS
         guard base.lowercased().hasPrefix("https://") else {

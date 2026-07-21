@@ -27,3 +27,31 @@ deploy.sh
 *.sln
 *.sw?
 .env
+
+
+# -----------------------------------------------------------------------------
+# macOS Sync App (Swift Package)
+# -----------------------------------------------------------------------------
+
+
+# -----------------------------------------------------------------------------
+# macOS Sync App
+# -----------------------------------------------------------------------------
+
+# Swift Package Manager
+macos-sync-app/.build/
+macos-sync-app/.swiftpm/
+
+# Generated application packages and releases
+macos-sync-app/dist/
+macos-sync-app/release/
+macos-sync-app/**/*.app
+macos-sync-app/**/*.dmg
+
+# Temporary icon generation files
+macos-sync-app/AppIcon.iconset/
+
+# macOS / Xcode temporary files
+macos-sync-app/.DS_Store
+macos-sync-app/DerivedData/
+macos-sync-app/**/*.xcuserdata/

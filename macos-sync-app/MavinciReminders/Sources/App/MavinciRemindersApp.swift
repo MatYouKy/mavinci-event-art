@@ -47,28 +47,6 @@ struct MavinciRemindersApp: App {
     }
 }
 
-// MARK: - App Lifecycle
-
-extension MavinciRemindersApp {
-    init() {
-        // Register login item for launch at login (macOS 13+)
-        registerLoginItem()
-    }
-
-    private func registerLoginItem() {
-        if #available(macOS 13.0, *) {
-            let service = SMAppService.mainApp
-            do {
-                if UserDefaults.standard.bool(forKey: "launchAtLogin") {
-                    try service.register()
-                }
-            } catch {
-                print("[MavinciReminders] Failed to register login item: \(error.localizedDescription)")
-            }
-        }
-    }
-}
-
 // MARK: - Menu Bar View (SwiftUI Menu Content)
 
 struct MenuBarView: View {
@@ -131,8 +109,9 @@ struct MenuBarView: View {
         }
         .keyboardShortcut("p", modifiers: [.command])
 
-        SettingsLink {
-            Text("Settings…")
+        Button("Settings…") {
+            NSApp.activate(ignoringOtherApps: true)
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
         }
         .keyboardShortcut(",", modifiers: [.command])
 
