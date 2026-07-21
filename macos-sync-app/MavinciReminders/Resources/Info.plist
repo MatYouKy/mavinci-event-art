@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>pl</string>
+	<key>CFBundleExecutable</key>
+	<string>MavinciReminders</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.mavinci.crm-reminders</string>
+	<key>CFBundleName</key>
+	<string>Mavinci Reminders</string>
+	<key>CFBundleDisplayName</key>
+	<string>Mavinci Reminders</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSRemindersUsageDescription</key>
+	<string>Mavinci Reminders potrzebuje dostępu do Przypomnień, aby synchronizować zadania z systemu CRM Mavinci. Dzięki temu Twoje zadania będą widoczne w Apple Reminders na wszystkich urządzeniach Apple.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>Mavinci Reminders potrzebuje pełnego dostępu do Przypomnień, aby tworzyć, aktualizować i oznaczać jako wykonane zadania zsynchronizowane z systemu CRM Mavinci.</string>
+</dict>
+</plist>
