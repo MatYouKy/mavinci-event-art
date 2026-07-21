@@ -21,6 +21,7 @@ import {
   AlertCircle,
   PencilLine,
   Copy,
+  Loader2,
 } from 'lucide-react';
 import EventWizard from '@/components/crm/EventWizard';
 import { supabase } from '@/lib/supabase/browser';
@@ -121,6 +122,7 @@ export const statusColors: Record<string, string> = {
 const SETTLED_STATUSES = new Set(['settled', 'cancelled']);
 
 type PastUrgency = 'red' | 'orange' | null;
+type CopiedFinancialSource = 'calculation' | 'offer' | null;
 
 function getPastUrgency(event: any): PastUrgency {
   if (SETTLED_STATUSES.has(event.status)) return null;
@@ -139,6 +141,38 @@ const stop = (e: React.MouseEvent) => {
   e.preventDefault();
   e.stopPropagation();
 };
+
+type DuplicateLocationOption = {
+  id: string;
+  name: string;
+  city: string | null;
+  formatted_address: string | null;
+  address: string | null;
+};
+
+type DuplicateOrganizationOption = {
+  id: string;
+  name: string;
+  alias: string | null;
+};
+
+type DuplicateContactOption = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+};
+
+type DuplicateClientSelection =
+  | {
+      type: 'business';
+      id: string;
+    }
+  | {
+      type: 'individual';
+      id: string;
+    }
+  | null;
 
 type SortField = 'event_date' | 'name' | 'budget' | 'created_at';
 type SortDirection = 'asc' | 'desc';
@@ -331,6 +365,26 @@ export default function EventsPageClient({
   const [eventToDuplicate, setEventToDuplicate] = useState<any>(null);
   const [duplicatingEvent, setDuplicatingEvent] = useState(false);
 
+  const [changeDuplicateDate, setChangeDuplicateDate] = useState(false);
+  const [changeDuplicateLocation, setChangeDuplicateLocation] = useState(false);
+  const [changeDuplicateClient, setChangeDuplicateClient] = useState(false);
+
+  const [duplicateStartDate, setDuplicateStartDate] = useState('');
+  const [duplicateEndDate, setDuplicateEndDate] = useState('');
+
+  const [duplicateLocationId, setDuplicateLocationId] = useState('');
+  const [duplicateClient, setDuplicateClient] = useState<DuplicateClientSelection>(null);
+
+  const [duplicateLocations, setDuplicateLocations] = useState<DuplicateLocationOption[]>([]);
+
+  const [duplicateOrganizations, setDuplicateOrganizations] = useState<
+    DuplicateOrganizationOption[]
+  >([]);
+
+  const [duplicateContacts, setDuplicateContacts] = useState<DuplicateContactOption[]>([]);
+
+  const [loadingDuplicateOptions, setLoadingDuplicateOptions] = useState(false);
+
   const [openingEvent, setOpeningEvent] = useState(false);
   const [openingEventName, setOpeningEventName] = useState('');
 
@@ -406,7 +460,7 @@ export default function EventsPageClient({
     });
   };
 
-  const handleDuplicateClick = (e: React.MouseEvent | null, event: any) => {
+  const handleDuplicateClick = async (e: React.MouseEvent | null, event: any) => {
     if (e) {
       e.preventDefault();
       e.stopPropagation();
@@ -414,65 +468,476 @@ export default function EventsPageClient({
 
     if (duplicatingEvent) return;
 
+    resetDuplicateOptions();
+
     setEventToDuplicate(event);
+
+    setDuplicateStartDate(event.event_date ?? '');
+    setDuplicateEndDate(event.event_end_date ?? event.event_date ?? '');
+
+    setDuplicateLocationId(event.location_id ?? '');
+
+    if (event.organization_id) {
+      setDuplicateClient({
+        type: 'business',
+        id: event.organization_id,
+      });
+    } else if (event.contact_person_id) {
+      setDuplicateClient({
+        type: 'individual',
+        id: event.contact_person_id,
+      });
+    }
+
     setDuplicateModalOpen(true);
+
+    await fetchDuplicateOptions();
+  };
+
+  const copyAcceptedCalculation = async (
+    sourceEventId: string,
+    targetEventId: string,
+  ): Promise<boolean> => {
+    const { data: sourceCalculation, error: calculationError } = await supabase
+      .from('event_calculations')
+      .select('*')
+      .eq('event_id', sourceEventId)
+      .eq('is_accepted', true)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (calculationError) {
+      throw calculationError;
+    }
+
+    if (!sourceCalculation) {
+      return false;
+    }
+
+    const { data: sourceItems, error: itemsError } = await supabase
+      .from('event_calculation_items')
+      .select('*')
+      .eq('calculation_id', sourceCalculation.id)
+      .order('position', { ascending: true });
+
+    if (itemsError) {
+      throw itemsError;
+    }
+
+    const {
+      id: _sourceCalculationId,
+      event_id: _sourceCalculationEventId,
+      created_at: _sourceCalculationCreatedAt,
+      updated_at: _sourceCalculationUpdatedAt,
+      generated_pdf_path: _sourceCalculationPdf,
+      ...calculationData
+    } = sourceCalculation;
+
+    const { data: newCalculation, error: insertCalculationError } = await supabase
+      .from('event_calculations')
+      .insert({
+        ...calculationData,
+        event_id: targetEventId,
+        is_accepted: true,
+        generated_pdf_path: null,
+        updated_at: new Date().toISOString(),
+      })
+      .select('id')
+      .single();
+
+    if (insertCalculationError) {
+      throw insertCalculationError;
+    }
+
+    if (sourceItems?.length) {
+      const itemsPayload = sourceItems.map((item: any, index: number) => {
+        const {
+          id: _sourceItemId,
+          calculation_id: _sourceCalculationId,
+          created_at: _sourceItemCreatedAt,
+          updated_at: _sourceItemUpdatedAt,
+          ...itemData
+        } = item;
+
+        return {
+          ...itemData,
+          calculation_id: newCalculation.id,
+          position: item.position ?? index,
+        };
+      });
+
+      const { error: insertItemsError } = await supabase
+        .from('event_calculation_items')
+        .insert(itemsPayload);
+
+      if (insertItemsError) {
+        throw insertItemsError;
+      }
+    }
+
+    return true;
+  };
+
+  const copyAcceptedOffer = async (
+    sourceEventId: string,
+    targetEventId: string,
+  ): Promise<boolean> => {
+    const { data: sourceOffer, error: offerError } = await supabase
+      .from('offers')
+      .select('*')
+      .eq('event_id', sourceEventId)
+      .eq('status', 'accepted')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (offerError) {
+      throw offerError;
+    }
+
+    if (!sourceOffer) {
+      return false;
+    }
+
+    const { data: sourceOfferItems, error: offerItemsError } = await supabase
+      .from('offer_items')
+      .select('*')
+      .eq('offer_id', sourceOffer.id)
+      .order('position', { ascending: true });
+
+    if (offerItemsError) {
+      throw offerItemsError;
+    }
+
+    const {
+      id: _sourceOfferId,
+      event_id: _sourceOfferEventId,
+      created_at: _sourceOfferCreatedAt,
+      updated_at: _sourceOfferUpdatedAt,
+      offer_number: _sourceOfferNumber,
+      generated_pdf_path: _sourceOfferPdf,
+      ...offerData
+    } = sourceOffer;
+
+    const { data: newOffer, error: insertOfferError } = await supabase
+      .from('offers')
+      .insert({
+        ...offerData,
+        event_id: targetEventId,
+        status: 'accepted',
+        generated_pdf_path: null,
+        updated_at: new Date().toISOString(),
+      })
+      .select('id')
+      .single();
+
+    if (insertOfferError) {
+      throw insertOfferError;
+    }
+
+    if (sourceOfferItems?.length) {
+      const offerItemsPayload = sourceOfferItems.map((item: any, index: number) => {
+        const {
+          id: _sourceItemId,
+          offer_id: _sourceOfferId,
+          created_at: _sourceItemCreatedAt,
+          updated_at: _sourceItemUpdatedAt,
+          ...itemData
+        } = item;
+
+        return {
+          ...itemData,
+          offer_id: newOffer.id,
+          position: item.position ?? index,
+        };
+      });
+
+      const { error: insertOfferItemsError } = await supabase
+        .from('offer_items')
+        .insert(offerItemsPayload);
+
+      if (insertOfferItemsError) {
+        throw insertOfferItemsError;
+      }
+    }
+
+    return true;
+  };
+
+  const copyEventFinancialSource = async (
+    sourceEventId: string,
+    targetEventId: string,
+  ): Promise<CopiedFinancialSource> => {
+    /*
+     * Zaakceptowana kalkulacja ma pierwszeństwo.
+     * Jeżeli istnieje, nie kopiujemy oferty.
+     */
+    const calculationCopied = await copyAcceptedCalculation(sourceEventId, targetEventId);
+
+    if (calculationCopied) {
+      return 'calculation';
+    }
+
+    /*
+     * Zaakceptowana oferta jest kopiowana tylko wtedy,
+     * gdy wydarzenie nie ma zaakceptowanej kalkulacji.
+     */
+    const offerCopied = await copyAcceptedOffer(sourceEventId, targetEventId);
+
+    if (offerCopied) {
+      return 'offer';
+    }
+
+    return null;
+  };
+
+  const resetDuplicateOptions = () => {
+    setChangeDuplicateDate(false);
+    setChangeDuplicateLocation(false);
+    setChangeDuplicateClient(false);
+
+    setDuplicateStartDate('');
+    setDuplicateEndDate('');
+
+    setDuplicateLocationId('');
+    setDuplicateClient(null);
+  };
+
+  const fetchDuplicateOptions = async () => {
+    try {
+      setLoadingDuplicateOptions(true);
+
+      const [locationsResult, organizationsResult, contactsResult] = await Promise.all([
+        supabase
+          .from('locations')
+          .select('id, name, city, formatted_address, address')
+          .order('name', { ascending: true }),
+
+        supabase.from('organizations').select('id, name, alias').order('name', { ascending: true }),
+
+        supabase
+          .from('contacts')
+          .select('id, first_name, last_name, email')
+          .order('last_name', { ascending: true }),
+      ]);
+
+      if (locationsResult.error) {
+        throw locationsResult.error;
+      }
+
+      if (organizationsResult.error) {
+        throw organizationsResult.error;
+      }
+
+      if (contactsResult.error) {
+        throw contactsResult.error;
+      }
+
+      setDuplicateLocations(locationsResult.data ?? []);
+      setDuplicateOrganizations(organizationsResult.data ?? []);
+      setDuplicateContacts(contactsResult.data ?? []);
+    } catch (error) {
+      console.error('Error loading duplicate options:', error);
+      showSnackbar('Nie udało się pobrać listy miejsc lub klientów', 'error');
+    } finally {
+      setLoadingDuplicateOptions(false);
+    }
   };
 
   const handleDuplicateConfirm = async () => {
     if (!eventToDuplicate?.id || duplicatingEvent) return;
+
+    let duplicatedEventId: string | null = null;
 
     try {
       setDuplicatingEvent(true);
 
       const {
         data: { session },
+        error: sessionError,
       } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        throw sessionError;
+      }
 
       if (!session?.user?.id) {
         throw new Error('Brak aktywnej sesji użytkownika');
       }
 
+      /*
+       * Pobieramy cały rekord bezpośrednio z tabeli events.
+       * Obiekt wyświetlany na liście może nie zawierać wszystkich ID relacji.
+       */
+      const { data: sourceEvent, error: sourceEventError } = await supabase
+        .from('events')
+        .select('*')
+        .eq('id', eventToDuplicate.id)
+        .single();
+
+      if (sourceEventError) {
+        throw sourceEventError;
+      }
+
+      if (!sourceEvent) {
+        throw new Error('Nie znaleziono wydarzenia do zduplikowania');
+      }
+      if (changeDuplicateDate && !duplicateStartDate) {
+        showSnackbar('Wybierz datę rozpoczęcia wydarzenia', 'error');
+        return;
+      }
+
+      if (changeDuplicateLocation && !duplicateLocationId) {
+        showSnackbar('Wybierz nowe miejsce wydarzenia', 'error');
+        return;
+      }
+
+      if (changeDuplicateClient && !duplicateClient) {
+        showSnackbar('Wybierz nowego klienta', 'error');
+        return;
+      }
+
       const duplicatedEvent = {
-        name: `${eventToDuplicate.name} (kopia)`,
-        description: eventToDuplicate.description || null,
-        event_date: eventToDuplicate.event_date,
-        event_end_date: eventToDuplicate.event_end_date || null,
-        location_id: eventToDuplicate.location_id || null,
-        location: eventToDuplicate.location || null,
+        name: `${sourceEvent.name} (kopia)`,
+
+        description: sourceEvent.description ?? null,
+        notes: sourceEvent.notes ?? null,
+
+        event_date: changeDuplicateDate ? duplicateStartDate : sourceEvent.event_date,
+
+        event_end_date: changeDuplicateDate
+          ? duplicateEndDate || duplicateStartDate
+          : (sourceEvent.event_end_date ?? null),
+
+        /*
+         * Lokalizacja tekstowa oraz właściwe ID lokalizacji.
+         */
+        location_id: changeDuplicateLocation
+          ? duplicateLocationId || null
+          : (sourceEvent.location_id ?? null),
+
+        location: changeDuplicateLocation ? null : (sourceEvent.location ?? null),
+
+        /*
+         * Kategoria wydarzenia.
+         */
+        category_id: sourceEvent.category_id ?? null,
+
+        /*
+         * Klient firmowy lub indywidualny oraz osoba kontaktowa.
+         */
+        organization_id: changeDuplicateClient
+          ? duplicateClient?.type === 'business'
+            ? duplicateClient.id
+            : null
+          : (sourceEvent.organization_id ?? null),
+
+        contact_person_id: changeDuplicateClient
+          ? duplicateClient?.type === 'individual'
+            ? duplicateClient.id
+            : null
+          : (sourceEvent.contact_person_id ?? null),
+
+        client_type: changeDuplicateClient
+          ? (duplicateClient?.type ?? sourceEvent.client_type ?? 'business')
+          : (sourceEvent.client_type ?? 'business'),
+
+        /*
+         * Firma wystawiająca dokumenty.
+         */
+        my_company_id: sourceEvent.my_company_id ?? null,
+
+        /*
+         * Dane finansowe zapisane bezpośrednio w events.
+         * Właściwe źródło finansowe zostanie skopiowane niżej.
+         */
+        expected_revenue: Number(sourceEvent.expected_revenue ?? 0),
+        estimated_costs: Number(sourceEvent.estimated_costs ?? 0),
+        budget: sourceEvent.budget ?? null,
+
+        /*
+         * Kopia zawsze zaczyna jako nowe zapytanie.
+         */
         status: 'inquiry',
-        notes: eventToDuplicate.notes || null,
-        category_id: eventToDuplicate.category_id || null,
-        organization_id: eventToDuplicate.organization_id || null,
-        contact_person_id: eventToDuplicate.contact_person_id || null,
-        my_company_id: eventToDuplicate.my_company_id || null,
-        client_type: eventToDuplicate.client_type || 'business',
-        expected_revenue: eventToDuplicate.expected_revenue ?? null,
-        estimated_costs: eventToDuplicate.estimated_costs ?? null,
-        budget: eventToDuplicate.budget ?? null,
+
         created_by: session.user.id,
         updated_at: new Date().toISOString(),
       };
 
-      const { data, error } = await supabase
+      const { data: duplicated, error: duplicateError } = await supabase
         .from('events')
         .insert(duplicatedEvent)
         .select('id, name')
         .single();
 
-      if (error) throw error;
+      if (duplicateError) {
+        throw duplicateError;
+      }
 
-      showSnackbar('Wydarzenie zostało zduplikowane', 'success');
+      duplicatedEventId = duplicated.id;
+
+      /*
+       * Kopiujemy dokładnie jedno źródło finansowe:
+       *
+       * 1. zaakceptowaną kalkulację,
+       * 2. albo zaakceptowaną ofertę, gdy kalkulacji nie ma.
+       */
+      const copiedFinancialSource = await copyEventFinancialSource(sourceEvent.id, duplicated.id);
+
+      /*
+       * Jeżeli twórca oryginalnego wydarzenia był przypisany jako pracownik,
+       * nowy event nie dziedziczy całego zespołu. Dodajemy jedynie osobę
+       * wykonującą duplikowanie jako autora/koordynatora.
+       */
+      const { error: assignmentError } = await supabase.from('employee_assignments').insert({
+        event_id: duplicated.id,
+        employee_id: session.user.id,
+        role: 'Autor/Koordynator',
+      });
+
+      if (assignmentError) {
+        console.warn(
+          'Nie udało się przypisać użytkownika do zduplikowanego wydarzenia:',
+          assignmentError,
+        );
+      }
+
+      let successMessage = 'Wydarzenie zostało zduplikowane.';
+
+      if (copiedFinancialSource === 'calculation') {
+        successMessage += ' Skopiowano zaakceptowaną kalkulację wraz z pozycjami.';
+      } else if (copiedFinancialSource === 'offer') {
+        successMessage += ' Skopiowano zaakceptowaną ofertę wraz z pozycjami.';
+      } else {
+        successMessage += ' Oryginalne wydarzenie nie miało zaakceptowanej kalkulacji ani oferty.';
+      }
+
+      showSnackbar(successMessage, 'success');
 
       setDuplicateModalOpen(false);
       setEventToDuplicate(null);
 
       await fetchEvents();
 
-      if (data?.id) {
-        router.push(`/crm/events/${data.id}`);
-      }
+      router.push(`/crm/events/${duplicated.id}`);
     } catch (err: any) {
       console.error('Error duplicating event:', err);
+
+      /*
+       * Jeżeli event został już utworzony, ale kopiowanie kalkulacji
+       * lub oferty się nie udało, usuwamy niepełną kopię.
+       */
+      if (duplicatedEventId) {
+        const { error: rollbackError } = await supabase
+          .from('events')
+          .delete()
+          .eq('id', duplicatedEventId);
+
+        if (rollbackError) {
+          console.error('Nie udało się usunąć niepełnej kopii eventu:', rollbackError);
+        }
+      }
 
       showSnackbar(err?.message || 'Wystąpił błąd podczas duplikowania wydarzenia', 'error');
     } finally {
@@ -1885,41 +2350,292 @@ export default function EventsPageClient({
 
           setDuplicateModalOpen(false);
           setEventToDuplicate(null);
+          resetDuplicateOptions();
         }}
         title="Duplikuj wydarzenie"
       >
         <div className="space-y-6">
+          {/* INFORMACJA O WYDARZENIU */}
           <div className="flex items-start gap-4">
             <div className="rounded-full bg-[#d3bb73]/10 p-3">
               <Copy className="h-6 w-6 text-[#d3bb73]" />
             </div>
 
-            <div>
-              <h3 className="mb-2 text-lg font-medium text-[#e5e4e2]">
-                Czy chcesz zduplikować to wydarzenie?
-              </h3>
+            <div className="min-w-0 flex-1">
+              <h3 className="mb-2 text-lg font-medium text-[#e5e4e2]">Duplikowanie wydarzenia</h3>
 
-              <p className="mb-3 text-[#e5e4e2]/70">
+              <p className="text-sm text-[#e5e4e2]/70">
                 Event: <strong className="text-[#d3bb73]">{eventToDuplicate?.name || '—'}</strong>
               </p>
 
-              <p className="text-sm leading-relaxed text-[#e5e4e2]/60">
-                Zostaną skopiowane dane podstawowe wydarzenia, klient, lokalizacja, kategoria,
-                terminy, przychód i koszty.
-              </p>
-
-              <p className="mt-2 text-sm leading-relaxed text-[#e5e4e2]/60">
-                Nie zostaną skopiowani przypisani pracownicy, pliki, dokumenty, zadania, oferty ani
-                pozostałe dane powiązane.
+              <p className="mt-2 text-sm leading-relaxed text-[#e5e4e2]/50">
+                Domyślnie zostaną zachowane termin, miejsce i klient oryginalnego wydarzenia.
+                Zaznacz wybrane opcje, aby je zmienić.
               </p>
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-3 border-t border-[#d3bb73]/20 pt-4">
+          {/* OPCJE DUPLIKOWANIA */}
+          <div className="space-y-4">
+            {/* ZMIANA DATY */}
+            <div className="rounded-xl border border-[#d3bb73]/15 bg-[#0f1117] p-4">
+              <label className="flex cursor-pointer items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={changeDuplicateDate}
+                  onChange={(e) => setChangeDuplicateDate(e.target.checked)}
+                  disabled={duplicatingEvent}
+                  className="mt-1 h-4 w-4 flex-shrink-0 accent-[#d3bb73]"
+                />
+
+                <div>
+                  <div className="font-medium text-[#e5e4e2]">Zmień termin wydarzenia</div>
+
+                  <div className="text-xs text-[#e5e4e2]/50">
+                    Ustaw nową datę rozpoczęcia i zakończenia.
+                  </div>
+                </div>
+              </label>
+
+              {changeDuplicateDate && (
+                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data rozpoczęcia</label>
+
+                    <input
+                      type="datetime-local"
+                      value={duplicateStartDate}
+                      onChange={(e) => {
+                        const nextStartDate = e.target.value;
+
+                        setDuplicateStartDate(nextStartDate);
+
+                        if (
+                          !duplicateEndDate ||
+                          new Date(duplicateEndDate).getTime() < new Date(nextStartDate).getTime()
+                        ) {
+                          setDuplicateEndDate(nextStartDate);
+                        }
+                      }}
+                      disabled={duplicatingEvent}
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm text-[#e5e4e2]/60">Data zakończenia</label>
+
+                    <input
+                      type="datetime-local"
+                      value={duplicateEndDate}
+                      min={duplicateStartDate || undefined}
+                      onChange={(e) => setDuplicateEndDate(e.target.value)}
+                      disabled={duplicatingEvent}
+                      className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ZMIANA MIEJSCA */}
+            <div className="rounded-xl border border-[#d3bb73]/15 bg-[#0f1117] p-4">
+              <label className="flex cursor-pointer items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={changeDuplicateLocation}
+                  onChange={(e) => setChangeDuplicateLocation(e.target.checked)}
+                  disabled={duplicatingEvent}
+                  className="mt-1 h-4 w-4 flex-shrink-0 accent-[#d3bb73]"
+                />
+
+                <div>
+                  <div className="font-medium text-[#e5e4e2]">Zmień miejsce wydarzenia</div>
+
+                  <div className="text-xs text-[#e5e4e2]/50">
+                    Wybierz inne miejsce zapisane w bazie.
+                  </div>
+                </div>
+              </label>
+
+              {changeDuplicateLocation && (
+                <div className="mt-4">
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nowe miejsce</label>
+
+                  <select
+                    value={duplicateLocationId}
+                    onChange={(e) => setDuplicateLocationId(e.target.value)}
+                    disabled={duplicatingEvent || loadingDuplicateOptions}
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <option value="">
+                      {loadingDuplicateOptions ? 'Pobieranie miejsc...' : 'Wybierz miejsce'}
+                    </option>
+
+                    {duplicateLocations.map((location) => {
+                      const address =
+                        location.formatted_address || location.address || location.city;
+
+                      return (
+                        <option key={location.id} value={location.id}>
+                          {location.name}
+                          {address ? ` — ${address}` : ''}
+                        </option>
+                      );
+                    })}
+                  </select>
+
+                  {!loadingDuplicateOptions && duplicateLocations.length === 0 && (
+                    <p className="mt-2 text-xs text-orange-400">
+                      Nie znaleziono miejsc zapisanych w bazie.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* ZMIANA KLIENTA */}
+            <div className="rounded-xl border border-[#d3bb73]/15 bg-[#0f1117] p-4">
+              <label className="flex cursor-pointer items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={changeDuplicateClient}
+                  onChange={(e) => setChangeDuplicateClient(e.target.checked)}
+                  disabled={duplicatingEvent}
+                  className="mt-1 h-4 w-4 flex-shrink-0 accent-[#d3bb73]"
+                />
+
+                <div>
+                  <div className="font-medium text-[#e5e4e2]">Zmień klienta</div>
+
+                  <div className="text-xs text-[#e5e4e2]/50">
+                    Wybierz firmę albo klienta indywidualnego.
+                  </div>
+                </div>
+              </label>
+
+              {changeDuplicateClient && (
+                <div className="mt-4">
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/60">Nowy klient</label>
+
+                  <select
+                    value={duplicateClient ? `${duplicateClient.type}:${duplicateClient.id}` : ''}
+                    onChange={(e) => {
+                      const value = e.target.value;
+
+                      if (!value) {
+                        setDuplicateClient(null);
+                        return;
+                      }
+
+                      const separatorIndex = value.indexOf(':');
+
+                      if (separatorIndex === -1) {
+                        setDuplicateClient(null);
+                        return;
+                      }
+
+                      const type = value.slice(0, separatorIndex);
+                      const id = value.slice(separatorIndex + 1);
+
+                      if (!id) {
+                        setDuplicateClient(null);
+                        return;
+                      }
+
+                      if (type === 'business') {
+                        setDuplicateClient({
+                          type: 'business',
+                          id,
+                        });
+                        return;
+                      }
+
+                      if (type === 'individual') {
+                        setDuplicateClient({
+                          type: 'individual',
+                          id,
+                        });
+                        return;
+                      }
+
+                      setDuplicateClient(null);
+                    }}
+                    disabled={duplicatingEvent || loadingDuplicateOptions}
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 py-2 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <option value="">
+                      {loadingDuplicateOptions ? 'Pobieranie klientów...' : 'Wybierz klienta'}
+                    </option>
+
+                    {duplicateOrganizations.length > 0 && (
+                      <optgroup label="Firmy i organizacje">
+                        {duplicateOrganizations.map((organization) => (
+                          <option
+                            key={`business-${organization.id}`}
+                            value={`business:${organization.id}`}
+                          >
+                            {organization.alias || organization.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+
+                    {duplicateContacts.length > 0 && (
+                      <optgroup label="Klienci indywidualni">
+                        {duplicateContacts.map((contact) => {
+                          const name =
+                            `${contact.first_name ?? ''} ${contact.last_name ?? ''}`.trim();
+
+                          return (
+                            <option
+                              key={`individual-${contact.id}`}
+                              value={`individual:${contact.id}`}
+                            >
+                              {name || contact.email || 'Klient bez nazwy'}
+                              {contact.email && name ? ` — ${contact.email}` : ''}
+                            </option>
+                          );
+                        })}
+                      </optgroup>
+                    )}
+                  </select>
+
+                  {!loadingDuplicateOptions &&
+                    duplicateOrganizations.length === 0 &&
+                    duplicateContacts.length === 0 && (
+                      <p className="mt-2 text-xs text-orange-400">
+                        Nie znaleziono klientów zapisanych w bazie.
+                      </p>
+                    )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* INFORMACJA O KOPIOWANYCH DANYCH */}
+          <div className="rounded-xl border border-[#d3bb73]/10 bg-[#d3bb73]/5 p-4">
+            <p className="text-sm leading-relaxed text-[#e5e4e2]/60">
+              Skopiowane zostaną dane wydarzenia oraz aktywne źródło finansowe: zaakceptowana
+              kalkulacja albo, gdy jej nie ma, zaakceptowana oferta.
+            </p>
+
+            <p className="mt-2 text-sm leading-relaxed text-[#e5e4e2]/50">
+              Nie zostaną skopiowane pliki, dokumenty, zadania, faktury, płatności ani cały
+              przypisany zespół.
+            </p>
+          </div>
+
+          {/* PRZYCISKI */}
+          <div className="flex flex-col-reverse gap-3 border-t border-[#d3bb73]/20 pt-4 sm:flex-row sm:items-center sm:justify-end">
             <button
+              type="button"
               onClick={() => {
+                if (duplicatingEvent) return;
+
                 setDuplicateModalOpen(false);
                 setEventToDuplicate(null);
+                resetDuplicateOptions();
               }}
               disabled={duplicatingEvent}
               className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/5 disabled:cursor-not-allowed disabled:opacity-50"
@@ -1928,12 +2644,28 @@ export default function EventsPageClient({
             </button>
 
             <button
+              type="button"
               onClick={handleDuplicateConfirm}
-              disabled={duplicatingEvent}
-              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={
+                duplicatingEvent ||
+                loadingDuplicateOptions ||
+                (changeDuplicateDate && !duplicateStartDate) ||
+                (changeDuplicateLocation && !duplicateLocationId) ||
+                (changeDuplicateClient && !duplicateClient)
+              }
+              className="flex items-center justify-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <Copy className="h-4 w-4" />
-              {duplicatingEvent ? 'Duplikowanie...' : 'Duplikuj'}
+              {duplicatingEvent ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Duplikowanie...
+                </>
+              ) : (
+                <>
+                  <Copy className="h-4 w-4" />
+                  Duplikuj wydarzenie
+                </>
+              )}
             </button>
           </div>
         </div>
