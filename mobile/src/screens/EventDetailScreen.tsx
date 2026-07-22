@@ -44,20 +44,53 @@ interface EventDetail {
 
 interface AgendaItem {
   id: string;
+  time: string | null;
   title: string;
   description: string | null;
+  order_index: number;
+}
+
+interface AgendaNote {
+  id: string;
+  content: string;
+  order_index: number;
+  level: number;
+  parent_id: string | null;
+}
+
+interface AgendaData {
+  id: string;
+  event_name: string;
   start_time: string | null;
   end_time: string | null;
-  responsible_person: string | null;
-  sort_order: number;
+  client_contact: string | null;
+  generated_pdf_path: string | null;
+  items: AgendaItem[];
+  notes: AgendaNote[];
 }
 
 interface ChecklistItem {
   id: string;
-  title: string;
-  is_completed: boolean;
+  item_name: string;
+  quantity: number | null;
+  loaded: boolean;
+  unloaded: boolean;
+  priority: string | null;
+  vehicle_name: string | null;
+  notes: string | null;
   sort_order: number;
+}
+
+interface LogisticsItem {
+  id: string;
+  title: string;
+  description: string | null;
+  activity_type: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  status: string | null;
   responsible_employee: { name: string; surname: string } | null;
+  sort_order: number;
 }
 
 interface EventFile {
@@ -98,18 +131,20 @@ const STATUS_COLORS: Record<string, string> = {
 export default function EventDetailScreen({ eventId, onBack }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>('details');
   const [event, setEvent] = useState<EventDetail | null>(null);
-  const [agenda, setAgenda] = useState<AgendaItem[]>([]);
+  const [agenda, setAgenda] = useState<AgendaData | null>(null);
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
+  const [logistics, setLogistics] = useState<LogisticsItem[]>([]);
   const [files, setFiles] = useState<EventFile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [checklistPdfPath, setChecklistPdfPath] = useState<string | null>(null);
 
   const fetchEvent = useCallback(async () => {
     const { data, error } = await supabase
       .from('events')
       .select(`
         id, name, description, event_date, event_end_date, status, notes,
-        expected_revenue, budget,
+        expected_revenue, budget, equipment_checklist_pdf_path,
         event_categories(name, color),
         locations(name, formatted_address, address, city),
         organizations(name, alias),
@@ -119,6 +154,8 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
       .maybeSingle();
 
     if (error || !data) return null;
+
+    setChecklistPdfPath((data as any).equipment_checklist_pdf_path || null);
 
     const { data: assignments } = await supabase
       .from('employee_event_assignments')
@@ -157,28 +194,90 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
     } as EventDetail;
   }, [eventId]);
 
-  const fetchAgenda = useCallback(async () => {
-    const { data } = await supabase
+  const fetchAgenda = useCallback(async (): Promise<AgendaData | null> => {
+    const { data: agendaRow, error: agendaError } = await supabase
       .from('event_agendas')
       .select('*')
       .eq('event_id', eventId)
-      .order('start_time', { ascending: true });
-    return (data || []) as AgendaItem[];
+      .maybeSingle();
+
+    if (agendaError || !agendaRow) return null;
+
+    const { data: items } = await supabase
+      .from('event_agenda_items')
+      .select('*')
+      .eq('agenda_id', agendaRow.id)
+      .order('order_index', { ascending: true });
+
+    const { data: notes } = await supabase
+      .from('event_agenda_notes')
+      .select('*')
+      .eq('agenda_id', agendaRow.id)
+      .order('order_index', { ascending: true });
+
+    return {
+      id: agendaRow.id,
+      event_name: agendaRow.event_name,
+      start_time: agendaRow.start_time,
+      end_time: agendaRow.end_time,
+      client_contact: agendaRow.client_contact,
+      generated_pdf_path: agendaRow.generated_pdf_path || null,
+      items: (items || []).map((item: any) => ({
+        id: item.id,
+        time: item.time,
+        title: item.title,
+        description: item.description,
+        order_index: item.order_index,
+      })),
+      notes: (notes || []).map((note: any) => ({
+        id: note.id,
+        content: note.content,
+        order_index: note.order_index,
+        level: note.level,
+        parent_id: note.parent_id,
+      })),
+    };
   }, [eventId]);
 
   const fetchChecklist = useCallback(async () => {
-    const { data } = await supabase
-      .from('event_logistics_timeline')
-      .select('*, responsible_employee:employees(name, surname)')
-      .eq('event_id', eventId)
-      .order('sort_order', { ascending: true });
-    return (data || []).map((item: any) => ({
+    const [checklistRes, logisticsRes] = await Promise.all([
+      supabase
+        .from('event_loading_checklist')
+        .select('*, vehicles(name)')
+        .eq('event_id', eventId)
+        .order('sort_order', { ascending: true }),
+      supabase
+        .from('event_logistics_timeline')
+        .select('*, responsible_employee:employees!responsible_employee_id(name, surname)')
+        .eq('event_id', eventId)
+        .order('sort_order', { ascending: true }),
+    ]);
+
+    const mappedChecklist: ChecklistItem[] = (checklistRes.data || []).map((item: any) => ({
       id: item.id,
-      title: item.title || item.description || 'Bez tytułu',
-      is_completed: item.is_completed ?? false,
+      item_name: item.item_name,
+      quantity: item.quantity,
+      loaded: item.loaded ?? false,
+      unloaded: item.unloaded ?? false,
+      priority: item.priority,
+      vehicle_name: item.vehicles?.name ?? null,
+      notes: item.notes,
       sort_order: item.sort_order ?? 0,
-      responsible_employee: item.responsible_employee,
     }));
+
+    const mappedLogistics: LogisticsItem[] = (logisticsRes.data || []).map((item: any) => ({
+      id: item.id,
+      title: item.title || item.description || '',
+      description: item.description,
+      activity_type: item.activity_type,
+      start_time: item.start_time,
+      end_time: item.end_time,
+      status: item.status,
+      responsible_employee: item.responsible_employee,
+      sort_order: item.sort_order ?? 0,
+    }));
+
+    return { checklist: mappedChecklist, logistics: mappedLogistics };
   }, [eventId]);
 
   const fetchFiles = useCallback(async () => {
@@ -204,7 +303,8 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
         ]);
         if (ev) setEvent(ev);
         setAgenda(ag);
-        setChecklist(ch);
+        setChecklist(ch.checklist);
+        setLogistics(ch.logistics);
         setFiles(fi);
       } catch (err) {
         console.error('Error loading event detail:', err);
@@ -220,14 +320,14 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
     loadAll();
   }, [loadAll]);
 
-  const toggleChecklistItem = async (item: ChecklistItem) => {
-    const newVal = !item.is_completed;
+  const toggleLoadedItem = async (item: ChecklistItem) => {
+    const newVal = !item.loaded;
     setChecklist((prev) =>
-      prev.map((c) => (c.id === item.id ? { ...c, is_completed: newVal } : c))
+      prev.map((c) => (c.id === item.id ? { ...c, loaded: newVal } : c))
     );
     await supabase
-      .from('event_logistics_timeline')
-      .update({ is_completed: newVal })
+      .from('event_loading_checklist')
+      .update({ loaded: newVal })
       .eq('id', item.id);
   };
 
@@ -253,8 +353,8 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
 
   const tabs: { key: TabKey; label: string; icon: string; count?: number }[] = [
     { key: 'details', label: 'Szczegóły', icon: 'info' },
-    { key: 'agenda', label: 'Agenda', icon: 'clock', count: agenda.length },
-    { key: 'checklist', label: 'Checklista', icon: 'check-square', count: checklist.length },
+    { key: 'agenda', label: 'Agenda', icon: 'clock', count: agenda?.items.length || 0 },
+    { key: 'checklist', label: 'Checklista', icon: 'check-square', count: checklist.length + logistics.length },
     { key: 'files', label: 'Pliki', icon: 'file', count: files.length },
   ];
 
@@ -329,9 +429,14 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
         }
       >
         {activeTab === 'details' && <DetailsTab event={event} />}
-        {activeTab === 'agenda' && <AgendaTab items={agenda} />}
+        {activeTab === 'agenda' && <AgendaTab agenda={agenda} />}
         {activeTab === 'checklist' && (
-          <ChecklistTab items={checklist} onToggle={toggleChecklistItem} />
+          <ChecklistTab
+            checklist={checklist}
+            logistics={logistics}
+            pdfPath={checklistPdfPath}
+            onToggle={toggleLoadedItem}
+          />
         )}
         {activeTab === 'files' && <FilesTab files={files} />}
         <View style={{ height: 40 }} />
@@ -450,8 +555,8 @@ function DetailsTab({ event }: { event: EventDetail }) {
 }
 
 /* ============ AGENDA TAB ============ */
-function AgendaTab({ items }: { items: AgendaItem[] }) {
-  if (items.length === 0) {
+function AgendaTab({ agenda }: { agenda: AgendaData | null }) {
+  if (!agenda || agenda.items.length === 0) {
     return (
       <View style={styles.emptyTab}>
         <Feather name="clock" size={40} color={colors.text.tertiary} />
@@ -465,53 +570,119 @@ function AgendaTab({ items }: { items: AgendaItem[] }) {
     return time.slice(0, 5);
   };
 
+  const handleOpenPdf = async () => {
+    if (!agenda.generated_pdf_path) return;
+    try {
+      const { data } = await supabase.storage
+        .from('event-files')
+        .createSignedUrl(agenda.generated_pdf_path, 3600);
+      if (data?.signedUrl) {
+        Linking.openURL(data.signedUrl);
+      }
+    } catch (err) {
+      Alert.alert('Błąd', 'Nie udało się otworzyć PDF agendy');
+    }
+  };
+
   return (
     <View style={styles.agendaContainer}>
-      {items.map((item, idx) => (
+      {/* PDF button */}
+      {agenda.generated_pdf_path && (
+        <TouchableOpacity style={styles.pdfButton} onPress={handleOpenPdf} activeOpacity={0.7}>
+          <Feather name="file-text" size={16} color={colors.primary.gold} />
+          <Text style={styles.pdfButtonText}>Pokaż PDF agendy</Text>
+          <Feather name="external-link" size={14} color={colors.primary.gold} />
+        </TouchableOpacity>
+      )}
+
+      {/* Agenda header info */}
+      {(agenda.start_time || agenda.end_time) && (
+        <View style={styles.agendaHeaderInfo}>
+          <Feather name="clock" size={12} color={colors.text.tertiary} />
+          <Text style={styles.agendaHeaderText}>
+            {formatTime(agenda.start_time)}
+            {agenda.end_time ? ` - ${formatTime(agenda.end_time)}` : ''}
+          </Text>
+        </View>
+      )}
+
+      {/* Timeline items */}
+      {agenda.items.map((item, idx) => (
         <View key={item.id} style={styles.agendaItem}>
-          {/* Timeline line */}
           <View style={styles.agendaTimeline}>
             <View style={styles.agendaDot} />
-            {idx < items.length - 1 && <View style={styles.agendaLine} />}
+            {idx < agenda.items.length - 1 && <View style={styles.agendaLine} />}
           </View>
-          {/* Content */}
           <View style={styles.agendaContent}>
-            <View style={styles.agendaTimeRow}>
-              {item.start_time && (
-                <Text style={styles.agendaTime}>
-                  {formatTime(item.start_time)}
-                  {item.end_time ? ` - ${formatTime(item.end_time)}` : ''}
-                </Text>
-              )}
-            </View>
+            {item.time && (
+              <Text style={styles.agendaTime}>{formatTime(item.time)}</Text>
+            )}
             <Text style={styles.agendaTitle}>{item.title}</Text>
             {item.description && (
               <Text style={styles.agendaDesc}>{item.description}</Text>
             )}
-            {item.responsible_person && (
-              <View style={styles.agendaResponsible}>
-                <Feather name="user" size={10} color={colors.text.tertiary} />
-                <Text style={styles.agendaResponsibleText}>{item.responsible_person}</Text>
-              </View>
-            )}
           </View>
         </View>
       ))}
+
+      {/* Notes */}
+      {agenda.notes.length > 0 && (
+        <View style={styles.agendaNotesSection}>
+          <Text style={styles.agendaNotesSectionTitle}>Uwagi</Text>
+          {agenda.notes
+            .filter((n) => !n.parent_id)
+            .map((note) => (
+              <View key={note.id} style={[styles.agendaNoteRow, { marginLeft: note.level * 16 }]}>
+                <View style={styles.agendaNoteBullet} />
+                <Text style={styles.agendaNoteText}>{note.content}</Text>
+              </View>
+            ))}
+          {agenda.notes
+            .filter((n) => n.parent_id)
+            .map((note) => (
+              <View key={note.id} style={[styles.agendaNoteRow, { marginLeft: (note.level + 1) * 16 }]}>
+                <View style={[styles.agendaNoteBullet, styles.agendaNoteBulletSub]} />
+                <Text style={styles.agendaNoteTextSub}>{note.content}</Text>
+              </View>
+            ))}
+        </View>
+      )}
     </View>
   );
 }
 
 /* ============ CHECKLIST TAB ============ */
 function ChecklistTab({
-  items,
+  checklist,
+  logistics,
+  pdfPath,
   onToggle,
 }: {
-  items: ChecklistItem[];
+  checklist: ChecklistItem[];
+  logistics: LogisticsItem[];
+  pdfPath: string | null;
   onToggle: (item: ChecklistItem) => void;
 }) {
-  const completedCount = items.filter((i) => i.is_completed).length;
+  const totalItems = checklist.length + logistics.length;
+  const loadedCount = checklist.filter((i) => i.loaded).length;
+  const completedLogistics = logistics.filter((i) => i.status === 'completed').length;
+  const totalCompleted = loadedCount + completedLogistics;
 
-  if (items.length === 0) {
+  const handleOpenPdf = async () => {
+    if (!pdfPath) return;
+    try {
+      const { data } = await supabase.storage
+        .from('event-files')
+        .createSignedUrl(pdfPath, 3600);
+      if (data?.signedUrl) {
+        Linking.openURL(data.signedUrl);
+      }
+    } catch (err) {
+      Alert.alert('Błąd', 'Nie udało się otworzyć PDF checklisty');
+    }
+  };
+
+  if (totalItems === 0) {
     return (
       <View style={styles.emptyTab}>
         <Feather name="check-square" size={40} color={colors.text.tertiary} />
@@ -520,56 +691,154 @@ function ChecklistTab({
     );
   }
 
+  const PRIORITY_COLORS: Record<string, string> = {
+    high: colors.status.error,
+    medium: colors.status.warning,
+    low: colors.status.info,
+  };
+
+  const ACTIVITY_LABELS: Record<string, string> = {
+    loading: 'Załadunek',
+    unloading: 'Rozładunek',
+    setup: 'Montaż',
+    rehearsal: 'Próba',
+    event: 'Wydarzenie',
+    breakdown: 'Demontaż',
+    packing: 'Pakowanie',
+  };
+
+  const STATUS_ICONS: Record<string, { icon: string; color: string }> = {
+    pending: { icon: 'circle', color: colors.text.tertiary },
+    in_progress: { icon: 'play-circle', color: colors.status.info },
+    completed: { icon: 'check-circle', color: colors.status.success },
+    delayed: { icon: 'alert-circle', color: colors.status.warning },
+    cancelled: { icon: 'x-circle', color: colors.status.error },
+  };
+
   return (
     <View style={styles.checklistContainer}>
-      {/* Progress */}
-      <View style={styles.checklistProgress}>
-        <View style={styles.progressBarBg}>
-          <View
-            style={[
-              styles.progressBarFill,
-              { width: `${(completedCount / items.length) * 100}%` },
-            ]}
-          />
-        </View>
-        <Text style={styles.progressText}>
-          {completedCount}/{items.length} ukończonych
-        </Text>
-      </View>
-
-      {/* Items */}
-      {items.map((item) => (
-        <TouchableOpacity
-          key={item.id}
-          style={styles.checklistItem}
-          onPress={() => onToggle(item)}
-          activeOpacity={0.7}
-        >
-          <View
-            style={[
-              styles.checkbox,
-              item.is_completed && styles.checkboxChecked,
-            ]}
-          >
-            {item.is_completed && <Feather name="check" size={12} color={colors.white} />}
-          </View>
-          <View style={styles.checklistItemContent}>
-            <Text
-              style={[
-                styles.checklistItemTitle,
-                item.is_completed && styles.checklistItemTitleDone,
-              ]}
-            >
-              {item.title}
-            </Text>
-            {item.responsible_employee && (
-              <Text style={styles.checklistItemPerson}>
-                {item.responsible_employee.name} {item.responsible_employee.surname}
-              </Text>
-            )}
-          </View>
+      {/* PDF button */}
+      {pdfPath && (
+        <TouchableOpacity style={styles.pdfButton} onPress={handleOpenPdf} activeOpacity={0.7}>
+          <Feather name="file-text" size={16} color={colors.primary.gold} />
+          <Text style={styles.pdfButtonText}>Pokaż PDF checklisty</Text>
+          <Feather name="external-link" size={14} color={colors.primary.gold} />
         </TouchableOpacity>
-      ))}
+      )}
+
+      {/* Progress */}
+      {totalItems > 0 && (
+        <View style={styles.checklistProgress}>
+          <View style={styles.progressBarBg}>
+            <View
+              style={[
+                styles.progressBarFill,
+                { width: `${(totalCompleted / totalItems) * 100}%` },
+              ]}
+            />
+          </View>
+          <Text style={styles.progressText}>
+            {totalCompleted}/{totalItems} ukończonych
+          </Text>
+        </View>
+      )}
+
+      {/* Loading checklist */}
+      {checklist.length > 0 && (
+        <View style={styles.checklistSection}>
+          <Text style={styles.checklistSectionTitle}>Załadunek / Rozładunek</Text>
+          {checklist.map((item) => (
+            <TouchableOpacity
+              key={item.id}
+              style={styles.checklistItem}
+              onPress={() => onToggle(item)}
+              activeOpacity={0.7}
+            >
+              <View
+                style={[
+                  styles.checkbox,
+                  item.loaded && styles.checkboxChecked,
+                ]}
+              >
+                {item.loaded && <Feather name="check" size={12} color={colors.white} />}
+              </View>
+              <View style={styles.checklistItemContent}>
+                <View style={styles.checklistItemHeader}>
+                  <Text
+                    style={[
+                      styles.checklistItemTitle,
+                      item.loaded && styles.checklistItemTitleDone,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {item.item_name}
+                  </Text>
+                  {item.priority && (
+                    <View style={[styles.priorityBadge, { backgroundColor: (PRIORITY_COLORS[item.priority] || colors.text.tertiary) + '20' }]}>
+                      <Text style={[styles.priorityText, { color: PRIORITY_COLORS[item.priority] || colors.text.tertiary }]}>
+                        {item.priority}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                <View style={styles.checklistItemMeta}>
+                  {item.quantity && item.quantity > 1 && (
+                    <Text style={styles.checklistMetaText}>x{item.quantity}</Text>
+                  )}
+                  {item.vehicle_name && (
+                    <Text style={styles.checklistMetaText}>
+                      <Feather name="truck" size={10} color={colors.text.tertiary} /> {item.vehicle_name}
+                    </Text>
+                  )}
+                </View>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      {/* Logistics timeline */}
+      {logistics.length > 0 && (
+        <View style={styles.checklistSection}>
+          <Text style={styles.checklistSectionTitle}>Harmonogram logistyczny</Text>
+          {logistics.map((item) => {
+            const statusInfo = STATUS_ICONS[item.status || 'pending'] || STATUS_ICONS.pending;
+            return (
+              <View key={item.id} style={styles.logisticsItem}>
+                <View style={styles.logisticsIconContainer}>
+                  <Feather name={statusInfo.icon as any} size={18} color={statusInfo.color} />
+                </View>
+                <View style={styles.logisticsContent}>
+                  <View style={styles.logisticsHeader}>
+                    <Text style={styles.logisticsTitle}>{item.title}</Text>
+                    {item.activity_type && (
+                      <Text style={styles.logisticsType}>
+                        {ACTIVITY_LABELS[item.activity_type] || item.activity_type}
+                      </Text>
+                    )}
+                  </View>
+                  {item.description && item.description !== item.title && (
+                    <Text style={styles.logisticsDesc}>{item.description}</Text>
+                  )}
+                  <View style={styles.logisticsMetaRow}>
+                    {item.start_time && (
+                      <Text style={styles.logisticsTime}>
+                        {new Date(item.start_time).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
+                        {item.end_time && ` - ${new Date(item.end_time).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}`}
+                      </Text>
+                    )}
+                    {item.responsible_employee && (
+                      <Text style={styles.logisticsPerson}>
+                        {item.responsible_employee.name} {item.responsible_employee.surname}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      )}
     </View>
   );
 }
@@ -825,6 +1094,17 @@ const styles = StyleSheet.create({
 
   // Agenda
   agendaContainer: { padding: spacing.md },
+  agendaHeaderInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: colors.background.tertiary,
+    borderRadius: 8,
+  },
+  agendaHeaderText: { fontSize: 12, color: colors.text.secondary },
   agendaItem: { flexDirection: 'row', marginBottom: 0 },
   agendaTimeline: { width: 24, alignItems: 'center' },
   agendaDot: {
@@ -845,15 +1125,41 @@ const styles = StyleSheet.create({
     paddingLeft: 12,
     paddingBottom: 20,
   },
-  agendaTimeRow: { marginBottom: 2 },
-  agendaTime: { fontSize: 11, color: colors.primary.gold, fontWeight: '700' },
+  agendaTime: { fontSize: 11, color: colors.primary.gold, fontWeight: '700', marginBottom: 2 },
   agendaTitle: { fontSize: 14, color: colors.text.primary, fontWeight: '600' },
   agendaDesc: { fontSize: 12, color: colors.text.secondary, marginTop: 2, lineHeight: 18 },
-  agendaResponsible: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
-  agendaResponsibleText: { fontSize: 11, color: colors.text.tertiary },
+  agendaNotesSection: { marginTop: 16, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border.default },
+  agendaNotesSectionTitle: { fontSize: 12, fontWeight: '700', color: colors.text.secondary, marginBottom: 8, textTransform: 'uppercase' },
+  agendaNoteRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 6 },
+  agendaNoteBullet: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary.gold, marginTop: 5 },
+  agendaNoteBulletSub: { backgroundColor: colors.text.tertiary, width: 4, height: 4, borderRadius: 2 },
+  agendaNoteText: { flex: 1, fontSize: 13, color: colors.text.primary, lineHeight: 18 },
+  agendaNoteTextSub: { flex: 1, fontSize: 12, color: colors.text.secondary, lineHeight: 17 },
+  pdfButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.primary.gold + '15',
+    borderWidth: 1,
+    borderColor: colors.primary.gold + '40',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 16,
+  },
+  pdfButtonText: { flex: 1, fontSize: 13, fontWeight: '600', color: colors.primary.gold },
 
   // Checklist
   checklistContainer: { padding: spacing.md },
+  checklistSection: { marginBottom: 20 },
+  checklistSectionTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary.gold,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
   checklistProgress: { marginBottom: 16 },
   progressBarBg: {
     height: 6,
@@ -890,12 +1196,42 @@ const styles = StyleSheet.create({
     borderColor: colors.status.success,
   },
   checklistItemContent: { flex: 1 },
-  checklistItemTitle: { fontSize: 13, color: colors.text.primary, fontWeight: '500' },
+  checklistItemHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  checklistItemTitle: { fontSize: 13, color: colors.text.primary, fontWeight: '500', flex: 1 },
   checklistItemTitleDone: {
     textDecorationLine: 'line-through',
     color: colors.text.tertiary,
   },
-  checklistItemPerson: { fontSize: 11, color: colors.text.tertiary, marginTop: 2 },
+  checklistItemMeta: { flexDirection: 'row', gap: 10, marginTop: 2 },
+  checklistMetaText: { fontSize: 11, color: colors.text.tertiary },
+  priorityBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  priorityText: { fontSize: 9, fontWeight: '700', textTransform: 'uppercase' },
+  // Logistics
+  logisticsItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.default,
+    gap: 10,
+  },
+  logisticsIconContainer: { width: 28, alignItems: 'center', paddingTop: 2 },
+  logisticsContent: { flex: 1 },
+  logisticsHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  logisticsTitle: { fontSize: 13, color: colors.text.primary, fontWeight: '600', flex: 1 },
+  logisticsType: {
+    fontSize: 10,
+    color: colors.text.tertiary,
+    backgroundColor: colors.background.tertiary,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  logisticsDesc: { fontSize: 12, color: colors.text.secondary, marginTop: 2 },
+  logisticsMetaRow: { flexDirection: 'row', gap: 12, marginTop: 4 },
+  logisticsTime: { fontSize: 11, color: colors.primary.gold, fontWeight: '600' },
+  logisticsPerson: { fontSize: 11, color: colors.text.tertiary },
 
   // Files
   filesContainer: { padding: spacing.md },
