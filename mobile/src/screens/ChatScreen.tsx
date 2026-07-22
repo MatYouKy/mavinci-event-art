@@ -103,7 +103,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
   }, [employee, conversation.id]);
 
   useEffect(() => {
-    setActiveChatConversation(conversationId);
+    setActiveChatConversation(conversation.id);
 
     const load = async () => {
       setIsLoading(true);

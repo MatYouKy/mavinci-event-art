@@ -58,6 +58,8 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUnlockedRef = useRef(false);
 
   const currentEmployeeId = employeeId || employee.id;
 
@@ -144,11 +146,41 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
   const activeConversationRef = useRef<string | null>(null);
   activeConversationRef.current = activeConversation?.id ?? null;
 
+  // Pre-load notification sound
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const audio = new Audio('/sounds/chat-notification.wav');
+    audio.volume = 0.5;
+    audio.preload = 'auto';
+    audioRef.current = audio;
+
+    // Unlock audio context on first user interaction
+    const unlock = () => {
+      if (!audioUnlockedRef.current && audioRef.current) {
+        audioRef.current.play().then(() => {
+          audioRef.current!.pause();
+          audioRef.current!.currentTime = 0;
+          audioUnlockedRef.current = true;
+        }).catch(() => {});
+      }
+      document.removeEventListener('click', unlock);
+      document.removeEventListener('keydown', unlock);
+    };
+    document.addEventListener('click', unlock);
+    document.addEventListener('keydown', unlock);
+
+    return () => {
+      document.removeEventListener('click', unlock);
+      document.removeEventListener('keydown', unlock);
+    };
+  }, []);
+
   const playChatSound = useCallback(() => {
     try {
-      const audio = new Audio('/sounds/chat-notification.wav');
-      audio.volume = 0.5;
-      audio.play().catch(() => {});
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0;
+        audioRef.current.play().catch(() => {});
+      }
     } catch {}
   }, []);
 
@@ -185,6 +217,9 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
     },
     [conversations],
   );
+
+  const showBrowserNotificationRef = useRef(showBrowserNotification);
+  showBrowserNotificationRef.current = showBrowserNotification;
 
   useEffect(() => {
     if (!currentEmployeeId) return;
@@ -224,7 +259,7 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
           if (!isOwnMessage && !isActiveConv) {
             setTotalUnread((u) => u + 1);
             playChatSound();
-            showBrowserNotification(msg);
+            showBrowserNotificationRef.current(msg);
           }
         },
       )
@@ -234,7 +269,7 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [currentEmployeeId, fetchConversations]);
+  }, [currentEmployeeId, fetchConversations, playChatSound]);
 
   const openConversation = (conv: Conversation) => {
     setActiveConversation(conv);
