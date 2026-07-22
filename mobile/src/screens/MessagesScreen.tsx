@@ -12,6 +12,7 @@ import { Feather } from '@expo/vector-icons';
 import { colors, spacing } from '../theme';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import PermissionGate from '../components/PermissionGate';
 
 interface Message {
   id: string;
@@ -23,7 +24,7 @@ interface Message {
   snippet: string | null;
 }
 
-export default function MessagesScreen() {
+function MessagesContent() {
   const { employee } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -205,3 +206,11 @@ const styles = StyleSheet.create({
     color: colors.text.tertiary,
   },
 });
+
+export default function MessagesScreen() {
+  return (
+    <PermissionGate module="messages">
+      <MessagesContent />
+    </PermissionGate>
+  );
+}

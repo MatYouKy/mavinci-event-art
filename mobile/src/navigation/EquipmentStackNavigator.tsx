@@ -3,30 +3,31 @@ import { View, StyleSheet } from 'react-native';
 import { colors } from '../theme';
 import EquipmentScreen, { EquipmentListItem } from '../screens/EquipmentScreen';
 import EquipmentDetailScreen from '../screens/EquipmentDetailScreen';
+import PermissionGate from '../components/PermissionGate';
 
 export default function EquipmentStackNavigator() {
   const [selectedItem, setSelectedItem] = useState<{ id: string; isKit: boolean } | null>(null);
 
-  if (selectedItem) {
-    return (
-      <View style={styles.container}>
-        <EquipmentDetailScreen
-          equipmentId={selectedItem.id}
-          isKit={selectedItem.isKit}
-          onBack={() => setSelectedItem(null)}
-        />
-      </View>
-    );
-  }
-
   return (
-    <View style={styles.container}>
-      <EquipmentScreen
-        onItemPress={(item: EquipmentListItem) =>
-          setSelectedItem({ id: item.id, isKit: !!item.is_kit })
-        }
-      />
-    </View>
+    <PermissionGate module="equipment">
+      {selectedItem ? (
+        <View style={styles.container}>
+          <EquipmentDetailScreen
+            equipmentId={selectedItem.id}
+            isKit={selectedItem.isKit}
+            onBack={() => setSelectedItem(null)}
+          />
+        </View>
+      ) : (
+        <View style={styles.container}>
+          <EquipmentScreen
+            onItemPress={(item: EquipmentListItem) =>
+              setSelectedItem({ id: item.id, isKit: !!item.is_kit })
+            }
+          />
+        </View>
+      )}
+    </PermissionGate>
   );
 }
 

@@ -13,6 +13,7 @@ import { Feather } from '@expo/vector-icons';
 import { colors, spacing, typography } from '../theme';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import PermissionGate from '../components/PermissionGate';
 
 interface CalendarEvent {
   id: string;
@@ -43,7 +44,7 @@ const STATUS_LABELS: Record<string, string> = {
   meeting: 'Spotkanie',
 };
 
-export default function CalendarScreen() {
+function CalendarContent() {
   const { employee } = useAuth();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -394,3 +395,11 @@ const styles = StyleSheet.create({
     color: colors.text.tertiary,
   },
 });
+
+export default function CalendarScreen() {
+  return (
+    <PermissionGate module="calendar">
+      <CalendarContent />
+    </PermissionGate>
+  );
+}

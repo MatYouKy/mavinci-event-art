@@ -14,6 +14,7 @@ import { Feather } from '@expo/vector-icons';
 import { colors, spacing } from '../theme';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import PermissionGate from '../components/PermissionGate';
 
 interface TimeEntry {
   id: string;
@@ -28,7 +29,7 @@ interface TimeEntry {
   event_name?: string | null;
 }
 
-export default function TimeTrackingScreen() {
+function TimeTrackingContent() {
   const { employee } = useAuth();
   const [activeEntry, setActiveEntry] = useState<TimeEntry | null>(null);
   const [todayEntries, setTodayEntries] = useState<TimeEntry[]>([]);
@@ -692,3 +693,11 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
   },
 });
+
+export default function TimeTrackingScreen() {
+  return (
+    <PermissionGate module="time_tracking">
+      <TimeTrackingContent />
+    </PermissionGate>
+  );
+}
