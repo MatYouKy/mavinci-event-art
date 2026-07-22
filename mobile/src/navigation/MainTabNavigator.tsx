@@ -10,7 +10,7 @@ import { useAuth } from '../contexts/AuthContext';
 import DashboardScreen from '../screens/DashboardScreen';
 import CalendarScreen from '../screens/CalendarScreen';
 import TasksStackNavigator from './TasksStackNavigator';
-import EquipmentScreen from '../screens/EquipmentScreen';
+import EquipmentStackNavigator from './EquipmentStackNavigator';
 import SettingsScreen from '../screens/SettingsScreen';
 import CustomDrawer from '../components/CustomDrawer';
 
@@ -174,7 +174,7 @@ export default function MainTabNavigator() {
         />
         <Tab.Screen
           name="Equipment"
-          component={EquipmentScreen}
+          component={EquipmentStackNavigator}
           options={{
             title: 'Sprzęt',
             tabBarIcon: ({ color, size }) => <Feather name="package" color={color} size={size} />,
