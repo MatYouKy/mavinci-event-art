@@ -11,7 +11,7 @@ import DashboardScreen from '../screens/DashboardScreen';
 import CalendarScreen from '../screens/CalendarScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import SettingsScreen from '../screens/SettingsScreen';
-import MessagesScreen from '../screens/MessagesScreen';
+import MessagesStackNavigator from './MessagesStackNavigator';
 import TasksStackNavigator from './TasksStackNavigator';
 import EventsStackNavigator from './EventsStackNavigator';
 import EquipmentStackNavigator from './EquipmentStackNavigator';
@@ -177,9 +177,10 @@ export default function MainTabNavigator() {
         />
         <Tab.Screen
           name="Messages"
-          component={MessagesScreen}
+          component={MessagesStackNavigator}
           options={{
             title: 'Komunikator',
+            headerShown: false,
             tabBarIcon: ({ color, size }) => <Feather name="message-circle" color={color} size={size} />,
           }}
         />
