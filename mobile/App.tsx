@@ -1,53 +1,78 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { Provider } from 'react-redux';
+
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import RootNavigator from './src/navigation/RootNavigator';
 import { store } from './src/store/store';
+
 import {
   registerForPushNotifications,
   addNotificationResponseListener,
   addNotificationReceivedListener,
 } from './src/services/pushNotifications';
+
 import { useRealtimePushNotifications } from './src/services/realtimeNotifications';
 
 function AppContent() {
   const { employee } = useAuth();
-  const notificationListener = useRef<Notifications.Subscription | null>(null);
-  const responseListener = useRef<Notifications.Subscription | null>(null);
+  const employeeId = employee?.id;
 
-  useRealtimePushNotifications(employee?.id);
+  useRealtimePushNotifications(employeeId);
 
   useEffect(() => {
-    if (!employee?.id) return;
+    if (!employeeId) {
+      return;
+    }
 
-    registerForPushNotifications(employee.id).catch((err) =>
-      console.error('Push registration error:', err)
-    );
+    let isMounted = true;
 
-    notificationListener.current = addNotificationReceivedListener((notification) => {
-      // Notification received while app is in foreground
-    });
+    const initializePushNotifications = async () => {
+      try {
+        const token = await registerForPushNotifications(employeeId);
 
-    responseListener.current = addNotificationResponseListener((response) => {
-      const data = response.notification.request.content.data;
-      // Handle navigation based on notification data
-      if (data?.type === 'task' && data?.task_id) {
-        // Navigate to task - handled by navigation ref
-      }
-    });
-
-    return () => {
-      if (notificationListener.current) {
-        Notifications.removeNotificationSubscription(notificationListener.current);
-      }
-      if (responseListener.current) {
-        Notifications.removeNotificationSubscription(responseListener.current);
+        if (isMounted && token) {
+          console.log('Push notifications registered');
+        }
+      } catch (error) {
+        console.error('Push registration error:', error);
       }
     };
-  }, [employee?.id]);
+
+    void initializePushNotifications();
+
+    const notificationSubscription =
+      addNotificationReceivedListener((notification) => {
+        console.log(
+          'Notification received:',
+          notification.request.content
+        );
+      });
+
+    const responseSubscription =
+      addNotificationResponseListener((response) => {
+        const data = response.notification.request.content.data;
+
+        if (data?.type === 'task' && data?.task_id) {
+          console.log('Open task:', data.task_id);
+
+          /*
+           * Tutaj później dodamy nawigację przez navigationRef:
+           *
+           * navigationRef.navigate('TaskDetails', {
+           *   taskId: data.task_id,
+           * });
+           */
+        }
+      });
+
+    return () => {
+      isMounted = false;
+      notificationSubscription.remove();
+      responseSubscription.remove();
+    };
+  }, [employeeId]);
 
   return <RootNavigator />;
 }
