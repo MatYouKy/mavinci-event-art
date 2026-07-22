@@ -41,43 +41,35 @@ export async function registerForPushNotifications(
   employeeId: string
 ): Promise<string | null> {
   try {
+    console.log('[Push] Device.isDevice:', Device.isDevice);
+    console.log(
+      '[Push] executionEnvironment:',
+      Constants.executionEnvironment
+    );
+
     if (!Device.isDevice) {
-      console.warn('Push notifications require a physical device');
+      console.warn('[Push] Physical device required');
       return null;
     }
 
-    /*
-     * Expo Go nie obsługuje w pełni zdalnych powiadomień push.
-     * Token rejestrujemy dopiero w development buildzie lub produkcji.
-     */
     if (isRunningInExpoGo()) {
-      console.warn(
-        'Push token registration skipped in Expo Go. Use a development build.'
-      );
+      console.warn('[Push] Running in Expo Go — remote push unavailable');
       return null;
     }
 
     const projectId = getExpoProjectId();
 
-    if (!projectId) {
-      console.warn(
-        'Push registration skipped: missing Expo EAS projectId in app config.'
-      );
-      return null;
-    }
+    console.log('[Push] projectId:', projectId);
 
-    if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('default', {
-        name: 'Mavinci CRM',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#d3bb73',
-        sound: 'default',
-      });
+    if (!projectId) {
+      console.warn('[Push] Missing EAS projectId');
+      return null;
     }
 
     const { status: existingStatus } =
       await Notifications.getPermissionsAsync();
+
+    console.log('[Push] Existing permission:', existingStatus);
 
     let finalStatus = existingStatus;
 
@@ -88,10 +80,14 @@ export async function registerForPushNotifications(
       finalStatus = permissionResult.status;
     }
 
+    console.log('[Push] Final permission:', finalStatus);
+
     if (finalStatus !== 'granted') {
-      console.warn('Push notification permission not granted');
+      console.warn('[Push] Permission not granted');
       return null;
     }
+
+    console.log('[Push] Requesting Expo push token');
 
     const tokenData = await Notifications.getExpoPushTokenAsync({
       projectId,
@@ -99,11 +95,19 @@ export async function registerForPushNotifications(
 
     const pushToken = tokenData.data;
 
-    await savePushToken(employeeId, pushToken);
+    console.log('[Push] Token received:', pushToken);
+
+    const saved = await savePushToken(employeeId, pushToken);
+
+    if (!saved) {
+      return null;
+    }
+
+    console.log('[Push] Token saved in Supabase');
 
     return pushToken;
   } catch (error) {
-    console.error('Push registration error:', error);
+    console.error('[Push] Registration error:', error);
     return null;
   }
 }
@@ -111,8 +115,10 @@ export async function registerForPushNotifications(
 async function savePushToken(
   employeeId: string,
   token: string
-): Promise<void> {
-  const { error } = await supabase
+): Promise<boolean> {
+  console.log('[Push] Saving token for employee:', employeeId);
+
+  const { data, error } = await supabase
     .from('push_tokens')
     .upsert(
       {
@@ -125,11 +131,22 @@ async function savePushToken(
       {
         onConflict: 'employee_id,token',
       }
-    );
+    )
+    .select();
 
   if (error) {
-    console.error('Error saving push token:', error);
+    console.error('[Push] Token database error:', {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+    });
+
+    return false;
   }
+
+  console.log('[Push] Token database result:', data);
+  return true;
 }
 
 export async function removePushToken(

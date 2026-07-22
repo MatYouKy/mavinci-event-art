@@ -50,20 +50,32 @@ export function useChatNotifications(employeeId: string | undefined) {
 
           const senderName = await getSenderName(msg.sender_id);
 
-          await Notifications.scheduleNotificationAsync({
-            content: {
-              title: senderName,
-              body: msg.content.length > 100 ? msg.content.slice(0, 100) + '...' : msg.content,
-              sound: 'default',
-              data: {
-                type: 'chat_message',
-                conversation_id: msg.conversation_id,
-                message_id: msg.id,
-              },
-              ...(Platform.OS === 'android' && { channelId: 'default' }),
+          const notificationBody =
+          msg.message_type === 'image'
+            ? 'Przesłano zdjęcie'
+            : msg.message_type === 'file'
+              ? 'Przesłano plik'
+              : msg.content?.trim() || 'Nowa wiadomość';
+        
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: senderName,
+            body:
+              notificationBody.length > 100
+                ? `${notificationBody.slice(0, 100)}...`
+                : notificationBody,
+            sound: 'default',
+            data: {
+              type: 'chat_message',
+              conversation_id: msg.conversation_id,
+              message_id: msg.id,
             },
-            trigger: null,
-          });
+            ...(Platform.OS === 'android' && {
+              channelId: 'default',
+            }),
+          },
+          trigger: null,
+        });
         }
       )
       .subscribe();
@@ -210,8 +222,10 @@ async function getSenderName(senderId: string): Promise<string> {
     .maybeSingle();
 
   if (!data) return 'Nowa wiadomość';
-  return data.nickname || `${data.name} ${data.surname}`;
+
+  return (
+    data.nickname ||
+    [data.name, data.surname].filter(Boolean).join(' ') ||
+    'Nowa wiadomość'
+  );
 }
-
-
-export { useUnreadChatCount }

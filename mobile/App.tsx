@@ -32,42 +32,45 @@ function AppContent() {
 
     const initializePushNotifications = async () => {
       try {
+        console.log('[Push] Starting registration for employee:', employeeId);
+
         const token = await registerForPushNotifications(employeeId);
 
-        if (isMounted && token) {
-          console.log('Push notifications registered');
+        if (!isMounted) return;
+
+        if (token) {
+          console.log('[Push] Registration successful:', token);
+        } else {
+          console.warn(
+            '[Push] Registration returned no token. Check Expo Go, projectId, permissions and database errors.',
+          );
         }
       } catch (error) {
-        console.error('Push registration error:', error);
+        console.error('[Push] Registration failed:', error);
       }
     };
 
     void initializePushNotifications();
 
-    const notificationSubscription =
-      addNotificationReceivedListener((notification) => {
-        console.log(
-          'Notification received:',
-          notification.request.content
-        );
-      });
+    const notificationSubscription = addNotificationReceivedListener((notification) => {
+      console.log('Notification received:', notification.request.content);
+    });
 
-    const responseSubscription =
-      addNotificationResponseListener((response) => {
-        const data = response.notification.request.content.data;
+    const responseSubscription = addNotificationResponseListener((response) => {
+      const data = response.notification.request.content.data;
 
-        if (data?.type === 'task' && data?.task_id) {
-          console.log('Open task:', data.task_id);
+      if (data?.type === 'task' && data?.task_id) {
+        console.log('Open task:', data.task_id);
 
-          /*
-           * Tutaj później dodamy nawigację przez navigationRef:
-           *
-           * navigationRef.navigate('TaskDetails', {
-           *   taskId: data.task_id,
-           * });
-           */
-        }
-      });
+        /*
+         * Tutaj później dodamy nawigację przez navigationRef:
+         *
+         * navigationRef.navigate('TaskDetails', {
+         *   taskId: data.task_id,
+         * });
+         */
+      }
+    });
 
     return () => {
       isMounted = false;
