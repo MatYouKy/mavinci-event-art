@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Keyboard,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, typography, borderRadius } from '../theme';
 import { supabase } from '../lib/supabase';
@@ -45,6 +46,7 @@ interface Props {
 
 export default function ChatScreen({ conversation, onBack }: Props) {
   const { employee } = useAuth();
+  const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState<Message[]>([]);
   const [senders, setSenders] = useState<Map<string, SenderInfo>>(new Map());
   const [inputText, setInputText] = useState('');
@@ -375,7 +377,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
       )}
 
       {/* Input */}
-      <View style={styles.inputContainer}>
+      <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
         <View style={styles.inputWrapper}>
           <TextInput
             style={styles.textInput}
@@ -558,7 +560,7 @@ const styles = StyleSheet.create({
   },
   inputContainer: {
     paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
+    paddingTop: spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border.default,
     backgroundColor: colors.background.secondary,

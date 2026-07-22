@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../theme';
 import ChatListScreen, { Conversation } from '../screens/ChatListScreen';
 import ChatScreen from '../screens/ChatScreen';
@@ -11,17 +12,17 @@ export default function MessagesStackNavigator() {
 
   if (activeConversation) {
     return (
-      <View style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['top']}>
         <ChatScreen
           conversation={activeConversation}
           onBack={() => setActiveConversation(null)}
         />
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <ChatListScreen
         onConversationPress={(conv) => setActiveConversation(conv)}
         onNewChat={() => setShowNewChat(true)}
@@ -34,13 +35,13 @@ export default function MessagesStackNavigator() {
           setActiveConversation(conv);
         }}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background.primary,
+    backgroundColor: colors.background.secondary,
   },
 });
