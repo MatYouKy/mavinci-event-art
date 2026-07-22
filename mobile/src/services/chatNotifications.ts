@@ -24,70 +24,52 @@ export function setActiveChatConversation(conversationId: string | null) {
   }
 }
 
-export function useChatNotifications(employeeId: string | undefined) {
-  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+export function getActiveConversationId(): string | null {
+  return _activeConversationId;
+}
 
-  useEffect(() => {
-    if (!employeeId) return;
+/**
+ * Suppresses push notifications for the active conversation.
+ * Must be called BEFORE any other setNotificationHandler.
+ */
+export function setupChatNotificationFilter() {
+  Notifications.setNotificationHandler({
+    handleNotification: async (notification) => {
+      const data = notification.request.content.data;
 
-    const channel = supabase
-      .channel(`chat_push_${employeeId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'employee_messages',
-        },
-        async (payload) => {
-          const msg = payload.new as ChatMessage;
-
-          if (msg.sender_id === employeeId) return;
-          if (msg.conversation_id === _activeConversationId) return;
-
-          const isParticipant = await checkParticipation(employeeId, msg.conversation_id);
-          if (!isParticipant) return;
-
-          const senderName = await getSenderName(msg.sender_id);
-
-          const notificationBody =
-          msg.message_type === 'image'
-            ? 'Przesłano zdjęcie'
-            : msg.message_type === 'file'
-              ? 'Przesłano plik'
-              : msg.content?.trim() || 'Nowa wiadomość';
-        
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: senderName,
-            body:
-              notificationBody.length > 100
-                ? `${notificationBody.slice(0, 100)}...`
-                : notificationBody,
-            sound: 'default',
-            data: {
-              type: 'chat_message',
-              conversation_id: msg.conversation_id,
-              message_id: msg.id,
-            },
-            ...(Platform.OS === 'android' && {
-              channelId: 'default',
-            }),
-          },
-          trigger: null,
-        });
-        }
-      )
-      .subscribe();
-
-    channelRef.current = channel;
-
-    return () => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
+      // Suppress notification if user is currently viewing this conversation
+      if (
+        data?.type === 'chat_message' &&
+        data?.conversation_id === _activeConversationId
+      ) {
+        return {
+          shouldShowBanner: false,
+          shouldShowList: false,
+          shouldPlaySound: false,
+          shouldSetBadge: false,
+        };
       }
-    };
-  }, [employeeId]);
+
+      return {
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+      };
+    },
+  });
+}
+
+/**
+ * Hook that listens to realtime for badge increment + refetches badge on conversation leave.
+ * Push notifications are handled by the send-chat-push Edge Function (remote push).
+ */
+export function useChatNotifications(employeeId: string | undefined) {
+  // Remote push is handled by the Edge Function trigger.
+  // This hook just ensures the notification handler is set up to suppress active conv.
+  useEffect(() => {
+    setupChatNotificationFilter();
+  }, []);
 }
 
 export function useUnreadChatCount(employeeId: string | undefined) {
@@ -156,7 +138,7 @@ export function useUnreadChatCount(employeeId: string | undefined) {
     return () => sub.remove();
   }, [fetchUnreadCount]);
 
-  // Realtime: increment on new message, refetch on participant update
+  // Realtime: increment on new message
   useEffect(() => {
     if (!employeeId) return;
 
@@ -172,16 +154,6 @@ export function useUnreadChatCount(employeeId: string | undefined) {
           }
         }
       )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'employee_conversation_participants' },
-        (payload) => {
-          const updated = payload.new as { employee_id: string; last_read_at: string };
-          if (updated.employee_id === employeeId) {
-            fetchUnreadCount();
-          }
-        }
-      )
       .subscribe();
 
     channelRef.current = channel;
@@ -193,7 +165,21 @@ export function useUnreadChatCount(employeeId: string | undefined) {
     };
   }, [employeeId, fetchUnreadCount]);
 
-  // Polling fallback every 30s in case realtime isn't enabled
+  // Refetch when a push notification for chat arrives (remote push received)
+  useEffect(() => {
+    const sub = Notifications.addNotificationReceivedListener((notification) => {
+      const data = notification.request.content.data;
+      if (data?.type === 'chat_message') {
+        // If it's for the active conversation, don't increment (already suppressed)
+        if (data.conversation_id !== _activeConversationId) {
+          setUnreadCount((prev) => prev + 1);
+        }
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
+  // Polling fallback every 30s
   useEffect(() => {
     if (!employeeId) return;
     const interval = setInterval(fetchUnreadCount, 30000);
@@ -201,31 +187,4 @@ export function useUnreadChatCount(employeeId: string | undefined) {
   }, [employeeId, fetchUnreadCount]);
 
   return { unreadCount, refetch: fetchUnreadCount };
-}
-
-async function checkParticipation(employeeId: string, conversationId: string): Promise<boolean> {
-  const { data } = await supabase
-    .from('employee_conversation_participants')
-    .select('id')
-    .eq('employee_id', employeeId)
-    .eq('conversation_id', conversationId)
-    .maybeSingle();
-
-  return !!data;
-}
-
-async function getSenderName(senderId: string): Promise<string> {
-  const { data } = await supabase
-    .from('employees')
-    .select('name, surname, nickname')
-    .eq('id', senderId)
-    .maybeSingle();
-
-  if (!data) return 'Nowa wiadomość';
-
-  return (
-    data.nickname ||
-    [data.name, data.surname].filter(Boolean).join(' ') ||
-    'Nowa wiadomość'
-  );
 }

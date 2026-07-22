@@ -14,10 +14,11 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, typography, borderRadius } from '../theme';
-import { supabase } from '../lib/supabase';
+import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import EmployeeAvatar from '../components/EmployeeAvatar';
 import { Conversation } from './ChatListScreen';
+import { setActiveChatConversation } from '../services/chatNotifications';
 
 interface Message {
   id: string;
@@ -102,6 +103,8 @@ export default function ChatScreen({ conversation, onBack }: Props) {
   }, [employee, conversation.id]);
 
   useEffect(() => {
+    setActiveChatConversation(conversationId);
+
     const load = async () => {
       setIsLoading(true);
       await fetchMessages();
@@ -112,6 +115,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
 
     return () => {
       markAsRead();
+      setActiveChatConversation(null);
     };
   }, [fetchMessages, markAsRead]);
 
@@ -191,19 +195,54 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     setInputText('');
     Keyboard.dismiss();
 
-    const { error } = await supabase.from('employee_messages').insert({
-      conversation_id: conversation.id,
-      sender_id: employee.id,
-      content: text,
-      message_type: 'text',
-    });
+    const { data: insertedMsg, error } = await supabase
+      .from('employee_messages')
+      .insert({
+        conversation_id: conversation.id,
+        sender_id: employee.id,
+        content: text,
+        message_type: 'text',
+      })
+      .select('id')
+      .single();
 
     if (error) {
       setInputText(text);
       console.error('Failed to send:', error.message);
+    } else if (insertedMsg) {
+      // Trigger remote push for other participants
+      triggerChatPush(conversation.id, employee.id, text, insertedMsg.id);
     }
 
     setIsSending(false);
+  };
+
+  const triggerChatPush = async (convId: string, senderId: string, content: string, messageId: string) => {
+    try {
+      await fetch(`${supabaseUrl}/functions/v1/send-chat-push`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseAnonKey}`,
+        },
+        body: JSON.stringify({
+          type: 'INSERT',
+          table: 'employee_messages',
+          schema: 'public',
+          record: {
+            id: messageId,
+            conversation_id: convId,
+            sender_id: senderId,
+            content,
+            message_type: 'text',
+            created_at: new Date().toISOString(),
+          },
+          old_record: null,
+        }),
+      });
+    } catch (err) {
+      console.warn('Push notification trigger failed:', err);
+    }
   };
 
   const formatMessageTime = (dateStr: string): string => {

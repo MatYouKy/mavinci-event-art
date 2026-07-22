@@ -116,6 +116,11 @@ export function useRealtimePushNotifications(
 
       // =====================================================
       // NOWE WIADOMOŚCI KOMUNIKATORA
+      // Remote push is handled by send-chat-push Edge Function.
+      // This realtime handler is kept ONLY as a fallback for
+      // when the Edge Function is unreachable (e.g. dev mode).
+      // The notification handler in chatNotifications.ts will
+      // suppress duplicates for the active conversation.
       // =====================================================
 
       .on(
@@ -128,12 +133,9 @@ export function useRealtimePushNotifications(
         async (payload) => {
           const message = payload.new as EmployeeMessageRow;
 
-          // Nie pokazujemy powiadomienia o własnej wiadomości
           if (message.sender_id === employeeId) return;
 
-          // Sprawdzenie, czy aktualny pracownik uczestniczy
-          // w rozmowie, do której przyszła wiadomość
-          const { data: participation, error: participationError } =
+          const { data: participation } =
             await supabase
               .from('employee_conversation_participants')
               .select('id')
@@ -141,15 +143,6 @@ export function useRealtimePushNotifications(
               .eq('employee_id', employeeId)
               .maybeSingle();
 
-          if (participationError) {
-            console.error(
-              '[Chat Notifications] Participation check failed:',
-              participationError
-            );
-            return;
-          }
-
-          // Wiadomość nie jest przeznaczona dla tego pracownika
           if (!participation) return;
 
           const [

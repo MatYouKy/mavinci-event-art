@@ -14,7 +14,10 @@ import {
 } from './src/services/pushNotifications';
 
 import { useRealtimePushNotifications } from './src/services/realtimeNotifications';
-import { useChatNotifications } from './src/services/chatNotifications';
+import { useChatNotifications, setupChatNotificationFilter } from './src/services/chatNotifications';
+
+// Must be called before app renders to handle incoming remote push while app is foregrounded
+setupChatNotificationFilter();
 
 function AppContent() {
   const { employee } = useAuth();
