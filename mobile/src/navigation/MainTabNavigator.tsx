@@ -15,6 +15,7 @@ import MessagesScreen from '../screens/MessagesScreen';
 import TasksStackNavigator from './TasksStackNavigator';
 import EventsStackNavigator from './EventsStackNavigator';
 import EquipmentStackNavigator from './EquipmentStackNavigator';
+import TimeTrackingScreen from '../screens/TimeTrackingScreen';
 import CustomDrawer from '../components/CustomDrawer';
 
 export type MainTabParamList = {
@@ -26,6 +27,7 @@ export type MainTabParamList = {
   Events: undefined;
   Tasks: undefined;
   Equipment: undefined;
+  TimeTracking: undefined;
 };
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -222,6 +224,15 @@ export default function MainTabNavigator() {
             title: 'Sprzęt',
             tabBarButton: () => null,
             tabBarIcon: ({ color, size }) => <Feather name="package" color={color} size={size} />,
+          }}
+        />
+        <Tab.Screen
+          name="TimeTracking"
+          component={TimeTrackingScreen}
+          options={{
+            title: 'Czas pracy',
+            tabBarButton: () => null,
+            tabBarIcon: ({ color, size }) => <Feather name="clock" color={color} size={size} />,
           }}
         />
       </Tab.Navigator>
