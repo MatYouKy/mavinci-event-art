@@ -109,6 +109,10 @@ export default function ChatScreen({ conversation, onBack }: Props) {
       setIsLoading(false);
     };
     load();
+
+    return () => {
+      markAsRead();
+    };
   }, [fetchMessages, markAsRead]);
 
   // Realtime messages
@@ -385,6 +389,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
             placeholderTextColor={colors.text.tertiary}
             value={inputText}
             onChangeText={setInputText}
+            onFocus={() => markAsRead()}
             multiline
             maxLength={2000}
           />

@@ -13,6 +13,16 @@ Notifications.setNotificationHandler({
   }),
 });
 
+if (Platform.OS === 'android') {
+  Notifications.setNotificationChannelAsync('default', {
+    name: 'Mavinci CRM',
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 250, 250, 250],
+    lightColor: '#d3bb73',
+    sound: 'default',
+  });
+}
+
 function getExpoProjectId(): string | null {
   return (
     Constants.expoConfig?.extra?.eas?.projectId ??
@@ -62,6 +72,7 @@ export async function registerForPushNotifications(
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#d3bb73',
+        sound: 'default',
       });
     }
 
