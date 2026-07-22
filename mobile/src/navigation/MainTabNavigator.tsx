@@ -18,6 +18,7 @@ import EquipmentStackNavigator from './EquipmentStackNavigator';
 import TimeTrackingScreen from '../screens/TimeTrackingScreen';
 import EmployeesScreen from '../screens/EmployeesScreen';
 import CustomDrawer from '../components/CustomDrawer';
+import { useUnreadChatCount } from '../services/chatNotifications';
 
 export type MainTabParamList = {
   Dashboard: undefined;
@@ -40,6 +41,7 @@ export default function MainTabNavigator() {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [currentScreen, setCurrentScreen] = useState('Dashboard');
   const [unreadCount, setUnreadCount] = useState(0);
+  const { unreadCount: unreadChatCount } = useUnreadChatCount(employee?.id);
 
   useEffect(() => {
     if (employee?.id) {
@@ -182,6 +184,15 @@ export default function MainTabNavigator() {
             title: 'Komunikator',
             headerShown: false,
             tabBarIcon: ({ color, size }) => <Feather name="message-circle" color={color} size={size} />,
+            tabBarBadge: unreadChatCount > 0 ? (unreadChatCount > 99 ? '99+' : unreadChatCount) : undefined,
+            tabBarBadgeStyle: {
+              backgroundColor: colors.status.error,
+              fontSize: 10,
+              fontWeight: 'bold',
+              minWidth: 18,
+              height: 18,
+              lineHeight: 14,
+            },
           }}
         />
         <Tab.Screen

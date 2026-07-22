@@ -14,12 +14,14 @@ import {
 } from './src/services/pushNotifications';
 
 import { useRealtimePushNotifications } from './src/services/realtimeNotifications';
+import { useChatNotifications } from './src/services/chatNotifications';
 
 function AppContent() {
   const { employee } = useAuth();
   const employeeId = employee?.id;
 
   useRealtimePushNotifications(employeeId);
+  useChatNotifications(employeeId);
 
   useEffect(() => {
     if (!employeeId) {
