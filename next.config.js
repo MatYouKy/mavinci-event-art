@@ -29,6 +29,13 @@ const nextConfig = {
     workerThreads: false,
     cpus: 1,
   },
+  webpack: (config) => {
+    config.optimization = {
+      ...config.optimization,
+      moduleIds: 'deterministic',
+    };
+    return config;
+  },
 };
 
 module.exports = nextConfig;

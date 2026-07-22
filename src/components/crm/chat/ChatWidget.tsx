@@ -61,6 +61,13 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
 
   const currentEmployeeId = employeeId || employee.id;
 
+  // Request browser notification permission early
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
+
   const fetchConversations = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -96,7 +103,7 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
         .select('id, conversation_id, employee_id, last_read_at')
         .in('conversation_id', convIds);
 
-      const empIds = [...new Set((allParticipants || []).map((p) => p.employee_id))];
+      const empIds = Array.from(new Set((allParticipants || []).map((p) => p.employee_id)));
       const { data: employees } = await supabase
         .from('employees')
         .select('id, name, surname, nickname, avatar_url')
@@ -134,6 +141,51 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
     fetchConversations();
   }, [currentEmployeeId, fetchConversations]);
 
+  const activeConversationRef = useRef<string | null>(null);
+  activeConversationRef.current = activeConversation?.id ?? null;
+
+  const playChatSound = useCallback(() => {
+    try {
+      const audio = new Audio('/sounds/chat-notification.wav');
+      audio.volume = 0.5;
+      audio.play().catch(() => {});
+    } catch {}
+  }, []);
+
+  const showBrowserNotification = useCallback(
+    (msg: ChatMessage) => {
+      if (typeof window === 'undefined') return;
+      if (Notification.permission !== 'granted') {
+        Notification.requestPermission();
+        return;
+      }
+      const conv = conversations.find((c) => c.id === msg.conversation_id);
+      const sender = conv?.participants?.find((p) => p.employee_id === msg.sender_id)?.employee;
+      const senderName = sender?.nickname || [sender?.name, sender?.surname].filter(Boolean).join(' ') || 'Nowa wiadomość';
+      const title = conv?.is_group && conv?.title ? `${conv.title}` : senderName;
+      const body = msg.content?.substring(0, 150) || 'Nowa wiadomość';
+
+      const notification = new Notification(title, {
+        body,
+        icon: '/logo-mavinci-crm.png',
+        tag: `chat-${msg.conversation_id}`,
+        silent: false,
+      });
+      notification.onclick = () => {
+        window.focus();
+        setIsOpen(true);
+        setIsMinimized(false);
+        const targetConv = conversations.find((c) => c.id === msg.conversation_id);
+        if (targetConv) {
+          setActiveConversation(targetConv);
+          setView('conversation');
+        }
+        notification.close();
+      };
+    },
+    [conversations],
+  );
+
   useEffect(() => {
     if (!currentEmployeeId) return;
 
@@ -144,6 +196,9 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
         { event: 'INSERT', schema: 'public', table: 'employee_messages' },
         (payload) => {
           const msg = payload.new as ChatMessage;
+          const isOwnMessage = msg.sender_id === currentEmployeeId;
+          const isActiveConv = activeConversationRef.current === msg.conversation_id;
+
           setConversations((prev) => {
             const idx = prev.findIndex((c) => c.id === msg.conversation_id);
             if (idx === -1) {
@@ -156,20 +211,21 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
               last_message_at: msg.created_at,
               last_message_preview: msg.content?.substring(0, 100) || null,
               unread_count:
-                msg.sender_id !== currentEmployeeId &&
-                activeConversation?.id !== msg.conversation_id
+                !isOwnMessage && !isActiveConv
                   ? updated[idx].unread_count + 1
                   : updated[idx].unread_count,
             };
             updated.sort(
               (a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime(),
             );
-
-            if (msg.sender_id !== currentEmployeeId && activeConversation?.id !== msg.conversation_id) {
-              setTotalUnread((u) => u + 1);
-            }
             return updated;
           });
+
+          if (!isOwnMessage && !isActiveConv) {
+            setTotalUnread((u) => u + 1);
+            playChatSound();
+            showBrowserNotification(msg);
+          }
         },
       )
       .subscribe();
@@ -178,7 +234,7 @@ export default function ChatWidget({ employee }: { employee: IEmployee }) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [currentEmployeeId, activeConversation?.id, fetchConversations]);
+  }, [currentEmployeeId, fetchConversations]);
 
   const openConversation = (conv: Conversation) => {
     setActiveConversation(conv);

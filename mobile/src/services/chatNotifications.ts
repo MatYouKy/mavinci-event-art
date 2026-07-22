@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { AppState, AppStateStatus, Platform } from 'react-native';
+import { AppState, AppStateStatus } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { supabase } from '../lib/supabase';
 
@@ -28,16 +28,11 @@ export function getActiveConversationId(): string | null {
   return _activeConversationId;
 }
 
-/**
- * Suppresses push notifications for the active conversation.
- * Must be called BEFORE any other setNotificationHandler.
- */
 export function setupChatNotificationFilter() {
   Notifications.setNotificationHandler({
     handleNotification: async (notification) => {
       const data = notification.request.content.data;
 
-      // Suppress notification if user is currently viewing this conversation
       if (
         data?.type === 'chat_message' &&
         data?.conversation_id === _activeConversationId
@@ -60,13 +55,7 @@ export function setupChatNotificationFilter() {
   });
 }
 
-/**
- * Hook that listens to realtime for badge increment + refetches badge on conversation leave.
- * Push notifications are handled by the send-chat-push Edge Function (remote push).
- */
 export function useChatNotifications(employeeId: string | undefined) {
-  // Remote push is handled by the Edge Function trigger.
-  // This hook just ensures the notification handler is set up to suppress active conv.
   useEffect(() => {
     setupChatNotificationFilter();
   }, []);
@@ -83,6 +72,7 @@ export function useUnreadChatCount(employeeId: string | undefined) {
     }
 
     try {
+      // Single query: get participations with last_read_at
       const { data: participations } = await supabase
         .from('employee_conversation_participants')
         .select('conversation_id, last_read_at')
@@ -93,23 +83,47 @@ export function useUnreadChatCount(employeeId: string | undefined) {
         return;
       }
 
-      let total = 0;
-      for (const p of participations) {
-        const query = supabase
+      // Build a single query with OR conditions for all conversations
+      const conversationIds = participations.map((p) => p.conversation_id);
+
+      // Get all unread messages in one query
+      const { count } = await supabase
+        .from('employee_messages')
+        .select('*', { count: 'exact', head: true })
+        .in('conversation_id', conversationIds)
+        .neq('sender_id', employeeId)
+        .gt('created_at', getOldestReadAt(participations));
+
+      // For precise count we need per-conversation filtering
+      // but for instant badge we use the fast approximation above
+      // then do precise count in background
+      if (count !== null) {
+        // Precise count: only messages newer than per-conversation last_read_at
+        let precise = 0;
+        const readMap = new Map(participations.map((p) => [p.conversation_id, p.last_read_at]));
+
+        // Use a single query with all conversations, filter client-side
+        const { data: unreadMessages } = await supabase
           .from('employee_messages')
-          .select('*', { count: 'exact', head: true })
-          .eq('conversation_id', p.conversation_id)
-          .neq('sender_id', employeeId);
+          .select('conversation_id, created_at')
+          .in('conversation_id', conversationIds)
+          .neq('sender_id', employeeId)
+          .gt('created_at', getOldestReadAt(participations))
+          .order('created_at', { ascending: false })
+          .limit(500);
 
-        if (p.last_read_at) {
-          query.gt('created_at', p.last_read_at);
+        if (unreadMessages) {
+          for (const msg of unreadMessages) {
+            const lastRead = readMap.get(msg.conversation_id);
+            if (!lastRead || msg.created_at > lastRead) {
+              precise++;
+            }
+          }
         }
-
-        const { count } = await query;
-        total += count || 0;
+        setUnreadCount(precise);
+      } else {
+        setUnreadCount(0);
       }
-
-      setUnreadCount(total);
     } catch (err) {
       console.error('Error fetching unread chat count:', err);
     }
@@ -119,7 +133,6 @@ export function useUnreadChatCount(employeeId: string | undefined) {
     fetchUnreadCount();
   }, [fetchUnreadCount]);
 
-  // Refetch when leaving a conversation (user marked it as read)
   useEffect(() => {
     _onConversationLeave = fetchUnreadCount;
     return () => {
@@ -127,7 +140,6 @@ export function useUnreadChatCount(employeeId: string | undefined) {
     };
   }, [fetchUnreadCount]);
 
-  // Refetch when app comes to foreground
   useEffect(() => {
     const handleAppState = (nextState: AppStateStatus) => {
       if (nextState === 'active') {
@@ -138,7 +150,7 @@ export function useUnreadChatCount(employeeId: string | undefined) {
     return () => sub.remove();
   }, [fetchUnreadCount]);
 
-  // Realtime: increment on new message
+  // Realtime: instant increment on new message
   useEffect(() => {
     if (!employeeId) return;
 
@@ -163,28 +175,38 @@ export function useUnreadChatCount(employeeId: string | undefined) {
         supabase.removeChannel(channelRef.current);
       }
     };
-  }, [employeeId, fetchUnreadCount]);
+  }, [employeeId]);
 
-  // Refetch when a push notification for chat arrives (remote push received)
+  // Increment on remote push received
   useEffect(() => {
     const sub = Notifications.addNotificationReceivedListener((notification) => {
       const data = notification.request.content.data;
-      if (data?.type === 'chat_message') {
-        // If it's for the active conversation, don't increment (already suppressed)
-        if (data.conversation_id !== _activeConversationId) {
-          setUnreadCount((prev) => prev + 1);
-        }
+      if (data?.type === 'chat_message' && data.conversation_id !== _activeConversationId) {
+        setUnreadCount((prev) => prev + 1);
       }
     });
     return () => sub.remove();
   }, []);
 
-  // Polling fallback every 30s
+  // Polling fallback every 60s (not 30s - less aggressive)
   useEffect(() => {
     if (!employeeId) return;
-    const interval = setInterval(fetchUnreadCount, 30000);
+    const interval = setInterval(fetchUnreadCount, 60000);
     return () => clearInterval(interval);
   }, [employeeId, fetchUnreadCount]);
 
   return { unreadCount, refetch: fetchUnreadCount };
+}
+
+function getOldestReadAt(participations: { last_read_at: string | null }[]): string {
+  let oldest = new Date().toISOString();
+  for (const p of participations) {
+    if (!p.last_read_at) {
+      return '1970-01-01T00:00:00Z';
+    }
+    if (p.last_read_at < oldest) {
+      oldest = p.last_read_at;
+    }
+  }
+  return oldest;
 }
