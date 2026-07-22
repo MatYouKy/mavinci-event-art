@@ -14,55 +14,93 @@ import { Feather } from '@expo/vector-icons';
 import { colors, spacing } from '../theme';
 import { supabase } from '../lib/supabase';
 
-interface EquipmentCategory {
+interface WarehouseCategory {
   id: string;
   name: string;
-  icon_name?: string;
-  item_count?: number;
+  icon: string | null;
+  color: string | null;
+  level: number;
+  parent_id: string | null;
+  is_active: boolean;
 }
 
 interface EquipmentItem {
   id: string;
   name: string;
+  brand: string | null;
+  model: string | null;
   description: string | null;
   thumbnail_url: string | null;
-  category_id: string;
-  category_name?: string;
-  status?: string;
+  warehouse_category_id: string | null;
+  is_active: boolean;
+  is_kit?: boolean;
+  unit_count?: number;
+  available_count?: number;
 }
 
 type ViewMode = 'categories' | 'items';
 
+const ICON_MAP: Record<string, string> = {
+  'volume-2': 'volume-2',
+  'lightbulb': 'sun',
+  'video': 'video',
+  'layers': 'layers',
+  'sparkles': 'zap',
+  'package': 'package',
+  'wrench': 'tool',
+  'warehouse': 'home',
+};
+
+function getFeatherIcon(icon: string | null): string {
+  if (!icon) return 'box';
+  return ICON_MAP[icon] || 'box';
+}
+
 export default function EquipmentScreen() {
   const [viewMode, setViewMode] = useState<ViewMode>('categories');
-  const [categories, setCategories] = useState<EquipmentCategory[]>([]);
+  const [categories, setCategories] = useState<WarehouseCategory[]>([]);
   const [items, setItems] = useState<EquipmentItem[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<EquipmentCategory | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<WarehouseCategory | null>(null);
+  const [parentStack, setParentStack] = useState<WarehouseCategory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [itemCounts, setItemCounts] = useState<Record<string, number>>({});
 
-  const fetchCategories = useCallback(async () => {
+  const fetchCategories = useCallback(async (parentId: string | null = null) => {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('warehouse_categories')
-        .select('id, name, icon_name')
+        .select('id, name, icon, color, level, parent_id, is_active')
+        .eq('is_active', true)
+        .order('order_index')
         .order('name');
 
+      if (parentId) {
+        query = query.eq('parent_id', parentId);
+      } else {
+        query = query.is('parent_id', null);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
 
-      const categoriesWithCounts = await Promise.all(
-        (data ?? []).map(async (cat) => {
+      const cats = data ?? [];
+      setCategories(cats);
+
+      // Fetch item counts for each category (including nested)
+      const counts: Record<string, number> = {};
+      await Promise.all(
+        cats.map(async (cat) => {
           const { count } = await supabase
             .from('equipment_items')
             .select('*', { count: 'exact', head: true })
-            .eq('category_id', cat.id);
-
-          return { ...cat, item_count: count ?? 0 };
+            .eq('warehouse_category_id', cat.id)
+            .eq('is_active', true);
+          counts[cat.id] = count ?? 0;
         })
       );
-
-      setCategories(categoriesWithCounts);
+      setItemCounts(counts);
     } catch (error) {
       console.error('Error fetching categories:', error);
     } finally {
@@ -74,36 +112,100 @@ export default function EquipmentScreen() {
     async (categoryId?: string) => {
       setIsLoading(true);
       try {
-        let query = supabase
+        // Fetch equipment items
+        let itemQuery = supabase
           .from('equipment_items')
-          .select(
-            `id, name, description, thumbnail_url, category_id,
-             warehouse_categories!equipment_items_category_id_fkey(name)`
-          )
+          .select(`
+            id, name, brand, model, description, thumbnail_url,
+            warehouse_category_id, is_active
+          `)
+          .eq('is_active', true)
           .order('name');
 
         if (categoryId) {
-          query = query.eq('category_id', categoryId);
+          itemQuery = itemQuery.eq('warehouse_category_id', categoryId);
         }
 
         if (searchQuery.trim()) {
-          query = query.ilike('name', `%${searchQuery.trim()}%`);
+          itemQuery = itemQuery.or(
+            `name.ilike.%${searchQuery.trim()}%,brand.ilike.%${searchQuery.trim()}%,model.ilike.%${searchQuery.trim()}%`
+          );
         }
 
-        const { data, error } = await query.limit(100);
+        const { data: itemsData, error: itemsError } = await itemQuery.limit(100);
+        if (itemsError) throw itemsError;
 
-        if (error) throw error;
+        // Fetch equipment kits
+        let kitQuery = supabase
+          .from('equipment_kits')
+          .select('id, name, description, thumbnail_url, warehouse_category_id, is_active')
+          .eq('is_active', true)
+          .order('name');
 
-        const mapped = (data ?? []).map((item: any) => ({
+        if (categoryId) {
+          kitQuery = kitQuery.eq('warehouse_category_id', categoryId);
+        }
+
+        if (searchQuery.trim()) {
+          kitQuery = kitQuery.ilike('name', `%${searchQuery.trim()}%`);
+        }
+
+        const { data: kitsData, error: kitsError } = await kitQuery.limit(50);
+        if (kitsError) throw kitsError;
+
+        // Fetch unit counts for items
+        const itemIds = (itemsData ?? []).map((i) => i.id);
+        let unitCounts: Record<string, { total: number; available: number }> = {};
+
+        if (itemIds.length > 0) {
+          const { data: units } = await supabase
+            .from('equipment_units')
+            .select('equipment_id, status')
+            .in('equipment_id', itemIds);
+
+          if (units) {
+            for (const unit of units) {
+              if (!unitCounts[unit.equipment_id]) {
+                unitCounts[unit.equipment_id] = { total: 0, available: 0 };
+              }
+              unitCounts[unit.equipment_id].total++;
+              if (unit.status === 'available') {
+                unitCounts[unit.equipment_id].available++;
+              }
+            }
+          }
+        }
+
+        const mappedItems: EquipmentItem[] = (itemsData ?? []).map((item) => ({
           id: item.id,
           name: item.name,
+          brand: item.brand,
+          model: item.model,
           description: item.description,
           thumbnail_url: item.thumbnail_url,
-          category_id: item.category_id,
-          category_name: item.warehouse_categories?.name ?? '',
+          warehouse_category_id: item.warehouse_category_id,
+          is_active: item.is_active,
+          is_kit: false,
+          unit_count: unitCounts[item.id]?.total ?? 0,
+          available_count: unitCounts[item.id]?.available ?? 0,
         }));
 
-        setItems(mapped);
+        const mappedKits: EquipmentItem[] = (kitsData ?? []).map((kit) => ({
+          id: kit.id,
+          name: kit.name,
+          brand: null,
+          model: null,
+          description: kit.description,
+          thumbnail_url: kit.thumbnail_url,
+          warehouse_category_id: kit.warehouse_category_id,
+          is_active: kit.is_active,
+          is_kit: true,
+          unit_count: 0,
+          available_count: 0,
+        }));
+
+        // Kits first, then items
+        setItems([...mappedKits, ...mappedItems]);
       } catch (error) {
         console.error('Error fetching equipment:', error);
       } finally {
@@ -115,67 +217,141 @@ export default function EquipmentScreen() {
 
   useEffect(() => {
     if (viewMode === 'categories') {
-      fetchCategories();
+      fetchCategories(selectedCategory?.id ?? null);
     } else {
       fetchItems(selectedCategory?.id);
     }
-  }, [viewMode, selectedCategory?.id, fetchCategories, fetchItems]);
+  }, [viewMode, selectedCategory?.id]);
 
-  const handleCategoryPress = (category: EquipmentCategory) => {
-    setSelectedCategory(category);
-    setViewMode('items');
+  const handleCategoryPress = async (category: WarehouseCategory) => {
+    // Check if category has subcategories
+    const { count } = await supabase
+      .from('warehouse_categories')
+      .select('*', { count: 'exact', head: true })
+      .eq('parent_id', category.id)
+      .eq('is_active', true);
+
+    if (count && count > 0) {
+      setParentStack((prev) => [...prev, category]);
+      setSelectedCategory(category);
+      setViewMode('categories');
+    } else {
+      setParentStack((prev) => [...prev, category]);
+      setSelectedCategory(category);
+      setViewMode('items');
+    }
   };
 
-  const handleBackToCategories = () => {
-    setSelectedCategory(null);
+  const handleBack = () => {
+    if (viewMode === 'items') {
+      // Go back to categories at same level
+      setViewMode('categories');
+      return;
+    }
+
+    const newStack = [...parentStack];
+    newStack.pop();
+    const parent = newStack.length > 0 ? newStack[newStack.length - 1] : null;
+    setParentStack(newStack);
+    setSelectedCategory(parent);
     setViewMode('categories');
-    setSearchQuery('');
   };
 
   const handleSearch = () => {
     if (searchQuery.trim()) {
-      setSelectedCategory(null);
       setViewMode('items');
       fetchItems();
     }
   };
 
-  const renderCategory = ({ item }: { item: EquipmentCategory }) => (
-    <TouchableOpacity
-      style={styles.categoryCard}
-      onPress={() => handleCategoryPress(item)}
-    >
-      <View style={styles.categoryIcon}>
-        <Feather name="box" size={24} color={colors.primary.gold} />
-      </View>
-      <View style={styles.categoryInfo}>
-        <Text style={styles.categoryName}>{item.name}</Text>
-        <Text style={styles.categoryCount}>
-          {item.item_count} {item.item_count === 1 ? 'element' : 'elementów'}
-        </Text>
-      </View>
-      <Feather name="chevron-right" size={20} color={colors.text.tertiary} />
-    </TouchableOpacity>
-  );
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    if (!selectedCategory) {
+      setViewMode('categories');
+      setParentStack([]);
+      fetchCategories(null);
+    } else {
+      setViewMode('items');
+      fetchItems(selectedCategory.id);
+    }
+  };
+
+  const canGoBack = parentStack.length > 0 || viewMode === 'items';
+
+  const renderCategory = ({ item }: { item: WarehouseCategory }) => {
+    const count = itemCounts[item.id] ?? 0;
+    const iconName = getFeatherIcon(item.icon);
+
+    return (
+      <TouchableOpacity
+        style={styles.categoryCard}
+        onPress={() => handleCategoryPress(item)}
+        activeOpacity={0.7}
+      >
+        <View style={[styles.categoryIcon, { backgroundColor: (item.color ?? colors.primary.gold) + '20' }]}>
+          <Feather
+            name={iconName as any}
+            size={22}
+            color={item.color ?? colors.primary.gold}
+          />
+        </View>
+        <View style={styles.categoryInfo}>
+          <Text style={styles.categoryName}>{item.name}</Text>
+          {count > 0 && (
+            <Text style={styles.categoryCount}>
+              {count} {count === 1 ? 'element' : 'elementów'}
+            </Text>
+          )}
+        </View>
+        <Feather name="chevron-right" size={18} color={colors.text.tertiary} />
+      </TouchableOpacity>
+    );
+  };
 
   const renderItem = ({ item }: { item: EquipmentItem }) => (
-    <TouchableOpacity style={styles.itemCard}>
+    <TouchableOpacity style={styles.itemCard} activeOpacity={0.7}>
       {item.thumbnail_url ? (
         <Image source={{ uri: item.thumbnail_url }} style={styles.itemImage} />
       ) : (
-        <View style={styles.itemImagePlaceholder}>
-          <Feather name="package" size={24} color={colors.text.tertiary} />
+        <View style={[styles.itemImagePlaceholder, item.is_kit && styles.kitPlaceholder]}>
+          <Feather
+            name={item.is_kit ? 'archive' : 'package'}
+            size={22}
+            color={item.is_kit ? colors.primary.gold : colors.text.tertiary}
+          />
         </View>
       )}
       <View style={styles.itemInfo}>
-        <Text style={styles.itemName} numberOfLines={2}>
-          {item.name}
-        </Text>
-        {item.category_name && (
-          <Text style={styles.itemCategory}>{item.category_name}</Text>
+        <View style={styles.itemNameRow}>
+          {item.is_kit && (
+            <View style={styles.kitBadge}>
+              <Text style={styles.kitBadgeText}>KIT</Text>
+            </View>
+          )}
+          <Text style={styles.itemName} numberOfLines={2}>
+            {item.name}
+          </Text>
+        </View>
+        {(item.brand || item.model) && (
+          <Text style={styles.itemBrandModel} numberOfLines={1}>
+            {[item.brand, item.model].filter(Boolean).join(' ')}
+          </Text>
         )}
-        {item.description && (
-          <Text style={styles.itemDescription} numberOfLines={2}>
+        {!item.is_kit && item.unit_count !== undefined && item.unit_count > 0 && (
+          <View style={styles.unitStatusRow}>
+            <View style={styles.unitDot}>
+              <View style={[
+                styles.dot,
+                { backgroundColor: (item.available_count ?? 0) > 0 ? colors.status.success : colors.status.error }
+              ]} />
+            </View>
+            <Text style={styles.unitStatusText}>
+              {item.available_count}/{item.unit_count} dostępnych
+            </Text>
+          </View>
+        )}
+        {item.description && !item.brand && !item.model && (
+          <Text style={styles.itemDescription} numberOfLines={1}>
             {item.description}
           </Text>
         )}
@@ -183,15 +359,14 @@ export default function EquipmentScreen() {
     </TouchableOpacity>
   );
 
+  const breadcrumbText = parentStack.map((c) => c.name).join(' > ');
+
   return (
     <View style={styles.container}>
       {/* Search bar */}
       <View style={styles.searchContainer}>
-        {viewMode === 'items' && selectedCategory && (
-          <TouchableOpacity
-            onPress={handleBackToCategories}
-            style={styles.backButton}
-          >
+        {canGoBack && (
+          <TouchableOpacity onPress={handleBack} style={styles.backButton}>
             <Feather name="arrow-left" size={20} color={colors.text.primary} />
           </TouchableOpacity>
         )}
@@ -207,33 +382,50 @@ export default function EquipmentScreen() {
             returnKeyType="search"
           />
           {searchQuery.length > 0 && (
-            <TouchableOpacity
-              onPress={() => {
-                setSearchQuery('');
-                if (viewMode === 'items' && !selectedCategory) {
-                  setViewMode('categories');
-                }
-              }}
-            >
+            <TouchableOpacity onPress={handleClearSearch}>
               <Feather name="x" size={16} color={colors.text.tertiary} />
             </TouchableOpacity>
           )}
         </View>
       </View>
 
-      {/* Header for items view */}
-      {viewMode === 'items' && selectedCategory && (
-        <View style={styles.categoryHeader}>
-          <Text style={styles.categoryHeaderText}>{selectedCategory.name}</Text>
-          <Text style={styles.categoryHeaderCount}>
-            {items.length} elementów
+      {/* Breadcrumb */}
+      {parentStack.length > 0 && (
+        <View style={styles.breadcrumb}>
+          <Feather name="folder" size={12} color={colors.text.tertiary} />
+          <Text style={styles.breadcrumbText} numberOfLines={1}>
+            {breadcrumbText}
           </Text>
         </View>
       )}
 
+      {/* Header for items view */}
+      {viewMode === 'items' && selectedCategory && (
+        <View style={styles.categoryHeader}>
+          <View style={styles.headerLeft}>
+            <View style={[
+              styles.headerIcon,
+              { backgroundColor: (selectedCategory.color ?? colors.primary.gold) + '15' }
+            ]}>
+              <Feather
+                name={getFeatherIcon(selectedCategory.icon) as any}
+                size={16}
+                color={selectedCategory.color ?? colors.primary.gold}
+              />
+            </View>
+            <Text style={styles.categoryHeaderText}>{selectedCategory.name}</Text>
+          </View>
+          <Text style={styles.categoryHeaderCount}>
+            {items.length} el.
+          </Text>
+        </View>
+      )}
+
+      {/* Content */}
       {isLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary.gold} />
+          <Text style={styles.loadingText}>Ładowanie...</Text>
         </View>
       ) : viewMode === 'categories' ? (
         <FlatList
@@ -243,15 +435,18 @@ export default function EquipmentScreen() {
           contentContainerStyle={styles.list}
           refreshControl={
             <RefreshControl
-              refreshing={isLoading}
-              onRefresh={fetchCategories}
+              refreshing={false}
+              onRefresh={() => fetchCategories(selectedCategory?.id ?? null)}
               tintColor={colors.primary.gold}
             />
           }
           ListEmptyComponent={
             <View style={styles.emptyState}>
-              <Feather name="package" size={48} color={colors.text.tertiary} />
-              <Text style={styles.emptyText}>Brak kategorii sprzętu</Text>
+              <Feather name="folder" size={48} color={colors.text.tertiary} />
+              <Text style={styles.emptyText}>Brak podkategorii</Text>
+              <Text style={styles.emptySubtext}>
+                Ta kategoria nie zawiera podkategorii
+              </Text>
             </View>
           }
         />
@@ -263,7 +458,7 @@ export default function EquipmentScreen() {
           contentContainerStyle={styles.list}
           refreshControl={
             <RefreshControl
-              refreshing={isLoading}
+              refreshing={false}
               onRefresh={() => fetchItems(selectedCategory?.id)}
               tintColor={colors.primary.gold}
             />
@@ -271,7 +466,12 @@ export default function EquipmentScreen() {
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <Feather name="inbox" size={48} color={colors.text.tertiary} />
-              <Text style={styles.emptyText}>Brak sprzętu w tej kategorii</Text>
+              <Text style={styles.emptyText}>Brak sprzętu</Text>
+              <Text style={styles.emptySubtext}>
+                {searchQuery
+                  ? `Nie znaleziono wyników dla "${searchQuery}"`
+                  : 'Ta kategoria jest pusta'}
+              </Text>
             </View>
           }
         />
@@ -289,6 +489,11 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: spacing.md,
+  },
+  loadingText: {
+    fontSize: 13,
+    color: colors.text.tertiary,
   },
   searchContainer: {
     flexDirection: 'row',
@@ -298,7 +503,12 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   backButton: {
-    padding: spacing.xs,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.background.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   searchInput: {
     flex: 1,
@@ -309,11 +519,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     gap: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border.default,
   },
   searchText: {
     flex: 1,
     color: colors.text.primary,
     fontSize: 14,
+  },
+  breadcrumb: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.xs,
+    gap: 6,
+  },
+  breadcrumbText: {
+    fontSize: 11,
+    color: colors.text.tertiary,
+    flex: 1,
   },
   categoryHeader: {
     flexDirection: 'row',
@@ -322,14 +546,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
   },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  headerIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   categoryHeaderText: {
     fontSize: 16,
     fontWeight: '700',
     color: colors.text.primary,
   },
   categoryHeaderCount: {
-    fontSize: 13,
+    fontSize: 12,
     color: colors.text.tertiary,
+    backgroundColor: colors.background.secondary,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    overflow: 'hidden',
   },
   list: {
     paddingHorizontal: spacing.md,
@@ -342,12 +583,13 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: spacing.md,
     marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border.default,
   },
   categoryIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: colors.primary.gold + '15',
+    width: 44,
+    height: 44,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -371,49 +613,101 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: spacing.md,
     marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border.default,
   },
   itemImage: {
-    width: 60,
-    height: 60,
+    width: 56,
+    height: 56,
     borderRadius: 8,
     backgroundColor: colors.background.tertiary,
   },
   itemImagePlaceholder: {
-    width: 60,
-    height: 60,
+    width: 56,
+    height: 56,
     borderRadius: 8,
     backgroundColor: colors.background.tertiary,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  kitPlaceholder: {
+    backgroundColor: colors.primary.gold + '15',
   },
   itemInfo: {
     flex: 1,
     marginLeft: spacing.md,
     justifyContent: 'center',
   },
+  itemNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  kitBadge: {
+    backgroundColor: colors.primary.gold,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 3,
+  },
+  kitBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: colors.background.primary,
+    letterSpacing: 0.5,
+  },
   itemName: {
     fontSize: 14,
     fontWeight: '600',
     color: colors.text.primary,
+    flex: 1,
   },
-  itemCategory: {
+  itemBrandModel: {
     fontSize: 12,
-    color: colors.primary.gold,
+    color: colors.text.secondary,
     marginTop: 2,
+  },
+  unitStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    gap: 4,
+  },
+  unitDot: {
+    width: 14,
+    height: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  unitStatusText: {
+    fontSize: 11,
+    color: colors.text.tertiary,
   },
   itemDescription: {
     fontSize: 12,
     color: colors.text.tertiary,
-    marginTop: 4,
+    marginTop: 3,
   },
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 60,
+    paddingTop: 80,
+    gap: spacing.sm,
   },
   emptyText: {
-    marginTop: spacing.md,
-    fontSize: 14,
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text.secondary,
+  },
+  emptySubtext: {
+    fontSize: 13,
     color: colors.text.tertiary,
+    textAlign: 'center',
+    paddingHorizontal: spacing.xl,
   },
 });
