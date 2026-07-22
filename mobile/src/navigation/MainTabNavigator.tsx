@@ -10,6 +10,7 @@ import { useAuth } from '../contexts/AuthContext';
 import DashboardScreen from '../screens/DashboardScreen';
 import CalendarScreen from '../screens/CalendarScreen';
 import TasksStackNavigator from './TasksStackNavigator';
+import EventsStackNavigator from './EventsStackNavigator';
 import EquipmentStackNavigator from './EquipmentStackNavigator';
 import SettingsScreen from '../screens/SettingsScreen';
 import CustomDrawer from '../components/CustomDrawer';
@@ -17,6 +18,7 @@ import CustomDrawer from '../components/CustomDrawer';
 export type MainTabParamList = {
   Dashboard: undefined;
   Calendar: undefined;
+  Events: undefined;
   Tasks: undefined;
   Equipment: undefined;
   Settings: undefined;
@@ -162,6 +164,14 @@ export default function MainTabNavigator() {
           options={{
             title: 'Kalendarz',
             tabBarIcon: ({ color, size }) => <Feather name="calendar" color={color} size={size} />,
+          }}
+        />
+        <Tab.Screen
+          name="Events"
+          component={EventsStackNavigator}
+          options={{
+            title: 'Wydarzenia',
+            tabBarIcon: ({ color, size }) => <Feather name="star" color={color} size={size} />,
           }}
         />
         <Tab.Screen
