@@ -62,9 +62,11 @@ export default function CustomDrawer({ visible, onClose, navigation, currentScre
   const menuItems = [
     { icon: 'home', label: 'Dashboard', screen: 'Dashboard' },
     { icon: 'calendar', label: 'Kalendarz', screen: 'Calendar' },
+    { icon: 'message-circle', label: 'Komunikator', screen: 'Messages' },
     { icon: 'star', label: 'Wydarzenia', screen: 'Events' },
     { icon: 'check-square', label: 'Zadania', screen: 'Tasks' },
-    { icon: 'box', label: 'Sprzęt', screen: 'Equipment' },
+    { icon: 'package', label: 'Sprzęt', screen: 'Equipment' },
+    { icon: 'user', label: 'Profil', screen: 'Profile' },
     { icon: 'settings', label: 'Ustawienia', screen: 'Settings' },
   ];
 

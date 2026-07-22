@@ -9,19 +9,23 @@ import { useAuth } from '../contexts/AuthContext';
 
 import DashboardScreen from '../screens/DashboardScreen';
 import CalendarScreen from '../screens/CalendarScreen';
+import ProfileScreen from '../screens/ProfileScreen';
+import SettingsScreen from '../screens/SettingsScreen';
+import MessagesScreen from '../screens/MessagesScreen';
 import TasksStackNavigator from './TasksStackNavigator';
 import EventsStackNavigator from './EventsStackNavigator';
 import EquipmentStackNavigator from './EquipmentStackNavigator';
-import SettingsScreen from '../screens/SettingsScreen';
 import CustomDrawer from '../components/CustomDrawer';
 
 export type MainTabParamList = {
   Dashboard: undefined;
   Calendar: undefined;
+  Profile: undefined;
+  Settings: undefined;
+  Messages: undefined;
   Events: undefined;
   Tasks: undefined;
   Equipment: undefined;
-  Settings: undefined;
 };
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -150,6 +154,7 @@ export default function MainTabNavigator() {
           },
         }}
       >
+        {/* === Bottom tab bar items === */}
         <Tab.Screen
           name="Dashboard"
           component={DashboardScreen}
@@ -167,27 +172,19 @@ export default function MainTabNavigator() {
           }}
         />
         <Tab.Screen
-          name="Events"
-          component={EventsStackNavigator}
+          name="Messages"
+          component={MessagesScreen}
           options={{
-            title: 'Wydarzenia',
-            tabBarIcon: ({ color, size }) => <Feather name="star" color={color} size={size} />,
+            title: 'Komunikator',
+            tabBarIcon: ({ color, size }) => <Feather name="message-circle" color={color} size={size} />,
           }}
         />
         <Tab.Screen
-          name="Tasks"
-          component={TasksStackNavigator}
+          name="Profile"
+          component={ProfileScreen}
           options={{
-            title: 'Zadania',
-            tabBarIcon: ({ color, size }) => <Feather name="check-square" color={color} size={size} />,
-          }}
-        />
-        <Tab.Screen
-          name="Equipment"
-          component={EquipmentStackNavigator}
-          options={{
-            title: 'Sprzęt',
-            tabBarIcon: ({ color, size }) => <Feather name="package" color={color} size={size} />,
+            title: 'Profil',
+            tabBarIcon: ({ color, size }) => <Feather name="user" color={color} size={size} />,
           }}
         />
         <Tab.Screen
@@ -196,6 +193,35 @@ export default function MainTabNavigator() {
           options={{
             title: 'Ustawienia',
             tabBarIcon: ({ color, size }) => <Feather name="settings" color={color} size={size} />,
+          }}
+        />
+
+        {/* === Hidden from tab bar, accessible from drawer === */}
+        <Tab.Screen
+          name="Events"
+          component={EventsStackNavigator}
+          options={{
+            title: 'Wydarzenia',
+            tabBarButton: () => null,
+            tabBarIcon: ({ color, size }) => <Feather name="star" color={color} size={size} />,
+          }}
+        />
+        <Tab.Screen
+          name="Tasks"
+          component={TasksStackNavigator}
+          options={{
+            title: 'Zadania',
+            tabBarButton: () => null,
+            tabBarIcon: ({ color, size }) => <Feather name="check-square" color={color} size={size} />,
+          }}
+        />
+        <Tab.Screen
+          name="Equipment"
+          component={EquipmentStackNavigator}
+          options={{
+            title: 'Sprzęt',
+            tabBarButton: () => null,
+            tabBarIcon: ({ color, size }) => <Feather name="package" color={color} size={size} />,
           }}
         />
       </Tab.Navigator>
