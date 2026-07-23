@@ -9,6 +9,7 @@ import { useAuth } from '../contexts/AuthContext';
 
 import DashboardScreen from '../screens/DashboardScreen';
 import CalendarScreen from '../screens/CalendarScreen';
+import MeetingsScreen from '../screens/MeetingsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import MessagesStackNavigator from './MessagesStackNavigator';
@@ -23,6 +24,7 @@ import { useUnreadChatCount } from '../services/chatNotifications';
 export type MainTabParamList = {
   Dashboard: undefined;
   Calendar: undefined;
+  Meetings: undefined;
   Profile: undefined;
   Settings: undefined;
   Messages: undefined;
@@ -175,6 +177,15 @@ export default function MainTabNavigator() {
           options={{
             title: 'Kalendarz',
             tabBarIcon: ({ color, size }) => <Feather name="calendar" color={color} size={size} />,
+          }}
+        />
+        <Tab.Screen
+          name="Meetings"
+          component={MeetingsScreen}
+          options={{
+            title: 'Spotkania',
+            headerShown: false,
+            tabBarIcon: ({ color, size }) => <Feather name="users" color={color} size={size} />,
           }}
         />
         <Tab.Screen
