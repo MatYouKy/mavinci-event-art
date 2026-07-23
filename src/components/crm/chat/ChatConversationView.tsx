@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, Send, Paperclip } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { ArrowLeft, Send, Paperclip, X, FileText, Film, Image as ImageIcon, Download } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { Conversation, ChatMessage } from './ChatWidget';
 
@@ -20,14 +20,33 @@ interface SenderInfo {
   avatar_url?: string | null;
 }
 
+const MAX_FILE_SIZE = 20 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/webm'];
+
+function getMessageType(mimeType: string): string {
+  if (ALLOWED_IMAGE_TYPES.includes(mimeType)) return 'image';
+  if (ALLOWED_VIDEO_TYPES.includes(mimeType)) return 'video';
+  return 'file';
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export default function ChatConversationView({ conversation, currentEmployeeId, isOnline, onBack }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(true);
   const [senders, setSenders] = useState<Map<string, SenderInfo>>(new Map());
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [pendingPreview, setPendingPreview] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const otherParticipant = conversation.participants.find((p) => p.employee_id !== currentEmployeeId);
   const conversationName = conversation.title ||
@@ -74,6 +93,12 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
     scrollToBottom();
   }, [messages]);
 
+  useEffect(() => {
+    return () => {
+      if (pendingPreview) URL.revokeObjectURL(pendingPreview);
+    };
+  }, [pendingPreview]);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -110,22 +135,66 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
       .eq('employee_id', currentEmployeeId);
   };
 
+  const uploadFile = async (file: File): Promise<{ url: string; filename: string; size: number; messageType: string } | null> => {
+    const messageType = getMessageType(file.type);
+    const ext = file.name.split('.').pop() || 'bin';
+    const storagePath = `${conversation.id}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+
+    const { error } = await supabase.storage
+      .from('chat-attachments')
+      .upload(storagePath, file, { contentType: file.type });
+
+    if (error) {
+      console.error('[Chat] Upload error:', error);
+      return null;
+    }
+
+    const { data: urlData } = supabase.storage.from('chat-attachments').getPublicUrl(storagePath);
+    return { url: urlData.publicUrl, filename: file.name, size: file.size, messageType };
+  };
+
   const sendMessage = async () => {
     const content = newMessage.trim();
-    if (!content || isSending) return;
+    const file = pendingFile;
+    if (!content && !file) return;
+    if (isSending) return;
 
     setIsSending(true);
     setNewMessage('');
+    setPendingFile(null);
+    if (pendingPreview) { URL.revokeObjectURL(pendingPreview); setPendingPreview(null); }
 
-    const { data: inserted, error } = await supabase.from('employee_messages').insert({
+    let attachmentData: Awaited<ReturnType<typeof uploadFile>> = null;
+    if (file) {
+      attachmentData = await uploadFile(file);
+      if (!attachmentData) {
+        setIsSending(false);
+        setPendingFile(file);
+        return;
+      }
+    }
+
+    const insertPayload: Record<string, unknown> = {
       conversation_id: conversation.id,
       sender_id: currentEmployeeId,
-      content,
-    }).select('id, conversation_id, sender_id, content, message_type, created_at').maybeSingle();
+      content: content || (attachmentData?.filename ?? ''),
+      message_type: attachmentData ? attachmentData.messageType : 'text',
+    };
+    if (attachmentData) {
+      insertPayload.attachment_url = attachmentData.url;
+      insertPayload.attachment_filename = attachmentData.filename;
+      insertPayload.attachment_size = attachmentData.size;
+    }
+
+    const { data: inserted, error } = await supabase.from('employee_messages')
+      .insert(insertPayload)
+      .select('id, conversation_id, sender_id, content, message_type, created_at')
+      .maybeSingle();
 
     if (error) {
       console.error('[Chat] send error:', error);
-      setNewMessage(content);
+      if (content) setNewMessage(content);
+      if (file) setPendingFile(file);
     } else if (inserted) {
       triggerPushNotification(inserted);
     }
@@ -138,18 +207,31 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
     fetch(`${supabaseUrl}/functions/v1/send-chat-push`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${anonKey}`,
-      },
-      body: JSON.stringify({
-        type: 'INSERT',
-        table: 'employee_messages',
-        schema: 'public',
-        record: message,
-        old_record: null,
-      }),
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKey}` },
+      body: JSON.stringify({ type: 'INSERT', table: 'employee_messages', schema: 'public', record: message, old_record: null }),
     }).catch((err) => console.warn('[Chat] Push trigger failed:', err));
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > MAX_FILE_SIZE) {
+      alert(`Plik jest zbyt duży. Maksymalny rozmiar: ${formatFileSize(MAX_FILE_SIZE)}`);
+      return;
+    }
+    setPendingFile(file);
+    if (file.type.startsWith('image/')) {
+      setPendingPreview(URL.createObjectURL(file));
+    } else {
+      setPendingPreview(null);
+    }
+    inputRef.current?.focus();
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const removePendingFile = () => {
+    setPendingFile(null);
+    if (pendingPreview) { URL.revokeObjectURL(pendingPreview); setPendingPreview(null); }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -168,7 +250,6 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
-
     if (date.toDateString() === today.toDateString()) return 'Dzisiaj';
     if (date.toDateString() === yesterday.toDateString()) return 'Wczoraj';
     return date.toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -176,9 +257,7 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
 
   const shouldShowDateSeparator = (index: number): boolean => {
     if (index === 0) return true;
-    const curr = new Date(messages[index].created_at).toDateString();
-    const prev = new Date(messages[index - 1].created_at).toDateString();
-    return curr !== prev;
+    return new Date(messages[index].created_at).toDateString() !== new Date(messages[index - 1].created_at).toDateString();
   };
 
   const isConsecutive = (index: number): boolean => {
@@ -186,8 +265,55 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
     const curr = messages[index];
     const prev = messages[index - 1];
     if (curr.sender_id !== prev.sender_id) return false;
-    const timeDiff = new Date(curr.created_at).getTime() - new Date(prev.created_at).getTime();
-    return timeDiff < 60000;
+    return new Date(curr.created_at).getTime() - new Date(prev.created_at).getTime() < 60000;
+  };
+
+  const renderAttachment = (msg: ChatMessage, isMine: boolean) => {
+    if (!msg.attachment_url) return null;
+
+    if (msg.message_type === 'image') {
+      return (
+        <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer" className="block">
+          <img
+            src={msg.attachment_url}
+            alt={msg.attachment_filename || 'Obraz'}
+            className="max-h-52 max-w-full rounded-lg object-cover"
+            loading="lazy"
+          />
+        </a>
+      );
+    }
+
+    if (msg.message_type === 'video') {
+      return (
+        <video
+          src={msg.attachment_url}
+          controls
+          className="max-h-52 max-w-full rounded-lg"
+          preload="metadata"
+        />
+      );
+    }
+
+    return (
+      <a
+        href={msg.attachment_url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`flex items-center gap-2 rounded-lg px-2.5 py-2 transition-colors ${
+          isMine ? 'bg-[#0f1119]/10 hover:bg-[#0f1119]/20' : 'bg-white/5 hover:bg-white/10'
+        }`}
+      >
+        <FileText className="h-5 w-5 shrink-0 opacity-70" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-xs font-medium">{msg.attachment_filename || 'Plik'}</p>
+          {msg.attachment_size && (
+            <p className="text-[10px] opacity-50">{formatFileSize(msg.attachment_size)}</p>
+          )}
+        </div>
+        <Download className="h-3.5 w-3.5 shrink-0 opacity-50" />
+      </a>
+    );
   };
 
   return (
@@ -202,11 +328,7 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
         </button>
         <div className="relative">
           {otherParticipant?.employee?.avatar_url ? (
-            <img
-              src={otherParticipant.employee.avatar_url}
-              alt=""
-              className="h-8 w-8 rounded-full object-cover"
-            />
+            <img src={otherParticipant.employee.avatar_url} alt="" className="h-8 w-8 rounded-full object-cover" />
           ) : (
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#d3bb73]/15 text-xs font-semibold text-[#d3bb73]">
               {conversationName.charAt(0).toUpperCase()}
@@ -218,9 +340,7 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
         </div>
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-sm font-medium text-[#e5e4e2]">{conversationName}</span>
-          <span className="text-[10px] text-[#e5e4e2]/40">
-            {otherIsOnline ? 'Online' : 'Offline'}
-          </span>
+          <span className="text-[10px] text-[#e5e4e2]/40">{otherIsOnline ? 'Online' : 'Offline'}</span>
         </div>
       </div>
 
@@ -240,6 +360,9 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
             const showDate = shouldShowDateSeparator(idx);
             const consecutive = isConsecutive(idx);
             const sender = senders.get(msg.sender_id);
+            const hasAttachment = !!msg.attachment_url;
+            const hasTextContent = msg.content && msg.message_type === 'text';
+            const hasCaption = msg.content && msg.message_type !== 'text' && msg.content !== (msg.attachment_filename || '');
 
             return (
               <div key={msg.id}>
@@ -251,7 +374,6 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
                   </div>
                 )}
                 <div className={`flex ${isMine ? 'justify-end' : 'justify-start'} ${consecutive ? 'mt-0.5' : 'mt-2'}`}>
-                  {/* Other user avatar (only on first msg in group) */}
                   {!isMine && !consecutive && conversation.is_group && (
                     <div className="mr-1.5 mt-auto shrink-0">
                       {sender?.avatar_url ? (
@@ -265,21 +387,22 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
                   )}
                   {!isMine && consecutive && conversation.is_group && <div className="mr-1.5 w-6 shrink-0" />}
 
-                  <div className={`group relative max-w-[75%] ${isMine ? '' : ''}`}>
-                    {/* Sender name for group chats */}
+                  <div className="group relative max-w-[75%]">
                     {!isMine && !consecutive && conversation.is_group && (
                       <p className="mb-0.5 ml-2 text-[9px] font-medium text-[#d3bb73]/60">
                         {sender?.nickname || sender?.name || 'Unknown'}
                       </p>
                     )}
                     <div
-                      className={`rounded-2xl px-3 py-1.5 text-[13px] leading-relaxed ${
+                      className={`overflow-hidden rounded-2xl px-3 py-1.5 text-[13px] leading-relaxed ${
                         isMine
                           ? 'rounded-br-md bg-gradient-to-br from-[#d3bb73] to-[#c5aa5c] text-[#0f1119]'
                           : 'rounded-bl-md bg-[#262940] text-[#e5e4e2]'
-                      }`}
+                      } ${hasAttachment ? 'p-2' : ''}`}
                     >
-                      {msg.content}
+                      {hasAttachment && renderAttachment(msg, isMine)}
+                      {hasCaption && <p className="mt-1.5 px-1 text-[13px]">{msg.content}</p>}
+                      {hasTextContent && <span>{msg.content}</span>}
                     </div>
                     <p className={`mt-0.5 text-[9px] text-[#e5e4e2]/30 opacity-0 transition-opacity group-hover:opacity-100 ${isMine ? 'text-right' : 'text-left'}`}>
                       {formatMessageTime(msg.created_at)}
@@ -293,16 +416,54 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Pending file preview */}
+      {pendingFile && (
+        <div className="flex items-center gap-2 border-t border-[#d3bb73]/10 bg-[#0f1119]/50 px-3 py-2">
+          {pendingPreview ? (
+            <img src={pendingPreview} alt="" className="h-10 w-10 rounded-lg object-cover" />
+          ) : (
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#d3bb73]/10">
+              {pendingFile.type.startsWith('video/') ? (
+                <Film className="h-4 w-4 text-[#d3bb73]" />
+              ) : (
+                <FileText className="h-4 w-4 text-[#d3bb73]" />
+              )}
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs text-[#e5e4e2]">{pendingFile.name}</p>
+            <p className="text-[10px] text-[#e5e4e2]/40">{formatFileSize(pendingFile.size)}</p>
+          </div>
+          <button
+            onClick={removePendingFile}
+            className="rounded p-1 text-[#e5e4e2]/40 transition-colors hover:bg-red-500/10 hover:text-red-400"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* Input */}
       <div className="border-t border-[#d3bb73]/10 px-3 py-2">
         <div className="flex items-center gap-2 rounded-xl bg-[#0f1119]/60 px-3 py-2">
-          <button className="text-[#e5e4e2]/30 transition-colors hover:text-[#d3bb73]">
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            accept="image/*,video/mp4,video/quicktime,video/webm,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar"
+            onChange={handleFileSelect}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="text-[#e5e4e2]/30 transition-colors hover:text-[#d3bb73]"
+            title="Dodaj załącznik"
+          >
             <Paperclip className="h-4 w-4" />
           </button>
           <input
             ref={inputRef}
             type="text"
-            placeholder="Napisz wiadomość..."
+            placeholder={pendingFile ? 'Dodaj komentarz (opcjonalnie)...' : 'Napisz wiadomość...'}
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -311,14 +472,18 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
           />
           <button
             onClick={sendMessage}
-            disabled={!newMessage.trim() || isSending}
+            disabled={(!newMessage.trim() && !pendingFile) || isSending}
             className={`rounded-lg p-1.5 transition-all ${
-              newMessage.trim()
+              newMessage.trim() || pendingFile
                 ? 'bg-[#d3bb73] text-[#0f1119] hover:bg-[#c5aa5c]'
                 : 'text-[#e5e4e2]/20'
             }`}
           >
-            <Send className="h-4 w-4" />
+            {isSending ? (
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#0f1119]/20 border-t-[#0f1119]" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
           </button>
         </div>
       </div>

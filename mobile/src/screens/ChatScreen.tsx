@@ -10,10 +10,15 @@ import {
   Platform,
   ActivityIndicator,
   Keyboard,
+  Image,
+  Alert,
+  Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import { colors, spacing, typography, borderRadius } from '../theme';
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
+import { colors, spacing, typography } from '../theme';
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import EmployeeAvatar from '../components/EmployeeAvatar';
@@ -27,6 +32,8 @@ interface Message {
   content: string;
   message_type: string;
   attachment_url: string | null;
+  attachment_filename?: string | null;
+  attachment_size?: number | null;
   is_edited: boolean;
   created_at: string;
 }
@@ -40,9 +47,30 @@ interface SenderInfo {
   avatar_metadata?: any;
 }
 
+interface PendingAttachment {
+  uri: string;
+  name: string;
+  size: number;
+  mimeType: string;
+}
+
 interface Props {
   conversation: Conversation;
   onBack: () => void;
+}
+
+const MAX_FILE_SIZE = 20 * 1024 * 1024;
+
+function getMessageType(mimeType: string): string {
+  if (mimeType.startsWith('image/')) return 'image';
+  if (mimeType.startsWith('video/')) return 'video';
+  return 'file';
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export default function ChatScreen({ conversation, onBack }: Props) {
@@ -54,6 +82,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
+  const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -119,7 +148,6 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     };
   }, [fetchMessages, markAsRead]);
 
-  // Realtime messages
   useEffect(() => {
     const channel = supabase
       .channel(`chat-${conversation.id}`)
@@ -187,31 +215,79 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     };
   }, [conversation.id, markAsRead, senders]);
 
+  const uploadAttachment = async (attachment: PendingAttachment): Promise<{ url: string } | null> => {
+    const ext = attachment.name.split('.').pop() || 'bin';
+    const storagePath = `${conversation.id}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+
+    const response = await fetch(attachment.uri);
+    const blob = await response.blob();
+
+    const { error } = await supabase.storage
+      .from('chat-attachments')
+      .upload(storagePath, blob, { contentType: attachment.mimeType });
+
+    if (error) {
+      console.error('[Chat] Upload error:', error);
+      return null;
+    }
+
+    const { data: urlData } = supabase.storage.from('chat-attachments').getPublicUrl(storagePath);
+    return { url: urlData.publicUrl };
+  };
+
   const sendMessage = async () => {
     const text = inputText.trim();
-    if (!text || !employee || isSending) return;
+    const attachment = pendingAttachment;
+
+    if (!text && !attachment) return;
+    if (!employee || isSending) return;
 
     setIsSending(true);
     setInputText('');
+    setPendingAttachment(null);
     Keyboard.dismiss();
+
+    let attachmentUrl: string | null = null;
+    let messageType = 'text';
+
+    if (attachment) {
+      const result = await uploadAttachment(attachment);
+      if (!result) {
+        Alert.alert('Błąd', 'Nie udało się wysłać załącznika. Spróbuj ponownie.');
+        setIsSending(false);
+        setPendingAttachment(attachment);
+        if (text) setInputText(text);
+        return;
+      }
+      attachmentUrl = result.url;
+      messageType = getMessageType(attachment.mimeType);
+    }
+
+    const insertPayload: Record<string, unknown> = {
+      conversation_id: conversation.id,
+      sender_id: employee.id,
+      content: text || (attachment?.name ?? ''),
+      message_type: messageType,
+    };
+
+    if (attachmentUrl && attachment) {
+      insertPayload.attachment_url = attachmentUrl;
+      insertPayload.attachment_filename = attachment.name;
+      insertPayload.attachment_size = attachment.size;
+    }
 
     const { data: insertedMsg, error } = await supabase
       .from('employee_messages')
-      .insert({
-        conversation_id: conversation.id,
-        sender_id: employee.id,
-        content: text,
-        message_type: 'text',
-      })
+      .insert(insertPayload)
       .select('id')
       .single();
 
     if (error) {
-      setInputText(text);
+      if (text) setInputText(text);
+      if (attachment) setPendingAttachment(attachment);
       console.error('Failed to send:', error.message);
     } else if (insertedMsg) {
-      // Trigger remote push for other participants
-      triggerChatPush(conversation.id, employee.id, text, insertedMsg.id);
+      triggerChatPush(conversation.id, employee.id, text || attachment?.name || '', insertedMsg.id);
     }
 
     setIsSending(false);
@@ -243,6 +319,77 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     } catch (err) {
       console.warn('Push notification trigger failed:', err);
     }
+  };
+
+  const showAttachmentOptions = () => {
+    Alert.alert('Dodaj załącznik', 'Wybierz źródło', [
+      {
+        text: 'Zdjęcie lub wideo',
+        onPress: pickImage,
+      },
+      {
+        text: 'Dokument',
+        onPress: pickDocument,
+      },
+      { text: 'Anuluj', style: 'cancel' },
+    ]);
+  };
+
+  const pickImage = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Brak uprawnień', 'Zezwól na dostęp do galerii w ustawieniach.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      quality: 0.8,
+      videoMaxDuration: 60,
+    });
+
+    if (result.canceled || !result.assets?.[0]) return;
+
+    const asset = result.assets[0];
+    const fileSize = asset.fileSize || 0;
+
+    if (fileSize > MAX_FILE_SIZE) {
+      Alert.alert('Za duży plik', `Maksymalny rozmiar to ${formatFileSize(MAX_FILE_SIZE)}`);
+      return;
+    }
+
+    const fileName = asset.uri.split('/').pop() || 'attachment';
+    const mimeType = asset.type === 'video' ? 'video/mp4' : 'image/jpeg';
+
+    setPendingAttachment({
+      uri: asset.uri,
+      name: fileName,
+      size: fileSize,
+      mimeType,
+    });
+  };
+
+  const pickDocument = async () => {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: '*/*',
+      copyToCacheDirectory: true,
+    });
+
+    if (result.canceled || !result.assets?.[0]) return;
+
+    const doc = result.assets[0];
+
+    if (doc.size && doc.size > MAX_FILE_SIZE) {
+      Alert.alert('Za duży plik', `Maksymalny rozmiar to ${formatFileSize(MAX_FILE_SIZE)}`);
+      return;
+    }
+
+    setPendingAttachment({
+      uri: doc.uri,
+      name: doc.name,
+      size: doc.size || 0,
+      mimeType: doc.mimeType || 'application/octet-stream',
+    });
   };
 
   const formatMessageTime = (dateStr: string): string => {
@@ -284,7 +431,60 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     if (prev.sender_id !== curr.sender_id) return false;
     const timeDiff =
       new Date(curr.created_at).getTime() - new Date(prev.created_at).getTime();
-    return timeDiff < 60000; // 1 minute
+    return timeDiff < 60000;
+  };
+
+  const renderAttachment = (item: Message, isMine: boolean) => {
+    if (!item.attachment_url) return null;
+
+    if (item.message_type === 'image') {
+      return (
+        <TouchableOpacity
+          onPress={() => Linking.openURL(item.attachment_url!)}
+          activeOpacity={0.8}
+        >
+          <Image
+            source={{ uri: item.attachment_url }}
+            style={styles.attachmentImage}
+            resizeMode="cover"
+          />
+        </TouchableOpacity>
+      );
+    }
+
+    if (item.message_type === 'video') {
+      return (
+        <TouchableOpacity
+          onPress={() => Linking.openURL(item.attachment_url!)}
+          style={styles.videoPlaceholder}
+          activeOpacity={0.7}
+        >
+          <Feather name="play-circle" size={32} color="#fff" />
+          <Text style={styles.videoLabel}>Odtwórz wideo</Text>
+        </TouchableOpacity>
+      );
+    }
+
+    return (
+      <TouchableOpacity
+        onPress={() => Linking.openURL(item.attachment_url!)}
+        style={[styles.fileAttachment, isMine ? styles.fileAttachmentMine : styles.fileAttachmentTheirs]}
+        activeOpacity={0.7}
+      >
+        <Feather name="file-text" size={18} color={isMine ? '#0f1119' : colors.primary.gold} />
+        <View style={styles.fileInfo}>
+          <Text style={[styles.fileName, isMine && styles.fileNameMine]} numberOfLines={1}>
+            {item.attachment_filename || 'Plik'}
+          </Text>
+          {item.attachment_size ? (
+            <Text style={[styles.fileSize, isMine && styles.fileSizeMine]}>
+              {formatFileSize(item.attachment_size)}
+            </Text>
+          ) : null}
+        </View>
+        <Feather name="download" size={14} color={isMine ? '#0f1119' : colors.text.tertiary} />
+      </TouchableOpacity>
+    );
   };
 
   const renderMessage = ({ item, index }: { item: Message; index: number }) => {
@@ -293,6 +493,9 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     const showAvatar = !isMine && shouldShowAvatar(index);
     const showDateSep = shouldShowDateSeparator(index);
     const consecutive = isConsecutive(index);
+    const hasAttachment = !!item.attachment_url;
+    const hasTextContent = item.message_type === 'text' && !!item.content;
+    const hasCaption = item.message_type !== 'text' && !!item.content && item.content !== (item.attachment_filename || '');
 
     return (
       <View>
@@ -327,16 +530,27 @@ export default function ChatScreen({ conversation, onBack }: Props) {
           )}
 
           <View style={styles.bubbleWrapper}>
-            {/* Show sender name in group chats */}
             {conversation.is_group && !isMine && !consecutive && sender && (
               <Text style={styles.senderName}>
                 {sender.nickname || sender.name}
               </Text>
             )}
-            <View style={[styles.bubble, isMine ? styles.bubbleMine : styles.bubbleTheirs]}>
-              <Text style={[styles.messageText, isMine && styles.messageTextMine]}>
-                {item.content}
-              </Text>
+            <View style={[
+              styles.bubble,
+              isMine ? styles.bubbleMine : styles.bubbleTheirs,
+              hasAttachment && styles.bubbleWithAttachment,
+            ]}>
+              {hasAttachment && renderAttachment(item, isMine)}
+              {hasCaption && (
+                <Text style={[styles.messageText, isMine && styles.messageTextMine, { marginTop: 6 }]}>
+                  {item.content}
+                </Text>
+              )}
+              {hasTextContent && (
+                <Text style={[styles.messageText, isMine && styles.messageTextMine]}>
+                  {item.content}
+                </Text>
+              )}
             </View>
             {showAvatar && (
               <Text style={[styles.messageTime, isMine && styles.messageTimeMine]}>
@@ -419,12 +633,36 @@ export default function ChatScreen({ conversation, onBack }: Props) {
         />
       )}
 
+      {/* Pending attachment preview */}
+      {pendingAttachment && (
+        <View style={styles.pendingBar}>
+          {pendingAttachment.mimeType.startsWith('image/') ? (
+            <Image source={{ uri: pendingAttachment.uri }} style={styles.pendingThumb} />
+          ) : (
+            <View style={styles.pendingIconBox}>
+              <Feather
+                name={pendingAttachment.mimeType.startsWith('video/') ? 'video' : 'file-text'}
+                size={16}
+                color={colors.primary.gold}
+              />
+            </View>
+          )}
+          <View style={styles.pendingInfo}>
+            <Text style={styles.pendingName} numberOfLines={1}>{pendingAttachment.name}</Text>
+            <Text style={styles.pendingSize}>{formatFileSize(pendingAttachment.size)}</Text>
+          </View>
+          <TouchableOpacity onPress={() => setPendingAttachment(null)} style={styles.pendingRemove}>
+            <Feather name="x" size={16} color={colors.text.tertiary} />
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Input */}
       <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
         <View style={styles.inputWrapper}>
           <TextInput
             style={styles.textInput}
-            placeholder="Aa"
+            placeholder={pendingAttachment ? 'Komentarz (opcjonalnie)...' : 'Aa'}
             placeholderTextColor={colors.text.tertiary}
             value={inputText}
             onChangeText={setInputText}
@@ -432,7 +670,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
             multiline
             maxLength={2000}
           />
-          {inputText.trim().length > 0 ? (
+          {inputText.trim().length > 0 || pendingAttachment ? (
             <TouchableOpacity
               style={styles.sendButton}
               onPress={sendMessage}
@@ -445,7 +683,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
               )}
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity style={styles.attachButton}>
+            <TouchableOpacity style={styles.attachButton} onPress={showAttachmentOptions}>
               <Feather name="plus-circle" size={24} color={colors.primary.gold} />
             </TouchableOpacity>
           )}
@@ -572,6 +810,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background.tertiary,
     borderBottomLeftRadius: 4,
   },
+  bubbleWithAttachment: {
+    paddingHorizontal: 6,
+    paddingVertical: 6,
+  },
   messageText: {
     fontSize: typography.fontSizes.md,
     color: colors.text.primary,
@@ -602,6 +844,98 @@ const styles = StyleSheet.create({
     color: colors.text.tertiary,
     marginTop: spacing.sm,
   },
+  // Attachment styles
+  attachmentImage: {
+    width: 200,
+    height: 150,
+    borderRadius: 12,
+  },
+  videoPlaceholder: {
+    width: 200,
+    height: 120,
+    borderRadius: 12,
+    backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  videoLabel: {
+    color: '#fff',
+    fontSize: 11,
+    marginTop: 4,
+    opacity: 0.8,
+  },
+  fileAttachment: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    gap: 8,
+  },
+  fileAttachmentMine: {
+    backgroundColor: 'rgba(15,17,25,0.1)',
+  },
+  fileAttachmentTheirs: {
+    backgroundColor: 'rgba(211,187,115,0.08)',
+  },
+  fileInfo: {
+    flex: 1,
+  },
+  fileName: {
+    fontSize: 12,
+    fontWeight: '500' as any,
+    color: colors.text.primary,
+  },
+  fileNameMine: {
+    color: '#0f1119',
+  },
+  fileSize: {
+    fontSize: 10,
+    color: colors.text.tertiary,
+    marginTop: 1,
+  },
+  fileSizeMine: {
+    color: 'rgba(15,17,25,0.5)',
+  },
+  // Pending attachment bar
+  pendingBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border.default,
+    backgroundColor: colors.background.secondary,
+    gap: 8,
+  },
+  pendingThumb: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+  },
+  pendingIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: colors.primary.gold + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pendingInfo: {
+    flex: 1,
+  },
+  pendingName: {
+    fontSize: 12,
+    color: colors.text.primary,
+  },
+  pendingSize: {
+    fontSize: 10,
+    color: colors.text.tertiary,
+  },
+  pendingRemove: {
+    padding: 6,
+  },
+  // Input
   inputContainer: {
     paddingHorizontal: spacing.sm,
     paddingTop: spacing.sm,
