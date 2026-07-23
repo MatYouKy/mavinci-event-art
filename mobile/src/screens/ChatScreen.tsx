@@ -85,6 +85,10 @@ export default function ChatScreen({ conversation, onBack }: Props) {
   const [isSending, setIsSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+  const [showMenu, setShowMenu] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -100,6 +104,14 @@ export default function ChatScreen({ conversation, onBack }: Props) {
       : 'Czat');
 
   const fetchMessages = useCallback(async () => {
+    if (employee) {
+      const { data: deletions } = await supabase
+        .from('employee_message_deletions')
+        .select('message_id')
+        .eq('employee_id', employee.id);
+      setDeletedIds(new Set((deletions || []).map((d: { message_id: string }) => d.message_id)));
+    }
+
     const { data, error } = await supabase
       .from('employee_messages')
       .select('*')
@@ -122,7 +134,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
         setSenders(map);
       }
     }
-  }, [conversation.id]);
+  }, [conversation.id, employee]);
 
   const markAsRead = useCallback(async () => {
     if (!employee) return;
@@ -403,6 +415,62 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     }
   };
 
+  const toggleSelectMessage = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const exitSelectMode = () => {
+    setIsSelectMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const deleteSelectedForMe = async () => {
+    if (selectedIds.size === 0 || !employee) return;
+
+    Alert.alert(
+      'Usuń wiadomości',
+      `Usunąć ${selectedIds.size} wiadomości? Zostaną ukryte tylko u Ciebie.`,
+      [
+        { text: 'Anuluj', style: 'cancel' },
+        {
+          text: 'Usuń',
+          style: 'destructive',
+          onPress: async () => {
+            const rows = Array.from(selectedIds).map((mid) => ({
+              message_id: mid,
+              employee_id: employee.id,
+            }));
+
+            const { error } = await supabase
+              .from('employee_message_deletions')
+              .upsert(rows, { onConflict: 'message_id,employee_id' });
+
+            if (!error) {
+              setDeletedIds((prev) => {
+                const next = new Set(prev);
+                selectedIds.forEach((id) => next.add(id));
+                return next;
+              });
+            }
+            exitSelectMode();
+          },
+        },
+      ]
+    );
+  };
+
+  const handleLongPress = (id: string) => {
+    if (!isSelectMode) {
+      setIsSelectMode(true);
+      setSelectedIds(new Set([id]));
+    }
+  };
+
   const showAttachmentOptions = () => {
     Alert.alert('Dodaj załącznik', 'Wybierz źródło', [
       {
@@ -525,28 +593,6 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     });
   };
 
-  const shouldShowDateSeparator = (index: number): boolean => {
-    if (index === 0) return true;
-    const curr = new Date(messages[index].created_at).toDateString();
-    const prev = new Date(messages[index - 1].created_at).toDateString();
-    return curr !== prev;
-  };
-
-  const shouldShowAvatar = (index: number): boolean => {
-    if (index === messages.length - 1) return true;
-    return messages[index].sender_id !== messages[index + 1].sender_id;
-  };
-
-  const isConsecutive = (index: number): boolean => {
-    if (index === 0) return false;
-    const prev = messages[index - 1];
-    const curr = messages[index];
-    if (prev.sender_id !== curr.sender_id) return false;
-    const timeDiff =
-      new Date(curr.created_at).getTime() - new Date(prev.created_at).getTime();
-    return timeDiff < 60000;
-  };
-
   const renderAttachment = (item: Message, isMine: boolean) => {
     if (!item.attachment_url) return null;
 
@@ -600,15 +646,18 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     );
   };
 
+  const visibleMessages = messages.filter((m) => !deletedIds.has(m.id));
+
   const renderMessage = ({ item, index }: { item: Message; index: number }) => {
     const isMine = item.sender_id === employee?.id;
     const sender = senders.get(item.sender_id);
-    const showAvatar = !isMine && shouldShowAvatar(index);
-    const showDateSep = shouldShowDateSeparator(index);
-    const consecutive = isConsecutive(index);
+    const showAvatar = !isMine && (index === visibleMessages.length - 1 || item.sender_id !== visibleMessages[index + 1]?.sender_id);
+    const showDateSep = index === 0 || new Date(item.created_at).toDateString() !== new Date(visibleMessages[index - 1].created_at).toDateString();
+    const consecutive = index > 0 && visibleMessages[index - 1].sender_id === item.sender_id && new Date(item.created_at).getTime() - new Date(visibleMessages[index - 1].created_at).getTime() < 60000;
     const hasAttachment = !!item.attachment_url;
     const hasTextContent = item.message_type === 'text' && !!item.content;
     const hasCaption = item.message_type !== 'text' && !!item.content && item.content !== (item.attachment_filename || '');
+    const isSelected = selectedIds.has(item.id);
 
     return (
       <View>
@@ -620,14 +669,27 @@ export default function ChatScreen({ conversation, onBack }: Props) {
           </View>
         )}
 
-        <View
+        <TouchableOpacity
+          activeOpacity={isSelectMode ? 0.6 : 0.9}
+          onLongPress={() => handleLongPress(item.id)}
+          onPress={isSelectMode ? () => toggleSelectMessage(item.id) : undefined}
           style={[
             styles.messageRow,
             isMine && styles.messageRowMine,
             consecutive && styles.messageConsecutive,
           ]}
         >
-          {!isMine && (
+          {isSelectMode && (
+            <View style={styles.selectCircle}>
+              <Feather
+                name={isSelected ? 'check-circle' : 'circle'}
+                size={20}
+                color={isSelected ? colors.primary.gold : colors.text.tertiary}
+              />
+            </View>
+          )}
+
+          {!isMine && !isSelectMode && (
             <View style={styles.avatarSlot}>
               {showAvatar && sender ? (
                 <EmployeeAvatar
@@ -672,7 +734,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
               </Text>
             )}
           </View>
-        </View>
+        </TouchableOpacity>
       </View>
     );
   };
@@ -714,10 +776,22 @@ export default function ChatScreen({ conversation, onBack }: Props) {
           </View>
         </View>
 
-        <TouchableOpacity style={styles.headerAction}>
+        <TouchableOpacity style={styles.headerAction} onPress={() => setShowMenu(!showMenu)}>
           <Feather name="more-vertical" size={20} color={colors.text.secondary} />
         </TouchableOpacity>
       </View>
+
+      {showMenu && (
+        <View style={styles.menuOverlay}>
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() => { setIsSelectMode(true); setShowMenu(false); }}
+          >
+            <Feather name="check-circle" size={16} color={colors.primary.gold} />
+            <Text style={styles.menuItemText}>Zaznacz wiadomo\u015bci</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Messages */}
       {isLoading ? (
@@ -727,7 +801,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
       ) : (
         <FlatList
           ref={flatListRef}
-          data={messages}
+          data={visibleMessages}
           renderItem={renderMessage}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.messagesList}
@@ -744,6 +818,26 @@ export default function ChatScreen({ conversation, onBack }: Props) {
             </View>
           }
         />
+      )}
+
+      {/* Selection mode action bar */}
+      {isSelectMode && (
+        <View style={styles.selectBar}>
+          <TouchableOpacity onPress={exitSelectMode} style={styles.selectBarCancel}>
+            <Text style={styles.selectBarCancelText}>Anuluj</Text>
+          </TouchableOpacity>
+          <Text style={styles.selectBarCount}>
+            {selectedIds.size > 0 ? `Zaznaczono: ${selectedIds.size}` : 'Zaznacz wiadomości'}
+          </Text>
+          <TouchableOpacity
+            onPress={deleteSelectedForMe}
+            style={[styles.selectBarDelete, selectedIds.size === 0 && { opacity: 0.3 }]}
+            disabled={selectedIds.size === 0}
+          >
+            <Feather name="trash-2" size={16} color="#ef4444" />
+            <Text style={styles.selectBarDeleteText}>Usuń</Text>
+          </TouchableOpacity>
+        </View>
       )}
 
       {/* Pending attachment preview */}
@@ -1083,5 +1177,75 @@ const styles = StyleSheet.create({
   },
   attachButton: {
     padding: 5,
+  },
+  // Selection mode styles
+  selectCircle: {
+    marginRight: 8,
+    justifyContent: 'center' as const,
+  },
+  selectBar: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border.default,
+    backgroundColor: colors.background.secondary,
+  },
+  selectBarCancel: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  selectBarCancelText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.text.secondary,
+  },
+  selectBarCount: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.text.tertiary,
+  },
+  selectBarDelete: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+  },
+  selectBarDeleteText: {
+    fontSize: typography.fontSizes.sm,
+    color: '#ef4444',
+    fontWeight: '500' as any,
+  },
+  // Menu overlay
+  menuOverlay: {
+    position: 'absolute' as const,
+    top: 56,
+    right: spacing.sm,
+    backgroundColor: colors.background.secondary,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border.default,
+    paddingVertical: 4,
+    minWidth: 180,
+    zIndex: 100,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  menuItem: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  menuItemText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.text.primary,
   },
 });

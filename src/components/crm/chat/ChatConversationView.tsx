@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Send, Paperclip, X, FileText, Film, Image as ImageIcon, Download } from 'lucide-react';
+import { ArrowLeft, Send, Paperclip, X, FileText, Film, Image as ImageIcon, Download, MoreVertical, Trash2, CheckCircle2, Circle } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { Conversation, ChatMessage } from './ChatWidget';
 
@@ -44,6 +44,10 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
   const [senders, setSenders] = useState<Map<string, SenderInfo>>(new Map());
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [pendingPreview, setPendingPreview] = useState<string | null>(null);
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+  const [showMenu, setShowMenu] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -105,6 +109,14 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
 
   const fetchMessages = async () => {
     setIsLoadingMessages(true);
+
+    const { data: deletions } = await supabase
+      .from('employee_message_deletions')
+      .select('message_id')
+      .eq('employee_id', currentEmployeeId);
+    const deletedSet = new Set((deletions || []).map((d: { message_id: string }) => d.message_id));
+    setDeletedIds(deletedSet);
+
     const { data } = await supabase
       .from('employee_messages')
       .select('*')
@@ -241,6 +253,44 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
     }
   };
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const exitSelectMode = () => {
+    setIsSelectMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const deleteSelectedForMe = async () => {
+    if (selectedIds.size === 0) return;
+    const confirmed = confirm(`Usunąć ${selectedIds.size} wiadomości? (tylko u Ciebie)`);
+    if (!confirmed) return;
+
+    const rows = Array.from(selectedIds).map((mid) => ({
+      message_id: mid,
+      employee_id: currentEmployeeId,
+    }));
+
+    const { error } = await supabase
+      .from('employee_message_deletions')
+      .upsert(rows, { onConflict: 'message_id,employee_id' });
+
+    if (!error) {
+      setDeletedIds((prev) => {
+        const next = new Set(prev);
+        selectedIds.forEach((id) => next.add(id));
+        return next;
+      });
+    }
+    exitSelectMode();
+  };
+
   const formatMessageTime = (dateStr: string): string => {
     return new Date(dateStr).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
   };
@@ -253,19 +303,6 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
     if (date.toDateString() === today.toDateString()) return 'Dzisiaj';
     if (date.toDateString() === yesterday.toDateString()) return 'Wczoraj';
     return date.toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' });
-  };
-
-  const shouldShowDateSeparator = (index: number): boolean => {
-    if (index === 0) return true;
-    return new Date(messages[index].created_at).toDateString() !== new Date(messages[index - 1].created_at).toDateString();
-  };
-
-  const isConsecutive = (index: number): boolean => {
-    if (index === 0) return false;
-    const curr = messages[index];
-    const prev = messages[index - 1];
-    if (curr.sender_id !== prev.sender_id) return false;
-    return new Date(curr.created_at).getTime() - new Date(prev.created_at).getTime() < 60000;
   };
 
   const renderAttachment = (msg: ChatMessage, isMine: boolean) => {
@@ -342,10 +379,56 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
           <span className="truncate text-sm font-medium text-[#e5e4e2]">{conversationName}</span>
           <span className="text-[10px] text-[#e5e4e2]/40">{otherIsOnline ? 'Online' : 'Offline'}</span>
         </div>
+        <div className="relative">
+          <button
+            onClick={() => setShowMenu(!showMenu)}
+            className="rounded-lg p-1 text-[#e5e4e2]/40 transition-colors hover:bg-[#d3bb73]/10 hover:text-[#d3bb73]"
+          >
+            <MoreVertical className="h-4 w-4" />
+          </button>
+          {showMenu && (
+            <div className="absolute right-0 top-8 z-50 min-w-[160px] rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] py-1 shadow-xl">
+              <button
+                onClick={() => { setIsSelectMode(true); setShowMenu(false); }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10"
+              >
+                <CheckCircle2 className="h-3.5 w-3.5 text-[#d3bb73]" />
+                Zaznacz wiadomości
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
+      {/* Selection mode header bar */}
+      {isSelectMode && (
+        <div className="flex items-center justify-between border-b border-[#d3bb73]/10 bg-[#0f1119]/80 px-3 py-2">
+          <button
+            onClick={exitSelectMode}
+            className="rounded-lg px-2 py-1 text-xs text-[#e5e4e2]/60 transition-colors hover:bg-[#d3bb73]/10 hover:text-[#e5e4e2]"
+          >
+            Anuluj
+          </button>
+          <span className="text-xs text-[#e5e4e2]/50">
+            {selectedIds.size > 0 ? `Zaznaczono: ${selectedIds.size}` : 'Zaznacz wiadomości do usunięcia'}
+          </span>
+          <button
+            onClick={deleteSelectedForMe}
+            disabled={selectedIds.size === 0}
+            className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition-colors ${
+              selectedIds.size > 0
+                ? 'bg-red-500/15 text-red-400 hover:bg-red-500/25'
+                : 'text-[#e5e4e2]/20'
+            }`}
+          >
+            <Trash2 className="h-3 w-3" />
+            Usuń
+          </button>
+        </div>
+      )}
+
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-3 py-2">
+      <div className="flex-1 overflow-y-auto px-3 py-2" onClick={() => showMenu && setShowMenu(false)}>
         {isLoadingMessages ? (
           <div className="flex h-full items-center justify-center">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#d3bb73]/20 border-t-[#d3bb73]" />
@@ -355,14 +438,15 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
             <p className="text-xs text-[#e5e4e2]/40">Rozpocznij konwersację</p>
           </div>
         ) : (
-          messages.map((msg, idx) => {
+          messages.filter((msg) => !deletedIds.has(msg.id)).map((msg, idx, filtered) => {
             const isMine = msg.sender_id === currentEmployeeId;
-            const showDate = shouldShowDateSeparator(idx);
-            const consecutive = isConsecutive(idx);
+            const showDate = idx === 0 || new Date(msg.created_at).toDateString() !== new Date(filtered[idx - 1].created_at).toDateString();
+            const consecutive = idx > 0 && msg.sender_id === filtered[idx - 1].sender_id && new Date(msg.created_at).getTime() - new Date(filtered[idx - 1].created_at).getTime() < 60000;
             const sender = senders.get(msg.sender_id);
             const hasAttachment = !!msg.attachment_url;
             const hasTextContent = msg.content && msg.message_type === 'text';
             const hasCaption = msg.content && msg.message_type !== 'text' && msg.content !== (msg.attachment_filename || '');
+            const isSelected = selectedIds.has(msg.id);
 
             return (
               <div key={msg.id}>
@@ -373,8 +457,22 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
                     </span>
                   </div>
                 )}
-                <div className={`flex ${isMine ? 'justify-end' : 'justify-start'} ${consecutive ? 'mt-0.5' : 'mt-2'}`}>
-                  {!isMine && !consecutive && conversation.is_group && (
+                <div
+                  className={`flex items-center ${isMine ? 'justify-end' : 'justify-start'} ${consecutive ? 'mt-0.5' : 'mt-2'}`}
+                  onClick={isSelectMode ? () => toggleSelect(msg.id) : undefined}
+                  style={isSelectMode ? { cursor: 'pointer' } : undefined}
+                >
+                  {isSelectMode && (
+                    <div className="mr-2 shrink-0">
+                      {isSelected ? (
+                        <CheckCircle2 className="h-5 w-5 text-[#d3bb73]" />
+                      ) : (
+                        <Circle className="h-5 w-5 text-[#e5e4e2]/20" />
+                      )}
+                    </div>
+                  )}
+
+                  {!isMine && !consecutive && conversation.is_group && !isSelectMode && (
                     <div className="mr-1.5 mt-auto shrink-0">
                       {sender?.avatar_url ? (
                         <img src={sender.avatar_url} alt="" className="h-6 w-6 rounded-full object-cover" />
@@ -385,9 +483,9 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
                       )}
                     </div>
                   )}
-                  {!isMine && consecutive && conversation.is_group && <div className="mr-1.5 w-6 shrink-0" />}
+                  {!isMine && consecutive && conversation.is_group && !isSelectMode && <div className="mr-1.5 w-6 shrink-0" />}
 
-                  <div className="group relative max-w-[75%]">
+                  <div className={`group relative max-w-[75%] ${isSelected ? 'opacity-70' : ''}`}>
                     {!isMine && !consecutive && conversation.is_group && (
                       <p className="mb-0.5 ml-2 text-[9px] font-medium text-[#d3bb73]/60">
                         {sender?.nickname || sender?.name || 'Unknown'}
@@ -398,7 +496,7 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
                         isMine
                           ? 'rounded-br-md bg-gradient-to-br from-[#d3bb73] to-[#c5aa5c] text-[#0f1119]'
                           : 'rounded-bl-md bg-[#262940] text-[#e5e4e2]'
-                      } ${hasAttachment ? 'p-2' : ''}`}
+                      } ${hasAttachment ? 'p-2' : ''} ${isSelected ? 'ring-2 ring-[#d3bb73]/50' : ''}`}
                     >
                       {hasAttachment && renderAttachment(msg, isMine)}
                       {hasCaption && <p className="mt-1.5 px-1 text-[13px]">{msg.content}</p>}
