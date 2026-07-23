@@ -185,6 +185,7 @@ export default function MainTabNavigator() {
           options={{
             title: 'Spotkania',
             headerShown: false,
+            tabBarButton: () => null,
             tabBarIcon: ({ color, size }) => <Feather name="users" color={color} size={size} />,
           }}
         />

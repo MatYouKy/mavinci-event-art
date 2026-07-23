@@ -12,7 +12,9 @@ import {
   ScrollView,
   Alert,
   Platform,
+  Switch,
 } from 'react-native';
+import Slider from '@react-native-community/slider';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, typography } from '../theme';
 import { supabase } from '../lib/supabase';
@@ -34,7 +36,7 @@ interface Meeting {
   alert_1_minutes: number | null;
   alert_2_minutes: number | null;
   alert_critical_minutes: number | null;
-  participants?: { employee_id: string; employee_name?: string }[];
+  participants?: { employee_id: string }[];
 }
 
 interface NewMeetingForm {
@@ -43,22 +45,33 @@ interface NewMeetingForm {
   datetime_start: string;
   datetime_end: string;
   notes: string;
+  alert_1_enabled: boolean;
   alert_1_minutes: number;
+  alert_2_enabled: boolean;
   alert_2_minutes: number;
+  alert_critical_enabled: boolean;
   alert_critical_minutes: number;
 }
 
-// --- Alert presets ---
+// --- Helpers ---
 
-const ALERT_PRESETS = [
-  { label: 'Brak', value: 0 },
-  { label: '15 min przed', value: 15 },
-  { label: '30 min przed', value: 30 },
-  { label: '1 godz. przed', value: 60 },
-  { label: '2 godz. przed', value: 120 },
-  { label: '1 dzień przed', value: 1440 },
-  { label: '2 dni przed', value: 2880 },
-];
+const SLIDER_MIN = 15;
+const SLIDER_MAX = 2880; // 2 days in minutes
+const SLIDER_STEP = 15;
+
+function minutesToLabel(minutes: number): string {
+  if (minutes >= 1440) {
+    const days = Math.round(minutes / 1440);
+    return days === 1 ? '1 dzień' : `${days} dni`;
+  }
+  if (minutes >= 60) {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    if (mins === 0) return hours === 1 ? '1 godz.' : `${hours} godz.`;
+    return `${hours} godz. ${mins} min`;
+  }
+  return `${minutes} min`;
+}
 
 // --- Notification setup ---
 
@@ -71,7 +84,6 @@ Notifications.setNotificationHandler({
 });
 
 async function scheduleMeetingAlerts(meeting: Meeting) {
-  // Cancel existing alerts for this meeting
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
   for (const notif of scheduled) {
     if (notif.content.data?.meetingId === meeting.id) {
@@ -83,9 +95,9 @@ async function scheduleMeetingAlerts(meeting: Meeting) {
   const now = Date.now();
 
   const alerts = [
-    { minutes: meeting.alert_1_minutes, type: 'Przypomnienie', sound: true, priority: 'default' as const },
-    { minutes: meeting.alert_2_minutes, type: 'Przypomnienie', sound: true, priority: 'high' as const },
-    { minutes: meeting.alert_critical_minutes, type: 'PILNE', sound: true, priority: 'max' as const },
+    { minutes: meeting.alert_1_minutes, label: 'Przypomnienie', priority: Notifications.AndroidNotificationPriority.DEFAULT },
+    { minutes: meeting.alert_2_minutes, label: 'Przypomnienie', priority: Notifications.AndroidNotificationPriority.HIGH },
+    { minutes: meeting.alert_critical_minutes, label: 'PILNE', priority: Notifications.AndroidNotificationPriority.MAX },
   ];
 
   for (const alert of alerts) {
@@ -98,19 +110,11 @@ async function scheduleMeetingAlerts(meeting: Meeting) {
 
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: `${alert.type}: ${meeting.title}`,
-        body: alert.minutes >= 1440
-          ? `Spotkanie za ${Math.round(alert.minutes / 1440)} dni`
-          : alert.minutes >= 60
-            ? `Spotkanie za ${Math.round(alert.minutes / 60)} godz.`
-            : `Spotkanie za ${alert.minutes} min!`,
+        title: `${alert.label}: ${meeting.title}`,
+        body: `Spotkanie za ${minutesToLabel(alert.minutes)}`,
         sound: true,
-        priority: alert.priority === 'max'
-          ? Notifications.AndroidNotificationPriority.MAX
-          : alert.priority === 'high'
-            ? Notifications.AndroidNotificationPriority.HIGH
-            : Notifications.AndroidNotificationPriority.DEFAULT,
-        data: { meetingId: meeting.id, alertType: alert.type },
+        priority: alert.priority,
+        data: { meetingId: meeting.id },
       },
       trigger: { seconds: secondsUntilTrigger },
     });
@@ -139,8 +143,11 @@ export default function MeetingsScreen() {
     datetime_start: '',
     datetime_end: '',
     notes: '',
+    alert_1_enabled: true,
     alert_1_minutes: 1440,
+    alert_2_enabled: true,
     alert_2_minutes: 120,
+    alert_critical_enabled: true,
     alert_critical_minutes: 30,
   });
 
@@ -164,17 +171,14 @@ export default function MeetingsScreen() {
         .order('datetime_start', { ascending: true });
 
       if (!error && data) {
-        // Filter meetings where current employee is participant or creator
         const myMeetings = data.filter((m: any) =>
           m.created_by === employee.id ||
           m.meeting_participants?.some((p: any) => p.employee_id === employee.id)
         );
         setMeetings(myMeetings);
 
-        // Schedule alerts for upcoming meetings
         for (const meeting of myMeetings) {
-          const meetingTime = new Date(meeting.datetime_start).getTime();
-          if (meetingTime > Date.now()) {
+          if (new Date(meeting.datetime_start).getTime() > Date.now()) {
             scheduleMeetingAlerts(meeting);
           }
         }
@@ -190,6 +194,22 @@ export default function MeetingsScreen() {
   useEffect(() => {
     fetchMeetings();
   }, [fetchMeetings]);
+
+  const resetForm = () => {
+    setForm({
+      title: '',
+      location_text: '',
+      datetime_start: '',
+      datetime_end: '',
+      notes: '',
+      alert_1_enabled: true,
+      alert_1_minutes: 1440,
+      alert_2_enabled: true,
+      alert_2_minutes: 120,
+      alert_critical_enabled: true,
+      alert_critical_minutes: 30,
+    });
+  };
 
   const handleCreateMeeting = async () => {
     if (!employee || !form.title.trim()) {
@@ -211,37 +231,25 @@ export default function MeetingsScreen() {
           datetime_end: form.datetime_end || null,
           notes: form.notes.trim() || null,
           created_by: employee.id,
-          alert_1_minutes: form.alert_1_minutes || null,
-          alert_2_minutes: form.alert_2_minutes || null,
-          alert_critical_minutes: form.alert_critical_minutes || null,
+          alert_1_minutes: form.alert_1_enabled ? form.alert_1_minutes : null,
+          alert_2_minutes: form.alert_2_enabled ? form.alert_2_minutes : null,
+          alert_critical_minutes: form.alert_critical_enabled ? form.alert_critical_minutes : null,
         })
         .select()
         .single();
 
       if (error) throw error;
 
-      // Add creator as participant
       if (data) {
         await supabase.from('meeting_participants').insert({
           meeting_id: data.id,
           employee_id: employee.id,
         });
-
-        // Schedule notifications
         scheduleMeetingAlerts(data);
       }
 
       setShowNewMeeting(false);
-      setForm({
-        title: '',
-        location_text: '',
-        datetime_start: '',
-        datetime_end: '',
-        notes: '',
-        alert_1_minutes: 1440,
-        alert_2_minutes: 120,
-        alert_critical_minutes: 30,
-      });
+      resetForm();
       fetchMeetings();
     } catch (err: any) {
       Alert.alert('Błąd', err.message || 'Nie udało się utworzyć spotkania');
@@ -260,7 +268,6 @@ export default function MeetingsScreen() {
             .update({ deleted_at: new Date().toISOString() })
             .eq('id', meetingId);
 
-          // Cancel scheduled notifications
           const scheduled = await Notifications.getAllScheduledNotificationsAsync();
           for (const notif of scheduled) {
             if (notif.content.data?.meetingId === meetingId) {
@@ -285,12 +292,6 @@ export default function MeetingsScreen() {
     return d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
   };
 
-  const getAlertLabel = (minutes: number | null) => {
-    if (!minutes || minutes <= 0) return 'Brak';
-    const preset = ALERT_PRESETS.find((p) => p.value === minutes);
-    return preset ? preset.label : `${minutes} min przed`;
-  };
-
   const isUpcoming = (dateStr: string) => new Date(dateStr).getTime() > Date.now();
 
   const upcomingMeetings = meetings.filter((m) => isUpcoming(m.datetime_start));
@@ -298,6 +299,7 @@ export default function MeetingsScreen() {
 
   const renderMeetingCard = ({ item }: { item: Meeting }) => {
     const upcoming = isUpcoming(item.datetime_start);
+    const hasAlerts = !!(item.alert_1_minutes || item.alert_2_minutes || item.alert_critical_minutes);
 
     return (
       <TouchableOpacity
@@ -311,7 +313,7 @@ export default function MeetingsScreen() {
             <Text style={[styles.meetingTitle, !upcoming && styles.textPast]} numberOfLines={1}>
               {item.title}
             </Text>
-            {item.alert_critical_minutes && item.alert_critical_minutes > 0 && upcoming && (
+            {hasAlerts && upcoming && (
               <Feather name="bell" size={14} color={colors.primary.gold} />
             )}
           </View>
@@ -333,6 +335,62 @@ export default function MeetingsScreen() {
     );
   };
 
+  // --- Alert Slider Component ---
+  const AlertSlider = ({
+    label,
+    enabled,
+    onToggle,
+    value,
+    onValueChange,
+    isCritical,
+  }: {
+    label: string;
+    enabled: boolean;
+    onToggle: (val: boolean) => void;
+    value: number;
+    onValueChange: (val: number) => void;
+    isCritical?: boolean;
+  }) => (
+    <View style={styles.alertSliderBlock}>
+      <View style={styles.alertSliderHeader}>
+        <View style={styles.alertSliderLabelRow}>
+          <Feather
+            name={isCritical ? 'alert-triangle' : 'bell'}
+            size={14}
+            color={isCritical ? colors.status.error : colors.text.secondary}
+          />
+          <Text style={[styles.alertSliderLabel, isCritical && { color: colors.status.error }]}>
+            {label}
+          </Text>
+        </View>
+        <Switch
+          value={enabled}
+          onValueChange={onToggle}
+          trackColor={{ false: colors.background.primary, true: isCritical ? colors.status.error + '55' : colors.primary.gold + '55' }}
+          thumbColor={enabled ? (isCritical ? colors.status.error : colors.primary.gold) : colors.text.tertiary}
+        />
+      </View>
+      {enabled && (
+        <View style={styles.alertSliderBody}>
+          <Slider
+            style={styles.slider}
+            minimumValue={SLIDER_MIN}
+            maximumValue={SLIDER_MAX}
+            step={SLIDER_STEP}
+            value={value}
+            onValueChange={onValueChange}
+            minimumTrackTintColor={isCritical ? colors.status.error : colors.primary.gold}
+            maximumTrackTintColor={colors.background.primary}
+            thumbTintColor={isCritical ? colors.status.error : colors.primary.gold}
+          />
+          <Text style={[styles.alertSliderValue, isCritical && { color: colors.status.error }]}>
+            {minutesToLabel(value)} przed
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+
   if (isLoading) {
     return (
       <View style={styles.centered}>
@@ -346,10 +404,7 @@ export default function MeetingsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Spotkania</Text>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => setShowNewMeeting(true)}
-        >
+        <TouchableOpacity style={styles.addButton} onPress={() => setShowNewMeeting(true)}>
           <Feather name="plus" size={20} color={colors.background.primary} />
         </TouchableOpacity>
       </View>
@@ -378,14 +433,13 @@ export default function MeetingsScreen() {
             <Text style={styles.sectionTitle}>Nadchodzące ({upcomingMeetings.length})</Text>
           ) : null
         }
-        stickyHeaderIndices={upcomingMeetings.length > 0 ? [0] : undefined}
       />
 
       {/* New Meeting Modal */}
       <Modal visible={showNewMeeting} animationType="slide" presentationStyle="pageSheet">
         <View style={styles.modalContainer}>
           <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setShowNewMeeting(false)}>
+            <TouchableOpacity onPress={() => { setShowNewMeeting(false); resetForm(); }}>
               <Text style={styles.modalCancel}>Anuluj</Text>
             </TouchableOpacity>
             <Text style={styles.modalTitle}>Nowe spotkanie</Text>
@@ -442,82 +496,37 @@ export default function MeetingsScreen() {
               numberOfLines={3}
             />
 
-            {/* Alert settings */}
+            {/* Alert sliders */}
             <View style={styles.alertsSection}>
-              <Text style={styles.alertsSectionTitle}>
-                <Feather name="bell" size={16} color={colors.primary.gold} /> Alerty
-              </Text>
+              <Text style={styles.alertsSectionTitle}>Alerty (opcjonalne)</Text>
 
-              <Text style={styles.fieldLabel}>Alert 1 (przypomnienie)</Text>
-              <View style={styles.alertPresets}>
-                {ALERT_PRESETS.map((preset) => (
-                  <TouchableOpacity
-                    key={`a1-${preset.value}`}
-                    style={[
-                      styles.alertPresetChip,
-                      form.alert_1_minutes === preset.value && styles.alertPresetChipActive,
-                    ]}
-                    onPress={() => setForm((f) => ({ ...f, alert_1_minutes: preset.value }))}
-                  >
-                    <Text
-                      style={[
-                        styles.alertPresetText,
-                        form.alert_1_minutes === preset.value && styles.alertPresetTextActive,
-                      ]}
-                    >
-                      {preset.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              <AlertSlider
+                label="Alert 1"
+                enabled={form.alert_1_enabled}
+                onToggle={(v) => setForm((f) => ({ ...f, alert_1_enabled: v }))}
+                value={form.alert_1_minutes}
+                onValueChange={(v) => setForm((f) => ({ ...f, alert_1_minutes: v }))}
+              />
 
-              <Text style={styles.fieldLabel}>Alert 2 (przypomnienie)</Text>
-              <View style={styles.alertPresets}>
-                {ALERT_PRESETS.map((preset) => (
-                  <TouchableOpacity
-                    key={`a2-${preset.value}`}
-                    style={[
-                      styles.alertPresetChip,
-                      form.alert_2_minutes === preset.value && styles.alertPresetChipActive,
-                    ]}
-                    onPress={() => setForm((f) => ({ ...f, alert_2_minutes: preset.value }))}
-                  >
-                    <Text
-                      style={[
-                        styles.alertPresetText,
-                        form.alert_2_minutes === preset.value && styles.alertPresetTextActive,
-                      ]}
-                    >
-                      {preset.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              <AlertSlider
+                label="Alert 2"
+                enabled={form.alert_2_enabled}
+                onToggle={(v) => setForm((f) => ({ ...f, alert_2_enabled: v }))}
+                value={form.alert_2_minutes}
+                onValueChange={(v) => setForm((f) => ({ ...f, alert_2_minutes: v }))}
+              />
 
-              <Text style={styles.fieldLabel}>Alert krytyczny (z dźwiękiem)</Text>
-              <View style={styles.alertPresets}>
-                {ALERT_PRESETS.map((preset) => (
-                  <TouchableOpacity
-                    key={`ac-${preset.value}`}
-                    style={[
-                      styles.alertPresetChip,
-                      styles.alertPresetChipCritical,
-                      form.alert_critical_minutes === preset.value && styles.alertPresetChipCriticalActive,
-                    ]}
-                    onPress={() => setForm((f) => ({ ...f, alert_critical_minutes: preset.value }))}
-                  >
-                    <Text
-                      style={[
-                        styles.alertPresetText,
-                        form.alert_critical_minutes === preset.value && styles.alertPresetTextCriticalActive,
-                      ]}
-                    >
-                      {preset.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              <AlertSlider
+                label="Alert krytyczny"
+                enabled={form.alert_critical_enabled}
+                onToggle={(v) => setForm((f) => ({ ...f, alert_critical_enabled: v }))}
+                value={form.alert_critical_minutes}
+                onValueChange={(v) => setForm((f) => ({ ...f, alert_critical_minutes: v }))}
+                isCritical
+              />
             </View>
+
+            <View style={{ height: 60 }} />
           </ScrollView>
         </View>
       </Modal>
@@ -562,25 +571,34 @@ export default function MeetingsScreen() {
               )}
 
               <View style={styles.detailAlertsSection}>
-                <Text style={styles.detailSectionLabel}>Alerty przypominające</Text>
-                <View style={styles.alertRow}>
-                  <Feather name="bell" size={14} color={colors.text.secondary} />
-                  <Text style={styles.alertRowText}>
-                    Alert 1: {getAlertLabel(selectedMeeting.alert_1_minutes)}
-                  </Text>
-                </View>
-                <View style={styles.alertRow}>
-                  <Feather name="bell" size={14} color={colors.text.secondary} />
-                  <Text style={styles.alertRowText}>
-                    Alert 2: {getAlertLabel(selectedMeeting.alert_2_minutes)}
-                  </Text>
-                </View>
-                <View style={styles.alertRow}>
-                  <Feather name="alert-triangle" size={14} color={colors.status.error} />
-                  <Text style={[styles.alertRowText, { color: colors.status.error }]}>
-                    Krytyczny: {getAlertLabel(selectedMeeting.alert_critical_minutes)}
-                  </Text>
-                </View>
+                <Text style={styles.detailSectionLabel}>Alerty</Text>
+                {selectedMeeting.alert_1_minutes ? (
+                  <View style={styles.alertRow}>
+                    <Feather name="bell" size={14} color={colors.text.secondary} />
+                    <Text style={styles.alertRowText}>
+                      Alert 1: {minutesToLabel(selectedMeeting.alert_1_minutes)} przed
+                    </Text>
+                  </View>
+                ) : null}
+                {selectedMeeting.alert_2_minutes ? (
+                  <View style={styles.alertRow}>
+                    <Feather name="bell" size={14} color={colors.text.secondary} />
+                    <Text style={styles.alertRowText}>
+                      Alert 2: {minutesToLabel(selectedMeeting.alert_2_minutes)} przed
+                    </Text>
+                  </View>
+                ) : null}
+                {selectedMeeting.alert_critical_minutes ? (
+                  <View style={styles.alertRow}>
+                    <Feather name="alert-triangle" size={14} color={colors.status.error} />
+                    <Text style={[styles.alertRowText, { color: colors.status.error }]}>
+                      Krytyczny: {minutesToLabel(selectedMeeting.alert_critical_minutes)} przed
+                    </Text>
+                  </View>
+                ) : null}
+                {!selectedMeeting.alert_1_minutes && !selectedMeeting.alert_2_minutes && !selectedMeeting.alert_critical_minutes && (
+                  <Text style={styles.alertRowText}>Brak alertów</Text>
+                )}
               </View>
             </ScrollView>
           </View>
@@ -636,7 +654,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginBottom: spacing.sm,
-    backgroundColor: colors.background.primary,
     paddingVertical: spacing.xs,
   },
   meetingCard: {
@@ -764,44 +781,42 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.primary.gold,
     fontWeight: '600',
-    marginBottom: spacing.sm,
+    marginBottom: spacing.md,
   },
-  alertPresets: {
+  alertSliderBlock: {
+    marginBottom: spacing.md,
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.primary,
+  },
+  alertSliderHeader: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  alertSliderLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
-    marginBottom: spacing.sm,
   },
-  alertPresetChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: colors.background.primary,
-    borderWidth: 1,
-    borderColor: colors.border.primary,
-  },
-  alertPresetChipActive: {
-    backgroundColor: colors.primary.gold + '22',
-    borderColor: colors.primary.gold,
-  },
-  alertPresetChipCritical: {
-    borderColor: colors.border.primary,
-  },
-  alertPresetChipCriticalActive: {
-    backgroundColor: colors.status.error + '22',
-    borderColor: colors.status.error,
-  },
-  alertPresetText: {
-    ...typography.caption,
+  alertSliderLabel: {
+    ...typography.body,
     color: colors.text.secondary,
+    fontWeight: '500',
   },
-  alertPresetTextActive: {
+  alertSliderBody: {
+    marginTop: spacing.sm,
+  },
+  slider: {
+    width: '100%',
+    height: 40,
+  },
+  alertSliderValue: {
+    ...typography.caption,
     color: colors.primary.gold,
     fontWeight: '600',
-  },
-  alertPresetTextCriticalActive: {
-    color: colors.status.error,
-    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: -4,
   },
   // Detail modal
   detailTitle: {
