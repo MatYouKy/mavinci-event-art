@@ -128,6 +128,12 @@ const STATUS_COLORS: Record<string, string> = {
   settled: '#10b981',
 };
 
+interface MyAssignment {
+  id: string;
+  status: string;
+  role: string | null;
+}
+
 export default function EventDetailScreen({ eventId, onBack }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>('details');
   const [event, setEvent] = useState<EventDetail | null>(null);
@@ -138,6 +144,116 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [checklistPdfPath, setChecklistPdfPath] = useState<string | null>(null);
+  const [myAssignment, setMyAssignment] = useState<MyAssignment | null>(null);
+  const [respondingInvitation, setRespondingInvitation] = useState(false);
+
+  const fetchMyAssignment = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data: emp } = await supabase
+      .from('employees')
+      .select('id')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (!emp) return null;
+
+    const { data: assignment } = await supabase
+      .from('employee_assignments')
+      .select('id, status, role')
+      .eq('event_id', eventId)
+      .eq('employee_id', emp.id)
+      .maybeSingle();
+
+    return assignment ? { id: assignment.id, status: assignment.status, role: assignment.role } : null;
+  }, [eventId]);
+
+  const respondToInvitation = async (newStatus: 'accepted' | 'rejected') => {
+    if (!myAssignment) return;
+    setRespondingInvitation(true);
+    try {
+      const { error } = await supabase
+        .from('employee_assignments')
+        .update({ status: newStatus, responded_at: new Date().toISOString() })
+        .eq('id', myAssignment.id);
+
+      if (error) {
+        Alert.alert('Błąd', 'Nie udało się zaktualizować statusu zaproszenia.');
+        return;
+      }
+
+      setMyAssignment({ ...myAssignment, status: newStatus });
+
+      // Notify event creator
+      if (event) {
+        const { data: { user } } = await supabase.auth.getUser();
+        const { data: emp } = await supabase
+          .from('employees')
+          .select('name, surname')
+          .eq('user_id', user?.id ?? '')
+          .maybeSingle();
+
+        const empName = emp ? `${emp.name} ${emp.surname}` : 'Pracownik';
+        const title = newStatus === 'accepted' ? 'Akceptacja zaproszenia' : 'Odrzucenie zaproszenia';
+        const message = newStatus === 'accepted'
+          ? `${empName} zaakceptował(a) zaproszenie do wydarzenia "${event.name}"`
+          : `${empName} odrzucił(a) zaproszenie do wydarzenia "${event.name}"`;
+
+        const { data: eventRow } = await supabase
+          .from('events')
+          .select('created_by')
+          .eq('id', eventId)
+          .maybeSingle();
+
+        if (eventRow?.created_by) {
+          const { data: notif } = await supabase
+            .from('notifications')
+            .insert({
+              category: 'employee',
+              title,
+              message,
+              type: newStatus === 'accepted' ? 'success' : 'info',
+              related_entity_type: 'event',
+              related_entity_id: eventId,
+              action_url: `/crm/events/${eventId}`,
+            })
+            .select('id')
+            .single();
+
+          if (notif) {
+            await supabase.from('notification_recipients').insert({
+              notification_id: notif.id,
+              user_id: eventRow.created_by,
+            });
+          }
+        }
+      }
+    } finally {
+      setRespondingInvitation(false);
+    }
+  };
+
+  const handleAccept = () => {
+    Alert.alert(
+      'Akceptacja zaproszenia',
+      'Czy na pewno chcesz zaakceptować zaproszenie do tego wydarzenia?',
+      [
+        { text: 'Anuluj', style: 'cancel' },
+        { text: 'Akceptuj', onPress: () => respondToInvitation('accepted') },
+      ]
+    );
+  };
+
+  const handleReject = () => {
+    Alert.alert(
+      'Odrzucenie zaproszenia',
+      'Czy na pewno chcesz odrzucić zaproszenie do tego wydarzenia?',
+      [
+        { text: 'Anuluj', style: 'cancel' },
+        { text: 'Odrzuć', style: 'destructive', onPress: () => respondToInvitation('rejected') },
+      ]
+    );
+  };
 
   const fetchEvent = useCallback(async () => {
     const { data, error } = await supabase
@@ -295,17 +411,19 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
       else setIsLoading(true);
 
       try {
-        const [ev, ag, ch, fi] = await Promise.all([
+        const [ev, ag, ch, fi, assignment] = await Promise.all([
           fetchEvent(),
           fetchAgenda(),
           fetchChecklist(),
           fetchFiles(),
+          fetchMyAssignment(),
         ]);
         if (ev) setEvent(ev);
         setAgenda(ag);
         setChecklist(ch.checklist);
         setLogistics(ch.logistics);
         setFiles(fi);
+        setMyAssignment(assignment);
       } catch (err) {
         console.error('Error loading event detail:', err);
       } finally {
@@ -313,7 +431,7 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
         setRefreshing(false);
       }
     },
-    [fetchEvent, fetchAgenda, fetchChecklist, fetchFiles]
+    [fetchEvent, fetchAgenda, fetchChecklist, fetchFiles, fetchMyAssignment]
   );
 
   useEffect(() => {
@@ -391,6 +509,54 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
           </Text>
         </View>
       </View>
+
+      {/* Invitation Banner */}
+      {myAssignment?.status === 'pending' && (
+        <View style={styles.invitationBanner}>
+          <View style={styles.invitationTextWrap}>
+            <Feather name="mail" size={18} color="#f59e0b" />
+            <Text style={styles.invitationText}>
+              Masz oczekujące zaproszenie do tego wydarzenia
+            </Text>
+          </View>
+          <View style={styles.invitationButtons}>
+            <TouchableOpacity
+              style={styles.invitationAcceptBtn}
+              onPress={handleAccept}
+              disabled={respondingInvitation}
+            >
+              {respondingInvitation ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Feather name="check" size={16} color="#fff" />
+                  <Text style={styles.invitationAcceptText}>Akceptuj</Text>
+                </>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.invitationRejectBtn}
+              onPress={handleReject}
+              disabled={respondingInvitation}
+            >
+              <Feather name="x" size={16} color="#ef4444" />
+              <Text style={styles.invitationRejectText}>Odrzuć</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+      {myAssignment?.status === 'accepted' && (
+        <View style={styles.invitationAcceptedBanner}>
+          <Feather name="check-circle" size={16} color="#22c55e" />
+          <Text style={styles.invitationAcceptedText}>Zaproszenie zaakceptowane</Text>
+        </View>
+      )}
+      {myAssignment?.status === 'rejected' && (
+        <View style={styles.invitationRejectedBanner}>
+          <Feather name="x-circle" size={16} color="#ef4444" />
+          <Text style={styles.invitationRejectedText}>Zaproszenie odrzucone</Text>
+        </View>
+      )}
 
       {/* Tabs */}
       <View style={styles.tabBar}>
@@ -1272,4 +1438,101 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   emptyTabText: { fontSize: 14, color: colors.text.tertiary },
+
+  // Invitation banner
+  invitationBanner: {
+    backgroundColor: '#fef3c7',
+    borderColor: '#f59e0b',
+    borderWidth: 1,
+    borderRadius: 10,
+    marginHorizontal: 16,
+    marginTop: 12,
+    padding: 12,
+    gap: 10,
+  },
+  invitationTextWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  invitationText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#92400e',
+    flex: 1,
+  },
+  invitationButtons: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  invitationAcceptBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#22c55e',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    flex: 1,
+    justifyContent: 'center',
+  },
+  invitationAcceptText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  invitationRejectBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#ef4444',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    flex: 1,
+    justifyContent: 'center',
+  },
+  invitationRejectText: {
+    color: '#ef4444',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  invitationAcceptedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#dcfce7',
+    borderColor: '#22c55e',
+    borderWidth: 1,
+    borderRadius: 10,
+    marginHorizontal: 16,
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  invitationAcceptedText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#166534',
+  },
+  invitationRejectedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#fee2e2',
+    borderColor: '#ef4444',
+    borderWidth: 1,
+    borderRadius: 10,
+    marginHorizontal: 16,
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  invitationRejectedText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#991b1b',
+  },
 });
