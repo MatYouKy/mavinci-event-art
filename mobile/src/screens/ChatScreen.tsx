@@ -451,36 +451,39 @@ export default function ChatScreen({ conversation, onBack }: Props) {
   };
 
   const REACTION_EMOJIS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
+  const [removeReactionMsgId, setRemoveReactionMsgId] = useState<string | null>(null);
 
-  const toggleReaction = async (messageId: string, emoji: string) => {
+  const setReaction = async (messageId: string, emoji: string) => {
     setReactionPickerMsgId(null);
     const msgIndex = messages.findIndex((m) => m.id === messageId);
     if (msgIndex === -1 || !employee) return;
 
     const msg = messages[msgIndex];
-    const currentReactions: Record<string, string[]> = { ...(msg.reactions || {}) };
-    const users = currentReactions[emoji] ? [...currentReactions[emoji]] : [];
-    const userIdx = users.indexOf(employee.id);
-
-    if (userIdx >= 0) {
-      users.splice(userIdx, 1);
-    } else {
-      users.push(employee.id);
-    }
-
-    if (users.length > 0) {
-      currentReactions[emoji] = users;
-    } else {
-      delete currentReactions[emoji];
-    }
+    const newReaction = { emoji, user_id: employee.id };
 
     const updatedMessages = [...messages];
-    updatedMessages[msgIndex] = { ...msg, reactions: currentReactions };
+    updatedMessages[msgIndex] = { ...msg, reactions: newReaction };
     setMessages(updatedMessages);
 
     await supabase
       .from('employee_messages')
-      .update({ reactions: currentReactions })
+      .update({ reactions: newReaction })
+      .eq('id', messageId);
+  };
+
+  const removeReaction = async (messageId: string) => {
+    setRemoveReactionMsgId(null);
+    const msgIndex = messages.findIndex((m) => m.id === messageId);
+    if (msgIndex === -1) return;
+
+    const msg = messages[msgIndex];
+    const updatedMessages = [...messages];
+    updatedMessages[msgIndex] = { ...msg, reactions: null };
+    setMessages(updatedMessages);
+
+    await supabase
+      .from('employee_messages')
+      .update({ reactions: null })
       .eq('id', messageId);
   };
 
@@ -765,31 +768,34 @@ export default function ChatScreen({ conversation, onBack }: Props) {
                 )}
               </View>
 
-              {item.reactions && Object.keys(item.reactions).length > 0 && (
+              {item.reactions && item.reactions.emoji && (
                 <View
                   style={[
                     styles.reactionsOverlay,
                     isMine ? styles.reactionsOverlayMine : styles.reactionsOverlayTheirs,
                   ]}
                 >
-                  {Object.entries(item.reactions).map(([emoji, users]) => {
-                    const iReacted = !!employee && users.includes(employee.id);
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onLongPress={() => setRemoveReactionMsgId(item.id)}
+                    style={[
+                      styles.reactionBadge,
+                      employee && item.reactions.user_id === employee.id && styles.reactionBadgeActive,
+                    ]}
+                  >
+                    <Text style={styles.reactionBadgeEmoji}>{item.reactions.emoji}</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
 
-                    return (
-                      <TouchableOpacity
-                        key={emoji}
-                        activeOpacity={0.8}
-                        onPress={() => toggleReaction(item.id, emoji)}
-                        style={[styles.reactionBadge, iReacted && styles.reactionBadgeActive]}
-                      >
-                        <Text style={styles.reactionBadgeEmoji}>{emoji}</Text>
-
-                        {users.length > 1 && (
-                          <Text style={styles.reactionBadgeCount}>{users.length}</Text>
-                        )}
-                      </TouchableOpacity>
-                    );
-                  })}
+              {removeReactionMsgId === item.id && (
+                <View style={[styles.reactionPicker, isMine && styles.reactionPickerMine]}>
+                  <TouchableOpacity
+                    onPress={() => removeReaction(item.id)}
+                    style={styles.removeReactionButton}
+                  >
+                    <Text style={styles.removeReactionText}>Usuń reakcję</Text>
+                  </TouchableOpacity>
                 </View>
               )}
             </View>
@@ -800,7 +806,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
                 {REACTION_EMOJIS.map((emoji) => (
                   <TouchableOpacity
                     key={emoji}
-                    onPress={() => toggleReaction(item.id, emoji)}
+                    onPress={() => setReaction(item.id, emoji)}
                     style={styles.reactionPickerItem}
                   >
                     <Text style={styles.reactionPickerEmoji}>{emoji}</Text>
@@ -886,7 +892,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
           ref={flatListRef}
           data={visibleMessages}
           renderItem={renderMessage}
-          onScrollBeginDrag={() => setReactionPickerMsgId(null)}
+          onScrollBeginDrag={() => { setReactionPickerMsgId(null); setRemoveReactionMsgId(null); }}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.messagesList}
           showsVerticalScrollIndicator={false}
@@ -1409,8 +1415,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 18,
   },
-  reactionBadgeCount: {
-    fontSize: 10,
-    color: colors.text.tertiary,
+  removeReactionButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#1c1f33',
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.2)',
+  },
+  removeReactionText: {
+    fontSize: 12,
+    color: '#f87171',
   },
 });

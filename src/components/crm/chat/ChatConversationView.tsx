@@ -351,70 +351,84 @@ export default function ChatConversationView({
   };
 
   const REACTION_EMOJIS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
+  const [removeReactionMsgId, setRemoveReactionMsgId] = useState<string | null>(null);
 
-  const toggleReaction = async (messageId: string, emoji: string) => {
+  const setReaction = async (messageId: string, emoji: string) => {
     setReactionPickerMsgId(null);
     const msgIndex = messages.findIndex((m) => m.id === messageId);
     if (msgIndex === -1) return;
 
     const msg = messages[msgIndex];
-    const currentReactions: Record<string, string[]> = { ...(msg.reactions || {}) };
-    const users = currentReactions[emoji] ? [...currentReactions[emoji]] : [];
-    const userIdx = users.indexOf(currentEmployeeId);
-
-    if (userIdx >= 0) {
-      users.splice(userIdx, 1);
-    } else {
-      users.push(currentEmployeeId);
-    }
-
-    if (users.length > 0) {
-      currentReactions[emoji] = users;
-    } else {
-      delete currentReactions[emoji];
-    }
+    const newReaction = { emoji, user_id: currentEmployeeId };
 
     const updatedMessages = [...messages];
-    updatedMessages[msgIndex] = { ...msg, reactions: currentReactions };
+    updatedMessages[msgIndex] = { ...msg, reactions: newReaction };
     setMessages(updatedMessages);
 
     await supabase
       .from('employee_messages')
-      .update({ reactions: currentReactions })
+      .update({ reactions: newReaction })
+      .eq('id', messageId);
+  };
+
+  const removeReaction = async (messageId: string) => {
+    setRemoveReactionMsgId(null);
+    const msgIndex = messages.findIndex((m) => m.id === messageId);
+    if (msgIndex === -1) return;
+
+    const msg = messages[msgIndex];
+    const updatedMessages = [...messages];
+    updatedMessages[msgIndex] = { ...msg, reactions: null };
+    setMessages(updatedMessages);
+
+    await supabase
+      .from('employee_messages')
+      .update({ reactions: null })
       .eq('id', messageId);
   };
 
   const renderReactions = (msg: ChatMessage, isMine: boolean) => {
-    const reactions = msg.reactions;
-    if (!reactions || Object.keys(reactions).length === 0) return null;
+    const reaction = msg.reactions as { emoji: string; user_id: string } | null;
+    if (!reaction || !reaction.emoji) return null;
 
     return (
       <div
-        className={`absolute bottom-0 z-30 flex translate-y-[15%] flex-wrap gap-0.5 ${
+        className={`absolute bottom-0 z-30 flex translate-y-[15%] ${
           isMine ? '-right-1' : '-left-1'
         }`}
       >
-        {Object.entries(reactions).map(([emoji, users]) => {
-          const iReacted = users.includes(currentEmployeeId);
+        <div className="relative">
+          <button
+            type="button"
+            onClick={(e) => e.stopPropagation()}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setRemoveReactionMsgId(msg.id);
+            }}
+            className={`flex h-6 min-w-6 items-center justify-center rounded-full border border-white/10 bg-[#11131f] px-1.5 text-[12px] shadow-[0_2px_8px_rgba(0,0,0,0.55)] ${
+              reaction.user_id === currentEmployeeId ? 'ring-1 ring-[#d3bb73]/70' : ''
+            }`}
+          >
+            <span className="leading-none">{reaction.emoji}</span>
+          </button>
 
-          return (
-            <button
-              key={emoji}
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleReaction(msg.id, emoji);
-              }}
-              className={`flex h-6 min-w-6 items-center justify-center gap-0.5 rounded-full border border-white/10 bg-[#11131f] px-1.5 text-[12px] shadow-[0_2px_8px_rgba(0,0,0,0.55)] transition-all hover:scale-105 hover:bg-[#202338] ${iReacted ? 'ring-1 ring-[#d3bb73]/70' : ''} `}
+          {removeReactionMsgId === msg.id && (
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className={`absolute -top-9 z-50 whitespace-nowrap rounded-lg border border-red-500/20 bg-[#1c1f33] px-3 py-1.5 text-xs text-red-400 shadow-2xl ${
+                isMine ? 'right-0' : 'left-0'
+              }`}
             >
-              <span className="leading-none">{emoji}</span>
-
-              {users.length > 1 && (
-                <span className="text-[9px] leading-none text-white/70">{users.length}</span>
-              )}
-            </button>
-          );
-        })}
+              <button
+                onClick={() => removeReaction(msg.id)}
+                className="hover:text-red-300"
+              >
+                Usuń reakcję
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     );
   };
@@ -558,6 +572,7 @@ export default function ChatConversationView({
         onClick={() => {
           if (showMenu) setShowMenu(false);
           if (reactionPickerMsgId) setReactionPickerMsgId(null);
+          if (removeReactionMsgId) setRemoveReactionMsgId(null);
         }}
       >
         {isLoadingMessages ? (
@@ -705,7 +720,7 @@ export default function ChatConversationView({
                               key={emoji}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                toggleReaction(msg.id, emoji);
+                                setReaction(msg.id, emoji);
                               }}
                               className="flex h-7 w-7 items-center justify-center rounded-full text-[16px] transition-transform hover:scale-125 hover:bg-[#d3bb73]/10"
                             >
