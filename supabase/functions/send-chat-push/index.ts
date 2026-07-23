@@ -39,7 +39,15 @@ Deno.serve(async (req: Request) => {
     const payload: WebhookPayload = await req.json();
     const message = payload.record;
 
+    console.log("[send-chat-push] Received payload:", JSON.stringify({
+      message_id: message?.id,
+      conversation_id: message?.conversation_id,
+      sender_id: message?.sender_id,
+      content_length: message?.content?.length,
+    }));
+
     if (!message || !message.conversation_id || !message.sender_id) {
+      console.error("[send-chat-push] Invalid payload - missing required fields");
       return new Response(
         JSON.stringify({ error: "Invalid payload" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -54,8 +62,11 @@ Deno.serve(async (req: Request) => {
       .neq("employee_id", message.sender_id);
 
     if (participantsError) {
+      console.error("[send-chat-push] Participants query error:", participantsError);
       throw new Error(`Error fetching participants: ${participantsError.message}`);
     }
+
+    console.log("[send-chat-push] Found participants:", participants?.length ?? 0);
 
     if (!participants || participants.length === 0) {
       return new Response(
@@ -73,12 +84,15 @@ Deno.serve(async (req: Request) => {
       .in("employee_id", recipientIds);
 
     if (tokensError) {
+      console.error("[send-chat-push] Tokens query error:", tokensError);
       throw new Error(`Error fetching tokens: ${tokensError.message}`);
     }
 
+    console.log("[send-chat-push] Found push tokens:", tokens?.length ?? 0);
+
     if (!tokens || tokens.length === 0) {
       return new Response(
-        JSON.stringify({ success: true, sent: 0, message: "No push tokens found" }),
+        JSON.stringify({ success: true, sent: 0, message: "No push tokens found for recipients" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -95,21 +109,28 @@ Deno.serve(async (req: Request) => {
       title = sender.nickname || `${sender.name} ${sender.surname}`;
     }
 
-    // Check if it's a group conversation - use conversation name if available
+    // Check if group conversation - use title field (not name)
     const { data: conversation } = await supabase
       .from("employee_conversations")
-      .select("name, is_group")
+      .select("title, is_group")
       .eq("id", message.conversation_id)
       .maybeSingle();
 
-    if (conversation?.is_group && conversation?.name) {
-      title = `${conversation.name} • ${sender?.nickname || sender?.name || ""}`;
+    if (conversation?.is_group && conversation?.title) {
+      title = `${conversation.title} • ${sender?.nickname || sender?.name || ""}`;
     }
 
-    // Truncate body to 150 chars
-    const body = message.content.length > 150
-      ? message.content.slice(0, 150) + "..."
-      : message.content;
+    // Build notification body
+    let body = "Nowa wiadomość";
+    if (message.message_type === "text" && message.content) {
+      body = message.content.length > 150
+        ? message.content.slice(0, 150) + "..."
+        : message.content;
+    } else if (message.message_type === "image") {
+      body = "Przesłano zdjęcie";
+    } else if (message.message_type === "file") {
+      body = "Przesłano plik";
+    }
 
     // Build Expo push messages
     const messages = tokens.map((t: { token: string; employee_id: string }) => ({
@@ -127,10 +148,13 @@ Deno.serve(async (req: Request) => {
       channelId: "default",
     }));
 
+    console.log("[send-chat-push] Sending", messages.length, "push notifications");
+
     // Send in chunks of 100
     const chunks = chunkArray(messages, 100);
     let totalSent = 0;
     const invalidTokens: string[] = [];
+    const errors: string[] = [];
 
     for (const chunk of chunks) {
       const response = await fetch("https://exp.host/--/api/v2/push/send", {
@@ -144,7 +168,8 @@ Deno.serve(async (req: Request) => {
 
       if (!response.ok) {
         const errText = await response.text();
-        console.error(`Expo API error: ${response.status} - ${errText}`);
+        console.error(`[send-chat-push] Expo API error: ${response.status} - ${errText}`);
+        errors.push(`Expo API ${response.status}: ${errText}`);
         continue;
       }
 
@@ -156,7 +181,8 @@ Deno.serve(async (req: Request) => {
           if (ticket.status === "ok") {
             totalSent++;
           } else if (ticket.status === "error") {
-            console.error(`Push error: ${ticket.message}`);
+            console.error(`[send-chat-push] Ticket error: ${ticket.message} (${ticket.details?.error})`);
+            errors.push(ticket.message);
             if (ticket.details?.error === "DeviceNotRegistered") {
               invalidTokens.push(chunk[i].to);
             }
@@ -167,24 +193,30 @@ Deno.serve(async (req: Request) => {
 
     // Remove invalid tokens
     if (invalidTokens.length > 0) {
+      console.log("[send-chat-push] Removing", invalidTokens.length, "invalid tokens");
       await supabase
         .from("push_tokens")
         .delete()
         .in("token", invalidTokens);
     }
 
+    const result = {
+      success: true,
+      sent: totalSent,
+      total_tokens: tokens.length,
+      invalid_removed: invalidTokens.length,
+      errors: errors.length > 0 ? errors : undefined,
+    };
+
+    console.log("[send-chat-push] Result:", JSON.stringify(result));
+
     return new Response(
-      JSON.stringify({
-        success: true,
-        sent: totalSent,
-        total_tokens: tokens.length,
-        invalid_removed: invalidTokens.length,
-      }),
+      JSON.stringify(result),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("send-chat-push error:", message);
+    console.error("[send-chat-push] Fatal error:", message);
     return new Response(
       JSON.stringify({ error: message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

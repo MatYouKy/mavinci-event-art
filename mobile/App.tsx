@@ -19,6 +19,19 @@ import { useChatNotifications, setupChatNotificationFilter } from './src/service
 // Must be called before app renders to handle incoming remote push while app is foregrounded
 setupChatNotificationFilter();
 
+// Global notification target for deep-linking from notification tap
+export let globalNotificationTarget: {
+  type: string;
+  conversation_id?: string;
+  task_id?: string;
+} | null = null;
+
+export function consumeNotificationTarget() {
+  const target = globalNotificationTarget;
+  globalNotificationTarget = null;
+  return target;
+}
+
 function AppContent() {
   const { employee } = useAuth();
   const employeeId = employee?.id;
@@ -62,16 +75,20 @@ function AppContent() {
     const responseSubscription = addNotificationResponseListener((response) => {
       const data = response.notification.request.content.data;
 
-      if (data?.type === 'task' && data?.task_id) {
-        console.log('Open task:', data.task_id);
-
-        /*
-         * Tutaj później dodamy nawigację przez navigationRef:
-         *
-         * navigationRef.navigate('TaskDetails', {
-         *   taskId: data.task_id,
-         * });
-         */
+      if (data?.type === 'chat_message' && data?.conversation_id) {
+        console.log('[Push] Open chat conversation:', data.conversation_id);
+        // Navigation handled by the notification response subscription in RootNavigator
+        // Emit a global event for the navigation layer to pick up
+        globalNotificationTarget = {
+          type: 'chat_message',
+          conversation_id: data.conversation_id as string,
+        };
+      } else if (data?.type === 'task' && data?.task_id) {
+        console.log('[Push] Open task:', data.task_id);
+        globalNotificationTarget = {
+          type: 'task',
+          task_id: data.task_id as string,
+        };
       }
     });
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import * as Notifications from 'expo-notifications';
 import { supabase } from '../lib/supabase';
 
@@ -21,198 +21,174 @@ export function useRealtimePushNotifications(
   employeeId: string | undefined
 ) {
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const conversationIdsRef = useRef<string[]>([]);
+
+  const fetchConversationIds = useCallback(async () => {
+    if (!employeeId) return [];
+    const { data } = await supabase
+      .from('employee_conversation_participants')
+      .select('conversation_id')
+      .eq('employee_id', employeeId);
+    return (data || []).map((p) => p.conversation_id);
+  }, [employeeId]);
 
   useEffect(() => {
     if (!employeeId) return;
 
-    const showLocalNotification = async ({
-      title,
-      body,
-      data,
-    }: {
-      title: string;
-      body: string;
-      data?: Record<string, string>;
-    }) => {
-      try {
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title,
-            body,
-            sound: 'default',
-            data: data ?? {},
-          },
-          trigger: null,
-        });
-      } catch (error) {
-        console.error(
-          '[Notifications] Failed to display notification:',
-          error
-        );
-      }
-    };
+    let isCleanedUp = false;
 
-    const channel = supabase
-      .channel(`realtime_notifications_${employeeId}`)
+    const setup = async () => {
+      const convIds = await fetchConversationIds();
+      if (isCleanedUp) return;
+      conversationIdsRef.current = convIds;
 
-      // =====================================================
-      // ZWYKŁE POWIADOMIENIA CRM
-      // =====================================================
+      console.log('[Notifications] Setting up realtime for', convIds.length, 'conversations');
 
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notification_recipients',
-          filter: `user_id=eq.${employeeId}`,
-        },
-        async (payload) => {
-          const recipientRow =
-            payload.new as NotificationRecipientRow;
-
-          if (recipientRow.is_read) return;
-
-          const { data: notification, error } = await supabase
-            .from('notifications')
-            .select(
-              `
-                title,
-                message,
-                category,
-                related_entity_type,
-                related_entity_id
-              `
-            )
-            .eq('id', recipientRow.notification_id)
-            .maybeSingle();
-
-          if (error) {
-            console.error(
-              '[Notifications] Failed to fetch notification:',
-              error
-            );
-            return;
-          }
-
-          if (!notification) return;
-
-          await showLocalNotification({
-            title: notification.title ?? 'Mavinci CRM',
-            body: notification.message ?? '',
-            data: {
-              type:
-                notification.related_entity_type ??
-                notification.category ??
-                'notification',
-              entity_id:
-                notification.related_entity_id ?? '',
-              notification_id:
-                recipientRow.notification_id,
+      const showLocalNotification = async ({
+        title,
+        body,
+        data,
+      }: {
+        title: string;
+        body: string;
+        data?: Record<string, string>;
+      }) => {
+        try {
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title,
+              body,
+              sound: 'default',
+              data: data ?? {},
             },
+            trigger: null,
           });
+        } catch (error) {
+          console.error('[Notifications] Failed to display notification:', error);
         }
-      )
+      };
 
-      // =====================================================
-      // NOWE WIADOMOŚCI KOMUNIKATORA
-      // Remote push is handled by send-chat-push Edge Function.
-      // This realtime handler is kept ONLY as a fallback for
-      // when the Edge Function is unreachable (e.g. dev mode).
-      // The notification handler in chatNotifications.ts will
-      // suppress duplicates for the active conversation.
-      // =====================================================
+      const channel = supabase
+        .channel(`realtime_notifications_${employeeId}`)
 
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'employee_messages',
-        },
-        async (payload) => {
-          const message = payload.new as EmployeeMessageRow;
+        // CRM notifications (filtered by user_id - works with default replica identity)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'notification_recipients',
+            filter: `user_id=eq.${employeeId}`,
+          },
+          async (payload) => {
+            const recipientRow = payload.new as NotificationRecipientRow;
+            if (recipientRow.is_read) return;
 
-          if (message.sender_id === employeeId) return;
-
-          const { data: participation } =
-            await supabase
-              .from('employee_conversation_participants')
-              .select('id')
-              .eq('conversation_id', message.conversation_id)
-              .eq('employee_id', employeeId)
+            const { data: notification, error } = await supabase
+              .from('notifications')
+              .select('title, message, category, related_entity_type, related_entity_id')
+              .eq('id', recipientRow.notification_id)
               .maybeSingle();
 
-          if (!participation) return;
+            if (error || !notification) return;
 
-          const [
-            { data: sender },
-            { data: conversation },
-          ] = await Promise.all([
-            supabase
+            await showLocalNotification({
+              title: notification.title ?? 'Mavinci CRM',
+              body: notification.message ?? '',
+              data: {
+                type: notification.related_entity_type ?? notification.category ?? 'notification',
+                entity_id: notification.related_entity_id ?? '',
+                notification_id: recipientRow.notification_id,
+              },
+            });
+          }
+        )
+
+        // Chat messages: subscribe without filter
+        // Requires REPLICA IDENTITY FULL on employee_messages table
+        // Falls back: if no realtime events arrive, push notifications via edge function handle it
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'employee_messages',
+          },
+          async (payload) => {
+            const message = payload.new as EmployeeMessageRow;
+
+            // Skip own messages
+            if (message.sender_id === employeeId) return;
+
+            // Only notify if user is a participant
+            if (!conversationIdsRef.current.includes(message.conversation_id)) {
+              // Refresh conversation list in case it changed
+              const updatedIds = await fetchConversationIds();
+              conversationIdsRef.current = updatedIds;
+              if (!updatedIds.includes(message.conversation_id)) return;
+            }
+
+            // Get sender info
+            const { data: sender } = await supabase
               .from('employees')
               .select('id, name, surname, nickname')
               .eq('id', message.sender_id)
-              .maybeSingle(),
+              .maybeSingle();
 
-            supabase
-              .from('employee_conversations')
-              .select('id, title, is_group')
-              .eq('id', message.conversation_id)
-              .maybeSingle(),
-          ]);
-
-          const senderName =
-            sender?.nickname ||
-            [sender?.name, sender?.surname]
-              .filter(Boolean)
-              .join(' ') ||
-            'Nowa wiadomość';
-
-          const notificationTitle =
-            conversation?.is_group && conversation?.title
-              ? conversation.title
-              : senderName;
-
-          let notificationBody = 'Nowa wiadomość';
-
-          if (message.message_type === 'text') {
-            notificationBody =
-              message.content?.trim() ||
+            const senderName =
+              sender?.nickname ||
+              [sender?.name, sender?.surname].filter(Boolean).join(' ') ||
               'Nowa wiadomość';
-          } else if (message.message_type === 'image') {
-            notificationBody = 'Przesłano zdjęcie';
-          } else if (message.message_type === 'file') {
-            notificationBody = 'Przesłano plik';
+
+            // Check if group conversation
+            const { data: conversation } = await supabase
+              .from('employee_conversations')
+              .select('title, is_group')
+              .eq('id', message.conversation_id)
+              .maybeSingle();
+
+            const notificationTitle =
+              conversation?.is_group && conversation?.title
+                ? conversation.title
+                : senderName;
+
+            let notificationBody = 'Nowa wiadomość';
+            if (message.message_type === 'text') {
+              notificationBody = message.content?.trim() || 'Nowa wiadomość';
+            } else if (message.message_type === 'image') {
+              notificationBody = 'Przesłano zdjęcie';
+            } else if (message.message_type === 'file') {
+              notificationBody = 'Przesłano plik';
+            }
+
+            await showLocalNotification({
+              title: notificationTitle,
+              body: notificationBody,
+              data: {
+                type: 'chat_message',
+                conversation_id: message.conversation_id,
+                message_id: message.id,
+                sender_id: message.sender_id,
+              },
+            });
           }
+        )
 
-          await showLocalNotification({
-            title: notificationTitle,
-            body: notificationBody,
-            data: {
-              type: 'chat_message',
-              conversation_id: message.conversation_id,
-              message_id: message.id,
-              sender_id: message.sender_id,
-            },
-          });
-        }
-      )
+        .subscribe((status) => {
+          console.log('[Notifications] Realtime channel status:', status);
+        });
 
-      .subscribe((status) => {
-        console.log(
-          '[Notifications] Realtime status:',
-          status
-        );
-      });
+      channelRef.current = channel;
+    };
 
-    channelRef.current = channel;
+    setup();
 
     return () => {
+      isCleanedUp = true;
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;
       }
     };
-  }, [employeeId]);
+  }, [employeeId, fetchConversationIds]);
 }

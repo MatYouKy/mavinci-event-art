@@ -117,18 +117,39 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
     setIsSending(true);
     setNewMessage('');
 
-    const { error } = await supabase.from('employee_messages').insert({
+    const { data: inserted, error } = await supabase.from('employee_messages').insert({
       conversation_id: conversation.id,
       sender_id: currentEmployeeId,
       content,
-    });
+    }).select('id, conversation_id, sender_id, content, message_type, created_at').maybeSingle();
 
     if (error) {
       console.error('[Chat] send error:', error);
       setNewMessage(content);
+    } else if (inserted) {
+      triggerPushNotification(inserted);
     }
     setIsSending(false);
     inputRef.current?.focus();
+  };
+
+  const triggerPushNotification = (message: { id: string; conversation_id: string; sender_id: string; content: string; message_type: string; created_at: string }) => {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+    fetch(`${supabaseUrl}/functions/v1/send-chat-push`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${anonKey}`,
+      },
+      body: JSON.stringify({
+        type: 'INSERT',
+        table: 'employee_messages',
+        schema: 'public',
+        record: message,
+        old_record: null,
+      }),
+    }).catch((err) => console.warn('[Chat] Push trigger failed:', err));
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

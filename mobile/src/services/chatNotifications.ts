@@ -14,6 +14,7 @@ interface ChatMessage {
 
 let _activeConversationId: string | null = null;
 let _onConversationLeave: (() => void) | null = null;
+const _recentlyNotifiedMessageIds = new Set<string>();
 
 export function setActiveChatConversation(conversationId: string | null) {
   const wasActive = _activeConversationId;
@@ -33,6 +34,7 @@ export function setupChatNotificationFilter() {
     handleNotification: async (notification) => {
       const data = notification.request.content.data;
 
+      // Suppress if viewing the same conversation
       if (
         data?.type === 'chat_message' &&
         data?.conversation_id === _activeConversationId
@@ -43,6 +45,22 @@ export function setupChatNotificationFilter() {
           shouldPlaySound: false,
           shouldSetBadge: false,
         };
+      }
+
+      // Deduplicate: if we already showed a notification for this message, suppress
+      if (data?.type === 'chat_message' && data?.message_id) {
+        const msgId = data.message_id as string;
+        if (_recentlyNotifiedMessageIds.has(msgId)) {
+          return {
+            shouldShowBanner: false,
+            shouldShowList: false,
+            shouldPlaySound: false,
+            shouldSetBadge: false,
+          };
+        }
+        _recentlyNotifiedMessageIds.add(msgId);
+        // Clean up after 10s
+        setTimeout(() => _recentlyNotifiedMessageIds.delete(msgId), 10000);
       }
 
       return {
