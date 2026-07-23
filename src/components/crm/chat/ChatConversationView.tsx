@@ -1,7 +1,20 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Send, Paperclip, X, FileText, Film, Image as ImageIcon, Download, MoreVertical, Trash2, CheckCircle2, Circle } from 'lucide-react';
+import {
+  ArrowLeft,
+  Send,
+  Paperclip,
+  X,
+  FileText,
+  Film,
+  Image as ImageIcon,
+  Download,
+  MoreVertical,
+  Trash2,
+  CheckCircle2,
+  Circle,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { Conversation, ChatMessage } from './ChatWidget';
 
@@ -36,7 +49,12 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function ChatConversationView({ conversation, currentEmployeeId, isOnline, onBack }: Props) {
+export default function ChatConversationView({
+  conversation,
+  currentEmployeeId,
+  isOnline,
+  onBack,
+}: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -48,18 +66,25 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [showMenu, setShowMenu] = useState(false);
-  const [hoveredMsgId, setHoveredMsgId] = useState<string | null>(null);
+
   const [reactionPickerMsgId, setReactionPickerMsgId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const otherParticipant = conversation.participants.find((p) => p.employee_id !== currentEmployeeId);
-  const conversationName = conversation.title ||
+  const otherParticipant = conversation.participants.find(
+    (p) => p.employee_id !== currentEmployeeId,
+  );
+  const conversationName =
+    conversation.title ||
     conversation.participants
       .filter((p) => p.employee_id !== currentEmployeeId)
-      .map((p) => p.employee?.nickname || `${p.employee?.name || ''} ${p.employee?.surname || ''}`.trim())
-      .join(', ') || 'Czat';
+      .map(
+        (p) =>
+          p.employee?.nickname || `${p.employee?.name || ''} ${p.employee?.surname || ''}`.trim(),
+      )
+      .join(', ') ||
+    'Czat';
 
   const otherIsOnline = otherParticipant ? isOnline(otherParticipant.employee_id) : false;
 
@@ -151,7 +176,9 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
       .eq('employee_id', currentEmployeeId);
   };
 
-  const uploadFile = async (file: File): Promise<{ url: string; filename: string; size: number; messageType: string } | null> => {
+  const uploadFile = async (
+    file: File,
+  ): Promise<{ url: string; filename: string; size: number; messageType: string } | null> => {
     const messageType = getMessageType(file.type);
     const ext = file.name.split('.').pop() || 'bin';
     const storagePath = `${conversation.id}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
@@ -178,7 +205,10 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
     setIsSending(true);
     setNewMessage('');
     setPendingFile(null);
-    if (pendingPreview) { URL.revokeObjectURL(pendingPreview); setPendingPreview(null); }
+    if (pendingPreview) {
+      URL.revokeObjectURL(pendingPreview);
+      setPendingPreview(null);
+    }
 
     let attachmentData: Awaited<ReturnType<typeof uploadFile>> = null;
     if (file) {
@@ -202,7 +232,8 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
       insertPayload.attachment_size = attachmentData.size;
     }
 
-    const { data: inserted, error } = await supabase.from('employee_messages')
+    const { data: inserted, error } = await supabase
+      .from('employee_messages')
       .insert(insertPayload)
       .select('id, conversation_id, sender_id, content, message_type, created_at')
       .maybeSingle();
@@ -218,13 +249,26 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
     inputRef.current?.focus();
   };
 
-  const triggerPushNotification = (message: { id: string; conversation_id: string; sender_id: string; content: string; message_type: string; created_at: string }) => {
+  const triggerPushNotification = (message: {
+    id: string;
+    conversation_id: string;
+    sender_id: string;
+    content: string;
+    message_type: string;
+    created_at: string;
+  }) => {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
     fetch(`${supabaseUrl}/functions/v1/send-chat-push`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${anonKey}` },
-      body: JSON.stringify({ type: 'INSERT', table: 'employee_messages', schema: 'public', record: message, old_record: null }),
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${anonKey}` },
+      body: JSON.stringify({
+        type: 'INSERT',
+        table: 'employee_messages',
+        schema: 'public',
+        record: message,
+        old_record: null,
+      }),
     }).catch((err) => console.warn('[Chat] Push trigger failed:', err));
   };
 
@@ -247,7 +291,10 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
 
   const removePendingFile = () => {
     setPendingFile(null);
-    if (pendingPreview) { URL.revokeObjectURL(pendingPreview); setPendingPreview(null); }
+    if (pendingPreview) {
+      URL.revokeObjectURL(pendingPreview);
+      setPendingPreview(null);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -342,21 +389,29 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
     if (!reactions || Object.keys(reactions).length === 0) return null;
 
     return (
-      <div className={`mt-0.5 flex flex-wrap gap-0.5 ${isMine ? 'justify-end' : 'justify-start'}`}>
+      <div
+        className={`absolute bottom-0 z-30 flex translate-y-[15%] flex-wrap gap-0.5 ${
+          isMine ? '-right-1' : '-left-1'
+        }`}
+      >
         {Object.entries(reactions).map(([emoji, users]) => {
           const iReacted = users.includes(currentEmployeeId);
+
           return (
             <button
               key={emoji}
-              onClick={(e) => { e.stopPropagation(); toggleReaction(msg.id, emoji); }}
-              className={`flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[11px] transition-all ${
-                iReacted
-                  ? 'bg-[#d3bb73]/20 ring-1 ring-[#d3bb73]/40'
-                  : 'bg-[#262940] hover:bg-[#2f3350]'
-              }`}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleReaction(msg.id, emoji);
+              }}
+              className={`flex h-6 min-w-6 items-center justify-center gap-0.5 rounded-full border border-white/10 bg-[#11131f] px-1.5 text-[12px] shadow-[0_2px_8px_rgba(0,0,0,0.55)] transition-all hover:scale-105 hover:bg-[#202338] ${iReacted ? 'ring-1 ring-[#d3bb73]/70' : ''} `}
             >
-              <span>{emoji}</span>
-              {users.length > 1 && <span className="text-[10px] text-[#e5e4e2]/60">{users.length}</span>}
+              <span className="leading-none">{emoji}</span>
+
+              {users.length > 1 && (
+                <span className="text-[9px] leading-none text-white/70">{users.length}</span>
+              )}
             </button>
           );
         })}
@@ -424,7 +479,11 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
         </button>
         <div className="relative">
           {otherParticipant?.employee?.avatar_url ? (
-            <img src={otherParticipant.employee.avatar_url} alt="" className="h-8 w-8 rounded-full object-cover" />
+            <img
+              src={otherParticipant.employee.avatar_url}
+              alt=""
+              className="h-8 w-8 rounded-full object-cover"
+            />
           ) : (
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#d3bb73]/15 text-xs font-semibold text-[#d3bb73]">
               {conversationName.charAt(0).toUpperCase()}
@@ -436,7 +495,9 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
         </div>
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-sm font-medium text-[#e5e4e2]">{conversationName}</span>
-          <span className="text-[10px] text-[#e5e4e2]/40">{otherIsOnline ? 'Online' : 'Offline'}</span>
+          <span className="text-[10px] text-[#e5e4e2]/40">
+            {otherIsOnline ? 'Online' : 'Offline'}
+          </span>
         </div>
         <div className="relative">
           <button
@@ -448,7 +509,10 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
           {showMenu && (
             <div className="absolute right-0 top-8 z-50 min-w-[160px] rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] py-1 shadow-xl">
               <button
-                onClick={() => { setIsSelectMode(true); setShowMenu(false); }}
+                onClick={() => {
+                  setIsSelectMode(true);
+                  setShowMenu(false);
+                }}
                 className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10"
               >
                 <CheckCircle2 className="h-3.5 w-3.5 text-[#d3bb73]" />
@@ -469,7 +533,9 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
             Anuluj
           </button>
           <span className="text-xs text-[#e5e4e2]/50">
-            {selectedIds.size > 0 ? `Zaznaczono: ${selectedIds.size}` : 'Zaznacz wiadomości do usunięcia'}
+            {selectedIds.size > 0
+              ? `Zaznaczono: ${selectedIds.size}`
+              : 'Zaznacz wiadomości do usunięcia'}
           </span>
           <button
             onClick={deleteSelectedForMe}
@@ -487,7 +553,13 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-3 py-2" onClick={() => showMenu && setShowMenu(false)}>
+      <div
+        className="flex-1 overflow-y-auto px-3 py-2"
+        onClick={() => {
+          if (showMenu) setShowMenu(false);
+          if (reactionPickerMsgId) setReactionPickerMsgId(null);
+        }}
+      >
         {isLoadingMessages ? (
           <div className="flex h-full items-center justify-center">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#d3bb73]/20 border-t-[#d3bb73]" />
@@ -497,115 +569,165 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
             <p className="text-xs text-[#e5e4e2]/40">Rozpocznij konwersację</p>
           </div>
         ) : (
-          messages.filter((msg) => !deletedIds.has(msg.id)).map((msg, idx, filtered) => {
-            const isMine = msg.sender_id === currentEmployeeId;
-            const showDate = idx === 0 || new Date(msg.created_at).toDateString() !== new Date(filtered[idx - 1].created_at).toDateString();
-            const consecutive = idx > 0 && msg.sender_id === filtered[idx - 1].sender_id && new Date(msg.created_at).getTime() - new Date(filtered[idx - 1].created_at).getTime() < 60000;
-            const sender = senders.get(msg.sender_id);
-            const hasAttachment = !!msg.attachment_url;
-            const hasTextContent = msg.content && msg.message_type === 'text';
-            const hasCaption = msg.content && msg.message_type !== 'text' && msg.content !== (msg.attachment_filename || '');
-            const isSelected = selectedIds.has(msg.id);
+          messages
+            .filter((msg) => !deletedIds.has(msg.id))
+            .map((msg, idx, filtered) => {
+              const isMine = msg.sender_id === currentEmployeeId;
+              const showDate =
+                idx === 0 ||
+                new Date(msg.created_at).toDateString() !==
+                  new Date(filtered[idx - 1].created_at).toDateString();
+              const consecutive =
+                idx > 0 &&
+                msg.sender_id === filtered[idx - 1].sender_id &&
+                new Date(msg.created_at).getTime() -
+                  new Date(filtered[idx - 1].created_at).getTime() <
+                  60000;
+              const sender = senders.get(msg.sender_id);
+              const hasAttachment = !!msg.attachment_url;
+              const hasTextContent = msg.content && msg.message_type === 'text';
+              const hasCaption =
+                msg.content &&
+                msg.message_type !== 'text' &&
+                msg.content !== (msg.attachment_filename || '');
+              const isSelected = selectedIds.has(msg.id);
+              const hasReactions = !!msg.reactions && Object.keys(msg.reactions).length > 0;
 
-            return (
-              <div key={msg.id}>
-                {showDate && (
-                  <div className="my-3 flex items-center justify-center">
-                    <span className="rounded-full bg-[#0f1119]/60 px-3 py-0.5 text-[10px] text-[#e5e4e2]/40">
-                      {formatDateSeparator(msg.created_at)}
-                    </span>
-                  </div>
-                )}
-                <div
-                  className={`flex items-center ${isMine ? 'justify-end' : 'justify-start'} ${consecutive ? 'mt-0.5' : 'mt-2'}`}
-                  onClick={isSelectMode ? () => toggleSelect(msg.id) : undefined}
-                  style={isSelectMode ? { cursor: 'pointer' } : undefined}
-                >
-                  {isSelectMode && (
-                    <div className="mr-2 shrink-0">
-                      {isSelected ? (
-                        <CheckCircle2 className="h-5 w-5 text-[#d3bb73]" />
-                      ) : (
-                        <Circle className="h-5 w-5 text-[#e5e4e2]/20" />
-                      )}
+              return (
+                <div key={msg.id}>
+                  {showDate && (
+                    <div className="my-3 flex items-center justify-center">
+                      <span className="rounded-full bg-[#0f1119]/60 px-3 py-0.5 text-[10px] text-[#e5e4e2]/40">
+                        {formatDateSeparator(msg.created_at)}
+                      </span>
                     </div>
                   )}
-
-                  {!isMine && !consecutive && conversation.is_group && !isSelectMode && (
-                    <div className="mr-1.5 mt-auto shrink-0">
-                      {sender?.avatar_url ? (
-                        <img src={sender.avatar_url} alt="" className="h-6 w-6 rounded-full object-cover" />
-                      ) : (
-                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#d3bb73]/10 text-[9px] font-semibold text-[#d3bb73]">
-                          {(sender?.nickname || sender?.name || '?').charAt(0).toUpperCase()}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {!isMine && consecutive && conversation.is_group && !isSelectMode && <div className="mr-1.5 w-6 shrink-0" />}
-
                   <div
-                    className={`group relative max-w-[75%] ${isSelected ? 'opacity-70' : ''}`}
-                    onMouseEnter={() => !isSelectMode && setHoveredMsgId(msg.id)}
-                    onMouseLeave={() => { setHoveredMsgId(null); setReactionPickerMsgId(null); }}
+                    className={`flex items-center ${isMine ? 'justify-end' : 'justify-start'} ${consecutive ? 'mt-0.5' : 'mt-2'}`}
+                    onClick={isSelectMode ? () => toggleSelect(msg.id) : undefined}
+                    style={isSelectMode ? { cursor: 'pointer' } : undefined}
                   >
-                    {!isMine && !consecutive && conversation.is_group && (
-                      <p className="mb-0.5 ml-2 text-[9px] font-medium text-[#d3bb73]/60">
-                        {sender?.nickname || sender?.name || 'Unknown'}
-                      </p>
-                    )}
-                    <div
-                      className={`overflow-hidden rounded-2xl px-3 py-1.5 text-[13px] leading-relaxed ${
-                        isMine
-                          ? 'rounded-br-md bg-gradient-to-br from-[#d3bb73] to-[#c5aa5c] text-[#0f1119]'
-                          : 'rounded-bl-md bg-[#262940] text-[#e5e4e2]'
-                      } ${hasAttachment ? 'p-2' : ''} ${isSelected ? 'ring-2 ring-[#d3bb73]/50' : ''}`}
-                    >
-                      {hasAttachment && renderAttachment(msg, isMine)}
-                      {hasCaption && <p className="mt-1.5 px-1 text-[13px]">{msg.content}</p>}
-                      {hasTextContent && <span>{msg.content}</span>}
-                    </div>
-
-                    {/* Hover reaction trigger */}
-                    {hoveredMsgId === msg.id && !isSelectMode && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setReactionPickerMsgId(msg.id); }}
-                        className={`absolute top-0 flex h-6 w-6 items-center justify-center rounded-full bg-[#1c1f33] text-[12px] shadow-lg transition-all hover:scale-110 ${
-                          isMine ? '-left-8' : '-right-8'
-                        }`}
-                      >
-                        😊
-                      </button>
-                    )}
-
-                    {/* Reaction picker */}
-                    {reactionPickerMsgId === msg.id && (
-                      <div className={`absolute z-50 flex gap-0.5 rounded-full bg-[#1c1f33] px-2 py-1 shadow-xl ring-1 ring-[#d3bb73]/10 ${
-                        isMine ? 'right-0 -top-9' : 'left-0 -top-9'
-                      }`}>
-                        {REACTION_EMOJIS.map((emoji) => (
-                          <button
-                            key={emoji}
-                            onClick={(e) => { e.stopPropagation(); toggleReaction(msg.id, emoji); }}
-                            className="flex h-7 w-7 items-center justify-center rounded-full text-[16px] transition-transform hover:scale-125 hover:bg-[#d3bb73]/10"
-                          >
-                            {emoji}
-                          </button>
-                        ))}
+                    {isSelectMode && (
+                      <div className="mr-2 shrink-0">
+                        {isSelected ? (
+                          <CheckCircle2 className="h-5 w-5 text-[#d3bb73]" />
+                        ) : (
+                          <Circle className="h-5 w-5 text-[#e5e4e2]/20" />
+                        )}
                       </div>
                     )}
 
-                    {/* Reactions display */}
-                    {renderReactions(msg, isMine)}
+                    {!isMine && !consecutive && conversation.is_group && !isSelectMode && (
+                      <div className="mr-1.5 mt-auto shrink-0">
+                        {sender?.avatar_url ? (
+                          <img
+                            src={sender.avatar_url}
+                            alt=""
+                            className="h-6 w-6 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#d3bb73]/10 text-[9px] font-semibold text-[#d3bb73]">
+                            {(sender?.nickname || sender?.name || '?').charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {!isMine && consecutive && conversation.is_group && !isSelectMode && (
+                      <div className="mr-1.5 w-6 shrink-0" />
+                    )}
 
-                    <p className={`mt-0.5 text-[9px] text-[#e5e4e2]/30 opacity-0 transition-opacity group-hover:opacity-100 ${isMine ? 'text-right' : 'text-left'}`}>
-                      {formatMessageTime(msg.created_at)}
-                    </p>
+                    <div
+                      className={`group relative max-w-[75%] ${
+                        isMine ? '-ml-9 pl-9' : '-mr-9 pr-9'
+                      } ${hasReactions ? 'mb-2' : ''} ${isSelected ? 'opacity-70' : ''}`}
+                    >
+                      {!isMine && !consecutive && conversation.is_group && (
+                        <p className="mb-0.5 ml-2 text-[9px] font-medium text-[#d3bb73]/60">
+                          {sender?.nickname || sender?.name || 'Unknown'}
+                        </p>
+                      )}
+                      <div className="relative">
+                        <div
+                          className={`overflow-hidden rounded-2xl px-3 py-1.5 text-[13px] leading-relaxed ${
+                            isMine
+                              ? 'rounded-br-md bg-gradient-to-br from-[#d3bb73] to-[#c5aa5c] text-[#0f1119]'
+                              : 'rounded-bl-md bg-[#262940] text-[#e5e4e2]'
+                          } ${hasAttachment ? 'p-2' : ''} ${
+                            isSelected ? 'ring-2 ring-[#d3bb73]/50' : ''
+                          }`}
+                        >
+                          {hasAttachment && renderAttachment(msg, isMine)}
+
+                          {hasCaption && <p className="mt-1.5 px-1 text-[13px]">{msg.content}</p>}
+
+                          {hasTextContent && <span>{msg.content}</span>}
+                        </div>
+                      </div>
+
+                      {/* Hover reaction trigger */}
+                      {!isSelectMode && (
+                        <div
+                          className={`absolute top-0 flex h-full items-start pt-0.5 ${
+                            isMine ? 'left-0' : 'right-0'
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+
+                              setReactionPickerMsgId((current) =>
+                                current === msg.id ? null : msg.id,
+                              );
+                            }}
+                            className={`flex h-7 w-7 items-center justify-center rounded-full border border-[#d3bb73]/10 bg-[#1c1f33] text-[13px] shadow-lg transition-all duration-150 hover:scale-110 hover:bg-[#262940] focus:outline-none ${
+                              reactionPickerMsgId === msg.id
+                                ? 'visible scale-100 opacity-100'
+                                : 'invisible scale-90 opacity-0 group-hover:visible group-hover:scale-100 group-hover:opacity-100'
+                            } `}
+                            aria-label="Dodaj reakcję"
+                          >
+                            😊
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Reaction picker */}
+                      {reactionPickerMsgId === msg.id && (
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          className={`absolute -top-11 z-50 flex items-center gap-0.5 rounded-full border border-[#d3bb73]/10 bg-[#1c1f33] px-2 py-1.5 shadow-2xl ${
+                            isMine ? 'right-9' : 'left-9'
+                          } `}
+                        >
+                          {REACTION_EMOJIS.map((emoji) => (
+                            <button
+                              key={emoji}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleReaction(msg.id, emoji);
+                              }}
+                              className="flex h-7 w-7 items-center justify-center rounded-full text-[16px] transition-transform hover:scale-125 hover:bg-[#d3bb73]/10"
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Reactions display */}
+                      {renderReactions(msg, isMine)}
+
+                      <p
+                        className={`mt-0.5 text-[9px] text-[#e5e4e2]/30 opacity-0 transition-opacity group-hover:opacity-100 ${isMine ? 'text-right' : 'text-left'}`}
+                      >
+                        {formatMessageTime(msg.created_at)}
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })
+              );
+            })
         )}
         <div ref={messagesEndRef} />
       </div>

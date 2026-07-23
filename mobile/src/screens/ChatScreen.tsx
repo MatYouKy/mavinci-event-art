@@ -94,9 +94,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const otherParticipant = conversation.participants.find(
-    (p) => p.employee_id !== employee?.id
-  );
+  const otherParticipant = conversation.participants.find((p) => p.employee_id !== employee?.id);
 
   const conversationTitle =
     conversation.title ||
@@ -196,7 +194,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
           setTimeout(() => {
             flatListRef.current?.scrollToEnd({ animated: true });
           }, 100);
-        }
+        },
       )
       .on(
         'postgres_changes',
@@ -208,10 +206,8 @@ export default function ChatScreen({ conversation, onBack }: Props) {
         },
         (payload) => {
           const updated = payload.new as Message;
-          setMessages((prev) =>
-            prev.map((m) => (m.id === updated.id ? updated : m))
-          );
-        }
+          setMessages((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+        },
       )
       .on(
         'postgres_changes',
@@ -224,7 +220,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
         (payload) => {
           const deleted = payload.old as { id: string };
           setMessages((prev) => prev.filter((m) => m.id !== deleted.id));
-        }
+        },
       )
       .subscribe();
 
@@ -234,7 +230,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
   }, [conversation.id, markAsRead, senders]);
 
   const uploadAttachment = async (
-    attachment: PendingAttachment
+    attachment: PendingAttachment,
   ): Promise<{ url: string } | null> => {
     try {
       const mimeExtensionMap: Record<string, string> = {
@@ -248,21 +244,18 @@ export default function ChatScreen({ conversation, onBack }: Props) {
         'video/quicktime': 'mov',
         'application/pdf': 'pdf',
       };
-  
-      const originalExtension = attachment.name
-        .split('.')
-        .pop()
-        ?.toLowerCase();
-  
+
+      const originalExtension = attachment.name.split('.').pop()?.toLowerCase();
+
       const extension =
         originalExtension && originalExtension !== attachment.name.toLowerCase()
           ? originalExtension
           : mimeExtensionMap[attachment.mimeType] || 'bin';
-  
+
       const storagePath = `${conversation.id}/${Date.now()}_${Math.random()
         .toString(36)
         .slice(2, 8)}.${extension}`;
-  
+
       console.log('[Chat] Reading attachment:', {
         uri: attachment.uri,
         name: attachment.name,
@@ -270,27 +263,27 @@ export default function ChatScreen({ conversation, onBack }: Props) {
         declaredSize: attachment.size,
         storagePath,
       });
-  
+
       const base64 = await FileSystem.readAsStringAsync(attachment.uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
-  
+
       if (!base64) {
         throw new Error('Odczytany plik jest pusty');
       }
-  
+
       const arrayBuffer = decode(base64);
-  
+
       if (arrayBuffer.byteLength === 0) {
         throw new Error('Plik po konwersji ma rozmiar 0 bajtów');
       }
-  
+
       console.log('[Chat] Uploading attachment:', {
         storagePath,
         mimeType: attachment.mimeType,
         arrayBufferSize: arrayBuffer.byteLength,
       });
-  
+
       const { error: uploadError } = await supabase.storage
         .from('chat-attachments')
         .upload(storagePath, arrayBuffer, {
@@ -298,20 +291,18 @@ export default function ChatScreen({ conversation, onBack }: Props) {
           cacheControl: '3600',
           upsert: false,
         });
-  
+
       if (uploadError) {
         console.error('[Chat] Upload error:', uploadError);
         return null;
       }
-  
-      const { data: urlData } = supabase.storage
-        .from('chat-attachments')
-        .getPublicUrl(storagePath);
-  
+
+      const { data: urlData } = supabase.storage.from('chat-attachments').getPublicUrl(storagePath);
+
       if (!urlData.publicUrl) {
         throw new Error('Nie udało się wygenerować publicznego adresu pliku');
       }
-  
+
       return {
         url: urlData.publicUrl,
       };
@@ -378,7 +369,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
         employee.id,
         text || attachment?.name || '',
         insertedMsg.id,
-        messageType
+        messageType,
       );
     }
 
@@ -390,7 +381,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     senderId: string,
     content: string,
     messageId: string,
-    messageType: string
+    messageType: string,
   ) => {
     try {
       await fetch(`${supabaseUrl}/functions/v1/send-chat-push`, {
@@ -455,7 +446,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
             exitSelectMode();
           },
         },
-      ]
+      ],
     );
   };
 
@@ -516,41 +507,32 @@ export default function ChatScreen({ conversation, onBack }: Props) {
   };
 
   const pickImage = async () => {
-    const permission =
-      await ImagePicker.requestMediaLibraryPermissionsAsync();
-  
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
     if (!permission.granted) {
-      Alert.alert(
-        'Brak uprawnień',
-        'Zezwól na dostęp do galerii w ustawieniach.'
-      );
+      Alert.alert('Brak uprawnień', 'Zezwól na dostęp do galerii w ustawieniach.');
       return;
     }
-  
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.All,
       quality: 0.8,
       videoMaxDuration: 60,
     });
-  
+
     if (result.canceled || !result.assets?.[0]) return;
-  
+
     const asset = result.assets[0];
     const fileSize = asset.fileSize || 0;
     const isVideo = asset.type === 'video';
-  
+
     if (fileSize > MAX_FILE_SIZE) {
-      Alert.alert(
-        'Za duży plik',
-        `Maksymalny rozmiar to ${formatFileSize(MAX_FILE_SIZE)}`
-      );
+      Alert.alert('Za duży plik', `Maksymalny rozmiar to ${formatFileSize(MAX_FILE_SIZE)}`);
       return;
     }
-  
-    const mimeType =
-      asset.mimeType ||
-      (isVideo ? 'video/mp4' : 'image/jpeg');
-  
+
+    const mimeType = asset.mimeType || (isVideo ? 'video/mp4' : 'image/jpeg');
+
     const extensionMap: Record<string, string> = {
       'image/jpeg': 'jpg',
       'image/jpg': 'jpg',
@@ -561,17 +543,16 @@ export default function ChatScreen({ conversation, onBack }: Props) {
       'video/mp4': 'mp4',
       'video/quicktime': 'mov',
     };
-  
-    const fallbackExtension =
-      extensionMap[mimeType] || (isVideo ? 'mp4' : 'jpg');
-  
+
+    const fallbackExtension = extensionMap[mimeType] || (isVideo ? 'mp4' : 'jpg');
+
     const originalName = asset.fileName?.trim();
-  
+
     const fileName =
       originalName && originalName.includes('.')
         ? originalName
         : `${isVideo ? 'video' : 'image'}_${Date.now()}.${fallbackExtension}`;
-  
+
     setPendingAttachment({
       uri: asset.uri,
       name: fileName,
@@ -628,10 +609,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
 
     if (item.message_type === 'image') {
       return (
-        <TouchableOpacity
-          onPress={() => Linking.openURL(item.attachment_url!)}
-          activeOpacity={0.8}
-        >
+        <TouchableOpacity onPress={() => Linking.openURL(item.attachment_url!)} activeOpacity={0.8}>
           <Image
             source={{ uri: item.attachment_url }}
             style={styles.attachmentImage}
@@ -657,7 +635,10 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     return (
       <TouchableOpacity
         onPress={() => Linking.openURL(item.attachment_url!)}
-        style={[styles.fileAttachment, isMine ? styles.fileAttachmentMine : styles.fileAttachmentTheirs]}
+        style={[
+          styles.fileAttachment,
+          isMine ? styles.fileAttachmentMine : styles.fileAttachmentTheirs,
+        ]}
         activeOpacity={0.7}
       >
         <Feather name="file-text" size={18} color={isMine ? '#0f1119' : colors.primary.gold} />
@@ -681,12 +662,26 @@ export default function ChatScreen({ conversation, onBack }: Props) {
   const renderMessage = ({ item, index }: { item: Message; index: number }) => {
     const isMine = item.sender_id === employee?.id;
     const sender = senders.get(item.sender_id);
-    const showAvatar = !isMine && (index === visibleMessages.length - 1 || item.sender_id !== visibleMessages[index + 1]?.sender_id);
-    const showDateSep = index === 0 || new Date(item.created_at).toDateString() !== new Date(visibleMessages[index - 1].created_at).toDateString();
-    const consecutive = index > 0 && visibleMessages[index - 1].sender_id === item.sender_id && new Date(item.created_at).getTime() - new Date(visibleMessages[index - 1].created_at).getTime() < 60000;
+    const showAvatar =
+      !isMine &&
+      (index === visibleMessages.length - 1 ||
+        item.sender_id !== visibleMessages[index + 1]?.sender_id);
+    const showDateSep =
+      index === 0 ||
+      new Date(item.created_at).toDateString() !==
+        new Date(visibleMessages[index - 1].created_at).toDateString();
+    const consecutive =
+      index > 0 &&
+      visibleMessages[index - 1].sender_id === item.sender_id &&
+      new Date(item.created_at).getTime() -
+        new Date(visibleMessages[index - 1].created_at).getTime() <
+        60000;
     const hasAttachment = !!item.attachment_url;
     const hasTextContent = item.message_type === 'text' && !!item.content;
-    const hasCaption = item.message_type !== 'text' && !!item.content && item.content !== (item.attachment_filename || '');
+    const hasCaption =
+      item.message_type !== 'text' &&
+      !!item.content &&
+      item.content !== (item.attachment_filename || '');
     const isSelected = selectedIds.has(item.id);
 
     return (
@@ -736,25 +731,66 @@ export default function ChatScreen({ conversation, onBack }: Props) {
 
           <View style={styles.bubbleWrapper}>
             {conversation.is_group && !isMine && !consecutive && sender && (
-              <Text style={styles.senderName}>
-                {sender.nickname || sender.name}
-              </Text>
+              <Text style={styles.senderName}>{sender.nickname || sender.name}</Text>
             )}
-            <View style={[
-              styles.bubble,
-              isMine ? styles.bubbleMine : styles.bubbleTheirs,
-              hasAttachment && styles.bubbleWithAttachment,
-            ]}>
-              {hasAttachment && renderAttachment(item, isMine)}
-              {hasCaption && (
-                <Text style={[styles.messageText, isMine && styles.messageTextMine, { marginTop: 6 }]}>
-                  {item.content}
-                </Text>
-              )}
-              {hasTextContent && (
-                <Text style={[styles.messageText, isMine && styles.messageTextMine]}>
-                  {item.content}
-                </Text>
+            <View
+              style={[
+                styles.bubbleContainer,
+                item.reactions &&
+                  Object.keys(item.reactions).length > 0 &&
+                  styles.bubbleContainerWithReactions,
+              ]}
+            >
+              <View
+                style={[
+                  styles.bubble,
+                  isMine ? styles.bubbleMine : styles.bubbleTheirs,
+                  hasAttachment && styles.bubbleWithAttachment,
+                ]}
+              >
+                {hasAttachment && renderAttachment(item, isMine)}
+
+                {hasCaption && (
+                  <Text
+                    style={[styles.messageText, isMine && styles.messageTextMine, { marginTop: 6 }]}
+                  >
+                    {item.content}
+                  </Text>
+                )}
+
+                {hasTextContent && (
+                  <Text style={[styles.messageText, isMine && styles.messageTextMine]}>
+                    {item.content}
+                  </Text>
+                )}
+              </View>
+
+              {item.reactions && Object.keys(item.reactions).length > 0 && (
+                <View
+                  style={[
+                    styles.reactionsOverlay,
+                    isMine ? styles.reactionsOverlayMine : styles.reactionsOverlayTheirs,
+                  ]}
+                >
+                  {Object.entries(item.reactions).map(([emoji, users]) => {
+                    const iReacted = !!employee && users.includes(employee.id);
+
+                    return (
+                      <TouchableOpacity
+                        key={emoji}
+                        activeOpacity={0.8}
+                        onPress={() => toggleReaction(item.id, emoji)}
+                        style={[styles.reactionBadge, iReacted && styles.reactionBadgeActive]}
+                      >
+                        <Text style={styles.reactionBadgeEmoji}>{emoji}</Text>
+
+                        {users.length > 1 && (
+                          <Text style={styles.reactionBadgeCount}>{users.length}</Text>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
               )}
             </View>
 
@@ -770,27 +806,6 @@ export default function ChatScreen({ conversation, onBack }: Props) {
                     <Text style={styles.reactionPickerEmoji}>{emoji}</Text>
                   </TouchableOpacity>
                 ))}
-              </View>
-            )}
-
-            {/* Reactions display */}
-            {item.reactions && Object.keys(item.reactions).length > 0 && (
-              <View style={[styles.reactionsRow, isMine && styles.reactionsRowMine]}>
-                {Object.entries(item.reactions).map(([emoji, users]) => {
-                  const iReacted = employee && users.includes(employee.id);
-                  return (
-                    <TouchableOpacity
-                      key={emoji}
-                      onPress={() => toggleReaction(item.id, emoji)}
-                      style={[styles.reactionBadge, iReacted && styles.reactionBadgeActive]}
-                    >
-                      <Text style={styles.reactionBadgeEmoji}>{emoji}</Text>
-                      {users.length > 1 && (
-                        <Text style={styles.reactionBadgeCount}>{users.length}</Text>
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
               </View>
             )}
 
@@ -836,9 +851,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
               {conversationTitle}
             </Text>
             {!conversation.is_group && (
-              <Text style={styles.headerSubtitle}>
-                {isTyping ? 'pisze...' : 'aktywny(a)'}
-              </Text>
+              <Text style={styles.headerSubtitle}>{isTyping ? 'pisze...' : 'aktywny(a)'}</Text>
             )}
           </View>
         </View>
@@ -852,7 +865,10 @@ export default function ChatScreen({ conversation, onBack }: Props) {
         <View style={styles.menuOverlay}>
           <TouchableOpacity
             style={styles.menuItem}
-            onPress={() => { setIsSelectMode(true); setShowMenu(false); }}
+            onPress={() => {
+              setIsSelectMode(true);
+              setShowMenu(false);
+            }}
           >
             <Feather name="check-circle" size={16} color={colors.primary.gold} />
             <Text style={styles.menuItemText}>Zaznacz wiadomo\u015bci</Text>
@@ -880,9 +896,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
           ListEmptyComponent={
             <View style={styles.emptyMessages}>
               <Feather name="message-circle" size={40} color={colors.text.tertiary} />
-              <Text style={styles.emptyMessagesText}>
-                Rozpocznij rozmowę!
-              </Text>
+              <Text style={styles.emptyMessagesText}>Rozpocznij rozmowę!</Text>
             </View>
           }
         />
@@ -923,7 +937,9 @@ export default function ChatScreen({ conversation, onBack }: Props) {
             </View>
           )}
           <View style={styles.pendingInfo}>
-            <Text style={styles.pendingName} numberOfLines={1}>{pendingAttachment.name}</Text>
+            <Text style={styles.pendingName} numberOfLines={1}>
+              {pendingAttachment.name}
+            </Text>
             <Text style={styles.pendingSize}>{formatFileSize(pendingAttachment.size)}</Text>
           </View>
           <TouchableOpacity onPress={() => setPendingAttachment(null)} style={styles.pendingRemove}>
@@ -946,11 +962,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
             maxLength={2000}
           />
           {inputText.trim().length > 0 || pendingAttachment ? (
-            <TouchableOpacity
-              style={styles.sendButton}
-              onPress={sendMessage}
-              disabled={isSending}
-            >
+            <TouchableOpacity style={styles.sendButton} onPress={sendMessage} disabled={isSending}>
               {isSending ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
@@ -1342,32 +1354,60 @@ const styles = StyleSheet.create({
   reactionPickerEmoji: {
     fontSize: 20,
   },
-  reactionsRow: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
-    gap: 3,
-    marginTop: 3,
-    alignSelf: 'flex-start' as const,
+  bubbleContainer: {
+    position: 'relative' as const,
   },
-  reactionsRowMine: {
-    alignSelf: 'flex-end' as const,
+
+  bubbleContainerWithReactions: {
+    marginBottom: 14,
   },
-  reactionBadge: {
+
+  reactionsOverlay: {
+    position: 'absolute' as const,
+    bottom: -20,
+    zIndex: 20,
+    elevation: 20,
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    backgroundColor: colors.background.tertiary || '#2a2d45',
-    borderRadius: 10,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    gap: 2,
+    gap: 3,
   },
+
+  reactionsOverlayMine: {
+    left: -10,
+  },
+
+  reactionsOverlayTheirs: {
+    right: -10,
+  },
+  reactionBadge: {
+    minWidth: 28,
+    height: 28,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    backgroundColor: '#11131f',
+    borderRadius: 14,
+    paddingHorizontal: 6,
+    gap: 2,
+    borderWidth: 2,
+    borderColor: '#2a2d45',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
+    elevation: 10,
+  },
+
   reactionBadgeActive: {
-    backgroundColor: 'rgba(211, 187, 115, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(211, 187, 115, 0.3)',
+    borderColor: colors.primary.gold,
+    backgroundColor: '#11131f',
   },
   reactionBadgeEmoji: {
-    fontSize: 12,
+    fontSize: 14,
+    lineHeight: 18,
   },
   reactionBadgeCount: {
     fontSize: 10,
