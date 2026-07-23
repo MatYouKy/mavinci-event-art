@@ -3,6 +3,7 @@ import { TouchableOpacity, View, Text } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
+import * as Notifications from 'expo-notifications';
 import { colors } from '../theme';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -20,6 +21,7 @@ import TimeTrackingScreen from '../screens/TimeTrackingScreen';
 import EmployeesScreen from '../screens/EmployeesScreen';
 import CustomDrawer from '../components/CustomDrawer';
 import { useUnreadChatCount } from '../services/chatNotifications';
+import { globalNotificationTarget } from '../../App';
 
 export type MainTabParamList = {
   Dashboard: undefined;
@@ -86,6 +88,43 @@ export default function MainTabNavigator() {
       console.error('Error fetching notifications:', error);
     }
   };
+
+  // Handle notification taps - switch to the correct tab
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data;
+      if (data?.type === 'chat_message' && data?.conversation_id) {
+        setCurrentScreen('Messages');
+      } else if (data?.type === 'crm_notification') {
+        const entityType = data.entity_type as string | undefined;
+        const category = data.category as string | undefined;
+        if (entityType === 'task' || category === 'tasks') {
+          setCurrentScreen('Tasks');
+        } else if (entityType === 'event' || category === 'events' || category === 'team') {
+          setCurrentScreen('Events');
+        } else if (category === 'messages' || category === 'contact_form') {
+          setCurrentScreen('Messages');
+        }
+      }
+    });
+
+    // Also check on mount for pending target from cold start
+    if (globalNotificationTarget?.type === 'chat_message') {
+      setCurrentScreen('Messages');
+    } else if (globalNotificationTarget?.type === 'crm_notification') {
+      const entityType = globalNotificationTarget.entity_type;
+      const category = globalNotificationTarget.category;
+      if (entityType === 'task' || category === 'tasks') {
+        setCurrentScreen('Tasks');
+      } else if (entityType === 'event' || category === 'events' || category === 'team') {
+        setCurrentScreen('Events');
+      } else if (category === 'messages' || category === 'contact_form') {
+        setCurrentScreen('Messages');
+      }
+    }
+
+    return () => sub.remove();
+  }, []);
 
   return (
     <>

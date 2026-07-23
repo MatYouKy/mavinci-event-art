@@ -24,6 +24,9 @@ export let globalNotificationTarget: {
   type: string;
   conversation_id?: string;
   task_id?: string;
+  entity_type?: string;
+  entity_id?: string;
+  category?: string;
 } | null = null;
 
 export function consumeNotificationTarget() {
@@ -77,8 +80,6 @@ function AppContent() {
 
       if (data?.type === 'chat_message' && data?.conversation_id) {
         console.log('[Push] Open chat conversation:', data.conversation_id);
-        // Navigation handled by the notification response subscription in RootNavigator
-        // Emit a global event for the navigation layer to pick up
         globalNotificationTarget = {
           type: 'chat_message',
           conversation_id: data.conversation_id as string,
@@ -88,6 +89,14 @@ function AppContent() {
         globalNotificationTarget = {
           type: 'task',
           task_id: data.task_id as string,
+        };
+      } else if (data?.type === 'crm_notification') {
+        console.log('[Push] CRM notification tapped:', data.entity_type, data.entity_id);
+        globalNotificationTarget = {
+          type: 'crm_notification',
+          entity_type: data.entity_type as string | undefined,
+          entity_id: data.entity_id as string | undefined,
+          category: data.category as string | undefined,
         };
       }
     });

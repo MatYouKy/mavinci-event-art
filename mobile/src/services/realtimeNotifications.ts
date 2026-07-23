@@ -96,9 +96,11 @@ export function useRealtimePushNotifications(
               title: notification.title ?? 'Mavinci CRM',
               body: notification.message ?? '',
               data: {
-                type: notification.related_entity_type ?? notification.category ?? 'notification',
+                type: 'crm_notification',
+                entity_type: notification.related_entity_type ?? '',
                 entity_id: notification.related_entity_id ?? '',
                 notification_id: recipientRow.notification_id,
+                category: notification.category ?? '',
               },
             });
           }
