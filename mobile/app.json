@@ -4,59 +4,61 @@
     "slug": "mavinci-mobile",
     "version": "1.0.0",
     "scheme": "mavinci-crm",
-
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
-
-    "icon": "./assets/app-icon.png",
-
+    "icon": "./src/assets/app-icon.png",
     "splash": {
-      "image": "./assets/splash-logo.png",
+      "image": "./src/assets/splash-logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#0f1119"
     },
-
-    "assetBundlePatterns": ["**/*"],
-
-    "plugins": [
-      [
-        "expo-notifications",
-        {
-          "icon": "./assets/notification-icon.png",
-          "color": "#d3bb73",
-          "defaultChannel": "default",
-          "sounds": []
-        }
-      ]
-    ],
-
-    "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.mavinci.crm",
-      "infoPlist": {
-        "UIBackgroundModes": ["remote-notification"]
-      }
-    },
-
     "android": {
       "package": "com.mavinci.crm",
       "googleServicesFile": "./google-services.json",
-
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./src/assets/adaptive-icon.png",
         "backgroundColor": "#0f1119"
       },
-
       "permissions": [
         "RECEIVE_BOOT_COMPLETED",
         "VIBRATE",
         "WAKE_LOCK"
       ]
     },
-
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./src/assets/notification-icon.png",
+          "color": "#d3bb73",
+          "defaultChannel": "default",
+          "sounds": []
+        }
+      ],
+      "@react-native-community/datetimepicker",
+      "expo-font"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.mavinci.crm",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
+      }
+    },
     "notification": {
       "iosDisplayInForeground": true,
       "color": "#d3bb73"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "25b8480f-7b88-490e-80f7-1f1925702388"
+      }
+    },
+    "owner": "matyou"
   }
 }

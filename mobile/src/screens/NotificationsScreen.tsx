@@ -13,6 +13,19 @@ import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { colors, spacing, typography, borderRadius } from '../theme';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+
+type TasksStackParamList = {
+  Tasks: {
+    screen: 'TaskDetail';
+    params: {
+      taskId: string;
+    };
+  };
+  TaskDetail: {
+    taskId: string;
+  };
+};
 
 interface Notification {
   id: string;
@@ -25,8 +38,10 @@ interface Notification {
   related_entity_id?: string;
 }
 
+type TasksNavigationProp = NativeStackNavigationProp<TasksStackParamList, 'Tasks'>;
+
 export default function NotificationsScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<TasksNavigationProp>();
   const { employee } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -134,10 +149,10 @@ export default function NotificationsScreen() {
     markAsRead(notification.id, (notification as any).recipient_id);
 
     if (notification.related_entity_type === 'task' && notification.related_entity_id) {
-      navigation.navigate('Tasks' as never, {
+      navigation.navigate('Tasks', {
         screen: 'TaskDetail',
         params: { taskId: notification.related_entity_id },
-      } as never);
+      });
     }
   };
 

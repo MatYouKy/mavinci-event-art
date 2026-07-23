@@ -70,7 +70,11 @@ interface NavbarProps {
   initialEmployee: IEmployee;
 }
 
-export default function Navbar({ onAdminClick, initialNotifications, initialEmployee }: NavbarProps & { initialNotifications: Notification[], initialEmployee: IEmployee }) {
+export default function Navbar({
+  onAdminClick,
+  initialNotifications,
+  initialEmployee,
+}: NavbarProps & { initialNotifications: Notification[]; initialEmployee: IEmployee }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isServicesOpen, setIsServicesOpen] = useState(false);
@@ -255,14 +259,17 @@ export default function Navbar({ onAdminClick, initialNotifications, initialEmpl
       >
         <div className="mx-auto max-w-7xl rounded-full border border-[#d3bb73]/20 bg-[#1c1f33]/95 px-4 shadow-lg backdrop-blur-md md:px-8">
           <div className="flex h-14 items-center justify-between gap-0 md:h-16 md:gap-4">
-            <Link href="/" className="flex flex-shrink-0 items-center">
-              <Image
-                src="/logo.png"
-                alt="MAVINCI event & art"
-                width={160}
-                height={60}
-                className="h-auto w-40"
-              />
+            <Link href="/" className="flex shrink-0 items-center">
+              <div className="relative h-10 w-36 shrink-0 sm:w-40 md:h-11">
+                <Image
+                  src="/logo.png"
+                  alt="MAVINCI event & art"
+                  priority
+                  fill
+                  sizes="(max-width: 640px) 144px, 160px"
+                  className="object-contain object-left"
+                />
+              </div>
             </Link>
             {isMobile && <div className="flex-1" />}
 
@@ -334,7 +341,9 @@ export default function Navbar({ onAdminClick, initialNotifications, initialEmpl
             </div>
 
             <div className="hidden items-center gap-3 md:flex">
-              {isAuthenticated && <NotificationCenter initialNotifications={initialNotifications} />}
+              {isAuthenticated && (
+                <NotificationCenter initialNotifications={initialNotifications} />
+              )}
               {isAuthenticated && (
                 <div className="relative" ref={dropdownRef}>
                   <button

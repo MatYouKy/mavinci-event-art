@@ -15,6 +15,7 @@ export interface CalendarEvent {
   event_equipment?: any[];
 }
 
+
 export type EventStatus =
   | 'inquiry'
   | 'offer_to_send'

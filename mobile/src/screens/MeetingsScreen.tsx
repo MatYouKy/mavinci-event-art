@@ -14,15 +14,17 @@ import {
   Platform,
   Switch,
 } from 'react-native';
-import Slider from '@react-native-community/slider';
+
+import * as Notifications from 'expo-notifications';
+
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, typography } from '../theme';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import * as Notifications from 'expo-notifications';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
 // --- Types ---
-
+type AlertPickerType = 'alert_1' | 'alert_2' | 'alert_critical';
 interface Meeting {
   id: string;
   title: string;
@@ -73,6 +75,16 @@ function minutesToLabel(minutes: number): string {
   return `${minutes} min`;
 }
 
+function minutesToPickerDate(minutes: number): Date {
+  const date = new Date();
+  date.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
+  return date;
+}
+
+function pickerDateToMinutes(date: Date): number {
+  return date.getHours() * 60 + date.getMinutes();
+}
+
 // --- Notification setup ---
 
 Notifications.setNotificationHandler({
@@ -80,14 +92,20 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
 async function scheduleMeetingAlerts(meeting: Meeting) {
-  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-  for (const notif of scheduled) {
-    if (notif.content.data?.meetingId === meeting.id) {
-      await Notifications.cancelScheduledNotificationAsync(notif.identifier);
+  const scheduled =
+    await Notifications.getAllScheduledNotificationsAsync();
+
+  for (const notification of scheduled) {
+    if (notification.content.data?.meetingId === meeting.id) {
+      await Notifications.cancelScheduledNotificationAsync(
+        notification.identifier,
+      );
     }
   }
 
@@ -95,18 +113,35 @@ async function scheduleMeetingAlerts(meeting: Meeting) {
   const now = Date.now();
 
   const alerts = [
-    { minutes: meeting.alert_1_minutes, label: 'Przypomnienie', priority: Notifications.AndroidNotificationPriority.DEFAULT },
-    { minutes: meeting.alert_2_minutes, label: 'Przypomnienie', priority: Notifications.AndroidNotificationPriority.HIGH },
-    { minutes: meeting.alert_critical_minutes, label: 'PILNE', priority: Notifications.AndroidNotificationPriority.MAX },
+    {
+      minutes: meeting.alert_1_minutes,
+      label: 'Przypomnienie',
+      priority: Notifications.AndroidNotificationPriority.DEFAULT,
+    },
+    {
+      minutes: meeting.alert_2_minutes,
+      label: 'Przypomnienie',
+      priority: Notifications.AndroidNotificationPriority.HIGH,
+    },
+    {
+      minutes: meeting.alert_critical_minutes,
+      label: 'PILNE',
+      priority: Notifications.AndroidNotificationPriority.MAX,
+    },
   ];
 
   for (const alert of alerts) {
     if (!alert.minutes || alert.minutes <= 0) continue;
 
-    const triggerTime = meetingTime - alert.minutes * 60 * 1000;
+    const triggerTime =
+      meetingTime - alert.minutes * 60 * 1000;
+
     if (triggerTime <= now) continue;
 
-    const secondsUntilTrigger = Math.floor((triggerTime - now) / 1000);
+    const secondsUntilTrigger = Math.max(
+      1,
+      Math.floor((triggerTime - now) / 1000),
+    );
 
     await Notifications.scheduleNotificationAsync({
       content: {
@@ -114,9 +149,16 @@ async function scheduleMeetingAlerts(meeting: Meeting) {
         body: `Spotkanie za ${minutesToLabel(alert.minutes)}`,
         sound: true,
         priority: alert.priority,
-        data: { meetingId: meeting.id },
+        data: {
+          meetingId: meeting.id,
+        },
       },
-      trigger: { seconds: secondsUntilTrigger },
+      trigger: {
+        type:
+          Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds: secondsUntilTrigger,
+        repeats: false,
+      },
     });
   }
 }
@@ -151,45 +193,53 @@ export default function MeetingsScreen() {
     alert_critical_minutes: 30,
   });
 
+  const [activeAlertPicker, setActiveAlertPicker] = useState<AlertPickerType | null>(null);
+
   useEffect(() => {
     requestNotificationPermissions();
   }, []);
 
-  const fetchMeetings = useCallback(async (isRefresh = false) => {
-    if (!employee) return;
-    if (isRefresh) setRefreshing(true);
-    else setIsLoading(true);
+  const fetchMeetings = useCallback(
+    async (isRefresh = false) => {
+      if (!employee) return;
+      if (isRefresh) setRefreshing(true);
+      else setIsLoading(true);
 
-    try {
-      const { data, error } = await supabase
-        .from('meetings')
-        .select(`
+      try {
+        const { data, error } = await supabase
+          .from('meetings')
+          .select(
+            `
           *,
           meeting_participants(employee_id)
-        `)
-        .is('deleted_at', null)
-        .order('datetime_start', { ascending: true });
+        `,
+          )
+          .is('deleted_at', null)
+          .order('datetime_start', { ascending: true });
 
-      if (!error && data) {
-        const myMeetings = data.filter((m: any) =>
-          m.created_by === employee.id ||
-          m.meeting_participants?.some((p: any) => p.employee_id === employee.id)
-        );
-        setMeetings(myMeetings);
+        if (!error && data) {
+          const myMeetings = data.filter(
+            (m: any) =>
+              m.created_by === employee.id ||
+              m.meeting_participants?.some((p: any) => p.employee_id === employee.id),
+          );
+          setMeetings(myMeetings);
 
-        for (const meeting of myMeetings) {
-          if (new Date(meeting.datetime_start).getTime() > Date.now()) {
-            scheduleMeetingAlerts(meeting);
+          for (const meeting of myMeetings) {
+            if (new Date(meeting.datetime_start).getTime() > Date.now()) {
+              scheduleMeetingAlerts(meeting);
+            }
           }
         }
+      } catch (err) {
+        // silently fail
+      } finally {
+        setIsLoading(false);
+        setRefreshing(false);
       }
-    } catch (err) {
-      // silently fail
-    } finally {
-      setIsLoading(false);
-      setRefreshing(false);
-    }
-  }, [employee]);
+    },
+    [employee],
+  );
 
   useEffect(() => {
     fetchMeetings();
@@ -299,7 +349,11 @@ export default function MeetingsScreen() {
 
   const renderMeetingCard = ({ item }: { item: Meeting }) => {
     const upcoming = isUpcoming(item.datetime_start);
-    const hasAlerts = !!(item.alert_1_minutes || item.alert_2_minutes || item.alert_critical_minutes);
+    const hasAlerts = !!(
+      item.alert_1_minutes ||
+      item.alert_2_minutes ||
+      item.alert_critical_minutes
+    );
 
     return (
       <TouchableOpacity
@@ -307,15 +361,15 @@ export default function MeetingsScreen() {
         activeOpacity={0.7}
         onPress={() => setSelectedMeeting(item)}
       >
-        <View style={[styles.meetingStripe, { backgroundColor: item.color || colors.primary.gold }]} />
+        <View
+          style={[styles.meetingStripe, { backgroundColor: item.color || colors.primary.gold }]}
+        />
         <View style={styles.meetingContent}>
           <View style={styles.meetingHeader}>
             <Text style={[styles.meetingTitle, !upcoming && styles.textPast]} numberOfLines={1}>
               {item.title}
             </Text>
-            {hasAlerts && upcoming && (
-              <Feather name="bell" size={14} color={colors.primary.gold} />
-            )}
+            {hasAlerts && upcoming && <Feather name="bell" size={14} color={colors.primary.gold} />}
           </View>
           <View style={styles.meetingMeta}>
             <Feather name="clock" size={12} color={colors.text.tertiary} />
@@ -327,7 +381,9 @@ export default function MeetingsScreen() {
           {item.location_text && (
             <View style={styles.meetingMeta}>
               <Feather name="map-pin" size={12} color={colors.text.tertiary} />
-              <Text style={styles.meetingMetaText} numberOfLines={1}>{item.location_text}</Text>
+              <Text style={styles.meetingMetaText} numberOfLines={1}>
+                {item.location_text}
+              </Text>
             </View>
           )}
         </View>
@@ -335,8 +391,8 @@ export default function MeetingsScreen() {
     );
   };
 
-  // --- Alert Slider Component ---
-  const AlertSlider = ({
+  const AlertTimePicker = ({
+    type,
     label,
     enabled,
     onToggle,
@@ -344,52 +400,154 @@ export default function MeetingsScreen() {
     onValueChange,
     isCritical,
   }: {
+    type: AlertPickerType;
     label: string;
     enabled: boolean;
-    onToggle: (val: boolean) => void;
+    onToggle: (value: boolean) => void;
     value: number;
-    onValueChange: (val: number) => void;
+    onValueChange: (value: number) => void;
     isCritical?: boolean;
-  }) => (
-    <View style={styles.alertSliderBlock}>
-      <View style={styles.alertSliderHeader}>
-        <View style={styles.alertSliderLabelRow}>
-          <Feather
-            name={isCritical ? 'alert-triangle' : 'bell'}
-            size={14}
-            color={isCritical ? colors.status.error : colors.text.secondary}
+  }) => {
+    const days = Math.floor(value / 1440);
+    const remainingMinutes = value % 1440;
+    const pickerDate = minutesToPickerDate(remainingMinutes);
+
+    const setDays = (newDays: number) => {
+      const safeDays = Math.max(0, Math.min(7, newDays));
+      onValueChange(safeDays * 1440 + remainingMinutes);
+    };
+
+    const handleTimeChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
+      if (Platform.OS === 'android') {
+        setActiveAlertPicker(null);
+      }
+
+      if (event.type === 'dismissed' || !selectedDate) return;
+
+      const selectedMinutes = pickerDateToMinutes(selectedDate);
+      const totalMinutes = days * 1440 + selectedMinutes;
+
+      onValueChange(Math.max(SLIDER_MIN, totalMinutes));
+    };
+
+    return (
+      <View style={styles.alertPickerBlock}>
+        <View style={styles.alertSliderHeader}>
+          <View style={styles.alertSliderLabelRow}>
+            <Feather
+              name={isCritical ? 'alert-triangle' : 'bell'}
+              size={14}
+              color={isCritical ? colors.status.error : colors.text.secondary}
+            />
+
+            <Text
+              style={[
+                styles.alertSliderLabel,
+                isCritical && {
+                  color: colors.status.error,
+                },
+              ]}
+            >
+              {label}
+            </Text>
+          </View>
+
+          <Switch
+            value={enabled}
+            onValueChange={onToggle}
+            trackColor={{
+              false: colors.background.primary,
+              true: isCritical ? `${colors.status.error}55` : `${colors.primary.gold}55`,
+            }}
+            thumbColor={
+              enabled
+                ? isCritical
+                  ? colors.status.error
+                  : colors.primary.gold
+                : colors.text.tertiary
+            }
           />
-          <Text style={[styles.alertSliderLabel, isCritical && { color: colors.status.error }]}>
-            {label}
-          </Text>
         </View>
-        <Switch
-          value={enabled}
-          onValueChange={onToggle}
-          trackColor={{ false: colors.background.primary, true: isCritical ? colors.status.error + '55' : colors.primary.gold + '55' }}
-          thumbColor={enabled ? (isCritical ? colors.status.error : colors.primary.gold) : colors.text.tertiary}
-        />
+
+        {enabled && (
+          <View style={styles.alertPickerBody}>
+            <Text style={styles.alertPickerDescription}>Powiadomienie:</Text>
+
+            <View style={styles.alertTimeControls}>
+              <View style={styles.daysControl}>
+                <TouchableOpacity
+                  style={styles.daysButton}
+                  onPress={() => setDays(days - 1)}
+                  disabled={days === 0}
+                >
+                  <Feather
+                    name="minus"
+                    size={16}
+                    color={days === 0 ? colors.text.tertiary : colors.primary.gold}
+                  />
+                </TouchableOpacity>
+
+                <View style={styles.daysValue}>
+                  <Text style={styles.daysValueNumber}>{days}</Text>
+                  <Text style={styles.daysValueLabel}>{days === 1 ? 'dzień' : 'dni'}</Text>
+                </View>
+
+                <TouchableOpacity style={styles.daysButton} onPress={() => setDays(days + 1)}>
+                  <Feather name="plus" size={16} color={colors.primary.gold} />
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity
+                style={[styles.timePickerButton, isCritical && styles.timePickerButtonCritical]}
+                onPress={() => setActiveAlertPicker(type)}
+              >
+                <Feather
+                  name="clock"
+                  size={17}
+                  color={isCritical ? colors.status.error : colors.primary.gold}
+                />
+
+                <Text
+                  style={[
+                    styles.timePickerButtonText,
+                    isCritical && {
+                      color: colors.status.error,
+                    },
+                  ]}
+                >
+                  {String(Math.floor(remainingMinutes / 60)).padStart(2, '0')}:
+                  {String(remainingMinutes % 60).padStart(2, '0')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text
+              style={[
+                styles.alertSliderValue,
+                isCritical && {
+                  color: colors.status.error,
+                },
+              ]}
+            >
+              {minutesToLabel(value)} przed spotkaniem
+            </Text>
+
+            {activeAlertPicker === type && (
+              <DateTimePicker
+                value={pickerDate}
+                mode="time"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                is24Hour
+                minuteInterval={5}
+                onChange={handleTimeChange}
+                themeVariant="dark"
+              />
+            )}
+          </View>
+        )}
       </View>
-      {enabled && (
-        <View style={styles.alertSliderBody}>
-          <Slider
-            style={styles.slider}
-            minimumValue={SLIDER_MIN}
-            maximumValue={SLIDER_MAX}
-            step={SLIDER_STEP}
-            value={value}
-            onValueChange={onValueChange}
-            minimumTrackTintColor={isCritical ? colors.status.error : colors.primary.gold}
-            maximumTrackTintColor={colors.background.primary}
-            thumbTintColor={isCritical ? colors.status.error : colors.primary.gold}
-          />
-          <Text style={[styles.alertSliderValue, isCritical && { color: colors.status.error }]}>
-            {minutesToLabel(value)} przed
-          </Text>
-        </View>
-      )}
-    </View>
-  );
+    );
+  };
 
   if (isLoading) {
     return (
@@ -439,7 +597,12 @@ export default function MeetingsScreen() {
       <Modal visible={showNewMeeting} animationType="slide" presentationStyle="pageSheet">
         <View style={styles.modalContainer}>
           <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => { setShowNewMeeting(false); resetForm(); }}>
+            <TouchableOpacity
+              onPress={() => {
+                setShowNewMeeting(false);
+                resetForm();
+              }}
+            >
               <Text style={styles.modalCancel}>Anuluj</Text>
             </TouchableOpacity>
             <Text style={styles.modalTitle}>Nowe spotkanie</Text>
@@ -500,28 +663,61 @@ export default function MeetingsScreen() {
             <View style={styles.alertsSection}>
               <Text style={styles.alertsSectionTitle}>Alerty (opcjonalne)</Text>
 
-              <AlertSlider
+              <AlertTimePicker
+                type="alert_1"
                 label="Alert 1"
                 enabled={form.alert_1_enabled}
-                onToggle={(v) => setForm((f) => ({ ...f, alert_1_enabled: v }))}
+                onToggle={(value) =>
+                  setForm((current) => ({
+                    ...current,
+                    alert_1_enabled: value,
+                  }))
+                }
                 value={form.alert_1_minutes}
-                onValueChange={(v) => setForm((f) => ({ ...f, alert_1_minutes: v }))}
+                onValueChange={(value) =>
+                  setForm((current) => ({
+                    ...current,
+                    alert_1_minutes: value,
+                  }))
+                }
               />
 
-              <AlertSlider
+              <AlertTimePicker
+                type="alert_2"
                 label="Alert 2"
                 enabled={form.alert_2_enabled}
-                onToggle={(v) => setForm((f) => ({ ...f, alert_2_enabled: v }))}
+                onToggle={(value) =>
+                  setForm((current) => ({
+                    ...current,
+                    alert_2_enabled: value,
+                  }))
+                }
                 value={form.alert_2_minutes}
-                onValueChange={(v) => setForm((f) => ({ ...f, alert_2_minutes: v }))}
+                onValueChange={(value) =>
+                  setForm((current) => ({
+                    ...current,
+                    alert_2_minutes: value,
+                  }))
+                }
               />
 
-              <AlertSlider
+              <AlertTimePicker
+                type="alert_critical"
                 label="Alert krytyczny"
                 enabled={form.alert_critical_enabled}
-                onToggle={(v) => setForm((f) => ({ ...f, alert_critical_enabled: v }))}
+                onToggle={(value) =>
+                  setForm((current) => ({
+                    ...current,
+                    alert_critical_enabled: value,
+                  }))
+                }
                 value={form.alert_critical_minutes}
-                onValueChange={(v) => setForm((f) => ({ ...f, alert_critical_minutes: v }))}
+                onValueChange={(value) =>
+                  setForm((current) => ({
+                    ...current,
+                    alert_critical_minutes: value,
+                  }))
+                }
                 isCritical
               />
             </View>
@@ -551,7 +747,8 @@ export default function MeetingsScreen() {
               <View style={styles.detailRow}>
                 <Feather name="clock" size={16} color={colors.primary.gold} />
                 <Text style={styles.detailText}>
-                  {formatDate(selectedMeeting.datetime_start)} • {formatTime(selectedMeeting.datetime_start)}
+                  {formatDate(selectedMeeting.datetime_start)} •{' '}
+                  {formatTime(selectedMeeting.datetime_start)}
                   {selectedMeeting.datetime_end && ` – ${formatTime(selectedMeeting.datetime_end)}`}
                 </Text>
               </View>
@@ -596,9 +793,11 @@ export default function MeetingsScreen() {
                     </Text>
                   </View>
                 ) : null}
-                {!selectedMeeting.alert_1_minutes && !selectedMeeting.alert_2_minutes && !selectedMeeting.alert_critical_minutes && (
-                  <Text style={styles.alertRowText}>Brak alertów</Text>
-                )}
+                {!selectedMeeting.alert_1_minutes &&
+                  !selectedMeeting.alert_2_minutes &&
+                  !selectedMeeting.alert_critical_minutes && (
+                    <Text style={styles.alertRowText}>Brak alertów</Text>
+                  )}
               </View>
             </ScrollView>
           </View>
@@ -615,12 +814,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background.primary,
   },
+
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: colors.background.primary,
   },
+
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -630,12 +831,15 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
     backgroundColor: colors.background.primary,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border.primary,
+    borderBottomColor: colors.border.default,
   },
+
   headerTitle: {
-    ...typography.h2,
+    fontSize: typography.fontSizes.xl,
+    fontWeight: typography.fontWeights.bold as any,
     color: colors.text.primary,
   },
+
   addButton: {
     width: 36,
     height: 36,
@@ -644,18 +848,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+
   list: {
     padding: spacing.md,
     paddingBottom: 100,
   },
+
   sectionTitle: {
-    ...typography.caption,
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.medium as any,
     color: colors.primary.gold,
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginBottom: spacing.sm,
     paddingVertical: spacing.xs,
   },
+
   meetingCard: {
     flexDirection: 'row',
     backgroundColor: colors.background.secondary,
@@ -663,64 +871,76 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: colors.border.primary,
+    borderColor: colors.border.default,
   },
+
   meetingCardPast: {
     opacity: 0.5,
   },
+
   meetingStripe: {
     width: 4,
   },
+
   meetingContent: {
     flex: 1,
     padding: spacing.md,
   },
+
   meetingHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 4,
   },
+
   meetingTitle: {
-    ...typography.body,
+    fontSize: typography.fontSizes.md,
+    fontWeight: typography.fontWeights.semibold as any,
     color: colors.text.primary,
-    fontWeight: '600',
     flex: 1,
     marginRight: spacing.sm,
   },
+
   textPast: {
     color: colors.text.tertiary,
   },
+
   meetingMeta: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     marginTop: 4,
   },
+
   meetingMetaText: {
-    ...typography.caption,
+    fontSize: typography.fontSizes.xs,
     color: colors.text.tertiary,
   },
+
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 80,
     gap: spacing.sm,
   },
+
   emptyText: {
-    ...typography.body,
+    fontSize: typography.fontSizes.md,
     color: colors.text.secondary,
     marginTop: spacing.sm,
   },
+
   emptySubtext: {
-    ...typography.caption,
+    fontSize: typography.fontSizes.xs,
     color: colors.text.tertiary,
   },
-  // Modal
+
   modalContainer: {
     flex: 1,
     backgroundColor: colors.background.primary,
   },
+
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -729,144 +949,238 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'ios' ? 56 : spacing.lg,
     paddingBottom: spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border.primary,
+    borderBottomColor: colors.border.default,
   },
+
   modalTitle: {
-    ...typography.body,
+    fontSize: typography.fontSizes.md,
+    fontWeight: typography.fontWeights.semibold as any,
     color: colors.text.primary,
-    fontWeight: '600',
   },
+
   modalCancel: {
-    ...typography.body,
+    fontSize: typography.fontSizes.md,
     color: colors.text.secondary,
   },
+
   modalSave: {
-    ...typography.body,
+    fontSize: typography.fontSizes.md,
+    fontWeight: typography.fontWeights.semibold as any,
     color: colors.primary.gold,
-    fontWeight: '600',
   },
+
   modalBody: {
     flex: 1,
     padding: spacing.lg,
   },
+
   fieldLabel: {
-    ...typography.caption,
+    fontSize: typography.fontSizes.xs,
     color: colors.text.secondary,
     marginBottom: 6,
     marginTop: spacing.md,
   },
+
   input: {
     backgroundColor: colors.background.secondary,
     borderWidth: 1,
-    borderColor: colors.border.primary,
+    borderColor: colors.border.default,
     borderRadius: 10,
     padding: spacing.md,
     color: colors.text.primary,
-    ...typography.body,
+    fontSize: typography.fontSizes.md,
   },
+
   textArea: {
     minHeight: 80,
     textAlignVertical: 'top',
   },
-  // Alerts section
+
   alertsSection: {
     marginTop: spacing.xl,
     padding: spacing.md,
     backgroundColor: colors.background.secondary,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.border.primary,
+    borderColor: colors.border.default,
   },
+
   alertsSectionTitle: {
-    ...typography.body,
+    fontSize: typography.fontSizes.md,
+    fontWeight: typography.fontWeights.semibold as any,
     color: colors.primary.gold,
-    fontWeight: '600',
     marginBottom: spacing.md,
   },
-  alertSliderBlock: {
-    marginBottom: spacing.md,
-    paddingBottom: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border.primary,
-  },
+
   alertSliderHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+
   alertSliderLabelRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
+
   alertSliderLabel: {
-    ...typography.body,
+    fontSize: typography.fontSizes.md,
+    fontWeight: typography.fontWeights.medium as any,
     color: colors.text.secondary,
-    fontWeight: '500',
   },
-  alertSliderBody: {
+
+  alertSliderValue: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.semibold as any,
+    color: colors.primary.gold,
+    textAlign: 'center',
     marginTop: spacing.sm,
   },
-  slider: {
-    width: '100%',
-    height: 40,
-  },
-  alertSliderValue: {
-    ...typography.caption,
-    color: colors.primary.gold,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginTop: -4,
-  },
-  // Detail modal
+
   detailTitle: {
-    ...typography.h2,
+    fontSize: typography.fontSizes.xl,
+    fontWeight: typography.fontWeights.bold as any,
     color: colors.text.primary,
     marginBottom: spacing.lg,
   },
+
   detailRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     marginBottom: spacing.md,
   },
+
   detailText: {
-    ...typography.body,
-    color: colors.text.secondary,
     flex: 1,
+    fontSize: typography.fontSizes.md,
+    color: colors.text.secondary,
   },
+
   detailNotesSection: {
     marginTop: spacing.lg,
     padding: spacing.md,
     backgroundColor: colors.background.secondary,
     borderRadius: 10,
   },
+
   detailSectionLabel: {
-    ...typography.caption,
+    fontSize: typography.fontSizes.xs,
     color: colors.text.tertiary,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: spacing.sm,
   },
+
   detailNotes: {
-    ...typography.body,
+    fontSize: typography.fontSizes.md,
     color: colors.text.secondary,
     lineHeight: 22,
   },
+
   detailAlertsSection: {
     marginTop: spacing.lg,
     padding: spacing.md,
     backgroundColor: colors.background.secondary,
     borderRadius: 10,
   },
+
   alertRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     marginBottom: 8,
   },
+
   alertRowText: {
-    ...typography.body,
+    fontSize: typography.fontSizes.md,
     color: colors.text.secondary,
+  },
+
+  alertPickerBlock: {
+    marginBottom: spacing.md,
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.default,
+  },
+
+  alertPickerBody: {
+    marginTop: spacing.md,
+  },
+
+  alertPickerDescription: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.text.tertiary,
+    marginBottom: spacing.sm,
+  },
+
+  alertTimeControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+
+  daysControl: {
+    flex: 1,
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+    backgroundColor: colors.background.primary,
+    paddingHorizontal: spacing.xs,
+  },
+
+  daysButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 18,
+  },
+
+  daysValue: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  daysValueNumber: {
+    fontSize: 16,
+    fontWeight: typography.fontWeights.semibold as any,
+    color: colors.text.primary,
+  },
+
+  daysValueLabel: {
+    fontSize: 10,
+    color: colors.text.tertiary,
+  },
+
+  timePickerButton: {
+    minWidth: 108,
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: `${colors.primary.gold}55`,
+    backgroundColor: `${colors.primary.gold}10`,
+    paddingHorizontal: spacing.md,
+  },
+
+  timePickerButtonCritical: {
+    borderColor: `${colors.status.error}55`,
+    backgroundColor: `${colors.status.error}10`,
+  },
+
+  timePickerButtonText: {
+    fontSize: 16,
+    fontWeight: typography.fontWeights.semibold as any,
+    color: colors.primary.gold,
+    fontVariant: ['tabular-nums'],
   },
 });

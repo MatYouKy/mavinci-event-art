@@ -12,11 +12,22 @@ import {
   Modal,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, typography } from '../theme';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import EmployeeAvatar from '../components/EmployeeAvatar';
+
+type TasksStackParamList = {
+  Tasks: undefined;
+  TaskDetail: {
+    taskId: string;
+  };
+};
+
+type TasksNavigationProp = NativeStackNavigationProp<TasksStackParamList, 'Tasks'>;
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const COLUMN_WIDTH = SCREEN_WIDTH - 32;
@@ -63,7 +74,7 @@ const BOARD_COLUMNS = [
 ];
 
 export default function TasksScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<TasksNavigationProp>();
   const { employee } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -90,7 +101,7 @@ export default function TasksScreen() {
           if (employee) {
             fetchTasks();
           }
-        }
+        },
       )
       .subscribe();
 
@@ -122,7 +133,7 @@ export default function TasksScreen() {
       if (error2) throw error2;
 
       // Get unique task IDs
-      const assignedTaskIds = assignedTasksData?.map(ta => ta.task_id) || [];
+      const assignedTaskIds = assignedTasksData?.map((ta) => ta.task_id) || [];
 
       // Fetch assigned tasks
       let assignedTasks: any[] = [];
@@ -140,12 +151,10 @@ export default function TasksScreen() {
 
       // Combine and deduplicate
       const allTasks = [...(createdTasks || []), ...assignedTasks];
-      const uniqueTasks = Array.from(
-        new Map(allTasks.map((task) => [task.id, task])).values()
-      );
+      const uniqueTasks = Array.from(new Map(allTasks.map((task) => [task.id, task])).values());
 
       // Fetch assignees for all tasks
-      const taskIds = uniqueTasks.map(t => t.id);
+      const taskIds = uniqueTasks.map((t) => t.id);
       if (taskIds.length > 0) {
         const { data: assigneesData, error: error4 } = await supabase
           .from('task_assignees')
@@ -155,7 +164,7 @@ export default function TasksScreen() {
         if (error4) throw error4;
 
         // Fetch employee details
-        const employeeIds = [...new Set(assigneesData?.map(a => a.employee_id) || [])];
+        const employeeIds = [...new Set(assigneesData?.map((a) => a.employee_id) || [])];
         if (employeeIds.length > 0) {
           const { data: employeesData, error: error5 } = await supabase
             .from('employees')
@@ -165,21 +174,21 @@ export default function TasksScreen() {
           if (error5) throw error5;
 
           // Map employees by ID
-          const employeesMap = new Map(employeesData?.map(e => [e.id, e]) || []);
+          const employeesMap = new Map(employeesData?.map((e) => [e.id, e]) || []);
 
           // Attach assignees to tasks
-          uniqueTasks.forEach(task => {
-            const taskAssignees = assigneesData?.filter(a => a.task_id === task.id) || [];
-            task.task_assignees = taskAssignees.map(ta => ({
+          uniqueTasks.forEach((task) => {
+            const taskAssignees = assigneesData?.filter((a) => a.task_id === task.id) || [];
+            task.task_assignees = taskAssignees.map((ta) => ({
               employee_id: ta.employee_id,
-              employees: employeesMap.get(ta.employee_id)
+              employees: employeesMap.get(ta.employee_id),
             }));
           });
         }
       }
 
-      uniqueTasks.sort((a, b) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      uniqueTasks.sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
       );
 
       setTasks(uniqueTasks);
@@ -207,9 +216,7 @@ export default function TasksScreen() {
 
       // Update local state
       setTasks((prev) =>
-        prev.map((task) =>
-          task.id === taskId ? { ...task, board_column: newColumn } : task
-        )
+        prev.map((task) => (task.id === taskId ? { ...task, board_column: newColumn } : task)),
       );
     } catch (error) {
       console.error('Error moving task:', error);
@@ -217,71 +224,79 @@ export default function TasksScreen() {
   };
 
   const filteredTasks = tasks.filter((task) =>
-    task.title.toLowerCase().includes(searchQuery.toLowerCase())
+    task.title.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   const getTasksByColumn = (columnId: string) => {
     return filteredTasks.filter((task) => task.board_column === columnId);
   };
 
-  const renderTaskCard = (task: Task) => (
-    <TouchableOpacity
-      key={task.id}
-      style={styles.taskCard}
-      onPress={() => navigation.navigate('TaskDetail' as never, { taskId: task.id } as never)}
-      onLongPress={() => {
-        setSelectedTask(task);
-        setShowColumnPicker(true);
-      }}
-      delayLongPress={500}
-    >
-      <View style={styles.taskHeader}>
-        <Text style={styles.taskTitle} numberOfLines={2}>
-          {task.title}
-        </Text>
-        <View style={[styles.priorityBadge, { backgroundColor: `${priorityColors[task.priority]}20` }]}>
-          <Text style={[styles.priorityText, { color: priorityColors[task.priority] }]}>
-            {priorityLabels[task.priority]}
+  const renderTaskCard = (task: Task) => {
+    const assignees = task.task_assignees ?? [];
+
+    return (
+      <TouchableOpacity
+        key={task.id}
+        style={styles.taskCard}
+        onPress={() =>
+          navigation.navigate('TaskDetail', {
+            taskId: task.id,
+          })
+        }
+        onLongPress={() => {
+          setSelectedTask(task);
+          setShowColumnPicker(true);
+        }}
+        delayLongPress={500}
+      >
+        <View style={styles.taskHeader}>
+          <Text style={styles.taskTitle} numberOfLines={2}>
+            {task.title}
           </Text>
+          <View
+            style={[
+              styles.priorityBadge,
+              { backgroundColor: `${priorityColors[task.priority]}20` },
+            ]}
+          >
+            <Text style={[styles.priorityText, { color: priorityColors[task.priority] }]}>
+              {priorityLabels[task.priority]}
+            </Text>
+          </View>
         </View>
-      </View>
 
-      {task.description && (
-        <Text style={styles.taskDescription} numberOfLines={2}>
-          {task.description}
-        </Text>
-      )}
+        {task.description && (
+          <Text style={styles.taskDescription} numberOfLines={2}>
+            {task.description}
+          </Text>
+        )}
 
-      <View style={styles.taskFooter}>
         <View style={styles.assignees}>
-          {task.task_assignees.slice(0, 3).map((assignee, index) => (
-            <View key={assignee.employee_id} style={[styles.avatarWrapper, { marginLeft: index > 0 ? -8 : 0 }]}>
-              <EmployeeAvatar
-                avatarUrl={assignee.employees.avatar_url}
-                avatarMetadata={assignee.employees.avatar_metadata}
-                employeeName={`${assignee.employees.name} ${assignee.employees.surname}`}
-                size={24}
-              />
+          {assignees.slice(0, 3).map((assignee, index) => (
+            <View
+              key={assignee.employee_id}
+              style={[styles.avatarWrapper, { marginLeft: index > 0 ? -8 : 0 }]}
+            >
+              {assignee.employees && (
+                <EmployeeAvatar
+                  avatarUrl={assignee.employees.avatar_url}
+                  avatarMetadata={assignee.employees.avatar_metadata}
+                  employeeName={`${assignee.employees.name} ${assignee.employees.surname}`}
+                  size={24}
+                />
+              )}
             </View>
           ))}
-          {task.task_assignees.length > 3 && (
+
+          {assignees.length > 3 && (
             <View style={styles.moreAvatars}>
-              <Text style={styles.moreAvatarsText}>+{task.task_assignees.length - 3}</Text>
+              <Text style={styles.moreAvatarsText}>+{assignees.length - 3}</Text>
             </View>
           )}
         </View>
-
-        {task.due_date && (
-          <View style={styles.dueDateContainer}>
-            <Feather name="calendar" size={12} color={colors.text.secondary} />
-            <Text style={styles.dueDate}>
-              {new Date(task.due_date).toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit' })}
-            </Text>
-          </View>
-        )}
-      </View>
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   if (loading) {
     return (
@@ -295,7 +310,12 @@ export default function TasksScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <View style={styles.searchContainer}>
-          <Feather name="search" size={20} color={colors.text.secondary} style={styles.searchIcon} />
+          <Feather
+            name="search"
+            size={20}
+            color={colors.text.secondary}
+            style={styles.searchIcon}
+          />
           <TextInput
             style={styles.searchInput}
             placeholder="Szukaj zadań..."
@@ -316,7 +336,13 @@ export default function TasksScreen() {
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         style={styles.boardContainer}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary.gold]} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[colors.primary.gold]}
+          />
+        }
       >
         {BOARD_COLUMNS.map((column) => {
           const columnTasks = getTasksByColumn(column.id);
@@ -419,7 +445,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     backgroundColor: colors.background.secondary,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border.primary,
+    borderBottomColor: colors.border.default,
   },
   searchContainer: {
     flexDirection: 'row',
@@ -428,7 +454,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: spacing.md,
     borderWidth: 1,
-    borderColor: colors.border.primary,
+    borderColor: colors.border.default,
   },
   searchIcon: {
     marginRight: spacing.sm,
@@ -488,7 +514,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     marginBottom: spacing.md,
     borderWidth: 1,
-    borderColor: colors.border.primary,
+    borderColor: colors.border.default,
   },
   taskHeader: {
     flexDirection: 'row',
@@ -575,7 +601,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     backgroundColor: colors.background.secondary,
     borderTopWidth: 1,
-    borderTopColor: colors.border.primary,
+    borderTopColor: colors.border.default,
   },
   hintText: {
     flex: 1,
@@ -596,7 +622,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 400,
     borderWidth: 1,
-    borderColor: colors.border.primary,
+    borderColor: colors.border.default,
   },
   modalTitle: {
     fontSize: typography.fontSizes.lg,
@@ -613,7 +639,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     backgroundColor: colors.background.primary,
     borderWidth: 1,
-    borderColor: colors.border.primary,
+    borderColor: colors.border.default,
   },
   columnOptionActive: {
     borderColor: colors.primary.gold,
@@ -637,7 +663,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: colors.background.primary,
     borderWidth: 1,
-    borderColor: colors.border.primary,
+    borderColor: colors.border.default,
     alignItems: 'center',
   },
   modalCancelText: {

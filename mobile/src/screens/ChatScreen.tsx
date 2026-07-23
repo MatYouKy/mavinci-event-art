@@ -28,6 +28,10 @@ import { setActiveChatConversation } from '../services/chatNotifications';
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
 
+interface MessageReaction {
+  emoji: string;
+  user_id: string;
+}
 interface Message {
   id: string;
   conversation_id: string;
@@ -39,7 +43,7 @@ interface Message {
   attachment_size?: number | null;
   is_edited: boolean;
   created_at: string;
-  reactions?: Record<string, string[]>;
+  reactions?: MessageReaction | null;
 }
 interface SenderInfo {
   id: string;
@@ -61,6 +65,7 @@ interface Props {
   conversation: Conversation;
   onBack: () => void;
 }
+
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
 

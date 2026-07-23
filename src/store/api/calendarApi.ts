@@ -7,6 +7,7 @@ export interface CalendarEvent {
   event_date: string;
   event_end_date: string | null;
   status: string;
+  created_by?: string | null;
   color?: string;
   location?: string;
   organization?: { name: string } | null;
@@ -120,6 +121,7 @@ export const calendarApi = createApi({
             event_date: event.event_date,
             event_end_date: event.event_end_date,
             status: event.status,
+            created_by: event.created_by,
             color: event.event_categories?.color,
             location: event.location || '',
             organization: event.organizations ? { name: event.organizations.name } : null,
@@ -144,6 +146,7 @@ export const calendarApi = createApi({
                 event_date: meeting.datetime_start,
                 event_end_date: meeting.datetime_end || meeting.datetime_start,
                 status: 'meeting',
+                created_by: meeting.created_by,
                 color: '#d3bb73',
                 location: meeting.locations?.name || meeting.location_text || '',
                 organization: null,
@@ -177,6 +180,7 @@ export const calendarApi = createApi({
                     event_date: termin,
                     event_end_date: termin,
                     status: 'inquiry',
+                    created_by: task.created_by,
                     color: '#d3bb73',
                     location: task.inquiry_details?.location_text || '',
                     organization: null,
@@ -259,51 +263,80 @@ export const calendarApi = createApi({
     }),
 
     createMeeting: builder.mutation<
-      any,
-      {
-        title: string;
-        datetime_start: string;
-        datetime_end?: string | null;
-        is_all_day?: boolean;
-        color?: string;
-        notes?: string | null;
-        location_id?: string | null;
-        location_text?: string | null;
-        related_event_ids?: string[] | null;
-        participants?: Array<{ employee_id?: string; contact_id?: string }>;
-      }
-    >({
-      async queryFn(meetingData) {
-        try {
-          const { participants, ...meeting } = meetingData;
-
-          const { data, error } = await supabase.from('meetings').insert(meeting).select().single();
-
-          if (error) return { error: { status: 'CUSTOM_ERROR', error: error.message } };
-
-          if (participants && participants.length > 0) {
-            const participantsData = participants.map((p) => ({
-              meeting_id: data.id,
-              employee_id: p.employee_id || null,
-              contact_id: p.contact_id || null,
-            }));
-
-            const { error: participantsError } = await supabase
-              .from('meeting_participants')
-              .insert(participantsData);
-
-            if (participantsError) {
-              console.error('Error adding participants:', participantsError);
-            }
-          }
-
-          return { data };
-        } catch (error: any) {
-          return { error: { status: 'CUSTOM_ERROR', error: error.message } };
+    any,
+    {
+      title: string;
+      datetime_start: string;
+      datetime_end?: string | null;
+      is_all_day?: boolean;
+      color?: string;
+      notes?: string | null;
+      location_id?: string | null;
+      location_text?: string | null;
+      related_event_ids?: string[] | null;
+      participants?: Array<{
+        employee_id?: string;
+        contact_id?: string;
+      }>;
+      alert_1_minutes?: number | null;
+      alert_2_minutes?: number | null;
+      alert_critical_minutes?: number | null;
+    }
+  >({
+    async queryFn(meetingData) {
+      try {
+        const { participants, ...meeting } = meetingData;
+  
+        const { data, error } = await supabase
+          .from('meetings')
+          .insert(meeting)
+          .select()
+          .single();
+  
+        if (error) {
+          return {
+            error: {
+              status: 'CUSTOM_ERROR',
+              error: error.message,
+            },
+          };
         }
-      },
-      invalidatesTags: ['CalendarEvents', 'Meetings'],
-    }),
+  
+        if (participants?.length) {
+          const participantsData = participants.map((participant) => ({
+            meeting_id: data.id,
+            employee_id: participant.employee_id ?? null,
+            contact_id: participant.contact_id ?? null,
+          }));
+  
+          const { error: participantsError } = await supabase
+            .from('meeting_participants')
+            .insert(participantsData);
+  
+          if (participantsError) {
+            console.error(
+              'Error adding meeting participants:',
+              participantsError,
+            );
+          }
+        }
+  
+        return { data };
+      } catch (error: unknown) {
+        const message =
+          error instanceof Error ? error.message : 'Nieznany błąd';
+  
+        return {
+          error: {
+            status: 'CUSTOM_ERROR',
+            error: message,
+          },
+        };
+      }
+    },
+  
+    invalidatesTags: ['CalendarEvents', 'Meetings'],
+  }),
 
     updateMeeting: builder.mutation<
       any,

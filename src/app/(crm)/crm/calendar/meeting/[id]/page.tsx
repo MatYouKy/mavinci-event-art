@@ -13,6 +13,8 @@ import {
   FileText,
   Clock,
   Pencil,
+  ChevronDown,
+  Plus,
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { utcToLocalDatetimeString, localDatetimeStringToUTC } from '@/lib/utils/dateTimeUtils';
@@ -34,15 +36,22 @@ interface Meeting {
   created_by: string | null;
   color: string;
   is_all_day: boolean;
+
+  alert_1_minutes: number | null;
+  alert_2_minutes: number | null;
+  alert_critical_minutes: number | null;
+
   location?: {
     id: string;
     name: string;
   };
+
   creator?: {
     id: string;
     name: string;
     surname: string;
   };
+
   participants?: Array<{
     id: string;
     employee_id: string | null;
@@ -60,6 +69,29 @@ interface Meeting {
     };
   }>;
 }
+interface EmployeeOption {
+  id: string;
+  name: string;
+  surname: string;
+  nickname: string | null;
+  avatar_url: string | null;
+}
+
+const ALERT_OPTIONS = [
+  { value: 5, label: '5 minut wcześniej' },
+  { value: 10, label: '10 minut wcześniej' },
+  { value: 15, label: '15 minut wcześniej' },
+  { value: 30, label: '30 minut wcześniej' },
+  { value: 60, label: '1 godzinę wcześniej' },
+  { value: 120, label: '2 godziny wcześniej' },
+  { value: 180, label: '3 godziny wcześniej' },
+  { value: 360, label: '6 godzin wcześniej' },
+  { value: 720, label: '12 godzin wcześniej' },
+  { value: 1440, label: '1 dzień wcześniej' },
+  { value: 2880, label: '2 dni wcześniej' },
+  { value: 4320, label: '3 dni wcześniej' },
+  { value: 10080, label: '7 dni wcześniej' },
+];
 
 export default function MeetingDetailPage() {
   const { showConfirm } = useDialog();
@@ -82,13 +114,41 @@ export default function MeetingDetailPage() {
     notes: '',
     color: '#d3bb73',
     is_all_day: false,
+
+    alert_1_minutes: null as number | null,
+    alert_2_minutes: null as number | null,
+    alert_critical_minutes: null as number | null,
   });
 
   const [selectedParticipants, setSelectedParticipants] = useState<string[]>([]);
+  const [employees, setEmployees] = useState<EmployeeOption[]>([]);
+  const [participantToAdd, setParticipantToAdd] = useState('');
+
+  const [participantSearch, setParticipantSearch] = useState('');
+  const [isParticipantDropdownOpen, setIsParticipantDropdownOpen] = useState(false);
 
   useEffect(() => {
     fetchMeeting();
+    fetchEmployees();
   }, [meetingId]);
+
+  const fetchEmployees = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('employees')
+        .select('id, name, surname, nickname, avatar_url')
+        .eq('is_active', true)
+        .order('name', { ascending: true })
+        .order('surname', { ascending: true });
+
+      if (error) throw error;
+
+      setEmployees(data || []);
+    } catch (error) {
+      console.error('Error fetching employees:', error);
+      showSnackbar('Nie udało się pobrać listy pracowników', 'error');
+    }
+  };
 
   const fetchMeeting = async () => {
     try {
@@ -122,16 +182,20 @@ export default function MeetingDetailPage() {
         location_id: data.location_id,
         location_text: data.location_text || '',
         datetime_start: utcToLocalDatetimeString(data.datetime_start),
-        datetime_end: utcToLocalDatetimeString(data.datetime_end) || '',
+        datetime_end: data.datetime_end ? utcToLocalDatetimeString(data.datetime_end) : '',
         notes: data.notes || '',
-        color: data.color,
+        color: data.color || '#d3bb73',
         is_all_day: data.is_all_day,
+
+        alert_1_minutes: data.alert_1_minutes ?? null,
+        alert_2_minutes: data.alert_2_minutes ?? null,
+        alert_critical_minutes: data.alert_critical_minutes ?? null,
       });
 
       if (data.participants) {
         const participantIds = data.participants
-          .filter((p) => p.employee_id)
-          .map((p) => p.employee_id as string);
+          .filter((p: any) => p.employee_id)
+          .map((p: any) => p.employee_id as string);
         setSelectedParticipants(participantIds);
       }
     } catch (error: any) {
@@ -143,25 +207,51 @@ export default function MeetingDetailPage() {
   };
 
   const handleSave = async () => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+    if (!formData.title.trim()) {
+      showSnackbar('Podaj tytuł spotkania', 'error');
+      return;
+    }
+
+    const datetimeStart = localDatetimeStringToUTC(formData.datetime_start);
+
+    if (!datetimeStart) {
+      showSnackbar('Podaj poprawną datę rozpoczęcia', 'error');
+      return;
+    }
+
+    const datetimeEnd = formData.datetime_end
+      ? localDatetimeStringToUTC(formData.datetime_end)
+      : null;
+
+    if (formData.datetime_end && !datetimeEnd) {
+      showSnackbar('Podaj poprawną datę zakończenia', 'error');
+      return;
+    }
+
+    if (datetimeEnd && new Date(datetimeEnd) < new Date(datetimeStart)) {
+      showSnackbar('Data zakończenia nie może być wcześniejsza niż rozpoczęcie', 'error');
+      return;
+    }
+
     try {
       setSaving(true);
 
       const { error: updateError } = await supabase
         .from('meetings')
         .update({
-          title: formData.title,
+          title: formData.title.trim(),
           location_id: formData.location_id,
-          location_text: formData.location_text || null,
-          datetime_start: localDatetimeStringToUTC(formData.datetime_start),
-          datetime_end: formData.datetime_end
-            ? localDatetimeStringToUTC(formData.datetime_end)
-            : null,
-          notes: formData.notes || null,
+          location_text: formData.location_text.trim() || null,
+          datetime_start: datetimeStart,
+          datetime_end: datetimeEnd,
+          notes: formData.notes.trim() || null,
           color: formData.color,
           is_all_day: formData.is_all_day,
+
+          alert_1_minutes: formData.alert_1_minutes,
+          alert_2_minutes: formData.alert_2_minutes,
+          alert_critical_minutes: formData.alert_critical_minutes,
+
           updated_at: new Date().toISOString(),
         })
         .eq('id', meetingId);
@@ -171,14 +261,16 @@ export default function MeetingDetailPage() {
       const { error: deleteError } = await supabase
         .from('meeting_participants')
         .delete()
-        .eq('meeting_id', meetingId);
+        .eq('meeting_id', meetingId)
+        .not('employee_id', 'is', null);
 
       if (deleteError) throw deleteError;
 
       if (selectedParticipants.length > 0) {
-        const participantsData = selectedParticipants.map((empId) => ({
+        const participantsData = selectedParticipants.map((employeeId) => ({
           meeting_id: meetingId,
-          employee_id: empId,
+          employee_id: employeeId,
+          contact_id: null,
         }));
 
         const { error: insertError } = await supabase
@@ -190,29 +282,78 @@ export default function MeetingDetailPage() {
 
       showSnackbar('Spotkanie zostało zaktualizowane', 'success');
       setIsEditing(false);
-      fetchMeeting();
+      await fetchMeeting();
     } catch (error: any) {
       console.error('Error updating meeting:', error);
-      showSnackbar('Błąd podczas zapisywania spotkania', 'error');
+      showSnackbar(error?.message || 'Błąd podczas zapisywania spotkania', 'error');
     } finally {
       setSaving(false);
     }
   };
 
+  const handleAddParticipant = () => {
+    if (!participantToAdd) return;
+
+    setSelectedParticipants((current) => {
+      if (current.includes(participantToAdd)) {
+        return current;
+      }
+
+      return [...current, participantToAdd];
+    });
+
+    setParticipantToAdd('');
+  };
+
+  const handleRemoveParticipant = (employeeId: string) => {
+    setSelectedParticipants((current) => current.filter((id) => id !== employeeId));
+  };
+
+  const getEmployeeLabel = (employeeId: string) => {
+    const employee = employees.find((item) => item.id === employeeId);
+
+    if (!employee) return employeeId;
+
+    return employee.nickname
+      ? `${employee.nickname} (${employee.name} ${employee.surname})`
+      : `${employee.name} ${employee.surname}`;
+  };
+
   const handleDelete = async () => {
     if (!(await showConfirm('Czy na pewno chcesz usunąć to spotkanie?'))) return;
-
+  
     try {
-      const { error } = await supabase.from('meetings').delete().eq('id', meetingId);
+      const { error } = await supabase
+        .from('meetings')
+        .delete()
+        .eq('id', meetingId);
+  
       if (error) throw error;
-      await fetchMeeting();
+  
       showSnackbar('Spotkanie zostało usunięte', 'success');
-      router.push('/crm/calendar');
+      router.replace('/crm/calendar');
+      router.refresh();
     } catch (error: any) {
       console.error('Error deleting meeting:', error);
-      showSnackbar('Błąd podczas usuwania spotkania', 'error');
+      showSnackbar(
+        error?.message || 'Błąd podczas usuwania spotkania',
+        'error',
+      );
     }
   };
+
+  const filteredEmployees = employees.filter((employee) => {
+    if (selectedParticipants.includes(employee.id)) return false;
+
+    const query = participantSearch.trim().toLowerCase();
+
+    if (!query) return true;
+
+    const fullName = `${employee.name} ${employee.surname}`.toLowerCase();
+    const nickname = employee.nickname?.toLowerCase() || '';
+
+    return fullName.includes(query) || nickname.includes(query);
+  });
 
   if (loading) {
     return (
@@ -279,6 +420,9 @@ export default function MeetingDetailPage() {
                             notes: meeting.notes || '',
                             color: meeting.color,
                             is_all_day: meeting.is_all_day,
+                            alert_1_minutes: meeting.alert_1_minutes ?? null,
+                            alert_2_minutes: meeting.alert_2_minutes ?? null,
+                            alert_critical_minutes: meeting.alert_critical_minutes ?? null,
                           });
 
                           setIsEditing(false);
@@ -359,6 +503,152 @@ export default function MeetingDetailPage() {
             </div>
           </div>
 
+          {(isEditing ||
+            meeting.alert_1_minutes !== null ||
+            meeting.alert_2_minutes !== null ||
+            meeting.alert_critical_minutes !== null) && (
+            <div>
+              <label className="mb-2 flex items-center gap-2 text-sm font-medium text-[#d3bb73]">
+                <Clock size={16} />
+                Alerty
+              </label>
+
+              {isEditing ? (
+                <div className="grid gap-2 md:grid-cols-3">
+                  {[
+                    {
+                      key: 'alert_1_minutes' as const,
+                      label: 'Alert 1',
+                      defaultValue: 60,
+                      critical: false,
+                    },
+                    {
+                      key: 'alert_2_minutes' as const,
+                      label: 'Alert 2',
+                      defaultValue: 120,
+                      critical: false,
+                    },
+                    {
+                      key: 'alert_critical_minutes' as const,
+                      label: 'Krytyczny',
+                      defaultValue: 30,
+                      critical: true,
+                    },
+                  ].map((alert) => {
+                    const value = formData[alert.key];
+                    const enabled = value !== null;
+
+                    return (
+                      <div
+                        key={alert.key}
+                        className={`flex min-h-[54px] items-center gap-3 rounded-lg border px-3 py-2 ${
+                          alert.critical
+                            ? 'border-red-500/20 bg-red-500/[0.04]'
+                            : 'border-[#d3bb73]/15 bg-[#13161f]'
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={enabled}
+                          onClick={() =>
+                            setFormData((current) => ({
+                              ...current,
+                              [alert.key]: enabled ? null : alert.defaultValue,
+                            }))
+                          }
+                          className={`relative h-6 w-11 shrink-0 rounded-full border transition-colors ${
+                            enabled
+                              ? alert.critical
+                                ? 'border-red-400/40 bg-red-500'
+                                : 'border-[#e4cb78]/40 bg-[#d3bb73]'
+                              : 'border-white/10 bg-[#2a2e43]'
+                          }`}
+                        >
+                          <span
+                            className={`absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full bg-white shadow transition-all ${
+                              enabled ? 'left-6' : 'left-1'
+                            }`}
+                          />
+                        </button>
+
+                        <div className="min-w-0 flex-1">
+                          <p
+                            className={`mb-1 text-xs font-medium ${
+                              alert.critical ? 'text-red-400' : 'text-[#e5e4e2]'
+                            }`}
+                          >
+                            {alert.label}
+                          </p>
+
+                          {enabled ? (
+                            <select
+                              value={value ?? ''}
+                              onChange={(event) =>
+                                setFormData((current) => ({
+                                  ...current,
+                                  [alert.key]: Number(event.target.value),
+                                }))
+                              }
+                              className={`w-full border-0 bg-transparent p-0 text-sm text-[#e5e4e2] outline-none ${
+                                alert.critical ? 'accent-red-400' : 'accent-[#d3bb73]'
+                              }`}
+                            >
+                              {ALERT_OPTIONS.map((option) => (
+                                <option
+                                  key={option.value}
+                                  value={option.value}
+                                  className="bg-[#13161f] text-[#e5e4e2]"
+                                >
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <p className="text-xs text-[#e5e4e2]/35">Wyłączony</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {meeting.alert_1_minutes !== null && (
+                    <div className="rounded-md border border-[#d3bb73]/15 bg-[#13161f] px-3 py-2">
+                      <span className="mr-2 text-xs text-[#e5e4e2]/50">Alert 1</span>
+                      <span className="text-sm text-[#e5e4e2]">
+                        {ALERT_OPTIONS.find((option) => option.value === meeting.alert_1_minutes)
+                          ?.label || `${meeting.alert_1_minutes} minut wcześniej`}
+                      </span>
+                    </div>
+                  )}
+
+                  {meeting.alert_2_minutes !== null && (
+                    <div className="rounded-md border border-[#d3bb73]/15 bg-[#13161f] px-3 py-2">
+                      <span className="mr-2 text-xs text-[#e5e4e2]/50">Alert 2</span>
+                      <span className="text-sm text-[#e5e4e2]">
+                        {ALERT_OPTIONS.find((option) => option.value === meeting.alert_2_minutes)
+                          ?.label || `${meeting.alert_2_minutes} minut wcześniej`}
+                      </span>
+                    </div>
+                  )}
+
+                  {meeting.alert_critical_minutes !== null && (
+                    <div className="rounded-md border border-red-500/20 bg-red-500/[0.04] px-3 py-2">
+                      <span className="mr-2 text-xs text-red-400/70">Krytyczny</span>
+                      <span className="text-sm text-red-300">
+                        {ALERT_OPTIONS.find(
+                          (option) => option.value === meeting.alert_critical_minutes,
+                        )?.label || `${meeting.alert_critical_minutes} minut wcześniej`}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           <div>
             <label className="mb-2 flex items-center gap-2 text-sm font-medium text-[#d3bb73]">
               <MapPin size={16} />
@@ -380,53 +670,138 @@ export default function MeetingDetailPage() {
               </p>
             )}
           </div>
-
           <div>
             <label className="mb-2 flex items-center gap-2 text-sm font-medium text-[#d3bb73]">
               <Users size={16} />
               Uczestnicy
             </label>
+
             {isEditing ? (
-              <div className="space-y-2">
-                {selectedParticipants.map((empId) => (
-                  <div
-                    key={empId}
-                    className="flex items-center justify-between rounded-lg border border-[#d3bb73]/20 bg-[#13161f] px-3 py-2"
+              <div className="space-y-3">
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={participantSearch}
+                    onChange={(event) => {
+                      setParticipantSearch(event.target.value);
+                      setIsParticipantDropdownOpen(true);
+                    }}
+                    onFocus={() => setIsParticipantDropdownOpen(true)}
+                    placeholder="Wyszukaj pracownika..."
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#13161f] px-4 py-2 pr-10 text-sm text-[#e5e4e2] placeholder:text-[#e5e4e2]/35 focus:border-[#d3bb73] focus:outline-none"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => setIsParticipantDropdownOpen((current) => !current)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
+                    aria-label="Pokaż listę pracowników"
                   >
-                    <span className="text-sm text-[#e5e4e2]">{empId}</span>
-                    <button
-                      onClick={() =>
-                        setSelectedParticipants(selectedParticipants.filter((id) => id !== empId))
-                      }
-                      className="text-red-400 hover:text-red-300"
-                    >
-                      ×
-                    </button>
+                    <ChevronDown
+                      className={`h-4 w-4 transition-transform ${
+                        isParticipantDropdownOpen ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+
+                  {isParticipantDropdownOpen && (
+                    <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-50 max-h-60 overflow-y-auto rounded-lg border border-[#d3bb73]/20 bg-[#13161f] p-1 shadow-2xl">
+                      {filteredEmployees.length > 0 ? (
+                        filteredEmployees.map((employee) => (
+                          <button
+                            key={employee.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedParticipants((current) =>
+                                current.includes(employee.id) ? current : [...current, employee.id],
+                              );
+
+                              setParticipantSearch('');
+                              setIsParticipantDropdownOpen(false);
+                            }}
+                            className="flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left transition-colors hover:bg-[#d3bb73]/10"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-sm text-[#e5e4e2]">
+                                {employee.name} {employee.surname}
+                              </p>
+
+                              {employee.nickname && (
+                                <p className="truncate text-xs text-[#d3bb73]/70">
+                                  {employee.nickname}
+                                </p>
+                              )}
+                            </div>
+
+                            <Plus className="h-4 w-4 shrink-0 text-[#d3bb73]" />
+                          </button>
+                        ))
+                      ) : (
+                        <div className="px-3 py-4 text-center text-sm text-[#e5e4e2]/45">
+                          Nie znaleziono pracowników
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {selectedParticipants.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {selectedParticipants.map((employeeId) => {
+                      const employee = employees.find((item) => item.id === employeeId);
+
+                      return (
+                        <div
+                          key={employeeId}
+                          className="flex max-w-full items-center gap-2 rounded-full border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-3 py-1.5"
+                        >
+                          <span className="truncate text-sm text-[#e5e4e2]">
+                            {employee
+                              ? employee.nickname || `${employee.name} ${employee.surname}`
+                              : employeeId}
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSelectedParticipants((current) =>
+                                current.filter((id) => id !== employeeId),
+                              )
+                            }
+                            className="shrink-0 text-red-400 transition-colors hover:text-red-300"
+                            aria-label="Usuń pracownika"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
-                ))}
+                ) : (
+                  <p className="text-sm text-[#e5e4e2]/45">Nie dodano żadnego pracownika.</p>
+                )}
               </div>
             ) : (
               <div className="flex flex-wrap gap-2">
                 {meeting.participants && meeting.participants.length > 0 ? (
-                  meeting.participants.map((p) => (
+                  meeting.participants.map((participant) => (
                     <div
-                      key={p.id}
-                      className="rounded-full bg-[#d3bb73]/10 px-3 py-1 text-sm text-[#e5e4e2]"
+                      key={participant.id}
+                      className="rounded-full border border-[#d3bb73]/15 bg-[#d3bb73]/10 px-3 py-1.5 text-sm text-[#e5e4e2]"
                     >
-                      {p.employee
-                        ? `${p.employee.name} ${p.employee.surname}`
-                        : p.contact
-                          ? `${p.contact.first_name} ${p.contact.last_name}`
-                          : 'Nieznany'}
+                      {participant.employee
+                        ? `${participant.employee.name} ${participant.employee.surname}`
+                        : participant.contact
+                          ? `${participant.contact.first_name} ${participant.contact.last_name}`
+                          : 'Nieznany uczestnik'}
                     </div>
                   ))
                 ) : (
-                  <p className="text-[#e5e4e2]/60">Brak uczestników</p>
+                  <p className="text-sm text-[#e5e4e2]/45">Brak uczestników</p>
                 )}
               </div>
             )}
           </div>
-
           <div>
             <label className="mb-2 flex items-center gap-2 text-sm font-medium text-[#d3bb73]">
               <FileText size={16} />

@@ -149,7 +149,7 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
         .order('created_at', { ascending: true });
 
       if (error) throw error;
-      setComments(commentsData || []);
+      setComments(commentsData as unknown as Comment[] || []);
     } catch (error) {
       console.error('Error fetching comments:', error);
     }
@@ -175,7 +175,7 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setAttachments(data || []);
+      setAttachments(data as unknown as Attachment[] || [] as any);
     } catch (error) {
       console.error('Error fetching attachments:', error);
     }
@@ -369,7 +369,7 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
                       <Text style={styles.fileMeta}>{formatFileSize(attachment.file_size)}</Text>
                       {attachment.is_linked && (
                         <View style={styles.linkedBadge}>
-                          <Feather name="link" size={10} color={colors.primary.burgundy} />
+                          <Feather name="link" size={10} color={colors.primary.gold} />
                           <Text style={styles.linkedText}>Z wydarzenia</Text>
                         </View>
                       )}
@@ -588,14 +588,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: colors.primary.burgundy + '20',
+    backgroundColor: colors.primary.gold + '20',
     paddingHorizontal: spacing.xs,
     paddingVertical: 2,
     borderRadius: borderRadius.sm,
   },
   linkedText: {
     fontSize: 10,
-    color: colors.primary.burgundy,
+    color: colors.primary.gold,
   },
   emptyText: {
     textAlign: 'center',

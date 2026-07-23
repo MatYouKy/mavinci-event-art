@@ -40,7 +40,7 @@ function TimeTrackingContent() {
   const [taskDescription, setTaskDescription] = useState('');
   const [isStarting, setIsStarting] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!employee?.id) return;
@@ -109,22 +109,35 @@ function TimeTrackingContent() {
 
   // Timer interval
   useEffect(() => {
-    if (activeEntry) {
-      const updateElapsed = () => {
-        const start = new Date(activeEntry.start_time).getTime();
-        const now = Date.now();
-        setElapsed(Math.floor((now - start) / 1000));
-      };
-      updateElapsed();
-      intervalRef.current = setInterval(updateElapsed, 1000);
-      return () => {
-        if (intervalRef.current) clearInterval(intervalRef.current);
-      };
-    } else {
+    if (!activeEntry) {
       setElapsed(0);
       overtimeCheckedRef.current = false;
-      if (intervalRef.current) clearInterval(intervalRef.current);
+  
+      if (intervalRef.current !== null) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+  
+      return;
     }
+  
+    const updateElapsed = () => {
+      const start = new Date(activeEntry.start_time).getTime();
+      const now = Date.now();
+  
+      setElapsed(Math.max(0, Math.floor((now - start) / 1000)));
+    };
+  
+    updateElapsed();
+  
+    intervalRef.current = setInterval(updateElapsed, 1000);
+  
+    return () => {
+      if (intervalRef.current !== null) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
   }, [activeEntry]);
 
   // 8-hour notification: call backend RPC once when threshold is crossed

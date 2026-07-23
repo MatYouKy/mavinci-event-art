@@ -16,27 +16,6 @@ import { supabase } from '@/lib/supabase/browser';
 import { IEmployee } from '@/app/(crm)/crm/employees/type';
 import { EmployeeAvatar } from '../EmployeeAvatar';
 
-// interface EmployeeData {
-//   id: string;
-//   name: string;
-//   surname: string;
-//   nickname?: string | null;
-//   email: string;
-//   role: string;
-//   access_level: string;
-//   avatar_url: string | null;
-//   avatar_metadata?: {
-//     desktop?: {
-//       position?: {
-//         posX: number;
-//         posY: number;
-//         scale: number;
-//       };
-//       objectFit?: string;
-//     };
-//   };
-// }
-
 export default function UserMenu({ initialEmployee }: { initialEmployee: IEmployee | null }) {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
@@ -44,9 +23,6 @@ export default function UserMenu({ initialEmployee }: { initialEmployee: IEmploy
   // ✅ od razu masz dane – bez “migania”
   const [employee, setEmployee] = useState<IEmployee | null>(initialEmployee);
   const [userEmail, setUserEmail] = useState<string>(initialEmployee?.email || '');
-
-  // ✅ nie blokuj renderu, bo SSR już dał dane
-  const [loading, setLoading] = useState(false);
 
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -132,22 +108,6 @@ export default function UserMenu({ initialEmployee }: { initialEmployee: IEmploy
     return colors[level] || 'text-[#e5e4e2]/60';
   };
 
-  const getAvatarStyle = () => {
-    const pos = employee?.avatar_metadata?.desktop?.position;
-    if (!pos) return {};
-    const { posX, posY, scale } = pos;
-    const objectFit = employee?.avatar_metadata?.desktop?.objectFit || 'cover';
-    return {
-      objectFit: objectFit as any,
-      transform: `translate(${posX}%, ${posY}%) scale(${scale})`,
-    };
-  };
-
-  // ✅ już nie ma “loading kółeczka”, bo masz dane z SSR
-  if (loading) {
-    return <div className="h-10 w-10 animate-pulse rounded-full bg-[#1c1f33]" />;
-  }
-
   return (
     <div className="relative" ref={menuRef}>
       <button
@@ -156,9 +116,11 @@ export default function UserMenu({ initialEmployee }: { initialEmployee: IEmploy
       >
         <div className="flex items-center gap-3">
           {employee?.avatar_url ? (
-            <div className="h-10 w-10 overflow-hidden rounded-full border-2 border-[#d3bb73]/30">
-              <EmployeeAvatar employee={employee} size={40} />
-            </div>
+            <EmployeeAvatar
+              employee={employee}
+              size={40}
+              className="border-2 border-[#d3bb73]/30"
+            />
           ) : (
             <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-[#d3bb73]/30 bg-gradient-to-br from-[#d3bb73] to-[#d3bb73]/60">
               <span className="text-sm font-bold text-[#1c1f33]">{getInitials()}</span>

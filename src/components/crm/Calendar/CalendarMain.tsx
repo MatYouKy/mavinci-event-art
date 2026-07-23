@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { CalendarEvent, CalendarView } from './types';
-import { STATUS_COLORS, STATUS_LABELS } from './constants';
+import { STATUS_COLORS, STATUS_LABELS, CalendarStatus } from './constants';
 import MonthView from './MonthView';
 import WeekView from './WeekView';
 import DayView from './DayView';
@@ -55,7 +55,7 @@ export default function CalendarMain({
   const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [showAllEventsModal, setShowAllEventsModal] = useState(false);
   const [allEventsModalDate, setAllEventsModalDate] = useState<Date | null>(null);
-  const tooltipTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const tooltipTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [showFilters, setShowFilters] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
@@ -136,8 +136,20 @@ export default function CalendarMain({
   const applyFilters = useCallback(() => {
     let filtered = [...allEvents];
 
-    if (isAcceptedOnlyViewer) {
-      filtered = filtered.filter((e: any) => !e.is_meeting && e.status === 'offer_accepted');
+    if (isAcceptedOnlyViewer && currentEmployee) {
+      filtered = filtered.filter((e: any) => {
+        if (e.is_meeting) {
+          const isCreator = e.created_by === currentEmployee.id;
+
+          const isParticipant = e.meeting_data?.meeting_participants?.some(
+            (participant: any) => participant.employee_id === currentEmployee.id,
+          );
+
+          return isCreator || isParticipant;
+        }
+
+        return e.status === 'offer_accepted';
+      });
     }
 
     if (filters.statuses.length > 0) {
@@ -398,6 +410,7 @@ export default function CalendarMain({
           year: 'numeric',
         });
     }
+    return '';
   };
 
   const getEventsForDate = (date: Date): CalendarEvent[] => {
@@ -413,7 +426,7 @@ export default function CalendarMain({
 
   if (isMobile) {
     return (
-      <div className="space-y-6 max-w-7xl mx-auto">
+      <div className="mx-auto max-w-7xl space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-light text-[#e5e4e2]">Kalendarz</h1>
           <div className="flex items-center gap-2">
@@ -484,7 +497,7 @@ export default function CalendarMain({
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="mx-auto max-w-7xl space-y-6">
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <div className="flex items-center gap-4">
           <button
@@ -543,29 +556,34 @@ export default function CalendarMain({
           </button>
 
           <div className="flex overflow-hidden rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33]">
-            {(['month', 'week', 'day', ...(isAdmin() ? ['timeline', 'employee'] : [])] as CalendarView[]).map(
-              (v) => (
-                <button
-                  key={v}
-                  onClick={() => setView(v)}
-                  className={`px-3 py-2 text-xs font-light transition-colors md:px-4 md:text-sm ${
-                    view === v
-                      ? 'bg-[#d3bb73] text-[#1c1f33]'
-                      : 'text-[#e5e4e2] hover:bg-[#d3bb73]/10'
-                  }`}
-                >
-                  {v === 'month'
-                    ? 'Miesiąc'
-                    : v === 'week'
-                      ? 'Tydzień'
-                      : v === 'day'
-                        ? 'Dzień'
-                        : v === 'timeline'
-                          ? 'Timeline'
-                          : 'Pracownicy'}
-                </button>
-              ),
-            )}
+            {(
+              [
+                'month',
+                'week',
+                'day',
+                ...(isAdmin() ? ['timeline', 'employee'] : []),
+              ] as CalendarView[]
+            ).map((v) => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className={`px-3 py-2 text-xs font-light transition-colors md:px-4 md:text-sm ${
+                  view === v
+                    ? 'bg-[#d3bb73] text-[#1c1f33]'
+                    : 'text-[#e5e4e2] hover:bg-[#d3bb73]/10'
+                }`}
+              >
+                {v === 'month'
+                  ? 'Miesiąc'
+                  : v === 'week'
+                    ? 'Tydzień'
+                    : v === 'day'
+                      ? 'Dzień'
+                      : v === 'timeline'
+                        ? 'Timeline'
+                        : 'Pracownicy'}
+              </button>
+            ))}
           </div>
 
           {canCreateEvents() && !isAcceptedOnlyViewer && (
@@ -579,22 +597,22 @@ export default function CalendarMain({
           )}
 
           {!isAcceptedOnlyViewer && (
-          <button
-            onClick={() => handleNewEvent()}
-            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-3 py-2 text-xs font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 md:px-4 md:text-sm"
-          >
-            {canCreateEvents() ? (
-              <>
-                <Plus className="h-4 w-4" />
-                <span className="hidden md:inline">Nowe wydarzenie</span>
-              </>
-            ) : (
-              <>
-                <CalendarIcon className="h-4 w-4" />
-                <span className="hidden md:inline">Nowe spotkanie</span>
-              </>
-            )}
-          </button>
+            <button
+              onClick={() => handleNewEvent()}
+              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-3 py-2 text-xs font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 md:px-4 md:text-sm"
+            >
+              {canCreateEvents() ? (
+                <>
+                  <Plus className="h-4 w-4" />
+                  <span className="hidden md:inline">Nowe wydarzenie</span>
+                </>
+              ) : (
+                <>
+                  <CalendarIcon className="h-4 w-4" />
+                  <span className="hidden md:inline">Nowe spotkanie</span>
+                </>
+              )}
+            </button>
           )}
         </div>
       </div>
@@ -846,10 +864,10 @@ export default function CalendarMain({
             <div className="border-t border-[#d3bb73]/10 pt-2">
               <span
                 className={`inline-block rounded border px-2 py-1 text-xs ${
-                  STATUS_COLORS[hoveredEvent.status]
+                  STATUS_COLORS[hoveredEvent.status as CalendarStatus]
                 }`}
               >
-                {STATUS_LABELS[hoveredEvent.status]}
+                {STATUS_LABELS[hoveredEvent.status as CalendarStatus]}
               </span>
             </div>
 
@@ -921,10 +939,10 @@ export default function CalendarMain({
                       </div>
                       <span
                         className={`rounded border px-2 py-1 text-xs ${
-                          STATUS_COLORS[event.status]
+                          STATUS_COLORS[event.status as CalendarStatus]
                         }`}
                       >
-                        {STATUS_LABELS[event.status]}
+                        {STATUS_LABELS[event.status as CalendarStatus]}
                       </span>
                     </div>
                   </div>

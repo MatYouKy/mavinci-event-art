@@ -142,15 +142,17 @@ export default function CRMClientLayout({
             <button onClick={() => setSidebarOpen(true)} className="text-[#e5e4e2] lg:hidden">
               <Menu className="h-6 w-6" />
             </button>
-            <Link href="/crm" className="flex items-center gap-3">
-              <Image
-                src="/logo.png"
-                alt="Mavinci"
-                priority
-                width={160}
-                height={60}
-                className="h-auto w-40"
-              />
+            <Link href="/crm" className="flex shrink-0 items-center">
+              <div className="relative h-10 w-40 shrink-0">
+                <Image
+                  src="/logo.png"
+                  alt="Mavinci"
+                  priority
+                  fill
+                  sizes="160px"
+                  className="object-contain object-left"
+                />
+              </div>
             </Link>
             <div className="hidden h-6 w-px bg-[#d3bb73]/20 lg:block"></div>
             <h1 className="hidden text-xl font-light text-[#e5e4e2] lg:block">
@@ -179,7 +181,9 @@ export default function CRMClientLayout({
               sidebarCollapsed={sidebarCollapsed}
               employeeId={employee?.id || null}
               onClose={() => setSidebarOpen(false)}
-              onOrderChange={(newOrder: any) => setNavigation(newOrder as unknown as NavigationItem[])}
+              onOrderChange={(newOrder: any) =>
+                setNavigation(newOrder as unknown as NavigationItem[])
+              }
             />
 
             <button
