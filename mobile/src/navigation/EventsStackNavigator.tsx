@@ -1,34 +1,57 @@
-import React, { useState } from 'react';
-import { View, StyleSheet } from 'react-native';
-import { colors } from '../theme';
+import React from 'react';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { useRoute, useNavigation } from '@react-navigation/native';
 import EventsScreen, { EventListItem } from '../screens/EventsScreen';
 import EventDetailScreen from '../screens/EventDetailScreen';
 import PermissionGate from '../components/PermissionGate';
 
-export default function EventsStackNavigator() {
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+export type EventsStackParamList = {
+  EventsList: undefined;
+  EventDetail: { eventId: string };
+};
+
+const Stack = createNativeStackNavigator<EventsStackParamList>();
+
+function EventDetailWrapper() {
+  const route = useRoute<any>();
+  const navigation = useNavigation();
+  const { eventId } = route.params as { eventId: string };
 
   return (
-    <PermissionGate module="events">
-      {selectedEventId ? (
-        <View style={styles.container}>
-          <EventDetailScreen
-            eventId={selectedEventId}
-            onBack={() => setSelectedEventId(null)}
-          />
-        </View>
-      ) : (
-        <View style={styles.container}>
-          <EventsScreen onEventPress={(event: EventListItem) => setSelectedEventId(event.id)} />
-        </View>
-      )}
-    </PermissionGate>
+    <EventDetailScreen
+      eventId={eventId}
+      onBack={() => navigation.goBack()}
+    />
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background.primary,
-  },
-});
+function EventsListWrapper() {
+  const navigation = useNavigation<any>();
+
+  return (
+    <EventsScreen
+      onEventPress={(event: EventListItem) =>
+        navigation.navigate('EventDetail', { eventId: event.id })
+      }
+    />
+  );
+}
+
+export default function EventsStackNavigator() {
+  return (
+    <PermissionGate module="events">
+      <Stack.Navigator>
+        <Stack.Screen
+          name="EventsList"
+          component={EventsListWrapper}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="EventDetail"
+          component={EventDetailWrapper}
+          options={{ headerShown: false }}
+        />
+      </Stack.Navigator>
+    </PermissionGate>
+  );
+}

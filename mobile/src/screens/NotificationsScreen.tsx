@@ -14,19 +14,6 @@ import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { colors, spacing, typography, borderRadius } from '../theme';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-
-type TasksStackParamList = {
-  Tasks: {
-    screen: 'TaskDetail';
-    params: {
-      taskId: string;
-    };
-  };
-  TaskDetail: {
-    taskId: string;
-  };
-};
 
 interface NotificationMetadata {
   assignment_id?: string;
@@ -49,10 +36,8 @@ interface Notification {
   recipient_id: string;
 }
 
-type TasksNavigationProp = NativeStackNavigationProp<TasksStackParamList, 'Tasks'>;
-
 export default function NotificationsScreen() {
-  const navigation = useNavigation<TasksNavigationProp>();
+  const navigation = useNavigation<any>();
   const { employee } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -229,15 +214,77 @@ export default function NotificationsScreen() {
     );
   };
 
+  const navigateToEntity = (notification: Notification) => {
+    const entityType = notification.related_entity_type;
+    const entityId = notification.related_entity_id;
+    const category = notification.category;
+
+    if (entityType === 'event' && entityId) {
+      navigation.navigate('Main', {
+        screen: 'Events',
+        params: {
+          screen: 'EventDetail',
+          params: { eventId: entityId },
+        },
+      });
+      return;
+    }
+
+    if (entityType === 'task' && entityId) {
+      navigation.navigate('Main', {
+        screen: 'Tasks',
+        params: {
+          screen: 'TaskDetail',
+          params: { taskId: entityId },
+        },
+      });
+      return;
+    }
+
+    if (category === 'events' || category === 'team' || category === 'phase_assignment') {
+      if (entityId) {
+        navigation.navigate('Main', {
+          screen: 'Events',
+          params: {
+            screen: 'EventDetail',
+            params: { eventId: entityId },
+          },
+        });
+      } else {
+        navigation.navigate('Main', { screen: 'Events' });
+      }
+      return;
+    }
+
+    if (category === 'tasks') {
+      if (entityId) {
+        navigation.navigate('Main', {
+          screen: 'Tasks',
+          params: {
+            screen: 'TaskDetail',
+            params: { taskId: entityId },
+          },
+        });
+      } else {
+        navigation.navigate('Main', { screen: 'Tasks' });
+      }
+      return;
+    }
+
+    if (category === 'messages' || category === 'contact_form') {
+      navigation.navigate('Main', { screen: 'Messages' });
+      return;
+    }
+
+    if (category === 'equipment') {
+      navigation.navigate('Main', { screen: 'Equipment' });
+      return;
+    }
+  };
+
   const handleNotificationPress = (notification: Notification) => {
     markAsRead(notification.id, notification.recipient_id);
-
-    if (notification.related_entity_type === 'task' && notification.related_entity_id) {
-      navigation.navigate('Tasks', {
-        screen: 'TaskDetail',
-        params: { taskId: notification.related_entity_id },
-      });
-    }
+    navigateToEntity(notification);
   };
 
   const onRefresh = () => {
@@ -336,6 +383,16 @@ export default function NotificationsScreen() {
     }
 
     const hasInvitation = !!item.metadata?.assignment_id;
+    const isNavigable = !!(
+      item.related_entity_id ||
+      item.category === 'events' ||
+      item.category === 'tasks' ||
+      item.category === 'messages' ||
+      item.category === 'contact_form' ||
+      item.category === 'team' ||
+      item.category === 'phase_assignment' ||
+      item.category === 'equipment'
+    );
 
     return (
       <TouchableOpacity
@@ -351,9 +408,13 @@ export default function NotificationsScreen() {
             name={
               hasInvitation && item.metadata?.requires_response
                 ? 'user-plus'
-                : item.is_read
-                  ? 'check-circle'
-                  : 'bell'
+                : item.related_entity_type === 'event'
+                  ? 'star'
+                  : item.related_entity_type === 'task'
+                    ? 'check-square'
+                    : item.is_read
+                      ? 'check-circle'
+                      : 'bell'
             }
             color={
               hasInvitation && item.metadata?.requires_response
@@ -371,7 +432,15 @@ export default function NotificationsScreen() {
             {item.message}
           </Text>
           {renderInvitationActions(item)}
-          <Text style={styles.notificationTime}>{timeText}</Text>
+          <View style={styles.notificationFooter}>
+            <Text style={styles.notificationTime}>{timeText}</Text>
+            {isNavigable && (
+              <View style={styles.navigateHint}>
+                <Text style={styles.navigateHintText}>Otwórz</Text>
+                <Feather name="chevron-right" size={12} color={colors.primary.gold} />
+              </View>
+            )}
+          </View>
         </View>
         {!item.is_read && <View style={styles.unreadDot} />}
       </TouchableOpacity>
@@ -496,9 +565,25 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     lineHeight: 18,
   },
+  notificationFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 2,
+  },
   notificationTime: {
     fontSize: typography.fontSizes.xs,
     color: colors.text.tertiary,
+  },
+  navigateHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  navigateHintText: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.primary.gold,
+    fontWeight: '500',
   },
   unreadDot: {
     width: 8,
@@ -518,7 +603,6 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.md,
     color: colors.text.tertiary,
   },
-  // Invitation actions
   invitationActions: {
     flexDirection: 'row',
     gap: 8,
