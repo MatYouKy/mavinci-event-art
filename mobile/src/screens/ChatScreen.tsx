@@ -39,8 +39,8 @@ interface Message {
   attachment_size?: number | null;
   is_edited: boolean;
   created_at: string;
+  reactions?: Record<string, string[]>;
 }
-
 interface SenderInfo {
   id: string;
   name: string;
@@ -90,6 +90,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [showMenu, setShowMenu] = useState(false);
+  const [reactionPickerMsgId, setReactionPickerMsgId] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -458,10 +459,45 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     );
   };
 
+  const REACTION_EMOJIS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
+
+  const toggleReaction = async (messageId: string, emoji: string) => {
+    setReactionPickerMsgId(null);
+    const msgIndex = messages.findIndex((m) => m.id === messageId);
+    if (msgIndex === -1 || !employee) return;
+
+    const msg = messages[msgIndex];
+    const currentReactions: Record<string, string[]> = { ...(msg.reactions || {}) };
+    const users = currentReactions[emoji] ? [...currentReactions[emoji]] : [];
+    const userIdx = users.indexOf(employee.id);
+
+    if (userIdx >= 0) {
+      users.splice(userIdx, 1);
+    } else {
+      users.push(employee.id);
+    }
+
+    if (users.length > 0) {
+      currentReactions[emoji] = users;
+    } else {
+      delete currentReactions[emoji];
+    }
+
+    const updatedMessages = [...messages];
+    updatedMessages[msgIndex] = { ...msg, reactions: currentReactions };
+    setMessages(updatedMessages);
+
+    await supabase
+      .from('employee_messages')
+      .update({ reactions: currentReactions })
+      .eq('id', messageId);
+  };
+
   const handleLongPress = (id: string) => {
-    if (!isSelectMode) {
-      setIsSelectMode(true);
-      setSelectedIds(new Set([id]));
+    if (isSelectMode) {
+      toggleSelectMessage(id);
+    } else {
+      setReactionPickerMsgId(id);
     }
   };
 
@@ -721,6 +757,43 @@ export default function ChatScreen({ conversation, onBack }: Props) {
                 </Text>
               )}
             </View>
+
+            {/* Reaction picker overlay */}
+            {reactionPickerMsgId === item.id && (
+              <View style={[styles.reactionPicker, isMine && styles.reactionPickerMine]}>
+                {REACTION_EMOJIS.map((emoji) => (
+                  <TouchableOpacity
+                    key={emoji}
+                    onPress={() => toggleReaction(item.id, emoji)}
+                    style={styles.reactionPickerItem}
+                  >
+                    <Text style={styles.reactionPickerEmoji}>{emoji}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {/* Reactions display */}
+            {item.reactions && Object.keys(item.reactions).length > 0 && (
+              <View style={[styles.reactionsRow, isMine && styles.reactionsRowMine]}>
+                {Object.entries(item.reactions).map(([emoji, users]) => {
+                  const iReacted = employee && users.includes(employee.id);
+                  return (
+                    <TouchableOpacity
+                      key={emoji}
+                      onPress={() => toggleReaction(item.id, emoji)}
+                      style={[styles.reactionBadge, iReacted && styles.reactionBadgeActive]}
+                    >
+                      <Text style={styles.reactionBadgeEmoji}>{emoji}</Text>
+                      {users.length > 1 && (
+                        <Text style={styles.reactionBadgeCount}>{users.length}</Text>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+
             {showAvatar && (
               <Text style={[styles.messageTime, isMine && styles.messageTimeMine]}>
                 {formatMessageTime(item.created_at)}
@@ -797,6 +870,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
           ref={flatListRef}
           data={visibleMessages}
           renderItem={renderMessage}
+          onScrollBeginDrag={() => setReactionPickerMsgId(null)}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.messagesList}
           showsVerticalScrollIndicator={false}
@@ -1241,5 +1315,62 @@ const styles = StyleSheet.create({
   menuItemText: {
     fontSize: typography.fontSizes.sm,
     color: colors.text.primary,
+  },
+  // Reaction styles
+  reactionPicker: {
+    flexDirection: 'row' as const,
+    backgroundColor: colors.background.secondary,
+    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginTop: 4,
+    alignSelf: 'flex-start' as const,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 6,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border.default,
+  },
+  reactionPickerMine: {
+    alignSelf: 'flex-end' as const,
+  },
+  reactionPickerItem: {
+    padding: 4,
+  },
+  reactionPickerEmoji: {
+    fontSize: 20,
+  },
+  reactionsRow: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: 3,
+    marginTop: 3,
+    alignSelf: 'flex-start' as const,
+  },
+  reactionsRowMine: {
+    alignSelf: 'flex-end' as const,
+  },
+  reactionBadge: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: colors.background.tertiary || '#2a2d45',
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    gap: 2,
+  },
+  reactionBadgeActive: {
+    backgroundColor: 'rgba(211, 187, 115, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(211, 187, 115, 0.3)',
+  },
+  reactionBadgeEmoji: {
+    fontSize: 12,
+  },
+  reactionBadgeCount: {
+    fontSize: 10,
+    color: colors.text.tertiary,
   },
 });

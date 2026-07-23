@@ -48,6 +48,8 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [showMenu, setShowMenu] = useState(false);
+  const [hoveredMsgId, setHoveredMsgId] = useState<string | null>(null);
+  const [reactionPickerMsgId, setReactionPickerMsgId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -301,6 +303,67 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
     return date.toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' });
   };
 
+  const REACTION_EMOJIS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
+
+  const toggleReaction = async (messageId: string, emoji: string) => {
+    setReactionPickerMsgId(null);
+    const msgIndex = messages.findIndex((m) => m.id === messageId);
+    if (msgIndex === -1) return;
+
+    const msg = messages[msgIndex];
+    const currentReactions: Record<string, string[]> = { ...(msg.reactions || {}) };
+    const users = currentReactions[emoji] ? [...currentReactions[emoji]] : [];
+    const userIdx = users.indexOf(currentEmployeeId);
+
+    if (userIdx >= 0) {
+      users.splice(userIdx, 1);
+    } else {
+      users.push(currentEmployeeId);
+    }
+
+    if (users.length > 0) {
+      currentReactions[emoji] = users;
+    } else {
+      delete currentReactions[emoji];
+    }
+
+    const updatedMessages = [...messages];
+    updatedMessages[msgIndex] = { ...msg, reactions: currentReactions };
+    setMessages(updatedMessages);
+
+    await supabase
+      .from('employee_messages')
+      .update({ reactions: currentReactions })
+      .eq('id', messageId);
+  };
+
+  const renderReactions = (msg: ChatMessage, isMine: boolean) => {
+    const reactions = msg.reactions;
+    if (!reactions || Object.keys(reactions).length === 0) return null;
+
+    return (
+      <div className={`mt-0.5 flex flex-wrap gap-0.5 ${isMine ? 'justify-end' : 'justify-start'}`}>
+        {Object.entries(reactions).map(([emoji, users]) => {
+          const iReacted = users.includes(currentEmployeeId);
+          return (
+            <button
+              key={emoji}
+              onClick={(e) => { e.stopPropagation(); toggleReaction(msg.id, emoji); }}
+              className={`flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[11px] transition-all ${
+                iReacted
+                  ? 'bg-[#d3bb73]/20 ring-1 ring-[#d3bb73]/40'
+                  : 'bg-[#262940] hover:bg-[#2f3350]'
+              }`}
+            >
+              <span>{emoji}</span>
+              {users.length > 1 && <span className="text-[10px] text-[#e5e4e2]/60">{users.length}</span>}
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
+
   const renderAttachment = (msg: ChatMessage, isMine: boolean) => {
     if (!msg.attachment_url) return null;
 
@@ -481,7 +544,11 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
                   )}
                   {!isMine && consecutive && conversation.is_group && !isSelectMode && <div className="mr-1.5 w-6 shrink-0" />}
 
-                  <div className={`group relative max-w-[75%] ${isSelected ? 'opacity-70' : ''}`}>
+                  <div
+                    className={`group relative max-w-[75%] ${isSelected ? 'opacity-70' : ''}`}
+                    onMouseEnter={() => !isSelectMode && setHoveredMsgId(msg.id)}
+                    onMouseLeave={() => { setHoveredMsgId(null); setReactionPickerMsgId(null); }}
+                  >
                     {!isMine && !consecutive && conversation.is_group && (
                       <p className="mb-0.5 ml-2 text-[9px] font-medium text-[#d3bb73]/60">
                         {sender?.nickname || sender?.name || 'Unknown'}
@@ -498,6 +565,39 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
                       {hasCaption && <p className="mt-1.5 px-1 text-[13px]">{msg.content}</p>}
                       {hasTextContent && <span>{msg.content}</span>}
                     </div>
+
+                    {/* Hover reaction trigger */}
+                    {hoveredMsgId === msg.id && !isSelectMode && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setReactionPickerMsgId(msg.id); }}
+                        className={`absolute top-0 flex h-6 w-6 items-center justify-center rounded-full bg-[#1c1f33] text-[12px] shadow-lg transition-all hover:scale-110 ${
+                          isMine ? '-left-8' : '-right-8'
+                        }`}
+                      >
+                        😊
+                      </button>
+                    )}
+
+                    {/* Reaction picker */}
+                    {reactionPickerMsgId === msg.id && (
+                      <div className={`absolute z-50 flex gap-0.5 rounded-full bg-[#1c1f33] px-2 py-1 shadow-xl ring-1 ring-[#d3bb73]/10 ${
+                        isMine ? 'right-0 -top-9' : 'left-0 -top-9'
+                      }`}>
+                        {REACTION_EMOJIS.map((emoji) => (
+                          <button
+                            key={emoji}
+                            onClick={(e) => { e.stopPropagation(); toggleReaction(msg.id, emoji); }}
+                            className="flex h-7 w-7 items-center justify-center rounded-full text-[16px] transition-transform hover:scale-125 hover:bg-[#d3bb73]/10"
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Reactions display */}
+                    {renderReactions(msg, isMine)}
+
                     <p className={`mt-0.5 text-[9px] text-[#e5e4e2]/30 opacity-0 transition-opacity group-hover:opacity-100 ${isMine ? 'text-right' : 'text-left'}`}>
                       {formatMessageTime(msg.created_at)}
                     </p>

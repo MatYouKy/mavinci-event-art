@@ -46,6 +46,7 @@ export interface ChatMessage {
   attachment_size?: number | null;
   is_edited: boolean;
   created_at: string;
+  reactions?: Record<string, string[]>;
 }
 
 type WidgetView = 'list' | 'conversation' | 'new';
