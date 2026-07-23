@@ -150,6 +150,7 @@ async function scheduleMeetingAlerts(meeting: Meeting) {
         sound: true,
         priority: alert.priority,
         data: {
+          type: 'meeting_reminder',
           meetingId: meeting.id,
         },
       },
@@ -190,7 +191,7 @@ export default function MeetingsScreen() {
     alert_2_enabled: true,
     alert_2_minutes: 120,
     alert_critical_enabled: true,
-    alert_critical_minutes: 30,
+    alert_critical_minutes: 15,
   });
 
   const [activeAlertPicker, setActiveAlertPicker] = useState<AlertPickerType | null>(null);
@@ -257,7 +258,7 @@ export default function MeetingsScreen() {
       alert_2_enabled: true,
       alert_2_minutes: 120,
       alert_critical_enabled: true,
-      alert_critical_minutes: 30,
+      alert_critical_minutes: 15,
     });
   };
 

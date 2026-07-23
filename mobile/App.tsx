@@ -27,6 +27,7 @@ export let globalNotificationTarget: {
   entity_type?: string;
   entity_id?: string;
   category?: string;
+  meetingId?: string;
 } | null = null;
 
 export function consumeNotificationTarget() {
@@ -97,6 +98,12 @@ function AppContent() {
           entity_type: data.entity_type as string | undefined,
           entity_id: data.entity_id as string | undefined,
           category: data.category as string | undefined,
+        };
+      } else if (data?.type === 'meeting_reminder' && data?.meetingId) {
+        console.log('[Push] Meeting reminder tapped:', data.meetingId);
+        globalNotificationTarget = {
+          type: 'meeting_reminder',
+          meetingId: data.meetingId as string,
         };
       }
     });

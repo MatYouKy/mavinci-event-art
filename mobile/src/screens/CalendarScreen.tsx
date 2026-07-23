@@ -397,8 +397,14 @@ const styles = StyleSheet.create({
   },
 });
 
-export default function CalendarScreen() {
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+export default function CalendarScreen({ initialMeetingId }: { initialMeetingId?: string | null }) {
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(initialMeetingId ?? null);
+
+  useEffect(() => {
+    if (initialMeetingId) {
+      setSelectedEventId(initialMeetingId);
+    }
+  }, [initialMeetingId]);
 
   if (selectedEventId) {
     return (

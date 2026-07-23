@@ -45,6 +45,7 @@ export default function MainTabNavigator() {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [currentScreen, setCurrentScreen] = useState('Dashboard');
   const [unreadCount, setUnreadCount] = useState(0);
+  const [pendingMeetingId, setPendingMeetingId] = useState<string | null>(null);
   const { unreadCount: unreadChatCount } = useUnreadChatCount(employee?.id);
 
   useEffect(() => {
@@ -95,6 +96,10 @@ export default function MainTabNavigator() {
       const data = response.notification.request.content.data;
       if (data?.type === 'chat_message' && data?.conversation_id) {
         setCurrentScreen('Messages');
+      } else if (data?.type === 'meeting_reminder' && data?.meetingId) {
+        setPendingMeetingId(data.meetingId as string);
+        setCurrentScreen('Calendar');
+        setTimeout(() => setPendingMeetingId(null), 1000);
       } else if (data?.type === 'crm_notification') {
         const entityType = data.entity_type as string | undefined;
         const category = data.category as string | undefined;
@@ -111,6 +116,10 @@ export default function MainTabNavigator() {
     // Also check on mount for pending target from cold start
     if (globalNotificationTarget?.type === 'chat_message') {
       setCurrentScreen('Messages');
+    } else if (globalNotificationTarget?.type === 'meeting_reminder') {
+      setPendingMeetingId(globalNotificationTarget.meetingId ?? null);
+      setCurrentScreen('Calendar');
+      setTimeout(() => setPendingMeetingId(null), 1000);
     } else if (globalNotificationTarget?.type === 'crm_notification') {
       const entityType = globalNotificationTarget.entity_type;
       const category = globalNotificationTarget.category;
@@ -212,12 +221,18 @@ export default function MainTabNavigator() {
         />
         <Tab.Screen
           name="Calendar"
-          component={CalendarScreen}
           options={{
             title: 'Kalendarz',
             tabBarIcon: ({ color, size }) => <Feather name="calendar" color={color} size={size} />,
           }}
-        />
+        >
+          {() => (
+            <CalendarScreen
+              initialMeetingId={pendingMeetingId}
+              key={pendingMeetingId ?? 'calendar'}
+            />
+          )}
+        </Tab.Screen>
         <Tab.Screen
           name="Meetings"
           component={MeetingsScreen}
