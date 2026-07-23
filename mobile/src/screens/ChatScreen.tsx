@@ -24,6 +24,8 @@ import { useAuth } from '../contexts/AuthContext';
 import EmployeeAvatar from '../components/EmployeeAvatar';
 import { Conversation } from './ChatListScreen';
 import { setActiveChatConversation } from '../services/chatNotifications';
+import * as FileSystem from 'expo-file-system/legacy';
+import { decode } from 'base64-arraybuffer';
 
 interface Message {
   id: string;
@@ -215,24 +217,92 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     };
   }, [conversation.id, markAsRead, senders]);
 
-  const uploadAttachment = async (attachment: PendingAttachment): Promise<{ url: string } | null> => {
-    const ext = attachment.name.split('.').pop() || 'bin';
-    const storagePath = `${conversation.id}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
-
-    const response = await fetch(attachment.uri);
-    const blob = await response.blob();
-
-    const { error } = await supabase.storage
-      .from('chat-attachments')
-      .upload(storagePath, blob, { contentType: attachment.mimeType });
-
-    if (error) {
-      console.error('[Chat] Upload error:', error);
+  const uploadAttachment = async (
+    attachment: PendingAttachment
+  ): Promise<{ url: string } | null> => {
+    try {
+      const mimeExtensionMap: Record<string, string> = {
+        'image/jpeg': 'jpg',
+        'image/jpg': 'jpg',
+        'image/png': 'png',
+        'image/webp': 'webp',
+        'image/heic': 'heic',
+        'image/heif': 'heif',
+        'video/mp4': 'mp4',
+        'video/quicktime': 'mov',
+        'application/pdf': 'pdf',
+      };
+  
+      const originalExtension = attachment.name
+        .split('.')
+        .pop()
+        ?.toLowerCase();
+  
+      const extension =
+        originalExtension && originalExtension !== attachment.name.toLowerCase()
+          ? originalExtension
+          : mimeExtensionMap[attachment.mimeType] || 'bin';
+  
+      const storagePath = `${conversation.id}/${Date.now()}_${Math.random()
+        .toString(36)
+        .slice(2, 8)}.${extension}`;
+  
+      console.log('[Chat] Reading attachment:', {
+        uri: attachment.uri,
+        name: attachment.name,
+        mimeType: attachment.mimeType,
+        declaredSize: attachment.size,
+        storagePath,
+      });
+  
+      const base64 = await FileSystem.readAsStringAsync(attachment.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+  
+      if (!base64) {
+        throw new Error('Odczytany plik jest pusty');
+      }
+  
+      const arrayBuffer = decode(base64);
+  
+      if (arrayBuffer.byteLength === 0) {
+        throw new Error('Plik po konwersji ma rozmiar 0 bajtów');
+      }
+  
+      console.log('[Chat] Uploading attachment:', {
+        storagePath,
+        mimeType: attachment.mimeType,
+        arrayBufferSize: arrayBuffer.byteLength,
+      });
+  
+      const { error: uploadError } = await supabase.storage
+        .from('chat-attachments')
+        .upload(storagePath, arrayBuffer, {
+          contentType: attachment.mimeType,
+          cacheControl: '3600',
+          upsert: false,
+        });
+  
+      if (uploadError) {
+        console.error('[Chat] Upload error:', uploadError);
+        return null;
+      }
+  
+      const { data: urlData } = supabase.storage
+        .from('chat-attachments')
+        .getPublicUrl(storagePath);
+  
+      if (!urlData.publicUrl) {
+        throw new Error('Nie udało się wygenerować publicznego adresu pliku');
+      }
+  
+      return {
+        url: urlData.publicUrl,
+      };
+    } catch (error) {
+      console.error('[Chat] Attachment processing error:', error);
       return null;
     }
-
-    const { data: urlData } = supabase.storage.from('chat-attachments').getPublicUrl(storagePath);
-    return { url: urlData.publicUrl };
   };
 
   const sendMessage = async () => {
@@ -287,19 +357,31 @@ export default function ChatScreen({ conversation, onBack }: Props) {
       if (attachment) setPendingAttachment(attachment);
       console.error('Failed to send:', error.message);
     } else if (insertedMsg) {
-      triggerChatPush(conversation.id, employee.id, text || attachment?.name || '', insertedMsg.id);
+      triggerChatPush(
+        conversation.id,
+        employee.id,
+        text || attachment?.name || '',
+        insertedMsg.id,
+        messageType
+      );
     }
 
     setIsSending(false);
   };
 
-  const triggerChatPush = async (convId: string, senderId: string, content: string, messageId: string) => {
+  const triggerChatPush = async (
+    convId: string,
+    senderId: string,
+    content: string,
+    messageId: string,
+    messageType: string
+  ) => {
     try {
       await fetch(`${supabaseUrl}/functions/v1/send-chat-push`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseAnonKey}`,
+          Authorization: `Bearer ${supabaseAnonKey}`,
         },
         body: JSON.stringify({
           type: 'INSERT',
@@ -310,7 +392,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
             conversation_id: convId,
             sender_id: senderId,
             content,
-            message_type: 'text',
+            message_type: messageType,
             created_at: new Date().toISOString(),
           },
           old_record: null,
@@ -336,31 +418,62 @@ export default function ChatScreen({ conversation, onBack }: Props) {
   };
 
   const pickImage = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    const permission =
+      await ImagePicker.requestMediaLibraryPermissionsAsync();
+  
     if (!permission.granted) {
-      Alert.alert('Brak uprawnień', 'Zezwól na dostęp do galerii w ustawieniach.');
+      Alert.alert(
+        'Brak uprawnień',
+        'Zezwól na dostęp do galerii w ustawieniach.'
+      );
       return;
     }
-
+  
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.All,
       quality: 0.8,
       videoMaxDuration: 60,
     });
-
+  
     if (result.canceled || !result.assets?.[0]) return;
-
+  
     const asset = result.assets[0];
     const fileSize = asset.fileSize || 0;
-
+    const isVideo = asset.type === 'video';
+  
     if (fileSize > MAX_FILE_SIZE) {
-      Alert.alert('Za duży plik', `Maksymalny rozmiar to ${formatFileSize(MAX_FILE_SIZE)}`);
+      Alert.alert(
+        'Za duży plik',
+        `Maksymalny rozmiar to ${formatFileSize(MAX_FILE_SIZE)}`
+      );
       return;
     }
-
-    const fileName = asset.uri.split('/').pop() || 'attachment';
-    const mimeType = asset.type === 'video' ? 'video/mp4' : 'image/jpeg';
-
+  
+    const mimeType =
+      asset.mimeType ||
+      (isVideo ? 'video/mp4' : 'image/jpeg');
+  
+    const extensionMap: Record<string, string> = {
+      'image/jpeg': 'jpg',
+      'image/jpg': 'jpg',
+      'image/png': 'png',
+      'image/webp': 'webp',
+      'image/heic': 'heic',
+      'image/heif': 'heif',
+      'video/mp4': 'mp4',
+      'video/quicktime': 'mov',
+    };
+  
+    const fallbackExtension =
+      extensionMap[mimeType] || (isVideo ? 'mp4' : 'jpg');
+  
+    const originalName = asset.fileName?.trim();
+  
+    const fileName =
+      originalName && originalName.includes('.')
+        ? originalName
+        : `${isVideo ? 'video' : 'image'}_${Date.now()}.${fallbackExtension}`;
+  
     setPendingAttachment({
       uri: asset.uri,
       name: fileName,
