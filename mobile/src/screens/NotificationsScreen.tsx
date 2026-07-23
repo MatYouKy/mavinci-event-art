@@ -7,6 +7,7 @@ import {
   StyleSheet,
   RefreshControl,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -27,6 +28,14 @@ type TasksStackParamList = {
   };
 };
 
+interface NotificationMetadata {
+  assignment_id?: string;
+  requires_response?: boolean;
+  assignment_status?: string;
+  responded_at?: string;
+  [key: string]: any;
+}
+
 interface Notification {
   id: string;
   title: string;
@@ -36,6 +45,8 @@ interface Notification {
   is_read: boolean;
   related_entity_type?: string;
   related_entity_id?: string;
+  metadata?: NotificationMetadata;
+  recipient_id: string;
 }
 
 type TasksNavigationProp = NativeStackNavigationProp<TasksStackParamList, 'Tasks'>;
@@ -46,6 +57,7 @@ export default function NotificationsScreen() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [respondingId, setRespondingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (employee?.id) {
@@ -89,7 +101,8 @@ export default function NotificationsScreen() {
             category,
             related_entity_type,
             related_entity_id,
-            created_at
+            created_at,
+            metadata
           )
         `)
         .eq('user_id', employee.id)
@@ -145,8 +158,79 @@ export default function NotificationsScreen() {
     }
   };
 
+  const handleAssignmentResponse = async (
+    notification: Notification,
+    status: 'accepted' | 'rejected'
+  ) => {
+    const assignmentId = notification.metadata?.assignment_id;
+    if (!assignmentId) return;
+
+    setRespondingId(assignmentId);
+    try {
+      const { error } = await supabase
+        .from('employee_assignments')
+        .update({
+          status,
+          responded_at: new Date().toISOString(),
+        })
+        .eq('id', assignmentId);
+
+      if (error) throw error;
+
+      setNotifications((prev) =>
+        prev.map((n) =>
+          n.id === notification.id
+            ? {
+                ...n,
+                metadata: {
+                  ...n.metadata,
+                  requires_response: false,
+                  assignment_status: status,
+                  responded_at: new Date().toISOString(),
+                },
+              }
+            : n
+        )
+      );
+
+      Alert.alert(
+        status === 'accepted' ? 'Zaakceptowano' : 'Odrzucono',
+        status === 'accepted'
+          ? 'Zaproszenie do wydarzenia zostało zaakceptowane.'
+          : 'Zaproszenie do wydarzenia zostało odrzucone.'
+      );
+    } catch (error) {
+      console.error('Error responding to assignment:', error);
+      Alert.alert('Błąd', 'Nie udało się zaktualizować statusu zaproszenia.');
+    } finally {
+      setRespondingId(null);
+    }
+  };
+
+  const handleAccept = (notification: Notification) => {
+    Alert.alert(
+      'Akceptacja zaproszenia',
+      'Czy na pewno chcesz zaakceptować zaproszenie do tego wydarzenia?',
+      [
+        { text: 'Anuluj', style: 'cancel' },
+        { text: 'Akceptuj', onPress: () => handleAssignmentResponse(notification, 'accepted') },
+      ]
+    );
+  };
+
+  const handleReject = (notification: Notification) => {
+    Alert.alert(
+      'Odrzucenie zaproszenia',
+      'Czy na pewno chcesz odrzucić zaproszenie do tego wydarzenia?',
+      [
+        { text: 'Anuluj', style: 'cancel' },
+        { text: 'Odrzuć', style: 'destructive', onPress: () => handleAssignmentResponse(notification, 'rejected') },
+      ]
+    );
+  };
+
   const handleNotificationPress = (notification: Notification) => {
-    markAsRead(notification.id, (notification as any).recipient_id);
+    markAsRead(notification.id, notification.recipient_id);
 
     if (notification.related_entity_type === 'task' && notification.related_entity_id) {
       navigation.navigate('Tasks', {
@@ -159,6 +243,82 @@ export default function NotificationsScreen() {
   const onRefresh = () => {
     setRefreshing(true);
     fetchNotifications();
+  };
+
+  const renderInvitationActions = (item: Notification) => {
+    const metadata = item.metadata;
+    if (!metadata?.assignment_id) return null;
+
+    const isResponding = respondingId === metadata.assignment_id;
+
+    if (metadata.requires_response) {
+      return (
+        <View style={styles.invitationActions}>
+          <TouchableOpacity
+            style={styles.acceptButton}
+            onPress={() => handleAccept(item)}
+            disabled={isResponding}
+          >
+            {isResponding ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Feather name="check-circle" size={14} color="#fff" />
+                <Text style={styles.acceptButtonText}>Akceptuj</Text>
+              </>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.rejectButton}
+            onPress={() => handleReject(item)}
+            disabled={isResponding}
+          >
+            <Feather name="x-circle" size={14} color="#ef4444" />
+            <Text style={styles.rejectButtonText}>Odrzuć</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (metadata.assignment_status === 'accepted') {
+      return (
+        <View style={styles.statusBadgeAccepted}>
+          <Feather name="check-circle" size={13} color="#22c55e" />
+          <Text style={styles.statusBadgeAcceptedText}>Zaakceptowano</Text>
+          {metadata.responded_at && (
+            <Text style={styles.statusBadgeDate}>
+              {new Date(metadata.responded_at).toLocaleDateString('pl-PL', {
+                day: '2-digit',
+                month: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </Text>
+          )}
+        </View>
+      );
+    }
+
+    if (metadata.assignment_status === 'rejected') {
+      return (
+        <View style={styles.statusBadgeRejected}>
+          <Feather name="x-circle" size={13} color="#ef4444" />
+          <Text style={styles.statusBadgeRejectedText}>Odrzucono</Text>
+          {metadata.responded_at && (
+            <Text style={styles.statusBadgeDateRed}>
+              {new Date(metadata.responded_at).toLocaleDateString('pl-PL', {
+                day: '2-digit',
+                month: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </Text>
+          )}
+        </View>
+      );
+    }
+
+    return null;
   };
 
   const renderNotification = ({ item }: { item: Notification }) => {
@@ -175,18 +335,33 @@ export default function NotificationsScreen() {
       timeText = 'Teraz';
     }
 
+    const hasInvitation = !!item.metadata?.assignment_id;
+
     return (
       <TouchableOpacity
         style={[
           styles.notificationItem,
           !item.is_read && styles.unreadNotification,
+          hasInvitation && item.metadata?.requires_response && styles.invitationNotification,
         ]}
         onPress={() => handleNotificationPress(item)}
       >
         <View style={styles.notificationIcon}>
           <Feather
-            name={item.is_read ? 'check-circle' : 'bell'}
-            color={item.is_read ? colors.text.tertiary : colors.primary.gold}
+            name={
+              hasInvitation && item.metadata?.requires_response
+                ? 'user-plus'
+                : item.is_read
+                  ? 'check-circle'
+                  : 'bell'
+            }
+            color={
+              hasInvitation && item.metadata?.requires_response
+                ? '#f59e0b'
+                : item.is_read
+                  ? colors.text.tertiary
+                  : colors.primary.gold
+            }
             size={24}
           />
         </View>
@@ -195,6 +370,7 @@ export default function NotificationsScreen() {
           <Text style={styles.notificationMessage} numberOfLines={2}>
             {item.message}
           </Text>
+          {renderInvitationActions(item)}
           <Text style={styles.notificationTime}>{timeText}</Text>
         </View>
         {!item.is_read && <View style={styles.unreadDot} />}
@@ -296,6 +472,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary.gold + '10',
     borderColor: colors.primary.gold + '40',
   },
+  invitationNotification: {
+    borderColor: '#f59e0b',
+    backgroundColor: '#fef3c7' + '20',
+  },
   notificationIcon: {
     width: 40,
     height: 40,
@@ -337,5 +517,85 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: typography.fontSizes.md,
     color: colors.text.tertiary,
+  },
+  // Invitation actions
+  invitationActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  acceptButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#22c55e',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  acceptButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  rejectButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#ef4444',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  rejectButtonText: {
+    color: '#ef4444',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  statusBadgeAccepted: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#dcfce7',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+    marginTop: 8,
+  },
+  statusBadgeAcceptedText: {
+    color: '#166534',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  statusBadgeDate: {
+    color: '#166534',
+    fontSize: 10,
+    opacity: 0.7,
+    marginLeft: 4,
+  },
+  statusBadgeRejected: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#fee2e2',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+    marginTop: 8,
+  },
+  statusBadgeRejectedText: {
+    color: '#991b1b',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  statusBadgeDateRed: {
+    color: '#991b1b',
+    fontSize: 10,
+    opacity: 0.7,
+    marginLeft: 4,
   },
 });
