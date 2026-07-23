@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
   TextInput,
   Dimensions,
   Modal,
+  Animated,
+  PanResponder,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -41,6 +43,7 @@ interface Task {
   board_column: string;
   due_date: string | null;
   created_at: string;
+  sort_order?: number;
   task_assignees: {
     employee_id: string;
     employees: {
@@ -53,18 +56,20 @@ interface Task {
 }
 
 const priorityColors = {
-  low: colors.text.secondary,
-  medium: '#3b82f6',
-  high: '#f97316',
   urgent: '#ef4444',
+  high: '#f97316',
+  medium: '#3b82f6',
+  low: colors.text.secondary,
 };
 
 const priorityLabels = {
-  low: 'Niski',
-  medium: 'Średni',
-  high: 'Wysoki',
   urgent: 'Pilne',
+  high: 'Wysoki',
+  medium: 'Średni',
+  low: 'Niski',
 };
+
+const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
 
 const BOARD_COLUMNS = [
   { id: 'todo', title: 'Do zrobienia', color: '#eab308' },
@@ -72,6 +77,163 @@ const BOARD_COLUMNS = [
   { id: 'review', title: 'Sprawdzenie', color: '#a855f7' },
   { id: 'completed', title: 'Zakończone', color: '#10b981' },
 ];
+
+const CARD_HEIGHT = 110;
+
+function DraggableTaskCard({
+  task,
+  index,
+  totalCount,
+  onPress,
+  onLongPress,
+  onMoveUp,
+  onMoveDown,
+  isReordering,
+}: {
+  task: Task;
+  index: number;
+  totalCount: number;
+  onPress: () => void;
+  onLongPress: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  isReordering: boolean;
+}) {
+  const pan = useRef(new Animated.ValueXY()).current;
+  const scale = useRef(new Animated.Value(1)).current;
+  const [isDragging, setIsDragging] = useState(false);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => isReordering,
+      onMoveShouldSetPanResponder: (_, gestureState) =>
+        isReordering && Math.abs(gestureState.dy) > 5,
+      onPanResponderGrant: () => {
+        setIsDragging(true);
+        Animated.spring(scale, { toValue: 1.03, useNativeDriver: true }).start();
+      },
+      onPanResponderMove: (_, gestureState) => {
+        pan.setValue({ x: 0, y: gestureState.dy });
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        setIsDragging(false);
+        Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start();
+
+        const movedSlots = Math.round(gestureState.dy / CARD_HEIGHT);
+        if (movedSlots < 0) {
+          for (let i = 0; i < Math.abs(movedSlots); i++) onMoveUp();
+        } else if (movedSlots > 0) {
+          for (let i = 0; i < movedSlots; i++) onMoveDown();
+        }
+
+        Animated.spring(pan, {
+          toValue: { x: 0, y: 0 },
+          useNativeDriver: true,
+        }).start();
+      },
+    }),
+  ).current;
+
+  const assignees = task.task_assignees ?? [];
+
+  return (
+    <Animated.View
+      style={[
+        styles.taskCard,
+        isDragging && styles.taskCardDragging,
+        {
+          transform: [{ translateX: pan.x }, { translateY: pan.y }, { scale }],
+          zIndex: isDragging ? 100 : 1,
+        },
+      ]}
+      {...(isReordering ? panResponder.panHandlers : {})}
+    >
+      <TouchableOpacity
+        onPress={isReordering ? undefined : onPress}
+        onLongPress={isReordering ? undefined : onLongPress}
+        delayLongPress={500}
+        activeOpacity={isReordering ? 1 : 0.7}
+      >
+        <View style={styles.taskHeader}>
+          <Text style={styles.taskTitle} numberOfLines={2}>
+            {task.title}
+          </Text>
+          <View
+            style={[
+              styles.priorityBadge,
+              { backgroundColor: `${priorityColors[task.priority]}20` },
+            ]}
+          >
+            <Text style={[styles.priorityText, { color: priorityColors[task.priority] }]}>
+              {priorityLabels[task.priority]}
+            </Text>
+          </View>
+        </View>
+
+        {task.description && (
+          <Text style={styles.taskDescription} numberOfLines={2}>
+            {task.description}
+          </Text>
+        )}
+
+        <View style={styles.taskFooterRow}>
+          <View style={styles.assignees}>
+            {assignees.slice(0, 3).map((assignee, idx) => (
+              <View
+                key={assignee.employee_id}
+                style={[styles.avatarWrapper, { marginLeft: idx > 0 ? -8 : 0 }]}
+              >
+                {assignee.employees && (
+                  <EmployeeAvatar
+                    avatarUrl={assignee.employees.avatar_url}
+                    avatarMetadata={assignee.employees.avatar_metadata}
+                    employeeName={`${assignee.employees.name} ${assignee.employees.surname}`}
+                    size={24}
+                  />
+                )}
+              </View>
+            ))}
+            {assignees.length > 3 && (
+              <View style={styles.moreAvatars}>
+                <Text style={styles.moreAvatarsText}>+{assignees.length - 3}</Text>
+              </View>
+            )}
+          </View>
+
+          {isReordering && (
+            <View style={styles.reorderButtons}>
+              <TouchableOpacity
+                style={[styles.reorderBtn, index === 0 && styles.reorderBtnDisabled]}
+                onPress={onMoveUp}
+                disabled={index === 0}
+              >
+                <Feather
+                  name="chevron-up"
+                  size={18}
+                  color={index === 0 ? colors.text.secondary : colors.primary.gold}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.reorderBtn,
+                  index === totalCount - 1 && styles.reorderBtnDisabled,
+                ]}
+                onPress={onMoveDown}
+                disabled={index === totalCount - 1}
+              >
+                <Feather
+                  name="chevron-down"
+                  size={18}
+                  color={index === totalCount - 1 ? colors.text.secondary : colors.primary.gold}
+                />
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
 
 export default function TasksScreen() {
   const navigation = useNavigation<TasksNavigationProp>();
@@ -82,6 +244,8 @@ export default function TasksScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
+  const [isReordering, setIsReordering] = useState(false);
+  const [customOrder, setCustomOrder] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
     if (employee) {
@@ -114,7 +278,6 @@ export default function TasksScreen() {
     try {
       if (!employee) return;
 
-      // Fetch tasks where employee is creator
       const { data: createdTasks, error: error1 } = await supabase
         .from('tasks')
         .select('*')
@@ -124,7 +287,6 @@ export default function TasksScreen() {
 
       if (error1) throw error1;
 
-      // Fetch tasks where employee is assigned
       const { data: assignedTasksData, error: error2 } = await supabase
         .from('task_assignees')
         .select('task_id')
@@ -132,10 +294,8 @@ export default function TasksScreen() {
 
       if (error2) throw error2;
 
-      // Get unique task IDs
       const assignedTaskIds = assignedTasksData?.map((ta) => ta.task_id) || [];
 
-      // Fetch assigned tasks
       let assignedTasks: any[] = [];
       if (assignedTaskIds.length > 0) {
         const { data: fetchedTasks, error: error3 } = await supabase
@@ -149,11 +309,9 @@ export default function TasksScreen() {
         assignedTasks = fetchedTasks || [];
       }
 
-      // Combine and deduplicate
       const allTasks = [...(createdTasks || []), ...assignedTasks];
       const uniqueTasks = Array.from(new Map(allTasks.map((task) => [task.id, task])).values());
 
-      // Fetch assignees for all tasks
       const taskIds = uniqueTasks.map((t) => t.id);
       if (taskIds.length > 0) {
         const { data: assigneesData, error: error4 } = await supabase
@@ -163,7 +321,6 @@ export default function TasksScreen() {
 
         if (error4) throw error4;
 
-        // Fetch employee details
         const employeeIds = [...new Set(assigneesData?.map((a) => a.employee_id) || [])];
         if (employeeIds.length > 0) {
           const { data: employeesData, error: error5 } = await supabase
@@ -173,10 +330,8 @@ export default function TasksScreen() {
 
           if (error5) throw error5;
 
-          // Map employees by ID
           const employeesMap = new Map(employeesData?.map((e) => [e.id, e]) || []);
 
-          // Attach assignees to tasks
           uniqueTasks.forEach((task) => {
             const taskAssignees = assigneesData?.filter((a) => a.task_id === task.id) || [];
             task.task_assignees = taskAssignees.map((ta) => ({
@@ -187,11 +342,7 @@ export default function TasksScreen() {
         }
       }
 
-      uniqueTasks.sort(
-        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-      );
-
-      setTasks(uniqueTasks);
+      setTasks(uniqueTasks as Task[]);
     } catch (error) {
       console.error('Error fetching tasks:', error);
     } finally {
@@ -214,7 +365,6 @@ export default function TasksScreen() {
 
       if (error) throw error;
 
-      // Update local state
       setTasks((prev) =>
         prev.map((task) => (task.id === taskId ? { ...task, board_column: newColumn } : task)),
       );
@@ -223,79 +373,54 @@ export default function TasksScreen() {
     }
   };
 
+  const sortByPriority = (taskList: Task[]): Task[] => {
+    return [...taskList].sort((a, b) => {
+      const pA = priorityOrder[a.priority] ?? 4;
+      const pB = priorityOrder[b.priority] ?? 4;
+      if (pA !== pB) return pA - pB;
+      if (a.due_date && b.due_date) return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+      if (a.due_date) return -1;
+      if (b.due_date) return 1;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+  };
+
   const filteredTasks = tasks.filter((task) =>
     task.title.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
-  const getTasksByColumn = (columnId: string) => {
-    return filteredTasks.filter((task) => task.board_column === columnId);
-  };
+  const getTasksByColumn = useCallback(
+    (columnId: string): Task[] => {
+      const columnTasks = filteredTasks.filter((task) => task.board_column === columnId);
+      const sorted = sortByPriority(columnTasks);
 
-  const renderTaskCard = (task: Task) => {
-    const assignees = task.task_assignees ?? [];
+      const order = customOrder[columnId];
+      if (order && order.length > 0) {
+        const orderMap = new Map(order.map((id, idx) => [id, idx]));
+        return sorted.sort((a, b) => {
+          const idxA = orderMap.get(a.id);
+          const idxB = orderMap.get(b.id);
+          if (idxA !== undefined && idxB !== undefined) return idxA - idxB;
+          if (idxA !== undefined) return -1;
+          if (idxB !== undefined) return 1;
+          return 0;
+        });
+      }
 
-    return (
-      <TouchableOpacity
-        key={task.id}
-        style={styles.taskCard}
-        onPress={() =>
-          navigation.navigate('TaskDetail', {
-            taskId: task.id,
-          })
-        }
-        onLongPress={() => {
-          setSelectedTask(task);
-          setShowColumnPicker(true);
-        }}
-        delayLongPress={500}
-      >
-        <View style={styles.taskHeader}>
-          <Text style={styles.taskTitle} numberOfLines={2}>
-            {task.title}
-          </Text>
-          <View
-            style={[
-              styles.priorityBadge,
-              { backgroundColor: `${priorityColors[task.priority]}20` },
-            ]}
-          >
-            <Text style={[styles.priorityText, { color: priorityColors[task.priority] }]}>
-              {priorityLabels[task.priority]}
-            </Text>
-          </View>
-        </View>
+      return sorted;
+    },
+    [filteredTasks, customOrder],
+  );
 
-        {task.description && (
-          <Text style={styles.taskDescription} numberOfLines={2}>
-            {task.description}
-          </Text>
-        )}
+  const reorderTask = (columnId: string, fromIndex: number, toIndex: number) => {
+    const columnTasks = getTasksByColumn(columnId);
+    if (toIndex < 0 || toIndex >= columnTasks.length) return;
 
-        <View style={styles.assignees}>
-          {assignees.slice(0, 3).map((assignee, index) => (
-            <View
-              key={assignee.employee_id}
-              style={[styles.avatarWrapper, { marginLeft: index > 0 ? -8 : 0 }]}
-            >
-              {assignee.employees && (
-                <EmployeeAvatar
-                  avatarUrl={assignee.employees.avatar_url}
-                  avatarMetadata={assignee.employees.avatar_metadata}
-                  employeeName={`${assignee.employees.name} ${assignee.employees.surname}`}
-                  size={24}
-                />
-              )}
-            </View>
-          ))}
+    const newOrder = columnTasks.map((t) => t.id);
+    const [moved] = newOrder.splice(fromIndex, 1);
+    newOrder.splice(toIndex, 0, moved);
 
-          {assignees.length > 3 && (
-            <View style={styles.moreAvatars}>
-              <Text style={styles.moreAvatarsText}>+{assignees.length - 3}</Text>
-            </View>
-          )}
-        </View>
-      </TouchableOpacity>
-    );
+    setCustomOrder((prev) => ({ ...prev, [columnId]: newOrder }));
   };
 
   if (loading) {
@@ -309,25 +434,37 @@ export default function TasksScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <View style={styles.searchContainer}>
-          <Feather
-            name="search"
-            size={20}
-            color={colors.text.secondary}
-            style={styles.searchIcon}
-          />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Szukaj zadań..."
-            placeholderTextColor={colors.text.secondary}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Feather name="x" size={20} color={colors.text.secondary} />
-            </TouchableOpacity>
-          )}
+        <View style={styles.searchRow}>
+          <View style={styles.searchContainer}>
+            <Feather
+              name="search"
+              size={20}
+              color={colors.text.secondary}
+              style={styles.searchIcon}
+            />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Szukaj zadań..."
+              placeholderTextColor={colors.text.secondary}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <Feather name="x" size={20} color={colors.text.secondary} />
+              </TouchableOpacity>
+            )}
+          </View>
+          <TouchableOpacity
+            style={[styles.reorderToggle, isReordering && styles.reorderToggleActive]}
+            onPress={() => setIsReordering(!isReordering)}
+          >
+            <Feather
+              name="move"
+              size={20}
+              color={isReordering ? colors.background.primary : colors.primary.gold}
+            />
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -336,6 +473,7 @@ export default function TasksScreen() {
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         style={styles.boardContainer}
+        scrollEnabled={!isReordering}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -359,6 +497,7 @@ export default function TasksScreen() {
                 style={styles.columnContent}
                 contentContainerStyle={styles.columnContentContainer}
                 showsVerticalScrollIndicator={false}
+                scrollEnabled={!isReordering}
               >
                 {columnTasks.length === 0 ? (
                   <View style={styles.emptyColumn}>
@@ -366,7 +505,22 @@ export default function TasksScreen() {
                     <Text style={styles.emptyText}>Brak zadań</Text>
                   </View>
                 ) : (
-                  columnTasks.map((task) => renderTaskCard(task))
+                  columnTasks.map((task, idx) => (
+                    <DraggableTaskCard
+                      key={task.id}
+                      task={task}
+                      index={idx}
+                      totalCount={columnTasks.length}
+                      isReordering={isReordering}
+                      onPress={() => navigation.navigate('TaskDetail', { taskId: task.id })}
+                      onLongPress={() => {
+                        setSelectedTask(task);
+                        setShowColumnPicker(true);
+                      }}
+                      onMoveUp={() => reorderTask(column.id, idx, idx - 1)}
+                      onMoveDown={() => reorderTask(column.id, idx, idx + 1)}
+                    />
+                  ))
                 )}
               </ScrollView>
             </View>
@@ -376,7 +530,11 @@ export default function TasksScreen() {
 
       <View style={styles.hintContainer}>
         <Feather name="info" size={14} color={colors.text.secondary} />
-        <Text style={styles.hintText}>Przytrzymaj zadanie, aby przenieść do innej kolumny</Text>
+        <Text style={styles.hintText}>
+          {isReordering
+            ? 'Przeciągnij kartę lub użyj strzałek aby zmienić kolejność'
+            : 'Przytrzymaj zadanie, aby przenieść do innej kolumny'}
+        </Text>
       </View>
 
       <Modal
@@ -447,7 +605,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border.default,
   },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
   searchContainer: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.background.primary,
@@ -464,6 +628,18 @@ const styles = StyleSheet.create({
     height: 44,
     color: colors.text.primary,
     fontSize: typography.fontSizes.md,
+  },
+  reorderToggle: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.primary.gold,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  reorderToggleActive: {
+    backgroundColor: colors.primary.gold,
   },
   boardContainer: {
     flex: 1,
@@ -516,6 +692,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border.default,
   },
+  taskCardDragging: {
+    borderColor: colors.primary.gold,
+    shadowColor: colors.primary.gold,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
   taskHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -544,7 +728,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginBottom: spacing.sm,
   },
-  taskFooter: {
+  taskFooterRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -574,14 +758,22 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeights.bold,
     color: colors.background.primary,
   },
-  dueDateContainer: {
+  reorderButtons: {
     flexDirection: 'row',
-    alignItems: 'center',
     gap: 4,
   },
-  dueDate: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.text.secondary,
+  reorderBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.background.primary,
+  },
+  reorderBtnDisabled: {
+    opacity: 0.4,
   },
   emptyColumn: {
     alignItems: 'center',
