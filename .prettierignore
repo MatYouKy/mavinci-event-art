@@ -18,3 +18,14 @@ package-lock.json
 yarn.lock
 pnpm-lock.yaml
 coverage
+/mobile/node_modules
+/mobile/dist
+/mobile/build
+/mobile/coverage
+/mobile/package-lock.json
+/mobile/yarn.lock
+/mobile/pnpm-lock.yaml
+/mobile/coverage
+/mobile/package-lock.json
+/mobile/yarn.lock
+/mobile/pnpm-lock.yaml
