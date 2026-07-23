@@ -14,6 +14,7 @@ import { colors, spacing, typography } from '../theme';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import PermissionGate from '../components/PermissionGate';
+import EventDetailScreen from './EventDetailScreen';
 
 interface CalendarEvent {
   id: string;
@@ -44,7 +45,7 @@ const STATUS_LABELS: Record<string, string> = {
   meeting: 'Spotkanie',
 };
 
-function CalendarContent() {
+function CalendarContent({ onEventPress }: { onEventPress: (eventId: string) => void }) {
   const { employee } = useAuth();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -206,7 +207,7 @@ function CalendarContent() {
     });
 
     return (
-      <TouchableOpacity style={styles.eventCard}>
+      <TouchableOpacity style={styles.eventCard} activeOpacity={0.7} onPress={() => onEventPress(item.id)}>
         <View style={[styles.eventIndicator, { backgroundColor: statusColor }]} />
         <View style={styles.eventContent}>
           <Text style={styles.eventTime}>{time}</Text>
@@ -397,9 +398,20 @@ const styles = StyleSheet.create({
 });
 
 export default function CalendarScreen() {
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+
+  if (selectedEventId) {
+    return (
+      <EventDetailScreen
+        eventId={selectedEventId}
+        onBack={() => setSelectedEventId(null)}
+      />
+    );
+  }
+
   return (
     <PermissionGate module="calendar">
-      <CalendarContent />
+      <CalendarContent onEventPress={(id) => setSelectedEventId(id)} />
     </PermissionGate>
   );
 }
