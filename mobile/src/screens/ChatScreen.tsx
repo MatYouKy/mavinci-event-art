@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, typography } from '../theme';
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -105,11 +106,13 @@ export default function ChatScreen({ conversation, onBack }: Props) {
 
   const fetchMessages = useCallback(async () => {
     if (employee) {
-      const { data: deletions } = await supabase
-        .from('employee_message_deletions')
-        .select('message_id')
-        .eq('employee_id', employee.id);
-      setDeletedIds(new Set((deletions || []).map((d: { message_id: string }) => d.message_id)));
+      const storageKey = `chat_deleted_${employee.id}`;
+      try {
+        const stored = await AsyncStorage.getItem(storageKey);
+        if (stored) {
+          setDeletedIds(new Set(JSON.parse(stored)));
+        }
+      } catch {}
     }
 
     const { data, error } = await supabase
@@ -441,22 +444,13 @@ export default function ChatScreen({ conversation, onBack }: Props) {
           text: 'Usuń',
           style: 'destructive',
           onPress: async () => {
-            const rows = Array.from(selectedIds).map((mid) => ({
-              message_id: mid,
-              employee_id: employee.id,
-            }));
-
-            const { error } = await supabase
-              .from('employee_message_deletions')
-              .upsert(rows, { onConflict: 'message_id,employee_id' });
-
-            if (!error) {
-              setDeletedIds((prev) => {
-                const next = new Set(prev);
-                selectedIds.forEach((id) => next.add(id));
-                return next;
-              });
-            }
+            const storageKey = `chat_deleted_${employee.id}`;
+            setDeletedIds((prev) => {
+              const next = new Set(prev);
+              selectedIds.forEach((id) => next.add(id));
+              AsyncStorage.setItem(storageKey, JSON.stringify(Array.from(next))).catch(() => {});
+              return next;
+            });
             exitSelectMode();
           },
         },

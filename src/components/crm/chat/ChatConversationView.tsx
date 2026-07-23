@@ -110,12 +110,14 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
   const fetchMessages = async () => {
     setIsLoadingMessages(true);
 
-    const { data: deletions } = await supabase
-      .from('employee_message_deletions')
-      .select('message_id')
-      .eq('employee_id', currentEmployeeId);
-    const deletedSet = new Set((deletions || []).map((d: { message_id: string }) => d.message_id));
-    setDeletedIds(deletedSet);
+    // Load deleted message IDs from localStorage
+    const storageKey = `chat_deleted_${currentEmployeeId}`;
+    try {
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        setDeletedIds(new Set(JSON.parse(stored)));
+      }
+    } catch {}
 
     const { data } = await supabase
       .from('employee_messages')
@@ -272,22 +274,16 @@ export default function ChatConversationView({ conversation, currentEmployeeId, 
     const confirmed = confirm(`Usunąć ${selectedIds.size} wiadomości? (tylko u Ciebie)`);
     if (!confirmed) return;
 
-    const rows = Array.from(selectedIds).map((mid) => ({
-      message_id: mid,
-      employee_id: currentEmployeeId,
-    }));
+    const storageKey = `chat_deleted_${currentEmployeeId}`;
+    setDeletedIds((prev) => {
+      const next = new Set(prev);
+      selectedIds.forEach((id) => next.add(id));
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(Array.from(next)));
+      } catch {}
+      return next;
+    });
 
-    const { error } = await supabase
-      .from('employee_message_deletions')
-      .upsert(rows, { onConflict: 'message_id,employee_id' });
-
-    if (!error) {
-      setDeletedIds((prev) => {
-        const next = new Set(prev);
-        selectedIds.forEach((id) => next.add(id));
-        return next;
-      });
-    }
     exitSelectMode();
   };
 
