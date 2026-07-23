@@ -3,23 +3,33 @@
     "name": "Mavinci CRM",
     "slug": "mavinci-mobile",
     "version": "1.0.0",
+    "scheme": "mavinci-crm",
+
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
+
+    "icon": "./assets/app-icon.png",
+
     "splash": {
+      "image": "./assets/splash-logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#0f1119"
     },
+
     "assetBundlePatterns": ["**/*"],
+
     "plugins": [
       [
         "expo-notifications",
         {
           "icon": "./assets/notification-icon.png",
           "color": "#d3bb73",
+          "defaultChannel": "default",
           "sounds": []
         }
       ]
     ],
+
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.mavinci.crm",
@@ -27,11 +37,23 @@
         "UIBackgroundModes": ["remote-notification"]
       }
     },
+
     "android": {
       "package": "com.mavinci.crm",
       "googleServicesFile": "./google-services.json",
-      "permissions": ["RECEIVE_BOOT_COMPLETED", "VIBRATE", "WAKE_LOCK"]
+
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0f1119"
+      },
+
+      "permissions": [
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        "WAKE_LOCK"
+      ]
     },
+
     "notification": {
       "iosDisplayInForeground": true,
       "color": "#d3bb73"
