@@ -9,6 +9,7 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { colors, spacing, typography, borderRadius } from '../theme';
@@ -43,7 +44,11 @@ export default function LoginScreen() {
       <View style={styles.content}>
         {/* Logo/Branding */}
         <View style={styles.header}>
-          <Text style={styles.title}>Mavinci CRM</Text>
+          <Image
+            source={require('../assets/logo.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
           <Text style={styles.subtitle}>System zarządzania wydarzeniami</Text>
         </View>
 
@@ -113,6 +118,11 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     marginBottom: spacing.xxxl,
+  },
+  logo: {
+    height: 48,
+    width: 180,
+    marginBottom: spacing.sm,
   },
   title: {
     fontSize: typography.fontSizes.huge,

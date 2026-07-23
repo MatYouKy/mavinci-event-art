@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TouchableOpacity, View, Text } from 'react-native';
+import { TouchableOpacity, View, Text, Image } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
@@ -150,14 +150,11 @@ export default function MainTabNavigator() {
           ),
           headerTitle: () => (
             <View style={{ alignItems: 'center' }}>
-              <Text style={{
-                fontSize: 18,
-                fontWeight: '700',
-                color: colors.primary.gold,
-                letterSpacing: 1,
-              }}>
-                MAVINCI CRM
-              </Text>
+              <Image
+                source={require('../assets/logo.png')}
+                style={{ height: 32, width: 120 }}
+                resizeMode="contain"
+              />
             </View>
           ),
           headerRight: () => (
