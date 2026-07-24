@@ -1331,6 +1331,8 @@ export default function EventAgendaTab({
           )}
         </div>
 
+      </div>
+
       {pdfPreviewUrl && (
         <div className="fixed inset-0 z-[60] flex flex-col bg-black/80 backdrop-blur-sm">
           <div className="flex items-center justify-between border-b border-[#d3bb73]/20 bg-[#0f1119] px-6 py-4">
