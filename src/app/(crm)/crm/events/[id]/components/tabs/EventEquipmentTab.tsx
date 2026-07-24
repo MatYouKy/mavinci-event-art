@@ -13,7 +13,7 @@ import {
   Check,
 } from 'lucide-react';
 import { AddEquipmentModal } from '../Modals/AddEquipmentModal';
-import { ChevronDown, Package as PackageIcon, Trash2 } from 'lucide-react';
+import { ChevronDown, Package as PackageIcon, Trash2, Check } from 'lucide-react';
 import { useEventEquipment } from '../../../hooks';
 import { useEvent } from '../../../hooks/useEvent';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -39,6 +39,7 @@ import Popover from '@/components/UI/Tooltip';
 import { useDialog } from '@/contexts/DialogContext';
 import { ISimpleContact } from '../../EventDetailPageClient';
 import SelectRentalEquipmentModal from '@/components/crm/SelectRentalEquipmentModal';
+import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 import NextImage from 'next/image';
 
 const KitItemRow = ({
@@ -297,6 +298,13 @@ export const EventEquipmentTab: React.FC<{
   const [resolvedExternalIndices, setResolvedExternalIndices] = useState<Set<number>>(new Set());
   const [importingFromCalc, setImportingFromCalc] = useState(false);
   const [replacingExternalIdx, setReplacingExternalIdx] = useState<number | null>(null);
+
+  // Loading confirmation state
+  const [showLoadingConfirmModal, setShowLoadingConfirmModal] = useState(false);
+  const [loadingNotes, setLoadingNotes] = useState('');
+  const [showUnlockRequestModal, setShowUnlockRequestModal] = useState(false);
+  const [unlockReason, setUnlockReason] = useState('');
+  const [loadingConfirmedByEmployee, setLoadingConfirmedByEmployee] = useState<any>(null);
   const [importConflicts, setImportConflicts] = useState<
     Array<{
       name: string;
@@ -310,7 +318,7 @@ export const EventEquipmentTab: React.FC<{
 
   const { showSnackbar } = useSnackbar();
   const { event, refetch: refetchEvent } = useEvent(initialEvent);
-  const { employee } = useCurrentEmployee();
+  const { employee, isAdmin } = useCurrentEmployee();
   const { showConfirm } = useDialog();
   const router = useRouter();
 
@@ -331,6 +339,22 @@ export const EventEquipmentTab: React.FC<{
       console.error('Error marking checklist as modified:', err);
     }
   };
+
+  // Fetch employee who confirmed loading
+  useEffect(() => {
+    if (!event?.loading_confirmed_by) {
+      setLoadingConfirmedByEmployee(null);
+      return;
+    }
+    (async () => {
+      const { data } = await supabase
+        .from('employees')
+        .select('id, first_name, last_name, avatar_url')
+        .eq('id', event.loading_confirmed_by)
+        .maybeSingle();
+      setLoadingConfirmedByEmployee(data);
+    })();
+  }, [event?.loading_confirmed_by]);
 
   useEffect(() => {
     const checkConflicts = async () => {
@@ -819,6 +843,106 @@ export const EventEquipmentTab: React.FC<{
     });
     showSnackbar('Konflikt oznaczony jako rozwiązany', 'info');
   };
+
+  // === Loading confirmation handlers ===
+  const handleConfirmLoading = async () => {
+    if (!event?.id || !employee?.id) return;
+
+    const allLoaded = equipment.every((r: any) => r.is_loaded);
+    if (!allLoaded && !loadingNotes.trim()) {
+      showSnackbar('Wpisz uwagi dlaczego sprzęt nie jest kompletny', 'error');
+      return;
+    }
+
+    const { error } = await supabase
+      .from('events')
+      .update({
+        loading_confirmed: true,
+        loading_confirmed_at: new Date().toISOString(),
+        loading_confirmed_by: employee.id,
+        loading_notes: loadingNotes.trim() || null,
+        loading_locked: true,
+      })
+      .eq('id', event.id);
+
+    if (error) {
+      showSnackbar('Błąd potwierdzania załadunku', 'error');
+      return;
+    }
+
+    setShowLoadingConfirmModal(false);
+    setLoadingNotes('');
+    showSnackbar('Załadunek potwierdzony', 'success');
+    refetchEvent();
+  };
+
+  const handleRequestUnlock = async () => {
+    if (!event?.id || !employee?.id) return;
+
+    if (!unlockReason.trim()) {
+      showSnackbar('Wpisz powód prośby o odblokowanie', 'error');
+      return;
+    }
+
+    const { error } = await supabase
+      .from('events')
+      .update({
+        loading_unlock_requested: true,
+        loading_unlock_requested_at: new Date().toISOString(),
+        loading_unlock_requested_by: employee.id,
+        loading_unlock_reason: unlockReason.trim(),
+      })
+      .eq('id', event.id);
+
+    if (error) {
+      showSnackbar('Błąd wysyłania prośby', 'error');
+      return;
+    }
+
+    setShowUnlockRequestModal(false);
+    setUnlockReason('');
+    showSnackbar('Prośba o odblokowanie wysłana do administratora', 'success');
+    refetchEvent();
+  };
+
+  const handleAdminUnlock = async () => {
+    if (!event?.id) return;
+
+    const confirmed = await showConfirm(
+      'Odblokuj checklistę',
+      'Czy na pewno chcesz odblokować checklistę załadunku? Pracownicy będą mogli zmieniać status sprzętu.',
+    );
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from('events')
+      .update({
+        loading_confirmed: false,
+        loading_locked: false,
+        loading_unlock_requested: false,
+        loading_unlock_reason: null,
+        loading_unlock_requested_at: null,
+        loading_unlock_requested_by: null,
+        loading_notes: null,
+        loading_confirmed_at: null,
+        loading_confirmed_by: null,
+      })
+      .eq('id', event.id);
+
+    if (error) {
+      showSnackbar('Błąd odblokowywania', 'error');
+      return;
+    }
+
+    showSnackbar('Checklista odblokowana', 'success');
+    refetchEvent();
+  };
+
+  const isLoadingLocked = Boolean(event?.loading_locked);
+  const isLoadingConfirmed = Boolean(event?.loading_confirmed);
+  const loadedCount = equipment.filter((r: any) => r.is_loaded).length;
+  const totalCount = equipment.length;
+  const allLoaded = totalCount > 0 && loadedCount === totalCount;
 
   const handleGenerateChecklist = async () => {
     if (!eventId || !equipment || equipment.length === 0) {
@@ -1942,6 +2066,128 @@ export const EventEquipmentTab: React.FC<{
         </div>
       )}
 
+      {/* === LOADING CONFIRMATION PANEL === */}
+      {totalCount > 0 && (
+        <div className={`mb-6 rounded-lg border p-4 ${
+          isLoadingConfirmed
+            ? 'border-emerald-500/30 bg-emerald-500/5'
+            : event?.loading_unlock_requested
+              ? 'border-amber-500/30 bg-amber-500/5'
+              : 'border-[#d3bb73]/20 bg-[#0f1119]'
+        }`}>
+          {isLoadingConfirmed ? (
+            // CONFIRMED STATE
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/20">
+                    <Check className="h-4 w-4 text-emerald-400" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-emerald-300">Załadunek potwierdzony</span>
+                      {loadingConfirmedByEmployee && (
+                        <EmployeeAvatar
+                          employeeId={loadingConfirmedByEmployee.id}
+                          employeeName={`${loadingConfirmedByEmployee.first_name} ${loadingConfirmedByEmployee.last_name}`}
+                          avatarUrl={loadingConfirmedByEmployee.avatar_url}
+                          size={24}
+                        />
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/50">
+                      {loadingConfirmedByEmployee && (
+                        <span>{loadingConfirmedByEmployee.first_name} {loadingConfirmedByEmployee.last_name}</span>
+                      )}
+                      {event?.loading_confirmed_at && (
+                        <span>• {new Date(event.loading_confirmed_at).toLocaleString('pl-PL')}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium uppercase text-emerald-400">
+                    {loadedCount}/{totalCount} załadowano
+                  </span>
+                  {isAdmin && (
+                    <button
+                      onClick={handleAdminUnlock}
+                      className="rounded-lg border border-[#d3bb73]/30 px-3 py-1.5 text-xs font-medium text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
+                    >
+                      Odblokuj
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {event?.loading_notes && (
+                <div className="rounded border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-300">
+                  <span className="font-medium">Uwagi: </span>{event.loading_notes}
+                </div>
+              )}
+
+              {/* Unlock request */}
+              {event?.loading_unlock_requested && (
+                <div className="rounded border border-amber-500/20 bg-amber-500/10 px-3 py-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs text-amber-300">
+                      <span className="font-medium">Prośba o odblokowanie: </span>
+                      {event.loading_unlock_reason}
+                    </div>
+                    {isAdmin && (
+                      <button
+                        onClick={handleAdminUnlock}
+                        className="ml-3 shrink-0 rounded bg-amber-500/20 px-3 py-1 text-xs font-medium text-amber-300 transition-colors hover:bg-amber-500/30"
+                      >
+                        Odblokuj
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Non-admin can request unlock */}
+              {!isAdmin && !event?.loading_unlock_requested && (
+                <button
+                  onClick={() => setShowUnlockRequestModal(true)}
+                  className="self-start rounded-lg border border-[#d3bb73]/20 px-3 py-1.5 text-xs text-[#e5e4e2]/60 transition-colors hover:border-[#d3bb73]/40 hover:text-[#e5e4e2]"
+                >
+                  Poproś o odblokowanie
+                </button>
+              )}
+            </div>
+          ) : (
+            // NOT CONFIRMED STATE - show confirm button
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className={`flex h-8 w-8 items-center justify-center rounded-full ${
+                  allLoaded ? 'bg-emerald-500/20' : 'bg-[#d3bb73]/10'
+                }`}>
+                  <PackageIcon className={`h-4 w-4 ${allLoaded ? 'text-emerald-400' : 'text-[#d3bb73]'}`} />
+                </div>
+                <div>
+                  <span className="text-sm font-medium text-[#e5e4e2]">
+                    Status załadunku: {loadedCount}/{totalCount}
+                  </span>
+                  {!allLoaded && loadedCount > 0 && (
+                    <p className="text-xs text-[#e5e4e2]/50">
+                      Nie wszystkie pozycje zaznaczone — wymagane uwagi
+                    </p>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={() => setShowLoadingConfirmModal(true)}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-500"
+              >
+                Potwierdź załadunek
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {(equipment || []).length === 0 ? (
         <p className="text-[#e5e4e2]/60">Brak przypisanego sprzętu</p>
       ) : (
@@ -2143,6 +2389,113 @@ export const EventEquipmentTab: React.FC<{
           null
         }
       />
+
+      {/* Modal potwierdzenia załadunku */}
+      {showLoadingConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-md rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6 shadow-xl">
+            <h3 className="mb-4 text-lg font-semibold text-[#e5e4e2]">
+              Potwierdź załadunek
+            </h3>
+
+            <div className="mb-4 rounded border border-[#d3bb73]/10 bg-[#0f1119] px-3 py-2">
+              <div className="flex items-center gap-2 text-sm">
+                <span className={`font-medium ${allLoaded ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {loadedCount}/{totalCount}
+                </span>
+                <span className="text-[#e5e4e2]/60">
+                  {allLoaded ? 'Wszystko załadowane' : 'pozycji załadowano'}
+                </span>
+              </div>
+            </div>
+
+            {!allLoaded && (
+              <div className="mb-4">
+                <label className="mb-1 block text-sm font-medium text-[#e5e4e2]/80">
+                  Uwagi <span className="text-red-400">*</span>
+                </label>
+                <p className="mb-2 text-xs text-[#e5e4e2]/50">
+                  Opisz dlaczego nie wszystkie pozycje zostały załadowane (np. brakuje czegoś, coś w naprawie, pożyczone)
+                </p>
+                <textarea
+                  value={loadingNotes}
+                  onChange={(e) => setLoadingNotes(e.target.value)}
+                  placeholder="np. Mixer XR-200 w naprawie, kabel HDMI 10m pożyczony do firmy ABC"
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] placeholder:text-[#e5e4e2]/30 focus:border-[#d3bb73]/50 focus:outline-none"
+                  rows={3}
+                />
+              </div>
+            )}
+
+            <p className="mb-4 text-xs text-[#e5e4e2]/50">
+              Po potwierdzeniu checklista zostanie zablokowana. Cofnięcie wymaga zgody administratora.
+            </p>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowLoadingConfirmModal(false);
+                  setLoadingNotes('');
+                }}
+                className="rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={handleConfirmLoading}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-500"
+              >
+                Potwierdź załadunek
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal prośby o odblokowanie */}
+      {showUnlockRequestModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-md rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6 shadow-xl">
+            <h3 className="mb-4 text-lg font-semibold text-[#e5e4e2]">
+              Poproś o odblokowanie
+            </h3>
+
+            <div className="mb-4">
+              <label className="mb-1 block text-sm font-medium text-[#e5e4e2]/80">
+                Powód <span className="text-red-400">*</span>
+              </label>
+              <p className="mb-2 text-xs text-[#e5e4e2]/50">
+                Opisz dlaczego checklista powinna być odblokowana
+              </p>
+              <textarea
+                value={unlockReason}
+                onChange={(e) => setUnlockReason(e.target.value)}
+                placeholder="np. Pomyłkowo zaznaczono sprzęt, który nie został faktycznie załadowany"
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] placeholder:text-[#e5e4e2]/30 focus:border-[#d3bb73]/50 focus:outline-none"
+                rows={3}
+              />
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowUnlockRequestModal(false);
+                  setUnlockReason('');
+                }}
+                className="rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={handleRequestUnlock}
+                className="rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+              >
+                Wyślij prośbę
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

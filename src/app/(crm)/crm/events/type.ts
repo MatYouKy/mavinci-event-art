@@ -85,6 +85,17 @@ export interface IEvent {
   equipment_checklist_modified?: boolean;
   has_equipment_shortage?: boolean;
   currentEmployee?: IEmployee;
+
+  // Loading confirmation
+  loading_confirmed?: boolean;
+  loading_confirmed_at?: string | null;
+  loading_confirmed_by?: string | null;
+  loading_notes?: string | null;
+  loading_locked?: boolean;
+  loading_unlock_requested?: boolean;
+  loading_unlock_requested_at?: string | null;
+  loading_unlock_requested_by?: string | null;
+  loading_unlock_reason?: string | null;
 }
 
 export interface IEventAttachment {

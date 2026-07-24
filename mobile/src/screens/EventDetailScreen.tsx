@@ -283,7 +283,7 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
       .from('events')
       .select(`
         id, name, description, event_date, event_end_date, status, notes,
-        expected_revenue, budget, equipment_checklist_pdf_path,
+        expected_revenue, budget, equipment_checklist_pdf_path, loading_locked,
         event_categories(name, color),
         locations(name, formatted_address, address, city),
         organizations(name, alias),
@@ -481,6 +481,10 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
   }, [loadAll]);
 
   const toggleLoadedItem = async (item: ChecklistItem) => {
+    // If loading is locked, prevent unchecking
+    if ((event as any)?.loading_locked && item.loaded) {
+      return;
+    }
     const newVal = !item.loaded;
     setChecklist((prev) =>
       prev.map((c) => (c.id === item.id ? { ...c, loaded: newVal } : c))
@@ -494,6 +498,11 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
   const [loadedEquipmentIds, setLoadedEquipmentIds] = useState<Set<string>>(new Set());
 
   const toggleEquipmentLoaded = async (item: EventEquipmentItem) => {
+    // If loading is locked, prevent unchecking
+    if ((event as any)?.loading_locked && loadedEquipmentIds.has(item.id)) {
+      return;
+    }
+
     const newLoaded = !loadedEquipmentIds.has(item.id);
     setLoadedEquipmentIds((prev) => {
       const next = new Set(prev);
