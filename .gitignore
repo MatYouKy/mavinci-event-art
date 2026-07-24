@@ -55,3 +55,4 @@ macos-sync-app/AppIcon.iconset/
 macos-sync-app/.DS_Store
 macos-sync-app/DerivedData/
 macos-sync-app/**/*.xcuserdata/
+mobile/ios/
