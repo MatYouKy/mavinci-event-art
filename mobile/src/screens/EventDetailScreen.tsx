@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing } from '../theme';
-import { supabase } from '../lib/supabase';
+import { supabase, supabaseUrl } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { canView } from '../lib/permissions';
 
@@ -23,7 +23,6 @@ interface EventEquipmentItem {
   equipment_name: string;
   quantity: number;
   status: string | null;
-  is_loaded: boolean;
   kit_name: string | null;
   category_name: string | null;
 }
@@ -107,11 +106,13 @@ interface LogisticsItem {
 
 interface EventFile {
   id: string;
-  file_name: string;
-  file_url: string;
+  name: string;
+  original_name: string;
+  file_path: string;
   file_size: number | null;
-  file_type: string | null;
-  folder: string | null;
+  mime_type: string | null;
+  folder_id: string | null;
+  folder?: { name: string } | null;
   created_at: string;
   uploaded_by_employee: { name: string; surname: string } | null;
 }
@@ -385,8 +386,9 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
         .order('sort_order', { ascending: true }),
       supabase
         .from('event_equipment')
-        .select('id, quantity, status, is_loaded, equipment_items(name, equipment_categories(name)), equipment_kits(name)')
+        .select('id, quantity, status, equipment_id, kit_id, removed_from_offer, equipment:equipment_items(name, category:warehouse_categories(name)), kit:equipment_kits(name)')
         .eq('event_id', eventId)
+        .or('removed_from_offer.is.null,removed_from_offer.eq.false')
         .order('created_at', { ascending: true }),
     ]);
 
@@ -416,12 +418,11 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
 
     const mappedEquipment: EventEquipmentItem[] = (equipmentRes.data || []).map((item: any) => ({
       id: item.id,
-      equipment_name: item.equipment_items?.name || item.equipment_kits?.name || 'Nieznany sprzęt',
+      equipment_name: item.equipment?.name || item.kit?.name || 'Nieznany sprzęt',
       quantity: item.quantity || 1,
       status: item.status,
-      is_loaded: item.is_loaded ?? false,
-      kit_name: item.equipment_kits?.name ?? null,
-      category_name: item.equipment_items?.equipment_categories?.name ?? null,
+      kit_name: item.kit?.name ?? null,
+      category_name: item.equipment?.category?.name ?? null,
     }));
 
     return { checklist: mappedChecklist, logistics: mappedLogistics, equipment: mappedEquipment };
@@ -430,7 +431,7 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
   const fetchFiles = useCallback(async () => {
     const { data } = await supabase
       .from('event_files')
-      .select('*, uploaded_by_employee:employees!uploaded_by(name, surname)')
+      .select('*, uploaded_by_employee:employees!uploaded_by(name, surname), folder:event_folders!folder_id(name)')
       .eq('event_id', eventId)
       .order('created_at', { ascending: false });
     return (data || []) as EventFile[];
@@ -481,15 +482,18 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
       .eq('id', item.id);
   };
 
-  const toggleEquipmentLoaded = async (item: EventEquipmentItem) => {
-    const newVal = !item.is_loaded;
-    setEventEquipment((prev) =>
-      prev.map((eq) => (eq.id === item.id ? { ...eq, is_loaded: newVal } : eq))
-    );
-    await supabase
-      .from('event_equipment')
-      .update({ is_loaded: newVal })
-      .eq('id', item.id);
+  const [loadedEquipmentIds, setLoadedEquipmentIds] = useState<Set<string>>(new Set());
+
+  const toggleEquipmentLoaded = (item: EventEquipmentItem) => {
+    setLoadedEquipmentIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(item.id)) {
+        next.delete(item.id);
+      } else {
+        next.add(item.id);
+      }
+      return next;
+    });
   };
 
   if (isLoading) {
@@ -643,6 +647,7 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
           <ChecklistTab
             checklist={checklist}
             equipment={eventEquipment}
+            loadedEquipmentIds={loadedEquipmentIds}
             logistics={logistics}
             pdfPath={checklistPdfPath}
             onToggle={toggleLoadedItem}
@@ -866,6 +871,7 @@ function AgendaTab({ agenda }: { agenda: AgendaData | null }) {
 function ChecklistTab({
   checklist,
   equipment,
+  loadedEquipmentIds,
   logistics,
   pdfPath,
   onToggle,
@@ -873,6 +879,7 @@ function ChecklistTab({
 }: {
   checklist: ChecklistItem[];
   equipment: EventEquipmentItem[];
+  loadedEquipmentIds: Set<string>;
   logistics: LogisticsItem[];
   pdfPath: string | null;
   onToggle: (item: ChecklistItem) => void;
@@ -880,7 +887,7 @@ function ChecklistTab({
 }) {
   const totalItems = checklist.length + equipment.length + logistics.length;
   const loadedCount = checklist.filter((i) => i.loaded).length;
-  const equipmentLoadedCount = equipment.filter((i) => i.is_loaded).length;
+  const equipmentLoadedCount = equipment.filter((i) => loadedEquipmentIds.has(i.id)).length;
   const completedLogistics = logistics.filter((i) => i.status === 'completed').length;
   const totalCompleted = loadedCount + equipmentLoadedCount + completedLogistics;
 
@@ -975,49 +982,52 @@ function ChecklistTab({
           {Object.entries(groupedEquipment).map(([category, items]) => (
             <View key={category}>
               <Text style={styles.equipmentCategoryLabel}>{category}</Text>
-              {items.map((item) => (
-                <TouchableOpacity
-                  key={item.id}
-                  style={styles.checklistItem}
-                  onPress={() => onToggleEquipment(item)}
-                  activeOpacity={0.7}
-                >
-                  <View
-                    style={[
-                      styles.checkbox,
-                      item.is_loaded && styles.checkboxChecked,
-                    ]}
+              {items.map((item) => {
+                const isLoaded = loadedEquipmentIds.has(item.id);
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={styles.checklistItem}
+                    onPress={() => onToggleEquipment(item)}
+                    activeOpacity={0.7}
                   >
-                    {item.is_loaded && <Feather name="check" size={12} color={colors.white} />}
-                  </View>
-                  <View style={styles.checklistItemContent}>
-                    <View style={styles.checklistItemHeader}>
-                      <Text
-                        style={[
-                          styles.checklistItemTitle,
-                          item.is_loaded && styles.checklistItemTitleDone,
-                        ]}
-                        numberOfLines={2}
-                      >
-                        {item.equipment_name}
-                      </Text>
-                      {item.kit_name && (
-                        <View style={[styles.priorityBadge, { backgroundColor: colors.primary.gold + '20' }]}>
-                          <Text style={[styles.priorityText, { color: colors.primary.gold }]}>Kit</Text>
-                        </View>
-                      )}
+                    <View
+                      style={[
+                        styles.checkbox,
+                        isLoaded && styles.checkboxChecked,
+                      ]}
+                    >
+                      {isLoaded && <Feather name="check" size={12} color={colors.white} />}
                     </View>
-                    <View style={styles.checklistItemMeta}>
-                      {item.quantity > 1 && (
-                        <Text style={styles.checklistMetaText}>x{item.quantity}</Text>
-                      )}
-                      {item.status && (
-                        <Text style={styles.checklistMetaText}>{item.status}</Text>
-                      )}
+                    <View style={styles.checklistItemContent}>
+                      <View style={styles.checklistItemHeader}>
+                        <Text
+                          style={[
+                            styles.checklistItemTitle,
+                            isLoaded && styles.checklistItemTitleDone,
+                          ]}
+                          numberOfLines={2}
+                        >
+                          {item.equipment_name}
+                        </Text>
+                        {item.kit_name && (
+                          <View style={[styles.priorityBadge, { backgroundColor: colors.primary.gold + '20' }]}>
+                            <Text style={[styles.priorityText, { color: colors.primary.gold }]}>Kit</Text>
+                          </View>
+                        )}
+                      </View>
+                      <View style={styles.checklistItemMeta}>
+                        {item.quantity > 1 && (
+                          <Text style={styles.checklistMetaText}>x{item.quantity}</Text>
+                        )}
+                        {item.status && (
+                          <Text style={styles.checklistMetaText}>{item.status}</Text>
+                        )}
+                      </View>
                     </View>
-                  </View>
-                </TouchableOpacity>
-              ))}
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           ))}
         </View>
@@ -1158,23 +1168,25 @@ function FilesTab({ files }: { files: EventFile[] }) {
       year: 'numeric',
     });
 
-  const folders = [...new Set(files.map((f) => f.folder).filter(Boolean))] as string[];
-  const ungrouped = files.filter((f) => !f.folder);
+  const folderNames = [...new Set(files.map((f) => f.folder?.name).filter(Boolean))] as string[];
+  const ungrouped = files.filter((f) => !f.folder_id);
 
   const handleOpenFile = (file: EventFile) => {
-    if (file.file_url) {
-      Linking.openURL(file.file_url).catch(() =>
+    if (file.file_path) {
+      const fileUrl = `${supabaseUrl}/storage/v1/object/public/event-files/${file.file_path}`;
+      Linking.openURL(fileUrl).catch(() =>
         Alert.alert('Błąd', 'Nie udało się otworzyć pliku')
       );
     }
   };
 
   const getDisplayFileName = (file: EventFile): string => {
-    if (file.file_name) return file.file_name;
-    if (file.file_url) {
-      const urlParts = file.file_url.split('/');
-      const lastPart = urlParts[urlParts.length - 1];
-      return decodeURIComponent(lastPart.split('?')[0]) || 'Plik bez nazwy';
+    if (file.name) return file.name;
+    if (file.original_name) return file.original_name;
+    if (file.file_path) {
+      const pathParts = file.file_path.split('/');
+      const lastPart = pathParts[pathParts.length - 1];
+      return decodeURIComponent(lastPart) || 'Plik bez nazwy';
     }
     return 'Plik bez nazwy';
   };
@@ -1187,7 +1199,7 @@ function FilesTab({ files }: { files: EventFile[] }) {
       activeOpacity={0.7}
     >
       <View style={styles.fileIconBg}>
-        <Feather name={getFileIcon(file.file_type) as any} size={16} color={colors.primary.gold} />
+        <Feather name={getFileIcon(file.mime_type) as any} size={16} color={colors.primary.gold} />
       </View>
       <View style={styles.fileInfo}>
         <Text style={styles.fileName} numberOfLines={2}>
@@ -1209,18 +1221,18 @@ function FilesTab({ files }: { files: EventFile[] }) {
 
   return (
     <View style={styles.filesContainer}>
-      {folders.map((folder) => (
-        <View key={folder}>
+      {folderNames.map((folderName) => (
+        <View key={folderName}>
           <View style={styles.folderHeader}>
             <Feather name="folder" size={14} color={colors.primary.gold} />
-            <Text style={styles.folderName}>{folder}</Text>
+            <Text style={styles.folderName}>{folderName}</Text>
           </View>
-          {files.filter((f) => f.folder === folder).map(renderFileRow)}
+          {files.filter((f) => f.folder?.name === folderName).map(renderFileRow)}
         </View>
       ))}
       {ungrouped.length > 0 && (
         <View>
-          {folders.length > 0 && (
+          {folderNames.length > 0 && (
             <View style={styles.folderHeader}>
               <Feather name="file" size={14} color={colors.primary.gold} />
               <Text style={styles.folderName}>Pozostałe</Text>
