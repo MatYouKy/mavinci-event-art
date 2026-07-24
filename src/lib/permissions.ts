@@ -16,6 +16,7 @@
  * - contracts_view, contracts_manage, contracts_create
  * - attractions_view, attractions_manage, attractions_create
  * - messages_view, messages_manage, messages_assign
+ * - chat_view, chat_manage, chat_create_group
  * - finances_view, finances_manage
  * - fleet_view, fleet_manage, fleet_create
  * - page_view, page_manage

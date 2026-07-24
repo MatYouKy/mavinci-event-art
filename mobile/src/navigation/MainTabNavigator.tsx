@@ -194,9 +194,7 @@ export default function MainTabNavigator() {
           },
           headerTintColor: colors.text.primary,
           tabBarStyle: {
-            backgroundColor: colors.background.secondary,
-            borderTopColor: colors.border.default,
-            borderTopWidth: 1,
+            display: 'none',
           },
           tabBarActiveTintColor: colors.primary.gold,
           tabBarInactiveTintColor: colors.text.tertiary,

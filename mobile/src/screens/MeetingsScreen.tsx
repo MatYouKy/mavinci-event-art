@@ -85,17 +85,7 @@ function pickerDateToMinutes(date: Date): number {
   return date.getHours() * 60 + date.getMinutes();
 }
 
-// --- Notification setup ---
-
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+// Notification handler is set globally in App.tsx - do not duplicate here
 
 async function scheduleMeetingAlerts(meeting: Meeting) {
   const scheduled =

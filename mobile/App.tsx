@@ -17,8 +17,14 @@ import { useRealtimePushNotifications } from './src/services/realtimeNotificatio
 import { useChatNotifications, setupChatNotificationFilter } from './src/services/chatNotifications';
 import { scheduleInquiryReminders } from './src/services/inquiryReminders';
 
-// Must be called before app renders to handle incoming remote push while app is foregrounded
-setupChatNotificationFilter();
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+  }),
+});
 
 // Global notification target for deep-linking from notification tap
 export let globalNotificationTarget: {

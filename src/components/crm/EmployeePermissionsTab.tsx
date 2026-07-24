@@ -161,6 +161,17 @@ const permissionCategories: PermissionCategory[] = [
     ],
   },
   {
+    key: 'chat',
+    label: 'Komunikator',
+    extraPermissions: [
+      {
+        key: 'chat_create_group',
+        label: 'Tworzenie grup',
+        description: 'Może tworzyć konwersacje grupowe',
+      },
+    ],
+  },
+  {
     key: 'fleet',
     label: 'Flota',
   },

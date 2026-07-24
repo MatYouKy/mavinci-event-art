@@ -1,11 +1,10 @@
+import * as Notifications from 'expo-notifications';
 import { supabase } from '../lib/supabase';
 
 const NOTIFICATION_ID_PREFIX = 'inquiry-reminder-';
 
 export async function scheduleInquiryReminders(): Promise<void> {
   try {
-    const Notifications = await import('expo-notifications');
-
     await cancelAllInquiryReminders();
 
     const { data: inquiries, error } = await supabase
@@ -20,25 +19,22 @@ export async function scheduleInquiryReminders(): Promise<void> {
     const count = inquiries.length;
     const label = count === 1 ? 'zapytanie' : count < 5 ? 'zapytania' : 'zapytań';
 
-    for (let dayOfWeek = 2; dayOfWeek <= 6; dayOfWeek++) {
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: 'Nieobsłużone zapytania',
-          body: `Masz ${count} ${label} do obsłużenia`,
-          data: { type: 'inquiry_reminder' },
-          sound: 'default',
-        },
-        trigger: {
-          type: 'weekly' as any,
-          weekday: dayOfWeek,
-          hour: 10,
-          minute: 0,
-        },
-        identifier: `${NOTIFICATION_ID_PREFIX}${dayOfWeek}`,
-      });
-    }
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Nieobsłużone zapytania',
+        body: `Masz ${count} ${label} do obsłużenia`,
+        data: { type: 'inquiry_reminder' },
+        sound: 'default',
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds: 24 * 60 * 60,
+        repeats: true,
+      },
+      identifier: `${NOTIFICATION_ID_PREFIX}daily`,
+    });
 
-    console.log('[InquiryReminders] Scheduled for', count, 'pending inquiries');
+    console.log('[InquiryReminders] Scheduled daily for', count, 'pending inquiries');
   } catch (error) {
     console.warn('[InquiryReminders] Schedule error (non-critical):', error);
   }
@@ -46,7 +42,6 @@ export async function scheduleInquiryReminders(): Promise<void> {
 
 export async function cancelAllInquiryReminders(): Promise<void> {
   try {
-    const Notifications = await import('expo-notifications');
     const scheduled = await Notifications.getAllScheduledNotificationsAsync();
     for (const n of scheduled) {
       if (n.identifier.startsWith(NOTIFICATION_ID_PREFIX)) {
