@@ -5,6 +5,7 @@ import { ChevronDown, Package, Trash2, MoreVertical } from 'lucide-react';
 import Popover from '@/components/UI/Tooltip';
 import ResponsiveActionBar, { type Action } from '@/components/crm/ResponsiveActionBar';
 import { RequiredComponentsWarning } from '@/components/crm/RequiredComponentsWarning';
+import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 import NextImage from 'next/image';
 
 type StatusBadge = { label: string; cls: string };
@@ -165,7 +166,16 @@ export function EventEquipmentRow({
               )}
 
               {isLoaded && (
-                <span className="shrink-0 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium uppercase text-emerald-400">
+                <span className="flex shrink-0 items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium uppercase text-emerald-400">
+                  {row?.loaded_by_employee && (
+                    <EmployeeAvatar
+                      employeeId={row.loaded_by_employee.id}
+                      employeeName={`${row.loaded_by_employee.first_name} ${row.loaded_by_employee.last_name}`}
+                      avatarUrl={row.loaded_by_employee.avatar_url}
+                      size={16}
+                      className="-ml-0.5"
+                    />
+                  )}
                   ZAŁADOWANY
                 </span>
               )}

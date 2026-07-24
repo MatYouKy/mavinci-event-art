@@ -316,6 +316,12 @@ export const eventsApi = createApi({
                     category:warehouse_categories(id, name, parent_id)
                   )
                 )
+              ),
+              loaded_by_employee:employees!loaded_by(
+                id,
+                first_name,
+                last_name,
+                avatar_url
               )
             `,
             )

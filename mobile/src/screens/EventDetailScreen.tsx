@@ -509,6 +509,7 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
       .update({
         is_loaded: newLoaded,
         loaded_at: newLoaded ? new Date().toISOString() : null,
+        loaded_by: newLoaded ? employee?.id ?? null : null,
       })
       .eq('id', item.id);
   };
