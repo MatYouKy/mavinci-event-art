@@ -13,8 +13,20 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing } from '../theme';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
+import { canView } from '../lib/permissions';
 
 type TabKey = 'details' | 'agenda' | 'checklist' | 'files';
+
+interface EventEquipmentItem {
+  id: string;
+  equipment_name: string;
+  quantity: number;
+  status: string | null;
+  is_loaded: boolean;
+  kit_name: string | null;
+  category_name: string | null;
+}
 
 interface Props {
   eventId: string;
@@ -135,10 +147,12 @@ interface MyAssignment {
 }
 
 export default function EventDetailScreen({ eventId, onBack }: Props) {
+  const { employee } = useAuth();
   const [activeTab, setActiveTab] = useState<TabKey>('details');
   const [event, setEvent] = useState<EventDetail | null>(null);
   const [agenda, setAgenda] = useState<AgendaData | null>(null);
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
+  const [eventEquipment, setEventEquipment] = useState<EventEquipmentItem[]>([]);
   const [logistics, setLogistics] = useState<LogisticsItem[]>([]);
   const [files, setFiles] = useState<EventFile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -146,6 +160,8 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
   const [checklistPdfPath, setChecklistPdfPath] = useState<string | null>(null);
   const [myAssignment, setMyAssignment] = useState<MyAssignment | null>(null);
   const [respondingInvitation, setRespondingInvitation] = useState(false);
+
+  const canViewFinances = canView(employee, 'invoices') || canView(employee, 'finances');
 
   const fetchMyAssignment = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -356,7 +372,7 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
   }, [eventId]);
 
   const fetchChecklist = useCallback(async () => {
-    const [checklistRes, logisticsRes] = await Promise.all([
+    const [checklistRes, logisticsRes, equipmentRes] = await Promise.all([
       supabase
         .from('event_loading_checklist')
         .select('*, vehicles(name)')
@@ -367,6 +383,11 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
         .select('*, responsible_employee:employees!responsible_employee_id(name, surname)')
         .eq('event_id', eventId)
         .order('sort_order', { ascending: true }),
+      supabase
+        .from('event_equipment')
+        .select('id, quantity, status, is_loaded, equipment_items(name, equipment_categories(name)), equipment_kits(name)')
+        .eq('event_id', eventId)
+        .order('created_at', { ascending: true }),
     ]);
 
     const mappedChecklist: ChecklistItem[] = (checklistRes.data || []).map((item: any) => ({
@@ -393,7 +414,17 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
       sort_order: item.sort_order ?? 0,
     }));
 
-    return { checklist: mappedChecklist, logistics: mappedLogistics };
+    const mappedEquipment: EventEquipmentItem[] = (equipmentRes.data || []).map((item: any) => ({
+      id: item.id,
+      equipment_name: item.equipment_items?.name || item.equipment_kits?.name || 'Nieznany sprzęt',
+      quantity: item.quantity || 1,
+      status: item.status,
+      is_loaded: item.is_loaded ?? false,
+      kit_name: item.equipment_kits?.name ?? null,
+      category_name: item.equipment_items?.equipment_categories?.name ?? null,
+    }));
+
+    return { checklist: mappedChecklist, logistics: mappedLogistics, equipment: mappedEquipment };
   }, [eventId]);
 
   const fetchFiles = useCallback(async () => {
@@ -422,6 +453,7 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
         setAgenda(ag);
         setChecklist(ch.checklist);
         setLogistics(ch.logistics);
+        setEventEquipment(ch.equipment);
         setFiles(fi);
         setMyAssignment(assignment);
       } catch (err) {
@@ -446,6 +478,17 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
     await supabase
       .from('event_loading_checklist')
       .update({ loaded: newVal })
+      .eq('id', item.id);
+  };
+
+  const toggleEquipmentLoaded = async (item: EventEquipmentItem) => {
+    const newVal = !item.is_loaded;
+    setEventEquipment((prev) =>
+      prev.map((eq) => (eq.id === item.id ? { ...eq, is_loaded: newVal } : eq))
+    );
+    await supabase
+      .from('event_equipment')
+      .update({ is_loaded: newVal })
       .eq('id', item.id);
   };
 
@@ -594,14 +637,16 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
           />
         }
       >
-        {activeTab === 'details' && <DetailsTab event={event} />}
+        {activeTab === 'details' && <DetailsTab event={event} canViewFinances={canViewFinances} />}
         {activeTab === 'agenda' && <AgendaTab agenda={agenda} />}
         {activeTab === 'checklist' && (
           <ChecklistTab
             checklist={checklist}
+            equipment={eventEquipment}
             logistics={logistics}
             pdfPath={checklistPdfPath}
             onToggle={toggleLoadedItem}
+            onToggleEquipment={toggleEquipmentLoaded}
           />
         )}
         {activeTab === 'files' && <FilesTab files={files} />}
@@ -612,7 +657,7 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
 }
 
 /* ============ DETAILS TAB ============ */
-function DetailsTab({ event }: { event: EventDetail }) {
+function DetailsTab({ event, canViewFinances }: { event: EventDetail; canViewFinances: boolean }) {
   const formatDate = (dateStr: string) =>
     new Date(dateStr).toLocaleDateString('pl-PL', {
       weekday: 'long',
@@ -668,8 +713,8 @@ function DetailsTab({ event }: { event: EventDetail }) {
         </View>
       )}
 
-      {/* Financial */}
-      {(event.expected_revenue || event.budget) && (
+      {/* Financial - only for authorized employees */}
+      {canViewFinances && (event.expected_revenue || event.budget) && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Finanse</Text>
           <View style={styles.infoGrid}>
@@ -820,19 +865,24 @@ function AgendaTab({ agenda }: { agenda: AgendaData | null }) {
 /* ============ CHECKLIST TAB ============ */
 function ChecklistTab({
   checklist,
+  equipment,
   logistics,
   pdfPath,
   onToggle,
+  onToggleEquipment,
 }: {
   checklist: ChecklistItem[];
+  equipment: EventEquipmentItem[];
   logistics: LogisticsItem[];
   pdfPath: string | null;
   onToggle: (item: ChecklistItem) => void;
+  onToggleEquipment: (item: EventEquipmentItem) => void;
 }) {
-  const totalItems = checklist.length + logistics.length;
+  const totalItems = checklist.length + equipment.length + logistics.length;
   const loadedCount = checklist.filter((i) => i.loaded).length;
+  const equipmentLoadedCount = equipment.filter((i) => i.is_loaded).length;
   const completedLogistics = logistics.filter((i) => i.status === 'completed').length;
-  const totalCompleted = loadedCount + completedLogistics;
+  const totalCompleted = loadedCount + equipmentLoadedCount + completedLogistics;
 
   const handleOpenPdf = async () => {
     if (!pdfPath) return;
@@ -856,6 +906,13 @@ function ChecklistTab({
       </View>
     );
   }
+
+  const groupedEquipment = equipment.reduce((acc, item) => {
+    const cat = item.category_name || 'Inne';
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(item);
+    return acc;
+  }, {} as Record<string, EventEquipmentItem[]>);
 
   const PRIORITY_COLORS: Record<string, string> = {
     high: colors.status.error,
@@ -906,6 +963,63 @@ function ChecklistTab({
           <Text style={styles.progressText}>
             {totalCompleted}/{totalItems} ukończonych
           </Text>
+        </View>
+      )}
+
+      {/* Equipment list */}
+      {equipment.length > 0 && (
+        <View style={styles.checklistSection}>
+          <Text style={styles.checklistSectionTitle}>
+            Sprzęt ({equipmentLoadedCount}/{equipment.length} załadowano)
+          </Text>
+          {Object.entries(groupedEquipment).map(([category, items]) => (
+            <View key={category}>
+              <Text style={styles.equipmentCategoryLabel}>{category}</Text>
+              {items.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.checklistItem}
+                  onPress={() => onToggleEquipment(item)}
+                  activeOpacity={0.7}
+                >
+                  <View
+                    style={[
+                      styles.checkbox,
+                      item.is_loaded && styles.checkboxChecked,
+                    ]}
+                  >
+                    {item.is_loaded && <Feather name="check" size={12} color={colors.white} />}
+                  </View>
+                  <View style={styles.checklistItemContent}>
+                    <View style={styles.checklistItemHeader}>
+                      <Text
+                        style={[
+                          styles.checklistItemTitle,
+                          item.is_loaded && styles.checklistItemTitleDone,
+                        ]}
+                        numberOfLines={2}
+                      >
+                        {item.equipment_name}
+                      </Text>
+                      {item.kit_name && (
+                        <View style={[styles.priorityBadge, { backgroundColor: colors.primary.gold + '20' }]}>
+                          <Text style={[styles.priorityText, { color: colors.primary.gold }]}>Kit</Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.checklistItemMeta}>
+                      {item.quantity > 1 && (
+                        <Text style={styles.checklistMetaText}>x{item.quantity}</Text>
+                      )}
+                      {item.status && (
+                        <Text style={styles.checklistMetaText}>{item.status}</Text>
+                      )}
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ))}
         </View>
       )}
 
@@ -1055,6 +1169,16 @@ function FilesTab({ files }: { files: EventFile[] }) {
     }
   };
 
+  const getDisplayFileName = (file: EventFile): string => {
+    if (file.file_name) return file.file_name;
+    if (file.file_url) {
+      const urlParts = file.file_url.split('/');
+      const lastPart = urlParts[urlParts.length - 1];
+      return decodeURIComponent(lastPart.split('?')[0]) || 'Plik bez nazwy';
+    }
+    return 'Plik bez nazwy';
+  };
+
   const renderFileRow = (file: EventFile) => (
     <TouchableOpacity
       key={file.id}
@@ -1066,8 +1190,8 @@ function FilesTab({ files }: { files: EventFile[] }) {
         <Feather name={getFileIcon(file.file_type) as any} size={16} color={colors.primary.gold} />
       </View>
       <View style={styles.fileInfo}>
-        <Text style={styles.fileName} numberOfLines={1}>
-          {file.file_name}
+        <Text style={styles.fileName} numberOfLines={2}>
+          {getDisplayFileName(file)}
         </Text>
         <View style={styles.fileMetaRow}>
           {file.file_size && <Text style={styles.fileMeta}>{formatFileSize(file.file_size)}</Text>}
@@ -1426,8 +1550,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   fileInfo: { flex: 1 },
-  fileName: { fontSize: 13, fontWeight: '500', color: colors.text.primary },
-  fileMetaRow: { flexDirection: 'row', gap: 8, marginTop: 2 },
+  fileName: { fontSize: 13, fontWeight: '600', color: colors.text.primary, lineHeight: 18 },
+  fileMetaRow: { flexDirection: 'row', gap: 8, marginTop: 3, flexWrap: 'wrap' },
+  equipmentCategoryLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.text.secondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    marginTop: 10,
+    marginBottom: 4,
+    paddingLeft: 34,
+  },
   fileMeta: { fontSize: 10, color: colors.text.tertiary },
 
   // Empty states
