@@ -9,6 +9,10 @@ import {
   RefreshControl,
   Linking,
   Alert,
+  Image,
+  Modal,
+  Pressable,
+  Dimensions,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing } from '../theme';
@@ -25,6 +29,7 @@ interface EventEquipmentItem {
   status: string | null;
   kit_name: string | null;
   category_name: string | null;
+  thumbnail_url: string | null;
 }
 
 interface Props {
@@ -386,7 +391,7 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
         .order('sort_order', { ascending: true }),
       supabase
         .from('event_equipment')
-        .select('id, quantity, status, equipment_id, kit_id, removed_from_offer, equipment:equipment_items(name, category:warehouse_categories(name)), kit:equipment_kits(name)')
+        .select('id, quantity, status, equipment_id, kit_id, removed_from_offer, equipment:equipment_items(name, thumbnail_url, category:warehouse_categories(name)), kit:equipment_kits(name, thumbnail_url)')
         .eq('event_id', eventId)
         .or('removed_from_offer.is.null,removed_from_offer.eq.false')
         .order('created_at', { ascending: true }),
@@ -423,6 +428,7 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
       status: item.status,
       kit_name: item.kit?.name ?? null,
       category_name: item.equipment?.category?.name ?? null,
+      thumbnail_url: item.equipment?.thumbnail_url || item.kit?.thumbnail_url || null,
     }));
 
     return { checklist: mappedChecklist, logistics: mappedLogistics, equipment: mappedEquipment };
@@ -885,6 +891,7 @@ function ChecklistTab({
   onToggle: (item: ChecklistItem) => void;
   onToggleEquipment: (item: EventEquipmentItem) => void;
 }) {
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   const totalItems = checklist.length + equipment.length + logistics.length;
   const loadedCount = checklist.filter((i) => i.loaded).length;
   const equipmentLoadedCount = equipment.filter((i) => loadedEquipmentIds.has(i.id)).length;
@@ -985,22 +992,30 @@ function ChecklistTab({
               {items.map((item) => {
                 const isLoaded = loadedEquipmentIds.has(item.id);
                 return (
-                  <TouchableOpacity
-                    key={item.id}
-                    style={styles.checklistItem}
-                    onPress={() => onToggleEquipment(item)}
-                    activeOpacity={0.7}
-                  >
-                    <View
-                      style={[
-                        styles.checkbox,
-                        isLoaded && styles.checkboxChecked,
-                      ]}
+                  <View key={item.id} style={styles.equipmentChecklistRow}>
+                    <TouchableOpacity
+                      style={styles.equipmentThumbnailWrap}
+                      onPress={() => item.thumbnail_url && setPreviewImage(item.thumbnail_url)}
+                      activeOpacity={item.thumbnail_url ? 0.7 : 1}
                     >
-                      {isLoaded && <Feather name="check" size={12} color={colors.white} />}
-                    </View>
-                    <View style={styles.checklistItemContent}>
-                      <View style={styles.checklistItemHeader}>
+                      {item.thumbnail_url ? (
+                        <Image
+                          source={{ uri: item.thumbnail_url }}
+                          style={styles.equipmentThumbnail}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <View style={styles.equipmentThumbnailPlaceholder}>
+                          <Feather name="package" size={18} color={colors.text.tertiary} />
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.equipmentChecklistContent}
+                      onPress={() => onToggleEquipment(item)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.equipmentChecklistInfo}>
                         <Text
                           style={[
                             styles.checklistItemTitle,
@@ -1010,28 +1025,54 @@ function ChecklistTab({
                         >
                           {item.equipment_name}
                         </Text>
-                        {item.kit_name && (
-                          <View style={[styles.priorityBadge, { backgroundColor: colors.primary.gold + '20' }]}>
-                            <Text style={[styles.priorityText, { color: colors.primary.gold }]}>Kit</Text>
-                          </View>
-                        )}
+                        <View style={styles.checklistItemMeta}>
+                          {item.quantity > 1 && (
+                            <Text style={styles.checklistMetaText}>x{item.quantity}</Text>
+                          )}
+                          {item.kit_name && (
+                            <View style={[styles.priorityBadge, { backgroundColor: colors.primary.gold + '20' }]}>
+                              <Text style={[styles.priorityText, { color: colors.primary.gold }]}>Kit</Text>
+                            </View>
+                          )}
+                          {item.status && (
+                            <Text style={styles.checklistMetaText}>{item.status}</Text>
+                          )}
+                        </View>
                       </View>
-                      <View style={styles.checklistItemMeta}>
-                        {item.quantity > 1 && (
-                          <Text style={styles.checklistMetaText}>x{item.quantity}</Text>
-                        )}
-                        {item.status && (
-                          <Text style={styles.checklistMetaText}>{item.status}</Text>
-                        )}
+                      <View
+                        style={[
+                          styles.checkbox,
+                          isLoaded && styles.checkboxChecked,
+                        ]}
+                      >
+                        {isLoaded && <Feather name="check" size={12} color={colors.white} />}
                       </View>
-                    </View>
-                  </TouchableOpacity>
+                    </TouchableOpacity>
+                  </View>
                 );
               })}
             </View>
           ))}
         </View>
       )}
+
+      {/* Image preview modal */}
+      <Modal visible={!!previewImage} transparent animationType="fade" onRequestClose={() => setPreviewImage(null)}>
+        <Pressable style={styles.imagePreviewOverlay} onPress={() => setPreviewImage(null)}>
+          <View style={styles.imagePreviewContainer}>
+            {previewImage && (
+              <Image
+                source={{ uri: previewImage }}
+                style={styles.imagePreviewFull}
+                resizeMode="contain"
+              />
+            )}
+            <TouchableOpacity style={styles.imagePreviewClose} onPress={() => setPreviewImage(null)}>
+              <Feather name="x" size={24} color={colors.white} />
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
 
       {/* Loading checklist */}
       {checklist.length > 0 && (
@@ -1572,7 +1613,69 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
     marginTop: 10,
     marginBottom: 4,
-    paddingLeft: 34,
+    paddingLeft: 4,
+  },
+  equipmentChecklistRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    gap: 10,
+  },
+  equipmentThumbnailWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  equipmentThumbnail: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+  },
+  equipmentThumbnailPlaceholder: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    backgroundColor: colors.surface.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  equipmentChecklistContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  equipmentChecklistInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  imagePreviewOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imagePreviewContainer: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imagePreviewFull: {
+    width: Dimensions.get('window').width - 32,
+    height: Dimensions.get('window').height * 0.7,
+  },
+  imagePreviewClose: {
+    position: 'absolute',
+    top: 60,
+    right: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   fileMeta: { fontSize: 10, color: colors.text.tertiary },
 
