@@ -35,6 +35,7 @@ const STATUS_COLORS: Record<string, string> = {
   completed: colors.status.success,
   cancelled: colors.status.error,
   meeting: colors.primary.gold,
+  inquiry: '#f97316',
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -44,6 +45,7 @@ const STATUS_LABELS: Record<string, string> = {
   completed: 'Zakończone',
   cancelled: 'Anulowane',
   meeting: 'Spotkanie',
+  inquiry: 'Zapytanie',
 };
 
 function CalendarContent({ onEventPress }: { onEventPress: (eventId: string) => void }) {
@@ -145,6 +147,28 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: string) => 
               });
             }
           }
+        }
+      }
+
+      // Fetch inquiries (tasks with is_inquiry=true and due_date)
+      const { data: inquiryTasks } = await supabase
+        .from('tasks')
+        .select('id, title, due_date, inquiry_details')
+        .eq('is_inquiry', true)
+        .neq('board_column', 'completed')
+        .not('due_date', 'is', null);
+
+      if (inquiryTasks) {
+        for (const t of inquiryTasks) {
+          allEvents.push({
+            id: `inquiry-${t.id}`,
+            name: t.title || 'Zapytanie',
+            event_date: t.due_date!,
+            event_end_date: null,
+            status: 'inquiry',
+            location: t.inquiry_details?.location_text ?? undefined,
+            is_meeting: false,
+          });
         }
       }
 
@@ -309,6 +333,7 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: string) => 
         visible={inquiryModalVisible}
         onClose={() => setInquiryModalVisible(false)}
         initialDate={selectedDate}
+        onSaved={fetchEvents}
       />
     </View>
   );
