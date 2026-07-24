@@ -1,10 +1,11 @@
-import * as Notifications from 'expo-notifications';
 import { supabase } from '../lib/supabase';
 
 const NOTIFICATION_ID_PREFIX = 'inquiry-reminder-';
 
 export async function scheduleInquiryReminders(): Promise<void> {
   try {
+    const Notifications = await import('expo-notifications');
+
     await cancelAllInquiryReminders();
 
     const { data: inquiries, error } = await supabase
@@ -16,16 +17,19 @@ export async function scheduleInquiryReminders(): Promise<void> {
 
     if (error || !inquiries || inquiries.length === 0) return;
 
+    const count = inquiries.length;
+    const label = count === 1 ? 'zapytanie' : count < 5 ? 'zapytania' : 'zapytań';
+
     for (let dayOfWeek = 2; dayOfWeek <= 6; dayOfWeek++) {
       await Notifications.scheduleNotificationAsync({
         content: {
           title: 'Nieobsłużone zapytania',
-          body: `Masz ${inquiries.length} ${inquiries.length === 1 ? 'zapytanie' : inquiries.length < 5 ? 'zapytania' : 'zapytań'} do obsłużenia`,
+          body: `Masz ${count} ${label} do obsłużenia`,
           data: { type: 'inquiry_reminder' },
           sound: 'default',
         },
         trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
+          type: 'weekly' as any,
           weekday: dayOfWeek,
           hour: 10,
           minute: 0,
@@ -34,14 +38,15 @@ export async function scheduleInquiryReminders(): Promise<void> {
       });
     }
 
-    console.log('[InquiryReminders] Scheduled for', inquiries.length, 'pending inquiries');
+    console.log('[InquiryReminders] Scheduled for', count, 'pending inquiries');
   } catch (error) {
-    console.error('[InquiryReminders] Schedule error:', error);
+    console.warn('[InquiryReminders] Schedule error (non-critical):', error);
   }
 }
 
 export async function cancelAllInquiryReminders(): Promise<void> {
   try {
+    const Notifications = await import('expo-notifications');
     const scheduled = await Notifications.getAllScheduledNotificationsAsync();
     for (const n of scheduled) {
       if (n.identifier.startsWith(NOTIFICATION_ID_PREFIX)) {
@@ -49,6 +54,6 @@ export async function cancelAllInquiryReminders(): Promise<void> {
       }
     }
   } catch (error) {
-    console.error('[InquiryReminders] Cancel error:', error);
+    console.warn('[InquiryReminders] Cancel error (non-critical):', error);
   }
 }
