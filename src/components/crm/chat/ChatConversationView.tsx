@@ -437,11 +437,18 @@ export default function ChatConversationView({
   const renderAttachment = (msg: ChatMessage, isMine: boolean) => {
     if (!msg.attachment_url) return null;
 
-    if (msg.message_type === 'image') {
+    const url = msg.attachment_url;
+    const filename = (msg.attachment_filename || url || '').toLowerCase();
+    const isImage =
+      msg.message_type === 'image' ||
+      /\.(jpg|jpeg|png|gif|webp|svg|bmp)(\?|$)/i.test(filename) ||
+      /\.(jpg|jpeg|png|gif|webp|svg|bmp)(\?|$)/i.test(url);
+
+    if (isImage) {
       return (
-        <button onClick={() => setLightboxUrl(msg.attachment_url!)} className="block cursor-zoom-in">
+        <button onClick={() => setLightboxUrl(url)} className="block cursor-zoom-in">
           <img
-            src={msg.attachment_url}
+            src={url}
             alt={msg.attachment_filename || 'Obraz'}
             className="max-h-52 max-w-full rounded-lg object-cover"
             loading="lazy"
@@ -453,7 +460,7 @@ export default function ChatConversationView({
     if (msg.message_type === 'video') {
       return (
         <video
-          src={msg.attachment_url}
+          src={url}
           controls
           className="max-h-52 max-w-full rounded-lg"
           preload="metadata"
@@ -461,12 +468,22 @@ export default function ChatConversationView({
       );
     }
 
+    const isPdf =
+      /\.pdf(\?|$)/i.test(filename) || /\.pdf(\?|$)/i.test(url);
+
     return (
-      <a
-        href={msg.attachment_url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={`flex items-center gap-2 rounded-lg px-2.5 py-2 transition-colors ${
+      <button
+        onClick={() => {
+          if (isPdf) {
+            setLightboxUrl(url);
+          } else {
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = msg.attachment_filename || 'plik';
+            a.click();
+          }
+        }}
+        className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors ${
           isMine ? 'bg-[#0f1119]/10 hover:bg-[#0f1119]/20' : 'bg-white/5 hover:bg-white/10'
         }`}
       >
@@ -478,7 +495,7 @@ export default function ChatConversationView({
           )}
         </div>
         <Download className="h-3.5 w-3.5 shrink-0 opacity-50" />
-      </a>
+      </button>
     );
   };
 
@@ -820,19 +837,39 @@ export default function ChatConversationView({
         </div>
       </div>
       {lightboxUrl && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 backdrop-blur-sm" onClick={() => setLightboxUrl(null)}>
-          <button
-            onClick={() => setLightboxUrl(null)}
-            className="absolute right-4 top-4 rounded-full bg-black/50 p-2 text-white/80 transition-colors hover:bg-black/70 hover:text-white"
-          >
-            <X className="h-6 w-6" />
-          </button>
-          <img
-            src={lightboxUrl}
-            alt="Podgląd"
-            className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain"
-            onClick={(e) => e.stopPropagation()}
-          />
+        <div className="fixed inset-0 z-[70] flex flex-col bg-black/85 backdrop-blur-sm" onClick={() => setLightboxUrl(null)}>
+          <div className="flex items-center justify-end gap-3 p-4">
+            <a
+              href={lightboxUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="rounded-full bg-black/50 px-3 py-1.5 text-sm text-white/80 transition-colors hover:bg-black/70 hover:text-white"
+            >
+              Otwórz w nowej karcie
+            </a>
+            <button
+              onClick={() => setLightboxUrl(null)}
+              className="rounded-full bg-black/50 p-2 text-white/80 transition-colors hover:bg-black/70 hover:text-white"
+            >
+              <X className="h-6 w-6" />
+            </button>
+          </div>
+          <div className="flex flex-1 items-center justify-center overflow-hidden px-4 pb-4" onClick={(e) => e.stopPropagation()}>
+            {/\.(pdf)(\?|$)/i.test(lightboxUrl) ? (
+              <iframe
+                src={lightboxUrl}
+                title="Podgląd pliku"
+                className="h-full w-full rounded-lg"
+              />
+            ) : (
+              <img
+                src={lightboxUrl}
+                alt="Podgląd"
+                className="max-h-full max-w-full rounded-lg object-contain"
+              />
+            )}
+          </div>
         </div>
       )}
     </div>
