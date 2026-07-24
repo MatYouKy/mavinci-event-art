@@ -50,9 +50,7 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: string) => 
   const { employee } = useAuth();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState(
-    new Date().toISOString().split('T')[0]
-  );
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [inquiryModalVisible, setInquiryModalVisible] = useState(false);
 
   const fetchEvents = useCallback(async () => {
@@ -124,9 +122,7 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: string) => 
 
       if (participantRows && participantRows.length > 0) {
         const meetingIds = participantRows.map((r) => r.meeting_id).filter(Boolean);
-        const existingMeetingIds = new Set(
-          allEvents.filter((e) => e.is_meeting).map((e) => e.id)
-        );
+        const existingMeetingIds = new Set(allEvents.filter((e) => e.is_meeting).map((e) => e.id));
 
         const missingIds = meetingIds.filter((id) => !existingMeetingIds.has(id));
         if (missingIds.length > 0) {
@@ -195,10 +191,7 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: string) => 
     if (!selectedDate) return [];
     return events
       .filter((e) => e.event_date?.startsWith(selectedDate))
-      .sort(
-        (a, b) =>
-          new Date(a.event_date).getTime() - new Date(b.event_date).getTime()
-      );
+      .sort((a, b) => new Date(a.event_date).getTime() - new Date(b.event_date).getTime());
   }, [events, selectedDate]);
 
   const renderEvent = ({ item }: { item: CalendarEvent }) => {
@@ -209,7 +202,11 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: string) => 
     });
 
     return (
-      <TouchableOpacity style={styles.eventCard} activeOpacity={0.7} onPress={() => onEventPress(item.id)}>
+      <TouchableOpacity
+        style={styles.eventCard}
+        activeOpacity={0.7}
+        onPress={() => onEventPress(item.id)}
+      >
         <View style={[styles.eventIndicator, { backgroundColor: statusColor }]} />
         <View style={styles.eventContent}>
           <Text style={styles.eventTime}>{time}</Text>
@@ -278,19 +275,13 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: string) => 
                 day: 'numeric',
                 month: 'long',
               })}
-          {eventsForSelectedDate.length > 0 &&
-            ` (${eventsForSelectedDate.length})`}
+          {eventsForSelectedDate.length > 0 && ` (${eventsForSelectedDate.length})`}
         </Text>
 
-        {eventsForSelectedDate.length > 0 && (
-          <TouchableOpacity
-            style={styles.addInquiryBtn}
-            onPress={() => setInquiryModalVisible(true)}
-          >
-            <Feather name="phone-call" size={16} color={colors.primary.gold} />
-            <Text style={styles.addInquiryBtnText}>Dodaj zapytanie</Text>
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity style={styles.addInquiryBtn} onPress={() => setInquiryModalVisible(true)}>
+          <Feather name="phone-call" size={16} color={colors.primary.gold} />
+          <Text style={styles.addInquiryBtnText}>Dodaj zapytanie</Text>
+        </TouchableOpacity>
 
         {eventsForSelectedDate.length === 0 ? (
           <View style={styles.emptyState}>
@@ -444,12 +435,7 @@ export default function CalendarScreen({ initialMeetingId }: { initialMeetingId?
   }, [initialMeetingId]);
 
   if (selectedEventId) {
-    return (
-      <EventDetailScreen
-        eventId={selectedEventId}
-        onBack={() => setSelectedEventId(null)}
-      />
-    );
+    return <EventDetailScreen eventId={selectedEventId} onBack={() => setSelectedEventId(null)} />;
   }
 
   return (
