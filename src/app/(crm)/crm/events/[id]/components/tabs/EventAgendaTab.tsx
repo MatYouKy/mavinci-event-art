@@ -165,6 +165,7 @@ export default function EventAgendaTab({
   const [agendaNotes, setAgendaNotes] = useState<AgendaNote[]>([]);
   const [generatedPdfPath, setGeneratedPdfPath] = useState<string | null>(null);
   const [modifiedAfterGeneration, setModifiedAfterGeneration] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [createdByEmployee, setCreatedByEmployee] = useState<{
     name: string;
     phone_number: string;
@@ -691,7 +692,7 @@ export default function EventAgendaTab({
       if (error) throw error;
 
       if (data?.signedUrl) {
-        window.open(data.signedUrl, '_blank');
+        setPdfPreviewUrl(data.signedUrl);
       }
     } catch (err) {
       console.error('Error showing PDF:', err);
@@ -1329,7 +1330,37 @@ export default function EventAgendaTab({
             </div>
           )}
         </div>
-      </div>
+
+      {pdfPreviewUrl && (
+        <div className="fixed inset-0 z-[60] flex flex-col bg-black/80 backdrop-blur-sm">
+          <div className="flex items-center justify-between border-b border-[#d3bb73]/20 bg-[#0f1119] px-6 py-4">
+            <h3 className="text-lg font-light text-[#e5e4e2]">Podgląd agendy PDF</h3>
+            <div className="flex items-center gap-3">
+              <a
+                href={pdfPreviewUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-lg border border-[#d3bb73]/30 px-3 py-1.5 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
+              >
+                Otwórz w nowej karcie
+              </a>
+              <button
+                onClick={() => setPdfPreviewUrl(null)}
+                className="rounded-lg p-2 text-[#e5e4e2]/60 transition-colors hover:bg-[#e5e4e2]/10 hover:text-[#e5e4e2]"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 p-4">
+            <iframe
+              src={pdfPreviewUrl}
+              title="Agenda PDF"
+              className="h-full w-full rounded-lg"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

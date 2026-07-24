@@ -150,7 +150,9 @@ export default function EventTabOffer({
                                   ? 'Zaakceptowana'
                                   : offer.status === 'rejected'
                                     ? 'Odrzucona'
-                                    : offer.status}
+                                    : offer.status === 'expired'
+                                      ? 'Wygasła'
+                                      : 'Nieznany'}
                           </span>
                         </div>
                         <p className="text-sm text-[#e5e4e2]/60">

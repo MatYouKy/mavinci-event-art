@@ -66,6 +66,7 @@ export default function ChatConversationView({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [showMenu, setShowMenu] = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const [reactionPickerMsgId, setReactionPickerMsgId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -438,14 +439,14 @@ export default function ChatConversationView({
 
     if (msg.message_type === 'image') {
       return (
-        <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer" className="block">
+        <button onClick={() => setLightboxUrl(msg.attachment_url!)} className="block cursor-zoom-in">
           <img
             src={msg.attachment_url}
             alt={msg.attachment_filename || 'Obraz'}
             className="max-h-52 max-w-full rounded-lg object-cover"
             loading="lazy"
           />
-        </a>
+        </button>
       );
     }
 
@@ -818,6 +819,22 @@ export default function ChatConversationView({
           </button>
         </div>
       </div>
+      {lightboxUrl && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/85 backdrop-blur-sm" onClick={() => setLightboxUrl(null)}>
+          <button
+            onClick={() => setLightboxUrl(null)}
+            className="absolute right-4 top-4 rounded-full bg-black/50 p-2 text-white/80 transition-colors hover:bg-black/70 hover:text-white"
+          >
+            <X className="h-6 w-6" />
+          </button>
+          <img
+            src={lightboxUrl}
+            alt="Podgląd"
+            className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }

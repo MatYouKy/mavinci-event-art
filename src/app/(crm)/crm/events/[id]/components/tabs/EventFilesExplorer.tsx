@@ -517,20 +517,21 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
       return;
     }
 
-    // Dla PDF, video, audio i innych - otwórz w nowej karcie
+    // Dla PDF i innych - otwórz w wewnętrznym podglądzie
     const { data, error } = await supabase.storage
       .from('event-files')
       .createSignedUrl(file.file_path, 3600);
 
     if (data?.signedUrl) {
-      window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+      setFileUrl(data.signedUrl);
+      setPreviewFile(file);
     } else {
       console.error('Error creating signed URL:', error);
-      // Fallback do public URL
       const {
         data: { publicUrl },
       } = supabase.storage.from('event-files').getPublicUrl(file.file_path);
-      window.open(publicUrl, '_blank', 'noopener,noreferrer');
+      setFileUrl(publicUrl);
+      setPreviewFile(file);
     }
   };
 
@@ -1438,12 +1439,41 @@ export default function EventFilesExplorer({ eventId }: { eventId: string }) {
             </div>
 
             <div className="flex flex-1 items-center justify-center overflow-auto bg-[#1c1f33] p-4">
-              <img
-                src={fileUrl}
-                alt={previewFile.name}
-                className="max-h-full max-w-full object-contain"
-                style={{ maxHeight: '80vh' }}
-              />
+              {previewFile.mime_type?.startsWith('image/') ? (
+                <img
+                  src={fileUrl}
+                  alt={previewFile.name}
+                  className="max-h-full max-w-full object-contain"
+                  style={{ maxHeight: '80vh' }}
+                />
+              ) : previewFile.mime_type === 'application/pdf' || previewFile.name?.endsWith('.pdf') ? (
+                <iframe
+                  src={fileUrl}
+                  title={previewFile.name}
+                  className="h-full w-full rounded"
+                  style={{ minHeight: '75vh' }}
+                />
+              ) : previewFile.mime_type?.startsWith('video/') ? (
+                <video
+                  src={fileUrl}
+                  controls
+                  className="max-h-full max-w-full"
+                  style={{ maxHeight: '80vh' }}
+                />
+              ) : (
+                <div className="flex flex-col items-center gap-4 text-center">
+                  <FileText className="h-16 w-16 text-[#e5e4e2]/30" />
+                  <p className="text-[#e5e4e2]/60">Podgląd tego typu pliku nie jest dostępny.</p>
+                  <a
+                    href={fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-black transition-colors hover:bg-[#e5c97a]"
+                  >
+                    Otwórz w nowej karcie
+                  </a>
+                </div>
+              )}
             </div>
           </div>
         </div>

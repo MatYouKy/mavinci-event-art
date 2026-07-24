@@ -11,9 +11,10 @@ import {
   ArrowRightLeft,
   FileText,
   Check,
+  X,
 } from 'lucide-react';
 import { AddEquipmentModal } from '../Modals/AddEquipmentModal';
-import { ChevronDown, Package as PackageIcon, Trash2, Check } from 'lucide-react';
+import { ChevronDown, Package as PackageIcon, Trash2 } from 'lucide-react';
 import { useEventEquipment } from '../../../hooks';
 import { useEvent } from '../../../hooks/useEvent';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -203,9 +204,21 @@ function getStatusBadge(statusRaw?: string, hasConflict?: boolean) {
   if (status === 'cancelled') {
     return { label: 'ANULOWANE', cls: 'bg-red-500/10 text-red-300 border-red-500/20' };
   }
+  if (status === 'returned') {
+    return { label: 'ZWRÓCONE', cls: 'bg-[#e5e4e2]/10 text-[#e5e4e2]/60 border-[#e5e4e2]/15' };
+  }
+  if (status === 'planned') {
+    return { label: 'PLANOWANE', cls: 'bg-blue-500/10 text-blue-300 border-blue-500/20' };
+  }
+  if (status === 'reserved_pending') {
+    return { label: 'REZERWACJA WSTĘPNA', cls: 'bg-yellow-500/10 text-yellow-300 border-yellow-500/20' };
+  }
+  if (status === 'reserved_confirmed') {
+    return { label: 'ZAREZERWOWANE', cls: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20' };
+  }
 
   return {
-    label: statusRaw ? statusRaw : '—',
+    label: '—',
     cls: 'bg-[#e5e4e2]/10 text-[#e5e4e2]/60 border-[#e5e4e2]/15',
   };
 }
@@ -281,6 +294,7 @@ export const EventEquipmentTab: React.FC<{
   const [expandedKits, setExpandedKits] = useState<Set<string>>(new Set());
   const [showAddEquipmentModal, setShowAddEquipmentModal] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [editingQuantityId, setEditingQuantityId] = useState<string | null>(null);
   const [showAlternativesModal, setShowAlternativesModal] = useState(false);
   const [alternatives, setAlternatives] = useState<any[]>([]);
@@ -1116,7 +1130,7 @@ export const EventEquipmentTab: React.FC<{
         .createSignedUrl(checklistPdfPath, 3600);
 
       if (data?.signedUrl) {
-        window.open(data.signedUrl, '_blank');
+        setPdfPreviewUrl(data.signedUrl);
       }
     } catch (err) {
       console.error('Error showing PDF:', err);
@@ -2493,6 +2507,37 @@ export const EventEquipmentTab: React.FC<{
                 Wyślij prośbę
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {pdfPreviewUrl && (
+        <div className="fixed inset-0 z-[60] flex flex-col bg-black/80 backdrop-blur-sm">
+          <div className="flex items-center justify-between border-b border-[#d3bb73]/20 bg-[#0f1119] px-6 py-4">
+            <h3 className="text-lg font-light text-[#e5e4e2]">Podgląd checklisty PDF</h3>
+            <div className="flex items-center gap-3">
+              <a
+                href={pdfPreviewUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-lg border border-[#d3bb73]/30 px-3 py-1.5 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
+              >
+                Otwórz w nowej karcie
+              </a>
+              <button
+                onClick={() => setPdfPreviewUrl(null)}
+                className="rounded-lg p-2 text-[#e5e4e2]/60 transition-colors hover:bg-[#e5e4e2]/10 hover:text-[#e5e4e2]"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 p-4">
+            <iframe
+              src={pdfPreviewUrl}
+              title="Checklista sprzętu PDF"
+              className="h-full w-full rounded-lg"
+            />
           </div>
         </div>
       )}
