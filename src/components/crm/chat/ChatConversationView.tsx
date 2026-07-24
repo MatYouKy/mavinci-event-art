@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ArrowLeft,
   Send,
@@ -500,6 +501,7 @@ export default function ChatConversationView({
   };
 
   return (
+    <>
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-3 border-b border-[#d3bb73]/10 px-3 py-2">
@@ -836,42 +838,44 @@ export default function ChatConversationView({
           </button>
         </div>
       </div>
-      {lightboxUrl && (
-        <div className="fixed inset-0 z-[70] flex flex-col bg-black/85 backdrop-blur-sm" onClick={() => setLightboxUrl(null)}>
-          <div className="flex items-center justify-end gap-3 p-4">
-            <a
-              href={lightboxUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="rounded-full bg-black/50 px-3 py-1.5 text-sm text-white/80 transition-colors hover:bg-black/70 hover:text-white"
-            >
-              Otwórz w nowej karcie
-            </a>
-            <button
-              onClick={() => setLightboxUrl(null)}
-              className="rounded-full bg-black/50 p-2 text-white/80 transition-colors hover:bg-black/70 hover:text-white"
-            >
-              <X className="h-6 w-6" />
-            </button>
-          </div>
-          <div className="flex flex-1 items-center justify-center overflow-hidden px-4 pb-4" onClick={(e) => e.stopPropagation()}>
-            {/\.(pdf)(\?|$)/i.test(lightboxUrl) ? (
-              <iframe
-                src={lightboxUrl}
-                title="Podgląd pliku"
-                className="h-full w-full rounded-lg"
-              />
-            ) : (
-              <img
-                src={lightboxUrl}
-                alt="Podgląd"
-                className="max-h-full max-w-full rounded-lg object-contain"
-              />
-            )}
-          </div>
-        </div>
-      )}
     </div>
+    {lightboxUrl && createPortal(
+      <div className="fixed inset-0 z-[99999] flex flex-col bg-black/90 backdrop-blur-sm" onClick={() => setLightboxUrl(null)}>
+        <div className="flex items-center justify-end gap-3 p-4">
+          <a
+            href={lightboxUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="rounded-full bg-white/10 px-3 py-1.5 text-sm text-white/80 transition-colors hover:bg-white/20 hover:text-white"
+          >
+            Otwórz w nowej karcie
+          </a>
+          <button
+            onClick={() => setLightboxUrl(null)}
+            className="rounded-full bg-white/10 p-2 text-white/80 transition-colors hover:bg-white/20 hover:text-white"
+          >
+            <X className="h-6 w-6" />
+          </button>
+        </div>
+        <div className="flex flex-1 items-center justify-center overflow-hidden px-4 pb-4" onClick={(e) => e.stopPropagation()}>
+          {/\.(pdf)(\?|$)/i.test(lightboxUrl) ? (
+            <iframe
+              src={lightboxUrl}
+              title="Podgląd pliku"
+              className="h-full w-full rounded-lg"
+            />
+          ) : (
+            <img
+              src={lightboxUrl}
+              alt="Podgląd"
+              className="max-h-full max-w-full rounded-lg object-contain"
+            />
+          )}
+        </div>
+      </div>,
+      document.body
+    )}
+    </>
   );
 }
