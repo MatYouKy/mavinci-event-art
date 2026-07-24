@@ -380,7 +380,7 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
 
     try {
       await addComment({
-        task_id: task?.id,
+        task_id: task?.id || '',
         employee_id: currentEmployee.id,
         content: commentText,
       }).unwrap();
@@ -419,7 +419,7 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
           },
           attachment: {
             id: tempId,
-            task_id: task?.id,
+            task_id: task?.id || '',
             event_file_id: null,
             is_linked: false,
             file_name: file.name,
@@ -515,7 +515,7 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
     if (!confirmed) return;
 
     try {
-      await deleteComment({ commentId, taskId: task?.id }).unwrap();
+      await deleteComment({ commentId, taskId: task?.id || '' }).unwrap();
       showSnackbar('Komentarz został usunięty', 'success');
     } catch (error) {
       console.error('Error deleting comment:', error);
@@ -540,7 +540,7 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
     try {
       await deleteAttachment({
         attachmentId,
-        taskId: task?.id,
+        taskId: task?.id || '',
         fileUrl,
         isLinked,
       }).unwrap();

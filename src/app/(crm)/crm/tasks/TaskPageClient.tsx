@@ -542,7 +542,7 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
           board_column: formData.board_column,
           due_date: formData.due_date || null,
           assigned_employees: formData.assigned_employees,
-          created_by: currentEmployee?.id || null,
+          created_by: currentEmployee?.id || undefined,
           owner_id: currentEmployee?.id || null,
           is_private: false,
         }).unwrap();
