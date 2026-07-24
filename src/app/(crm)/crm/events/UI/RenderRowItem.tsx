@@ -89,14 +89,17 @@ export function EventEquipmentRow({
   const isConflict = badge.label === 'NIEDOSTĘPNY';
   const isShortage = !!row?.is_optional;
   const isRental = row?.status === 'rental' || !!row?.use_external_rental;
+  const isLoaded = !!row?.is_loaded;
 
   return (
     <div>
       <div
         className={`flex items-center gap-3 rounded-lg border ${
-          isConflict || isShortage
-            ? 'border-red-500/20 bg-red-500/5'
-            : 'border-[#d3bb73]/10 bg-[#0f1119]'
+          isLoaded
+            ? 'border-emerald-500/60 bg-emerald-500/5'
+            : isConflict || isShortage
+              ? 'border-red-500/20 bg-red-500/5'
+              : 'border-[#d3bb73]/10 bg-[#0f1119]'
         } px-4 py-2.5 transition-colors hover:border-[#d3bb73]/20 ${
           isRemovedFromOffer ? 'opacity-50' : ''
         }`}
@@ -158,6 +161,12 @@ export function EventEquipmentRow({
               {isShortage && (
                 <span className="shrink-0 rounded-full border border-orange-500/30 bg-orange-500/10 px-2 py-0.5 text-[10px] font-medium uppercase text-orange-400">
                   BRAK
+                </span>
+              )}
+
+              {isLoaded && (
+                <span className="shrink-0 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium uppercase text-emerald-400">
+                  ZAŁADOWANY
                 </span>
               )}
             </div>

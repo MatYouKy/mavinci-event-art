@@ -30,6 +30,7 @@ interface EventEquipmentItem {
   kit_name: string | null;
   category_name: string | null;
   thumbnail_url: string | null;
+  is_loaded: boolean;
 }
 
 interface Props {
@@ -391,7 +392,7 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
         .order('sort_order', { ascending: true }),
       supabase
         .from('event_equipment')
-        .select('id, quantity, status, equipment_id, kit_id, removed_from_offer, equipment:equipment_items(name, thumbnail_url, category:warehouse_categories(name)), kit:equipment_kits(name, thumbnail_url)')
+        .select('id, quantity, status, is_loaded, equipment_id, kit_id, removed_from_offer, equipment:equipment_items(name, thumbnail_url, category:warehouse_categories(name)), kit:equipment_kits(name, thumbnail_url)')
         .eq('event_id', eventId)
         .or('removed_from_offer.is.null,removed_from_offer.eq.false')
         .order('created_at', { ascending: true }),
@@ -429,6 +430,7 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
       kit_name: item.kit?.name ?? null,
       category_name: item.equipment?.category?.name ?? null,
       thumbnail_url: item.equipment?.thumbnail_url || item.kit?.thumbnail_url || null,
+      is_loaded: item.is_loaded ?? false,
     }));
 
     return { checklist: mappedChecklist, logistics: mappedLogistics, equipment: mappedEquipment };
@@ -461,6 +463,7 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
         setChecklist(ch.checklist);
         setLogistics(ch.logistics);
         setEventEquipment(ch.equipment);
+        setLoadedEquipmentIds(new Set(ch.equipment.filter((e: EventEquipmentItem) => e.is_loaded).map((e: EventEquipmentItem) => e.id)));
         setFiles(fi);
         setMyAssignment(assignment);
       } catch (err) {
@@ -490,16 +493,24 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
 
   const [loadedEquipmentIds, setLoadedEquipmentIds] = useState<Set<string>>(new Set());
 
-  const toggleEquipmentLoaded = (item: EventEquipmentItem) => {
+  const toggleEquipmentLoaded = async (item: EventEquipmentItem) => {
+    const newLoaded = !loadedEquipmentIds.has(item.id);
     setLoadedEquipmentIds((prev) => {
       const next = new Set(prev);
-      if (next.has(item.id)) {
-        next.delete(item.id);
-      } else {
+      if (newLoaded) {
         next.add(item.id);
+      } else {
+        next.delete(item.id);
       }
       return next;
     });
+    await supabase
+      .from('event_equipment')
+      .update({
+        is_loaded: newLoaded,
+        loaded_at: newLoaded ? new Date().toISOString() : null,
+      })
+      .eq('id', item.id);
   };
 
   if (isLoading) {

@@ -107,6 +107,29 @@ export function useEventEquipment(eventId: string, event?: EventCore) {
     refetch: refetchAll,
   } = useGetAllEventEquipmentForAvailabilityQuery(eventId, { skip: !eventId });
 
+  // Realtime subscription for instant is_loaded updates from mobile
+  useEffect(() => {
+    if (!eventId) return;
+    const channel = supabase
+      .channel(`event_equipment_loaded_${eventId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'event_equipment',
+          filter: `event_id=eq.${eventId}`,
+        },
+        () => {
+          refetch();
+        },
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [eventId, refetch]);
+
   const [addMutation, { isLoading: isAdding }] = useAddEventEquipmentMutation();
   const [updateMutation, { isLoading: isUpdating }] = useUpdateEventEquipmentMutation();
   const [removeMutation, { isLoading: isRemoving }] = useRemoveEventEquipmentMutation();
