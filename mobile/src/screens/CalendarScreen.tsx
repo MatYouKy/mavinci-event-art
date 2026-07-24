@@ -15,6 +15,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import PermissionGate from '../components/PermissionGate';
 import EventDetailScreen from './EventDetailScreen';
+import NewInquiryModal from './NewInquiryModal';
 
 interface CalendarEvent {
   id: string;
@@ -52,6 +53,7 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: string) => 
   const [selectedDate, setSelectedDate] = useState(
     new Date().toISOString().split('T')[0]
   );
+  const [inquiryModalVisible, setInquiryModalVisible] = useState(false);
 
   const fetchEvents = useCallback(async () => {
     if (!employee?.id) return;
@@ -280,6 +282,16 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: string) => 
             ` (${eventsForSelectedDate.length})`}
         </Text>
 
+        {eventsForSelectedDate.length > 0 && (
+          <TouchableOpacity
+            style={styles.addInquiryBtn}
+            onPress={() => setInquiryModalVisible(true)}
+          >
+            <Feather name="phone-call" size={16} color={colors.primary.gold} />
+            <Text style={styles.addInquiryBtnText}>Dodaj zapytanie</Text>
+          </TouchableOpacity>
+        )}
+
         {eventsForSelectedDate.length === 0 ? (
           <View style={styles.emptyState}>
             <Feather name="calendar" size={32} color={colors.text.tertiary} />
@@ -301,6 +313,12 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: string) => 
           />
         )}
       </View>
+
+      <NewInquiryModal
+        visible={inquiryModalVisible}
+        onClose={() => setInquiryModalVisible(false)}
+        initialDate={selectedDate}
+      />
     </View>
   );
 }
@@ -383,6 +401,25 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 11,
     fontWeight: '600',
+  },
+  addInquiryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primary.gold + '15',
+    borderWidth: 1,
+    borderColor: colors.primary.gold + '40',
+    borderRadius: 10,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  addInquiryBtnText: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: '600',
+    color: colors.primary.gold,
   },
   emptyState: {
     flex: 1,

@@ -64,6 +64,7 @@ export const MENU_ITEMS: MenuItem[] = [
   { icon: 'message-circle', label: 'Komunikator', screen: 'Messages', module: 'messages' },
   { icon: 'star', label: 'Wydarzenia', screen: 'Events', module: 'events' },
   { icon: 'check-square', label: 'Zadania', screen: 'Tasks', module: 'tasks' },
+  { icon: 'phone-call', label: 'Zapytania', screen: 'Inquiries', module: 'tasks' },
   { icon: 'clock', label: 'Czas pracy', screen: 'TimeTracking', module: 'time_tracking' },
   { icon: 'users', label: 'Pracownicy', screen: 'Employees', module: 'employees' },
   { icon: 'package', label: 'Sprzęt', screen: 'Equipment', module: 'equipment' },

@@ -15,6 +15,7 @@ import {
 
 import { useRealtimePushNotifications } from './src/services/realtimeNotifications';
 import { useChatNotifications, setupChatNotificationFilter } from './src/services/chatNotifications';
+import { scheduleInquiryReminders } from './src/services/inquiryReminders';
 
 // Must be called before app renders to handle incoming remote push while app is foregrounded
 setupChatNotificationFilter();
@@ -71,6 +72,7 @@ function AppContent() {
     };
 
     void initializePushNotifications();
+    void scheduleInquiryReminders();
 
     const notificationSubscription = addNotificationReceivedListener((notification) => {
       console.log('Notification received:', notification.request.content);
@@ -104,6 +106,10 @@ function AppContent() {
         globalNotificationTarget = {
           type: 'meeting_reminder',
           meetingId: data.meetingId as string,
+        };
+      } else if (data?.type === 'inquiry_reminder') {
+        globalNotificationTarget = {
+          type: 'inquiry_reminder',
         };
       }
     });

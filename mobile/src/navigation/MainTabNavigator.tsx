@@ -17,6 +17,7 @@ import MessagesStackNavigator from './MessagesStackNavigator';
 import TasksStackNavigator from './TasksStackNavigator';
 import EventsStackNavigator from './EventsStackNavigator';
 import EquipmentStackNavigator from './EquipmentStackNavigator';
+import InquiriesStackNavigator from './InquiriesStackNavigator';
 import TimeTrackingScreen from '../screens/TimeTrackingScreen';
 import EmployeesScreen from '../screens/EmployeesScreen';
 import CustomDrawer from '../components/CustomDrawer';
@@ -32,6 +33,7 @@ export type MainTabParamList = {
   Messages: undefined;
   Events: undefined;
   Tasks: undefined;
+  Inquiries: undefined;
   Equipment: undefined;
   TimeTracking: undefined;
   Employees: undefined;
@@ -120,6 +122,8 @@ export default function MainTabNavigator() {
       setPendingMeetingId(globalNotificationTarget.meetingId ?? null);
       setCurrentScreen('Calendar');
       setTimeout(() => setPendingMeetingId(null), 1000);
+    } else if (globalNotificationTarget?.type === 'inquiry_reminder') {
+      setCurrentScreen('Inquiries');
     } else if (globalNotificationTarget?.type === 'crm_notification') {
       const entityType = globalNotificationTarget.entity_type;
       const category = globalNotificationTarget.category;
@@ -292,6 +296,15 @@ export default function MainTabNavigator() {
             title: 'Zadania',
             tabBarButton: () => null,
             tabBarIcon: ({ color, size }) => <Feather name="check-square" color={color} size={size} />,
+          }}
+        />
+        <Tab.Screen
+          name="Inquiries"
+          component={InquiriesStackNavigator}
+          options={{
+            title: 'Zapytania',
+            tabBarButton: () => null,
+            tabBarIcon: ({ color, size }) => <Feather name="phone-call" color={color} size={size} />,
           }}
         />
         <Tab.Screen
