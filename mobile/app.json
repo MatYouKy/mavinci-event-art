@@ -10,14 +10,14 @@
     "splash": {
       "image": "./src/assets/splash-logo.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0f1119"
+      "backgroundColor": "#DBF48C"
     },
     "android": {
       "package": "com.mavinci.crm",
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./src/assets/adaptive-icon.png",
-        "backgroundColor": "#0f1119"
+        "backgroundColor": "#DBF48C"
       },
       "permissions": [
         "RECEIVE_BOOT_COMPLETED",
