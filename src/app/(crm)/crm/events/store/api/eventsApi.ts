@@ -316,12 +316,6 @@ export const eventsApi = createApi({
                     category:warehouse_categories(id, name, parent_id)
                   )
                 )
-              ),
-              loaded_by_employee:employees!loaded_by(
-                id,
-                first_name,
-                last_name,
-                avatar_url
               )
             `,
             )
@@ -338,7 +332,28 @@ export const eventsApi = createApi({
             };
           }
 
-          return { data: (data || []) as any[] };
+          // Enrich with loaded_by employee info
+          const loadedByIds = [...new Set(
+            (data || []).map((r: any) => r.loaded_by).filter(Boolean)
+          )];
+          let employeeMap: Record<string, any> = {};
+          if (loadedByIds.length > 0) {
+            const { data: emps } = await supabase
+              .from('employees')
+              .select('id, first_name, last_name, avatar_url')
+              .in('id', loadedByIds);
+            if (emps) {
+              for (const e of emps) {
+                employeeMap[e.id] = e;
+              }
+            }
+          }
+          const enriched = (data || []).map((row: any) => ({
+            ...row,
+            loaded_by_employee: row.loaded_by ? (employeeMap[row.loaded_by] || null) : null,
+          }));
+
+          return { data: enriched as any[] };
         } catch (error: any) {
           console.error('[getEventEquipment] exception', error);
           return {
