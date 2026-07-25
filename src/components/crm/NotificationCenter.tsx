@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Bell,
   X,
@@ -12,6 +12,7 @@ import {
   XCircle,
   MessageSquare,
   Mail,
+  Calendar,
 } from 'lucide-react';
 
 import { useRouter } from 'next/navigation';
@@ -19,6 +20,14 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { supabase } from '@/lib/supabase/browser';
 import { AbsenceRequestModal } from '@/components/crm/employee/modal/AbsenceRequestModal';
+
+interface NotificationBanner {
+  id: string;
+  title: string;
+  message: string;
+  actionUrl: string | null;
+  eventId: string | null;
+}
 
 export interface Notification {
   id: string;
@@ -56,6 +65,37 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
   const initialLoadDoneRef = useRef(false);
   const sessionStartRef = useRef<string>(new Date().toISOString());
   const [absenceModalId, setAbsenceModalId] = useState<string | null>(null);
+  const [banners, setBanners] = useState<NotificationBanner[]>([]);
+  const bannerTimeoutsRef = useRef<Record<string, NodeJS.Timeout>>({});
+
+  const showBanner = useCallback((notification: Notification) => {
+    const eventId = notification.metadata?.event_id || null;
+    const actionUrl = notification.action_url || (eventId ? `/crm/events/${eventId}` : null);
+    const banner: NotificationBanner = {
+      id: notification.id,
+      title: notification.title,
+      message: notification.message,
+      actionUrl,
+      eventId,
+    };
+    setBanners((prev) => {
+      if (prev.some((b) => b.id === banner.id)) return prev;
+      return [banner, ...prev].slice(0, 3);
+    });
+    const timeout = setTimeout(() => {
+      setBanners((prev) => prev.filter((b) => b.id !== banner.id));
+      delete bannerTimeoutsRef.current[banner.id];
+    }, 8000);
+    bannerTimeoutsRef.current[banner.id] = timeout;
+  }, []);
+
+  const dismissBanner = useCallback((bannerId: string) => {
+    setBanners((prev) => prev.filter((b) => b.id !== bannerId));
+    if (bannerTimeoutsRef.current[bannerId]) {
+      clearTimeout(bannerTimeoutsRef.current[bannerId]);
+      delete bannerTimeoutsRef.current[bannerId];
+    }
+  }, []);
 
   useEffect(() => {
     fetchNotifications();
@@ -76,7 +116,20 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
           if (createdAt && createdAt > sessionStartRef.current && readyForSoundRef.current && soundEnabledRef.current) {
             playNotificationSound();
           }
-          fetchNotifications();
+          fetchNotifications().then(() => {
+            if (newRow?.notification_id && createdAt && createdAt > sessionStartRef.current) {
+              (async () => {
+                const { data: notifData } = await supabase
+                  .from('notifications')
+                  .select('id, title, message, category, action_url, metadata, related_entity_type')
+                  .eq('id', newRow.notification_id)
+                  .maybeSingle();
+                if (notifData) {
+                  showBanner(notifData as unknown as Notification);
+                }
+              })();
+            }
+          });
         },
       )
       .on(
@@ -481,7 +534,44 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
     filter === 'unread' ? notifications.filter((n) => !n.is_read) : notifications;
 
   return (
-    <div className="relative">
+    <>
+      {/* Notification Banners */}
+      <div className="fixed right-4 top-20 z-[200] flex flex-col gap-2 md:right-6">
+        {banners.map((banner) => (
+          <div
+            key={banner.id}
+            className="animate-slide-in-right flex w-80 cursor-pointer items-start gap-3 rounded-lg border border-[#d3bb73]/30 bg-[#1c1f33] p-4 shadow-2xl transition-all hover:border-[#d3bb73]/50"
+            onClick={() => {
+              if (banner.actionUrl) {
+                router.push(banner.actionUrl);
+              }
+              dismissBanner(banner.id);
+            }}
+          >
+            <div className="flex-shrink-0 rounded-full bg-[#d3bb73]/20 p-2">
+              <Calendar className="h-4 w-4 text-[#d3bb73]" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-[#e5e4e2]">{banner.title}</p>
+              <p className="mt-0.5 line-clamp-2 text-xs text-[#e5e4e2]/70">{banner.message}</p>
+              {banner.actionUrl && (
+                <p className="mt-1 text-xs text-[#d3bb73]">Kliknij, aby zobaczyć szczegóły</p>
+              )}
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                dismissBanner(banner.id);
+              }}
+              className="flex-shrink-0 rounded p-0.5 text-[#e5e4e2]/50 hover:text-[#e5e4e2]"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div className="relative">
       <button
         onClick={() => setShowPanel(!showPanel)}
         className="relative rounded-lg p-1.5 transition-colors hover:bg-[#1c1f33] md:p-2"
@@ -803,5 +893,6 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
         />
       )}
     </div>
+    </>
   );
 }
