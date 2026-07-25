@@ -8,7 +8,24 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
-import { Calendar, DateData } from 'react-native-calendars';
+import { Calendar, DateData, LocaleConfig } from 'react-native-calendars';
+
+LocaleConfig.locales['pl'] = {
+  monthNames: [
+    'Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec',
+    'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień',
+  ],
+  monthNamesShort: [
+    'Sty', 'Lut', 'Mar', 'Kwi', 'Maj', 'Cze',
+    'Lip', 'Sie', 'Wrz', 'Paź', 'Lis', 'Gru',
+  ],
+  dayNames: [
+    'Niedziela', 'Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota',
+  ],
+  dayNamesShort: ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'Sb'],
+  today: 'Dziś',
+};
+LocaleConfig.defaultLocale = 'pl';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, typography } from '../theme';
 import { supabase } from '../lib/supabase';
@@ -268,6 +285,7 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: string) => 
   return (
     <View style={styles.container}>
       <Calendar
+        firstDay={1}
         current={selectedDate}
         onDayPress={(day: DateData) => setSelectedDate(day.dateString)}
         markingType="multi-dot"
