@@ -33,6 +33,7 @@ import { useAuth } from '../contexts/AuthContext';
 import PermissionGate from '../components/PermissionGate';
 import EventDetailScreen from './EventDetailScreen';
 import NewInquiryModal from './NewInquiryModal';
+import { STATUS_COLORS, STATUS_LABELS } from './EventsScreen';
 
 interface CalendarEvent {
   id: string;
@@ -44,26 +45,6 @@ interface CalendarEvent {
   location?: string;
   is_meeting?: boolean;
 }
-
-const STATUS_COLORS: Record<string, string> = {
-  pending: colors.status.warning,
-  confirmed: colors.status.info,
-  in_progress: '#7c3aed',
-  completed: colors.status.success,
-  cancelled: colors.status.error,
-  meeting: colors.primary.gold,
-  inquiry: '#f97316',
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  pending: 'Oczekujące',
-  confirmed: 'Potwierdzone',
-  in_progress: 'W trakcie',
-  completed: 'Zakończone',
-  cancelled: 'Anulowane',
-  meeting: 'Spotkanie',
-  inquiry: 'Zapytanie',
-};
 
 function CalendarContent({ onEventPress }: { onEventPress: (eventId: string) => void }) {
   const { employee } = useAuth();

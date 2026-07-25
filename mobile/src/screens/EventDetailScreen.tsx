@@ -20,6 +20,7 @@ import { colors, spacing } from '../theme';
 import { supabase, supabaseUrl } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { canView } from '../lib/permissions';
+import { STATUS_COLORS, STATUS_LABELS } from './EventsScreen';
 
 type TabKey = 'details' | 'agenda' | 'checklist' | 'files';
 
@@ -124,30 +125,6 @@ interface EventFile {
   uploaded_by_employee: { name: string; surname: string } | null;
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  inquiry: 'Zapytanie',
-  negotiation: 'Negocjacje',
-  confirmed: 'Potwierdzone',
-  in_preparation: 'W przygotowaniu',
-  ready: 'Gotowe',
-  in_progress: 'W trakcie',
-  completed: 'Zakończone',
-  cancelled: 'Anulowane',
-  settled: 'Rozliczone',
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  inquiry: '#a78bfa',
-  negotiation: '#fbbf24',
-  confirmed: '#34d399',
-  in_preparation: '#60a5fa',
-  ready: '#22c55e',
-  in_progress: '#3b82f6',
-  completed: '#6b7280',
-  cancelled: '#ef4444',
-  settled: '#10b981',
-};
-
 interface MyAssignment {
   id: string;
   status: string;
@@ -169,7 +146,15 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
   const [myAssignment, setMyAssignment] = useState<MyAssignment | null>(null);
   const [respondingInvitation, setRespondingInvitation] = useState(false);
 
-  const canViewFinances = canView(employee, 'invoices') || canView(employee, 'finances');
+  const permissions = employee?.permissions ?? [];
+
+  const canViewFinances =
+    permissions.includes('finances_manage') ||
+    permissions.includes('finances_view') ||
+    permissions.includes('offers_manage') ||
+    permissions.includes('offers_view') ||
+    permissions.includes('invoices_manage') ||
+    permissions.includes('invoices_view');
 
   const fetchMyAssignment = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();

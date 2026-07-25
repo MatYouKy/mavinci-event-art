@@ -29,28 +29,37 @@ interface Props {
   onEventPress: (event: EventListItem) => void;
 }
 
-const STATUS_LABELS: Record<string, string> = {
+const normalizeStatus = (status: string | null | undefined) =>
+  String(status || '')
+    .trim()
+    .toLowerCase();
+
+export const STATUS_LABELS: Record<string, string> = {
   inquiry: 'Zapytanie',
-  negotiation: 'Negocjacje',
-  confirmed: 'Potwierdzone',
+  offer_to_send: 'Oferta do wysłania',
+  offer_sent: 'Oferta wysłana',
+  offer_accepted: 'Oferta zaakceptowana',
   in_preparation: 'W przygotowaniu',
-  ready: 'Gotowe',
+  ready_for_live: 'Gotowy do realizacji',
   in_progress: 'W trakcie',
-  completed: 'Zakończone',
-  cancelled: 'Anulowane',
-  settled: 'Rozliczone',
+  completed: 'Zrealizowany',
+  cancelled: 'Anulowany',
+  invoiced: 'Zafakturowany',
+  settled: 'Rozliczony',
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  inquiry: '#a78bfa',
-  negotiation: '#fbbf24',
-  confirmed: '#34d399',
-  in_preparation: '#60a5fa',
-  ready: '#22c55e',
-  in_progress: '#3b82f6',
-  completed: '#6b7280',
-  cancelled: '#ef4444',
-  settled: '#10b981',
+export const STATUS_COLORS: Record<string, string> = {
+  inquiry: '#3b82f6', // blue-500
+  offer_to_send: '#6366f1', // indigo-500
+  offer_sent: '#a855f7', // purple-500
+  offer_accepted: '#22c55e', // green-500
+  in_preparation: '#eab308', // yellow-500
+  ready_for_live: '#10b981', // emerald-500
+  in_progress: '#a855f7', // purple-500
+  completed: '#22c55e', // green-500
+  cancelled: '#ef4444', // red-500
+  invoiced: '#d3bb73', // custom
+  settled: '#10b981', // emerald-500
 };
 
 export default function EventsScreen({ onEventPress }: Props) {
@@ -68,12 +77,14 @@ export default function EventsScreen({ onEventPress }: Props) {
     try {
       const { data, error } = await supabase
         .from('events')
-        .select(`
+        .select(
+          `
           id, name, event_date, event_end_date, status,
           event_categories(name, color),
           locations(name),
           organizations(name, alias)
-        `)
+        `,
+        )
         .order('event_date', { ascending: false })
         .limit(100);
 
@@ -84,12 +95,22 @@ export default function EventsScreen({ onEventPress }: Props) {
         name: e.name,
         event_date: e.event_date,
         event_end_date: e.event_end_date,
-        status: e.status,
+        status: normalizeStatus(e.status),
         category_name: e.event_categories?.name ?? null,
         category_color: e.event_categories?.color ?? null,
         location_name: e.locations?.name ?? null,
         organization_name: e.organizations?.alias || e.organizations?.name || null,
       }));
+
+      console.log('=== EVENTS RAW ===');
+      (data || []).forEach((e: any) => {
+        console.log({
+          id: e.id,
+          name: e.name,
+          status: e.status,
+          statusType: typeof e.status,
+        });
+      });
 
       setEvents(mapped);
     } catch (error) {
@@ -113,7 +134,7 @@ export default function EventsScreen({ onEventPress }: Props) {
         (e) =>
           e.name.toLowerCase().includes(q) ||
           e.organization_name?.toLowerCase().includes(q) ||
-          e.location_name?.toLowerCase().includes(q)
+          e.location_name?.toLowerCase().includes(q),
       );
     }
 
@@ -157,12 +178,7 @@ export default function EventsScreen({ onEventPress }: Props) {
             { backgroundColor: (STATUS_COLORS[item.status] || '#6b7280') + '20' },
           ]}
         >
-          <Text
-            style={[
-              styles.statusText,
-              { color: STATUS_COLORS[item.status] || '#6b7280' },
-            ]}
-          >
+          <Text style={[styles.statusText, { color: STATUS_COLORS[item.status] || '#6b7280' }]}>
             {STATUS_LABELS[item.status] || item.status}
           </Text>
         </View>
@@ -172,7 +188,12 @@ export default function EventsScreen({ onEventPress }: Props) {
         <Text style={styles.eventDate}>{formatDate(item.event_date)}</Text>
         {item.location_name && (
           <>
-            <Feather name="map-pin" size={12} color={colors.text.tertiary} style={{ marginLeft: 12 }} />
+            <Feather
+              name="map-pin"
+              size={12}
+              color={colors.text.tertiary}
+              style={{ marginLeft: 12 }}
+            />
             <Text style={styles.eventLocation} numberOfLines={1}>
               {item.location_name}
             </Text>
@@ -184,10 +205,17 @@ export default function EventsScreen({ onEventPress }: Props) {
 
   const statusFilters = [
     { key: null, label: 'Wszystkie' },
-    { key: 'confirmed', label: 'Potwierdzone' },
+    { key: 'inquiry', label: 'Zapytania' },
+    { key: 'offer_to_send', label: 'Do wysłania' },
+    { key: 'offer_sent', label: 'Wysłane' },
+    { key: 'offer_accepted', label: 'Zaakceptowane' },
     { key: 'in_preparation', label: 'W przygotowaniu' },
+    { key: 'ready_for_live', label: 'Gotowe' },
     { key: 'in_progress', label: 'W trakcie' },
-    { key: 'completed', label: 'Zakończone' },
+    { key: 'completed', label: 'Zrealizowane' },
+    { key: 'invoiced', label: 'Zafakturowane' },
+    { key: 'settled', label: 'Rozliczone' },
+    { key: 'cancelled', label: 'Anulowane' },
   ];
 
   if (isLoading) {
@@ -226,10 +254,7 @@ export default function EventsScreen({ onEventPress }: Props) {
           keyExtractor={(item) => item.key || 'all'}
           renderItem={({ item: f }) => (
             <TouchableOpacity
-              style={[
-                styles.filterChip,
-                statusFilter === f.key && styles.filterChipActive,
-              ]}
+              style={[styles.filterChip, statusFilter === f.key && styles.filterChipActive]}
               onPress={() => setStatusFilter(f.key)}
             >
               <Text
