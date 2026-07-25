@@ -12,6 +12,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing } from '../theme';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
 export interface EventListItem {
   id: string;
@@ -63,6 +64,7 @@ export const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function EventsScreen({ onEventPress }: Props) {
+  const { employee } = useAuth();
   const [events, setEvents] = useState<EventListItem[]>([]);
   const [filtered, setFiltered] = useState<EventListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -71,10 +73,34 @@ export default function EventsScreen({ onEventPress }: Props) {
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
 
   const fetchEvents = useCallback(async (isRefresh = false) => {
+    if (!employee?.id) return;
     if (isRefresh) setRefreshing(true);
     else setIsLoading(true);
 
     try {
+      // Get events where user has accepted assignment
+      const { data: assignments } = await supabase
+        .from('employee_assignments')
+        .select('event_id')
+        .eq('employee_id', employee.id)
+        .eq('status', 'accepted');
+
+      const assignedIds = (assignments ?? []).map((a) => a.event_id);
+
+      // Get events created by user
+      const { data: created } = await supabase
+        .from('events')
+        .select('id')
+        .eq('created_by', employee.id);
+
+      const createdIds = (created ?? []).map((e) => e.id);
+      const allIds = [...new Set([...assignedIds, ...createdIds])];
+
+      if (allIds.length === 0) {
+        setEvents([]);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('events')
         .select(
@@ -85,6 +111,7 @@ export default function EventsScreen({ onEventPress }: Props) {
           organizations(name, alias)
         `,
         )
+        .in('id', allIds)
         .order('event_date', { ascending: false })
         .limit(100);
 
@@ -119,7 +146,7 @@ export default function EventsScreen({ onEventPress }: Props) {
       setIsLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [employee?.id]);
 
   useEffect(() => {
     fetchEvents();

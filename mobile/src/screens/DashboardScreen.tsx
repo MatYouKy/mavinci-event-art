@@ -102,13 +102,25 @@ export default function DashboardScreen() {
     if (!employee?.id) return;
     setLoading(true);
     try {
-      // Fetch upcoming events assigned to this employee (or all if admin)
+      // Fetch upcoming events assigned to this employee (accepted) or created by them
       const { data: assignedEventIds } = await supabase
-        .from('employee_event_assignments')
+        .from('employee_assignments')
         .select('event_id')
-        .eq('employee_id', employee.id);
+        .eq('employee_id', employee.id)
+        .eq('status', 'accepted');
 
-      const eventIds = assignedEventIds?.map((a) => a.event_id) ?? [];
+      const acceptedIds = assignedEventIds?.map((a) => a.event_id) ?? [];
+
+      // Also fetch events created by this employee
+      const { data: createdEvents } = await supabase
+        .from('events')
+        .select('id')
+        .eq('created_by', employee.id)
+        .gte('event_date', new Date().toISOString().split('T')[0])
+        .not('status', 'eq', 'cancelled');
+
+      const createdIds = (createdEvents ?? []).map((e) => e.id);
+      const eventIds = [...new Set([...acceptedIds, ...createdIds])];
 
       let events: DashboardEvent[] = [];
       if (eventIds.length > 0) {
