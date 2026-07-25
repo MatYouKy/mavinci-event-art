@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,68 +8,173 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase, Event, Task } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { colors, spacing, typography, borderRadius } from '../theme';
+
+// --- Labels matching main CRM ---
+
+const EVENT_STATUS_LABELS: Record<string, string> = {
+  inquiry: 'Zapytanie',
+  offer_to_send: 'Oferta do wysłania',
+  offer_sent: 'Oferta wysłana',
+  offer_accepted: 'Oferta zaakceptowana',
+  in_preparation: 'W przygotowaniu',
+  in_progress: 'W trakcie',
+  completed: 'Zrealizowany',
+  cancelled: 'Anulowany',
+  invoiced: 'Zafakturowany',
+  ready_for_live: 'Gotowy do realizacji',
+};
+
+const EVENT_STATUS_COLORS: Record<string, string> = {
+  inquiry: '#6b7280',
+  offer_to_send: '#3b82f6',
+  offer_sent: '#6366f1',
+  offer_accepted: '#34d399',
+  in_preparation: '#eab308',
+  in_progress: '#a855f7',
+  completed: '#22c55e',
+  cancelled: '#ef4444',
+  invoiced: '#d3bb73',
+  ready_for_live: '#10b981',
+};
+
+const TASK_STATUS_LABELS: Record<string, string> = {
+  todo: 'Do zrobienia',
+  in_progress: 'W trakcie',
+  review: 'Sprawdzenie',
+  completed: 'Zakończone',
+};
+
+const TASK_STATUS_COLORS: Record<string, string> = {
+  todo: '#eab308',
+  in_progress: '#3b82f6',
+  review: '#a855f7',
+  completed: '#10b981',
+};
+
+const PRIORITY_LABELS: Record<string, string> = {
+  urgent: 'Pilne',
+  high: 'Wysoki',
+  medium: 'Średni',
+  low: 'Niski',
+};
+
+const PRIORITY_COLORS: Record<string, string> = {
+  urgent: '#ef4444',
+  high: '#f97316',
+  medium: '#3b82f6',
+  low: '#6b7280',
+};
+
+interface DashboardEvent {
+  id: string;
+  name: string;
+  event_date: string;
+  status: string;
+  category_name: string | null;
+  category_color: string | null;
+}
+
+interface DashboardTask {
+  id: string;
+  title: string;
+  priority: string;
+  status: string;
+  board_column: string;
+  due_date: string | null;
+}
 
 export default function DashboardScreen() {
   const { employee } = useAuth();
-  const [upcomingEvents, setUpcomingEvents] = useState<Event[]>([]);
-  const [myTasks, setMyTasks] = useState<Task[]>([]);
+  const navigation = useNavigation<any>();
+  const [upcomingEvents, setUpcomingEvents] = useState<DashboardEvent[]>([]);
+  const [myTasks, setMyTasks] = useState<DashboardTask[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     loadDashboardData();
-  }, []);
+  }, [employee?.id]);
 
-  const loadDashboardData = async () => {
+  const loadDashboardData = useCallback(async () => {
+    if (!employee?.id) return;
     setLoading(true);
     try {
-      // Load upcoming events
-      const { data: events } = await supabase
-        .from('events')
-        .select('*')
-        .gte('event_date', new Date().toISOString())
-        .order('event_date', { ascending: true })
-        .limit(5);
+      // Fetch upcoming events assigned to this employee (or all if admin)
+      const { data: assignedEventIds } = await supabase
+        .from('employee_event_assignments')
+        .select('event_id')
+        .eq('employee_id', employee.id);
 
-      if (events) setUpcomingEvents(events);
+      const eventIds = assignedEventIds?.map((a) => a.event_id) ?? [];
 
-      // Load my tasks
-      if (employee) {
-        const { data: tasks } = await supabase
-          .from('tasks')
-          .select('*')
-          .eq('assigned_to', employee.id)
-          .in('status', ['todo', 'in_progress'])
-          .order('due_date', { ascending: true })
-          .limit(5);
+      let events: DashboardEvent[] = [];
+      if (eventIds.length > 0) {
+        const { data } = await supabase
+          .from('events')
+          .select(`
+            id, name, event_date, status,
+            event_categories(name, color)
+          `)
+          .in('id', eventIds)
+          .gte('event_date', new Date().toISOString().split('T')[0])
+          .not('status', 'eq', 'cancelled')
+          .order('event_date', { ascending: true })
+          .limit(8);
 
-        if (tasks) setMyTasks(tasks);
+        events = (data ?? []).map((e: any) => ({
+          id: e.id,
+          name: e.name,
+          event_date: e.event_date,
+          status: e.status,
+          category_name: e.event_categories?.name ?? null,
+          category_color: e.event_categories?.color ?? null,
+        }));
       }
+      setUpcomingEvents(events);
+
+      // Fetch tasks assigned to the employee
+      const { data: assignedTaskIds } = await supabase
+        .from('task_assignees')
+        .select('task_id')
+        .eq('employee_id', employee.id);
+
+      const taskIds = assignedTaskIds?.map((a) => a.task_id) ?? [];
+
+      let tasks: DashboardTask[] = [];
+      if (taskIds.length > 0) {
+        const { data } = await supabase
+          .from('tasks')
+          .select('id, title, priority, status, board_column, due_date')
+          .in('id', taskIds)
+          .in('board_column', ['todo', 'in_progress', 'review'])
+          .order('due_date', { ascending: true, nullsFirst: false })
+          .limit(8);
+
+        tasks = data ?? [];
+      }
+      setMyTasks(tasks);
     } catch (error) {
       console.error('Error loading dashboard:', error);
     } finally {
       setLoading(false);
     }
+  }, [employee?.id]);
+
+  const handleEventPress = (event: DashboardEvent) => {
+    navigation.navigate('Events', {
+      screen: 'EventDetail',
+      params: { eventId: event.id },
+    });
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'todo': return colors.text.tertiary;
-      case 'in_progress': return colors.status.info;
-      case 'done': return colors.status.success;
-      default: return colors.text.secondary;
-    }
-  };
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'urgent': return colors.status.error;
-      case 'high': return colors.status.warning;
-      case 'medium': return colors.status.info;
-      default: return colors.text.tertiary;
-    }
+  const handleTaskPress = (task: DashboardTask) => {
+    navigation.navigate('Tasks', {
+      screen: 'TaskDetail',
+      params: { taskId: task.id },
+    });
   };
 
   return (
@@ -114,24 +219,71 @@ export default function DashboardScreen() {
           </View>
         ) : (
           upcomingEvents.map((event) => (
-            <TouchableOpacity key={event.id} style={styles.card}>
+            <TouchableOpacity
+              key={event.id}
+              style={styles.card}
+              onPress={() => handleEventPress(event)}
+              activeOpacity={0.7}
+            >
               <View style={styles.cardHeader}>
-                <Text style={styles.cardTitle}>{event.title}</Text>
-                <View style={[styles.badge, { backgroundColor: colors.primary.gold + '20' }]}>
-                  <Text style={[styles.badgeText, { color: colors.primary.gold }]}>
-                    {event.status}
+                <Text style={styles.cardTitle} numberOfLines={2}>
+                  {event.name}
+                </Text>
+              </View>
+
+              <View style={styles.labelsRow}>
+                {event.category_name && (
+                  <View
+                    style={[
+                      styles.badge,
+                      {
+                        backgroundColor: (event.category_color || '#6b7280') + '20',
+                        borderColor: (event.category_color || '#6b7280') + '40',
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.badgeDot,
+                        { backgroundColor: event.category_color || '#6b7280' },
+                      ]}
+                    />
+                    <Text
+                      style={[styles.badgeText, { color: event.category_color || '#6b7280' }]}
+                    >
+                      {event.category_name}
+                    </Text>
+                  </View>
+                )}
+
+                <View
+                  style={[
+                    styles.badge,
+                    {
+                      backgroundColor: (EVENT_STATUS_COLORS[event.status] || '#6b7280') + '20',
+                      borderColor: (EVENT_STATUS_COLORS[event.status] || '#6b7280') + '40',
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.badgeText,
+                      { color: EVENT_STATUS_COLORS[event.status] || '#6b7280' },
+                    ]}
+                  >
+                    {EVENT_STATUS_LABELS[event.status] || event.status}
                   </Text>
                 </View>
               </View>
-              {event.description && (
-                <Text style={styles.cardDescription} numberOfLines={2}>
-                  {event.description}
-                </Text>
-              )}
+
               <View style={styles.cardFooter}>
-                <Feather name="calendar" color={colors.text.tertiary} size={16} />
+                <Feather name="calendar" color={colors.text.tertiary} size={14} />
                 <Text style={styles.cardDate}>
-                  {new Date(event.event_date).toLocaleDateString('pl-PL')}
+                  {new Date(event.event_date).toLocaleDateString('pl-PL', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric',
+                  })}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -149,26 +301,54 @@ export default function DashboardScreen() {
           </View>
         ) : (
           myTasks.map((task) => (
-            <TouchableOpacity key={task.id} style={styles.card}>
+            <TouchableOpacity
+              key={task.id}
+              style={styles.card}
+              onPress={() => handleTaskPress(task)}
+              activeOpacity={0.7}
+            >
               <View style={styles.cardHeader}>
-                <Text style={styles.cardTitle}>{task.title}</Text>
-                <View style={[styles.priorityBadge, { borderColor: getPriorityColor(task.priority) }]}>
-                  <Feather name="alert-circle" color={getPriorityColor(task.priority)} size={12} />
+                <Text style={styles.cardTitle} numberOfLines={2}>
+                  {task.title}
+                </Text>
+                <View
+                  style={[
+                    styles.priorityBadge,
+                    { borderColor: PRIORITY_COLORS[task.priority] || '#6b7280' },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.priorityText,
+                      { color: PRIORITY_COLORS[task.priority] || '#6b7280' },
+                    ]}
+                  >
+                    {PRIORITY_LABELS[task.priority] || task.priority}
+                  </Text>
                 </View>
               </View>
-              {task.description && (
-                <Text style={styles.cardDescription} numberOfLines={2}>
-                  {task.description}
-                </Text>
-              )}
+
               <View style={styles.cardFooter}>
-                <View style={[styles.statusDot, { backgroundColor: getStatusColor(task.status) }]} />
-                <Text style={styles.cardMeta}>{task.status}</Text>
+                <View
+                  style={[
+                    styles.statusDot,
+                    {
+                      backgroundColor:
+                        TASK_STATUS_COLORS[task.board_column] || colors.text.tertiary,
+                    },
+                  ]}
+                />
+                <Text style={styles.cardMeta}>
+                  {TASK_STATUS_LABELS[task.board_column] || task.board_column}
+                </Text>
                 {task.due_date && (
                   <>
                     <Text style={styles.separator}>•</Text>
                     <Text style={styles.cardDate}>
-                      {new Date(task.due_date).toLocaleDateString('pl-PL')}
+                      {new Date(task.due_date).toLocaleDateString('pl-PL', {
+                        day: 'numeric',
+                        month: 'short',
+                      })}
                     </Text>
                   </>
                 )}
@@ -177,6 +357,8 @@ export default function DashboardScreen() {
           ))
         )}
       </View>
+
+      <View style={{ height: spacing.xxxl }} />
     </ScrollView>
   );
 }
@@ -244,6 +426,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
+    gap: spacing.sm,
   },
   cardTitle: {
     flex: 1,
@@ -251,15 +434,34 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeights.semibold,
     color: colors.text.primary,
   },
-  cardDescription: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.text.secondary,
-    lineHeight: typography.lineHeights.normal * typography.fontSizes.sm,
+  labelsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: borderRadius.sm,
+    borderWidth: 1,
+    gap: 4,
+  },
+  badgeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  badgeText: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.medium,
   },
   cardFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
+    marginTop: 2,
   },
   cardDate: {
     fontSize: typography.fontSizes.xs,
@@ -269,27 +471,20 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.xs,
     color: colors.text.secondary,
   },
-  badge: {
+  priorityBadge: {
     paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingVertical: 2,
     borderRadius: borderRadius.sm,
+    borderWidth: 1,
   },
-  badgeText: {
+  priorityText: {
     fontSize: typography.fontSizes.xs,
     fontWeight: typography.fontWeights.medium,
-  },
-  priorityBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: borderRadius.full,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   statusDot: {
     width: 8,
     height: 8,
-    borderRadius: borderRadius.full,
+    borderRadius: 4,
   },
   separator: {
     color: colors.text.tertiary,
