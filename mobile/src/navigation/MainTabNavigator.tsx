@@ -251,7 +251,6 @@ export default function MainTabNavigator() {
           component={MessagesStackNavigator}
           options={{
             title: 'Komunikator',
-            headerShown: false,
             tabBarButton: canView(employee, 'chat') ? undefined : () => null,
             tabBarIcon: ({ color, size }) => <Feather name="message-circle" color={color} size={size} />,
             tabBarBadge: unreadChatCount > 0 ? (unreadChatCount > 99 ? '99+' : unreadChatCount) : undefined,
