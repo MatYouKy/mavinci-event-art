@@ -823,6 +823,10 @@ export default function EventDetailPageClient({
               return tab.id === 'overview';
             }
 
+            if (tab.id === 'finances' && !canViewCommercials) {
+              return false;
+            }
+
             return visibleEventTabs.includes(tab.id);
           })
           .map((tab) => {
@@ -1153,7 +1157,7 @@ export default function EventDetailPageClient({
         <EventTasksBoard eventId={event.id} canManage={canManageTeam} />
       )}
 
-      {activeTab === 'finances' && <EventFinancesTab eventId={eventId} />}
+      {activeTab === 'finances' && canViewCommercials && <EventFinancesTab eventId={eventId} />}
 
       {activeTab === 'contract' && <EventContractTab eventId={eventId} />}
 
