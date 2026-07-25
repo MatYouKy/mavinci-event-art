@@ -24,6 +24,7 @@ export interface EventListItem {
   category_color: string | null;
   location_name: string | null;
   organization_name: string | null;
+  creator_name: string | null;
 }
 
 interface Props {
@@ -105,10 +106,11 @@ export default function EventsScreen({ onEventPress }: Props) {
         .from('events')
         .select(
           `
-          id, name, event_date, event_end_date, status,
+          id, name, event_date, event_end_date, status, created_by,
           event_categories(name, color),
           locations(name),
-          organizations(name, alias)
+          organizations(name, alias),
+          creator:employees!created_by(name, surname)
         `,
         )
         .in('id', allIds)
@@ -117,17 +119,24 @@ export default function EventsScreen({ onEventPress }: Props) {
 
       if (error) throw error;
 
-      const mapped: EventListItem[] = (data || []).map((e: any) => ({
-        id: e.id,
-        name: e.name,
-        event_date: e.event_date,
-        event_end_date: e.event_end_date,
-        status: normalizeStatus(e.status),
-        category_name: e.event_categories?.name ?? null,
-        category_color: e.event_categories?.color ?? null,
-        location_name: e.locations?.name ?? null,
-        organization_name: e.organizations?.alias || e.organizations?.name || null,
-      }));
+      const mapped: EventListItem[] = (data || []).map((e: any) => {
+        const cr = e.creator;
+        const creatorName = cr
+          ? [cr.name, cr.surname].filter(Boolean).join(' ')
+          : null;
+        return {
+          id: e.id,
+          name: e.name,
+          event_date: e.event_date,
+          event_end_date: e.event_end_date,
+          status: normalizeStatus(e.status),
+          category_name: e.event_categories?.name ?? null,
+          category_color: e.event_categories?.color ?? null,
+          location_name: e.locations?.name ?? null,
+          organization_name: e.organizations?.alias || e.organizations?.name || null,
+          creator_name: creatorName,
+        };
+      });
 
       console.log('=== EVENTS RAW ===');
       (data || []).forEach((e: any) => {
@@ -227,6 +236,14 @@ export default function EventsScreen({ onEventPress }: Props) {
           </>
         )}
       </View>
+      {item.creator_name && (
+        <View style={styles.eventMeta}>
+          <Feather name="user" size={12} color={colors.text.tertiary} />
+          <Text style={styles.eventCreator} numberOfLines={1}>
+            {item.creator_name}
+          </Text>
+        </View>
+      )}
     </TouchableOpacity>
   );
 
@@ -436,6 +453,12 @@ const styles = StyleSheet.create({
     marginLeft: 2,
   },
   eventLocation: {
+    fontSize: 11,
+    color: colors.text.tertiary,
+    marginLeft: 2,
+    flex: 1,
+  },
+  eventCreator: {
     fontSize: 11,
     color: colors.text.tertiary,
     marginLeft: 2,
