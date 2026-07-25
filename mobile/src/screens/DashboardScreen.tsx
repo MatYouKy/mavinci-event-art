@@ -76,6 +76,7 @@ interface DashboardEvent {
   status: string;
   category_name: string | null;
   category_color: string | null;
+  creator_name: string | null;
 }
 
 interface DashboardTask {
@@ -128,7 +129,8 @@ export default function DashboardScreen() {
           .from('events')
           .select(`
             id, name, event_date, status,
-            event_categories(name, color)
+            event_categories(name, color),
+            creator:employees!created_by(name, surname)
           `)
           .in('id', eventIds)
           .gte('event_date', new Date().toISOString().split('T')[0])
@@ -143,6 +145,9 @@ export default function DashboardScreen() {
           status: e.status,
           category_name: e.event_categories?.name ?? null,
           category_color: e.event_categories?.color ?? null,
+          creator_name: e.creator
+            ? [e.creator.name, e.creator.surname].filter(Boolean).join(' ')
+            : null,
         }));
       }
       setUpcomingEvents(events);
@@ -297,6 +302,13 @@ export default function DashboardScreen() {
                     year: 'numeric',
                   })}
                 </Text>
+                {event.creator_name && (
+                  <>
+                    <Text style={styles.separator}>•</Text>
+                    <Feather name="user" color={colors.text.tertiary} size={12} />
+                    <Text style={styles.cardDate}>{event.creator_name}</Text>
+                  </>
+                )}
               </View>
             </TouchableOpacity>
           ))
@@ -478,6 +490,11 @@ const styles = StyleSheet.create({
   cardDate: {
     fontSize: typography.fontSizes.xs,
     color: colors.text.tertiary,
+  },
+  separator: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.text.tertiary,
+    marginHorizontal: 4,
   },
   cardMeta: {
     fontSize: typography.fontSizes.xs,

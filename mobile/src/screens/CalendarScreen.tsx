@@ -44,6 +44,7 @@ interface CalendarEvent {
   color?: string;
   location?: string;
   is_meeting?: boolean;
+  creator_name?: string | null;
 }
 
 function CalendarContent({ onEventPress }: { onEventPress: (eventId: string) => void }) {
@@ -70,12 +71,15 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: string) => 
       if (assignedIds.length > 0) {
         const { data: eventData } = await supabase
           .from('events')
-          .select('id, name, event_date, event_end_date, status, location')
+          .select('id, name, event_date, event_end_date, status, location, creator:employees!created_by(name, surname)')
           .in('id', assignedIds);
 
         if (eventData) {
-          allEvents = eventData.map((e) => ({
+          allEvents = eventData.map((e: any) => ({
             ...e,
+            creator_name: e.creator
+              ? [e.creator.name, e.creator.surname].filter(Boolean).join(' ')
+              : null,
             is_meeting: false,
           }));
         }
@@ -83,14 +87,20 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: string) => 
 
       const { data: ownEvents } = await supabase
         .from('events')
-        .select('id, name, event_date, event_end_date, status, location')
+        .select('id, name, event_date, event_end_date, status, location, creator:employees!created_by(name, surname)')
         .eq('created_by', employee.id);
 
       if (ownEvents) {
         const existingIds = new Set(allEvents.map((e) => e.id));
-        for (const e of ownEvents) {
+        for (const e of ownEvents as any[]) {
           if (!existingIds.has(e.id)) {
-            allEvents.push({ ...e, is_meeting: false });
+            allEvents.push({
+              ...e,
+              creator_name: e.creator
+                ? [e.creator.name, e.creator.surname].filter(Boolean).join(' ')
+                : null,
+              is_meeting: false,
+            });
           }
         }
       }
@@ -240,6 +250,14 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: string) => 
               <Feather name="map-pin" size={12} color={colors.text.tertiary} />
               <Text style={styles.eventLocation} numberOfLines={1}>
                 {item.location}
+              </Text>
+            </View>
+          )}
+          {item.creator_name && (
+            <View style={styles.eventLocationRow}>
+              <Feather name="user" size={12} color={colors.text.tertiary} />
+              <Text style={styles.eventLocation} numberOfLines={1}>
+                {item.creator_name}
               </Text>
             </View>
           )}

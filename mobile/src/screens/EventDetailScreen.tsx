@@ -58,6 +58,7 @@ interface EventDetail {
   contact_name: string | null;
   contact_phone: string | null;
   contact_email: string | null;
+  creator_name: string | null;
   employees: { id: string; name: string; surname: string; role: string | null }[];
 }
 
@@ -273,7 +274,8 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
         event_categories(name, color),
         locations(name, formatted_address, address, city),
         organizations(name, alias),
-        contacts(first_name, last_name, phone, email)
+        contacts(first_name, last_name, phone, email),
+        creator:employees!created_by(name, surname)
       `)
       .eq('id', eventId)
       .maybeSingle();
@@ -291,6 +293,10 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
     const org = (data as any).organizations;
     const contact = (data as any).contacts;
     const cat = (data as any).event_categories;
+    const creatorData = (data as any).creator;
+    const creatorName = creatorData
+      ? [creatorData.name, creatorData.surname].filter(Boolean).join(' ')
+      : null;
 
     return {
       id: data.id,
@@ -310,6 +316,7 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
       contact_name: contact ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() : null,
       contact_phone: contact?.phone ?? null,
       contact_email: contact?.email ?? null,
+      creator_name: creatorName,
       employees: (assignments || []).map((a: any) => ({
         id: a.employees?.id,
         name: a.employees?.name ?? '',
@@ -729,6 +736,9 @@ function DetailsTab({ event, canViewFinances }: { event: EventDetail; canViewFin
               <TouchableOpacity onPress={() => Linking.openURL(`mailto:${event.contact_email}`)}>
                 <InfoRow icon="mail" label="Email" value={event.contact_email} highlight />
               </TouchableOpacity>
+            )}
+            {event.creator_name && (
+              <InfoRow icon="edit-3" label="Autor" value={event.creator_name} />
             )}
           </View>
         </View>
