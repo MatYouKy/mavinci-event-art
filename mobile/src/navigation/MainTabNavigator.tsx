@@ -7,6 +7,7 @@ import * as Notifications from 'expo-notifications';
 import { colors } from '../theme';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { canView } from '../lib/permissions';
 
 import DashboardScreen from '../screens/DashboardScreen';
 import CalendarScreen from '../screens/CalendarScreen';
@@ -194,7 +195,9 @@ export default function MainTabNavigator() {
           },
           headerTintColor: colors.text.primary,
           tabBarStyle: {
-            display: 'none',
+            backgroundColor: colors.background.secondary,
+            borderTopColor: colors.border.default,
+            borderTopWidth: 1,
           },
           tabBarActiveTintColor: colors.primary.gold,
           tabBarInactiveTintColor: colors.text.tertiary,
@@ -222,6 +225,7 @@ export default function MainTabNavigator() {
           name="Calendar"
           options={{
             title: 'Kalendarz',
+            tabBarButton: canView(employee, 'calendar') ? undefined : () => null,
             tabBarIcon: ({ color, size }) => <Feather name="calendar" color={color} size={size} />,
           }}
         >
@@ -248,6 +252,7 @@ export default function MainTabNavigator() {
           options={{
             title: 'Komunikator',
             headerShown: false,
+            tabBarButton: canView(employee, 'chat') ? undefined : () => null,
             tabBarIcon: ({ color, size }) => <Feather name="message-circle" color={color} size={size} />,
             tabBarBadge: unreadChatCount > 0 ? (unreadChatCount > 99 ? '99+' : unreadChatCount) : undefined,
             tabBarBadgeStyle: {
@@ -265,6 +270,7 @@ export default function MainTabNavigator() {
           component={ProfileScreen}
           options={{
             title: 'Profil',
+            tabBarButton: () => null,
             tabBarIcon: ({ color, size }) => <Feather name="user" color={color} size={size} />,
           }}
         />
@@ -273,6 +279,7 @@ export default function MainTabNavigator() {
           component={SettingsScreen}
           options={{
             title: 'Ustawienia',
+            tabBarButton: () => null,
             tabBarIcon: ({ color, size }) => <Feather name="settings" color={color} size={size} />,
           }}
         />
