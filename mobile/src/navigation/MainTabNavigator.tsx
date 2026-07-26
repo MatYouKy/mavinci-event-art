@@ -67,7 +67,7 @@ export default function MainTabNavigator() {
           },
           () => {
             fetchUnreadNotifications();
-          }
+          },
         )
         .subscribe();
 
@@ -146,10 +146,7 @@ export default function MainTabNavigator() {
         screenOptions={({ route }) => ({
           headerShown: true,
           headerLeft: () => (
-            <TouchableOpacity
-              onPress={() => setDrawerVisible(true)}
-              style={{ marginLeft: 16 }}
-            >
+            <TouchableOpacity onPress={() => setDrawerVisible(true)} style={{ marginLeft: 16 }}>
               <Feather name="menu" color={colors.text.primary} size={24} />
             </TouchableOpacity>
           ),
@@ -242,7 +239,7 @@ export default function MainTabNavigator() {
           options={{
             title: 'Spotkania',
             headerShown: false,
-            tabBarButton: () => null,
+            tabBarButton: canView(employee, 'calendar') ? undefined : () => null,
             tabBarIcon: ({ color, size }) => <Feather name="users" color={color} size={size} />,
           }}
         />
@@ -252,8 +249,11 @@ export default function MainTabNavigator() {
           options={{
             title: 'Komunikator',
             tabBarButton: canView(employee, 'chat') ? undefined : () => null,
-            tabBarIcon: ({ color, size }) => <Feather name="message-circle" color={color} size={size} />,
-            tabBarBadge: unreadChatCount > 0 ? (unreadChatCount > 99 ? '99+' : unreadChatCount) : undefined,
+            tabBarIcon: ({ color, size }) => (
+              <Feather name="message-circle" color={color} size={size} />
+            ),
+            tabBarBadge:
+              unreadChatCount > 0 ? (unreadChatCount > 99 ? '99+' : unreadChatCount) : undefined,
             tabBarBadgeStyle: {
               backgroundColor: colors.status.error,
               fontSize: 10,
@@ -299,7 +299,9 @@ export default function MainTabNavigator() {
           options={{
             title: 'Zadania',
             tabBarButton: () => null,
-            tabBarIcon: ({ color, size }) => <Feather name="check-square" color={color} size={size} />,
+            tabBarIcon: ({ color, size }) => (
+              <Feather name="check-square" color={color} size={size} />
+            ),
           }}
         />
         <Tab.Screen
@@ -307,7 +309,7 @@ export default function MainTabNavigator() {
           component={InquiriesStackNavigator}
           options={{
             title: 'Zapytania',
-            tabBarButton: () => null,
+            tabBarButton: canView(employee, 'inquiries') ? undefined : () => null,  
             tabBarIcon: ({ color, size }) => <Feather name="phone-call" color={color} size={size} />,
           }}
         />

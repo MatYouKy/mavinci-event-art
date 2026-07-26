@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   TextInput,
+  Switch,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing } from '../theme';
@@ -35,6 +36,21 @@ const normalizeStatus = (status: string | null | undefined) =>
   String(status || '')
     .trim()
     .toLowerCase();
+
+const getEventStartTimestamp = (event: EventListItem) => {
+  const timestamp = new Date(event.event_date).getTime();
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+};
+
+const getEventEndTimestamp = (event: EventListItem) => {
+  const source = event.event_end_date || event.event_date;
+  const timestamp = new Date(source).getTime();
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+};
+
+const isPastEvent = (event: EventListItem) => {
+  return getEventEndTimestamp(event) < Date.now();
+};
 
 export const STATUS_LABELS: Record<string, string> = {
   inquiry: 'Zapytanie',
@@ -72,114 +88,157 @@ export default function EventsScreen({ onEventPress }: Props) {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [showPastEvents, setShowPastEvents] = useState(false);
 
-  const fetchEvents = useCallback(async (isRefresh = false) => {
-    if (!employee?.id) return;
-    if (isRefresh) setRefreshing(true);
-    else setIsLoading(true);
+  const fetchEvents = useCallback(
+    async (isRefresh = false) => {
+      if (!employee?.id) return;
 
-    try {
-      // Get events where user has accepted assignment
-      const { data: assignments } = await supabase
-        .from('employee_assignments')
-        .select('event_id')
-        .eq('employee_id', employee.id)
-        .eq('status', 'accepted');
+      if (isRefresh) setRefreshing(true);
+      else setIsLoading(true);
 
-      const assignedIds = (assignments ?? []).map((a) => a.event_id);
+      try {
+        const isAdmin = employee.role === 'admin';
 
-      // Get events created by user
-      const { data: created } = await supabase
-        .from('events')
-        .select('id')
-        .eq('created_by', employee.id);
+        let eventIds: string[] | null = null;
 
-      const createdIds = (created ?? []).map((e) => e.id);
-      const allIds = [...new Set([...assignedIds, ...createdIds])];
+        if (!isAdmin) {
+          const { data: assignments, error: assignmentsError } = await supabase
+            .from('employee_assignments')
+            .select('event_id')
+            .eq('employee_id', employee.id)
+            .eq('status', 'accepted');
 
-      if (allIds.length === 0) {
-        setEvents([]);
-        return;
-      }
+          if (assignmentsError) throw assignmentsError;
 
-      const { data, error } = await supabase
-        .from('events')
-        .select(
-          `
-          id, name, event_date, event_end_date, status, created_by,
-          event_categories(name, color),
-          locations(name),
-          organizations(name, alias),
-          creator:employees!created_by(name, surname)
-        `,
-        )
-        .in('id', allIds)
-        .order('event_date', { ascending: false })
-        .limit(100);
+          const { data: created, error: createdError } = await supabase
+            .from('events')
+            .select('id')
+            .eq('created_by', employee.id);
 
-      if (error) throw error;
+          if (createdError) throw createdError;
 
-      const mapped: EventListItem[] = (data || []).map((e: any) => {
-        const cr = e.creator;
-        const creatorName = cr
-          ? [cr.name, cr.surname].filter(Boolean).join(' ')
-          : null;
-        return {
-          id: e.id,
-          name: e.name,
-          event_date: e.event_date,
-          event_end_date: e.event_end_date,
-          status: normalizeStatus(e.status),
-          category_name: e.event_categories?.name ?? null,
-          category_color: e.event_categories?.color ?? null,
-          location_name: e.locations?.name ?? null,
-          organization_name: e.organizations?.alias || e.organizations?.name || null,
-          creator_name: creatorName,
-        };
-      });
+          const assignedIds = (assignments ?? [])
+            .map((assignment) => assignment.event_id)
+            .filter(Boolean);
 
-      console.log('=== EVENTS RAW ===');
-      (data || []).forEach((e: any) => {
-        console.log({
-          id: e.id,
-          name: e.name,
-          status: e.status,
-          statusType: typeof e.status,
+          const createdIds = (created ?? []).map((event) => event.id).filter(Boolean);
+
+          eventIds = [...new Set([...assignedIds, ...createdIds])];
+
+          if (eventIds.length === 0) {
+            setEvents([]);
+            setFiltered([]);
+            return;
+          }
+        }
+
+        let query = supabase
+          .from('events')
+          .select(
+            `
+            id,
+            name,
+            event_date,
+            event_end_date,
+            status,
+            created_by,
+            event_categories(name, color),
+            locations(name),
+            organizations(name, alias),
+            creator:employees!created_by(name, surname)
+          `,
+          )
+          .order('event_date', { ascending: true })
+          .limit(500);
+
+        if (!isAdmin && eventIds) {
+          query = query.in('id', eventIds);
+        }
+
+        const { data, error } = await query;
+
+        if (error) throw error;
+
+        const mapped: EventListItem[] = (data || []).map((event: any) => {
+          const creator = event.creator;
+
+          const creatorName = creator
+            ? [creator.name, creator.surname].filter(Boolean).join(' ')
+            : null;
+
+          return {
+            id: event.id,
+            name: event.name,
+            event_date: event.event_date,
+            event_end_date: event.event_end_date,
+            status: normalizeStatus(event.status),
+            category_name: event.event_categories?.name ?? null,
+            category_color: event.event_categories?.color ?? null,
+            location_name: event.locations?.name ?? null,
+            organization_name: event.organizations?.alias || event.organizations?.name || null,
+            creator_name: creatorName,
+          };
         });
-      });
 
-      setEvents(mapped);
-    } catch (error) {
-      console.error('Error fetching events:', error);
-    } finally {
-      setIsLoading(false);
-      setRefreshing(false);
-    }
-  }, [employee?.id]);
+        console.log('ROLE:', employee.role);
+        console.log('IS ADMIN:', isAdmin);
+        console.log('EVENTS COUNT:', mapped.length);
+
+        setEvents(mapped);
+      } catch (error) {
+        console.error('Error fetching events:', error);
+      } finally {
+        setIsLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [employee?.id, employee?.role],
+  );
 
   useEffect(() => {
     fetchEvents();
   }, [fetchEvents]);
 
   useEffect(() => {
-    let result = events;
+    let result = [...events];
+
+    if (!showPastEvents) {
+      result = result.filter((event) => !isPastEvent(event));
+    }
 
     if (search.trim()) {
-      const q = search.toLowerCase();
+      const q = search.trim().toLowerCase();
+
       result = result.filter(
-        (e) =>
-          e.name.toLowerCase().includes(q) ||
-          e.organization_name?.toLowerCase().includes(q) ||
-          e.location_name?.toLowerCase().includes(q),
+        (event) =>
+          event.name.toLowerCase().includes(q) ||
+          event.organization_name?.toLowerCase().includes(q) ||
+          event.location_name?.toLowerCase().includes(q),
       );
     }
 
     if (statusFilter) {
-      result = result.filter((e) => e.status === statusFilter);
+      result = result.filter((event) => event.status === statusFilter);
     }
 
+    result.sort((a, b) => {
+      const aPast = isPastEvent(a);
+      const bPast = isPastEvent(b);
+
+      if (aPast !== bPast) {
+        return aPast ? 1 : -1;
+      }
+
+      if (!aPast && !bPast) {
+        return getEventStartTimestamp(a) - getEventStartTimestamp(b);
+      }
+
+      return getEventStartTimestamp(b) - getEventStartTimestamp(a);
+    });
+
     setFiltered(result);
-  }, [events, search, statusFilter]);
+  }, [events, search, statusFilter, showPastEvents]);
 
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
@@ -311,6 +370,35 @@ export default function EventsScreen({ onEventPress }: Props) {
               </Text>
             </TouchableOpacity>
           )}
+        />
+      </View>
+      <View style={styles.pastEventsToggle}>
+        <View style={styles.pastEventsToggleText}>
+          <Feather
+            name="clock"
+            size={16}
+            color={showPastEvents ? colors.primary.gold : colors.text.tertiary}
+          />
+
+          <View>
+            <Text style={styles.pastEventsToggleTitle}>Pokaż przeszłe wydarzenia</Text>
+
+            <Text style={styles.pastEventsToggleDescription}>
+              {showPastEvents
+                ? 'Przeszłe wydarzenia są widoczne na końcu listy'
+                : 'Lista pokazuje tylko wydarzenia aktualne i nadchodzące'}
+            </Text>
+          </View>
+        </View>
+
+        <Switch
+          value={showPastEvents}
+          onValueChange={setShowPastEvents}
+          trackColor={{
+            false: colors.background.secondary,
+            true: `${colors.primary.gold}55`,
+          }}
+          thumbColor={showPastEvents ? colors.primary.gold : colors.text.tertiary}
         />
       </View>
 
@@ -472,6 +560,42 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 14,
+    color: colors.text.tertiary,
+  },
+
+  pastEventsToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+    backgroundColor: colors.background.secondary,
+    gap: 12,
+  },
+
+  pastEventsToggleText: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingRight: 16,
+  },
+
+  pastEventsToggleTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.text.primary,
+  },
+
+  pastEventsToggleDescription: {
+    marginTop: 2,
+    fontSize: 10,
+    lineHeight: 14,
     color: colors.text.tertiary,
   },
 });

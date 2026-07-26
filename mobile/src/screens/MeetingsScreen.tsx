@@ -25,11 +25,13 @@ import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/dat
 
 // --- Types ---
 type AlertPickerType = 'alert_1' | 'alert_2' | 'alert_critical';
+
+type MeetingPickerType = 'startDate' | 'startTime' | 'endDate' | 'endTime';
 interface Meeting {
   id: string;
   title: string;
   location_text: string | null;
-  datetime_start: string;
+  datetime_start: string | null;
   datetime_end: string | null;
   notes: string | null;
   color: string;
@@ -44,8 +46,8 @@ interface Meeting {
 interface NewMeetingForm {
   title: string;
   location_text: string;
-  datetime_start: string;
-  datetime_end: string;
+  datetime_start: Date;
+  datetime_end: Date;
   notes: string;
   alert_1_enabled: boolean;
   alert_1_minutes: number;
@@ -88,18 +90,15 @@ function pickerDateToMinutes(date: Date): number {
 // Notification handler is set globally in App.tsx - do not duplicate here
 
 async function scheduleMeetingAlerts(meeting: Meeting) {
-  const scheduled =
-    await Notifications.getAllScheduledNotificationsAsync();
+  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
 
   for (const notification of scheduled) {
     if (notification.content.data?.meetingId === meeting.id) {
-      await Notifications.cancelScheduledNotificationAsync(
-        notification.identifier,
-      );
+      await Notifications.cancelScheduledNotificationAsync(notification.identifier);
     }
   }
 
-  const meetingTime = new Date(meeting.datetime_start).getTime();
+  const meetingTime = new Date(meeting.datetime_start || '').getTime();
   const now = Date.now();
 
   const alerts = [
@@ -123,15 +122,11 @@ async function scheduleMeetingAlerts(meeting: Meeting) {
   for (const alert of alerts) {
     if (!alert.minutes || alert.minutes <= 0) continue;
 
-    const triggerTime =
-      meetingTime - alert.minutes * 60 * 1000;
+    const triggerTime = meetingTime - alert.minutes * 60 * 1000;
 
     if (triggerTime <= now) continue;
 
-    const secondsUntilTrigger = Math.max(
-      1,
-      Math.floor((triggerTime - now) / 1000),
-    );
+    const secondsUntilTrigger = Math.max(1, Math.floor((triggerTime - now) / 1000));
 
     await Notifications.scheduleNotificationAsync({
       content: {
@@ -145,8 +140,7 @@ async function scheduleMeetingAlerts(meeting: Meeting) {
         },
       },
       trigger: {
-        type:
-          Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
         seconds: secondsUntilTrigger,
         repeats: false,
       },
@@ -170,19 +164,39 @@ export default function MeetingsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [showNewMeeting, setShowNewMeeting] = useState(false);
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
-  const [form, setForm] = useState<NewMeetingForm>({
-    title: '',
-    location_text: '',
-    datetime_start: '',
-    datetime_end: '',
-    notes: '',
-    alert_1_enabled: true,
-    alert_1_minutes: 1440,
-    alert_2_enabled: true,
-    alert_2_minutes: 120,
-    alert_critical_enabled: true,
-    alert_critical_minutes: 15,
-  });
+  const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
+
+  const createInitialForm = (): NewMeetingForm => {
+    const start = new Date();
+
+    start.setSeconds(0, 0);
+
+    const roundedMinutes = Math.ceil(start.getMinutes() / 5) * 5;
+
+    if (roundedMinutes >= 60) {
+      start.setHours(start.getHours() + 1, 0, 0, 0);
+    } else {
+      start.setMinutes(roundedMinutes, 0, 0);
+    }
+
+    return {
+      title: '',
+      location_text: '',
+      datetime_start: start,
+      datetime_end: new Date(start.getTime() + 60 * 60 * 1000),
+      notes: '',
+      alert_1_enabled: true,
+      alert_1_minutes: 1440,
+      alert_2_enabled: true,
+      alert_2_minutes: 120,
+      alert_critical_enabled: true,
+      alert_critical_minutes: 15,
+    };
+  };
+
+  const [form, setForm] = useState<NewMeetingForm>(createInitialForm);
+
+  const [activeMeetingPicker, setActiveMeetingPicker] = useState<MeetingPickerType | null>(null);
 
   const [activeAlertPicker, setActiveAlertPicker] = useState<AlertPickerType | null>(null);
 
@@ -237,63 +251,121 @@ export default function MeetingsScreen() {
   }, [fetchMeetings]);
 
   const resetForm = () => {
+    setForm(createInitialForm());
+    setActiveMeetingPicker(null);
+    setActiveAlertPicker(null);
+  };
+  const openEditMeeting = (meeting: Meeting) => {
+    const start = meeting.datetime_start ? new Date(meeting.datetime_start) : new Date();
+
+    const end = meeting.datetime_end
+      ? new Date(meeting.datetime_end)
+      : new Date(start.getTime() + 60 * 60 * 1000);
+
     setForm({
-      title: '',
-      location_text: '',
-      datetime_start: '',
-      datetime_end: '',
-      notes: '',
-      alert_1_enabled: true,
-      alert_1_minutes: 1440,
-      alert_2_enabled: true,
-      alert_2_minutes: 120,
-      alert_critical_enabled: true,
-      alert_critical_minutes: 15,
+      title: meeting.title || '',
+      location_text: meeting.location_text || '',
+      datetime_start: start,
+      datetime_end: end,
+      notes: meeting.notes || '',
+      alert_1_enabled: meeting.alert_1_minutes !== null,
+      alert_1_minutes: meeting.alert_1_minutes ?? 1440,
+      alert_2_enabled: meeting.alert_2_minutes !== null,
+      alert_2_minutes: meeting.alert_2_minutes ?? 120,
+      alert_critical_enabled: meeting.alert_critical_minutes !== null,
+      alert_critical_minutes: meeting.alert_critical_minutes ?? 15,
     });
+
+    setEditingMeeting(meeting);
+    setSelectedMeeting(null);
+    setShowNewMeeting(true);
+    setActiveMeetingPicker(null);
+    setActiveAlertPicker(null);
   };
 
-  const handleCreateMeeting = async () => {
+  const handleSaveMeeting = async () => {
     if (!employee || !form.title.trim()) {
       Alert.alert('Błąd', 'Podaj tytuł spotkania');
       return;
     }
+
     if (!form.datetime_start) {
       Alert.alert('Błąd', 'Podaj datę i godzinę rozpoczęcia');
       return;
     }
 
+    if (!form.datetime_end) {
+      Alert.alert('Błąd', 'Podaj datę i godzinę zakończenia');
+      return;
+    }
+
+    if (form.datetime_end.getTime() <= form.datetime_start.getTime()) {
+      Alert.alert(
+        'Nieprawidłowy termin',
+        'Godzina zakończenia musi być późniejsza niż rozpoczęcie.',
+      );
+      return;
+    }
+
+    const payload = {
+      title: form.title.trim(),
+      location_text: form.location_text.trim() || null,
+      datetime_start: form.datetime_start.toISOString(),
+      datetime_end: form.datetime_end.toISOString(),
+      notes: form.notes.trim() || null,
+      alert_1_minutes: form.alert_1_enabled ? form.alert_1_minutes : null,
+      alert_2_minutes: form.alert_2_enabled ? form.alert_2_minutes : null,
+      alert_critical_minutes: form.alert_critical_enabled ? form.alert_critical_minutes : null,
+    };
+
     try {
-      const { data, error } = await supabase
-        .from('meetings')
-        .insert({
-          title: form.title.trim(),
-          location_text: form.location_text.trim() || null,
-          datetime_start: form.datetime_start,
-          datetime_end: form.datetime_end || null,
-          notes: form.notes.trim() || null,
-          created_by: employee.id,
-          alert_1_minutes: form.alert_1_enabled ? form.alert_1_minutes : null,
-          alert_2_minutes: form.alert_2_enabled ? form.alert_2_minutes : null,
-          alert_critical_minutes: form.alert_critical_enabled ? form.alert_critical_minutes : null,
-        })
-        .select()
-        .single();
+      if (editingMeeting) {
+        const { data, error } = await supabase
+          .from('meetings')
+          .update(payload)
+          .eq('id', editingMeeting.id)
+          .select()
+          .single();
 
-      if (error) throw error;
+        if (error) throw error;
 
-      if (data) {
-        await supabase.from('meeting_participants').insert({
-          meeting_id: data.id,
-          employee_id: employee.id,
-        });
-        scheduleMeetingAlerts(data);
+        if (data) {
+          await scheduleMeetingAlerts(data as Meeting);
+        }
+      } else {
+        const { data, error } = await supabase
+          .from('meetings')
+          .insert({
+            ...payload,
+            created_by: employee.id,
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        if (data) {
+          const { error: participantError } = await supabase.from('meeting_participants').insert({
+            meeting_id: data.id,
+            employee_id: employee.id,
+          });
+
+          if (participantError) throw participantError;
+
+          await scheduleMeetingAlerts(data as Meeting);
+        }
       }
 
       setShowNewMeeting(false);
+      setEditingMeeting(null);
       resetForm();
-      fetchMeetings();
+      await fetchMeetings();
     } catch (err: any) {
-      Alert.alert('Błąd', err.message || 'Nie udało się utworzyć spotkania');
+      Alert.alert(
+        'Błąd',
+        err.message ||
+          (editingMeeting ? 'Nie udało się zapisać zmian' : 'Nie udało się utworzyć spotkania'),
+      );
     }
   };
 
@@ -335,11 +407,11 @@ export default function MeetingsScreen() {
 
   const isUpcoming = (dateStr: string) => new Date(dateStr).getTime() > Date.now();
 
-  const upcomingMeetings = meetings.filter((m) => isUpcoming(m.datetime_start));
-  const pastMeetings = meetings.filter((m) => !isUpcoming(m.datetime_start));
+  const upcomingMeetings = meetings.filter((m) => isUpcoming(m.datetime_start || ''));
+  const pastMeetings = meetings.filter((m) => !isUpcoming(m.datetime_start || ''));
 
   const renderMeetingCard = ({ item }: { item: Meeting }) => {
-    const upcoming = isUpcoming(item.datetime_start);
+    const upcoming = isUpcoming(item.datetime_start || '');
     const hasAlerts = !!(
       item.alert_1_minutes ||
       item.alert_2_minutes ||
@@ -365,8 +437,8 @@ export default function MeetingsScreen() {
           <View style={styles.meetingMeta}>
             <Feather name="clock" size={12} color={colors.text.tertiary} />
             <Text style={styles.meetingMetaText}>
-              {formatDate(item.datetime_start)} • {formatTime(item.datetime_start)}
-              {item.datetime_end && ` – ${formatTime(item.datetime_end)}`}
+              {formatDate(item.datetime_start || '')} • {formatTime(item.datetime_start || '')}
+              {item.datetime_end && ` – ${formatTime(item.datetime_end || '')}`}
             </Text>
           </View>
           {item.location_text && (
@@ -526,6 +598,7 @@ export default function MeetingsScreen() {
             {activeAlertPicker === type && (
               <DateTimePicker
                 value={pickerDate}
+                locale="pl-PL"
                 mode="time"
                 display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                 is24Hour
@@ -553,7 +626,14 @@ export default function MeetingsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Spotkania</Text>
-        <TouchableOpacity style={styles.addButton} onPress={() => setShowNewMeeting(true)}>
+        <TouchableOpacity
+          style={styles.addButton}
+          onPress={() => {
+            setEditingMeeting(null);
+            resetForm();
+            setShowNewMeeting(true);
+          }}
+        >
           <Feather name="plus" size={20} color={colors.background.primary} />
         </TouchableOpacity>
       </View>
@@ -591,14 +671,17 @@ export default function MeetingsScreen() {
             <TouchableOpacity
               onPress={() => {
                 setShowNewMeeting(false);
+                setEditingMeeting(null);
                 resetForm();
               }}
             >
               <Text style={styles.modalCancel}>Anuluj</Text>
             </TouchableOpacity>
-            <Text style={styles.modalTitle}>Nowe spotkanie</Text>
-            <TouchableOpacity onPress={handleCreateMeeting}>
-              <Text style={styles.modalSave}>Zapisz</Text>
+            <Text style={styles.modalTitle}>
+              {editingMeeting ? 'Edytuj spotkanie' : 'Nowe spotkanie'}
+            </Text>
+            <TouchableOpacity onPress={handleSaveMeeting}>
+              <Text style={styles.modalSave}>{editingMeeting ? 'Zapisz' : 'Dodaj'}</Text>
             </TouchableOpacity>
           </View>
 
@@ -612,23 +695,182 @@ export default function MeetingsScreen() {
               placeholderTextColor={colors.text.tertiary}
             />
 
-            <Text style={styles.fieldLabel}>Data i godzina rozpoczęcia *</Text>
-            <TextInput
-              style={styles.input}
-              value={form.datetime_start}
-              onChangeText={(t) => setForm((f) => ({ ...f, datetime_start: t }))}
-              placeholder="YYYY-MM-DD HH:MM"
-              placeholderTextColor={colors.text.tertiary}
-            />
+            <Text style={styles.fieldLabel}>Termin *</Text>
 
-            <Text style={styles.fieldLabel}>Data i godzina zakończenia</Text>
-            <TextInput
-              style={styles.input}
-              value={form.datetime_end}
-              onChangeText={(t) => setForm((f) => ({ ...f, datetime_end: t }))}
-              placeholder="YYYY-MM-DD HH:MM"
-              placeholderTextColor={colors.text.tertiary}
-            />
+            <View style={styles.dateTimeCard}>
+              <View style={styles.dateTimeSection}>
+                <Text style={styles.dateTimeSectionLabel}>Rozpoczęcie</Text>
+
+                <View style={styles.dateTimeButtonsRow}>
+                  <TouchableOpacity
+                    style={[styles.dateTimeButton, styles.dateButton]}
+                    onPress={() => setActiveMeetingPicker('startDate')}
+                    activeOpacity={0.7}
+                  >
+                    <Feather name="calendar" size={18} color={colors.primary.gold} />
+
+                    <View style={styles.dateTimeButtonContent}>
+                      <Text style={styles.dateTimeButtonLabel}>Data</Text>
+                      <Text style={styles.dateTimeButtonValue} numberOfLines={1}>
+                        {form.datetime_start?.toLocaleDateString('pl-PL', {
+                          weekday: 'short',
+                          day: '2-digit',
+                          month: 'long',
+                          year: 'numeric',
+                        })}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.dateTimeButton, styles.hourButton]}
+                    onPress={() => setActiveMeetingPicker('startTime')}
+                    activeOpacity={0.7}
+                  >
+                    <Feather name="clock" size={18} color={colors.primary.gold} />
+
+                    <View style={styles.dateTimeButtonContent}>
+                      <Text style={styles.dateTimeButtonLabel}>Godzina</Text>
+                      <Text style={styles.dateTimeButtonValue}>
+                        {form.datetime_start?.toLocaleTimeString('pl-PL', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.dateTimeDivider} />
+
+              <View style={styles.dateTimeSection}>
+                <Text style={styles.dateTimeSectionLabel}>Zakończenie</Text>
+
+                <View style={styles.dateTimeButtonsRow}>
+                  <TouchableOpacity
+                    style={[styles.dateTimeButton, styles.dateButton]}
+                    onPress={() => setActiveMeetingPicker('endDate')}
+                    activeOpacity={0.7}
+                  >
+                    <Feather name="calendar" size={18} color={colors.primary.gold} />
+
+                    <View style={styles.dateTimeButtonContent}>
+                      <Text style={styles.dateTimeButtonLabel}>Data</Text>
+                      <Text style={styles.dateTimeButtonValue} numberOfLines={1}>
+                        {form.datetime_end?.toLocaleDateString('pl-PL', {
+                          weekday: 'short',
+                          day: '2-digit',
+                          month: 'long',
+                          year: 'numeric',
+                        })}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.dateTimeButton, styles.hourButton]}
+                    onPress={() => setActiveMeetingPicker('endTime')}
+                    activeOpacity={0.7}
+                  >
+                    <Feather name="clock" size={18} color={colors.primary.gold} />
+
+                    <View style={styles.dateTimeButtonContent}>
+                      <Text style={styles.dateTimeButtonLabel}>Godzina</Text>
+                      <Text style={styles.dateTimeButtonValue}>
+                        {form.datetime_end?.toLocaleTimeString('pl-PL', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+
+            {activeMeetingPicker && (
+              <View style={styles.meetingPickerContainer}>
+                {Platform.OS === 'ios' && (
+                  <View style={styles.meetingPickerHeader}>
+                    <Text style={styles.meetingPickerTitle}>
+                      {activeMeetingPicker.endsWith('Date') ? 'Wybierz datę' : 'Wybierz godzinę'}
+                    </Text>
+
+                    <TouchableOpacity onPress={() => setActiveMeetingPicker(null)}>
+                      <Text style={styles.meetingPickerDone}>Gotowe</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                <DateTimePicker
+                  value={
+                    activeMeetingPicker.startsWith('start')
+                      ? form.datetime_start || new Date()
+                      : form.datetime_end || new Date()
+                  }
+                  mode={activeMeetingPicker.endsWith('Date') ? 'date' : 'time'}
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  is24Hour
+                  locale="pl-PL"
+                  minuteInterval={5}
+                  minimumDate={
+                    activeMeetingPicker === 'endDate'
+                      ? form.datetime_start || new Date()
+                      : undefined
+                  }
+                  themeVariant="dark"
+                  onChange={(event, selectedDate) => {
+                    if (Platform.OS === 'android') {
+                      setActiveMeetingPicker(null);
+                    }
+
+                    if (event.type === 'dismissed' || !selectedDate) {
+                      return;
+                    }
+
+                    setForm((current) => {
+                      let start = new Date(current.datetime_start || new Date());
+                      let end = new Date(current.datetime_end || new Date());
+
+                      if (activeMeetingPicker === 'startDate') {
+                        start.setFullYear(
+                          selectedDate.getFullYear(),
+                          selectedDate.getMonth(),
+                          selectedDate.getDate(),
+                        );
+                      }
+
+                      if (activeMeetingPicker === 'startTime') {
+                        start.setHours(selectedDate.getHours(), selectedDate.getMinutes(), 0, 0);
+                      }
+
+                      if (activeMeetingPicker === 'endDate') {
+                        end.setFullYear(
+                          selectedDate.getFullYear(),
+                          selectedDate.getMonth(),
+                          selectedDate.getDate(),
+                        );
+                      }
+
+                      if (activeMeetingPicker === 'endTime') {
+                        end.setHours(selectedDate.getHours(), selectedDate.getMinutes(), 0, 0);
+                      }
+
+                      if (end.getTime() <= start.getTime()) {
+                        end = new Date(start.getTime() + 60 * 60 * 1000);
+                      }
+
+                      return {
+                        ...current,
+                        datetime_start: start,
+                        datetime_end: end,
+                      };
+                    });
+                  }}
+                />
+              </View>
+            )}
 
             <Text style={styles.fieldLabel}>Lokalizacja</Text>
             <TextInput
@@ -719,17 +961,36 @@ export default function MeetingsScreen() {
       </Modal>
 
       {/* Meeting Detail Modal */}
-      <Modal visible={!!selectedMeeting} animationType="slide" presentationStyle="pageSheet">
+      <Modal
+        visible={!!selectedMeeting}
+        onRequestClose={() => setSelectedMeeting(null)}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
         {selectedMeeting && (
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
               <TouchableOpacity onPress={() => setSelectedMeeting(null)}>
                 <Text style={styles.modalCancel}>Zamknij</Text>
               </TouchableOpacity>
+
               <Text style={styles.modalTitle}>Szczegóły</Text>
-              <TouchableOpacity onPress={() => handleDeleteMeeting(selectedMeeting.id)}>
-                <Feather name="trash-2" size={20} color={colors.status.error} />
-              </TouchableOpacity>
+
+              <View style={styles.detailHeaderActions}>
+                <TouchableOpacity
+                  style={styles.detailHeaderButton}
+                  onPress={() => openEditMeeting(selectedMeeting)}
+                >
+                  <Feather name="edit-2" size={19} color={colors.primary.gold} />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.detailHeaderButton}
+                  onPress={() => handleDeleteMeeting(selectedMeeting.id)}
+                >
+                  <Feather name="trash-2" size={20} color={colors.status.error} />
+                </TouchableOpacity>
+              </View>
             </View>
 
             <ScrollView style={styles.modalBody}>
@@ -738,9 +999,10 @@ export default function MeetingsScreen() {
               <View style={styles.detailRow}>
                 <Feather name="clock" size={16} color={colors.primary.gold} />
                 <Text style={styles.detailText}>
-                  {formatDate(selectedMeeting.datetime_start)} •{' '}
-                  {formatTime(selectedMeeting.datetime_start)}
-                  {selectedMeeting.datetime_end && ` – ${formatTime(selectedMeeting.datetime_end)}`}
+                  {formatDate(selectedMeeting.datetime_start || '')} •{' '}
+                  {formatTime(selectedMeeting.datetime_start || '')}
+                  {selectedMeeting.datetime_end &&
+                    ` – ${formatTime(selectedMeeting.datetime_end || '')}`}
                 </Text>
               </View>
 
@@ -1173,5 +1435,117 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeights.semibold as any,
     color: colors.primary.gold,
     fontVariant: ['tabular-nums'],
+  },
+
+  dateTimeCard: {
+    backgroundColor: colors.background.secondary,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+
+  dateTimeSection: {
+    padding: spacing.md,
+  },
+
+  dateTimeSectionLabel: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.semibold as any,
+    color: colors.text.secondary,
+    marginBottom: spacing.sm,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+
+  dateTimeButtonsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+
+  dateTimeButton: {
+    minHeight: 62,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+    backgroundColor: colors.background.primary,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+
+  dateButton: {
+    flex: 1,
+  },
+
+  hourButton: {
+    width: 116,
+  },
+
+  dateTimeButtonContent: {
+    flex: 1,
+  },
+
+  dateTimeButtonLabel: {
+    fontSize: 10,
+    color: colors.text.tertiary,
+    marginBottom: 2,
+  },
+
+  dateTimeButtonValue: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold as any,
+    color: colors.text.primary,
+  },
+
+  dateTimeDivider: {
+    height: 1,
+    backgroundColor: colors.border.default,
+  },
+
+  meetingPickerContainer: {
+    marginTop: spacing.sm,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: colors.background.secondary,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+  },
+
+  meetingPickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.default,
+  },
+
+  meetingPickerTitle: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold as any,
+    color: colors.text.primary,
+  },
+
+  meetingPickerDone: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold as any,
+    color: colors.primary.gold,
+  },
+  detailHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+
+  detailHeaderButton: {
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 17,
   },
 });
