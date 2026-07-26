@@ -32,6 +32,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import PermissionGate from '../components/PermissionGate';
 import EventDetailScreen from './EventDetailScreen';
+import TaskDetailScreen from './TaskDetailScreen';
 import NewInquiryModal from './NewInquiryModal';
 import { STATUS_COLORS, STATUS_LABELS } from './EventsScreen';
 
@@ -469,6 +470,7 @@ const styles = StyleSheet.create({
 
 export default function CalendarScreen({ initialMeetingId }: { initialMeetingId?: string | null }) {
   const [selectedEventId, setSelectedEventId] = useState<string | null>(initialMeetingId ?? null);
+  const [selectedInquiryId, setSelectedInquiryId] = useState<string | null>(null);
 
   useEffect(() => {
     if (initialMeetingId) {
@@ -476,13 +478,30 @@ export default function CalendarScreen({ initialMeetingId }: { initialMeetingId?
     }
   }, [initialMeetingId]);
 
+  const handleEventPress = (id: string) => {
+    if (id.startsWith('inquiry-')) {
+      setSelectedInquiryId(id.replace('inquiry-', ''));
+    } else {
+      setSelectedEventId(id);
+    }
+  };
+
+  if (selectedInquiryId) {
+    return (
+      <TaskDetailScreen
+        route={{ params: { taskId: selectedInquiryId } }}
+        navigation={{ goBack: () => setSelectedInquiryId(null) }}
+      />
+    );
+  }
+
   if (selectedEventId) {
     return <EventDetailScreen eventId={selectedEventId} onBack={() => setSelectedEventId(null)} />;
   }
 
   return (
     <PermissionGate module="calendar">
-      <CalendarContent onEventPress={(id) => setSelectedEventId(id)} />
+      <CalendarContent onEventPress={handleEventPress} />
     </PermissionGate>
   );
 }
