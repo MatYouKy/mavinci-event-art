@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useRoute } from '@react-navigation/native';
 
 import ChatListScreen, { Conversation } from '../screens/ChatListScreen';
 import ChatScreen from '../screens/ChatScreen';
@@ -9,9 +10,11 @@ import { supabase } from '../lib/supabase';
 import * as Notifications from 'expo-notifications';
 
 export default function MessagesStackNavigator() {
+  const route = useRoute<any>();
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
   const [showNewChat, setShowNewChat] = useState(false);
   const hasCheckedTarget = useRef(false);
+  const lastNavigatedConvId = useRef<string | null>(null);
 
   useEffect(() => {
     setActiveChatConversation(activeConversation?.id ?? null);
@@ -39,6 +42,15 @@ export default function MessagesStackNavigator() {
       });
     }
   }, []);
+
+  // Handle conversationId passed via navigation params
+  useEffect(() => {
+    const convId = route.params?.conversationId;
+    if (convId && convId !== lastNavigatedConvId.current) {
+      lastNavigatedConvId.current = convId;
+      navigateToConversation(convId);
+    }
+  }, [route.params?.conversationId, navigateToConversation]);
 
   // Check for pending notification target on mount
   useEffect(() => {

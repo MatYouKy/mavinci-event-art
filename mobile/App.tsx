@@ -16,6 +16,7 @@ import {
 import { useRealtimePushNotifications } from './src/services/realtimeNotifications';
 import { useChatNotifications, setupChatNotificationFilter } from './src/services/chatNotifications';
 import { scheduleInquiryReminders } from './src/services/inquiryReminders';
+import { navigateToChat } from './src/navigation/navigationRef';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -93,6 +94,7 @@ function AppContent() {
           type: 'chat_message',
           conversation_id: data.conversation_id as string,
         };
+        navigateToChat(data.conversation_id as string);
       } else if (data?.type === 'task' && data?.task_id) {
         console.log('[Push] Open task:', data.task_id);
         globalNotificationTarget = {

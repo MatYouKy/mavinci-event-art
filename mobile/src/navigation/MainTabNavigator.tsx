@@ -24,6 +24,7 @@ import EmployeesScreen from '../screens/EmployeesScreen';
 import CustomDrawer from '../components/CustomDrawer';
 import { useUnreadChatCount } from '../services/chatNotifications';
 import { globalNotificationTarget } from '../../App';
+import { navigateToChat } from './navigationRef';
 
 export type MainTabParamList = {
   Dashboard: undefined;
@@ -98,7 +99,7 @@ export default function MainTabNavigator() {
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data;
       if (data?.type === 'chat_message' && data?.conversation_id) {
-        setCurrentScreen('Messages');
+        navigateToChat(data.conversation_id as string);
       } else if (data?.type === 'meeting_reminder' && data?.meetingId) {
         setPendingMeetingId(data.meetingId as string);
         setCurrentScreen('Calendar');

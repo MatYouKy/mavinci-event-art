@@ -1,5 +1,6 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
+import { navigationRef } from './navigationRef';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../contexts/AuthContext';
 import { ActivityIndicator, View } from 'react-native';
@@ -30,6 +31,7 @@ export default function RootNavigator() {
 
   return (
     <NavigationContainer
+      ref={navigationRef}
       theme={{
         dark: true,
         colors: {
