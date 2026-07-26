@@ -809,7 +809,11 @@ function AgendaTab({ agenda }: { agenda: AgendaData | null }) {
 
   const formatTime = (time: string | null) => {
     if (!time) return '';
-    return time.slice(0, 5);
+  
+    return new Date(time).toLocaleTimeString('pl-PL', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   };
 
   const handleOpenPdf = async () => {
