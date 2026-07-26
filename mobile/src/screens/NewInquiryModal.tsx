@@ -109,6 +109,9 @@ function SearchableDropdown<T extends { id: string }>({
               setShowList(true);
             }}
             onFocus={() => setShowList(true)}
+            onBlur={() => {
+              setTimeout(() => setShowList(false), 200);
+            }}
             placeholder={placeholder}
             placeholderTextColor={colors.text.tertiary}
           />
