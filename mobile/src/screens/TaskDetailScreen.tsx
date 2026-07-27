@@ -19,6 +19,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { colors, spacing, typography, borderRadius } from '../theme';
 import EmployeeAvatar from '../components/EmployeeAvatar';
+import { SearchableDropdown } from '@/components/SearchableDropdown';
 
 interface TaskDetailScreenProps {
   route: {
@@ -48,6 +49,14 @@ interface Comment {
     name: string;
     surname: string;
   };
+}
+
+interface AvailableEmployee {
+  id: string;
+  name: string;
+  surname: string | null;
+  avatar_url: string | null;
+  avatar_metadata?: any;
 }
 
 interface Attachment {
@@ -115,10 +124,10 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
   const [editDescription, setEditDescription] = useState('');
   const [editPriority, setEditPriority] = useState<Task['priority']>('medium');
   const [editStatus, setEditStatus] = useState<string>('todo');
-  const [availableEmployees, setAvailableEmployees] = useState<
-    { id: string; name: string; surname: string | null; avatar_url: string | null }[]
-  >([]);
+  const [availableEmployees, setAvailableEmployees] = useState<AvailableEmployee[]>([]);
   const [editAssigneeIds, setEditAssigneeIds] = useState<Set<string>>(new Set());
+  const [openedDropdown, setOpenedDropdown] = useState<string | null>(null);
+  const [employeeSearch, setEmployeeSearch] = useState('');
 
   useEffect(() => {
     fetchTask();
@@ -139,7 +148,7 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
         },
         () => {
           fetchComments();
-        }
+        },
       )
       .subscribe();
 
@@ -155,7 +164,7 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
         },
         () => {
           fetchAssignees();
-        }
+        },
       )
       .subscribe();
 
@@ -168,11 +177,7 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
   const fetchTask = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('tasks')
-        .select('*')
-        .eq('id', taskId)
-        .single();
+      const { data, error } = await supabase.from('tasks').select('*').eq('id', taskId).single();
 
       if (error) throw error;
       setTask(data);
@@ -188,7 +193,8 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
     try {
       const { data: commentsData, error } = await supabase
         .from('task_comments')
-        .select(`
+        .select(
+          `
           id,
           content,
           created_at,
@@ -196,12 +202,13 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
             name,
             surname
           )
-        `)
+        `,
+        )
         .eq('task_id', taskId)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
-      setComments(commentsData as unknown as Comment[] || []);
+      setComments((commentsData as unknown as Comment[]) || []);
     } catch (error) {
       console.error('Error fetching comments:', error);
     }
@@ -211,7 +218,8 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
     try {
       const { data, error } = await supabase
         .from('task_assignees')
-        .select(`
+        .select(
+          `
           employee_id,
           employees:employee_id (
             id,
@@ -220,7 +228,8 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
             avatar_url,
             avatar_metadata
           )
-        `)
+        `,
+        )
         .eq('task_id', taskId);
 
       if (error) throw error;
@@ -234,7 +243,8 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
     try {
       const { data, error } = await supabase
         .from('task_attachments')
-        .select(`
+        .select(
+          `
           id,
           file_name,
           file_type,
@@ -245,12 +255,13 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
             name,
             surname
           )
-        `)
+        `,
+        )
         .eq('task_id', taskId)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setAttachments(data as unknown as Attachment[] || [] as any);
+      setAttachments((data as unknown as Attachment[]) || ([] as any));
     } catch (error) {
       console.error('Error fetching attachments:', error);
     }
@@ -260,13 +271,11 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
     if (!newComment.trim() || !employee) return;
 
     try {
-      const { error } = await supabase
-        .from('task_comments')
-        .insert({
-          task_id: taskId,
-          employee_id: employee.id,
-          content: newComment.trim(),
-        });
+      const { error } = await supabase.from('task_comments').insert({
+        task_id: taskId,
+        employee_id: employee.id,
+        content: newComment.trim(),
+      });
 
       if (error) throw error;
 
@@ -289,7 +298,7 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
     (async () => {
       const { data } = await supabase
         .from('employees')
-        .select('id, name, surname, avatar_url')
+        .select('id, name, surname, avatar_url, avatar_metadata')
         .order('name')
         .limit(200);
       setAvailableEmployees((data as any[]) || []);
@@ -303,6 +312,17 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
       else next.add(id);
       return next;
     });
+  };
+
+  const handleSelectEmployee = (selectedEmployee: AvailableEmployee) => {
+    setEditAssigneeIds((prev) => {
+      const next = new Set(prev);
+      next.add(selectedEmployee.id);
+      return next;
+    });
+
+    setEmployeeSearch('');
+    setOpenedDropdown(null);
   };
 
   const handleSaveEdit = async () => {
@@ -344,9 +364,7 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
           task_id: task.id,
           employee_id,
         }));
-        const { error: insError } = await supabase
-          .from('task_assignees')
-          .insert(rows);
+        const { error: insError } = await supabase.from('task_assignees').insert(rows);
         if (insError) throw insError;
       }
 
@@ -359,6 +377,10 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
       setSaving(false);
     }
   };
+
+  const selectableEmployees = availableEmployees.filter((emp) => !editAssigneeIds.has(emp.id));
+
+  const selectedEmployees = availableEmployees.filter((emp) => editAssigneeIds.has(emp.id));
 
   const handleDeleteTask = () => {
     if (!task) return;
@@ -440,11 +462,7 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
         <Text style={styles.headerTitle} numberOfLines={1}>
           {task.title}
         </Text>
-        <TouchableOpacity
-          onPress={openEditModal}
-          style={styles.headerAction}
-          disabled={deleting}
-        >
+        <TouchableOpacity onPress={openEditModal} style={styles.headerAction} disabled={deleting}>
           <Feather name="edit-2" size={20} color={colors.primary.gold} />
         </TouchableOpacity>
         <TouchableOpacity
@@ -466,7 +484,11 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
           style={[styles.tab, activeTab === 'details' && styles.tabActive]}
           onPress={() => setActiveTab('details')}
         >
-          <Feather name="info" size={16} color={activeTab === 'details' ? colors.primary.gold : colors.text.tertiary} />
+          <Feather
+            name="info"
+            size={16}
+            color={activeTab === 'details' ? colors.primary.gold : colors.text.tertiary}
+          />
           <Text style={[styles.tabText, activeTab === 'details' && styles.tabTextActive]}>
             Szczegóły
           </Text>
@@ -475,7 +497,11 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
           style={[styles.tab, activeTab === 'comments' && styles.tabActive]}
           onPress={() => setActiveTab('comments')}
         >
-          <Feather name="message-square" size={16} color={activeTab === 'comments' ? colors.primary.gold : colors.text.tertiary} />
+          <Feather
+            name="message-square"
+            size={16}
+            color={activeTab === 'comments' ? colors.primary.gold : colors.text.tertiary}
+          />
           <Text style={[styles.tabText, activeTab === 'comments' && styles.tabTextActive]}>
             Czat ({comments.length})
           </Text>
@@ -484,7 +510,11 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
           style={[styles.tab, activeTab === 'files' && styles.tabActive]}
           onPress={() => setActiveTab('files')}
         >
-          <Feather name="file" size={16} color={activeTab === 'files' ? colors.primary.gold : colors.text.tertiary} />
+          <Feather
+            name="file"
+            size={16}
+            color={activeTab === 'files' ? colors.primary.gold : colors.text.tertiary}
+          />
           <Text style={[styles.tabText, activeTab === 'files' && styles.tabTextActive]}>
             Pliki ({attachments.length})
           </Text>
@@ -494,7 +524,11 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
       <ScrollView
         style={styles.content}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary.gold} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary.gold}
+          />
         }
       >
         {activeTab === 'details' && (
@@ -504,8 +538,15 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
 
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Priorytet:</Text>
-                <View style={[styles.priorityBadge, { backgroundColor: priorityColors[task.priority].bg }]}>
-                  <Text style={[styles.priorityText, { color: priorityColors[task.priority].text }]}>
+                <View
+                  style={[
+                    styles.priorityBadge,
+                    { backgroundColor: priorityColors[task.priority].bg },
+                  ]}
+                >
+                  <Text
+                    style={[styles.priorityText, { color: priorityColors[task.priority].text }]}
+                  >
                     {priorityLabels[task.priority]}
                   </Text>
                 </View>
@@ -523,66 +564,63 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
                 </View>
               )}
               <View style={styles.assigneesSection}>
-  <View style={styles.assigneesHeader}>
-    <Text style={styles.infoLabel}>Przypisane osoby:</Text>
+                <View style={styles.assigneesHeader}>
+                  <Text style={styles.infoLabel}>Przypisane osoby:</Text>
 
-    {assignees.length > 0 && (
-      <Text style={styles.assigneesCount}>{assignees.length}</Text>
-    )}
-  </View>
+                  {assignees.length > 0 && (
+                    <Text style={styles.assigneesCount}>{assignees.length}</Text>
+                  )}
+                </View>
 
-  {assignees.length === 0 ? (
-    <Text style={styles.emptyInline}>Brak przypisanych osób</Text>
-  ) : (
-    <View style={styles.avatarStack}>
-      {assignees.slice(0, 5).map((assignee, index) => {
-        const emp = assignee.employees;
+                {assignees.length === 0 ? (
+                  <Text style={styles.emptyInline}>Brak przypisanych osób</Text>
+                ) : (
+                  <View style={styles.avatarStack}>
+                    {assignees.slice(0, 5).map((assignee, index) => {
+                      const emp = assignee.employees;
 
-        if (!emp) {
-          return null;
-        }
+                      if (!emp) {
+                        return null;
+                      }
 
-        const displayName =
-          [emp.name, emp.surname].filter(Boolean).join(' ') ||
-          'Pracownik';
+                      const displayName =
+                        [emp.name, emp.surname].filter(Boolean).join(' ') || 'Pracownik';
 
-        return (
-          <View
-            key={assignee.employee_id}
-            style={[
-              styles.avatarStackItem,
-              index > 0 && styles.avatarStackItemOverlap,
-              {
-                zIndex: assignees.length - index,
-              },
-            ]}
-          >
-            <EmployeeAvatar
-              avatarUrl={emp.avatar_url}
-              avatarMetadata={emp.avatar_metadata}
-              employeeName={displayName}
-              size={38}
-            />
-          </View>
-        );
-      })}
+                      return (
+                        <View
+                          key={assignee.employee_id}
+                          style={[
+                            styles.avatarStackItem,
+                            index > 0 && styles.avatarStackItemOverlap,
+                            {
+                              zIndex: assignees.length - index,
+                            },
+                          ]}
+                        >
+                          <EmployeeAvatar
+                            avatarUrl={emp.avatar_url}
+                            avatarMetadata={emp.avatar_metadata}
+                            employeeName={displayName}
+                            size={38}
+                          />
+                        </View>
+                      );
+                    })}
 
-      {assignees.length > 5 && (
-        <View
-          style={[
-            styles.avatarStackItem,
-            styles.avatarStackItemOverlap,
-            styles.remainingAssignees,
-          ]}
-        >
-          <Text style={styles.remainingAssigneesText}>
-            +{assignees.length - 5}
-          </Text>
-        </View>
-      )}
-    </View>
-  )}
-</View>
+                    {assignees.length > 5 && (
+                      <View
+                        style={[
+                          styles.avatarStackItem,
+                          styles.avatarStackItemOverlap,
+                          styles.remainingAssignees,
+                        ]}
+                      >
+                        <Text style={styles.remainingAssigneesText}>+{assignees.length - 5}</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+              </View>
             </View>
 
             {task.description && (
@@ -591,7 +629,6 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
                 <Text style={styles.description}>{task.description}</Text>
               </View>
             )}
-
           </View>
         )}
 
@@ -680,18 +717,12 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Edytuj zadanie</Text>
-              <TouchableOpacity
-                onPress={() => setShowEditModal(false)}
-                disabled={saving}
-              >
+              <TouchableOpacity onPress={() => setShowEditModal(false)} disabled={saving}>
                 <Feather name="x" size={24} color={colors.text.primary} />
               </TouchableOpacity>
             </View>
 
-            <ScrollView
-              style={styles.modalBody}
-              keyboardShouldPersistTaps="handled"
-            >
+            <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled">
               <Text style={styles.formLabel}>Tytuł</Text>
               <TextInput
                 style={styles.formInput}
@@ -724,9 +755,7 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
                           backgroundColor: active
                             ? priorityColors[p].bg
                             : colors.background.primary,
-                          borderColor: active
-                            ? priorityColors[p].text
-                            : colors.border.default,
+                          borderColor: active ? priorityColors[p].text : colors.border.default,
                         },
                       ]}
                       onPress={() => setEditPriority(p)}
@@ -735,9 +764,7 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
                         style={[
                           styles.chipText,
                           {
-                            color: active
-                              ? priorityColors[p].text
-                              : colors.text.secondary,
+                            color: active ? priorityColors[p].text : colors.text.secondary,
                           },
                         ]}
                       >
@@ -758,9 +785,7 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
                       style={[
                         styles.chip,
                         {
-                          backgroundColor: active
-                            ? `${s.color}30`
-                            : colors.background.primary,
+                          backgroundColor: active ? `${s.color}30` : colors.background.primary,
                           borderColor: active ? s.color : colors.border.default,
                         },
                       ]}
@@ -771,9 +796,7 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
                         style={[
                           styles.chipText,
                           {
-                            color: active
-                              ? colors.text.primary
-                              : colors.text.secondary,
+                            color: active ? colors.text.primary : colors.text.secondary,
                           },
                         ]}
                       >
@@ -783,70 +806,77 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
                   );
                 })}
               </View>
+              <View style={styles.employeePickerSection}>
+                {availableEmployees.length === 0 ? (
+                  <View style={styles.employeeEmpty}>
+                    <ActivityIndicator size="small" color={colors.primary.gold} />
+                  </View>
+                ) : (
+                  <>
+                    <SearchableDropdown<AvailableEmployee>
+                      dropdownId="task-assignees"
+                      openedDropdown={openedDropdown}
+                      setOpenedDropdown={setOpenedDropdown}
+                      label={`Przypisani pracownicy (${editAssigneeIds.size})`}
+                      placeholder="Wyszukaj pracownika..."
+                      items={selectableEmployees}
+                      textValue={employeeSearch}
+                      onTextChange={setEmployeeSearch}
+                      onSelect={handleSelectEmployee}
+                      onClear={() => {
+                        setEmployeeSearch('');
+                      }}
+                      renderItem={(emp) => [emp.name, emp.surname].filter(Boolean).join(' ')}
+                      getFilterText={(emp) => [emp.name, emp.surname].filter(Boolean).join(' ')}
+                      selectedLabel={null}
+                      icon="user"
+                    />
 
-              <Text style={styles.formLabel}>
-                Przypisani pracownicy ({editAssigneeIds.size})
-              </Text>
-              {availableEmployees.length === 0 ? (
-                <View style={styles.employeeEmpty}>
-                  <ActivityIndicator size="small" color={colors.primary.gold} />
-                </View>
-              ) : (
-                <View style={styles.employeeList}>
-                  {availableEmployees.map((emp) => {
-                    const active = editAssigneeIds.has(emp.id);
-                    const fullName = `${emp.name}${
-                      emp.surname ? ` ${emp.surname}` : ''
-                    }`;
-                    const initials = `${emp.name?.[0] || ''}${
-                      emp.surname?.[0] || ''
-                    }`.toUpperCase();
-                    return (
-                      <TouchableOpacity
-                        key={emp.id}
-                        style={[
-                          styles.employeeRow,
-                          active && styles.employeeRowActive,
-                        ]}
-                        onPress={() => toggleEditAssignee(emp.id)}
-                      >
-                        {emp.avatar_url ? (
-                          <Image
-                            source={{ uri: emp.avatar_url }}
-                            style={styles.employeeAvatar}
-                          />
-                        ) : (
-                          <View
-                            style={[
-                              styles.employeeAvatar,
-                              styles.employeeAvatarPlaceholder,
-                            ]}
-                          >
-                            <Text style={styles.employeeInitials}>{initials}</Text>
-                          </View>
-                        )}
-                        <Text style={styles.employeeName} numberOfLines={1}>
-                          {fullName}
-                        </Text>
-                        <View
-                          style={[
-                            styles.employeeCheck,
-                            active && styles.employeeCheckActive,
-                          ]}
-                        >
-                          {active && (
-                            <Feather
-                              name="check"
-                              size={14}
-                              color={colors.text.primary}
-                            />
-                          )}
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              )}
+                    {selectedEmployees.length > 0 && (
+                      <View style={styles.selectedEmployeesList}>
+                        {selectedEmployees.map((emp) => {
+                          const fullName =
+                            [emp.name, emp.surname].filter(Boolean).join(' ') || 'Pracownik';
+
+                          return (
+                            <View key={emp.id} style={styles.selectedEmployeeRow}>
+                              <EmployeeAvatar
+                                avatarUrl={emp.avatar_url}
+                                avatarMetadata={emp.avatar_metadata}
+                                employeeName={fullName}
+                                size={34}
+                              />
+
+                              <Text style={styles.selectedEmployeeName} numberOfLines={1}>
+                                {fullName}
+                              </Text>
+
+                              <TouchableOpacity
+                                style={styles.removeEmployeeButton}
+                                onPress={() => toggleEditAssignee(emp.id)}
+                                hitSlop={{
+                                  top: 8,
+                                  right: 8,
+                                  bottom: 8,
+                                  left: 8,
+                                }}
+                              >
+                                <Feather name="x" size={17} color={colors.text.tertiary} />
+                              </TouchableOpacity>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
+
+                    {editAssigneeIds.size === 0 && (
+                      <Text style={styles.noSelectedEmployees}>
+                        Nie przypisano żadnego pracownika
+                      </Text>
+                    )}
+                  </>
+                )}
+              </View>
             </ScrollView>
 
             <View style={styles.modalFooter}>
@@ -1132,14 +1162,14 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border.default,
   },
-  
+
   assigneesHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
     marginBottom: spacing.sm,
   },
-  
+
   assigneesCount: {
     minWidth: 20,
     height: 20,
@@ -1151,14 +1181,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
-  
+
   avatarStack: {
     flexDirection: 'row',
     alignItems: 'center',
     minHeight: 42,
     paddingLeft: 2,
   },
-  
+
   avatarStackItem: {
     width: 42,
     height: 42,
@@ -1169,15 +1199,15 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.background.secondary,
   },
-  
+
   avatarStackItemOverlap: {
     marginLeft: -12,
   },
-  
+
   remainingAssignees: {
     backgroundColor: colors.background.tertiary,
   },
-  
+
   remainingAssigneesText: {
     fontSize: typography.fontSizes.xs,
     fontWeight: typography.fontWeights.semibold,
@@ -1349,5 +1379,48 @@ const styles = StyleSheet.create({
   employeeCheckActive: {
     backgroundColor: colors.primary.gold,
     borderColor: colors.primary.gold,
+  },
+
+  employeePickerSection: {
+    marginTop: spacing.md,
+  },
+
+  selectedEmployeesList: {
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+
+  selectedEmployeeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.background.primary,
+  },
+
+  selectedEmployeeName: {
+    flex: 1,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+    color: colors.text.primary,
+  },
+
+  removeEmployeeButton: {
+    width: 30,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.background.tertiary,
+  },
+
+  noSelectedEmployees: {
+    marginTop: spacing.xs,
+    fontSize: typography.fontSizes.xs,
+    color: colors.text.tertiary,
   },
 });
