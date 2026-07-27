@@ -172,6 +172,10 @@ export default function NewInquiryModal({ visible, onClose, initialDate, onSaved
   const [selectedEmployeeLabel, setSelectedEmployeeLabel] = useState<string | null>(null);
   const [employeeSearch, setEmployeeSearch] = useState('');
 
+  // Event date
+  const [eventDate, setEventDate] = useState(initialDate || '');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
   // Other fields
   const [scope, setScope] = useState('');
   const [budget, setBudget] = useState('');
@@ -210,9 +214,42 @@ export default function NewInquiryModal({ visible, onClose, initialDate, onSaved
     setSelectedEmployeeId(null);
     setSelectedEmployeeLabel(null);
     setEmployeeSearch('');
+    setEventDate(initialDate || '');
+    setShowDatePicker(false);
     setScope('');
     setBudget('');
     setExpectations('');
+  };
+
+  const formatDateForDisplay = (dateStr: string) => {
+    try {
+      return new Date(dateStr + 'T00:00:00').toLocaleDateString('pl-PL', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const generateDateOptions = () => {
+    const options: { label: string; value: string }[] = [];
+    const today = new Date();
+    for (let i = 0; i < 90; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      const value = d.toISOString().split('T')[0];
+      const label = d.toLocaleDateString('pl-PL', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      });
+      options.push({ label, value });
+    }
+    return options;
   };
 
   const handleSave = async () => {
@@ -245,7 +282,7 @@ export default function NewInquiryModal({ visible, onClose, initialDate, onSaved
       const locationText = selectedLocationLabel || locationFreeText.trim() || '';
 
       const descParts: string[] = [];
-      if (initialDate) descParts.push(`Termin: ${initialDate}`);
+      if (selectedDate) descParts.push(`Termin: ${selectedDate}`);
       if (locationText) descParts.push(`Lokalizacja: ${locationText}`);
       if (scope.trim()) descParts.push(`Zakres: ${scope.trim()}`);
       if (budget.trim()) descParts.push(`Budżet: ${budget.trim()}`);
@@ -256,8 +293,10 @@ export default function NewInquiryModal({ visible, onClose, initialDate, onSaved
       if (selectedContactLabel) descParts.push(`Osoba kontaktowa: ${selectedContactLabel}`);
       if (selectedEmployeeLabel) descParts.push(`Przypisano: ${selectedEmployeeLabel}`);
 
+      const selectedDate = eventDate.trim() || null;
+
       const inquiryDetails = {
-        termin: initialDate || null,
+        termin: selectedDate,
         location_text: locationText || null,
         location_id: selectedLocationId,
         scope: scope.trim() || null,
@@ -279,7 +318,7 @@ export default function NewInquiryModal({ visible, onClose, initialDate, onSaved
           status: 'todo',
           board_column: 'todo',
           order_index: newOrderIndex,
-          due_date: initialDate ? new Date(initialDate + 'T23:59:00').toISOString() : null,
+          due_date: selectedDate ? new Date(selectedDate + 'T23:59:00').toISOString() : null,
           created_by: session.user.id,
           is_inquiry: true,
           inquiry_details: inquiryDetails,
@@ -338,12 +377,52 @@ export default function NewInquiryModal({ visible, onClose, initialDate, onSaved
         </View>
 
         <ScrollView style={styles.form} contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled">
-          {initialDate && (
+          {/* Event date section */}
+          <Text style={styles.sectionLabel}>Data wydarzenia</Text>
+          {initialDate ? (
             <View style={styles.dateInfo}>
               <Feather name="calendar" size={16} color={colors.primary.gold} />
               <Text style={styles.dateInfoText}>
-                Termin: {new Date(initialDate + 'T00:00:00').toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                {formatDateForDisplay(initialDate)}
               </Text>
+            </View>
+          ) : (
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Termin wydarzenia</Text>
+              <TouchableOpacity
+                style={styles.datePickerButton}
+                onPress={() => setShowDatePicker(!showDatePicker)}
+              >
+                <Feather name="calendar" size={16} color={eventDate ? colors.primary.gold : colors.text.tertiary} />
+                <Text style={[styles.datePickerText, eventDate && { color: colors.text.primary }]}>
+                  {eventDate ? formatDateForDisplay(eventDate) : 'Wybierz datę...'}
+                </Text>
+                {eventDate ? (
+                  <TouchableOpacity
+                    onPress={() => { setEventDate(''); setShowDatePicker(false); }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Feather name="x" size={16} color={colors.text.tertiary} />
+                  </TouchableOpacity>
+                ) : (
+                  <Feather name="chevron-down" size={16} color={colors.text.tertiary} />
+                )}
+              </TouchableOpacity>
+              {showDatePicker && (
+                <ScrollView style={styles.dateList} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                  {generateDateOptions().map((opt) => (
+                    <TouchableOpacity
+                      key={opt.value}
+                      style={[styles.dateOption, eventDate === opt.value && styles.dateOptionSelected]}
+                      onPress={() => { setEventDate(opt.value); setShowDatePicker(false); }}
+                    >
+                      <Text style={[styles.dateOptionText, eventDate === opt.value && styles.dateOptionTextSelected]}>
+                        {opt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
             </View>
           )}
 
@@ -589,6 +668,49 @@ const styles = StyleSheet.create({
     color: colors.primary.gold,
     fontWeight: '600',
     textTransform: 'capitalize',
+  },
+  datePickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.background.secondary,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+    borderRadius: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 12,
+  },
+  datePickerText: {
+    flex: 1,
+    fontSize: typography.fontSizes.sm,
+    color: colors.text.tertiary,
+    textTransform: 'capitalize',
+  },
+  dateList: {
+    maxHeight: 200,
+    backgroundColor: colors.background.secondary,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  dateOption: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.default,
+  },
+  dateOptionSelected: {
+    backgroundColor: colors.primary.gold + '15',
+  },
+  dateOptionText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.text.primary,
+    textTransform: 'capitalize',
+  },
+  dateOptionTextSelected: {
+    color: colors.primary.gold,
+    fontWeight: '600',
   },
   sectionLabel: {
     fontSize: typography.fontSizes.sm,

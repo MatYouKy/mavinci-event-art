@@ -14,6 +14,7 @@ import { Feather } from '@expo/vector-icons';
 import { colors, spacing, typography } from '../theme';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import NewInquiryModal from './NewInquiryModal';
 
 type InquiriesStackParamList = {
   InquiriesList: undefined;
@@ -55,6 +56,7 @@ export default function InquiriesScreen() {
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState<'pending' | 'all'>('pending');
+  const [showNewModal, setShowNewModal] = useState(false);
 
   const fetchInquiries = useCallback(async () => {
     if (!employee?.id) return;
@@ -210,6 +212,23 @@ export default function InquiriesScreen() {
           }
         />
       )}
+
+      <TouchableOpacity
+        style={styles.fab}
+        activeOpacity={0.8}
+        onPress={() => setShowNewModal(true)}
+      >
+        <Feather name="plus" size={24} color="#fff" />
+      </TouchableOpacity>
+
+      <NewInquiryModal
+        visible={showNewModal}
+        onClose={() => setShowNewModal(false)}
+        onSaved={() => {
+          setShowNewModal(false);
+          fetchInquiries();
+        }}
+      />
     </View>
   );
 }
@@ -338,5 +357,21 @@ const styles = StyleSheet.create({
     color: colors.text.tertiary,
     textAlign: 'center',
     marginTop: spacing.xs,
+  },
+  fab: {
+    position: 'absolute',
+    bottom: spacing.xl,
+    right: spacing.lg,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.primary.gold,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
   },
 });
