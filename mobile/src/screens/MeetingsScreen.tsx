@@ -21,12 +21,20 @@ import { Feather } from '@expo/vector-icons';
 import { colors, spacing, typography } from '../theme';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { SearchableDropdown } from '../components/SearchableDropdown';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
 // --- Types ---
 type AlertPickerType = 'alert_1' | 'alert_2' | 'alert_critical';
 
 type MeetingPickerType = 'startDate' | 'startTime' | 'endDate' | 'endTime';
+interface Employee {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  position: string | null;
+}
+
 interface Meeting {
   id: string;
   title: string;
@@ -195,6 +203,10 @@ export default function MeetingsScreen() {
   };
 
   const [form, setForm] = useState<NewMeetingForm>(createInitialForm);
+  const [selectedParticipants, setSelectedParticipants] = useState<Employee[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [participantSearch, setParticipantSearch] = useState('');
+  const [openedDropdown, setOpenedDropdown] = useState<string | null>(null);
 
   const [activeMeetingPicker, setActiveMeetingPicker] = useState<MeetingPickerType | null>(null);
 
@@ -202,6 +214,17 @@ export default function MeetingsScreen() {
 
   useEffect(() => {
     requestNotificationPermissions();
+  }, []);
+
+  useEffect(() => {
+    const fetchEmployees = async () => {
+      const { data } = await supabase
+        .from('employees')
+        .select('id, first_name, last_name, position')
+        .order('last_name');
+      if (data) setEmployees(data);
+    };
+    fetchEmployees();
   }, []);
 
   const fetchMeetings = useCallback(
@@ -252,6 +275,9 @@ export default function MeetingsScreen() {
 
   const resetForm = () => {
     setForm(createInitialForm());
+    setSelectedParticipants([]);
+    setParticipantSearch('');
+    setOpenedDropdown(null);
     setActiveMeetingPicker(null);
     setActiveAlertPicker(null);
   };
@@ -281,6 +307,13 @@ export default function MeetingsScreen() {
     setShowNewMeeting(true);
     setActiveMeetingPicker(null);
     setActiveAlertPicker(null);
+
+    // Load participants for this meeting
+    const participantIds = (meeting.participants || []).map((p) => p.employee_id);
+    const matched = employees.filter((e) => participantIds.includes(e.id));
+    setSelectedParticipants(matched);
+    setParticipantSearch('');
+    setOpenedDropdown(null);
   };
 
   const handleSaveMeeting = async () => {
@@ -330,6 +363,18 @@ export default function MeetingsScreen() {
         if (error) throw error;
 
         if (data) {
+          // Update participants: delete existing and re-insert
+          await supabase.from('meeting_participants').delete().eq('meeting_id', editingMeeting.id);
+          const participantsToInsert = selectedParticipants.map((p) => ({
+            meeting_id: editingMeeting.id,
+            employee_id: p.id,
+          }));
+          if (!selectedParticipants.some((p) => p.id === employee.id)) {
+            participantsToInsert.push({ meeting_id: editingMeeting.id, employee_id: employee.id });
+          }
+          if (participantsToInsert.length > 0) {
+            await supabase.from('meeting_participants').insert(participantsToInsert);
+          }
           await scheduleMeetingAlerts(data as Meeting);
         }
       } else {
@@ -345,10 +390,17 @@ export default function MeetingsScreen() {
         if (error) throw error;
 
         if (data) {
-          const { error: participantError } = await supabase.from('meeting_participants').insert({
+          const participantsToInsert = selectedParticipants.map((p) => ({
             meeting_id: data.id,
-            employee_id: employee.id,
-          });
+            employee_id: p.id,
+          }));
+          // Always include creator
+          if (!selectedParticipants.some((p) => p.id === employee.id)) {
+            participantsToInsert.push({ meeting_id: data.id, employee_id: employee.id });
+          }
+          const { error: participantError } = await supabase
+            .from('meeting_participants')
+            .insert(participantsToInsert);
 
           if (participantError) throw participantError;
 
@@ -881,6 +933,49 @@ export default function MeetingsScreen() {
               placeholderTextColor={colors.text.tertiary}
             />
 
+            {/* Participants */}
+            <SearchableDropdown<Employee>
+              dropdownId="participants"
+              openedDropdown={openedDropdown}
+              setOpenedDropdown={setOpenedDropdown}
+              label="Przypisz pracownika"
+              placeholder="Wyszukaj pracownika..."
+              items={employees.filter((e) => !selectedParticipants.some((p) => p.id === e.id))}
+              textValue={participantSearch}
+              onTextChange={setParticipantSearch}
+              onSelect={(emp) => {
+                setSelectedParticipants((prev) => [...prev, emp]);
+                setParticipantSearch('');
+              }}
+              onClear={() => setParticipantSearch('')}
+              renderItem={(emp) =>
+                `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Brak nazwy'
+              }
+              getFilterText={(emp) =>
+                `${emp.first_name || ''} ${emp.last_name || ''} ${emp.position || ''}`
+              }
+              selectedLabel={null}
+              icon="user"
+            />
+            {selectedParticipants.length > 0 && (
+              <View style={styles.participantChips}>
+                {selectedParticipants.map((p) => (
+                  <View key={p.id} style={styles.participantChip}>
+                    <Feather name="user" size={12} color={colors.primary.gold} />
+                    <Text style={styles.participantChipText} numberOfLines={1}>
+                      {`${p.first_name || ''} ${p.last_name || ''}`.trim()}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => setSelectedParticipants((prev) => prev.filter((x) => x.id !== p.id))}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    >
+                      <Feather name="x" size={14} color={colors.text.tertiary} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+
             <Text style={styles.fieldLabel}>Notatki</Text>
             <TextInput
               style={[styles.input, styles.textArea]}
@@ -1017,6 +1112,27 @@ export default function MeetingsScreen() {
                 <View style={styles.detailNotesSection}>
                   <Text style={styles.detailSectionLabel}>Notatki</Text>
                   <Text style={styles.detailNotes}>{selectedMeeting.notes}</Text>
+                </View>
+              )}
+
+              {selectedMeeting.participants && selectedMeeting.participants.length > 0 && (
+                <View style={styles.detailNotesSection}>
+                  <Text style={styles.detailSectionLabel}>Uczestnicy</Text>
+                  <View style={styles.participantChips}>
+                    {selectedMeeting.participants.map((p) => {
+                      const emp = employees.find((e) => e.id === p.employee_id);
+                      return (
+                        <View key={p.employee_id} style={styles.participantChip}>
+                          <Feather name="user" size={12} color={colors.primary.gold} />
+                          <Text style={styles.participantChipText} numberOfLines={1}>
+                            {emp
+                              ? `${emp.first_name || ''} ${emp.last_name || ''}`.trim()
+                              : 'Pracownik'}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
                 </View>
               )}
 
@@ -1330,6 +1446,30 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.md,
     color: colors.text.secondary,
     lineHeight: 22,
+  },
+
+  participantChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  participantChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.primary.gold + '15',
+    borderWidth: 1,
+    borderColor: colors.primary.gold + '30',
+    borderRadius: 16,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+  },
+  participantChipText: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.text.primary,
+    fontWeight: '500',
+    maxWidth: 120,
   },
 
   detailAlertsSection: {
