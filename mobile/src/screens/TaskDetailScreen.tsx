@@ -374,6 +374,67 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
                   <Text style={styles.infoValue}>{formatDate(task.due_date)}</Text>
                 </View>
               )}
+              <View style={styles.assigneesSection}>
+  <View style={styles.assigneesHeader}>
+    <Text style={styles.infoLabel}>Przypisane osoby:</Text>
+
+    {assignees.length > 0 && (
+      <Text style={styles.assigneesCount}>{assignees.length}</Text>
+    )}
+  </View>
+
+  {assignees.length === 0 ? (
+    <Text style={styles.emptyInline}>Brak przypisanych osób</Text>
+  ) : (
+    <View style={styles.avatarStack}>
+      {assignees.slice(0, 5).map((assignee, index) => {
+        const emp = assignee.employees;
+
+        if (!emp) {
+          return null;
+        }
+
+        const displayName =
+          [emp.name, emp.surname].filter(Boolean).join(' ') ||
+          'Pracownik';
+
+        return (
+          <View
+            key={assignee.employee_id}
+            style={[
+              styles.avatarStackItem,
+              index > 0 && styles.avatarStackItemOverlap,
+              {
+                zIndex: assignees.length - index,
+              },
+            ]}
+          >
+            <EmployeeAvatar
+              avatarUrl={emp.avatar_url}
+              avatarMetadata={emp.avatar_metadata}
+              employeeName={displayName}
+              size={38}
+            />
+          </View>
+        );
+      })}
+
+      {assignees.length > 5 && (
+        <View
+          style={[
+            styles.avatarStackItem,
+            styles.avatarStackItemOverlap,
+            styles.remainingAssignees,
+          ]}
+        >
+          <Text style={styles.remainingAssigneesText}>
+            +{assignees.length - 5}
+          </Text>
+        </View>
+      )}
+    </View>
+  )}
+</View>
             </View>
 
             {task.description && (
@@ -383,35 +444,6 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
               </View>
             )}
 
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>
-                Przypisane osoby ({assignees.length})
-              </Text>
-              {assignees.length === 0 ? (
-                <Text style={styles.emptyInline}>Brak przypisanych osób</Text>
-              ) : (
-                <View style={styles.assigneesList}>
-                  {assignees.map((a) => {
-                    const emp = a.employees;
-                    if (!emp) return null;
-                    const displayName = [emp.name, emp.surname].filter(Boolean).join(' ') || 'Bez nazwiska';
-                    return (
-                      <View key={a.employee_id} style={styles.assigneeRow}>
-                        <EmployeeAvatar
-                          avatarUrl={emp.avatar_url}
-                          avatarMetadata={emp.avatar_metadata}
-                          employeeName={displayName}
-                          size={40}
-                        />
-                        <Text style={styles.assigneeName} numberOfLines={1}>
-                          {displayName}
-                        </Text>
-                      </View>
-                    );
-                  })}
-                </View>
-              )}
-            </View>
           </View>
         )}
 
@@ -735,5 +767,62 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     color: colors.text.primary,
     fontWeight: typography.fontWeights.medium,
+  },
+  assigneesSection: {
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border.default,
+  },
+  
+  assigneesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  
+  assigneesCount: {
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 6,
+    borderRadius: 10,
+    backgroundColor: colors.background.tertiary,
+    color: colors.text.secondary,
+    fontSize: typography.fontSizes.xs,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  
+  avatarStack: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 42,
+    paddingLeft: 2,
+  },
+  
+  avatarStackItem: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.background.secondary,
+    borderWidth: 2,
+    borderColor: colors.background.secondary,
+  },
+  
+  avatarStackItemOverlap: {
+    marginLeft: -12,
+  },
+  
+  remainingAssignees: {
+    backgroundColor: colors.background.tertiary,
+  },
+  
+  remainingAssigneesText: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.text.primary,
   },
 });
