@@ -280,7 +280,7 @@ export default function NewInquiryModal({
           // Notify assigned employee (if not self)
           if (emp.id !== employee?.id) {
             const senderName = employee
-              ? `${employee.first_name || ''} ${employee.last_name || ''}`.trim()
+              ? `${employee.name || ''} ${employee.surname || ''}`.trim()
               : 'Ktoś';
             sendAssignmentNotification({
               recipientEmployeeId: emp.id,

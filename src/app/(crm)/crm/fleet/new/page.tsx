@@ -9,6 +9,30 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useAppDispatch } from '@/store/hooks';
 import { fleetApi, useCreateVehicleMutation } from '../api/fleetApi';
 
+const toOptionalNumber = (
+  value: string | number | null | undefined,
+): number | undefined => {
+  if (value === '' || value === null || value === undefined) {
+    return undefined;
+  }
+
+  const parsedValue = Number(value);
+
+  return Number.isFinite(parsedValue) ? parsedValue : undefined;
+};
+
+const toOptionalString = (
+  value: string | null | undefined,
+): string | undefined => {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+
+  const trimmedValue = value.trim();
+
+  return trimmedValue === '' ? undefined : trimmedValue;
+};
+
 export default function NewVehiclePage() {
   const router = useRouter();
   const { showSnackbar } = useSnackbar();
@@ -89,54 +113,210 @@ export default function NewVehiclePage() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  const toNullableNumber = (value: string | number | null | undefined) => {
+    if (value === '' || value === null || value === undefined) {
+      return null;
+    }
+  
+    const parsedValue = Number(value);
+  
+    return Number.isFinite(parsedValue) ? parsedValue : null;
+  };
+  
+  const toNullableString = (value: string | null | undefined) => {
+    if (value === null || value === undefined) {
+      return null;
+    }
+  
+    const trimmedValue = value.trim();
+  
+    return trimmedValue === '' ? null : trimmedValue;
+  };
+  
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!formData.name || !formData.brand || !formData.model) {
+  
+    if (!formData.name.trim() || !formData.brand.trim() || !formData.model.trim()) {
       showSnackbar('Wypełnij wymagane pola: Nazwa, Marka, Model', 'error');
       return;
     }
-
+  
+    if (!employee?.id) {
+      showSnackbar('Nie udało się ustalić zalogowanego pracownika', 'error');
+      return;
+    }
+  
     setLoading(true);
-    const vehicleData = {
-      ...formData,
-      created_by: employee?.id,
-    };
-
-    // Convert string fields that should be numbers
+  
     const safeVehicleData = {
-      ...vehicleData,
-      year: formData.year ? Number(formData.year) : undefined,
-      engine_capacity: formData.engine_capacity ? Number(formData.engine_capacity) : undefined,
-      total_length_cm: formData.total_length_cm ? Number(formData.total_length_cm) : undefined,
-      total_width_cm: formData.total_width_cm ? Number(formData.total_width_cm) : undefined,
-      total_height_cm: formData.total_height_cm ? Number(formData.total_height_cm) : undefined,
-      weight_kg: formData.weight_kg ? Number(formData.weight_kg) : undefined,
-      purchase_price: formData.purchase_price ? Number(formData.purchase_price) : undefined,
-      current_value: formData.current_value ? Number(formData.current_value) : undefined,
-      leasing_monthly_cost: formData.leasing_monthly_cost
-        ? Number(formData.leasing_monthly_cost)
-        : undefined,
-      initial_mileage: formData.initial_mileage ? Number(formData.initial_mileage) : undefined,
-      current_mileage: formData.current_mileage ? Number(formData.current_mileage) : undefined,
+      vehicle_type: formData.vehicle_type,
+      name: formData.name.trim(),
+      brand: formData.brand.trim(),
+      model: formData.model.trim(),
+    
+      registration_number: toOptionalString(formData.registration_number),
+      vin: toOptionalString(formData.vin),
+      year: toOptionalNumber(formData.year),
+      color: toOptionalString(formData.color),
+    
+      engine_type:
+        formData.vehicle_type === 'car'
+          ? toOptionalString(formData.engine_type)
+          : undefined,
+    
+      engine_capacity:
+        formData.vehicle_type === 'car'
+          ? toOptionalNumber(formData.engine_capacity)
+          : undefined,
+    
+      power_hp:
+        formData.vehicle_type === 'car'
+          ? toOptionalNumber(formData.power_hp)
+          : undefined,
+    
+      power_kw:
+        formData.vehicle_type === 'car'
+          ? toOptionalNumber(formData.power_kw)
+          : undefined,
+    
+      fuel_type:
+        formData.vehicle_type === 'car'
+          ? formData.fuel_type
+          : undefined,
+    
+      transmission:
+        formData.vehicle_type === 'car'
+          ? formData.transmission
+          : undefined,
+    
+      drive_type:
+        formData.vehicle_type === 'car'
+          ? toOptionalString(formData.drive_type)
+          : undefined,
+    
+      number_of_seats:
+        formData.vehicle_type === 'car'
+          ? toOptionalNumber(formData.number_of_seats)
+          : undefined,
+    
+      max_load_kg: toOptionalNumber(formData.max_load_kg),
+    
+      length_cm: toOptionalNumber(formData.length_cm),
+      width_cm: toOptionalNumber(formData.width_cm),
+      height_cm: toOptionalNumber(formData.height_cm),
+    
+      cargo_length_cm:
+        formData.vehicle_type === 'trailer'
+          ? toOptionalNumber(formData.cargo_length_cm)
+          : undefined,
+    
+      cargo_width_cm:
+        formData.vehicle_type === 'trailer'
+          ? toOptionalNumber(formData.cargo_width_cm)
+          : undefined,
+    
+      cargo_height_cm:
+        formData.vehicle_type === 'trailer'
+          ? toOptionalNumber(formData.cargo_height_cm)
+          : undefined,
+    
+      total_length_cm:
+        formData.vehicle_type === 'trailer'
+          ? toOptionalNumber(formData.total_length_cm)
+          : undefined,
+    
+      total_width_cm:
+        formData.vehicle_type === 'trailer'
+          ? toOptionalNumber(formData.total_width_cm)
+          : undefined,
+    
+      total_height_cm:
+        formData.vehicle_type === 'trailer'
+          ? toOptionalNumber(formData.total_height_cm)
+          : undefined,
+    
+      weight_kg:
+        formData.vehicle_type === 'trailer'
+          ? toOptionalNumber(formData.weight_kg)
+          : undefined,
+    
+      status: formData.status,
+      ownership_type: formData.ownership_type,
+      category: formData.category,
+    
+      purchase_price: toOptionalNumber(formData.purchase_price),
+      purchase_date: formData.purchase_date || undefined,
+      current_value: toOptionalNumber(formData.current_value),
+    
+      leasing_company:
+        formData.ownership_type === 'leased'
+          ? toOptionalString(formData.leasing_company)
+          : undefined,
+    
+      leasing_monthly_cost:
+        formData.ownership_type === 'leased'
+          ? toOptionalNumber(formData.leasing_monthly_cost)
+          : undefined,
+    
+      leasing_end_date:
+        formData.ownership_type === 'leased'
+          ? formData.leasing_end_date || undefined
+          : undefined,
+    
+      initial_mileage:
+        formData.vehicle_type === 'car'
+          ? toOptionalNumber(formData.initial_mileage)
+          : undefined,
+    
+      current_mileage:
+        formData.vehicle_type === 'car'
+          ? toOptionalNumber(formData.current_mileage)
+          : undefined,
+    
+      current_location: toOptionalString(formData.current_location),
+      parking_location: toOptionalString(formData.parking_location),
+      garage_location: toOptionalString(formData.garage_location),
+    
+      description: toOptionalString(formData.description),
+      notes: toOptionalString(formData.notes),
+    
+      has_tow_hitch:
+        formData.vehicle_type === 'car'
+          ? formData.has_tow_hitch
+          : false,
+    
+      created_by: employee.id,
     };
-
+  
     try {
       const created = await createVehicle(safeVehicleData).unwrap();
-
+  
       showSnackbar('Pojazd został dodany pomyślnie', 'success');
-
-      // ✅ od razu unieważnij listę (gdybyś nie miał invalidatesTags)
+  
       dispatch(
-        fleetApi.util.updateQueryData('getFleetVehicles', undefined, (draft) => {
-          draft.push(created);
-        }),
+        fleetApi.util.updateQueryData(
+          'getFleetVehicles',
+          undefined,
+          (draft) => {
+            draft.push(created);
+          },
+        ),
       );
-
+  
       router.push(`/crm/fleet/${created.id}`);
-    } catch (e: any) {
-      console.error(e);
-      showSnackbar(e?.message || 'Błąd podczas dodawania pojazdu', 'error');
+    } catch (error: any) {
+      console.error('Błąd dodawania pojazdu:', error);
+      console.error('Wysyłane dane:', safeVehicleData);
+  
+      const errorMessage =
+        error?.data?.message ||
+        error?.error ||
+        error?.message ||
+        'Błąd podczas dodawania pojazdu';
+  
+      showSnackbar(errorMessage, 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
