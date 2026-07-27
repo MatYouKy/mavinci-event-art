@@ -6,7 +6,6 @@ import {
   FlatList,
   TouchableOpacity,
   TextInput,
-  KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
   Keyboard,
@@ -15,6 +14,7 @@ import {
   Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
@@ -84,6 +84,7 @@ function formatFileSize(bytes: number): string {
 export default function ChatScreen({ conversation, onBack }: Props) {
   const { employee } = useAuth();
   const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
   const [messages, setMessages] = useState<Message[]>([]);
   const [senders, setSenders] = useState<Map<string, SenderInfo>>(new Map());
   const [inputText, setInputText] = useState('');
@@ -96,6 +97,20 @@ export default function ChatScreen({ conversation, onBack }: Props) {
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [showMenu, setShowMenu] = useState(false);
   const [reactionPickerMsgId, setReactionPickerMsgId] = useState<string | null>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, (e) => {
+      setKeyboardHeight(e.endCoordinates?.height ?? 0);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -833,11 +848,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={0}
-    >
+    <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={onBack} style={styles.backButton}>
@@ -960,7 +971,17 @@ export default function ChatScreen({ conversation, onBack }: Props) {
       )}
 
       {/* Input */}
-      <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+      <View
+        style={[
+          styles.inputContainer,
+          {
+            paddingBottom:
+              Platform.OS === 'ios' && keyboardHeight > 0
+                ? Math.max(keyboardHeight - tabBarHeight, 0) + spacing.sm
+                : Math.max(insets.bottom, spacing.sm),
+          },
+        ]}
+      >
         <View style={styles.inputWrapper}>
           <TextInput
             style={styles.textInput}
@@ -987,7 +1008,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
           )}
         </View>
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
