@@ -17,6 +17,7 @@ import {
 import ComposeEmailModal from '@/components/crm/ComposeEmailModal';
 import MessageActionsMenu from '@/components/crm/MessageActionsMenu';
 import AssignMessageModal from '@/components/crm/AssignMessageModal';
+import CreateInquiryFromMessageModal from '@/components/crm/CreateInquiryFromMessageModal';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useDialog } from '@/contexts/DialogContext';
@@ -370,52 +371,10 @@ export default function MessagesPageClient({
     showSnackbar('Funkcja przenoszenia będzie wkrótce dostępna', 'info');
   };
 
-  const handleCreateInquiry = async (message: MessageListItem) => {
-    try {
-      const title = `Zapytanie: ${message.subject || 'Brak tematu'}`;
+  const [inquiryMessage, setInquiryMessage] = useState<MessageListItem | null>(null);
 
-      let body = '';
-      if (message.type === 'received') {
-        const { data: fullMsg } = await supabase
-          .from('received_emails')
-          .select('body_text, body_html, from_email, from_name')
-          .eq('id', message.id)
-          .maybeSingle();
-        body = fullMsg?.body_text || fullMsg?.body_html || message.preview || '';
-      } else if (message.type === 'contact_form') {
-        const { data: fullMsg } = await supabase
-          .from('contact_messages')
-          .select('message, email, name, phone')
-          .eq('id', message.id)
-          .maybeSingle();
-        body = fullMsg?.message || message.preview || '';
-      }
-
-      const inquiryDetails = {
-        client_email: message.from || null,
-        client_text: message.from || null,
-        source_message_id: message.id,
-        source_message_type: message.type,
-      };
-
-      const { error } = await supabase.from('tasks').insert({
-        title,
-        description: body.slice(0, 2000),
-        priority: 'urgent',
-        status: 'todo',
-        board_column: 'todo',
-        order_index: 0,
-        created_by: userId,
-        is_inquiry: true,
-        inquiry_details: inquiryDetails,
-      });
-
-      if (error) throw error;
-      showSnackbar('Utworzono zapytanie z wiadomości', 'success');
-    } catch (err) {
-      console.error('Error creating inquiry from message:', err);
-      showSnackbar('Nie udało się utworzyć zapytania', 'error');
-    }
+  const handleCreateInquiry = (message: MessageListItem) => {
+    setInquiryMessage(message);
   };
 
   const fetchEmailsFromServer = async () => {
@@ -1050,6 +1009,17 @@ export default function MessagesPageClient({
           }}
           onSuccess={() => {
             refetchDebounced();
+          }}
+        />
+      )}
+
+      {inquiryMessage && (
+        <CreateInquiryFromMessageModal
+          message={inquiryMessage}
+          userId={userId}
+          onClose={() => setInquiryMessage(null)}
+          onSuccess={() => {
+            setInquiryMessage(null);
           }}
         />
       )}
