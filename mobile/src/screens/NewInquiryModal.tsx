@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, typography } from '../theme';
 import { supabase } from '../lib/supabase';
@@ -234,23 +235,7 @@ export default function NewInquiryModal({ visible, onClose, initialDate, onSaved
     }
   };
 
-  const generateDateOptions = () => {
-    const options: { label: string; value: string }[] = [];
-    const today = new Date();
-    for (let i = 0; i < 90; i++) {
-      const d = new Date(today);
-      d.setDate(today.getDate() + i);
-      const value = d.toISOString().split('T')[0];
-      const label = d.toLocaleDateString('pl-PL', {
-        weekday: 'short',
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-      });
-      options.push({ label, value });
-    }
-    return options;
-  };
+
 
   const handleSave = async () => {
     if (!clientName.trim() && !clientPhone.trim() && !clientEmail.trim() && !selectedOrgLabel && !selectedContactLabel) {
@@ -391,7 +376,7 @@ export default function NewInquiryModal({ visible, onClose, initialDate, onSaved
               <Text style={styles.label}>Termin wydarzenia</Text>
               <TouchableOpacity
                 style={styles.datePickerButton}
-                onPress={() => setShowDatePicker(!showDatePicker)}
+                onPress={() => setShowDatePicker(true)}
               >
                 <Feather name="calendar" size={16} color={eventDate ? colors.primary.gold : colors.text.tertiary} />
                 <Text style={[styles.datePickerText, eventDate && { color: colors.text.primary }]}>
@@ -399,7 +384,7 @@ export default function NewInquiryModal({ visible, onClose, initialDate, onSaved
                 </Text>
                 {eventDate ? (
                   <TouchableOpacity
-                    onPress={() => { setEventDate(''); setShowDatePicker(false); }}
+                    onPress={() => { setEventDate(''); }}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
                     <Feather name="x" size={16} color={colors.text.tertiary} />
@@ -409,19 +394,42 @@ export default function NewInquiryModal({ visible, onClose, initialDate, onSaved
                 )}
               </TouchableOpacity>
               {showDatePicker && (
-                <ScrollView style={styles.dateList} nestedScrollEnabled keyboardShouldPersistTaps="handled">
-                  {generateDateOptions().map((opt) => (
+                Platform.OS === 'ios' ? (
+                  <View style={styles.iosPickerContainer}>
+                    <DateTimePicker
+                      value={eventDate ? new Date(eventDate + 'T00:00:00') : new Date()}
+                      mode="date"
+                      display="inline"
+                      minimumDate={new Date()}
+                      locale="pl-PL"
+                      onChange={(_, selectedDate) => {
+                        if (selectedDate) {
+                          setEventDate(selectedDate.toISOString().split('T')[0]);
+                        }
+                      }}
+                      themeVariant="dark"
+                    />
                     <TouchableOpacity
-                      key={opt.value}
-                      style={[styles.dateOption, eventDate === opt.value && styles.dateOptionSelected]}
-                      onPress={() => { setEventDate(opt.value); setShowDatePicker(false); }}
+                      style={styles.pickerDoneButton}
+                      onPress={() => setShowDatePicker(false)}
                     >
-                      <Text style={[styles.dateOptionText, eventDate === opt.value && styles.dateOptionTextSelected]}>
-                        {opt.label}
-                      </Text>
+                      <Text style={styles.pickerDoneText}>Gotowe</Text>
                     </TouchableOpacity>
-                  ))}
-                </ScrollView>
+                  </View>
+                ) : (
+                  <DateTimePicker
+                    value={eventDate ? new Date(eventDate + 'T00:00:00') : new Date()}
+                    mode="date"
+                    display="default"
+                    minimumDate={new Date()}
+                    onChange={(_, selectedDate) => {
+                      setShowDatePicker(false);
+                      if (selectedDate) {
+                        setEventDate(selectedDate.toISOString().split('T')[0]);
+                      }
+                    }}
+                  />
+                )
               )}
             </View>
           )}
@@ -686,29 +694,22 @@ const styles = StyleSheet.create({
     color: colors.text.tertiary,
     textTransform: 'capitalize',
   },
-  dateList: {
-    maxHeight: 200,
+  iosPickerContainer: {
     backgroundColor: colors.background.secondary,
     borderWidth: 1,
     borderColor: colors.border.default,
     borderRadius: 8,
-    marginTop: 4,
+    marginTop: 8,
+    overflow: 'hidden',
   },
-  dateOption: {
-    paddingHorizontal: spacing.md,
+  pickerDoneButton: {
+    alignItems: 'center',
     paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border.default,
+    borderTopWidth: 1,
+    borderTopColor: colors.border.default,
   },
-  dateOptionSelected: {
-    backgroundColor: colors.primary.gold + '15',
-  },
-  dateOptionText: {
+  pickerDoneText: {
     fontSize: typography.fontSizes.sm,
-    color: colors.text.primary,
-    textTransform: 'capitalize',
-  },
-  dateOptionTextSelected: {
     color: colors.primary.gold,
     fontWeight: '600',
   },
