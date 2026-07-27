@@ -30,9 +30,16 @@ type AlertPickerType = 'alert_1' | 'alert_2' | 'alert_critical';
 type MeetingPickerType = 'startDate' | 'startTime' | 'endDate' | 'endTime';
 interface Employee {
   id: string;
-  first_name: string | null;
-  last_name: string | null;
-  position: string | null;
+  name: string;
+  surname: string;
+  role: string | null;
+}
+
+interface Location {
+  id: string;
+  name: string;
+  address: string | null;
+  city: string | null;
 }
 
 interface Meeting {
@@ -202,6 +209,10 @@ export default function MeetingsScreen() {
     };
   };
 
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [locationSearch, setLocationSearch] = useState('');
+  const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
+
   const [form, setForm] = useState<NewMeetingForm>(createInitialForm);
   const [selectedParticipants, setSelectedParticipants] = useState<Employee[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -217,14 +228,27 @@ export default function MeetingsScreen() {
   }, []);
 
   useEffect(() => {
-    const fetchEmployees = async () => {
-      const { data } = await supabase
-        .from('employees')
-        .select('id, first_name, last_name, position')
-        .order('last_name');
-      if (data) setEmployees(data);
+    const fetchFormData = async () => {
+      const [employeesRes, locationsRes] = await Promise.all([
+        supabase.from('employees').select('id, name, surname').order('surname'),
+
+        supabase.from('locations').select('id, name, address, city').order('name'),
+      ]);
+
+      if (employeesRes.error) {
+        console.error('Błąd pobierania pracowników:', employeesRes.error);
+      } else {
+        setEmployees((employeesRes.data as Employee[]) || []);
+      }
+
+      if (locationsRes.error) {
+        console.error('Błąd pobierania lokalizacji:', locationsRes.error);
+      } else {
+        setLocations((locationsRes.data as Location[]) || []);
+      }
     };
-    fetchEmployees();
+
+    fetchFormData();
   }, []);
 
   const fetchMeetings = useCallback(
@@ -280,9 +304,20 @@ export default function MeetingsScreen() {
     setOpenedDropdown(null);
     setActiveMeetingPicker(null);
     setActiveAlertPicker(null);
+    setSelectedLocation(null);
+    setLocationSearch('');
   };
   const openEditMeeting = (meeting: Meeting) => {
     const start = meeting.datetime_start ? new Date(meeting.datetime_start) : new Date();
+
+    const matchedLocation =
+      locations.find((location) => {
+        const label = [location.name, location.city].filter(Boolean).join(', ');
+        return label === meeting.location_text || location.name === meeting.location_text;
+      }) ?? null;
+
+    setSelectedLocation(matchedLocation);
+    setLocationSearch('');
 
     const end = meeting.datetime_end
       ? new Date(meeting.datetime_end)
@@ -290,7 +325,7 @@ export default function MeetingsScreen() {
 
     setForm({
       title: meeting.title || '',
-      location_text: meeting.location_text || '',
+      location_text: selectedLocation?.name || '',
       datetime_start: start,
       datetime_end: end,
       notes: meeting.notes || '',
@@ -342,7 +377,7 @@ export default function MeetingsScreen() {
 
     const payload = {
       title: form.title.trim(),
-      location_text: form.location_text.trim() || null,
+      location_text: selectedLocation?.name || null,
       datetime_start: form.datetime_start.toISOString(),
       datetime_end: form.datetime_end.toISOString(),
       notes: form.notes.trim() || null,
@@ -924,13 +959,60 @@ export default function MeetingsScreen() {
               </View>
             )}
 
-            <Text style={styles.fieldLabel}>Lokalizacja</Text>
-            <TextInput
-              style={styles.input}
-              value={form.location_text}
-              onChangeText={(t) => setForm((f) => ({ ...f, location_text: t }))}
-              placeholder="Miejsce spotkania"
-              placeholderTextColor={colors.text.tertiary}
+            <SearchableDropdown<Location>
+              dropdownId="location"
+              openedDropdown={openedDropdown}
+              setOpenedDropdown={setOpenedDropdown}
+              label="Lokalizacja"
+              placeholder="Wyszukaj lokalizację..."
+              items={locations}
+              textValue={locationSearch}
+              onTextChange={(text) => {
+                setLocationSearch(text);
+
+                if (selectedLocation) {
+                  setSelectedLocation(null);
+                }
+
+                setForm((current) => ({
+                  ...current,
+                  location_text: text,
+                }));
+              }}
+              onSelect={(location) => {
+                const label = [location.name, location.city].filter(Boolean).join(', ');
+
+                setSelectedLocation(location);
+                setLocationSearch('');
+
+                setForm((current) => ({
+                  ...current,
+                  location_text: label,
+                }));
+              }}
+              onClear={() => {
+                setSelectedLocation(null);
+                setLocationSearch('');
+
+                setForm((current) => ({
+                  ...current,
+                  location_text: '',
+                }));
+              }}
+              renderItem={(location) => {
+                const main = [location.name, location.city].filter(Boolean).join(', ');
+
+                return location.address ? `${main} — ${location.address}` : main;
+              }}
+              getFilterText={(location) =>
+                `${location.name} ${location.city || ''} ${location.address || ''}`
+              }
+              selectedLabel={
+                selectedLocation
+                  ? [selectedLocation.name, selectedLocation.city].filter(Boolean).join(', ')
+                  : null
+              }
+              icon="map-pin"
             />
 
             {/* Participants */}
@@ -948,12 +1030,8 @@ export default function MeetingsScreen() {
                 setParticipantSearch('');
               }}
               onClear={() => setParticipantSearch('')}
-              renderItem={(emp) =>
-                `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Brak nazwy'
-              }
-              getFilterText={(emp) =>
-                `${emp.first_name || ''} ${emp.last_name || ''} ${emp.position || ''}`
-              }
+              renderItem={(emp) => `${emp.name || ''} ${emp.surname || ''}`.trim() || 'Brak nazwy'}
+              getFilterText={(emp) => `${emp.name || ''} ${emp.surname || ''} ${emp.role || ''}`}
               selectedLabel={null}
               icon="user"
             />
@@ -963,10 +1041,12 @@ export default function MeetingsScreen() {
                   <View key={p.id} style={styles.participantChip}>
                     <Feather name="user" size={12} color={colors.primary.gold} />
                     <Text style={styles.participantChipText} numberOfLines={1}>
-                      {`${p.first_name || ''} ${p.last_name || ''}`.trim()}
+                      {`${p.name || ''} ${p.surname || ''}`.trim()}
                     </Text>
                     <TouchableOpacity
-                      onPress={() => setSelectedParticipants((prev) => prev.filter((x) => x.id !== p.id))}
+                      onPress={() =>
+                        setSelectedParticipants((prev) => prev.filter((x) => x.id !== p.id))
+                      }
                       hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                     >
                       <Feather name="x" size={14} color={colors.text.tertiary} />
@@ -1088,7 +1168,11 @@ export default function MeetingsScreen() {
               </View>
             </View>
 
-            <ScrollView style={styles.modalBody}>
+            <ScrollView
+              style={styles.modalBody}
+              keyboardShouldPersistTaps="handled"
+              onScrollBeginDrag={() => setOpenedDropdown(null)}
+            >
               <Text style={styles.detailTitle}>{selectedMeeting.title}</Text>
 
               <View style={styles.detailRow}>
@@ -1125,9 +1209,7 @@ export default function MeetingsScreen() {
                         <View key={p.employee_id} style={styles.participantChip}>
                           <Feather name="user" size={12} color={colors.primary.gold} />
                           <Text style={styles.participantChipText} numberOfLines={1}>
-                            {emp
-                              ? `${emp.first_name || ''} ${emp.last_name || ''}`.trim()
-                              : 'Pracownik'}
+                            {emp ? `${emp.name || ''} ${emp.surname || ''}`.trim() : 'Pracownik'}
                           </Text>
                         </View>
                       );

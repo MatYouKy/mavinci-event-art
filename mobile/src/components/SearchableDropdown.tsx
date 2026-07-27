@@ -40,9 +40,7 @@ export function SearchableDropdown<T extends { id: string }>({
   const filtered = useMemo(() => {
     const q = textValue.toLowerCase().trim();
 
-    if (!q) {
-      return items.slice(0, 30);
-    }
+    if (!q) return [];
 
     return items.filter((item) => getFilterText(item).toLowerCase().includes(q)).slice(0, 30);
   }, [textValue, items, getFilterText]);
@@ -93,7 +91,7 @@ export function SearchableDropdown<T extends { id: string }>({
             placeholderTextColor={colors.text.tertiary}
           />
 
-          {isOpen && (
+          {isOpen && textValue.trim().length > 0 && (
             <View style={styles.dropdownList}>
               {filtered.length > 0 ? (
                 <ScrollView
