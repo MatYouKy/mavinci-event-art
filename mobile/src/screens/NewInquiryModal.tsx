@@ -14,10 +14,12 @@ import {
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Feather } from '@expo/vector-icons';
+
 import { colors, spacing, typography } from '../theme';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { scheduleInquiryReminders } from '../services/inquiryReminders';
+import { SearchableDropdown } from '@/components/SearchableDropdown';
 
 interface NewInquiryModalProps {
   visible: boolean;
@@ -55,93 +57,12 @@ interface EmployeeItem {
   avatar_url: string | null;
 }
 
-function SearchableDropdown<T extends { id: string }>({
-  label,
-  placeholder,
-  items,
-  textValue,
-  onTextChange,
-  onSelect,
-  onClear,
-  renderItem,
-  getFilterText,
-  selectedLabel,
-  icon,
-}: {
-  label: string;
-  placeholder: string;
-  items: T[];
-  textValue: string;
-  onTextChange: (t: string) => void;
-  onSelect: (item: T) => void;
-  onClear: () => void;
-  renderItem: (item: T) => string;
-  getFilterText: (item: T) => string;
-  selectedLabel: string | null;
-  icon: string;
-}) {
-  const [showList, setShowList] = useState(false);
-
-  const filtered = useMemo(() => {
-    const q = textValue.toLowerCase().trim();
-    if (!q) return items.slice(0, 30);
-    return items.filter((it) => getFilterText(it).toLowerCase().includes(q)).slice(0, 30);
-  }, [textValue, items, getFilterText]);
-
-  return (
-    <View style={styles.inputGroup}>
-      <Text style={styles.label}>{label}</Text>
-      {selectedLabel ? (
-        <View style={styles.selectedRow}>
-          <Feather name={icon as any} size={14} color={colors.primary.gold} />
-          <Text style={styles.selectedText} numberOfLines={1}>{selectedLabel}</Text>
-          <TouchableOpacity onPress={onClear} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Feather name="x" size={16} color={colors.text.tertiary} />
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <>
-          <TextInput
-            style={styles.input}
-            value={textValue}
-            onChangeText={(t) => {
-              onTextChange(t);
-              setShowList(true);
-            }}
-            onFocus={() => setShowList(true)}
-            onBlur={() => {
-              setTimeout(() => setShowList(false), 200);
-            }}
-            placeholder={placeholder}
-            placeholderTextColor={colors.text.tertiary}
-          />
-          {showList && filtered.length > 0 && (
-            <ScrollView
-              style={styles.dropdownList}
-              nestedScrollEnabled
-              keyboardShouldPersistTaps="handled"
-            >
-              {filtered.map((item) => (
-                <TouchableOpacity
-                  key={item.id}
-                  style={styles.dropdownItem}
-                  onPress={() => {
-                    onSelect(item);
-                    setShowList(false);
-                  }}
-                >
-                  <Text style={styles.dropdownItemText}>{renderItem(item)}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          )}
-        </>
-      )}
-    </View>
-  );
-}
-
-export default function NewInquiryModal({ visible, onClose, initialDate, onSaved }: NewInquiryModalProps) {
+export default function NewInquiryModal({
+  visible,
+  onClose,
+  initialDate,
+  onSaved,
+}: NewInquiryModalProps) {
   const { employee } = useAuth();
   const [saving, setSaving] = useState(false);
 
@@ -166,6 +87,7 @@ export default function NewInquiryModal({ visible, onClose, initialDate, onSaved
   const [selectedLocationLabel, setSelectedLocationLabel] = useState<string | null>(null);
   const [locationSearch, setLocationSearch] = useState('');
   const [locationFreeText, setLocationFreeText] = useState('');
+  const [openedDropdown, setOpenedDropdown] = useState<string | null>(null);
 
   // Employee assignment
   const [employees, setEmployees] = useState<EmployeeItem[]>([]);
@@ -187,14 +109,22 @@ export default function NewInquiryModal({ visible, onClose, initialDate, onSaved
     (async () => {
       const [orgsRes, contactsRes, locsRes, empsRes] = await Promise.all([
         supabase.from('organizations').select('id, name, alias').order('name').limit(200),
-        supabase.from('contacts').select('id, first_name, last_name, phone, email').order('last_name').limit(200),
+        supabase
+          .from('contacts')
+          .select('id, first_name, last_name, phone, email')
+          .order('last_name')
+          .limit(200),
         supabase.from('locations').select('id, name, address, city').order('name').limit(200),
-        supabase.from('employees').select('id, user_id, name, surname, avatar_url').order('name').limit(100),
+        supabase
+          .from('employees')
+          .select('id, auth_user_id, name, surname, avatar_url')
+          .order('name')
+          .limit(100),
       ]);
       setOrganizations((orgsRes.data as OrganizationItem[]) || []);
       setContacts((contactsRes.data as ContactItem[]) || []);
       setLocations((locsRes.data as LocationItem[]) || []);
-      setEmployees((empsRes.data as EmployeeItem[]) || []);
+      setEmployees((empsRes.data as unknown as EmployeeItem[]) || []);
     })();
   }, [visible]);
 
@@ -235,17 +165,26 @@ export default function NewInquiryModal({ visible, onClose, initialDate, onSaved
     }
   };
 
-
-
   const handleSave = async () => {
-    if (!clientName.trim() && !clientPhone.trim() && !clientEmail.trim() && !selectedOrgLabel && !selectedContactLabel) {
-      Alert.alert('Brak danych', 'Podaj przynajmniej dane kontaktowe klienta lub wybierz organizację/kontakt.');
+    if (
+      !clientName.trim() &&
+      !clientPhone.trim() &&
+      !clientEmail.trim() &&
+      !selectedOrgLabel &&
+      !selectedContactLabel
+    ) {
+      Alert.alert(
+        'Brak danych',
+        'Podaj przynajmniej dane kontaktowe klienta lub wybierz organizację/kontakt.',
+      );
       return;
     }
 
     setSaving(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       if (!session) {
         Alert.alert('Błąd', 'Brak aktywnej sesji. Zaloguj się ponownie.');
         setSaving(false);
@@ -261,10 +200,17 @@ export default function NewInquiryModal({ visible, onClose, initialDate, onSaved
 
       const newOrderIndex = (minRow?.order_index ?? 0) - 1;
 
-      const clientLabel = selectedOrgLabel || selectedContactLabel || clientName.trim() || clientPhone.trim() || clientEmail.trim() || 'nieznany';
+      const clientLabel =
+        selectedOrgLabel ||
+        selectedContactLabel ||
+        clientName.trim() ||
+        clientPhone.trim() ||
+        clientEmail.trim() ||
+        'nieznany';
       const title = `Zapytanie: ${clientLabel}`;
 
       const locationText = selectedLocationLabel || locationFreeText.trim() || '';
+      const selectedDate = eventDate.trim() || null;
 
       const descParts: string[] = [];
       if (selectedDate) descParts.push(`Termin: ${selectedDate}`);
@@ -272,13 +218,14 @@ export default function NewInquiryModal({ visible, onClose, initialDate, onSaved
       if (scope.trim()) descParts.push(`Zakres: ${scope.trim()}`);
       if (budget.trim()) descParts.push(`Budżet: ${budget.trim()}`);
       if (expectations.trim()) descParts.push(`Oczekiwania: ${expectations.trim()}`);
-      const contactBits = [clientName.trim(), clientPhone.trim(), clientEmail.trim()].filter(Boolean);
+      const contactBits = [clientName.trim(), clientPhone.trim(), clientEmail.trim()].filter(
+        Boolean,
+      );
       if (contactBits.length) descParts.push(`Kontakt: ${contactBits.join(' | ')}`);
       if (selectedOrgLabel) descParts.push(`Organizacja: ${selectedOrgLabel}`);
       if (selectedContactLabel) descParts.push(`Osoba kontaktowa: ${selectedContactLabel}`);
       if (selectedEmployeeLabel) descParts.push(`Przypisano: ${selectedEmployeeLabel}`);
 
-      const selectedDate = eventDate.trim() || null;
 
       const inquiryDetails = {
         termin: selectedDate,
@@ -295,20 +242,24 @@ export default function NewInquiryModal({ visible, onClose, initialDate, onSaved
         assigned_employee_id: selectedEmployeeId,
       };
 
-      const { data: insertedTask, error: insertError } = await supabase.from('tasks').insert([
-        {
-          title,
-          description: descParts.join('\n'),
-          priority: 'urgent',
-          status: 'todo',
-          board_column: 'todo',
-          order_index: newOrderIndex,
-          due_date: selectedDate ? new Date(selectedDate + 'T23:59:00').toISOString() : null,
-          created_by: session.user.id,
-          is_inquiry: true,
-          inquiry_details: inquiryDetails,
-        },
-      ]).select('id').single();
+      const { data: insertedTask, error: insertError } = await supabase
+        .from('tasks')
+        .insert([
+          {
+            title,
+            description: descParts.join('\n'),
+            priority: 'urgent',
+            status: 'todo',
+            board_column: 'todo',
+            order_index: newOrderIndex,
+            due_date: selectedDate ? new Date(selectedDate + 'T23:59:00').toISOString() : null,
+            created_by: session.user.id,
+            is_inquiry: true,
+            inquiry_details: inquiryDetails,
+          },
+        ])
+        .select('id')
+        .single();
 
       if (insertError) {
         Alert.alert('Błąd', 'Nie udało się zapisać zapytania: ' + insertError.message);
@@ -345,8 +296,16 @@ export default function NewInquiryModal({ visible, onClose, initialDate, onSaved
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleClose}>
-      <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={handleClose}
+    >
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         <View style={styles.header}>
           <TouchableOpacity onPress={handleClose} style={styles.closeBtn}>
             <Feather name="x" size={24} color={colors.text.primary} />
@@ -361,15 +320,20 @@ export default function NewInquiryModal({ visible, onClose, initialDate, onSaved
           </TouchableOpacity>
         </View>
 
-        <ScrollView style={styles.form} contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          style={styles.form}
+          contentContainerStyle={styles.formContent}
+          keyboardShouldPersistTaps="handled"
+          onScrollBeginDrag={() => {
+            setOpenedDropdown(null);
+          }}
+        >
           {/* Event date section */}
           <Text style={styles.sectionLabel}>Data wydarzenia</Text>
           {initialDate ? (
             <View style={styles.dateInfo}>
               <Feather name="calendar" size={16} color={colors.primary.gold} />
-              <Text style={styles.dateInfoText}>
-                {formatDateForDisplay(initialDate)}
-              </Text>
+              <Text style={styles.dateInfoText}>{formatDateForDisplay(initialDate)}</Text>
             </View>
           ) : (
             <View style={styles.inputGroup}>
@@ -378,13 +342,19 @@ export default function NewInquiryModal({ visible, onClose, initialDate, onSaved
                 style={styles.datePickerButton}
                 onPress={() => setShowDatePicker(true)}
               >
-                <Feather name="calendar" size={16} color={eventDate ? colors.primary.gold : colors.text.tertiary} />
+                <Feather
+                  name="calendar"
+                  size={16}
+                  color={eventDate ? colors.primary.gold : colors.text.tertiary}
+                />
                 <Text style={[styles.datePickerText, eventDate && { color: colors.text.primary }]}>
                   {eventDate ? formatDateForDisplay(eventDate) : 'Wybierz datę...'}
                 </Text>
                 {eventDate ? (
                   <TouchableOpacity
-                    onPress={() => { setEventDate(''); }}
+                    onPress={() => {
+                      setEventDate('');
+                    }}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
                     <Feather name="x" size={16} color={colors.text.tertiary} />
@@ -393,8 +363,8 @@ export default function NewInquiryModal({ visible, onClose, initialDate, onSaved
                   <Feather name="chevron-down" size={16} color={colors.text.tertiary} />
                 )}
               </TouchableOpacity>
-              {showDatePicker && (
-                Platform.OS === 'ios' ? (
+              {showDatePicker &&
+                (Platform.OS === 'ios' ? (
                   <View style={styles.iosPickerContainer}>
                     <DateTimePicker
                       value={eventDate ? new Date(eventDate + 'T00:00:00') : new Date()}
@@ -429,8 +399,7 @@ export default function NewInquiryModal({ visible, onClose, initialDate, onSaved
                       }
                     }}
                   />
-                )
-              )}
+                ))}
             </View>
           )}
 
@@ -438,6 +407,9 @@ export default function NewInquiryModal({ visible, onClose, initialDate, onSaved
           <Text style={styles.sectionLabel}>Klient / Organizacja</Text>
 
           <SearchableDropdown
+            dropdownId="organization"
+            openedDropdown={openedDropdown}
+            setOpenedDropdown={setOpenedDropdown}
             label="Organizacja"
             placeholder="Szukaj organizacji..."
             icon="briefcase"
@@ -450,12 +422,18 @@ export default function NewInquiryModal({ visible, onClose, initialDate, onSaved
               setSelectedOrgLabel(org.alias || org.name);
               setOrgSearch('');
             }}
-            onClear={() => { setSelectedOrgId(null); setSelectedOrgLabel(null); }}
-            renderItem={(org) => org.alias ? `${org.alias} (${org.name})` : org.name}
+            onClear={() => {
+              setSelectedOrgId(null);
+              setSelectedOrgLabel(null);
+            }}
+            renderItem={(org) => (org.alias ? `${org.alias} (${org.name})` : org.name)}
             getFilterText={(org) => `${org.alias || ''} ${org.name}`}
           />
 
           <SearchableDropdown
+            dropdownId="contact"
+            openedDropdown={openedDropdown}
+            setOpenedDropdown={setOpenedDropdown}
             label="Osoba kontaktowa"
             placeholder="Szukaj kontaktu..."
             icon="user"
@@ -463,16 +441,36 @@ export default function NewInquiryModal({ visible, onClose, initialDate, onSaved
             textValue={contactSearch}
             onTextChange={setContactSearch}
             selectedLabel={selectedContactLabel}
-            onSelect={(c) => {
-              setSelectedContactId(c.id);
-              setSelectedContactLabel(`${c.first_name || ''} ${c.last_name || ''}`.trim());
-              if (c.phone) setClientPhone(c.phone);
-              if (c.email) setClientEmail(c.email);
+            onSelect={(contact) => {
+              setSelectedContactId(contact.id);
+
+              setSelectedContactLabel(
+                `${contact.first_name || ''} ${contact.last_name || ''}`.trim(),
+              );
+
+              if (contact.phone) {
+                setClientPhone(contact.phone);
+              }
+
+              if (contact.email) {
+                setClientEmail(contact.email);
+              }
+
               setContactSearch('');
             }}
-            onClear={() => { setSelectedContactId(null); setSelectedContactLabel(null); }}
-            renderItem={(c) => `${c.first_name || ''} ${c.last_name || ''}`.trim() + (c.phone ? ` (${c.phone})` : '')}
-            getFilterText={(c) => `${c.first_name || ''} ${c.last_name || ''} ${c.email || ''} ${c.phone || ''}`}
+            onClear={() => {
+              setSelectedContactId(null);
+              setSelectedContactLabel(null);
+            }}
+            renderItem={(contact) =>
+              `${contact.first_name || ''} ${contact.last_name || ''}`.trim() +
+              (contact.phone ? ` (${contact.phone})` : '')
+            }
+            getFilterText={(contact) =>
+              `${contact.first_name || ''} ${contact.last_name || ''} ${
+                contact.email || ''
+              } ${contact.phone || ''}`
+            }
           />
 
           <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Dane kontaktowe</Text>
@@ -518,6 +516,9 @@ export default function NewInquiryModal({ visible, onClose, initialDate, onSaved
           <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Lokalizacja</Text>
 
           <SearchableDropdown
+            dropdownId="location"
+            openedDropdown={openedDropdown}
+            setOpenedDropdown={setOpenedDropdown}
             label="Wybierz z listy"
             placeholder="Szukaj lokalizacji..."
             icon="map-pin"
@@ -525,15 +526,22 @@ export default function NewInquiryModal({ visible, onClose, initialDate, onSaved
             textValue={locationSearch}
             onTextChange={setLocationSearch}
             selectedLabel={selectedLocationLabel}
-            onSelect={(loc) => {
-              setSelectedLocationId(loc.id);
-              setSelectedLocationLabel([loc.name, loc.city].filter(Boolean).join(', '));
+            onSelect={(location) => {
+              setSelectedLocationId(location.id);
+
+              setSelectedLocationLabel([location.name, location.city].filter(Boolean).join(', '));
+
               setLocationSearch('');
               setLocationFreeText('');
             }}
-            onClear={() => { setSelectedLocationId(null); setSelectedLocationLabel(null); }}
-            renderItem={(loc) => [loc.name, loc.city].filter(Boolean).join(', ')}
-            getFilterText={(loc) => `${loc.name} ${loc.address || ''} ${loc.city || ''}`}
+            onClear={() => {
+              setSelectedLocationId(null);
+              setSelectedLocationLabel(null);
+            }}
+            renderItem={(location) => [location.name, location.city].filter(Boolean).join(', ')}
+            getFilterText={(location) =>
+              `${location.name} ${location.address || ''} ${location.city || ''}`
+            }
           />
 
           {!selectedLocationId && (
@@ -553,6 +561,9 @@ export default function NewInquiryModal({ visible, onClose, initialDate, onSaved
           <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Przypisz pracownika</Text>
 
           <SearchableDropdown
+            dropdownId="employee"
+            openedDropdown={openedDropdown}
+            setOpenedDropdown={setOpenedDropdown}
             label="Pracownik odpowiedzialny"
             placeholder="Szukaj pracownika..."
             icon="user-check"
@@ -565,7 +576,10 @@ export default function NewInquiryModal({ visible, onClose, initialDate, onSaved
               setSelectedEmployeeLabel(`${emp.name} ${emp.surname}`);
               setEmployeeSearch('');
             }}
-            onClear={() => { setSelectedEmployeeId(null); setSelectedEmployeeLabel(null); }}
+            onClear={() => {
+              setSelectedEmployeeId(null);
+              setSelectedEmployeeLabel(null);
+            }}
             renderItem={(emp) => `${emp.name} ${emp.surname}`}
             getFilterText={(emp) => `${emp.name} ${emp.surname}`}
           />
@@ -760,31 +774,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  selectedText: {
-    flex: 1,
-    fontSize: typography.fontSizes.sm,
-    fontWeight: '600',
-    color: colors.text.primary,
-  },
-  dropdownList: {
-    backgroundColor: colors.background.secondary,
-    borderWidth: 1,
-    borderColor: colors.border.default,
-    borderRadius: 8,
-    marginTop: 4,
-    maxHeight: 150,
-    overflow: 'hidden',
-  },
-  dropdownItem: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border.default,
-  },
-  dropdownItemText: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.text.primary,
-  },
 });
-
-
