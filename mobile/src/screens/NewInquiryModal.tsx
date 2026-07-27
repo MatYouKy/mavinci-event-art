@@ -11,7 +11,6 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
-  FlatList,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, typography } from '../theme';
@@ -116,26 +115,24 @@ function SearchableDropdown<T extends { id: string }>({
             placeholderTextColor={colors.text.tertiary}
           />
           {showList && filtered.length > 0 && (
-            <View style={styles.dropdownList}>
-              <FlatList
-                data={filtered}
-                keyExtractor={(item) => item.id}
-                keyboardShouldPersistTaps="handled"
-                nestedScrollEnabled
-                style={{ maxHeight: 150 }}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={styles.dropdownItem}
-                    onPress={() => {
-                      onSelect(item);
-                      setShowList(false);
-                    }}
-                  >
-                    <Text style={styles.dropdownItemText}>{renderItem(item)}</Text>
-                  </TouchableOpacity>
-                )}
-              />
-            </View>
+            <ScrollView
+              style={styles.dropdownList}
+              nestedScrollEnabled
+              keyboardShouldPersistTaps="handled"
+            >
+              {filtered.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.dropdownItem}
+                  onPress={() => {
+                    onSelect(item);
+                    setShowList(false);
+                  }}
+                >
+                  <Text style={styles.dropdownItemText}>{renderItem(item)}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           )}
         </>
       )}
@@ -652,6 +649,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border.default,
     borderRadius: 8,
     marginTop: 4,
+    maxHeight: 150,
     overflow: 'hidden',
   },
   dropdownItem: {
