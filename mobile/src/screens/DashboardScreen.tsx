@@ -99,6 +99,71 @@ export default function DashboardScreen() {
     loadDashboardData();
   }, [employee?.id]);
 
+  useEffect(() => {
+    if (!employee?.id) return;
+
+    const taskAssigneesChannel = supabase
+      .channel(`dashboard_task_assignees_${employee.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'task_assignees',
+          filter: `employee_id=eq.${employee.id}`,
+        },
+        () => {
+          loadDashboardData();
+        }
+      )
+      .subscribe();
+
+    const tasksChannel = supabase
+      .channel(`dashboard_tasks_${employee.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'tasks' },
+        () => {
+          loadDashboardData();
+        }
+      )
+      .subscribe();
+
+    const employeeAssignmentsChannel = supabase
+      .channel(`dashboard_employee_assignments_${employee.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'employee_assignments',
+          filter: `employee_id=eq.${employee.id}`,
+        },
+        () => {
+          loadDashboardData();
+        }
+      )
+      .subscribe();
+
+    const eventsChannel = supabase
+      .channel(`dashboard_events_${employee.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'events' },
+        () => {
+          loadDashboardData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(taskAssigneesChannel);
+      supabase.removeChannel(tasksChannel);
+      supabase.removeChannel(employeeAssignmentsChannel);
+      supabase.removeChannel(eventsChannel);
+    };
+  }, [employee?.id]);
+
   const loadDashboardData = useCallback(async () => {
     if (!employee?.id) return;
     setLoading(true);

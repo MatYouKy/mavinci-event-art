@@ -17,6 +17,7 @@ import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { colors, spacing, typography, borderRadius } from '../theme';
+import EmployeeAvatar from '../components/EmployeeAvatar';
 
 interface TaskDetailScreenProps {
   route: {
@@ -61,6 +62,17 @@ interface Attachment {
   };
 }
 
+interface Assignee {
+  employee_id: string;
+  employees: {
+    id: string;
+    name: string;
+    surname: string | null;
+    avatar_url: string | null;
+    avatar_metadata: any;
+  };
+}
+
 const priorityColors = {
   low: { bg: colors.background.tertiary, text: colors.text.secondary },
   medium: { bg: '#1e3a8a20', text: '#3b82f6' },
@@ -81,6 +93,7 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
   const [task, setTask] = useState<Task | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [assignees, setAssignees] = useState<Assignee[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [newComment, setNewComment] = useState('');
@@ -90,10 +103,11 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
     fetchTask();
     fetchComments();
     fetchAttachments();
+    fetchAssignees();
 
     // Subscribe to realtime updates
     const commentsChannel = supabase
-      .channel('task_comments_changes')
+      .channel(`task_comments_changes_${taskId}`)
       .on(
         'postgres_changes',
         {
@@ -108,8 +122,25 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
       )
       .subscribe();
 
+    const assigneesChannel = supabase
+      .channel(`task_assignees_changes_${taskId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'task_assignees',
+          filter: `task_id=eq.${taskId}`,
+        },
+        () => {
+          fetchAssignees();
+        }
+      )
+      .subscribe();
+
     return () => {
       supabase.removeChannel(commentsChannel);
+      supabase.removeChannel(assigneesChannel);
     };
   }, [taskId]);
 
@@ -152,6 +183,29 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
       setComments(commentsData as unknown as Comment[] || []);
     } catch (error) {
       console.error('Error fetching comments:', error);
+    }
+  };
+
+  const fetchAssignees = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('task_assignees')
+        .select(`
+          employee_id,
+          employees:employee_id (
+            id,
+            name,
+            surname,
+            avatar_url,
+            avatar_metadata
+          )
+        `)
+        .eq('task_id', taskId);
+
+      if (error) throw error;
+      setAssignees((data as unknown as Assignee[]) || []);
+    } catch (error) {
+      console.error('Error fetching assignees:', error);
     }
   };
 
@@ -205,7 +259,7 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([fetchTask(), fetchComments(), fetchAttachments()]);
+    await Promise.all([fetchTask(), fetchComments(), fetchAttachments(), fetchAssignees()]);
     setRefreshing(false);
   };
 
@@ -328,6 +382,36 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
                 <Text style={styles.description}>{task.description}</Text>
               </View>
             )}
+
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>
+                Przypisane osoby ({assignees.length})
+              </Text>
+              {assignees.length === 0 ? (
+                <Text style={styles.emptyInline}>Brak przypisanych osób</Text>
+              ) : (
+                <View style={styles.assigneesList}>
+                  {assignees.map((a) => {
+                    const emp = a.employees;
+                    if (!emp) return null;
+                    const displayName = [emp.name, emp.surname].filter(Boolean).join(' ') || 'Bez nazwiska';
+                    return (
+                      <View key={a.employee_id} style={styles.assigneeRow}>
+                        <EmployeeAvatar
+                          avatarUrl={emp.avatar_url}
+                          avatarMetadata={emp.avatar_metadata}
+                          employeeName={displayName}
+                          size={40}
+                        />
+                        <Text style={styles.assigneeName} numberOfLines={1}>
+                          {displayName}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
           </View>
         )}
 
@@ -633,5 +717,23 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     opacity: 0.5,
+  },
+  emptyInline: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.text.tertiary,
+  },
+  assigneesList: {
+    gap: spacing.md,
+  },
+  assigneeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  assigneeName: {
+    flex: 1,
+    fontSize: typography.fontSizes.sm,
+    color: colors.text.primary,
+    fontWeight: typography.fontWeights.medium,
   },
 });
