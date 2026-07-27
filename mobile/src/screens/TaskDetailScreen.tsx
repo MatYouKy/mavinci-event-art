@@ -12,6 +12,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Modal,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
@@ -87,6 +88,15 @@ const priorityLabels = {
   urgent: 'Pilne',
 };
 
+const PRIORITY_OPTIONS: Task['priority'][] = ['low', 'medium', 'high', 'urgent'];
+
+const STATUS_OPTIONS: { id: string; label: string; color: string }[] = [
+  { id: 'todo', label: 'Do zrobienia', color: '#94a3b8' },
+  { id: 'in_progress', label: 'W trakcie', color: '#3b82f6' },
+  { id: 'review', label: 'Do sprawdzenia', color: '#f59e0b' },
+  { id: 'done', label: 'Zakończone', color: '#10b981' },
+];
+
 export default function TaskDetailScreen({ route, navigation }: TaskDetailScreenProps) {
   const { taskId } = route.params;
   const { employee } = useAuth();
@@ -98,6 +108,13 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
   const [refreshing, setRefreshing] = useState(false);
   const [newComment, setNewComment] = useState('');
   const [activeTab, setActiveTab] = useState<'details' | 'comments' | 'files'>('details');
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editPriority, setEditPriority] = useState<Task['priority']>('medium');
+  const [editStatus, setEditStatus] = useState<string>('todo');
 
   useEffect(() => {
     fetchTask();
@@ -257,6 +274,71 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
     }
   };
 
+  const openEditModal = () => {
+    if (!task) return;
+    setEditTitle(task.title);
+    setEditDescription(task.description || '');
+    setEditPriority(task.priority);
+    setEditStatus(task.status);
+    setShowEditModal(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!task) return;
+    const title = editTitle.trim();
+    if (!title) {
+      Alert.alert('Błąd', 'Tytuł zadania nie może być pusty');
+      return;
+    }
+    try {
+      setSaving(true);
+      const { error } = await supabase
+        .from('tasks')
+        .update({
+          title,
+          description: editDescription.trim() || null,
+          priority: editPriority,
+          status: editStatus,
+        })
+        .eq('id', task.id);
+      if (error) throw error;
+      setShowEditModal(false);
+      await fetchTask();
+    } catch (error) {
+      console.error('Error updating task:', error);
+      Alert.alert('Błąd', 'Nie udało się zaktualizować zadania');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteTask = () => {
+    if (!task) return;
+    Alert.alert(
+      'Usuń zadanie',
+      'Czy na pewno chcesz usunąć to zadanie? Tej operacji nie można cofnąć.',
+      [
+        { text: 'Anuluj', style: 'cancel' },
+        {
+          text: 'Usuń',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setDeleting(true);
+              const { error } = await supabase.from('tasks').delete().eq('id', task.id);
+              if (error) throw error;
+              navigation.goBack();
+            } catch (error) {
+              console.error('Error deleting task:', error);
+              Alert.alert('Błąd', 'Nie udało się usunąć zadania');
+              setDeleting(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const onRefresh = async () => {
     setRefreshing(true);
     await Promise.all([fetchTask(), fetchComments(), fetchAttachments(), fetchAssignees()]);
@@ -310,6 +392,24 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
         <Text style={styles.headerTitle} numberOfLines={1}>
           {task.title}
         </Text>
+        <TouchableOpacity
+          onPress={openEditModal}
+          style={styles.headerAction}
+          disabled={deleting}
+        >
+          <Feather name="edit-2" size={20} color={colors.primary.gold} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={handleDeleteTask}
+          style={styles.headerAction}
+          disabled={deleting}
+        >
+          {deleting ? (
+            <ActivityIndicator size="small" color={colors.status.error} />
+          ) : (
+            <Feather name="trash-2" size={20} color={colors.status.error} />
+          )}
+        </TouchableOpacity>
       </View>
 
       {/* Tabs */}
@@ -518,6 +618,152 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
           </TouchableOpacity>
         </View>
       )}
+      {/* Edit Modal */}
+      <Modal
+        visible={showEditModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowEditModal(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Edytuj zadanie</Text>
+              <TouchableOpacity
+                onPress={() => setShowEditModal(false)}
+                disabled={saving}
+              >
+                <Feather name="x" size={24} color={colors.text.primary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              style={styles.modalBody}
+              keyboardShouldPersistTaps="handled"
+            >
+              <Text style={styles.formLabel}>Tytuł</Text>
+              <TextInput
+                style={styles.formInput}
+                value={editTitle}
+                onChangeText={setEditTitle}
+                placeholder="Tytuł zadania"
+                placeholderTextColor={colors.text.tertiary}
+              />
+
+              <Text style={styles.formLabel}>Opis</Text>
+              <TextInput
+                style={[styles.formInput, styles.formInputMultiline]}
+                value={editDescription}
+                onChangeText={setEditDescription}
+                placeholder="Opcjonalny opis"
+                placeholderTextColor={colors.text.tertiary}
+                multiline
+              />
+
+              <Text style={styles.formLabel}>Priorytet</Text>
+              <View style={styles.chipRow}>
+                {PRIORITY_OPTIONS.map((p) => {
+                  const active = editPriority === p;
+                  return (
+                    <TouchableOpacity
+                      key={p}
+                      style={[
+                        styles.chip,
+                        {
+                          backgroundColor: active
+                            ? priorityColors[p].bg
+                            : colors.background.primary,
+                          borderColor: active
+                            ? priorityColors[p].text
+                            : colors.border.default,
+                        },
+                      ]}
+                      onPress={() => setEditPriority(p)}
+                    >
+                      <Text
+                        style={[
+                          styles.chipText,
+                          {
+                            color: active
+                              ? priorityColors[p].text
+                              : colors.text.secondary,
+                          },
+                        ]}
+                      >
+                        {priorityLabels[p]}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <Text style={styles.formLabel}>Status</Text>
+              <View style={styles.chipRow}>
+                {STATUS_OPTIONS.map((s) => {
+                  const active = editStatus === s.id;
+                  return (
+                    <TouchableOpacity
+                      key={s.id}
+                      style={[
+                        styles.chip,
+                        {
+                          backgroundColor: active
+                            ? `${s.color}30`
+                            : colors.background.primary,
+                          borderColor: active ? s.color : colors.border.default,
+                        },
+                      ]}
+                      onPress={() => setEditStatus(s.id)}
+                    >
+                      <View style={[styles.chipDot, { backgroundColor: s.color }]} />
+                      <Text
+                        style={[
+                          styles.chipText,
+                          {
+                            color: active
+                              ? colors.text.primary
+                              : colors.text.secondary,
+                          },
+                        ]}
+                      >
+                        {s.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonSecondary]}
+                onPress={() => setShowEditModal(false)}
+                disabled={saving}
+              >
+                <Text style={styles.modalButtonSecondaryText}>Anuluj</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.modalButton,
+                  styles.modalButtonPrimary,
+                  (saving || !editTitle.trim()) && styles.modalButtonDisabled,
+                ]}
+                onPress={handleSaveEdit}
+                disabled={saving || !editTitle.trim()}
+              >
+                {saving ? (
+                  <ActivityIndicator size="small" color={colors.text.primary} />
+                ) : (
+                  <Text style={styles.modalButtonPrimaryText}>Zapisz</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -824,5 +1070,117 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.xs,
     fontWeight: typography.fontWeights.semibold,
     color: colors.text.primary,
+  },
+  headerAction: {
+    marginLeft: spacing.sm,
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    backgroundColor: colors.background.secondary,
+    borderTopLeftRadius: borderRadius.lg,
+    borderTopRightRadius: borderRadius.lg,
+    maxHeight: '90%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.default,
+  },
+  modalTitle: {
+    fontSize: typography.fontSizes.lg,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.text.primary,
+  },
+  modalBody: {
+    padding: spacing.lg,
+  },
+  formLabel: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.text.secondary,
+    marginBottom: spacing.xs,
+    marginTop: spacing.md,
+  },
+  formInput: {
+    backgroundColor: colors.background.primary,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+    padding: spacing.md,
+    color: colors.text.primary,
+    fontSize: typography.fontSizes.sm,
+  },
+  formInputMultiline: {
+    minHeight: 90,
+    textAlignVertical: 'top',
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    gap: spacing.xs,
+  },
+  chipDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  chipText: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.medium,
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    padding: spacing.lg,
+    gap: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border.default,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalButtonSecondary: {
+    backgroundColor: colors.background.primary,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+  },
+  modalButtonSecondaryText: {
+    color: colors.text.secondary,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+  },
+  modalButtonPrimary: {
+    backgroundColor: colors.primary.gold,
+  },
+  modalButtonPrimaryText: {
+    color: colors.text.primary,
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold,
+  },
+  modalButtonDisabled: {
+    opacity: 0.5,
   },
 });
