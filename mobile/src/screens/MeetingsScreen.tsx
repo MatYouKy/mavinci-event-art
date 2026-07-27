@@ -512,7 +512,9 @@ export default function MeetingsScreen() {
         },
       },
     ]);
-  };
+  }
+  
+}};
 
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
