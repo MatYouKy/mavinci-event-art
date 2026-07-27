@@ -370,6 +370,54 @@ export default function MessagesPageClient({
     showSnackbar('Funkcja przenoszenia będzie wkrótce dostępna', 'info');
   };
 
+  const handleCreateInquiry = async (message: MessageListItem) => {
+    try {
+      const title = `Zapytanie: ${message.subject || 'Brak tematu'}`;
+
+      let body = '';
+      if (message.type === 'received') {
+        const { data: fullMsg } = await supabase
+          .from('received_emails')
+          .select('body_text, body_html, from_email, from_name')
+          .eq('id', message.id)
+          .maybeSingle();
+        body = fullMsg?.body_text || fullMsg?.body_html || message.preview || '';
+      } else if (message.type === 'contact_form') {
+        const { data: fullMsg } = await supabase
+          .from('contact_messages')
+          .select('message, email, name, phone')
+          .eq('id', message.id)
+          .maybeSingle();
+        body = fullMsg?.message || message.preview || '';
+      }
+
+      const inquiryDetails = {
+        client_email: message.from || null,
+        client_text: message.from || null,
+        source_message_id: message.id,
+        source_message_type: message.type,
+      };
+
+      const { error } = await supabase.from('tasks').insert({
+        title,
+        description: body.slice(0, 2000),
+        priority: 'urgent',
+        status: 'todo',
+        board_column: 'todo',
+        order_index: 0,
+        created_by: userId,
+        is_inquiry: true,
+        inquiry_details: inquiryDetails,
+      });
+
+      if (error) throw error;
+      showSnackbar('Utworzono zapytanie z wiadomości', 'success');
+    } catch (err) {
+      console.error('Error creating inquiry from message:', err);
+      showSnackbar('Nie udało się utworzyć zapytania', 'error');
+    }
+  };
+
   const fetchEmailsFromServer = async () => {
     if (!currentEmployee) {
       showSnackbar('Musisz być zalogowany', 'error');
@@ -881,6 +929,11 @@ export default function MessagesPageClient({
                               }
                               onDelete={() => handleDelete(message.id, message.type)}
                               onMove={() => handleMove(message.id)}
+                              onCreateInquiry={
+                                message.type === 'received' || message.type === 'contact_form'
+                                  ? () => handleCreateInquiry(message)
+                                  : undefined
+                              }
                               onStar={
                                 message.type === 'received'
                                   ? () => handleStar(message.id, message.is_starred)

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { MoreVertical, Reply, Trash2, UserPlus, FolderInput, Forward, Star, Archive, Paperclip } from 'lucide-react';
+import { MoreVertical, Reply, Trash2, UserPlus, FolderInput, Forward, Star, Archive, Paperclip, ClipboardList } from 'lucide-react';
 
 interface MessageActionsMenuProps {
   messageId: string;
@@ -15,6 +15,7 @@ interface MessageActionsMenuProps {
   onStar?: () => void;
   onArchive?: () => void;
   onViewAttachments?: () => void;
+  onCreateInquiry?: () => void;
   hasAttachments?: boolean;
   canManage: boolean;
 }
@@ -31,6 +32,7 @@ export default function MessageActionsMenu({
   onStar,
   onArchive,
   onViewAttachments,
+  onCreateInquiry,
   hasAttachments,
   canManage,
 }: MessageActionsMenuProps) {
@@ -124,6 +126,16 @@ export default function MessageActionsMenu({
             <UserPlus className="w-4 h-4" />
             <span>Przypisz pracownika</span>
           </button>
+
+          {onCreateInquiry && (
+            <button
+              onClick={() => handleAction(onCreateInquiry)}
+              className="w-full px-4 py-2 text-left text-[#e5e4e2] hover:bg-[#0f1119] transition-colors flex items-center gap-3"
+            >
+              <ClipboardList className="w-4 h-4" />
+              <span>Dodaj zapytanie</span>
+            </button>
+          )}
 
           {messageType === 'received' && onArchive && (
             <button
