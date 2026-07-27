@@ -15,6 +15,7 @@
     "android": {
       "package": "com.mavinci.crm",
       "googleServicesFile": "./google-services.json",
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./src/assets/adaptive-icon.png",
         "backgroundColor": "#DBF48C"
