@@ -70,7 +70,7 @@ export default function UserMenu({ initialEmployee }: { initialEmployee: IEmploy
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: 'local' });
     router.push('/login');
   };
 

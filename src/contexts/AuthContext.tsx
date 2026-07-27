@@ -213,7 +213,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       presenceChannelRef.current = null;
     }
     setOnlineIds([]);
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: 'local' });
     setSession(null);
     setAuthUser(null);
     setEmployeeId(null);

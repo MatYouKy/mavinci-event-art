@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronDown, Edit3, Eye, LayoutDashboard, LogOut, Settings } from 'lucide-react';
+import { ChevronDown, CreditCard as Edit3, Eye, LayoutDashboard, LogOut, Settings } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useEditMode } from '../contexts/EditModeContext';
@@ -178,7 +178,7 @@ export default function Navbar({
   }, [isDropdownOpen, isServicesOpen, isMenuOpen]);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: 'local' });
     await signOut();
     setIsDropdownOpen(false);
     setCrmUser(null);
