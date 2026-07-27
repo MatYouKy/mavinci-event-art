@@ -12,6 +12,9 @@ import {
   Modal,
   Animated,
   PanResponder,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -247,6 +250,13 @@ export default function TasksScreen() {
   const [isReordering, setIsReordering] = useState(false);
   const [customOrder, setCustomOrder] = useState<Record<string, string[]>>({});
 
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [newDescription, setNewDescription] = useState('');
+  const [newPriority, setNewPriority] = useState<Task['priority']>('medium');
+  const [newColumn, setNewColumn] = useState<string>('todo');
+
   useEffect(() => {
     if (employee) {
       fetchTasks();
@@ -354,6 +364,59 @@ export default function TasksScreen() {
   const onRefresh = () => {
     setRefreshing(true);
     fetchTasks();
+  };
+
+  const resetCreateForm = () => {
+    setNewTitle('');
+    setNewDescription('');
+    setNewPriority('medium');
+    setNewColumn('todo');
+  };
+
+  const createTask = async () => {
+    if (!employee) return;
+    const title = newTitle.trim();
+    if (!title) {
+      Alert.alert('Brak tytułu', 'Podaj tytuł zadania.');
+      return;
+    }
+
+    setCreating(true);
+    try {
+      const status = newColumn === 'completed' ? 'completed' : newColumn === 'in_progress' ? 'in_progress' : 'todo';
+
+      const { data: inserted, error: insertError } = await supabase
+        .from('tasks')
+        .insert({
+          title,
+          description: newDescription.trim() || null,
+          priority: newPriority,
+          status,
+          board_column: newColumn,
+          created_by: employee.id,
+          is_private: false,
+          event_id: null,
+        })
+        .select('id')
+        .single();
+
+      if (insertError) throw insertError;
+
+      if (inserted?.id) {
+        await supabase.from('task_assignees').insert({
+          task_id: inserted.id,
+          employee_id: employee.id,
+        });
+      }
+
+      resetCreateForm();
+      setShowCreateModal(false);
+      fetchTasks();
+    } catch (error: any) {
+      Alert.alert('Błąd', error?.message || 'Nie udało się utworzyć zadania.');
+    } finally {
+      setCreating(false);
+    }
   };
 
   const moveTask = async (taskId: string, newColumn: string) => {
@@ -464,6 +527,12 @@ export default function TasksScreen() {
               size={20}
               color={isReordering ? colors.background.primary : colors.primary.gold}
             />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.addTaskButton}
+            onPress={() => setShowCreateModal(true)}
+          >
+            <Feather name="plus" size={22} color={colors.background.primary} />
           </TouchableOpacity>
         </View>
       </View>
@@ -584,6 +653,143 @@ export default function TasksScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      <Modal
+        visible={showCreateModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => {
+          if (!creating) {
+            resetCreateForm();
+            setShowCreateModal(false);
+          }
+        }}
+      >
+        <KeyboardAvoidingView
+          style={styles.createModalContainer}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={styles.createModalHeader}>
+            <TouchableOpacity
+              onPress={() => {
+                if (!creating) {
+                  resetCreateForm();
+                  setShowCreateModal(false);
+                }
+              }}
+              style={styles.createModalCloseBtn}
+            >
+              <Feather name="x" size={24} color={colors.text.primary} />
+            </TouchableOpacity>
+            <Text style={styles.createModalHeaderTitle}>Nowe zadanie</Text>
+            <TouchableOpacity
+              onPress={createTask}
+              disabled={creating}
+              style={styles.createModalSaveBtn}
+            >
+              {creating ? (
+                <ActivityIndicator size="small" color={colors.primary.gold} />
+              ) : (
+                <Text style={styles.createModalSaveBtnText}>Zapisz</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            style={styles.createModalForm}
+            contentContainerStyle={styles.createModalFormContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Tytuł</Text>
+              <TextInput
+                style={styles.formInput}
+                value={newTitle}
+                onChangeText={setNewTitle}
+                placeholder="Co jest do zrobienia?"
+                placeholderTextColor={colors.text.secondary}
+                autoFocus
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Opis</Text>
+              <TextInput
+                style={[styles.formInput, styles.formTextArea]}
+                value={newDescription}
+                onChangeText={setNewDescription}
+                placeholder="Dodaj szczegóły (opcjonalnie)"
+                placeholderTextColor={colors.text.secondary}
+                multiline
+                numberOfLines={4}
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Priorytet</Text>
+              <View style={styles.chipRow}>
+                {(['low', 'medium', 'high', 'urgent'] as Task['priority'][]).map((p) => {
+                  const active = newPriority === p;
+                  return (
+                    <TouchableOpacity
+                      key={p}
+                      style={[
+                        styles.chip,
+                        {
+                          backgroundColor: active ? `${priorityColors[p]}30` : colors.background.primary,
+                          borderColor: active ? priorityColors[p] : colors.border.default,
+                        },
+                      ]}
+                      onPress={() => setNewPriority(p)}
+                    >
+                      <Text
+                        style={[
+                          styles.chipText,
+                          { color: active ? priorityColors[p] : colors.text.secondary },
+                        ]}
+                      >
+                        {priorityLabels[p]}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Kolumna</Text>
+              <View style={styles.chipRow}>
+                {BOARD_COLUMNS.map((column) => {
+                  const active = newColumn === column.id;
+                  return (
+                    <TouchableOpacity
+                      key={column.id}
+                      style={[
+                        styles.chip,
+                        {
+                          backgroundColor: active ? `${column.color}30` : colors.background.primary,
+                          borderColor: active ? column.color : colors.border.default,
+                        },
+                      ]}
+                      onPress={() => setNewColumn(column.id)}
+                    >
+                      <View style={[styles.chipDot, { backgroundColor: column.color }]} />
+                      <Text
+                        style={[
+                          styles.chipText,
+                          { color: active ? colors.text.primary : colors.text.secondary },
+                        ]}
+                      >
+                        {column.title}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -640,6 +846,14 @@ const styles = StyleSheet.create({
   },
   reorderToggleActive: {
     backgroundColor: colors.primary.gold,
+  },
+  addTaskButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    backgroundColor: colors.primary.gold,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   boardContainer: {
     flex: 1,
@@ -861,6 +1075,99 @@ const styles = StyleSheet.create({
   modalCancelText: {
     fontSize: typography.fontSizes.md,
     color: colors.text.secondary,
+    fontWeight: typography.fontWeights.medium,
+  },
+  createModalContainer: {
+    flex: 1,
+    backgroundColor: colors.background.primary,
+  },
+  createModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.default,
+    backgroundColor: colors.background.secondary,
+  },
+  createModalCloseBtn: {
+    padding: spacing.xs,
+  },
+  createModalHeaderTitle: {
+    fontSize: typography.fontSizes.lg,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.text.primary,
+  },
+  createModalSaveBtn: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    backgroundColor: colors.primary.gold + '20',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.primary.gold + '40',
+    minWidth: 72,
+    alignItems: 'center',
+  },
+  createModalSaveBtnText: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.primary.gold,
+  },
+  createModalForm: {
+    flex: 1,
+  },
+  createModalFormContent: {
+    padding: spacing.md,
+    paddingBottom: 120,
+  },
+  formGroup: {
+    marginBottom: spacing.lg,
+  },
+  formLabel: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.text.secondary,
+    fontWeight: typography.fontWeights.medium,
+    marginBottom: spacing.sm,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  formInput: {
+    backgroundColor: colors.background.secondary,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+    borderRadius: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    fontSize: typography.fontSizes.md,
+    color: colors.text.primary,
+  },
+  formTextArea: {
+    minHeight: 100,
+    textAlignVertical: 'top',
+    paddingTop: spacing.sm,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  chipDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  chipText: {
+    fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.medium,
   },
 });
