@@ -33,7 +33,6 @@ interface Employee {
   id: string;
   name: string;
   surname: string;
-  role: string | null;
 }
 
 interface Location {
@@ -76,8 +75,6 @@ interface NewMeetingForm {
 // --- Helpers ---
 
 const SLIDER_MIN = 15;
-const SLIDER_MAX = 2880; // 2 days in minutes
-const SLIDER_STEP = 15;
 
 function minutesToLabel(minutes: number): string {
   if (minutes >= 1440) {
@@ -269,18 +266,28 @@ export default function MeetingsScreen() {
           )
           .is('deleted_at', null)
           .order('datetime_start', { ascending: true });
+        if (error) {
+          console.error('Błąd pobierania spotkań:', error);
+          return;
+        }
 
-        if (!error && data) {
-          const myMeetings = data.filter(
-            (m: any) =>
-              m.created_by === employee.id ||
-              m.meeting_participants?.some((p: any) => p.employee_id === employee.id),
+        if (data) {
+          const normalizedMeetings: Meeting[] = data.map((meeting: any) => ({
+            ...meeting,
+            participants: meeting.meeting_participants || [],
+          }));
+
+          const myMeetings = normalizedMeetings.filter(
+            (meeting) =>
+              meeting.created_by === employee.id ||
+              meeting.participants?.some((participant) => participant.employee_id === employee.id),
           );
+
           setMeetings(myMeetings);
 
           for (const meeting of myMeetings) {
-            if (new Date(meeting.datetime_start).getTime() > Date.now()) {
-              scheduleMeetingAlerts(meeting);
+            if (meeting.datetime_start && new Date(meeting.datetime_start).getTime() > Date.now()) {
+              await scheduleMeetingAlerts(meeting);
             }
           }
         }
@@ -318,7 +325,7 @@ export default function MeetingsScreen() {
       }) ?? null;
 
     setSelectedLocation(matchedLocation);
-    setLocationSearch('');
+    setLocationSearch(matchedLocation ? '' : meeting.location_text || '');
 
     const end = meeting.datetime_end
       ? new Date(meeting.datetime_end)
@@ -326,7 +333,7 @@ export default function MeetingsScreen() {
 
     setForm({
       title: meeting.title || '',
-      location_text: selectedLocation?.name || '',
+      location_text: matchedLocation?.name || meeting.location_text || '',
       datetime_start: start,
       datetime_end: end,
       notes: meeting.notes || '',
@@ -378,13 +385,19 @@ export default function MeetingsScreen() {
 
     const payload = {
       title: form.title.trim(),
-      location_text: selectedLocation?.name || null,
+      location_text: form.location_text.trim() || null,
       datetime_start: form.datetime_start.toISOString(),
       datetime_end: form.datetime_end.toISOString(),
       notes: form.notes.trim() || null,
-      alert_1_minutes: form.alert_1_enabled ? form.alert_1_minutes : null,
-      alert_2_minutes: form.alert_2_enabled ? form.alert_2_minutes : null,
-      alert_critical_minutes: form.alert_critical_enabled ? form.alert_critical_minutes : null,
+      alert_1_minutes: form.alert_1_enabled
+        ? form.alert_1_minutes
+        : null,
+      alert_2_minutes: form.alert_2_enabled
+        ? form.alert_2_minutes
+        : null,
+      alert_critical_minutes: form.alert_critical_enabled
+        ? form.alert_critical_minutes
+        : null,
     };
 
     try {
@@ -412,8 +425,10 @@ export default function MeetingsScreen() {
             await supabase.from('meeting_participants').insert(participantsToInsert);
           }
           // Notify newly added participants
-          const previousParticipantIds = (editingMeeting.participants || []).map((p) => p.employee_id);
-          const senderName = `${employee.first_name || ''} ${employee.last_name || ''}`.trim();
+          const previousParticipantIds = (editingMeeting.participants || []).map(
+            (p) => p.employee_id,
+          );
+          const senderName = `${employee.name || ''} ${employee.surname || ''}`.trim();
           for (const p of selectedParticipants) {
             if (p.id === employee.id) continue;
             if (previousParticipantIds.includes(p.id)) continue;
@@ -459,7 +474,7 @@ export default function MeetingsScreen() {
           await scheduleMeetingAlerts(data as Meeting);
 
           // Notify assigned participants (except creator)
-          const senderName = `${employee.first_name || ''} ${employee.last_name || ''}`.trim();
+          const senderName = `${employee.name || ''} ${employee.surname || ''}`.trim();
           for (const p of selectedParticipants) {
             if (p.id === employee.id) continue;
             sendAssignmentNotification({
@@ -512,9 +527,7 @@ export default function MeetingsScreen() {
         },
       },
     ]);
-  }
-  
-}};
+  };
 
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
@@ -1065,7 +1078,7 @@ export default function MeetingsScreen() {
               }}
               onClear={() => setParticipantSearch('')}
               renderItem={(emp) => `${emp.name || ''} ${emp.surname || ''}`.trim() || 'Brak nazwy'}
-              getFilterText={(emp) => `${emp.name || ''} ${emp.surname || ''} ${emp.role || ''}`}
+              getFilterText={(emp) => `${emp.name || ''} ${emp.surname || ''}`}
               selectedLabel={null}
               icon="user"
             />
