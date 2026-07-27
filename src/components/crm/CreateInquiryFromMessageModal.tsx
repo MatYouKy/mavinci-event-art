@@ -8,7 +8,7 @@ import type { MessageListItem } from '@/lib/CRM/messages/types';
 
 interface Employee {
   id: string;
-  user_id: string;
+  auth_user_id: string | null;
   name: string;
   surname: string;
   avatar_url: string | null;
@@ -42,7 +42,7 @@ export default function CreateInquiryFromMessageModal({
     try {
       const { data, error } = await supabase
         .from('employees')
-        .select('id, user_id, name, surname, avatar_url')
+        .select('id, auth_user_id, name, surname, avatar_url')
         .eq('is_active', true)
         .order('name');
 
@@ -62,34 +62,123 @@ export default function CreateInquiryFromMessageModal({
       const title = `Zapytanie: ${message.subject || 'Brak tematu'}`;
 
       let body = '';
+      let messageDate: string | null = null;
+      let senderName: string | null = null;
+      let senderEmail: string | null = message.from || null;
+      let senderPhone: string | null = null;
+
       if (message.type === 'received') {
-        const { data: fullMsg } = await supabase
+        const { data: fullMsg, error: fullMsgError } = await supabase
           .from('received_emails')
-          .select('body_text, body_html, from_email, from_name')
+          .select(
+            `
+            body_text,
+            body_html,
+            from_address,
+            received_date
+          `,
+          )
           .eq('id', message.id)
           .maybeSingle();
+
+        if (fullMsgError) {
+          throw fullMsgError;
+        }
+
         body = fullMsg?.body_text || fullMsg?.body_html || message.preview || '';
-      } else if (message.type === 'contact_form') {
-        const { data: fullMsg } = await supabase
+
+        messageDate = fullMsg?.received_date || null;
+        senderEmail = fullMsg?.from_address || message.from || null;
+        senderName = null;
+      }
+
+      if (message.type === 'contact_form') {
+        const { data: fullMsg, error: fullMsgError } = await supabase
           .from('contact_messages')
-          .select('message, email, name, phone')
+          .select(
+            `
+            message,
+            email,
+            name,
+            phone,
+            created_at
+          `,
+          )
           .eq('id', message.id)
           .maybeSingle();
+
+        if (fullMsgError) {
+          throw fullMsgError;
+        }
+
         body = fullMsg?.message || message.preview || '';
+
+        messageDate = fullMsg?.created_at || null;
+        senderName = fullMsg?.name || null;
+        senderEmail = fullMsg?.email || message.from || null;
+        senderPhone = fullMsg?.phone || null;
+      }
+
+      if (message.type === 'contact_form') {
+        const { data: fullMsg, error: fullMsgError } = await supabase
+          .from('contact_messages')
+          .select(
+            `
+            message,
+            email,
+            name,
+            phone,
+            created_at
+          `,
+          )
+          .eq('id', message.id)
+          .maybeSingle();
+
+        if (fullMsgError) {
+          throw fullMsgError;
+        }
+
+        body = fullMsg?.message || message.preview || '';
+
+        messageDate = fullMsg?.created_at || null;
+        senderName = fullMsg?.name || null;
+        senderEmail = fullMsg?.email || message.from || null;
+        senderPhone = fullMsg?.phone || null;
       }
 
       const inquiryDetails = {
-        client_email: message.from || null,
-        client_text: message.from || null,
+        client_email: senderEmail,
+        client_text: senderName || senderEmail,
+        client_phone: senderPhone,
         source_message_id: message.id,
         source_message_type: message.type,
+        source_message_date: messageDate,
+        source_message_content: body || null,
       };
+      const formattedMessageDate = messageDate
+        ? new Intl.DateTimeFormat('pl-PL', {
+            dateStyle: 'long',
+            timeStyle: 'short',
+          }).format(new Date(messageDate))
+        : 'Brak daty';
+
+      const taskDescription = [
+        `Data wiadomości: ${formattedMessageDate}`,
+        senderName ? `Nadawca: ${senderName}` : null,
+        senderEmail ? `E-mail: ${senderEmail}` : null,
+        senderPhone ? `Telefon: ${senderPhone}` : null,
+        '',
+        'Treść wiadomości:',
+        body || 'Brak treści wiadomości',
+      ]
+        .filter((line): line is string => line !== null)
+        .join('\n');
 
       const { data: taskData, error: taskError } = await supabase
         .from('tasks')
         .insert({
           title,
-          description: body.slice(0, 2000),
+          description: taskDescription.slice(0, 10000),
           priority: 'urgent',
           status: 'todo',
           board_column: 'todo',
@@ -114,7 +203,7 @@ export default function CreateInquiryFromMessageModal({
         }
 
         const emp = employees.find((e) => e.id === selectedEmployee);
-        const empUserId = emp?.user_id;
+        const empUserId = emp?.auth_user_id;
 
         if (empUserId) {
           const { data: notif, error: notifError } = await supabase
@@ -171,16 +260,14 @@ export default function CreateInquiryFromMessageModal({
           </button>
         </div>
 
-        <div className="p-5 space-y-4">
+        <div className="space-y-4 p-5">
           <div className="rounded-lg bg-[#1c1f33] p-3">
-            <p className="text-xs text-[#e5e4e2]/50 mb-1">Tytuł zapytania</p>
-            <p className="text-sm text-[#e5e4e2]">
-              Zapytanie: {message.subject || 'Brak tematu'}
-            </p>
+            <p className="mb-1 text-xs text-[#e5e4e2]/50">Tytuł zapytania</p>
+            <p className="text-sm text-[#e5e4e2]">Zapytanie: {message.subject || 'Brak tematu'}</p>
           </div>
 
           <div className="rounded-lg bg-[#1c1f33] p-3">
-            <p className="text-xs text-[#e5e4e2]/50 mb-1">Nadawca</p>
+            <p className="mb-1 text-xs text-[#e5e4e2]/50">Nadawca</p>
             <p className="text-sm text-[#e5e4e2]">{message.from || '—'}</p>
           </div>
 
