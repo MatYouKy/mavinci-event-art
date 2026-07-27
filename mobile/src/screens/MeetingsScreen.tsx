@@ -22,6 +22,7 @@ import { colors, spacing, typography } from '../theme';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { SearchableDropdown } from '../components/SearchableDropdown';
+import { sendAssignmentNotification } from '../services/assignmentNotifications';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
 // --- Types ---
@@ -410,6 +411,22 @@ export default function MeetingsScreen() {
           if (participantsToInsert.length > 0) {
             await supabase.from('meeting_participants').insert(participantsToInsert);
           }
+          // Notify newly added participants
+          const previousParticipantIds = (editingMeeting.participants || []).map((p) => p.employee_id);
+          const senderName = `${employee.first_name || ''} ${employee.last_name || ''}`.trim();
+          for (const p of selectedParticipants) {
+            if (p.id === employee.id) continue;
+            if (previousParticipantIds.includes(p.id)) continue;
+            sendAssignmentNotification({
+              recipientEmployeeId: p.id,
+              senderName,
+              title: 'Zaproszenie na spotkanie',
+              message: `${senderName} zaprosił(a) Cię na spotkanie: ${form.title}`,
+              category: 'meetings',
+              relatedEntityType: 'meeting',
+              relatedEntityId: editingMeeting.id,
+            });
+          }
           await scheduleMeetingAlerts(data as Meeting);
         }
       } else {
@@ -440,6 +457,21 @@ export default function MeetingsScreen() {
           if (participantError) throw participantError;
 
           await scheduleMeetingAlerts(data as Meeting);
+
+          // Notify assigned participants (except creator)
+          const senderName = `${employee.first_name || ''} ${employee.last_name || ''}`.trim();
+          for (const p of selectedParticipants) {
+            if (p.id === employee.id) continue;
+            sendAssignmentNotification({
+              recipientEmployeeId: p.id,
+              senderName,
+              title: 'Zaproszenie na spotkanie',
+              message: `${senderName} zaprosił(a) Cię na spotkanie: ${form.title}`,
+              category: 'meetings',
+              relatedEntityType: 'meeting',
+              relatedEntityId: data.id,
+            });
+          }
         }
       }
 

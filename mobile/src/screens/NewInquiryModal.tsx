@@ -19,6 +19,7 @@ import { colors, spacing, typography } from '../theme';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { scheduleInquiryReminders } from '../services/inquiryReminders';
+import { sendAssignmentNotification } from '../services/assignmentNotifications';
 import { SearchableDropdown } from '@/components/SearchableDropdown';
 
 interface NewInquiryModalProps {
@@ -275,6 +276,22 @@ export default function NewInquiryModal({
             task_id: insertedTask.id,
             employee_id: emp.id,
           });
+
+          // Notify assigned employee (if not self)
+          if (emp.id !== employee?.id) {
+            const senderName = employee
+              ? `${employee.first_name || ''} ${employee.last_name || ''}`.trim()
+              : 'Ktoś';
+            sendAssignmentNotification({
+              recipientEmployeeId: emp.id,
+              senderName,
+              title: 'Przypisano zapytanie',
+              message: `${senderName} przypisał(a) Ci zapytanie: ${clientName || 'Nowe zapytanie'}`,
+              category: 'tasks',
+              relatedEntityType: 'task',
+              relatedEntityId: insertedTask.id,
+            });
+          }
         }
       }
 
