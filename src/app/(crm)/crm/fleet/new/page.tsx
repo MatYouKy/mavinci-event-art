@@ -112,26 +112,6 @@ export default function NewVehiclePage() {
 
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
-
-  const toNullableNumber = (value: string | number | null | undefined) => {
-    if (value === '' || value === null || value === undefined) {
-      return null;
-    }
-  
-    const parsedValue = Number(value);
-  
-    return Number.isFinite(parsedValue) ? parsedValue : null;
-  };
-  
-  const toNullableString = (value: string | null | undefined) => {
-    if (value === null || value === undefined) {
-      return null;
-    }
-  
-    const trimmedValue = value.trim();
-  
-    return trimmedValue === '' ? null : trimmedValue;
-  };
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
