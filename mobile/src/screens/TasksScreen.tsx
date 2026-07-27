@@ -24,6 +24,7 @@ import { colors, spacing, typography } from '../theme';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import EmployeeAvatar from '../components/EmployeeAvatar';
+import { SearchableDropdown } from '../components/SearchableDropdown';
 
 type TasksStackParamList = {
   Tasks: undefined;
@@ -256,6 +257,13 @@ export default function TasksScreen() {
   const [newDescription, setNewDescription] = useState('');
   const [newPriority, setNewPriority] = useState<Task['priority']>('medium');
   const [newColumn, setNewColumn] = useState<string>('todo');
+  const [assignableEmployees, setAssignableEmployees] = useState<
+    { id: string; name: string; surname: string; avatar_url: string | null }[]
+  >([]);
+  const [selectedAssigneeId, setSelectedAssigneeId] = useState<string | null>(null);
+  const [selectedAssigneeLabel, setSelectedAssigneeLabel] = useState<string | null>(null);
+  const [assigneeSearch, setAssigneeSearch] = useState('');
+  const [openedDropdown, setOpenedDropdown] = useState<string | null>(null);
 
   useEffect(() => {
     if (employee) {
@@ -371,7 +379,23 @@ export default function TasksScreen() {
     setNewDescription('');
     setNewPriority('medium');
     setNewColumn('todo');
+    setSelectedAssigneeId(null);
+    setSelectedAssigneeLabel(null);
+    setAssigneeSearch('');
+    setOpenedDropdown(null);
   };
+
+  useEffect(() => {
+    if (!showCreateModal) return;
+    (async () => {
+      const { data } = await supabase
+        .from('employees')
+        .select('id, name, surname, avatar_url')
+        .order('name')
+        .limit(200);
+      setAssignableEmployees((data as any[]) || []);
+    })();
+  }, [showCreateModal]);
 
   const createTask = async () => {
     if (!employee) return;
@@ -403,9 +427,10 @@ export default function TasksScreen() {
       if (insertError) throw insertError;
 
       if (inserted?.id) {
+        const assigneeId = selectedAssigneeId || employee.id;
         await supabase.from('task_assignees').insert({
           task_id: inserted.id,
-          employee_id: employee.id,
+          employee_id: assigneeId,
         });
       }
 
@@ -786,6 +811,33 @@ export default function TasksScreen() {
                   );
                 })}
               </View>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Przypisz do</Text>
+              <SearchableDropdown
+                dropdownId="assignee"
+                openedDropdown={openedDropdown}
+                setOpenedDropdown={setOpenedDropdown}
+                label="Pracownik"
+                placeholder="Szukaj pracownika..."
+                icon="user-check"
+                items={assignableEmployees}
+                textValue={assigneeSearch}
+                onTextChange={setAssigneeSearch}
+                selectedLabel={selectedAssigneeLabel}
+                onSelect={(emp) => {
+                  setSelectedAssigneeId(emp.id);
+                  setSelectedAssigneeLabel(`${emp.name} ${emp.surname}`.trim());
+                  setAssigneeSearch('');
+                }}
+                onClear={() => {
+                  setSelectedAssigneeId(null);
+                  setSelectedAssigneeLabel(null);
+                }}
+                renderItem={(emp) => `${emp.name} ${emp.surname}`.trim()}
+                getFilterText={(emp) => `${emp.name} ${emp.surname}`}
+              />
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
