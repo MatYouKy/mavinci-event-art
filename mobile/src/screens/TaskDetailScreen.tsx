@@ -115,6 +115,10 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
   const [editDescription, setEditDescription] = useState('');
   const [editPriority, setEditPriority] = useState<Task['priority']>('medium');
   const [editStatus, setEditStatus] = useState<string>('todo');
+  const [availableEmployees, setAvailableEmployees] = useState<
+    { id: string; name: string; surname: string | null; avatar_url: string | null }[]
+  >([]);
+  const [editAssigneeIds, setEditAssigneeIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetchTask();
@@ -280,7 +284,25 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
     setEditDescription(task.description || '');
     setEditPriority(task.priority);
     setEditStatus(task.status);
+    setEditAssigneeIds(new Set(assignees.map((a) => a.employee_id)));
     setShowEditModal(true);
+    (async () => {
+      const { data } = await supabase
+        .from('employees')
+        .select('id, name, surname, avatar_url')
+        .order('name')
+        .limit(200);
+      setAvailableEmployees((data as any[]) || []);
+    })();
+  };
+
+  const toggleEditAssignee = (id: string) => {
+    setEditAssigneeIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   const handleSaveEdit = async () => {
@@ -302,8 +324,34 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
         })
         .eq('id', task.id);
       if (error) throw error;
+
+      const currentIds = new Set(assignees.map((a) => a.employee_id));
+      const nextIds = editAssigneeIds;
+      const toAdd = [...nextIds].filter((id) => !currentIds.has(id));
+      const toRemove = [...currentIds].filter((id) => !nextIds.has(id));
+
+      if (toRemove.length > 0) {
+        const { error: delError } = await supabase
+          .from('task_assignees')
+          .delete()
+          .eq('task_id', task.id)
+          .in('employee_id', toRemove);
+        if (delError) throw delError;
+      }
+
+      if (toAdd.length > 0) {
+        const rows = toAdd.map((employee_id) => ({
+          task_id: task.id,
+          employee_id,
+        }));
+        const { error: insError } = await supabase
+          .from('task_assignees')
+          .insert(rows);
+        if (insError) throw insError;
+      }
+
       setShowEditModal(false);
-      await fetchTask();
+      await Promise.all([fetchTask(), fetchAssignees()]);
     } catch (error) {
       console.error('Error updating task:', error);
       Alert.alert('Błąd', 'Nie udało się zaktualizować zadania');
@@ -735,6 +783,70 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
                   );
                 })}
               </View>
+
+              <Text style={styles.formLabel}>
+                Przypisani pracownicy ({editAssigneeIds.size})
+              </Text>
+              {availableEmployees.length === 0 ? (
+                <View style={styles.employeeEmpty}>
+                  <ActivityIndicator size="small" color={colors.primary.gold} />
+                </View>
+              ) : (
+                <View style={styles.employeeList}>
+                  {availableEmployees.map((emp) => {
+                    const active = editAssigneeIds.has(emp.id);
+                    const fullName = `${emp.name}${
+                      emp.surname ? ` ${emp.surname}` : ''
+                    }`;
+                    const initials = `${emp.name?.[0] || ''}${
+                      emp.surname?.[0] || ''
+                    }`.toUpperCase();
+                    return (
+                      <TouchableOpacity
+                        key={emp.id}
+                        style={[
+                          styles.employeeRow,
+                          active && styles.employeeRowActive,
+                        ]}
+                        onPress={() => toggleEditAssignee(emp.id)}
+                      >
+                        {emp.avatar_url ? (
+                          <Image
+                            source={{ uri: emp.avatar_url }}
+                            style={styles.employeeAvatar}
+                          />
+                        ) : (
+                          <View
+                            style={[
+                              styles.employeeAvatar,
+                              styles.employeeAvatarPlaceholder,
+                            ]}
+                          >
+                            <Text style={styles.employeeInitials}>{initials}</Text>
+                          </View>
+                        )}
+                        <Text style={styles.employeeName} numberOfLines={1}>
+                          {fullName}
+                        </Text>
+                        <View
+                          style={[
+                            styles.employeeCheck,
+                            active && styles.employeeCheckActive,
+                          ]}
+                        >
+                          {active && (
+                            <Feather
+                              name="check"
+                              size={14}
+                              color={colors.text.primary}
+                            />
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
             </ScrollView>
 
             <View style={styles.modalFooter}>
@@ -1182,5 +1294,60 @@ const styles = StyleSheet.create({
   },
   modalButtonDisabled: {
     opacity: 0.5,
+  },
+  employeeList: {
+    gap: spacing.xs,
+  },
+  employeeEmpty: {
+    padding: spacing.md,
+    alignItems: 'center',
+  },
+  employeeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.sm,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+    backgroundColor: colors.background.primary,
+    gap: spacing.sm,
+  },
+  employeeRowActive: {
+    borderColor: colors.primary.gold,
+    backgroundColor: `${colors.primary.gold}15`,
+  },
+  employeeAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  employeeAvatarPlaceholder: {
+    backgroundColor: colors.background.tertiary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  employeeInitials: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.text.primary,
+  },
+  employeeName: {
+    flex: 1,
+    fontSize: typography.fontSizes.sm,
+    color: colors.text.primary,
+    fontWeight: typography.fontWeights.medium,
+  },
+  employeeCheck: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.5,
+    borderColor: colors.border.default,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  employeeCheckActive: {
+    backgroundColor: colors.primary.gold,
+    borderColor: colors.primary.gold,
   },
 });
