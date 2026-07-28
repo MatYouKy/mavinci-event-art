@@ -145,7 +145,7 @@ export default function MessagesPageClient({
         query: searchQuery,
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
-        filterType,
+        filterType: filterType as any,
       }).unwrap();
 
       setAllMessages(result.messages as unknown as MessageListItem[]);
@@ -189,7 +189,9 @@ export default function MessagesPageClient({
       } else {
         setAllMessages((prev: MessageListItem[]) => {
           const existingIds = new Set(prev.map((m) => m.id));
-          const newMessages = messagesData.messages.filter((m: any) => !existingIds.has(m.id)) as unknown as MessageListItem[];
+          const newMessages = messagesData.messages.filter(
+            (m: any) => !existingIds.has(m.id),
+          ) as unknown as MessageListItem[];
           return [...prev, ...newMessages] as unknown as MessageListItem[];
         });
       }
@@ -633,18 +635,20 @@ export default function MessagesPageClient({
   }
 
   return (
-    <div className="flex min-h-screen bg-[#0f1119]">
-      <MessagesSidebar
-        emailAccounts={emailAccounts}
-        selectedAccount={selectedAccount}
-        setSelectedAccount={setSelectedAccount}
-        filterType={filterType}
-        setFilterType={setFilterType}
-        hasContactFormAccess={hasContactFormAccess}
-        canManage={canManage}
-      />
-      <div className="min-w-0 flex-1 p-3 sm:p-6">
-        <div className="overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl">
+    <div className="flex h-screen overflow-hidden bg-[#0f1119]">
+      <div className="hidden h-full min-h-0 w-64 shrink-0 overflow-hidden lg:block">
+        <MessagesSidebar
+          emailAccounts={emailAccounts}
+          selectedAccount={selectedAccount}
+          setSelectedAccount={setSelectedAccount}
+          filterType={filterType}
+          setFilterType={setFilterType}
+          hasContactFormAccess={hasContactFormAccess}
+          canManage={canManage}
+        />
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col p-3 sm:p-6">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl">
           <div className="border-b border-[#d3bb73]/20 p-3 sm:p-6">
             <div className="mb-4 flex items-center justify-between sm:mb-6">
               <div>
@@ -823,7 +827,7 @@ export default function MessagesPageClient({
             </div>
           </div>
 
-          <div className="max-h-[600px] overflow-y-auto">
+          <div className="max-h-[calc(100%-60px)] min-h-0 flex-1 overflow-y-auto">
             {isLoading ? (
               <div className="p-8 text-center text-[#e5e4e2]/60">
                 <RefreshCw className="mx-auto mb-2 h-8 w-8 animate-spin" />

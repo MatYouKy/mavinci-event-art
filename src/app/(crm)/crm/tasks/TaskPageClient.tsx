@@ -197,7 +197,8 @@ interface Employee {
 export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
-  const { canCreateInModule, canManageModule, canViewModule, currentEmployee } = useCurrentEmployee();
+  const { canCreateInModule, canManageModule, canViewModule, currentEmployee } =
+    useCurrentEmployee();
 
   const canCreateTasks = canCreateInModule('tasks');
   const canManageTasks = canManageModule('tasks');
@@ -542,7 +543,7 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
           board_column: formData.board_column,
           due_date: formData.due_date || null,
           assigned_employees: formData.assigned_employees,
-          created_by: currentEmployee?.id || null,
+          created_by: currentEmployee?.id || undefined,
           owner_id: currentEmployee?.id || null,
           is_private: false,
         }).unwrap();
@@ -770,26 +771,29 @@ export function TasksPageClient({ initialTasks }: { initialTasks: Task[] }) {
   }
 
   return (
-    <div className="flex h-[calc(100vh-80px)] flex-col max-w-[1400px] mx-auto">
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-[1400px] flex-col overflow-hidden">
       <div
         className={`mb-3 flex flex-shrink-0 flex-wrap items-center justify-between gap-3 ${isMobile ? 'px-2' : 'px-2'}`}
       >
         {!isMobile && <h2 className="text-2xl font-light text-[#e5e4e2]">Zadania</h2>}
 
-        {canCreateTasks || canViewTasks && (
-          <button
-            onClick={() => handleOpenModal()}
-            className={`flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 ${isMobile ? 'ml-auto' : ''}`}
-          >
-            <Plus className="h-4 w-4" />
-            {isMobile ? '+' : 'Nowe zadanie'}
-          </button>
-        )}
+        {canCreateTasks ||
+          (canViewTasks && (
+            <button
+              onClick={() => handleOpenModal()}
+              className={`flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 ${isMobile ? 'ml-auto' : ''}`}
+            >
+              <Plus className="h-4 w-4" />
+              {isMobile ? '+' : 'Nowe zadanie'}
+            </button>
+          ))}
       </div>
 
       <div
         ref={scrollContainerRef}
-        className={`flex-1 overflow-y-hidden ${isMobile ? 'overflow-x-hidden pb-2' : 'overflow-x-auto pb-4'}`}
+        className={`min-h-0 flex-1 overflow-y-hidden ${
+          isMobile ? 'overflow-x-hidden pb-2' : 'overflow-x-auto pb-4'
+        }`}
         onTouchStart={isMobile ? handleTouchStart : undefined}
         onTouchMove={isMobile ? handleTouchMove : undefined}
         onTouchEnd={isMobile ? handleTouchEnd : undefined}

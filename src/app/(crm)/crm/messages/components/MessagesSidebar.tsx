@@ -44,11 +44,13 @@ export function MessagesSidebar({
   const userAccounts = emailAccounts.filter(
     (a) => a.id !== 'all' && a.id !== 'contact_form',
   );
+
   const hasContactForm = emailAccounts.some((a) => a.id === 'contact_form');
 
   return (
-    <aside className="hidden w-64 shrink-0 border-r border-[#d3bb73]/20 bg-[#1c1f33] lg:block">
-      <div className="p-4">
+    <aside className="hidden h-full min-h-0 w-64 shrink-0 overflow-hidden border-r border-[#d3bb73]/20 bg-[#1c1f33] lg:flex lg:flex-col">
+
+    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
         <div className="mb-4">
           <button
             onClick={() => {
@@ -64,6 +66,7 @@ export function MessagesSidebar({
             <Mail className="h-4 w-4" />
             Wszystkie wiadomości
           </button>
+
           {(hasContactFormAccess || canManage) && hasContactForm && (
             <button
               onClick={() => {
@@ -89,9 +92,11 @@ export function MessagesSidebar({
                 <div className="mb-2 truncate px-3 text-xs font-semibold uppercase tracking-wide text-[#e5e4e2]/50">
                   {account.display_name || account.account_name || account.email_address}
                 </div>
+
                 <ul className="space-y-0.5">
                   {folderItems.map(({ key, label, icon: Icon }) => {
                     const isActive = selectedAccount === account.id && filterType === key;
+
                     return (
                       <li key={key}>
                         <button
