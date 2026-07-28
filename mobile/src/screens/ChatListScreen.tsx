@@ -9,6 +9,9 @@ import {
   RefreshControl,
   TextInput,
   Image,
+  Animated,
+  PanResponder,
+  Alert,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, typography, borderRadius } from '../theme';
@@ -264,6 +267,64 @@ function ChatListContent({ onConversationPress, onNewChat }: Props) {
     return name.includes(q) || preview.includes(q);
   });
 
+  const deleteConversation = async (conversation: Conversation) => {
+    try {
+      const { data: files, error: listError } = await supabase.storage
+        .from('chat-attachments')
+        .list(conversation.id, { limit: 1000 });
+
+      if (listError) {
+        console.error('[ChatList] Failed to list attachments:', listError);
+      } else if (files && files.length > 0) {
+        const paths = files.map((f) => `${conversation.id}/${f.name}`);
+        const { error: removeError } = await supabase.storage
+          .from('chat-attachments')
+          .remove(paths);
+        if (removeError) {
+          console.error('[ChatList] Failed to remove attachments:', removeError);
+        }
+      }
+
+      const { error: msgError } = await supabase
+        .from('employee_messages')
+        .delete()
+        .eq('conversation_id', conversation.id);
+      if (msgError) throw msgError;
+
+      const { error: partError } = await supabase
+        .from('employee_conversation_participants')
+        .delete()
+        .eq('conversation_id', conversation.id);
+      if (partError) throw partError;
+
+      const { error: convError } = await supabase
+        .from('employee_conversations')
+        .delete()
+        .eq('id', conversation.id);
+      if (convError) throw convError;
+
+      setConversations((prev) => prev.filter((c) => c.id !== conversation.id));
+    } catch (error) {
+      console.error('[ChatList] Failed to delete conversation:', error);
+      Alert.alert('Błąd', 'Nie udało się usunąć konwersacji');
+    }
+  };
+
+  const confirmDeleteConversation = (conversation: Conversation, name: string) => {
+    Alert.alert(
+      'Usuń konwersację',
+      `Czy na pewno chcesz usunąć konwersację "${name}"? Zostaną również usunięte wszystkie załączniki.`,
+      [
+        { text: 'Anuluj', style: 'cancel' },
+        {
+          text: 'Usuń',
+          style: 'destructive',
+          onPress: () => deleteConversation(conversation),
+        },
+      ],
+    );
+  };
+
   const renderConversation = ({ item }: { item: Conversation }) => {
     const name = getConversationName(item);
     const other = getOtherParticipant(item);
@@ -271,65 +332,69 @@ function ChatListContent({ onConversationPress, onNewChat }: Props) {
     const hasUnread = item.unread_count > 0;
 
     return (
-      <TouchableOpacity
-        style={[styles.conversationCard, hasUnread && styles.conversationUnread]}
-        onPress={() => onConversationPress(item)}
-        activeOpacity={0.7}
+      <SwipeableConversationRow
+        onDelete={() => confirmDeleteConversation(item, name)}
       >
-        <View style={styles.avatarContainer}>
-          {item.is_group ? (
-            <View style={styles.groupAvatar}>
-              <Feather name="users" size={22} color={colors.primary.gold} />
-            </View>
-          ) : other?.employee ? (
-            <EmployeeAvatar
-              avatarUrl={other.employee.avatar_url}
-              avatarMetadata={other.employee.avatar_metadata}
-              employeeName={other.employee.nickname || other.employee.name}
-              size={50}
-            />
-          ) : (
-            <View style={styles.groupAvatar}>
-              <Feather name="user" size={22} color={colors.text.tertiary} />
-            </View>
-          )}
-          {/* Online indicator */}
-          {!item.is_group && (
-            <View
-              style={[
-                styles.onlineIndicator,
-                { backgroundColor: online ? '#22C55E' : colors.text.tertiary },
-              ]}
-            />
-          )}
-        </View>
-
-        <View style={styles.conversationInfo}>
-          <View style={styles.conversationHeader}>
-            <Text style={[styles.conversationName, hasUnread && styles.textBold]} numberOfLines={1}>
-              {name}
-            </Text>
-            <Text style={[styles.timeText, hasUnread && styles.timeUnread]}>
-              {formatTime(item.last_message_at)}
-            </Text>
-          </View>
-          <View style={styles.conversationFooter}>
-            <Text
-              style={[styles.previewText, hasUnread && styles.previewUnread]}
-              numberOfLines={1}
-            >
-              {item.last_message_preview || 'Rozpocznij rozmowę...'}
-            </Text>
-            {hasUnread && (
-              <View style={styles.unreadBadge}>
-                <Text style={styles.unreadText}>
-                  {item.unread_count > 99 ? '99+' : item.unread_count}
-                </Text>
+        <TouchableOpacity
+          style={[styles.conversationCard, hasUnread && styles.conversationUnread]}
+          onPress={() => onConversationPress(item)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.avatarContainer}>
+            {item.is_group ? (
+              <View style={styles.groupAvatar}>
+                <Feather name="users" size={22} color={colors.primary.gold} />
+              </View>
+            ) : other?.employee ? (
+              <EmployeeAvatar
+                avatarUrl={other.employee.avatar_url}
+                avatarMetadata={other.employee.avatar_metadata}
+                employeeName={other.employee.nickname || other.employee.name}
+                size={50}
+              />
+            ) : (
+              <View style={styles.groupAvatar}>
+                <Feather name="user" size={22} color={colors.text.tertiary} />
               </View>
             )}
+            {/* Online indicator */}
+            {!item.is_group && (
+              <View
+                style={[
+                  styles.onlineIndicator,
+                  { backgroundColor: online ? '#22C55E' : colors.text.tertiary },
+                ]}
+              />
+            )}
           </View>
-        </View>
-      </TouchableOpacity>
+
+          <View style={styles.conversationInfo}>
+            <View style={styles.conversationHeader}>
+              <Text style={[styles.conversationName, hasUnread && styles.textBold]} numberOfLines={1}>
+                {name}
+              </Text>
+              <Text style={[styles.timeText, hasUnread && styles.timeUnread]}>
+                {formatTime(item.last_message_at)}
+              </Text>
+            </View>
+            <View style={styles.conversationFooter}>
+              <Text
+                style={[styles.previewText, hasUnread && styles.previewUnread]}
+                numberOfLines={1}
+              >
+                {item.last_message_preview || 'Rozpocznij rozmowę...'}
+              </Text>
+              {hasUnread && (
+                <View style={styles.unreadBadge}>
+                  <Text style={styles.unreadText}>
+                    {item.unread_count > 99 ? '99+' : item.unread_count}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+        </TouchableOpacity>
+      </SwipeableConversationRow>
     );
   };
 
@@ -499,6 +564,118 @@ export default function ChatListScreen(props: Props) {
     </PermissionGate>
   );
 }
+
+const DELETE_BUTTON_WIDTH = 88;
+const SWIPE_ACTIVATION_THRESHOLD = 12;
+const SWIPE_OPEN_THRESHOLD = DELETE_BUTTON_WIDTH / 2;
+
+interface SwipeableConversationRowProps {
+  children: React.ReactNode;
+  onDelete: () => void;
+}
+
+function SwipeableConversationRow({ children, onDelete }: SwipeableConversationRowProps) {
+  const translateX = useRef(new Animated.Value(0)).current;
+  const isOpenRef = useRef(false);
+
+  const animateTo = (toValue: number) => {
+    Animated.spring(translateX, {
+      toValue,
+      useNativeDriver: true,
+      bounciness: 0,
+      speed: 20,
+    }).start(() => {
+      isOpenRef.current = toValue !== 0;
+    });
+  };
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_evt, gestureState) => {
+        return (
+          Math.abs(gestureState.dx) > SWIPE_ACTIVATION_THRESHOLD &&
+          Math.abs(gestureState.dx) > Math.abs(gestureState.dy)
+        );
+      },
+      onPanResponderMove: (_evt, gestureState) => {
+        const baseValue = isOpenRef.current ? -DELETE_BUTTON_WIDTH : 0;
+        const next = Math.min(0, Math.max(-DELETE_BUTTON_WIDTH * 1.2, baseValue + gestureState.dx));
+        translateX.setValue(next);
+      },
+      onPanResponderRelease: (_evt, gestureState) => {
+        const baseValue = isOpenRef.current ? -DELETE_BUTTON_WIDTH : 0;
+        const finalX = baseValue + gestureState.dx;
+        if (finalX < -SWIPE_OPEN_THRESHOLD) {
+          animateTo(-DELETE_BUTTON_WIDTH);
+        } else {
+          animateTo(0);
+        }
+      },
+      onPanResponderTerminate: () => {
+        animateTo(isOpenRef.current ? -DELETE_BUTTON_WIDTH : 0);
+      },
+    }),
+  ).current;
+
+  const handleDeletePress = () => {
+    animateTo(0);
+    onDelete();
+  };
+
+  return (
+    <View style={swipeStyles.container}>
+      <View style={swipeStyles.deleteBackground}>
+        <TouchableOpacity
+          style={swipeStyles.deleteButton}
+          onPress={handleDeletePress}
+          activeOpacity={0.8}
+        >
+          <Feather name="trash-2" size={20} color="#FFFFFF" />
+          <Text style={swipeStyles.deleteText}>Usuń</Text>
+        </TouchableOpacity>
+      </View>
+      <Animated.View
+        style={[swipeStyles.rowContent, { transform: [{ translateX }] }]}
+        {...panResponder.panHandlers}
+      >
+        {children}
+      </Animated.View>
+    </View>
+  );
+}
+
+const swipeStyles = StyleSheet.create({
+  container: {
+    position: 'relative',
+    overflow: 'hidden',
+    backgroundColor: '#DC2626',
+  },
+  deleteBackground: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: DELETE_BUTTON_WIDTH,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteButton: {
+    flex: 1,
+    width: DELETE_BUTTON_WIDTH,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 4,
+  },
+  deleteText: {
+    color: '#FFFFFF',
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.semibold,
+    marginTop: 4,
+  },
+  rowContent: {
+    backgroundColor: colors.background.primary,
+  },
+});
 
 const styles = StyleSheet.create({
   container: {
