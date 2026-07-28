@@ -204,11 +204,31 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
                 content: newComment.content,
               };
 
-              setChatItems((prev) =>
-                [...prev, chatItem].sort(
+              setChatItems((prev) => {
+                const alreadyReal = prev.some(
+                  (item) => item.type === 'comment' && item.id === newComment.id,
+                );
+                if (alreadyReal) return prev;
+
+                const optimisticIdx = prev.findIndex(
+                  (item) =>
+                    item.type === 'comment' &&
+                    typeof item.id === 'string' &&
+                    item.id.startsWith('temp-') &&
+                    item.employee_id === newComment.employee_id &&
+                    item.content === newComment.content,
+                );
+
+                if (optimisticIdx !== -1) {
+                  const next = prev.slice();
+                  next[optimisticIdx] = chatItem;
+                  return next;
+                }
+
+                return [...prev, chatItem].sort(
                   (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-                ),
-              );
+                );
+              });
             }
           },
         )
