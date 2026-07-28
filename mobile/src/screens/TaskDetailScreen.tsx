@@ -15,6 +15,9 @@ import {
   Modal,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+import { decode as decodeBase64 } from 'base64-arraybuffer';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { colors, spacing, typography, borderRadius } from '../theme';
@@ -128,6 +131,7 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
   const [editAssigneeIds, setEditAssigneeIds] = useState<Set<string>>(new Set());
   const [openedDropdown, setOpenedDropdown] = useState<string | null>(null);
   const [employeeSearch, setEmployeeSearch] = useState('');
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   useEffect(() => {
     fetchTask();
@@ -264,6 +268,72 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
       setAttachments((data as unknown as Attachment[]) || ([] as any));
     } catch (error) {
       console.error('Error fetching attachments:', error);
+    }
+  };
+
+  const handleTakePhotoAndUpload = async () => {
+    if (!employee || !task) return;
+    try {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert(
+          'Brak dostępu',
+          'Aby zrobić zdjęcie, zezwól aplikacji na dostęp do aparatu w ustawieniach.',
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.8,
+        exif: false,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) return;
+      const asset = result.assets[0];
+
+      setUploadingPhoto(true);
+
+      const base64 = await FileSystem.readAsStringAsync(asset.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      const arrayBuffer = decodeBase64(base64);
+
+      const fileExt = (asset.uri.split('.').pop() || 'jpg').toLowerCase();
+      const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${fileExt}`;
+      const filePath = `task-attachments/${task.id}/${fileName}`;
+      const contentType = asset.mimeType || `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('event-files')
+        .upload(filePath, arrayBuffer, {
+          contentType,
+          upsert: false,
+        });
+      if (uploadError) throw uploadError;
+
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from('event-files').getPublicUrl(filePath);
+
+      const fileSize = asset.fileSize ?? arrayBuffer.byteLength;
+
+      const { error: dbError } = await supabase.from('task_attachments').insert({
+        task_id: task.id,
+        file_name: fileName,
+        file_url: publicUrl,
+        file_type: contentType,
+        file_size: fileSize,
+        uploaded_by: employee.id,
+      });
+      if (dbError) throw dbError;
+
+      await fetchAttachments();
+    } catch (error) {
+      console.error('Error uploading photo:', error);
+      Alert.alert('Błąd', 'Nie udało się wysłać zdjęcia');
+    } finally {
+      setUploadingPhoto(false);
     }
   };
 
@@ -654,6 +724,25 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
 
         {activeTab === 'files' && (
           <View style={styles.filesContainer}>
+            <TouchableOpacity
+              style={[
+                styles.takePhotoButton,
+                uploadingPhoto && styles.takePhotoButtonDisabled,
+              ]}
+              onPress={handleTakePhotoAndUpload}
+              disabled={uploadingPhoto}
+              activeOpacity={0.8}
+            >
+              {uploadingPhoto ? (
+                <ActivityIndicator size="small" color={colors.text.primary} />
+              ) : (
+                <Feather name="camera" size={18} color={colors.text.primary} />
+              )}
+              <Text style={styles.takePhotoButtonText}>
+                {uploadingPhoto ? 'Wysyłanie...' : 'Zrób zdjęcie i dodaj'}
+              </Text>
+            </TouchableOpacity>
+
             {attachments.length === 0 ? (
               <Text style={styles.emptyText}>Brak plików</Text>
             ) : (
@@ -1422,5 +1511,24 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     fontSize: typography.fontSizes.xs,
     color: colors.text.tertiary,
+  },
+  takePhotoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primary.gold,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.md,
+    marginBottom: spacing.md,
+  },
+  takePhotoButtonDisabled: {
+    opacity: 0.6,
+  },
+  takePhotoButtonText: {
+    color: colors.text.primary,
+    fontSize: typography.fontSizes.md,
+    fontWeight: typography.fontWeights.semibold,
   },
 });
