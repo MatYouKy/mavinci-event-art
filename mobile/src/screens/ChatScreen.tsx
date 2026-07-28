@@ -518,6 +518,10 @@ export default function ChatScreen({ conversation, onBack }: Props) {
   const showAttachmentOptions = () => {
     Alert.alert('Dodaj załącznik', 'Wybierz źródło', [
       {
+        text: 'Aparat',
+        onPress: takePhoto,
+      },
+      {
         text: 'Zdjęcie lub wideo',
         onPress: pickImage,
       },
@@ -527,6 +531,53 @@ export default function ChatScreen({ conversation, onBack }: Props) {
       },
       { text: 'Anuluj', style: 'cancel' },
     ]);
+  };
+
+  const takePhoto = async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert(
+        'Brak uprawnień',
+        'Zezwól na dostęp do aparatu w ustawieniach.',
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+      exif: false,
+    });
+
+    if (result.canceled || !result.assets?.[0]) return;
+
+    const asset = result.assets[0];
+    const fileSize = asset.fileSize || 0;
+
+    if (fileSize > MAX_FILE_SIZE) {
+      Alert.alert('Za duży plik', `Maksymalny rozmiar to ${formatFileSize(MAX_FILE_SIZE)}`);
+      return;
+    }
+
+    const mimeType = asset.mimeType || 'image/jpeg';
+    const extensionMap: Record<string, string> = {
+      'image/jpeg': 'jpg',
+      'image/jpg': 'jpg',
+      'image/png': 'png',
+      'image/webp': 'webp',
+      'image/heic': 'heic',
+      'image/heif': 'heif',
+    };
+    const fallbackExtension = extensionMap[mimeType] || 'jpg';
+    const fileName = `photo_${Date.now()}.${fallbackExtension}`;
+
+    setPendingAttachment({
+      uri: asset.uri,
+      name: fileName,
+      size: fileSize,
+      mimeType,
+    });
   };
 
   const pickImage = async () => {
