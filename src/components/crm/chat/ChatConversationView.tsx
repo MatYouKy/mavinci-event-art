@@ -15,6 +15,8 @@ import {
   Trash2,
   CheckCircle2,
   Circle,
+  Check,
+  CheckCheck,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { Conversation, ChatMessage } from './ChatWidget';
@@ -70,6 +72,9 @@ export default function ChatConversationView({
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const [reactionPickerMsgId, setReactionPickerMsgId] = useState<string | null>(null);
+  const [participantsState, setParticipantsState] = useState<
+    Map<string, { last_read_at: string | null; last_delivered_at: string | null }>
+  >(new Map());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -92,7 +97,9 @@ export default function ChatConversationView({
 
   useEffect(() => {
     fetchMessages();
+    fetchParticipantsState();
     markAsRead();
+    markAsDelivered();
 
     const channel = supabase
       .channel(`chat_messages_${conversation.id}`)
@@ -112,7 +119,32 @@ export default function ChatConversationView({
           });
           if (msg.sender_id !== currentEmployeeId) {
             markAsRead();
+            markAsDelivered();
           }
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'employee_conversation_participants',
+          filter: `conversation_id=eq.${conversation.id}`,
+        },
+        (payload) => {
+          const row = payload.new as {
+            employee_id: string;
+            last_read_at: string | null;
+            last_delivered_at: string | null;
+          };
+          setParticipantsState((prev) => {
+            const next = new Map(prev);
+            next.set(row.employee_id, {
+              last_read_at: row.last_read_at,
+              last_delivered_at: row.last_delivered_at,
+            });
+            return next;
+          });
         },
       )
       .subscribe();
@@ -176,6 +208,46 @@ export default function ChatConversationView({
       .update({ last_read_at: new Date().toISOString() })
       .eq('conversation_id', conversation.id)
       .eq('employee_id', currentEmployeeId);
+  };
+
+  const markAsDelivered = async () => {
+    await supabase
+      .from('employee_conversation_participants')
+      .update({ last_delivered_at: new Date().toISOString() })
+      .eq('conversation_id', conversation.id)
+      .eq('employee_id', currentEmployeeId);
+  };
+
+  const fetchParticipantsState = async () => {
+    const { data } = await supabase
+      .from('employee_conversation_participants')
+      .select('employee_id, last_read_at, last_delivered_at')
+      .eq('conversation_id', conversation.id);
+    if (data) {
+      setParticipantsState(
+        new Map(
+          data.map((p: any) => [
+            p.employee_id,
+            { last_read_at: p.last_read_at, last_delivered_at: p.last_delivered_at },
+          ]),
+        ),
+      );
+    }
+  };
+
+  const getReceiptStatus = (msg: ChatMessage): 'sent' | 'delivered' | 'read' => {
+    const created = new Date(msg.created_at).getTime();
+    let delivered = false;
+    for (const [empId, state] of participantsState.entries()) {
+      if (empId === currentEmployeeId) continue;
+      if (state.last_read_at && new Date(state.last_read_at).getTime() >= created) {
+        return 'read';
+      }
+      if (state.last_delivered_at && new Date(state.last_delivered_at).getTime() >= created) {
+        delivered = true;
+      }
+    }
+    return delivered ? 'delivered' : 'sent';
   };
 
   const uploadFile = async (
@@ -608,6 +680,10 @@ export default function ChatConversationView({
             .filter((msg) => !deletedIds.has(msg.id))
             .map((msg, idx, filtered) => {
               const isMine = msg.sender_id === currentEmployeeId;
+              const isLastMine =
+                isMine &&
+                !filtered.slice(idx + 1).some((m) => m.sender_id === currentEmployeeId);
+              const receiptStatus = isLastMine ? getReceiptStatus(msg) : null;
               const showDate =
                 idx === 0 ||
                 new Date(msg.created_at).toDateString() !==
@@ -753,11 +829,24 @@ export default function ChatConversationView({
                       {/* Reactions display */}
                       {renderReactions(msg, isMine)}
 
-                      <p
-                        className={`mt-0.5 text-[9px] text-[#e5e4e2]/30 opacity-0 transition-opacity group-hover:opacity-100 ${isMine ? 'text-right' : 'text-left'}`}
+                      <div
+                        className={`mt-0.5 flex items-center gap-1 text-[9px] ${isMine ? 'justify-end' : 'justify-start'}`}
                       >
-                        {formatMessageTime(msg.created_at)}
-                      </p>
+                        <span
+                          className={`text-[#e5e4e2]/30 transition-opacity ${isLastMine ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                        >
+                          {formatMessageTime(msg.created_at)}
+                        </span>
+                        {isLastMine && receiptStatus === 'sent' && (
+                          <Check className="h-3 w-3 text-[#e5e4e2]/40" />
+                        )}
+                        {isLastMine && receiptStatus === 'delivered' && (
+                          <CheckCheck className="h-3 w-3 text-[#e5e4e2]/40" />
+                        )}
+                        {isLastMine && receiptStatus === 'read' && (
+                          <CheckCheck className="h-3 w-3 text-[#d3bb73]" />
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

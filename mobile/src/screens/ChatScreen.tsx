@@ -98,6 +98,9 @@ export default function ChatScreen({ conversation, onBack }: Props) {
   const [showMenu, setShowMenu] = useState(false);
   const [reactionPickerMsgId, setReactionPickerMsgId] = useState<string | null>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [participantsState, setParticipantsState] = useState<
+    Map<string, { last_read_at: string | null; last_delivered_at: string | null }>
+  >(new Map());
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -167,13 +170,41 @@ export default function ChatScreen({ conversation, onBack }: Props) {
       .eq('employee_id', employee.id);
   }, [employee, conversation.id]);
 
+  const markAsDelivered = useCallback(async () => {
+    if (!employee) return;
+    await supabase
+      .from('employee_conversation_participants')
+      .update({ last_delivered_at: new Date().toISOString() })
+      .eq('conversation_id', conversation.id)
+      .eq('employee_id', employee.id);
+  }, [employee, conversation.id]);
+
+  const fetchParticipantsState = useCallback(async () => {
+    const { data } = await supabase
+      .from('employee_conversation_participants')
+      .select('employee_id, last_read_at, last_delivered_at')
+      .eq('conversation_id', conversation.id);
+    if (data) {
+      setParticipantsState(
+        new Map(
+          data.map((p: any) => [
+            p.employee_id,
+            { last_read_at: p.last_read_at, last_delivered_at: p.last_delivered_at },
+          ]),
+        ),
+      );
+    }
+  }, [conversation.id]);
+
   useEffect(() => {
     setActiveChatConversation(conversation.id);
 
     const load = async () => {
       setIsLoading(true);
       await fetchMessages();
+      await fetchParticipantsState();
       await markAsRead();
+      await markAsDelivered();
       setIsLoading(false);
     };
     load();
@@ -182,7 +213,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
       markAsRead();
       setActiveChatConversation(null);
     };
-  }, [fetchMessages, markAsRead]);
+  }, [fetchMessages, fetchParticipantsState, markAsRead, markAsDelivered]);
 
   useEffect(() => {
     const channel = supabase
@@ -210,7 +241,10 @@ export default function ChatScreen({ conversation, onBack }: Props) {
             }
           }
 
-          markAsRead();
+          if (newMsg.sender_id !== employee?.id) {
+            markAsRead();
+            markAsDelivered();
+          }
           setTimeout(() => {
             flatListRef.current?.scrollToEnd({ animated: true });
           }, 100);
@@ -242,12 +276,36 @@ export default function ChatScreen({ conversation, onBack }: Props) {
           setMessages((prev) => prev.filter((m) => m.id !== deleted.id));
         },
       )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'employee_conversation_participants',
+          filter: `conversation_id=eq.${conversation.id}`,
+        },
+        (payload) => {
+          const row = payload.new as {
+            employee_id: string;
+            last_read_at: string | null;
+            last_delivered_at: string | null;
+          };
+          setParticipantsState((prev) => {
+            const next = new Map(prev);
+            next.set(row.employee_id, {
+              last_read_at: row.last_read_at,
+              last_delivered_at: row.last_delivered_at,
+            });
+            return next;
+          });
+        },
+      )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [conversation.id, markAsRead, senders]);
+  }, [conversation.id, markAsRead, markAsDelivered, senders, employee?.id]);
 
   const uploadAttachment = async (
     attachment: PendingAttachment,
@@ -733,6 +791,28 @@ export default function ChatScreen({ conversation, onBack }: Props) {
 
   const visibleMessages = messages.filter((m) => !deletedIds.has(m.id));
 
+  const lastMineIndex = (() => {
+    for (let i = visibleMessages.length - 1; i >= 0; i--) {
+      if (visibleMessages[i].sender_id === employee?.id) return i;
+    }
+    return -1;
+  })();
+
+  const getReceiptStatus = (msg: Message): 'sent' | 'delivered' | 'read' => {
+    const created = new Date(msg.created_at).getTime();
+    let delivered = false;
+    for (const [empId, state] of participantsState.entries()) {
+      if (empId === employee?.id) continue;
+      if (state.last_read_at && new Date(state.last_read_at).getTime() >= created) {
+        return 'read';
+      }
+      if (state.last_delivered_at && new Date(state.last_delivered_at).getTime() >= created) {
+        delivered = true;
+      }
+    }
+    return delivered ? 'delivered' : 'sent';
+  };
+
   const renderMessage = ({ item, index }: { item: Message; index: number }) => {
     const isMine = item.sender_id === employee?.id;
     const sender = senders.get(item.sender_id);
@@ -740,6 +820,8 @@ export default function ChatScreen({ conversation, onBack }: Props) {
       !isMine &&
       (index === visibleMessages.length - 1 ||
         item.sender_id !== visibleMessages[index + 1]?.sender_id);
+    const isLastMine = isMine && index === lastMineIndex;
+    const receiptStatus = isLastMine ? getReceiptStatus(item) : null;
     const showDateSep =
       index === 0 ||
       new Date(item.created_at).toDateString() !==
@@ -886,11 +968,23 @@ export default function ChatScreen({ conversation, onBack }: Props) {
               </View>
             )}
 
-            {showAvatar && (
-              <Text style={[styles.messageTime, isMine && styles.messageTimeMine]}>
-                {formatMessageTime(item.created_at)}
-                {item.is_edited && ' (edytowane)'}
-              </Text>
+            {(showAvatar || isLastMine) && (
+              <View style={[styles.messageMetaRow, isMine && styles.messageMetaRowMine]}>
+                <Text style={[styles.messageTime, isMine && styles.messageTimeMine]}>
+                  {formatMessageTime(item.created_at)}
+                  {item.is_edited && ' (edytowane)'}
+                </Text>
+                {isLastMine && receiptStatus && (
+                  <Text
+                    style={[
+                      styles.receiptText,
+                      receiptStatus === 'read' && styles.receiptTextRead,
+                    ]}
+                  >
+                    {receiptStatus === 'sent' ? '✓' : '✓✓'}
+                  </Text>
+                )}
+              </View>
             )}
           </View>
         </TouchableOpacity>
@@ -1195,13 +1289,29 @@ const styles = StyleSheet.create({
   messageTime: {
     fontSize: 10,
     color: colors.text.tertiary,
-    marginTop: 3,
-    marginLeft: 12,
   },
   messageTimeMine: {
     textAlign: 'right',
+  },
+  messageMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 3,
+    marginLeft: 12,
+  },
+  messageMetaRowMine: {
+    justifyContent: 'flex-end',
     marginLeft: 0,
     marginRight: 12,
+  },
+  receiptText: {
+    fontSize: 11,
+    color: colors.text.tertiary,
+    marginLeft: 4,
+    fontWeight: '700',
+  },
+  receiptTextRead: {
+    color: colors.primary.gold,
   },
   emptyMessages: {
     flex: 1,
