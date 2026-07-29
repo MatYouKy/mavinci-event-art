@@ -566,8 +566,9 @@ export default function ChatListScreen(props: Props) {
 }
 
 const DELETE_BUTTON_WIDTH = 88;
-const SWIPE_ACTIVATION_THRESHOLD = 12;
+const SWIPE_ACTIVATION_THRESHOLD = 10;
 const SWIPE_OPEN_THRESHOLD = DELETE_BUTTON_WIDTH / 2;
+const SWIPE_VELOCITY_THRESHOLD = 0.3;
 
 interface SwipeableConversationRowProps {
   children: React.ReactNode;
@@ -576,44 +577,90 @@ interface SwipeableConversationRowProps {
 
 function SwipeableConversationRow({ children, onDelete }: SwipeableConversationRowProps) {
   const translateX = useRef(new Animated.Value(0)).current;
+  const currentXRef = useRef(0);
   const isOpenRef = useRef(false);
+  const animationRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  useEffect(() => {
+    const id = translateX.addListener(({ value }) => {
+      currentXRef.current = value;
+    });
+    return () => {
+      translateX.removeListener(id);
+    };
+  }, [translateX]);
 
   const animateTo = (toValue: number) => {
-    Animated.spring(translateX, {
+    if (animationRef.current) {
+      animationRef.current.stop();
+    }
+    isOpenRef.current = toValue !== 0;
+    const anim = Animated.spring(translateX, {
       toValue,
       useNativeDriver: true,
       bounciness: 0,
-      speed: 20,
-    }).start(() => {
-      isOpenRef.current = toValue !== 0;
+      speed: 18,
+      overshootClamping: true,
+    });
+    animationRef.current = anim;
+    anim.start(() => {
+      if (animationRef.current === anim) {
+        animationRef.current = null;
+      }
     });
   };
 
   const panResponder = useRef(
     PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onStartShouldSetPanResponderCapture: () => false,
       onMoveShouldSetPanResponder: (_evt, gestureState) => {
         return (
           Math.abs(gestureState.dx) > SWIPE_ACTIVATION_THRESHOLD &&
-          Math.abs(gestureState.dx) > Math.abs(gestureState.dy)
+          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5
         );
       },
+      onMoveShouldSetPanResponderCapture: (_evt, gestureState) => {
+        return (
+          Math.abs(gestureState.dx) > SWIPE_ACTIVATION_THRESHOLD &&
+          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5
+        );
+      },
+      onPanResponderGrant: () => {
+        if (animationRef.current) {
+          animationRef.current.stop();
+          animationRef.current = null;
+        }
+        translateX.stopAnimation((value) => {
+          currentXRef.current = value;
+          translateX.setOffset(value);
+          translateX.setValue(0);
+        });
+      },
       onPanResponderMove: (_evt, gestureState) => {
-        const baseValue = isOpenRef.current ? -DELETE_BUTTON_WIDTH : 0;
-        const next = Math.min(0, Math.max(-DELETE_BUTTON_WIDTH * 1.2, baseValue + gestureState.dx));
+        const projected = currentXRef.current + gestureState.dx;
+        let next = gestureState.dx;
+        if (projected > 0) {
+          next = -currentXRef.current;
+        } else if (projected < -DELETE_BUTTON_WIDTH) {
+          const overshoot = projected + DELETE_BUTTON_WIDTH;
+          next = -DELETE_BUTTON_WIDTH - currentXRef.current + overshoot * 0.25;
+        }
         translateX.setValue(next);
       },
       onPanResponderRelease: (_evt, gestureState) => {
-        const baseValue = isOpenRef.current ? -DELETE_BUTTON_WIDTH : 0;
-        const finalX = baseValue + gestureState.dx;
-        if (finalX < -SWIPE_OPEN_THRESHOLD) {
-          animateTo(-DELETE_BUTTON_WIDTH);
-        } else {
-          animateTo(0);
-        }
+        translateX.flattenOffset();
+        const finalX = currentXRef.current;
+        const shouldOpen =
+          gestureState.vx < -SWIPE_VELOCITY_THRESHOLD ||
+          (gestureState.vx <= SWIPE_VELOCITY_THRESHOLD && finalX < -SWIPE_OPEN_THRESHOLD);
+        animateTo(shouldOpen ? -DELETE_BUTTON_WIDTH : 0);
       },
       onPanResponderTerminate: () => {
+        translateX.flattenOffset();
         animateTo(isOpenRef.current ? -DELETE_BUTTON_WIDTH : 0);
       },
+      onPanResponderTerminationRequest: () => false,
     }),
   ).current;
 
