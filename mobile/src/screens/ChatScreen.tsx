@@ -44,6 +44,7 @@ interface Message {
   is_edited: boolean;
   created_at: string;
   reactions?: MessageReaction | null;
+  pending?: boolean;
 }
 interface SenderInfo {
   id: string;
@@ -228,7 +229,12 @@ export default function ChatScreen({ conversation, onBack }: Props) {
         },
         async (payload) => {
           const newMsg = payload.new as Message;
-          setMessages((prev) => [...prev, newMsg]);
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === newMsg.id)) {
+              return prev.map((m) => (m.id === newMsg.id ? { ...newMsg, pending: false } : m));
+            }
+            return [...prev, newMsg];
+          });
 
           if (!senders.has(newMsg.sender_id)) {
             const { data } = await supabase
@@ -260,7 +266,9 @@ export default function ChatScreen({ conversation, onBack }: Props) {
         },
         (payload) => {
           const updated = payload.new as Message;
-          setMessages((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+          setMessages((prev) =>
+            prev.map((m) => (m.id === updated.id ? { ...updated, pending: false } : m)),
+          );
         },
       )
       .on(
@@ -431,17 +439,47 @@ export default function ChatScreen({ conversation, onBack }: Props) {
       insertPayload.attachment_size = attachment.size;
     }
 
+    const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const optimisticMsg: Message = {
+      id: tempId,
+      conversation_id: conversation.id,
+      sender_id: employee.id,
+      content: (insertPayload.content as string) || '',
+      message_type: messageType,
+      attachment_url: attachmentUrl,
+      attachment_filename: attachment?.name ?? null,
+      attachment_size: attachment?.size ?? null,
+      is_edited: false,
+      created_at: new Date().toISOString(),
+      pending: true,
+    };
+    setMessages((prev) => [...prev, optimisticMsg]);
+    setTimeout(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    }, 50);
+
     const { data: insertedMsg, error } = await supabase
       .from('employee_messages')
       .insert(insertPayload)
-      .select('id')
+      .select('*')
       .single();
 
     if (error) {
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
       if (text) setInputText(text);
       if (attachment) setPendingAttachment(attachment);
       console.error('Failed to send:', error.message);
+      Alert.alert('Błąd', 'Nie udało się wysłać wiadomości. Spróbuj ponownie.');
     } else if (insertedMsg) {
+      setMessages((prev) => {
+        const withoutTemp = prev.filter((m) => m.id !== tempId);
+        if (withoutTemp.some((m) => m.id === insertedMsg.id)) {
+          return withoutTemp.map((m) =>
+            m.id === insertedMsg.id ? { ...insertedMsg, pending: false } : m,
+          );
+        }
+        return [...withoutTemp, { ...insertedMsg, pending: false }];
+      });
       triggerChatPush(
         conversation.id,
         employee.id,
@@ -798,7 +836,8 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     return -1;
   })();
 
-  const getReceiptStatus = (msg: Message): 'sent' | 'delivered' | 'read' => {
+  const getReceiptStatus = (msg: Message): 'sending' | 'sent' | 'delivered' | 'read' => {
+    if (msg.pending) return 'sending';
     const created = new Date(msg.created_at).getTime();
     let delivered = false;
     for (const [empId, state] of participantsState.entries()) {
@@ -902,6 +941,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
                   styles.bubble,
                   isMine ? styles.bubbleMine : styles.bubbleTheirs,
                   hasAttachment && styles.bubbleWithAttachment,
+                  item.pending && styles.bubblePending,
                 ]}
               >
                 {hasAttachment && renderAttachment(item, isMine)}
@@ -981,7 +1021,13 @@ export default function ChatScreen({ conversation, onBack }: Props) {
                       receiptStatus === 'read' && styles.receiptTextRead,
                     ]}
                   >
-                    {receiptStatus === 'sent' ? '✓' : '✓✓'}
+                    {receiptStatus === 'sending'
+                      ? 'Wysyłanie...'
+                      : receiptStatus === 'sent'
+                        ? '✓ Wysłano'
+                        : receiptStatus === 'delivered'
+                          ? '✓✓ Dostarczono'
+                          : '✓✓ Wyświetlono'}
                   </Text>
                 )}
               </View>
@@ -1277,6 +1323,9 @@ const styles = StyleSheet.create({
   bubbleWithAttachment: {
     paddingHorizontal: 6,
     paddingVertical: 6,
+  },
+  bubblePending: {
+    opacity: 0.65,
   },
   messageText: {
     fontSize: typography.fontSizes.md,
