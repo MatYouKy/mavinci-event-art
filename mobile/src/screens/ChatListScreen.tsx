@@ -199,6 +199,16 @@ function ChatListContent({ onConversationPress, onNewChat }: Props) {
       )
       .on(
         'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'employee_conversation_participants' },
+        (payload) => {
+          const row = payload.new as { employee_id?: string };
+          if (employee && row.employee_id === employee.id) {
+            fetchConversations();
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
         { event: '*', schema: 'public', table: 'employee_online_status' },
         (payload) => {
           if (payload.new) {

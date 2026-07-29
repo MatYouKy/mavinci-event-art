@@ -20,9 +20,27 @@ export function setActiveChatConversation(conversationId: string | null) {
   const wasActive = _activeConversationId;
   _activeConversationId = conversationId;
 
+  if (conversationId) {
+    dismissChatNotificationsForConversation(conversationId);
+  }
+
   if (wasActive && !conversationId && _onConversationLeave) {
     _onConversationLeave();
   }
+}
+
+async function dismissChatNotificationsForConversation(conversationId: string) {
+  try {
+    const presented = await Notifications.getPresentedNotificationsAsync();
+    await Promise.all(
+      presented
+        .filter((n) => {
+          const data = n.request.content.data;
+          return data?.type === 'chat_message' && data?.conversation_id === conversationId;
+        })
+        .map((n) => Notifications.dismissNotificationAsync(n.request.identifier)),
+    );
+  } catch {}
 }
 
 export function getActiveConversationId(): string | null {
@@ -151,6 +169,11 @@ export function useUnreadChatCount(employeeId: string | undefined) {
     fetchUnreadCount();
   }, [fetchUnreadCount]);
 
+  // Keep the app icon badge in sync with the unread count
+  useEffect(() => {
+    Notifications.setBadgeCountAsync(unreadCount).catch(() => {});
+  }, [unreadCount]);
+
   useEffect(() => {
     _onConversationLeave = fetchUnreadCount;
     return () => {
@@ -184,6 +207,18 @@ export function useUnreadChatCount(employeeId: string | undefined) {
           }
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'employee_conversation_participants',
+          filter: `employee_id=eq.${employeeId}`,
+        },
+        () => {
+          fetchUnreadCount();
+        }
+      )
       .subscribe();
 
     channelRef.current = channel;
@@ -193,7 +228,7 @@ export function useUnreadChatCount(employeeId: string | undefined) {
         supabase.removeChannel(channelRef.current);
       }
     };
-  }, [employeeId]);
+  }, [employeeId, fetchUnreadCount]);
 
   // Increment on remote push received
   useEffect(() => {
