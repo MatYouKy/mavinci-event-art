@@ -3,9 +3,19 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
-import { FileText, Plus, CreditCard as Edit, Trash2, Copy, Eye, Search } from 'lucide-react';
+import {
+  FileText,
+  Plus,
+  CreditCard as Edit,
+  Trash2,
+  Copy,
+  Eye,
+  Search,
+  Printer,
+} from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { IContractTemplate } from './type';
+import { printContractDraft } from './printDraft';
 
 export default function ContractTemplatesPage() {
   const router = useRouter();
@@ -114,6 +124,16 @@ export default function ContractTemplatesPage() {
       }
     } catch (err: any) {
       showSnackbar(err.message || 'Błąd podczas duplikowania szablonu', 'error');
+    }
+  };
+
+  const handlePrintDraft = (template: IContractTemplate) => {
+    const opened = printContractDraft(template);
+    if (!opened) {
+      showSnackbar(
+        'Nie udało się otworzyć okna wydruku. Zezwól na wyskakujące okna w przeglądarce.',
+        'error',
+      );
     }
   };
 
@@ -307,6 +327,14 @@ export default function ContractTemplatesPage() {
                           />
                         </svg>
                       )}
+                    </button>
+                    <button
+                      onClick={() => handlePrintDraft(template)}
+                      className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-3 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
+                      title="Drukuj wersję roboczą do wysłania klientowi"
+                    >
+                      <Printer className="h-4 w-4" />
+                      Drukuj draft
                     </button>
                     <button
                       onClick={() => router.push(`/crm/contract-templates/${template.id}`)}
