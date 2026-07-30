@@ -156,54 +156,74 @@ const buildPage = (
     </div>`;
 };
 
-const renderContainer = (template: IContractTemplate): string => {
+// Buduje wyłącznie zawartość stron (bez opakowania .contract-a4-container),
+// tak jak innerHTML kontenera w zakładce Umowa. Backend owija je w kontener.
+const buildPagesHtml = (template: IContractTemplate): string => {
   const settings = getTemplateSettings(template.page_settings);
   const pages: string[] | undefined = template.page_settings?.pages;
 
-  let pagesHtml: string;
   if (pages && pages.length > 0) {
-    pagesHtml = pages
+    return pages
       .map((pageContent, index) => buildPage(pageContent, index, pages.length, settings))
       .join('');
-  } else {
-    const body = template.content_html
-      ? template.content_html
-      : `<pre style="white-space:pre-wrap;word-wrap:break-word;margin:0">${escapeHtml(template.content || '')}</pre>`;
-    pagesHtml = buildPage(body, 0, 1, settings);
   }
 
-  return `<div class="contract-a4-container">${pagesHtml}</div>`;
+  const body = template.content_html
+    ? template.content_html
+    : `<pre style="white-space:pre-wrap;word-wrap:break-word;margin:0">${escapeHtml(template.content || '')}</pre>`;
+  return buildPage(body, 0, 1, settings);
 };
 
-export function printContractDraft(template: IContractTemplate): boolean {
-  const printWindow = window.open('', '_blank');
-  if (!printWindow) return false;
-
-  const baseUrl = window.location.origin;
-  const html = `<!doctype html>
-<html lang="pl">
-<head>
-  <meta charset="utf-8" />
-  <base href="${baseUrl}/" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${escapeHtml(template.name)} - wersja robocza</title>
-  <style>${getContractCssForPrint()}${DRAFT_EXTRA_STYLES}</style>
-</head>
-<body>
-  ${renderContainer(template)}
-  <script>
-    window.onload = function () {
-      setTimeout(function () { window.print(); }, 400);
-    };
-  </script>
-</body>
-</html>`;
-
-  printWindow.document.open();
-  printWindow.document.write(html);
-  printWindow.document.close();
-  return true;
+interface DraftResult {
+  ok: boolean;
+  error?: 'popup' | string;
 }
 
+// Generuje draft PDF przez ten sam silnik Chromium co zakładka Umowa w evencie,
+// dzięki czemu wygląd jest identyczny. Otwiera gotowy PDF w nowej karcie.
+export async function printContractDraft(template: IContractTemplate): Promise<DraftResult> {
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) return { ok: false, error: 'popup' };
 
-export { printContractDraft }
+  printWindow.document.write(
+    '<html><head><meta charset="utf-8"><title>Generowanie wersji roboczej…</title></head>' +
+      '<body style="font-family:Arial,sans-serif;padding:40px;color:#333">' +
+      'Generowanie wersji roboczej PDF… Proszę czekać.</body></html>',
+  );
+  printWindow.document.close();
+
+  try {
+    const pagesHtml = buildPagesHtml(template);
+    const cssText = getContractCssForPrint() + DRAFT_EXTRA_STYLES;
+
+    const res = await fetch('/bridge/contract-templates/draft-pdf', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        pagesHtml,
+        cssText,
+        title: `${template.name} - wersja robocza`,
+      }),
+    });
+
+    if (!res.ok) {
+      let msg = 'Błąd generowania PDF';
+      try {
+        const j = await res.json();
+        msg = j?.error || msg;
+      } catch {
+        // brak treści JSON
+      }
+      printWindow.close();
+      return { ok: false, error: msg };
+    }
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    printWindow.location.href = url;
+    return { ok: true };
+  } catch (e: any) {
+    printWindow.close();
+    return { ok: false, error: e?.message || 'Błąd generowania PDF' };
+  }
+}
