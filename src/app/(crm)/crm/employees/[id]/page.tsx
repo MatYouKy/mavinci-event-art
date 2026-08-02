@@ -119,35 +119,75 @@ export default function EmployeeDetailPage() {
   } = useCurrentEmployee();
 
   useEffect(() => {
-    if (employeeId && currentEmployee) {
-      fetchEmployeeDetails();
-      fetchDocuments();
-      fetchTasks();
-      fetchEvents();
-      fetchEmailAccounts();
-      fetchAccessLevels();
-    }
+    if (!employeeId || !currentEmployee) return;
+
+    const loadEmployee = async () => {
+      const isActiveEmployee = await fetchEmployeeDetails();
+
+      if (!isActiveEmployee) return;
+
+      await Promise.all([
+        fetchDocuments(),
+        fetchTasks(),
+        fetchEvents(),
+        fetchEmailAccounts(),
+        fetchAccessLevels(),
+      ]);
+    };
+
+    void loadEmployee();
   }, [employeeId, currentEmployee]);
 
   const canEdit = canManageModule('employees');
   const isOwnProfile = currentEmployee?.id === employeeId;
   const canViewOwnProfile = isOwnProfile || canEdit || isAdmin;
 
-  const fetchEmployeeDetails = async () => {
+  const fetchEmployeeDetails = async (): Promise<boolean> => {
     try {
       setLoading(true);
+  
       const { data, error } = await supabase
         .from('employees')
         .select('*')
         .eq('id', employeeId)
-        .single();
-
+        .maybeSingle();
+  
       if (error) throw error;
-
-      setEmployee(data);
-      setEditedData(data);
-    } catch (err) {
+  
+      if (!data) {
+        showSnackbar(
+          'Nie znaleziono pracownika.',
+          'error',
+        );
+  
+        router.replace('/crm/employees');
+        return false;
+      }
+  
+      if (!data.is_active) {
+        showSnackbar(
+          `${data.name} ${data.surname} nie jest już aktywnym pracownikiem.`,
+          'error',
+        );
+  
+        router.replace('/crm/employees');
+        return false;
+      }
+  
+      setEmployee(data as IEmployee);
+      setEditedData(data as Partial<IEmployee>);
+  
+      return true;
+    } catch (err: unknown) {
       console.error('Error fetching employee:', err);
+  
+      showSnackbar(
+        'Nie udało się pobrać danych pracownika.',
+        'error',
+      );
+  
+      router.replace('/crm/employees');
+      return false;
     } finally {
       setLoading(false);
     }
@@ -242,6 +282,7 @@ export default function EmployeeDetailPage() {
         .from('employees')
         .update(dataToUpdate)
         .eq('id', employeeId)
+        .eq('is_active', true)
         .select('*')
         .single();
 
@@ -265,13 +306,13 @@ export default function EmployeeDetailPage() {
     if (!employee || isDeleting) return;
 
     if (canEdit !== true) {
-      showSnackbar?.('Nie masz uprawnień do usuwania pracowników.', 'error');
+      showSnackbar?.('Nie masz uprawnień do archiwizowania pracowników.', 'error');
       return;
     }
 
     const confirmed = await showConfirm(
-      `Czy na pewno chcesz TRWALE usunąć pracownika:\n\n${employee.name} ${employee.surname}?\n\nTa operacja jest nieodwracalna.`,
-      'Usuń pracownika',
+      `Czy na pewno chcesz zarchiwizować pracownika:\n\n${employee.name} ${employee.surname}?\n\nPracownik zniknie z aktywnych list, ale pozostanie w historii kosztów, zadań i dokumentów.`,
+      'Archiwizuj pracownika',
     );
 
     if (!confirmed) return;
@@ -279,21 +320,26 @@ export default function EmployeeDetailPage() {
     try {
       setIsDeleting(true);
 
-      const { error } = await supabase.rpc('delete_employee_hard', {
-        p_employee_id: employeeId,
+      const { error } = await supabase.rpc('archive_employee', {
+        p_employee_id: employee.id,
       });
 
       if (error) {
-        console.error('RPC delete_employee_hard error:', error);
+        console.error('RPC archive_employee error:', error);
         throw error;
       }
 
+      showSnackbar?.('Pracownik został zarchiwizowany.', 'success');
+
       router.push('/crm/employees');
-    } catch (err: any) {
-      console.error('Error deleting employee:', err);
+    } catch (err: unknown) {
+      console.error('Error archiving employee:', err);
 
-      alert(err?.message || 'Nie udało się usunąć pracownika. Sprawdź powiązania w bazie danych.');
+      const message =
+        err instanceof Error ? err.message : 'Nie udało się zarchiwizować pracownika.';
 
+      showSnackbar?.(message, 'error');
+    } finally {
       setIsDeleting(false);
     }
   };
@@ -407,6 +453,7 @@ export default function EmployeeDetailPage() {
         .from('employees')
         .update(updateData)
         .eq('id', employeeId)
+        .eq('is_active', true)
         .select('*')
         .single();
       if (error) throw error;
@@ -433,7 +480,8 @@ export default function EmployeeDetailPage() {
       const { error } = await supabase
         .from('employees')
         .update({ avatar_metadata: metadata })
-        .eq('id', employeeId);
+        .eq('id', employeeId)
+        .eq('is_active', true);
 
       if (error) throw error;
 

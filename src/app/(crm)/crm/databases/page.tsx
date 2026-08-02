@@ -103,6 +103,7 @@ export default function DatabasesPage() {
       const { data: employeesData, error: employeesError } = await supabase
         .from('employees')
         .select('id, auth_user_id, name, surname, avatar_url, avatar_metadata')
+        .eq('is_active', true)
         .neq('role', 'admin')
         .order('name');
 
@@ -161,7 +162,7 @@ export default function DatabasesPage() {
 
       // odfiltruj z listy wyboru tych, którzy już mają share
       const sharedEmployeeIds = new Set(mappedShares.map((s) => s.employee_id));
-      const availableEmployees = mappedEmployees.filter((e) => !sharedEmployeeIds.has(e.id));
+      const availableEmployees = mappedEmployees.filter((e) => !sharedEmployeeIds.has(e.id || ''));
 
       setEmployees(availableEmployees);
       setShares(mappedShares);
@@ -479,7 +480,7 @@ export default function DatabasesPage() {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleRevokeShare(share.database_id, share.employee_id);
+                                  handleRevokeShare(share?.database_id || '', share?.employee_id || '',);
                                 }}
                                 className="rounded-lg px-3 py-1.5 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/10"
                               >
@@ -497,8 +498,8 @@ export default function DatabasesPage() {
                     <div className="max-h-64 space-y-2 overflow-y-auto">
                       {employees.map((emp) => (
                         <button
-                          key={emp.id}
-                          onClick={() => handleShareDatabase(emp.id)}
+                          key={emp?.id || ''}
+                          onClick={() => handleShareDatabase(emp?.id || '')}
                           className="flex w-full items-center gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-3 text-left transition-colors hover:border-[#d3bb73]/30 hover:bg-[#0f1119]/80"
                         >
                           {emp.avatar_url ? (

@@ -103,29 +103,33 @@ export default function EmployeesPageClient({
   };
 
   const handleDeleteEmployee = async (employee: IEmployee) => {
-    if (!isAdmin) return;
-    if (deletingEmployeeId) return;
-
+    if (!isAdmin || deletingEmployeeId) return;
+  
     const confirmed = await showConfirm(
-      `Czy na pewno chcesz TRWALE usunąć pracownika:\n\n${employee.name} ${employee.surname}?\n\nTa operacja jest nieodwracalna.`,
-      'Usuń pracownika',
+      `Czy na pewno chcesz zarchiwizować pracownika:\n\n${employee.name} ${employee.surname}?\n\nPracownik zniknie z list wyboru, ale pozostanie w historii kosztów, zadań i dokumentów.`,
+      'Archiwizuj pracownika',
     );
-
+  
     if (!confirmed) return;
-
+  
     try {
       setDeletingEmployeeId(employee.id);
-
-      const { error } = await supabase.rpc('delete_employee_hard', {
+  
+      const { error } = await supabase.rpc('archive_employee', {
         p_employee_id: employee.id,
       });
-
+  
       if (error) throw error;
-
+  
       router.refresh();
-    } catch (err: any) {
-      console.error('Error deleting employee:', err);
-      alert(err?.message || 'Nie udało się usunąć pracownika.');
+    } catch (err: unknown) {
+      console.error('Error archiving employee:', err);
+  
+      alert(
+        err instanceof Error
+          ? err.message
+          : 'Nie udało się zarchiwizować pracownika.',
+      );
     } finally {
       setDeletingEmployeeId(null);
     }

@@ -126,6 +126,7 @@ export default function NewMeetingModal({
     const { data, error } = await supabase
       .from('employees')
       .select('id, name, surname')
+      .eq('is_active', true)
       .order('name');
 
     if (error) {

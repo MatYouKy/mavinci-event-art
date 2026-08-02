@@ -152,6 +152,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
       const { data: sendersData } = await supabase
         .from('employees')
         .select('id, name, surname, nickname, avatar_url, avatar_metadata')
+        .eq('is_active', true)
         .in('id', senderIds);
 
       if (sendersData) {
@@ -241,6 +242,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
               .from('employees')
               .select('id, name, surname, nickname, avatar_url, avatar_metadata')
               .eq('id', newMsg.sender_id)
+              .eq('is_active', true)
               .maybeSingle();
             if (data) {
               setSenders((prev) => new Map(prev).set(data.id, data));

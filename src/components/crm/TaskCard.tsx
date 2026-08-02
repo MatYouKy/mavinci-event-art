@@ -79,7 +79,7 @@ const TaskCard = memo(function TaskCard({
     employees: a.employees,
   })) ||
   task.assignees?.map((a) => ({
-    employee_id: a.employee.id,
+    employee_id: a.employee?.id || '',
     employees: a.employee,
   })) ||
   [];

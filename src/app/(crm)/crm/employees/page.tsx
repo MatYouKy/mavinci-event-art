@@ -7,7 +7,7 @@ import { getCurrentEmployeeServerCached } from '@/lib/CRM/auth/getCurrentEmploye
 export const revalidate = 0; // CRM zwykle bez ISR
 
 export default async function EmployeesPage() {
-  const employee = await getCurrentEmployeeServerCached();
+
   const preferences = await getEmployeePreferences();
   const employees = await getEmployeesCached();
   return <EmployeesPageClient employees={employees} viewMode={preferences.employees?.viewMode} />;

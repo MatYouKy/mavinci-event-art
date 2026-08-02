@@ -14,6 +14,7 @@ export async function getEmployees(): Promise<IEmployee[]> {
   const { data, error } = await supabase
     .from('employees')
     .select('*')
+    .eq('is_active', true)
     .order('order_index', { ascending: true })
     .order('created_at', { ascending: false });
 

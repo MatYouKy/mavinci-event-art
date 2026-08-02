@@ -305,6 +305,7 @@ export default function OrganizationDetailPage() {
         'permissions, role, access_level_id, contact_tabs, organization_tabs, access_levels(contact_tabs, organization_tabs)',
       )
       .eq('id', session.user.id)
+      .eq('is_active', true)
       .single();
 
     const userIsAdmin =
@@ -329,7 +330,7 @@ export default function OrganizationDetailPage() {
     if (employee?.contact_tabs && employee.contact_tabs.length > 0) {
       contactTabs = employee.contact_tabs;
     } else if ((employee?.access_levels as any)?.contact_tabs) {
-      contactTabs = (employee.access_levels as any).contact_tabs;
+      contactTabs = (employee?.access_levels as any).contact_tabs;
     }
     setAllowedContactTabs(contactTabs);
 
@@ -337,7 +338,7 @@ export default function OrganizationDetailPage() {
     if (employee?.organization_tabs && employee.organization_tabs.length > 0) {
       organizationTabs = employee.organization_tabs;
     } else if ((employee?.access_levels as any)?.organization_tabs) {
-      organizationTabs = (employee.access_levels as any).organization_tabs;
+      organizationTabs = (employee?.access_levels as any).organization_tabs;
     }
     setAllowedOrganizationTabs(organizationTabs);
   };

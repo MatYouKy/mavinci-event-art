@@ -308,7 +308,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
                 ? {
                     ...task,
                     assignees: (task.assignees || []).filter(
-                      (a) => a.employee.id !== deletedAssignee.employee_id,
+                      (a) => a?.employee?.id !== deletedAssignee.employee_id,
                     ),
                   }
                 : task,
@@ -410,6 +410,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
       const { data, error } = await supabase
         .from('employees')
         .select('id, name, surname, avatar_url')
+        .eq('is_active', true)
         .order('name');
 
       if (error) throw error;
@@ -469,7 +470,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
         title: task.title,
         description: task.description || '',
         priority: task.priority,
-        board_column: task.board_column,
+        board_column: task.board_column || '',
         due_date: task.due_date || '',
       });
     } else {
@@ -704,11 +705,11 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
     if (distanceFromLeft < scrollThreshold && container.scrollLeft > 0) {
       autoScrollIntervalRef.current = setInterval(() => {
         container.scrollLeft -= scrollSpeed;
-      }, 16);
+      }, 16) as unknown as NodeJS.Timeout;
     } else if (distanceFromRight < scrollThreshold) {
       autoScrollIntervalRef.current = setInterval(() => {
         container.scrollLeft += scrollSpeed;
-      }, 16);
+      }, 16) as unknown as NodeJS.Timeout;
     }
   };
 
@@ -747,7 +748,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
     }
 
     const oldColumn = draggedTask.board_column;
-    await handleMoveTask(draggedTask.id, columnId, oldColumn);
+    await handleMoveTask(draggedTask?.id || '', columnId, oldColumn || '');
     setDraggedTask(null);
   };
 
@@ -765,7 +766,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
     if (!assigningTask) return;
 
     try {
-      const isAssigned = assigningTask.assignees?.some((a) => a.employee.id === employeeId);
+      const isAssigned = assigningTask?.assignees?.some((a) => a?.employee?.id === employeeId);
 
       if (isAssigned) {
         const { error } = await supabase
@@ -790,6 +791,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
           .select('id')
           .eq('event_id', eventId)
           .eq('employee_id', employeeId)
+            
           .maybeSingle();
 
         if (!existing) {
@@ -1108,7 +1110,7 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
             <div className="max-h-96 space-y-2 overflow-y-auto">
               {availableEmployees.map((employee) => {
                 const isAssigned = assigningTask.assignees?.some(
-                  (a) => a.employee.id === employee.id,
+                  (a) => a?.employee?.id === employee.id,
                 );
 
                 return (

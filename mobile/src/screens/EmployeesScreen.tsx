@@ -37,6 +37,7 @@ function EmployeesContent() {
     const { data, error } = await supabase
       .from('employees')
       .select('*')
+      .eq('is_active', true)
       .order('name', { ascending: true });
 
     if (!error && data) {

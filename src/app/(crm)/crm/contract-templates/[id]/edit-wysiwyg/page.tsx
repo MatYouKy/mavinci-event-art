@@ -24,6 +24,8 @@ import {
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import Image from 'next/image';
 
+const DEFAULT_LOGO = '/erulers_logo_vect.png';
+
 export default function EditTemplateWYSIWYGPage() {
   const params = useParams();
   const router = useRouter();
@@ -66,7 +68,7 @@ export default function EditTemplateWYSIWYGPage() {
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [editingName, setEditingName] = useState(false);
   const [tempName, setTempName] = useState('');
-  const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const updateTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     fetchTemplate();
@@ -89,6 +91,14 @@ export default function EditTemplateWYSIWYGPage() {
       editorRef.current.style.lineHeight = String(lineHeight);
     }
   }, [lineHeight]);
+
+  useEffect(() => {
+    return () => {
+      if (updateTimeoutRef.current !== null) {
+        window.clearTimeout(updateTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -142,11 +152,14 @@ export default function EditTemplateWYSIWYGPage() {
         if (!initialHtml && data.content) {
           initialHtml = data.content
             .split('\n')
-            .map((line) => `<pre>${line || '\n'}</pre>`)
+            .map((line: string) => `<pre>${line || '\n'}</pre>`)
             .join('');
         }
 
         setContentHtml(initialHtml);
+        const settings = data.page_settings || {};
+
+        setSelectedLogo(settings.selectedLogo || DEFAULT_LOGO);
 
         if (data.page_settings) {
           if (data.page_settings.logoScale) setLogoScale(data.page_settings.logoScale);
@@ -156,7 +169,7 @@ export default function EditTemplateWYSIWYGPage() {
             setLogoPositionY(data.page_settings.logoPositionY);
           if (data.page_settings.lineHeight) setLineHeight(data.page_settings.lineHeight);
           if (data.page_settings.selectedFont) setSelectedFont(data.page_settings.selectedFont);
-          if (data.page_settings.selectedLogo) setSelectedLogo(data.page_settings.selectedLogo);
+
           if (data.page_settings.selectedFooter)
             setSelectedFooter(data.page_settings.selectedFooter);
           if (data.page_settings.selectedFooterTemplateId)
@@ -327,10 +340,6 @@ export default function EditTemplateWYSIWYGPage() {
       });
 
       setBrandLogos(result);
-
-      if (result.length > 0 && selectedLogo === '/erulers_logo_vect.png') {
-        setSelectedLogo(result[0].url);
-      }
     } catch (err: any) {
       console.error('Error fetching brand logos:', err);
     }
@@ -692,13 +701,14 @@ export default function EditTemplateWYSIWYGPage() {
     const newPages = [...pages];
     newPages[pageIndex] = content;
     setPages(newPages);
-
-    if (updateTimeoutRef.current) {
-      clearTimeout(updateTimeoutRef.current);
+  
+    if (updateTimeoutRef.current !== null) {
+      window.clearTimeout(updateTimeoutRef.current);
     }
-
-    updateTimeoutRef.current = setTimeout(() => {
+  
+    updateTimeoutRef.current = window.setTimeout(() => {
       addToHistory(newPages);
+      updateTimeoutRef.current = null;
     }, 500);
   };
 
@@ -1522,16 +1532,16 @@ export default function EditTemplateWYSIWYGPage() {
                 }}
                 onKeyDown={(e) => {
                   if (e.key !== 'Tab') return;
-                
+
                   const selection = window.getSelection();
                   const node = selection?.focusNode;
                   const el =
                     node?.nodeType === Node.TEXT_NODE
                       ? node.parentElement
                       : (node as HTMLElement | null);
-                
+
                   const li = el?.closest?.('li');
-                
+
                   if (li) {
                     e.preventDefault();
                     document.execCommand(e.shiftKey ? 'outdent' : 'indent');

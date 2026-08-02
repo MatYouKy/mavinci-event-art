@@ -8,7 +8,7 @@ import { IEmployee } from '@/app/(crm)/crm/employees/type';
 
 export interface Assignee {
   employee_id: string;
-  employees: IEmployee;
+  employees: IEmployee | null;
 }
 
 interface Props {
@@ -35,7 +35,7 @@ export default function TaskAssigneeAvatars({ assignees, maxVisible = 5 }: Props
     const avatar = (
       <div className="cursor-pointer" onClick={() => handleProfileClick(assignee.employee_id)}>
         <EmployeeAvatar
-          employeeId={assignee.employee_id}
+          employeeId={assignee?.employee_id || ''}
           avatarUrl={employees?.avatar_url}
           avatarMetadata={employees?.avatar_metadata ?? null}
           employeeName={fullName}
@@ -57,7 +57,7 @@ export default function TaskAssigneeAvatars({ assignees, maxVisible = 5 }: Props
           >
             <EmployeeAvatar
               employee={employees as IEmployee}
-              employeeId={assignee.employee_id}
+              employeeId={assignee?.employee_id || ''}
               avatarUrl={employees?.avatar_url}
               avatarMetadata={employees?.avatar_metadata ?? null}
               employeeName={fullName}

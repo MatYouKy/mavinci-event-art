@@ -118,6 +118,7 @@ export default function NewInquiryModal({
         supabase
           .from('employees')
           .select('id, auth_user_id, name, surname, avatar_url')
+          .eq('is_active', true)
           .order('name')
           .limit(100),
       ]);

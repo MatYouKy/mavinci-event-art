@@ -50,12 +50,52 @@ const escapeHtml = (value: string): string =>
   value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 // Zamienia placeholdery {{...}} na wykropkowane miejsca do uzupełnienia.
-const replacePlaceholdersWithBlanks = (html: string): string =>
-  html.replace(/\{\{\s*[^}]+\s*\}\}/g, '<span class="draft-blank"></span>');
+const createDraftList = (itemsCount = 6): string => {
+  const items = Array.from(
+    { length: itemsCount },
+    () => '<li><span class="draft-list-space">&nbsp;</span></li>',
+  ).join('');
 
-const WATERMARK_HTML = '<div class="draft-watermark">WERSJA ROBOCZA</div>';
+  return `<ul class="draft-placeholder-list">${items}</ul>`;
+};
+
+const replacePlaceholdersWithBlanks = (html: string): string =>
+  html.replace(
+    /\{\{\s*([^}]+?)\s*\}\}/g,
+    (_match, placeholderName: string) => {
+      const name = placeholderName.trim();
+
+      const isListPlaceholder =
+        /(?:_list|_items|_scope|_table)$/i.test(name);
+
+      if (isListPlaceholder) {
+        return createDraftList(3);
+      }
+
+      return '<span class="draft-blank"></span>';
+    },
+  );
+
+const WATERMARK_HTML = `
+  <div class="draft-watermark-layer" aria-hidden="true">
+    <div class="draft-watermark">WERSJA ROBOCZA</div>
+  </div>
+`;
 
 const DRAFT_EXTRA_STYLES = `
+// .draft-watermark-layer {
+//   position: absolute;
+//   inset: 0;
+//   overflow: hidden;
+//   contain: paint;
+//   pointer-events: none;
+//   z-index: 0;
+// }
+  .draft-watermark-layer {
+  overflow: hidden;
+  contain: paint;
+}
+
 .draft-watermark {
   position: absolute;
   top: 50%;
@@ -66,23 +106,61 @@ const DRAFT_EXTRA_STYLES = `
   letter-spacing: 8px;
   color: rgba(211, 187, 115, 0.18);
   white-space: nowrap;
-  pointer-events: none;
-  z-index: 0;
 }
+
+
+
 .contract-header-logo,
-.contract-current-date,
 .contract-content,
-.contract-footer,
-.contract-page-counter {
+.contract-footer {
   position: relative;
   z-index: 1;
 }
+
+.contract-current-date {
+  z-index: 2;
+}
+
+.contract-page-counter {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 2mm;
+  text-align: center;
+  font-size: 10pt;
+  color: #666;
+  z-index: 2;
+}
+
 .draft-blank {
   display: inline-block;
   min-width: 140px;
-  border-bottom: 1px dotted #333;
   height: 1em;
+  border-bottom: 1px dotted #333;
   vertical-align: baseline;
+}
+  @media print {
+  .contract-a4-container[data-pdf-root='1'] .contract-a4-page {
+    padding-top: 17mm !important;
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
+}
+  .draft-placeholder-list {
+  margin: 4px 0 8px;
+  padding-left: 24px;
+  list-style-type: disc;
+}
+
+.draft-placeholder-list li {
+  display: list-item !important;
+  min-height: 1.4em;
+  margin: 2px 0;
+}
+
+.draft-list-space {
+  display: inline-block;
+  min-width: 1px;
 }
 `;
 
@@ -146,7 +224,7 @@ const buildPage = (
 
   return `
     <div class="contract-a4-page">
-      ${WATERMARK_HTML}
+      ${WATERMARK_HTML} 
       ${header}
       <div class="contract-content" style="line-height:${settings.lineHeight};font-family:${settings.selectedFont};min-height:${minHeight}">
         ${replacePlaceholdersWithBlanks(pageContent)}

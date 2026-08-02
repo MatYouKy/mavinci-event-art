@@ -46,6 +46,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .from('employees')
         .select('*')
         .eq('email', email)
+        .eq('is_active', true)
         .maybeSingle();
 
       if (data && !error) {

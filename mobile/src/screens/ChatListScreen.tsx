@@ -123,6 +123,7 @@ function ChatListContent({ onConversationPress, onNewChat }: Props) {
     const { data: employeesData } = await supabase
       .from('employees')
       .select('id, name, surname, nickname, avatar_url, avatar_metadata')
+      .eq('is_active', true)
       .in('id', participantEmployeeIds);
 
     const employeeMap = new Map((employeesData || []).map((e) => [e.id, e]));
@@ -518,6 +519,7 @@ function OnlineStrip({
       const { data } = await supabase
         .from('employees')
         .select('id, name, surname, nickname, avatar_url, avatar_metadata')
+        .eq('is_active', true)
         .in('id', onlineIds);
 
       setOnlineEmployees(data || []);

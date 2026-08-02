@@ -20,7 +20,23 @@ export async function sendAssignmentNotification({
   relatedEntityId,
 }: NotifyAssignmentParams): Promise<void> {
   try {
-    const { data: notification, error: notifError } = await supabase
+    const { data: recipientEmployee, error: employeeError } = await supabase
+      .from('employees')
+      .select('auth_user_id')
+      .eq('id', recipientEmployeeId)
+      .maybeSingle();
+
+    if (employeeError) {
+      console.error(employeeError);
+      return;
+    }
+
+    if (!recipientEmployee?.auth_user_id) {
+      console.error('Brak auth_user_id dla pracownika');
+      return;
+    }
+
+    const { data: notification, error: notificationError } = await supabase
       .from('notifications')
       .insert({
         title,
@@ -28,19 +44,30 @@ export async function sendAssignmentNotification({
         category,
         related_entity_type: relatedEntityType,
         related_entity_id: relatedEntityId,
-        created_by_name: senderName,
       })
       .select('id')
       .single();
 
-    if (notifError || !notification) return;
+    if (notificationError) {
+      console.error(notificationError);
+      return;
+    }
 
-    await supabase.from('notification_recipients').insert({
-      notification_id: notification.id,
-      user_id: recipientEmployeeId,
-      is_read: false,
-    });
-  } catch {
-    // Silently fail - notification is non-critical
+    const { error: recipientError } = await supabase
+      .from('notification_recipients')
+      .insert({
+        notification_id: notification.id,
+        user_id: recipientEmployee.auth_user_id,
+        is_read: false,
+      });
+
+    if (recipientError) {
+      console.error(recipientError);
+      return;
+    }
+
+    console.log('Powiadomienie utworzone poprawnie');
+  } catch (err) {
+    console.error(err);
   }
 }

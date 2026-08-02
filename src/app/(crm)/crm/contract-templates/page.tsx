@@ -13,10 +13,13 @@ import {
   Search,
   Printer,
   Loader2,
+  CheckCircle2,
+  XCircle,
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { IContractTemplate } from './type';
 import { printContractDraft } from './printDraft';
+import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
 
 export default function ContractTemplatesPage() {
   const router = useRouter();
@@ -194,9 +197,14 @@ export default function ContractTemplatesPage() {
       <div className="mx-auto max-w-7xl">
         <div className="mb-8 flex items-center justify-between">
           <div>
-            <h1 className="mb-2 text-3xl font-light text-[#e5e4e2]">Szablony umów</h1>
-            <p className="text-[#e5e4e2]/60">Zarządzaj szablonami umów</p>
+            <h1 className="mb-2 text-3xl font-light text-[#e5e4e2]">
+              Szablony umów
+            </h1>
+            <p className="text-[#e5e4e2]/60">
+              Zarządzaj szablonami umów
+            </p>
           </div>
+  
           <button
             onClick={() => setShowCreateModal(true)}
             className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
@@ -205,11 +213,12 @@ export default function ContractTemplatesPage() {
             Nowy szablon
           </button>
         </div>
-
+  
         <div className="mb-6 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#e5e4e2]/40" />
+  
               <input
                 type="text"
                 placeholder="Szukaj szablonów..."
@@ -220,12 +229,19 @@ export default function ContractTemplatesPage() {
             </div>
           </div>
         </div>
-
+  
         {filteredTemplates.length === 0 ? (
           <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-12 text-center">
             <FileText className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
-            <h3 className="mb-2 text-xl font-light text-[#e5e4e2]">Brak szablonów</h3>
-            <p className="mb-6 text-[#e5e4e2]/60">Utwórz pierwszy szablon umowy</p>
+  
+            <h3 className="mb-2 text-xl font-light text-[#e5e4e2]">
+              Brak szablonów
+            </h3>
+  
+            <p className="mb-6 text-[#e5e4e2]/60">
+              Utwórz pierwszy szablon umowy
+            </p>
+  
             <button
               onClick={() => setShowCreateModal(true)}
               className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
@@ -236,160 +252,168 @@ export default function ContractTemplatesPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4">
-            {filteredTemplates.map((template) => (
-              <div
-                key={template.id}
-                className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6 transition-colors hover:border-[#d3bb73]/30"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="mb-2 flex items-center gap-3">
-                      {editingId === template.id ? (
-                        <div className="flex flex-1 items-center gap-2">
-                          <input
-                            type="text"
-                            value={editingName}
-                            onChange={(e) => setEditingName(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleSaveEdit(template.id);
-                              if (e.key === 'Escape') handleCancelEdit();
-                            }}
-                            className="flex-1 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
-                            autoFocus
-                          />
-                          <button
-                            onClick={() => handleSaveEdit(template.id)}
-                            className="rounded-lg bg-[#d3bb73] px-3 py-1 text-sm text-[#1c1f33] hover:bg-[#d3bb73]/90"
+            {filteredTemplates.map((template) => {
+              const isPrinting = printingDraftId === template.id;
+  
+              const actions: Action[] = [
+                {
+                  label: template.is_active
+                    ? 'Dezaktywuj'
+                    : 'Aktywuj',
+                  icon: template.is_active ? (
+                    <CheckCircle2 className="h-5 w-5" />
+                  ) : (
+                    <XCircle className="h-5 w-5" />
+                  ),
+                  onClick: () =>
+                    handleToggleActive(
+                      template.id,
+                      template.is_active,
+                    ),
+                },
+                {
+                  label: isPrinting
+                    ? 'Generowanie…'
+                    : 'Drukuj draft',
+                  icon: isPrinting ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <Printer className="h-5 w-5" />
+                  ),
+                  onClick: () => handlePrintDraft(template),
+                  disabled: isPrinting,
+                  variant: 'primary',
+                },
+                {
+                  label: 'Szczegóły',
+                  icon: <Eye className="h-5 w-5" />,
+                  onClick: () =>
+                    router.push(
+                      `/crm/contract-templates/${template.id}`,
+                    ),
+                },
+                {
+                  label: 'Edytor WYSIWYG',
+                  icon: <Edit className="h-5 w-5" />,
+                  onClick: () =>
+                    router.push(
+                      `/crm/contract-templates/${template.id}/edit-wysiwyg`,
+                    ),
+                },
+                {
+                  label: 'Duplikuj',
+                  icon: <Copy className="h-5 w-5" />,
+                  onClick: () => handleDuplicate(template),
+                },
+                {
+                  label: 'Usuń',
+                  icon: <Trash2 className="h-5 w-5" />,
+                  onClick: () => handleDelete(template.id),
+                  variant: 'danger',
+                },
+              ];
+  
+              return (
+                <div
+                  key={template.id}
+                  className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6 transition-colors hover:border-[#d3bb73]/30"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-2 flex items-center gap-3">
+                        {editingId === template.id ? (
+                          <div className="flex flex-1 items-center gap-2">
+                            <input
+                              type="text"
+                              value={editingName}
+                              onChange={(e) =>
+                                setEditingName(e.target.value)
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleSaveEdit(template.id);
+                                }
+  
+                                if (e.key === 'Escape') {
+                                  handleCancelEdit();
+                                }
+                              }}
+                              className="flex-1 rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1 text-[#e5e4e2] focus:border-[#d3bb73] focus:outline-none"
+                              autoFocus
+                            />
+  
+                            <button
+                              onClick={() =>
+                                handleSaveEdit(template.id)
+                              }
+                              className="rounded-lg bg-[#d3bb73] px-3 py-1 text-sm text-[#1c1f33] hover:bg-[#d3bb73]/90"
+                            >
+                              Zapisz
+                            </button>
+  
+                            <button
+                              onClick={handleCancelEdit}
+                              className="rounded-lg border border-[#d3bb73]/20 px-3 py-1 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10"
+                            >
+                              Anuluj
+                            </button>
+                          </div>
+                        ) : (
+                          <h3
+                            onClick={() =>
+                              handleStartEdit(template)
+                            }
+                            className="cursor-pointer truncate text-lg font-light text-[#e5e4e2] transition-colors hover:text-[#d3bb73]"
+                            title="Kliknij, aby edytować nazwę"
                           >
-                            Zapisz
-                          </button>
-                          <button
-                            onClick={handleCancelEdit}
-                            className="rounded-lg border border-[#d3bb73]/20 px-3 py-1 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10"
-                          >
-                            Anuluj
-                          </button>
-                        </div>
-                      ) : (
-                        <h3
-                          onClick={() => handleStartEdit(template)}
-                          className="cursor-pointer text-lg font-light text-[#e5e4e2] transition-colors hover:text-[#d3bb73]"
-                          title="Kliknij aby edytować nazwę"
+                            {template.name}
+                          </h3>
+                        )}
+  
+                        <span
+                          className={`flex-shrink-0 rounded px-2 py-1 text-xs ${
+                            template.is_active
+                              ? 'bg-green-500/20 text-green-400'
+                              : 'bg-gray-500/20 text-gray-400'
+                          }`}
                         >
-                          {template.name}
-                        </h3>
+                          {template.is_active
+                            ? 'Aktywny'
+                            : 'Nieaktywny'}
+                        </span>
+                      </div>
+  
+                      {template.description && (
+                        <p className="mb-3 text-sm text-[#e5e4e2]/60">
+                          {template.description}
+                        </p>
                       )}
-                      <span
-                        className={`rounded px-2 py-1 text-xs ${
-                          template.is_active
-                            ? 'bg-green-500/20 text-green-400'
-                            : 'bg-gray-500/20 text-gray-400'
-                        }`}
-                      >
-                        {template.is_active ? 'Aktywny' : 'Nieaktywny'}
-                      </span>
+  
+                      <div className="flex items-center gap-4 text-xs text-[#e5e4e2]/40">
+                        <span>
+                          Utworzono:{' '}
+                          {new Date(
+                            template.created_at,
+                          ).toLocaleDateString('pl-PL')}
+                        </span>
+                      </div>
                     </div>
-                    {template.description && (
-                      <p className="mb-3 text-sm text-[#e5e4e2]/60">{template.description}</p>
-                    )}
-                    <div className="flex items-center gap-4 text-xs text-[#e5e4e2]/40">
-                      <span>
-                        Utworzono: {new Date(template.created_at).toLocaleDateString('pl-PL')}
-                      </span>
-                    </div>
-                  </div>
+  
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleToggleActive(template.id, template.is_active)}
-                      className={`rounded-lg p-2 transition-colors ${
-                        template.is_active
-                          ? 'text-green-400 hover:bg-green-400/10'
-                          : 'text-gray-400 hover:bg-gray-400/10'
-                      }`}
-                      title={template.is_active ? 'Dezaktywuj' : 'Aktywuj'}
-                    >
-                      {template.is_active ? (
-                        <svg
-                          className="h-5 w-5"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                          />
-                        </svg>
-                      ) : (
-                        <svg
-                          className="h-5 w-5"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
-                          />
-                        </svg>
-                      )}
-                    </button>
-                    <button
-                      onClick={() => handlePrintDraft(template)}
-                      disabled={printingDraftId === template.id}
-                      className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-3 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10 disabled:cursor-not-allowed disabled:opacity-60"
-                      title="Drukuj wersję roboczą do wysłania klientowi"
-                    >
-                      {printingDraftId === template.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Printer className="h-4 w-4" />
-                      )}
-                      {printingDraftId === template.id ? 'Generowanie…' : 'Drukuj draft'}
-                    </button>
-                    <button
-                      onClick={() => router.push(`/crm/contract-templates/${template.id}`)}
-                      className="rounded-lg p-2 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
-                      title="Szczegóły"
-                    >
-                      <Eye className="h-5 w-5" />
-                    </button>
-                    <button
-                      onClick={() =>
-                        router.push(`/crm/contract-templates/${template.id}/edit-wysiwyg`)
-                      }
-                      className="rounded-lg p-2 text-blue-400 transition-colors hover:bg-blue-400/10"
-                      title="Edytor WYSIWYG"
-                    >
-                      <Edit className="h-5 w-5" />
-                    </button>
-                    <button
-                      onClick={() => handleDuplicate(template)}
-                      className="rounded-lg p-2 text-green-400 transition-colors hover:bg-green-400/10"
-                      title="Duplikuj szablon"
-                    >
-                      <Copy className="h-5 w-5" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(template.id)}
-                      className="rounded-lg p-2 text-red-400 transition-colors hover:bg-red-400/10"
-                      title="Usuń"
-                    >
-                      <Trash2 className="h-5 w-5" />
-                    </button>
+                      <ResponsiveActionBar
+                        actions={actions}
+                        disabledBackground
+                        // mobileBreakpoint={200}
+                      />
+
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
-
+  
       {showCreateModal && (
         <CreateTemplateModal
           isOpen={showCreateModal}
