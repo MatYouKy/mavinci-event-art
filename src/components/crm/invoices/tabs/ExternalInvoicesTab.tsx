@@ -93,6 +93,7 @@ export function ExternalInvoicesTab() {
   const [invoices, setInvoices] = useState<ExternalInvoice[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(true);
+  const [schemaMissing, setSchemaMissing] = useState(false);
 
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [showSubModal, setShowSubModal] = useState(false);
@@ -106,6 +107,19 @@ export function ExternalInvoicesTab() {
         .order('invoice_date', { ascending: false }),
       supabase.from('subscriptions').select('*').order('next_charge_date', { ascending: true }),
     ]);
+
+    const tablesMissing =
+      invRes.error?.code === 'PGRST205' || subRes.error?.code === 'PGRST205';
+
+    if (tablesMissing) {
+      setSchemaMissing(true);
+      setInvoices([]);
+      setSubscriptions([]);
+      setLoading(false);
+      return;
+    }
+
+    setSchemaMissing(false);
 
     if (invRes.error) {
       showSnackbar('Nie udało się pobrać faktur spoza KSeF', 'error');
@@ -247,7 +261,7 @@ export function ExternalInvoicesTab() {
             <RefreshCw className="h-4 w-4" />
             Odśwież
           </button>
-          {canManage && (
+          {canManage && !schemaMissing && (
             <button
               onClick={() =>
                 subTab === 'invoices' ? setShowInvoiceModal(true) : setShowSubModal(true)
@@ -261,7 +275,19 @@ export function ExternalInvoicesTab() {
         </div>
       </div>
 
-      {loading ? (
+      {schemaMissing ? (
+        <div className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] px-6 py-12 text-center">
+          <AlertTriangle className="mx-auto mb-4 h-10 w-10 text-[#d3bb73]" />
+          <h3 className="mb-2 text-lg font-semibold text-[#e5e4e2]">
+            Ta sekcja nie jest jeszcze gotowa do zapisu danych
+          </h3>
+          <p className="mx-auto max-w-xl text-sm leading-relaxed text-[#e5e4e2]/60">
+            Miejsce do przechowywania faktur spoza KSeF i subskrypcji nie zostało jeszcze
+            utworzone w bazie danych. Zakładka i formularze są gotowe — dodawanie zostanie
+            włączone automatycznie, gdy tylko baza zostanie skonfigurowana.
+          </p>
+        </div>
+      ) : loading ? (
         <div className="py-16 text-center text-[#e5e4e2]/50">Ładowanie...</div>
       ) : subTab === 'invoices' ? (
         <InvoicesList
