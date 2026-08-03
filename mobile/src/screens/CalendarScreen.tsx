@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  useWindowDimensions,
 } from 'react-native';
 import { Calendar, DateData, LocaleConfig } from 'react-native-calendars';
 
@@ -76,6 +77,8 @@ interface CalendarEvent {
 
 function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEvent) => void }) {
   const { employee } = useAuth();
+  const { width, height } = useWindowDimensions();
+  const isWideLayout = width > height && width >= 768;
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -408,8 +411,9 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEve
   }
 
   return (
-    <View style={styles.container}>
-      <Calendar
+    <View style={[styles.container, isWideLayout && styles.containerRow]}>
+      <View style={isWideLayout ? styles.calendarColumn : undefined}>
+        <Calendar
         firstDay={1}
         current={selectedDate}
         onDayPress={(day: DateData) => setSelectedDate(day.dateString)}
@@ -430,10 +434,11 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEve
           textMonthFontWeight: '700',
           textDayHeaderFontWeight: '600',
         }}
-        style={styles.calendar}
-      />
+        style={[styles.calendar, isWideLayout && styles.calendarWide]}
+        />
+      </View>
 
-      <View style={styles.eventsSection}>
+      <View style={[styles.eventsSection, isWideLayout && styles.eventsSectionWide]}>
         <Text style={styles.sectionTitle}>
           {selectedDate === new Date().toISOString().split('T')[0]
             ? 'Dzisiaj'
@@ -487,6 +492,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background.primary,
   },
+  containerRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  calendarColumn: {
+    flex: 1,
+    maxWidth: 480,
+    borderRightWidth: 1,
+    borderRightColor: colors.border.default,
+  },
   loadingContainer: {
     flex: 1,
     alignItems: 'center',
@@ -497,9 +512,15 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border.default,
   },
+  calendarWide: {
+    borderBottomWidth: 0,
+  },
   eventsSection: {
     flex: 1,
     paddingTop: spacing.md,
+  },
+  eventsSectionWide: {
+    flex: 1.3,
   },
   sectionTitle: {
     fontSize: 16,
