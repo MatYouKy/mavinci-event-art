@@ -170,7 +170,12 @@ async function requestNotificationPermissions() {
 
 // --- Main Screen ---
 
-export default function MeetingsScreen() {
+interface MeetingsScreenProps {
+  initialMeetingId?: string | null;
+  onBack?: () => void;
+}
+
+export default function MeetingsScreen({ initialMeetingId, onBack }: MeetingsScreenProps) {
   const { employee } = useAuth();
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -308,6 +313,16 @@ export default function MeetingsScreen() {
   useEffect(() => {
     fetchMeetings();
   }, [fetchMeetings]);
+
+  useEffect(() => {
+    if (!initialMeetingId || meetings.length === 0) return;
+
+    const meeting = meetings.find((item) => item.id === initialMeetingId);
+
+    if (meeting) {
+      setSelectedMeeting(meeting);
+    }
+  }, [initialMeetingId, meetings]);
 
   const resetForm = () => {
     setForm(createInitialForm());
@@ -1075,9 +1090,7 @@ export default function MeetingsScreen() {
               label="Przypisz pracownika"
               placeholder="Wyszukaj pracownika..."
               items={employees.filter(
-                (e) =>
-                  e.id !== employee?.id &&
-                  !selectedParticipants.some((p) => p.id === e.id)
+                (e) => e.id !== employee?.id && !selectedParticipants.some((p) => p.id === e.id),
               )}
               textValue={participantSearch}
               onTextChange={setParticipantSearch}
@@ -1201,7 +1214,15 @@ export default function MeetingsScreen() {
         {selectedMeeting && (
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
-              <TouchableOpacity onPress={() => setSelectedMeeting(null)}>
+              <TouchableOpacity
+                onPress={() => {
+                  setSelectedMeeting(null);
+
+                  if (initialMeetingId) {
+                    onBack?.();
+                  }
+                }}
+              >
                 <Text style={styles.modalCancel}>Zamknij</Text>
               </TouchableOpacity>
 

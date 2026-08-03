@@ -38,10 +38,11 @@ export default function EventCategoriesPage() {
     contract_template_id: '',
     default_offer_template_category_id: '',
   });
-  const [iconFormData, setIconFormData] = useState({
+  const [iconFormData, setIconFormData] = useState<ICustomIcon>({
     name: '',
     svg_code: '',
     preview_color: '#3B82F6',
+    id: '',
   });
 
   useEffect(() => {
@@ -107,15 +108,17 @@ export default function EventCategoriesPage() {
       setIconFormData({
         name: icon.name,
         svg_code: icon.svg_code,
-        preview_color: icon.preview_color,
-      });
+        preview_color: icon.preview_color || '#3B82F6',
+        id: icon.id,
+      } as ICustomIcon);
     } else {
       setEditingIcon(null);
       setIconFormData({
         name: '',
         svg_code: '',
         preview_color: '#3B82F6',
-      });
+        id: '',
+      } as ICustomIcon);
     }
     setShowIconModal(true);
   };
@@ -127,7 +130,8 @@ export default function EventCategoriesPage() {
       name: '',
       svg_code: '',
       preview_color: '#3B82F6',
-    });
+      id: '',
+    } as ICustomIcon);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -162,6 +166,7 @@ export default function EventCategoriesPage() {
       await upsertIcon(
         {
           ...iconFormData,
+          preview_color: iconFormData.preview_color || '#3B82F6',
         },
         editingIcon?.id ?? null,
       );
@@ -183,7 +188,7 @@ export default function EventCategoriesPage() {
     try {
       await deleteCategory(id);
       showSnackbar('Kategoria została usunięta!', 'info');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting category:', error);
       showSnackbar(
         `Błąd: ${error?.message || 'Nieznany błąd'}\n\nKod: ${error?.code || 'brak'}\n\nSprawdź konsolę (F12)`,
@@ -198,7 +203,7 @@ export default function EventCategoriesPage() {
     try {
       await deleteIcon(id);
       showSnackbar('Ikona została usunięta!', 'info');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting icon:', error);
       showSnackbar(
         `Błąd: ${error?.message || 'Nieznany błąd'}\n\nKod: ${error?.code || 'brak'}\n\nSprawdź konsolę (F12)`,
@@ -631,7 +636,12 @@ export default function EventCategoriesPage() {
                       type="button"
                       onClick={() => {
                         setEditingIcon(null);
-                        setIconFormData({ name: '', svg_code: '', preview_color: '#3B82F6' });
+                        setIconFormData({
+                          name: '',
+                          svg_code: '',
+                          preview_color: '#3B82F6',
+                          id: '',
+                        } as ICustomIcon);
                       }}
                       className="rounded-lg bg-gray-700 px-4 py-2 text-white transition-colors hover:bg-gray-600"
                     >

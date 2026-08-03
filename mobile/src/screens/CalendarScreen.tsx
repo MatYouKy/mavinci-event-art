@@ -12,16 +12,34 @@ import { Calendar, DateData, LocaleConfig } from 'react-native-calendars';
 
 LocaleConfig.locales['pl'] = {
   monthNames: [
-    'Styczeń', 'Luty', 'Marzec', 'Kwiecień', 'Maj', 'Czerwiec',
-    'Lipiec', 'Sierpień', 'Wrzesień', 'Październik', 'Listopad', 'Grudzień',
+    'Styczeń',
+    'Luty',
+    'Marzec',
+    'Kwiecień',
+    'Maj',
+    'Czerwiec',
+    'Lipiec',
+    'Sierpień',
+    'Wrzesień',
+    'Październik',
+    'Listopad',
+    'Grudzień',
   ],
   monthNamesShort: [
-    'Sty', 'Lut', 'Mar', 'Kwi', 'Maj', 'Cze',
-    'Lip', 'Sie', 'Wrz', 'Paź', 'Lis', 'Gru',
+    'Sty',
+    'Lut',
+    'Mar',
+    'Kwi',
+    'Maj',
+    'Cze',
+    'Lip',
+    'Sie',
+    'Wrz',
+    'Paź',
+    'Lis',
+    'Gru',
   ],
-  dayNames: [
-    'Niedziela', 'Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota',
-  ],
+  dayNames: ['Niedziela', 'Poniedziałek', 'Wtorek', 'Środa', 'Czwartek', 'Piątek', 'Sobota'],
   dayNamesShort: ['Nd', 'Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'Sb'],
   today: 'Dziś',
 };
@@ -35,6 +53,7 @@ import EventDetailScreen from './EventDetailScreen';
 import TaskDetailScreen from './TaskDetailScreen';
 import NewInquiryModal from './NewInquiryModal';
 import { STATUS_COLORS, STATUS_LABELS } from './EventsScreen';
+import MeetingsScreen from './MeetingsScreen';
 
 interface CalendarEvent {
   id: string;
@@ -42,13 +61,20 @@ interface CalendarEvent {
   event_date: string;
   event_end_date: string | null;
   status: string;
-  color?: string;
+
   location?: string;
-  is_meeting?: boolean;
   creator_name?: string | null;
+
+  category_id?: string | null;
+  category_name?: string | null;
+  category_color?: string | null;
+  category_icon_svg?: string | null;
+
+  is_meeting?: boolean;
+  is_inquiry?: boolean;
 }
 
-function CalendarContent({ onEventPress }: { onEventPress: (eventId: string) => void }) {
+function CalendarContent({ onEventPress }: { onEventPress: (eventId: CalendarEvent) => void }) {
   const { employee } = useAuth();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -57,54 +83,91 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: string) => 
 
   const fetchEvents = useCallback(async () => {
     if (!employee?.id) return;
+
     setIsLoading(true);
 
     try {
-      const { data: assignedRows } = await supabase
-        .from('employee_assignments')
-        .select('event_id')
-        .eq('employee_id', employee.id);
-
-      const assignedIds = (assignedRows ?? []).map((r) => r.event_id).filter(Boolean);
-
       let allEvents: CalendarEvent[] = [];
 
-      if (assignedIds.length > 0) {
-        const { data: eventData } = await supabase
+      // ==========================================
+      // Pobierz ID wydarzeń przypisanych i własnych
+      // ==========================================
+
+      const [{ data: assignedRows }, { data: ownRows }] = await Promise.all([
+        supabase.from('employee_assignments').select('event_id').eq('employee_id', employee.id),
+
+        supabase.from('events').select('id').eq('created_by', employee.id),
+      ]);
+
+      const eventIds = [
+        ...(assignedRows ?? []).map((r) => r.event_id),
+        ...(ownRows ?? []).map((r) => r.id),
+      ].filter(Boolean);
+
+      const uniqueEventIds = [...new Set(eventIds)];
+
+      // ==========================================
+      // Pobierz wydarzenia wraz z kategoriami
+      // ==========================================
+
+      if (uniqueEventIds.length > 0) {
+        const { data: eventData, error } = await supabase
           .from('events')
-          .select('id, name, event_date, event_end_date, status, location, creator:employees!created_by(name, surname)')
-          .in('id', assignedIds);
+          .select(
+            `
+            id,
+            name,
+            event_date,
+            event_end_date,
+            status,
+            location,
+            category_id,
+            creator:employees!created_by(
+              name,
+              surname
+            ),
+            category:event_categories!category_id(
+              id,
+              name,
+              color,
+              icon:custom_icons!icon_id(
+                svg_code
+              )
+            )
+          `,
+          )
+          .in('id', uniqueEventIds);
+
+        if (error) {
+          console.error(error);
+        }
 
         if (eventData) {
-          allEvents = eventData.map((e: any) => ({
-            ...e,
-            creator_name: e.creator
-              ? [e.creator.name, e.creator.surname].filter(Boolean).join(' ')
+          allEvents = eventData.map((event: any) => ({
+            id: event.id,
+            name: event.name,
+            event_date: event.event_date,
+            event_end_date: event.event_end_date,
+            status: event.status,
+            location: event.location,
+            creator_name: event.creator
+              ? [event.creator.name, event.creator.surname].filter(Boolean).join(' ')
               : null,
+
+            category_id: event.category_id,
+            category_name: event.category?.name ?? 'Wydarzenie',
+            category_color: event.category?.color ?? colors.primary.gold,
+            category_icon_svg: event.category?.icon?.svg_code ?? null,
+
             is_meeting: false,
+            is_inquiry: false,
           }));
         }
       }
 
-      const { data: ownEvents } = await supabase
-        .from('events')
-        .select('id, name, event_date, event_end_date, status, location, creator:employees!created_by(name, surname)')
-        .eq('created_by', employee.id);
-
-      if (ownEvents) {
-        const existingIds = new Set(allEvents.map((e) => e.id));
-        for (const e of ownEvents as any[]) {
-          if (!existingIds.has(e.id)) {
-            allEvents.push({
-              ...e,
-              creator_name: e.creator
-                ? [e.creator.name, e.creator.surname].filter(Boolean).join(' ')
-                : null,
-              is_meeting: false,
-            });
-          }
-        }
-      }
+      // ==========================================
+      // Spotkania utworzone przeze mnie
+      // ==========================================
 
       const { data: meetings } = await supabase
         .from('meetings')
@@ -121,27 +184,39 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: string) => 
             event_end_date: m.datetime_end,
             status: 'meeting',
             location: m.location_text ?? undefined,
+
+            category_name: 'Spotkanie',
+            category_color: '#8B5CF6',
+            category_icon_svg: null,
+
             is_meeting: true,
+            is_inquiry: false,
           });
         }
       }
+
+      // ==========================================
+      // Spotkania, na które jestem zaproszony
+      // ==========================================
 
       const { data: participantRows } = await supabase
         .from('meeting_participants')
         .select('meeting_id')
         .eq('employee_id', employee.id);
 
-      if (participantRows && participantRows.length > 0) {
-        const meetingIds = participantRows.map((r) => r.meeting_id).filter(Boolean);
+      if (participantRows?.length) {
         const existingMeetingIds = new Set(allEvents.filter((e) => e.is_meeting).map((e) => e.id));
 
-        const missingIds = meetingIds.filter((id) => !existingMeetingIds.has(id));
-        if (missingIds.length > 0) {
+        const meetingIds = participantRows
+          .map((r) => r.meeting_id)
+          .filter((id) => !existingMeetingIds.has(id));
+
+        if (meetingIds.length) {
           const { data: participantMeetings } = await supabase
             .from('meetings')
             .select('id, title, datetime_start, datetime_end, location_text')
             .is('deleted_at', null)
-            .in('id', missingIds);
+            .in('id', meetingIds);
 
           if (participantMeetings) {
             for (const m of participantMeetings) {
@@ -152,14 +227,23 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: string) => 
                 event_end_date: m.datetime_end,
                 status: 'meeting',
                 location: m.location_text ?? undefined,
+
+                category_name: 'Spotkanie',
+                category_color: '#8B5CF6',
+                category_icon_svg: null,
+
                 is_meeting: true,
+                is_inquiry: false,
               });
             }
           }
         }
       }
 
-      // Fetch inquiries (tasks with is_inquiry=true and due_date)
+      // ==========================================
+      // Zapytania
+      // ==========================================
+
       const { data: inquiryTasks } = await supabase
         .from('tasks')
         .select('id, title, due_date, inquiry_details')
@@ -176,7 +260,13 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: string) => 
             event_end_date: null,
             status: 'inquiry',
             location: t.inquiry_details?.location_text ?? undefined,
+
+            category_name: 'Zapytanie',
+            category_color: '#3b82f6',
+            category_icon_svg: null,
+
             is_meeting: false,
+            is_inquiry: true,
           });
         }
       }
@@ -200,7 +290,10 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: string) => 
       const date = event.event_date?.split('T')[0];
       if (!date) continue;
 
-      const color = STATUS_COLORS[event.status] || colors.primary.gold;
+      const color =
+      event.category_color ||
+      STATUS_COLORS[event.status] ||
+      colors.primary.gold;
 
       if (!marks[date]) {
         marks[date] = { dots: [{ color }] };
@@ -228,7 +321,10 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: string) => 
   }, [events, selectedDate]);
 
   const renderEvent = ({ item }: { item: CalendarEvent }) => {
-    const statusColor = STATUS_COLORS[item.status] || colors.text.tertiary;
+    const badgeColor = item.category_color || STATUS_COLORS[item.status] || colors.text.tertiary;
+
+    const badgeLabel = item.category_name || STATUS_LABELS[item.status] || item.status;
+
     const time = new Date(item.event_date).toLocaleTimeString('pl-PL', {
       hour: '2-digit',
       minute: '2-digit',
@@ -238,34 +334,63 @@ function CalendarContent({ onEventPress }: { onEventPress: (eventId: string) => 
       <TouchableOpacity
         style={styles.eventCard}
         activeOpacity={0.7}
-        onPress={() => onEventPress(item.id)}
+        onPress={() => onEventPress(item)}
       >
-        <View style={[styles.eventIndicator, { backgroundColor: statusColor }]} />
+        <View
+          style={[
+            styles.eventIndicator,
+            {
+              backgroundColor: badgeColor,
+            },
+          ]}
+        />
+
         <View style={styles.eventContent}>
           <Text style={styles.eventTime}>{time}</Text>
+
           <Text style={styles.eventTitle} numberOfLines={1}>
             {item.name}
           </Text>
+
           {item.location && (
             <View style={styles.eventLocationRow}>
               <Feather name="map-pin" size={12} color={colors.text.tertiary} />
+
               <Text style={styles.eventLocation} numberOfLines={1}>
                 {item.location}
               </Text>
             </View>
           )}
+
           {item.creator_name && (
             <View style={styles.eventLocationRow}>
               <Feather name="user" size={12} color={colors.text.tertiary} />
+
               <Text style={styles.eventLocation} numberOfLines={1}>
                 {item.creator_name}
               </Text>
             </View>
           )}
+
           <View style={styles.eventStatusRow}>
-            <View style={[styles.statusBadge, { backgroundColor: statusColor + '22' }]}>
-              <Text style={[styles.statusText, { color: statusColor }]}>
-                {STATUS_LABELS[item.status] || item.status}
+            <View
+              style={[
+                styles.statusBadge,
+                {
+                  backgroundColor: `${badgeColor}22`,
+                  borderColor: `${badgeColor}55`,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.statusText,
+                  {
+                    color: badgeColor,
+                  },
+                ]}
+              >
+                {badgeLabel}
               </Text>
             </View>
           </View>
@@ -431,6 +556,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 4,
+    borderWidth: 1,
   },
   statusText: {
     fontSize: 11,
@@ -469,21 +595,30 @@ const styles = StyleSheet.create({
 });
 
 export default function CalendarScreen({ initialMeetingId }: { initialMeetingId?: string | null }) {
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(initialMeetingId ?? null);
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(
+    initialMeetingId ?? null,
+  );
   const [selectedInquiryId, setSelectedInquiryId] = useState<string | null>(null);
 
   useEffect(() => {
     if (initialMeetingId) {
-      setSelectedEventId(initialMeetingId);
+      setSelectedMeetingId(initialMeetingId);
     }
   }, [initialMeetingId]);
 
-  const handleEventPress = (id: string) => {
-    if (id.startsWith('inquiry-')) {
-      setSelectedInquiryId(id.replace('inquiry-', ''));
-    } else {
-      setSelectedEventId(id);
+  const handleEventPress = (item: CalendarEvent) => {
+    if (item.is_meeting || item.status === 'meeting') {
+      setSelectedMeetingId(item.id);
+      return;
     }
+
+    if (item.id.startsWith('inquiry-')) {
+      setSelectedInquiryId(item.id.replace('inquiry-', ''));
+      return;
+    }
+
+    setSelectedEventId(item.id);
   };
 
   if (selectedInquiryId) {
@@ -491,6 +626,15 @@ export default function CalendarScreen({ initialMeetingId }: { initialMeetingId?
       <TaskDetailScreen
         route={{ params: { taskId: selectedInquiryId } }}
         navigation={{ goBack: () => setSelectedInquiryId(null) }}
+      />
+    );
+  }
+
+  if (selectedMeetingId) {
+    return (
+      <MeetingsScreen
+        initialMeetingId={selectedMeetingId}
+        onBack={() => setSelectedMeetingId(null)}
       />
     );
   }

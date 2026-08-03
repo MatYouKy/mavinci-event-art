@@ -399,16 +399,35 @@ export default function TasksScreen() {
 
   const createTask = async () => {
     if (!employee) return;
+  
     const title = newTitle.trim();
+  
     if (!title) {
       Alert.alert('Brak tytułu', 'Podaj tytuł zadania.');
       return;
     }
-
+  
     setCreating(true);
+  
     try {
-      const status = newColumn === 'completed' ? 'completed' : newColumn === 'in_progress' ? 'in_progress' : 'todo';
-
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+  
+      if (userError || !user) {
+        throw new Error('Nie udało się pobrać zalogowanego użytkownika.');
+      }
+  
+      const status =
+        newColumn === 'completed'
+          ? 'completed'
+          : newColumn === 'in_progress'
+            ? 'in_progress'
+            : newColumn === 'review'
+              ? 'review'
+              : 'todo';
+  
       const { data: inserted, error: insertError } = await supabase
         .from('tasks')
         .insert({
@@ -417,28 +436,58 @@ export default function TasksScreen() {
           priority: newPriority,
           status,
           board_column: newColumn,
+  
+          // W Twojej bazie employee.id i auth_user_id są takie same,
+          // ale owner_id powinien odpowiadać auth.uid().
+          owner_id: user.id,
           created_by: employee.id,
+  
           is_private: false,
           event_id: null,
         })
         .select('id')
         .single();
-
-      if (insertError) throw insertError;
-
-      if (inserted?.id) {
-        const assigneeId = selectedAssigneeId || employee.id;
-        await supabase.from('task_assignees').insert({
+  
+      if (insertError) {
+        console.error('Błąd tworzenia zadania:', insertError);
+        throw insertError;
+      }
+  
+      if (!inserted?.id) {
+        throw new Error('Zadanie zostało utworzone bez identyfikatora.');
+      }
+  
+      const assigneeId = selectedAssigneeId || employee.id;
+  
+      const { error: assigneeError } = await supabase
+        .from('task_assignees')
+        .insert({
           task_id: inserted.id,
           employee_id: assigneeId,
         });
+  
+      if (assigneeError) {
+        console.error('Błąd przypisywania pracownika:', assigneeError);
+  
+        // Usuwamy zadanie, żeby nie zostało bez przypisanego pracownika.
+        await supabase.from('tasks').delete().eq('id', inserted.id);
+  
+        throw new Error(
+          `Nie udało się przypisać pracownika: ${assigneeError.message}`,
+        );
       }
-
+  
       resetCreateForm();
       setShowCreateModal(false);
-      fetchTasks();
+  
+      await fetchTasks();
     } catch (error: any) {
-      Alert.alert('Błąd', error?.message || 'Nie udało się utworzyć zadania.');
+      console.error('Błąd tworzenia zadania:', error);
+  
+      Alert.alert(
+        'Błąd',
+        error?.message || 'Nie udało się utworzyć zadania.',
+      );
     } finally {
       setCreating(false);
     }
