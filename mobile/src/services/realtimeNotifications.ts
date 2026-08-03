@@ -86,7 +86,7 @@ export function useRealtimePushNotifications(
 
             const { data: notification, error } = await supabase
               .from('notifications')
-              .select('title, message, category, related_entity_type, related_entity_id')
+              .select('title, message, category, related_entity_type, related_entity_id, action_url')
               .eq('id', recipientRow.notification_id)
               .maybeSingle();
 
@@ -101,6 +101,7 @@ export function useRealtimePushNotifications(
                 entity_id: notification.related_entity_id ?? '',
                 notification_id: recipientRow.notification_id,
                 category: notification.category ?? '',
+                action_url: notification.action_url ?? '',
               },
             });
           }

@@ -23,8 +23,8 @@ import TimeTrackingScreen from '../screens/TimeTrackingScreen';
 import EmployeesScreen from '../screens/EmployeesScreen';
 import CustomDrawer from '../components/CustomDrawer';
 import { useUnreadChatCount } from '../services/chatNotifications';
-import { globalNotificationTarget } from '../../App';
-import { navigateToChat } from './navigationRef';
+import { consumeNotificationTarget } from '../../App';
+import { routeNotification, navigateToCalendarTab, NotificationTargetData } from './navigationRef';
 
 export type MainTabParamList = {
   Dashboard: undefined;
@@ -94,48 +94,28 @@ export default function MainTabNavigator() {
     }
   };
 
-  // Handle notification taps - switch to the correct tab
+  // Open a meeting on the Calendar tab (meetings live in the Calendar screen state).
+  const openMeeting = (meetingId: string) => {
+    setPendingMeetingId(meetingId);
+    navigateToCalendarTab();
+  };
+
+  // Handle notification taps - open the specific task / inquiry / event / meeting / chat
   useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
-      const data = response.notification.request.content.data;
-      if (data?.type === 'chat_message' && data?.conversation_id) {
-        navigateToChat(data.conversation_id as string);
-      } else if (data?.type === 'meeting_reminder' && data?.meetingId) {
-        setPendingMeetingId(data.meetingId as string);
-        setCurrentScreen('Calendar');
-        setTimeout(() => setPendingMeetingId(null), 1000);
-      } else if (data?.type === 'crm_notification') {
-        const entityType = data.entity_type as string | undefined;
-        const category = data.category as string | undefined;
-        if (entityType === 'task' || category === 'tasks') {
-          setCurrentScreen('Tasks');
-        } else if (entityType === 'event' || category === 'events' || category === 'team') {
-          setCurrentScreen('Events');
-        } else if (category === 'messages' || category === 'contact_form') {
-          setCurrentScreen('Messages');
-        }
-      }
+      const data = response.notification.request.content.data as NotificationTargetData;
+      const { meetingId } = routeNotification(data);
+      if (meetingId) openMeeting(meetingId);
     });
 
-    // Also check on mount for pending target from cold start
-    if (globalNotificationTarget?.type === 'chat_message') {
-      setCurrentScreen('Messages');
-    } else if (globalNotificationTarget?.type === 'meeting_reminder') {
-      setPendingMeetingId(globalNotificationTarget.meetingId ?? null);
-      setCurrentScreen('Calendar');
-      setTimeout(() => setPendingMeetingId(null), 1000);
-    } else if (globalNotificationTarget?.type === 'inquiry_reminder') {
-      setCurrentScreen('Inquiries');
-    } else if (globalNotificationTarget?.type === 'crm_notification') {
-      const entityType = globalNotificationTarget.entity_type;
-      const category = globalNotificationTarget.category;
-      if (entityType === 'task' || category === 'tasks') {
-        setCurrentScreen('Tasks');
-      } else if (entityType === 'event' || category === 'events' || category === 'team') {
-        setCurrentScreen('Events');
-      } else if (category === 'messages' || category === 'contact_form') {
-        setCurrentScreen('Messages');
-      }
+    // Also handle a pending target captured before navigation was ready (cold start)
+    const coldStartTarget = consumeNotificationTarget();
+    if (coldStartTarget) {
+      // Defer so the navigation container and nested stacks are mounted
+      setTimeout(() => {
+        const { meetingId } = routeNotification(coldStartTarget);
+        if (meetingId) openMeeting(meetingId);
+      }, 400);
     }
 
     return () => sub.remove();

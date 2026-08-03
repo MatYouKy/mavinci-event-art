@@ -16,7 +16,7 @@ import {
 import { useRealtimePushNotifications } from './src/services/realtimeNotifications';
 import { useChatNotifications, setupChatNotificationFilter } from './src/services/chatNotifications';
 import { scheduleInquiryReminders } from './src/services/inquiryReminders';
-import { navigateToChat } from './src/navigation/navigationRef';
+import { NotificationTargetData } from './src/navigation/navigationRef';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -27,16 +27,8 @@ Notifications.setNotificationHandler({
   }),
 });
 
-// Global notification target for deep-linking from notification tap
-export let globalNotificationTarget: {
-  type: string;
-  conversation_id?: string;
-  task_id?: string;
-  entity_type?: string;
-  entity_id?: string;
-  category?: string;
-  meetingId?: string;
-} | null = null;
+// Global notification target for deep-linking from a notification tap (cold start fallback)
+export let globalNotificationTarget: NotificationTargetData | null = null;
 
 export function consumeNotificationTarget() {
   const target = globalNotificationTarget;
@@ -86,40 +78,11 @@ function AppContent() {
     });
 
     const responseSubscription = addNotificationResponseListener((response) => {
-      const data = response.notification.request.content.data;
-
-      if (data?.type === 'chat_message' && data?.conversation_id) {
-        console.log('[Push] Open chat conversation:', data.conversation_id);
-        globalNotificationTarget = {
-          type: 'chat_message',
-          conversation_id: data.conversation_id as string,
-        };
-        navigateToChat(data.conversation_id as string);
-      } else if (data?.type === 'task' && data?.task_id) {
-        console.log('[Push] Open task:', data.task_id);
-        globalNotificationTarget = {
-          type: 'task',
-          task_id: data.task_id as string,
-        };
-      } else if (data?.type === 'crm_notification') {
-        console.log('[Push] CRM notification tapped:', data.entity_type, data.entity_id);
-        globalNotificationTarget = {
-          type: 'crm_notification',
-          entity_type: data.entity_type as string | undefined,
-          entity_id: data.entity_id as string | undefined,
-          category: data.category as string | undefined,
-        };
-      } else if (data?.type === 'meeting_reminder' && data?.meetingId) {
-        console.log('[Push] Meeting reminder tapped:', data.meetingId);
-        globalNotificationTarget = {
-          type: 'meeting_reminder',
-          meetingId: data.meetingId as string,
-        };
-      } else if (data?.type === 'inquiry_reminder') {
-        globalNotificationTarget = {
-          type: 'inquiry_reminder',
-        };
-      }
+      const data = response.notification.request.content.data as NotificationTargetData;
+      // Store the tapped notification so MainTabNavigator can open the right screen,
+      // even if navigation is not ready yet (cold start). Live taps are also handled
+      // by MainTabNavigator's own response listener.
+      globalNotificationTarget = { ...(data ?? {}) };
     });
 
     return () => {
