@@ -7,6 +7,7 @@ import 'server-only';
 export type NavKey =
   | 'dashboard'
   | 'calendar'
+  | 'meetings'
   | 'events'
   | 'messages'
   | 'tasks'
@@ -45,6 +46,14 @@ export const allNavigation: NavigationItemDTO[] = [
     name: 'Kalendarz',
     href: '/crm/calendar',
     iconKey: 'calendar',
+    module: 'calendar',
+    permissions: ['calendar_view'],
+  },
+  {
+    key: 'meetings',
+    name: 'Spotkania',
+    href: '/crm/meetings',
+    iconKey: 'meetings',
     module: 'calendar',
     permissions: ['calendar_view'],
   },

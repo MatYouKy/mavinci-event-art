@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   CalendarDays,
   CalendarClock,
+  CalendarCheck,
   Mail,
   CheckSquare,
   Users,
@@ -40,6 +41,7 @@ export const NavigationIcons = {
 
   // modules
   calendar: CalendarDays,
+  meetings: CalendarCheck,
   events: CalendarClock,
   messages: Mail,
   tasks: CheckSquare,
