@@ -6,12 +6,16 @@ import {
   ScrollView,
   TouchableOpacity,
   RefreshControl,
+  useWindowDimensions,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import { sortTasksByUrgency } from '../lib/taskSort';
 import { colors, spacing, typography, borderRadius } from '../theme';
+
+const TABLET_BREAKPOINT = 768;
 
 // --- Labels matching main CRM ---
 
@@ -86,6 +90,7 @@ interface DashboardTask {
   status: string;
   board_column: string;
   due_date: string | null;
+  created_at: string | null;
 }
 
 export default function DashboardScreen() {
@@ -94,6 +99,8 @@ export default function DashboardScreen() {
   const [upcomingEvents, setUpcomingEvents] = useState<DashboardEvent[]>([]);
   const [myTasks, setMyTasks] = useState<DashboardTask[]>([]);
   const [loading, setLoading] = useState(false);
+  const { width } = useWindowDimensions();
+  const isTablet = width >= TABLET_BREAKPOINT;
 
   useEffect(() => {
     loadDashboardData();
@@ -229,13 +236,12 @@ export default function DashboardScreen() {
       if (taskIds.length > 0) {
         const { data } = await supabase
           .from('tasks')
-          .select('id, title, priority, status, board_column, due_date')
+          .select('id, title, priority, status, board_column, due_date, created_at')
           .in('id', taskIds)
           .in('board_column', ['todo', 'in_progress', 'review'])
-          .order('due_date', { ascending: true, nullsFirst: false })
-          .limit(8);
+          .limit(50);
 
-        tasks = data ?? [];
+        tasks = sortTasksByUrgency(data ?? []).slice(0, 8);
       }
       setMyTasks(tasks);
     } catch (error) {
@@ -291,8 +297,9 @@ export default function DashboardScreen() {
         </View>
       </View>
 
+      <View style={isTablet ? styles.tabletColumns : undefined}>
       {/* Upcoming Events */}
-      <View style={styles.section}>
+      <View style={[styles.section, isTablet && styles.tabletColumn]}>
         <Text style={styles.sectionTitle}>Nadchodzące wydarzenia</Text>
         {upcomingEvents.length === 0 ? (
           <View style={styles.emptyState}>
@@ -381,7 +388,7 @@ export default function DashboardScreen() {
       </View>
 
       {/* My Tasks */}
-      <View style={styles.section}>
+      <View style={[styles.section, isTablet && styles.tabletColumn]}>
         <Text style={styles.sectionTitle}>Moje zadania</Text>
         {myTasks.length === 0 ? (
           <View style={styles.emptyState}>
@@ -430,21 +437,28 @@ export default function DashboardScreen() {
                 <Text style={styles.cardMeta}>
                   {TASK_STATUS_LABELS[task.board_column] || task.board_column}
                 </Text>
-                {task.due_date && (
-                  <>
-                    <Text style={styles.separator}>•</Text>
-                    <Text style={styles.cardDate}>
-                      {new Date(task.due_date).toLocaleDateString('pl-PL', {
-                        day: 'numeric',
-                        month: 'short',
-                      })}
-                    </Text>
-                  </>
-                )}
+                {task.due_date && (() => {
+                  const isOverdue =
+                    new Date(task.due_date) < new Date() &&
+                    task.board_column !== 'completed';
+                  return (
+                    <>
+                      <Text style={styles.separator}>•</Text>
+                      <Text style={[styles.cardDate, isOverdue && styles.overdueDate]}>
+                        {isOverdue ? 'Zaległe: ' : ''}
+                        {new Date(task.due_date).toLocaleDateString('pl-PL', {
+                          day: 'numeric',
+                          month: 'short',
+                        })}
+                      </Text>
+                    </>
+                  );
+                })()}
               </View>
             </TouchableOpacity>
           ))
         )}
+      </View>
       </View>
 
       <View style={{ height: spacing.xxxl }} />
@@ -580,10 +594,6 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
   },
-  separator: {
-    color: colors.text.tertiary,
-    fontSize: typography.fontSizes.xs,
-  },
   emptyState: {
     alignItems: 'center',
     padding: spacing.xxxl,
@@ -592,5 +602,16 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: typography.fontSizes.md,
     color: colors.text.tertiary,
+  },
+  tabletColumns: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  tabletColumn: {
+    flex: 1,
+  },
+  overdueDate: {
+    color: colors.status?.error ?? '#ef4444',
+    fontWeight: '700',
   },
 });

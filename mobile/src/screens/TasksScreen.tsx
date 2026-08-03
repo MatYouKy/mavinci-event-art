@@ -22,6 +22,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, typography } from '../theme';
 import { supabase } from '../lib/supabase';
+import { sortTasksByUrgency } from '../lib/taskSort';
 import { useAuth } from '../contexts/AuthContext';
 import EmployeeAvatar from '../components/EmployeeAvatar';
 import { SearchableDropdown } from '../components/SearchableDropdown';
@@ -73,7 +74,7 @@ const priorityLabels = {
   low: 'Niski',
 };
 
-const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
+
 
 const BOARD_COLUMNS = [
   { id: 'todo', title: 'Do zrobienia', color: '#eab308' },
@@ -510,18 +511,6 @@ export default function TasksScreen() {
     }
   };
 
-  const sortByPriority = (taskList: Task[]): Task[] => {
-    return [...taskList].sort((a, b) => {
-      const pA = priorityOrder[a.priority] ?? 4;
-      const pB = priorityOrder[b.priority] ?? 4;
-      if (pA !== pB) return pA - pB;
-      if (a.due_date && b.due_date) return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
-      if (a.due_date) return -1;
-      if (b.due_date) return 1;
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    });
-  };
-
   const filteredTasks = tasks.filter((task) =>
     task.title.toLowerCase().includes(searchQuery.toLowerCase()),
   );
@@ -529,7 +518,7 @@ export default function TasksScreen() {
   const getTasksByColumn = useCallback(
     (columnId: string): Task[] => {
       const columnTasks = filteredTasks.filter((task) => task.board_column === columnId);
-      const sorted = sortByPriority(columnTasks);
+      const sorted = sortTasksByUrgency(columnTasks);
 
       const order = customOrder[columnId];
       if (order && order.length > 0) {
