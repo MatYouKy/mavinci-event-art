@@ -646,17 +646,15 @@ function InvoiceFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
         <div>
           <label className={labelClass}>Waluta</label>
           <select
-  className={inputClass}
-  value={form.currency}
-  onChange={(e) =>
-    setForm({ ...form, currency: e.target.value })
-  }
->
-  <option value="PLN">PLN - złoty</option>
-  <option value="EUR">EUR - euro</option>
-  <option value="USD">USD - dolar</option>
-  <option value="GBP">GBP - funt</option>
-</select>
+            className={inputClass}
+            value={form.currency}
+            onChange={(e) => setForm({ ...form, currency: e.target.value })}
+          >
+            <option value="PLN">PLN - złoty</option>
+            <option value="EUR">EUR - euro</option>
+            <option value="USD">USD - dolar</option>
+            <option value="GBP">GBP - funt</option>
+          </select>
         </div>
         <div className="sm:col-span-2">
           <label className={labelClass}>Podgląd faktury (zdjęcie lub PDF)</label>
