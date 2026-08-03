@@ -31,6 +31,7 @@ import {
   Table2,
   ChevronUp,
   ChevronDown,
+  Receipt,
 } from 'lucide-react';
 import KSeFIntegrationPanel from '@/components/crm/KSeFIntegrationPanel';
 import FinancialDashboard from '@/components/crm/FinancialDashboard';
@@ -41,6 +42,7 @@ import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import { useDialog } from '@/contexts/DialogContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { InvoiceSettingsTab } from '@/components/crm/invoices/tabs/InvoiceSettingsTab';
+import { ExternalInvoicesTab } from '@/components/crm/invoices/tabs/ExternalInvoicesTab';
 import FinalInvoiceWizardModal from '@/components/crm/FinalInvoiceWizardModal';
 
 type SortKey =
@@ -211,9 +213,9 @@ export default function InvoicesPage() {
   const [selectedCompanyIds, setSelectedCompanyIds] = useState<Set<string>>(new Set());
   const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'local' | 'ksef' | 'settings'>(
-    'dashboard',
-  );
+  const [activeTab, setActiveTab] = useState<
+    'dashboard' | 'local' | 'ksef' | 'external' | 'settings'
+  >('dashboard');
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
   const [myCompanies, setMyCompanies] = useState<any[]>([]);
   const [showFinalInvoiceWizard, setShowFinalInvoiceWizard] = useState(false);
@@ -715,6 +717,7 @@ export default function InvoicesPage() {
               { id: 'dashboard', label: 'Dashboard', icon: DollarSign },
               { id: 'ksef', label: 'KSeF', icon: FileText },
               { id: 'local', label: 'Lokalne faktury', icon: Building },
+              { id: 'external', label: 'Faktury spoza KSeF', icon: Receipt },
               ...(canManageInvoices
                 ? [{ id: 'settings', label: 'Ustawienia faktur', icon: Settings }]
                 : []),
@@ -749,6 +752,8 @@ export default function InvoicesPage() {
             <KSeFIntegrationPanel
               filterCompanyIds={selectedCompanyIds.size > 0 ? Array.from(selectedCompanyIds) : null}
             />
+          ) : activeTab === 'external' ? (
+            <ExternalInvoicesTab />
           ) : activeTab === 'settings' ? (
             <InvoiceSettingsTab />
           ) : (
