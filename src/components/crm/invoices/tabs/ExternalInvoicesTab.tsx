@@ -101,15 +101,11 @@ export function ExternalInvoicesTab() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     const [invRes, subRes] = await Promise.all([
-      supabase
-        .from('external_invoices')
-        .select('*')
-        .order('invoice_date', { ascending: false }),
+      supabase.from('external_invoices').select('*').order('invoice_date', { ascending: false }),
       supabase.from('subscriptions').select('*').order('next_charge_date', { ascending: true }),
     ]);
 
-    const tablesMissing =
-      invRes.error?.code === 'PGRST205' || subRes.error?.code === 'PGRST205';
+    const tablesMissing = invRes.error?.code === 'PGRST205' || subRes.error?.code === 'PGRST205';
 
     if (tablesMissing) {
       setSchemaMissing(true);
@@ -282,9 +278,9 @@ export function ExternalInvoicesTab() {
             Ta sekcja nie jest jeszcze gotowa do zapisu danych
           </h3>
           <p className="mx-auto max-w-xl text-sm leading-relaxed text-[#e5e4e2]/60">
-            Miejsce do przechowywania faktur spoza KSeF i subskrypcji nie zostało jeszcze
-            utworzone w bazie danych. Zakładka i formularze są gotowe — dodawanie zostanie
-            włączone automatycznie, gdy tylko baza zostanie skonfigurowana.
+            Miejsce do przechowywania faktur spoza KSeF i subskrypcji nie zostało jeszcze utworzone
+            w bazie danych. Zakładka i formularze są gotowe — dodawanie zostanie włączone
+            automatycznie, gdy tylko baza zostanie skonfigurowana.
           </p>
         </div>
       ) : loading ? (
@@ -431,8 +427,7 @@ function SubscriptionsList({
     <div className="grid gap-3">
       {subscriptions.map((sub) => {
         const isCancelled = sub.status === 'cancelled';
-        const isOverdue =
-          !isCancelled && !!sub.next_charge_date && sub.next_charge_date < today;
+        const isOverdue = !isCancelled && !!sub.next_charge_date && sub.next_charge_date < today;
 
         return (
           <div
@@ -467,9 +462,7 @@ function SubscriptionsList({
               )}
               <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#e5e4e2]/50">
                 <span>Cykl: {cycleLabel(sub.billing_cycle)}</span>
-                <span
-                  className={isOverdue ? 'font-medium text-red-400' : undefined}
-                >
+                <span className={isOverdue ? 'font-medium text-red-400' : undefined}>
                   Najbliższe obciążenie: {formatDate(sub.next_charge_date)}
                 </span>
                 {sub.payment_method && <span>Płatność: {sub.payment_method}</span>}
@@ -496,11 +489,7 @@ function SubscriptionsList({
                     title={isCancelled ? 'Wznów' : 'Anuluj'}
                     className="rounded-lg border border-[#d3bb73]/20 p-2 text-[#e5e4e2]/70 hover:text-[#d3bb73]"
                   >
-                    {isCancelled ? (
-                      <RotateCcw className="h-4 w-4" />
-                    ) : (
-                      <Ban className="h-4 w-4" />
-                    )}
+                    {isCancelled ? <RotateCcw className="h-4 w-4" /> : <Ban className="h-4 w-4" />}
                   </button>
                   <button
                     onClick={() => onDelete(sub)}
@@ -530,13 +519,7 @@ async function uploadFile(file: File): Promise<string | null> {
   return path;
 }
 
-function InvoiceFormModal({
-  onClose,
-  onSaved,
-}: {
-  onClose: () => void;
-  onSaved: () => void;
-}) {
+function InvoiceFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const { showSnackbar } = useSnackbar();
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -662,20 +645,31 @@ function InvoiceFormModal({
         </div>
         <div>
           <label className={labelClass}>Waluta</label>
-          <input
-            className={inputClass}
-            value={form.currency}
-            onChange={(e) => setForm({ ...form, currency: e.target.value.toUpperCase() })}
-          />
+          <select
+  className={inputClass}
+  value={form.currency}
+  onChange={(e) =>
+    setForm({ ...form, currency: e.target.value })
+  }
+>
+  <option value="PLN">PLN - złoty</option>
+  <option value="EUR">EUR - euro</option>
+  <option value="USD">USD - dolar</option>
+  <option value="GBP">GBP - funt</option>
+</select>
         </div>
         <div className="sm:col-span-2">
           <label className={labelClass}>Podgląd faktury (zdjęcie lub PDF)</label>
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/jpg,image/webp,application/pdf"
-            className="w-full text-sm text-[#e5e4e2]/70 file:mr-3 file:rounded-lg file:border-0 file:bg-[#d3bb73]/20 file:px-3 file:py-2 file:text-sm file:text-[#d3bb73]"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          />
+          <select
+            className={inputClass}
+            value={form.currency}
+            onChange={(e) => setForm({ ...form, currency: e.target.value })}
+          >
+            <option value="PLN">PLN - złoty</option>
+            <option value="EUR">EUR - euro</option>
+            <option value="USD">USD - dolar</option>
+            <option value="GBP">GBP - funt</option>
+          </select>
         </div>
         <div className="sm:col-span-2">
           <label className={labelClass}>Uwagi</label>
@@ -707,13 +701,7 @@ function InvoiceFormModal({
   );
 }
 
-function SubscriptionFormModal({
-  onClose,
-  onSaved,
-}: {
-  onClose: () => void;
-  onSaved: () => void;
-}) {
+function SubscriptionFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const { showSnackbar } = useSnackbar();
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -809,11 +797,16 @@ function SubscriptionFormModal({
         </div>
         <div>
           <label className={labelClass}>Waluta</label>
-          <input
+          <select
             className={inputClass}
             value={form.currency}
-            onChange={(e) => setForm({ ...form, currency: e.target.value.toUpperCase() })}
-          />
+            onChange={(e) => setForm({ ...form, currency: e.target.value })}
+          >
+            <option value="PLN">PLN - złoty</option>
+            <option value="EUR">EUR - euro</option>
+            <option value="USD">USD - dolar</option>
+            <option value="GBP">GBP - funt</option>
+          </select>
         </div>
         <div>
           <label className={labelClass}>Cykl rozliczeniowy</label>
