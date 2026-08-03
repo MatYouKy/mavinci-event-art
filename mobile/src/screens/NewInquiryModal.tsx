@@ -244,23 +244,30 @@ export default function NewInquiryModal({
       };
 
       const { data: insertedTask, error: insertError } = await supabase
-        .from('tasks')
-        .insert([
-          {
-            title,
-            description: descParts.join('\n'),
-            priority: 'urgent',
-            status: 'todo',
-            board_column: 'todo',
-            order_index: newOrderIndex,
-            due_date: selectedDate ? new Date(selectedDate + 'T23:59:00').toISOString() : null,
-            created_by: session.user.id,
-            is_inquiry: true,
-            inquiry_details: inquiryDetails,
-          },
-        ])
-        .select('id')
-        .single();
+      .from('tasks')
+      .insert([
+        {
+          title,
+          description: descParts.join('\n'),
+          priority: 'urgent',
+          status: 'todo',
+          board_column: 'todo',
+          order_index: newOrderIndex,
+          due_date: selectedDate
+            ? new Date(selectedDate + 'T23:59:00').toISOString()
+            : null,
+    
+          created_by: session.user.id,
+          owner_id: session.user.id,
+    
+          is_private: false,
+          event_id: null,
+          is_inquiry: true,
+          inquiry_details: inquiryDetails,
+        },
+      ])
+      .select('id')
+      .single();
 
       if (insertError) {
         Alert.alert('Błąd', 'Nie udało się zapisać zapytania: ' + insertError.message);
