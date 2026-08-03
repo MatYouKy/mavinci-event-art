@@ -31,6 +31,9 @@ interface ExternalInvoice {
   currency: string;
   file_url: string | null;
   notes: string | null;
+  subscription_id: string | null;
+  period_year: number | null;
+  period_month: number | null;
   created_at: string;
 }
 
@@ -48,7 +51,26 @@ interface Subscription {
   cancelled_at: string | null;
   file_url: string | null;
   notes: string | null;
+  created_at: string;
 }
+
+interface InvoicePrefill {
+  seller_name?: string;
+  seller_nip?: string;
+  label?: string;
+  amount_gross?: string;
+  currency?: string;
+  payment_method?: string;
+  invoice_date?: string;
+  notes?: string;
+  subscription_id?: string;
+  period_year?: number;
+  period_month?: number;
+}
+
+type InvoiceRow =
+  | { kind: 'real'; invoice: ExternalInvoice }
+  | { kind: 'placeholder'; subscription: Subscription; year: number; month: number };
 
 const PAYMENT_METHODS = ['Przelew', 'Karta', 'Gotówka', 'BLIK', 'Polecenie zapłaty', 'Inne'];
 
@@ -57,6 +79,21 @@ const BILLING_CYCLES: { value: string; label: string }[] = [
   { value: 'monthly', label: 'Miesięcznie' },
   { value: 'quarterly', label: 'Kwartalnie' },
   { value: 'yearly', label: 'Rocznie' },
+];
+
+const MONTH_NAMES = [
+  'Styczeń',
+  'Luty',
+  'Marzec',
+  'Kwiecień',
+  'Maj',
+  'Czerwiec',
+  'Lipiec',
+  'Sierpień',
+  'Wrzesień',
+  'Październik',
+  'Listopad',
+  'Grudzień',
 ];
 
 const BUCKET = 'external-invoices';
@@ -82,6 +119,16 @@ function cycleLabel(value: string) {
   return BILLING_CYCLES.find((c) => c.value === value)?.label ?? value;
 }
 
+function cycleStepMonths(cycle: string) {
+  if (cycle === 'quarterly') return 3;
+  if (cycle === 'yearly') return 12;
+  return 1;
+}
+
+function lastDayOfMonth(year: number, month: number) {
+  return new Date(year, month, 0).getDate();
+}
+
 export function ExternalInvoicesTab() {
   const { canManageModule } = useCurrentEmployee();
   const { showConfirm } = useDialog();
@@ -95,7 +142,9 @@ export function ExternalInvoicesTab() {
   const [loading, setLoading] = useState(true);
   const [schemaMissing, setSchemaMissing] = useState(false);
 
-  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [invoiceModal, setInvoiceModal] = useState<{ open: boolean; prefill: InvoicePrefill | null }>(
+    { open: false, prefill: null },
+  );
   const [showSubModal, setShowSubModal] = useState(false);
 
   const fetchData = useCallback(async () => {
@@ -219,6 +268,29 @@ export function ExternalInvoicesTab() {
     [showSnackbar, fetchData],
   );
 
+  const openPlaceholder = useCallback(
+    (sub: Subscription, year: number, month: number) => {
+      const day = lastDayOfMonth(year, month);
+      setInvoiceModal({
+        open: true,
+        prefill: {
+          seller_name: sub.seller_name || sub.name,
+          seller_nip: sub.seller_nip || '',
+          label: sub.name,
+          amount_gross: sub.amount != null ? String(sub.amount) : '',
+          currency: sub.currency || 'PLN',
+          payment_method: sub.payment_method || 'Karta',
+          invoice_date: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+          notes: sub.notes || '',
+          subscription_id: sub.id,
+          period_year: year,
+          period_month: month,
+        },
+      });
+    },
+    [],
+  );
+
   const today = new Date().toISOString().slice(0, 10);
 
   return (
@@ -260,7 +332,9 @@ export function ExternalInvoicesTab() {
           {canManage && !schemaMissing && (
             <button
               onClick={() =>
-                subTab === 'invoices' ? setShowInvoiceModal(true) : setShowSubModal(true)
+                subTab === 'invoices'
+                  ? setInvoiceModal({ open: true, prefill: null })
+                  : setShowSubModal(true)
               }
               className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#0a0d1a] hover:bg-[#d3bb73]/90"
             >
@@ -286,11 +360,13 @@ export function ExternalInvoicesTab() {
       ) : loading ? (
         <div className="py-16 text-center text-[#e5e4e2]/50">Ładowanie...</div>
       ) : subTab === 'invoices' ? (
-        <InvoicesList
+        <GroupedInvoices
           invoices={invoices}
+          subscriptions={subscriptions}
           canManage={canManage}
           onPreview={openFile}
           onDelete={deleteInvoice}
+          onAddForPlaceholder={openPlaceholder}
         />
       ) : (
         <SubscriptionsList
@@ -303,11 +379,12 @@ export function ExternalInvoicesTab() {
         />
       )}
 
-      {showInvoiceModal && (
+      {invoiceModal.open && (
         <InvoiceFormModal
-          onClose={() => setShowInvoiceModal(false)}
+          prefill={invoiceModal.prefill}
+          onClose={() => setInvoiceModal({ open: false, prefill: null })}
           onSaved={() => {
-            setShowInvoiceModal(false);
+            setInvoiceModal({ open: false, prefill: null });
             fetchData();
           }}
         />
@@ -326,76 +403,277 @@ export function ExternalInvoicesTab() {
   );
 }
 
-function InvoicesList({
+function buildInvoiceGroups(invoices: ExternalInvoice[], subscriptions: Subscription[]) {
+  const map = new Map<number, Map<number, InvoiceRow[]>>();
+
+  const add = (year: number, month: number, row: InvoiceRow) => {
+    let months = map.get(year);
+    if (!months) {
+      months = new Map();
+      map.set(year, months);
+    }
+    const rows = months.get(month) ?? [];
+    rows.push(row);
+    months.set(month, rows);
+  };
+
+  for (const inv of invoices) {
+    let year: number;
+    let month: number;
+    if (inv.period_year && inv.period_month) {
+      year = inv.period_year;
+      month = inv.period_month;
+    } else {
+      const d = new Date(inv.invoice_date);
+      year = d.getFullYear();
+      month = d.getMonth() + 1;
+    }
+    add(year, month, { kind: 'real', invoice: inv });
+  }
+
+  const now = new Date();
+  const curYear = now.getFullYear();
+  const curMonth = now.getMonth() + 1;
+
+  const fulfilled = new Set(
+    invoices
+      .filter((i) => i.subscription_id && i.period_year && i.period_month)
+      .map((i) => `${i.subscription_id}:${i.period_year}:${i.period_month}`),
+  );
+
+  for (const sub of subscriptions) {
+    if (sub.status === 'cancelled') continue;
+    const step = cycleStepMonths(sub.billing_cycle);
+    const start = new Date(sub.created_at ?? sub.next_charge_date ?? now);
+    let year = start.getFullYear();
+    let month = start.getMonth() + 1;
+    let guard = 0;
+    while ((year < curYear || (year === curYear && month <= curMonth)) && guard < 600) {
+      guard++;
+      const key = `${sub.id}:${year}:${month}`;
+      if (!fulfilled.has(key)) {
+        add(year, month, { kind: 'placeholder', subscription: sub, year, month });
+      }
+      month += step;
+      while (month > 12) {
+        month -= 12;
+        year++;
+      }
+    }
+  }
+
+  const years = Array.from(map.keys()).sort((a, b) => b - a);
+  return years.map((year) => {
+    const monthsMap = map.get(year)!;
+    const months = Array.from(monthsMap.keys()).sort((a, b) => b - a);
+    return {
+      year,
+      months: months.map((month) => {
+        const rows = monthsMap.get(month)!;
+        rows.sort((a, b) => {
+          if (a.kind !== b.kind) return a.kind === 'placeholder' ? 1 : -1;
+          return 0;
+        });
+        const missing = rows.filter((r) => r.kind === 'placeholder').length;
+        return { month, rows, missing };
+      }),
+    };
+  });
+}
+
+function GroupedInvoices({
   invoices,
+  subscriptions,
   canManage,
   onPreview,
   onDelete,
+  onAddForPlaceholder,
 }: {
   invoices: ExternalInvoice[];
+  subscriptions: Subscription[];
   canManage: boolean;
   onPreview: (path: string | null) => void;
   onDelete: (inv: ExternalInvoice) => void;
+  onAddForPlaceholder: (sub: Subscription, year: number, month: number) => void;
 }) {
-  if (invoices.length === 0) {
+  const groups = useMemo(
+    () => buildInvoiceGroups(invoices, subscriptions),
+    [invoices, subscriptions],
+  );
+
+  if (groups.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-[#d3bb73]/20 py-16 text-center text-[#e5e4e2]/50">
-        Brak faktur spoza KSeF. Dodaj pierwszą fakturę papierową, zagraniczną lub paragon.
+        Brak faktur spoza KSeF. Dodaj pierwszą fakturę papierową, zagraniczną lub paragon —
+        subskrypcje pojawią się tu automatycznie co miesiąc.
       </div>
     );
   }
 
   return (
-    <div className="grid gap-3">
-      {invoices.map((inv) => (
-        <div
-          key={inv.id}
-          className="flex flex-col gap-3 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4 sm:flex-row sm:items-center sm:justify-between"
-        >
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-medium text-[#e5e4e2]">{inv.invoice_number}</span>
-              {inv.label && (
-                <span className="rounded-full bg-[#d3bb73]/15 px-2 py-0.5 text-xs text-[#d3bb73]">
-                  {inv.label}
-                </span>
-              )}
-            </div>
-            <div className="mt-1 text-sm text-[#e5e4e2]/70">
-              {inv.seller_name}
-              {inv.seller_nip ? ` · NIP ${inv.seller_nip}` : ''}
-            </div>
-            <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#e5e4e2]/50">
-              <span>Data: {formatDate(inv.invoice_date)}</span>
-              {inv.payment_method && <span>Płatność: {inv.payment_method}</span>}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <span className="text-right font-medium text-[#d3bb73]">
-              {formatMoney(inv.amount_gross, inv.currency)}
-            </span>
-            {inv.file_url && (
-              <button
-                onClick={() => onPreview(inv.file_url)}
-                title="Podgląd faktury"
-                className="rounded-lg border border-[#d3bb73]/20 p-2 text-[#e5e4e2]/70 hover:text-[#d3bb73]"
-              >
-                <Eye className="h-4 w-4" />
-              </button>
-            )}
-            {canManage && (
-              <button
-                onClick={() => onDelete(inv)}
-                title="Usuń"
-                className="rounded-lg border border-red-500/20 p-2 text-red-400 hover:bg-red-500/10"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            )}
+    <div className="flex flex-col gap-8">
+      {groups.map((yearGroup) => (
+        <div key={yearGroup.year}>
+          <h2 className="mb-3 text-xl font-semibold text-[#e5e4e2]">{yearGroup.year}</h2>
+          <div className="flex flex-col gap-5">
+            {yearGroup.months.map((monthGroup) => (
+              <div key={monthGroup.month}>
+                <div className="mb-2 flex items-center gap-3">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-[#d3bb73]">
+                    {MONTH_NAMES[monthGroup.month - 1]}
+                  </h3>
+                  {monthGroup.missing > 0 && (
+                    <span className="flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-400">
+                      <AlertTriangle className="h-3 w-3" />
+                      {monthGroup.missing} do dodania
+                    </span>
+                  )}
+                </div>
+                <div className="grid gap-3">
+                  {monthGroup.rows.map((row) =>
+                    row.kind === 'real' ? (
+                      <RealInvoiceCard
+                        key={`inv-${row.invoice.id}`}
+                        inv={row.invoice}
+                        canManage={canManage}
+                        onPreview={onPreview}
+                        onDelete={onDelete}
+                      />
+                    ) : (
+                      <PlaceholderCard
+                        key={`ph-${row.subscription.id}-${row.year}-${row.month}`}
+                        subscription={row.subscription}
+                        year={row.year}
+                        month={row.month}
+                        canManage={canManage}
+                        onAdd={onAddForPlaceholder}
+                      />
+                    ),
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function RealInvoiceCard({
+  inv,
+  canManage,
+  onPreview,
+  onDelete,
+}: {
+  inv: ExternalInvoice;
+  canManage: boolean;
+  onPreview: (path: string | null) => void;
+  onDelete: (inv: ExternalInvoice) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-medium text-[#e5e4e2]">{inv.invoice_number}</span>
+          {inv.subscription_id && (
+            <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-400">
+              <Repeat className="h-3 w-3" />
+              Subskrypcja
+            </span>
+          )}
+          {inv.label && (
+            <span className="rounded-full bg-[#d3bb73]/15 px-2 py-0.5 text-xs text-[#d3bb73]">
+              {inv.label}
+            </span>
+          )}
+        </div>
+        <div className="mt-1 text-sm text-[#e5e4e2]/70">
+          {inv.seller_name}
+          {inv.seller_nip ? ` · NIP ${inv.seller_nip}` : ''}
+        </div>
+        <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#e5e4e2]/50">
+          <span>Data: {formatDate(inv.invoice_date)}</span>
+          {inv.payment_method && <span>Płatność: {inv.payment_method}</span>}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <span className="text-right font-medium text-[#d3bb73]">
+          {formatMoney(inv.amount_gross, inv.currency)}
+        </span>
+        {inv.file_url && (
+          <button
+            onClick={() => onPreview(inv.file_url)}
+            title="Podgląd faktury"
+            className="rounded-lg border border-[#d3bb73]/20 p-2 text-[#e5e4e2]/70 hover:text-[#d3bb73]"
+          >
+            <Eye className="h-4 w-4" />
+          </button>
+        )}
+        {canManage && (
+          <button
+            onClick={() => onDelete(inv)}
+            title="Usuń"
+            className="rounded-lg border border-red-500/20 p-2 text-red-400 hover:bg-red-500/10"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PlaceholderCard({
+  subscription,
+  year,
+  month,
+  canManage,
+  onAdd,
+}: {
+  subscription: Subscription;
+  year: number;
+  month: number;
+  canManage: boolean;
+  onAdd: (sub: Subscription, year: number, month: number) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-red-500/50 bg-red-500/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-medium text-[#e5e4e2]">{subscription.name}</span>
+          <span className="flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-400">
+            <AlertTriangle className="h-3 w-3" />
+            Brak faktury
+          </span>
+        </div>
+        <div className="mt-1 text-sm text-[#e5e4e2]/70">
+          {subscription.seller_name || subscription.name}
+          {subscription.seller_nip ? ` · NIP ${subscription.seller_nip}` : ''}
+        </div>
+        <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#e5e4e2]/50">
+          <span>
+            Okres: {MONTH_NAMES[month - 1]} {year}
+          </span>
+          <span>Cykl: {cycleLabel(subscription.billing_cycle)}</span>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <span className="text-right font-medium text-red-400">
+          {formatMoney(subscription.amount, subscription.currency)}
+        </span>
+        {canManage && (
+          <button
+            onClick={() => onAdd(subscription, year, month)}
+            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-3 py-2 text-sm font-medium text-[#0a0d1a] hover:bg-[#d3bb73]/90"
+          >
+            <Plus className="h-4 w-4" />
+            Dodaj fakturę
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -519,21 +797,31 @@ async function uploadFile(file: File): Promise<string | null> {
   return path;
 }
 
-function InvoiceFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+function InvoiceFormModal({
+  prefill,
+  onClose,
+  onSaved,
+}: {
+  prefill: InvoicePrefill | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const { showSnackbar } = useSnackbar();
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
-    seller_name: '',
-    seller_nip: '',
+    seller_name: prefill?.seller_name ?? '',
+    seller_nip: prefill?.seller_nip ?? '',
     invoice_number: '',
-    label: '',
-    invoice_date: new Date().toISOString().slice(0, 10),
-    payment_method: 'Przelew',
-    amount_gross: '',
-    currency: 'PLN',
-    notes: '',
+    label: prefill?.label ?? '',
+    invoice_date: prefill?.invoice_date ?? new Date().toISOString().slice(0, 10),
+    payment_method: prefill?.payment_method ?? 'Przelew',
+    amount_gross: prefill?.amount_gross ?? '',
+    currency: prefill?.currency ?? 'PLN',
+    notes: prefill?.notes ?? '',
   });
   const [file, setFile] = useState<File | null>(null);
+
+  const isSubscriptionInvoice = !!prefill?.subscription_id;
 
   const submit = async () => {
     if (!form.seller_name.trim() || !form.invoice_number.trim() || !form.invoice_date) {
@@ -563,6 +851,9 @@ function InvoiceFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
       currency: form.currency || 'PLN',
       file_url: filePath,
       notes: form.notes.trim() || null,
+      subscription_id: prefill?.subscription_id ?? null,
+      period_year: prefill?.period_year ?? null,
+      period_month: prefill?.period_month ?? null,
     });
 
     setSaving(false);
@@ -576,7 +867,20 @@ function InvoiceFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
   };
 
   return (
-    <Modal open onClose={onClose} title="Dodaj fakturę spoza KSeF">
+    <Modal
+      open
+      onClose={onClose}
+      title={isSubscriptionInvoice ? 'Dodaj fakturę do subskrypcji' : 'Dodaj fakturę spoza KSeF'}
+    >
+      {isSubscriptionInvoice && prefill?.period_year && prefill?.period_month && (
+        <div className="mb-4 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/5 px-3 py-2 text-xs text-[#e5e4e2]/70">
+          Faktura zostanie przypisana do subskrypcji za okres{' '}
+          <span className="font-medium text-[#d3bb73]">
+            {MONTH_NAMES[prefill.period_month - 1]} {prefill.period_year}
+          </span>
+          .
+        </div>
+      )}
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label className={labelClass}>Nazwa sprzedającego *</label>
@@ -658,16 +962,12 @@ function InvoiceFormModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
         </div>
         <div className="sm:col-span-2">
           <label className={labelClass}>Podgląd faktury (zdjęcie lub PDF)</label>
-          <select
-            className={inputClass}
-            value={form.currency}
-            onChange={(e) => setForm({ ...form, currency: e.target.value })}
-          >
-            <option value="PLN">PLN - złoty</option>
-            <option value="EUR">EUR - euro</option>
-            <option value="USD">USD - dolar</option>
-            <option value="GBP">GBP - funt</option>
-          </select>
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/jpg,image/webp,application/pdf"
+            className="w-full text-sm text-[#e5e4e2]/70 file:mr-3 file:rounded-lg file:border-0 file:bg-[#d3bb73]/20 file:px-3 file:py-2 file:text-sm file:text-[#d3bb73]"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          />
         </div>
         <div className="sm:col-span-2">
           <label className={labelClass}>Uwagi</label>
