@@ -10,6 +10,7 @@ import {
   Alert,
   ActivityIndicator,
   Image,
+  useWindowDimensions,
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { colors, spacing, typography, borderRadius } from '../theme';
@@ -19,6 +20,9 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const { signIn } = useAuth();
+  const { width } = useWindowDimensions();
+
+const isWideScreen = width >= 700;
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -53,6 +57,12 @@ export default function LoginScreen() {
         </View>
 
         {/* Login Form */}
+        <View
+  style={[
+    styles.formWrapper,
+    isWideScreen && styles.formWrapperWide,
+  ]}
+>
         <View style={styles.form}>
           <View style={styles.inputContainer}>
             <Text style={styles.label}>Email</Text>
@@ -92,6 +102,7 @@ export default function LoginScreen() {
               <Text style={styles.buttonText}>Zaloguj się</Text>
             )}
           </TouchableOpacity>
+        </View>
         </View>
 
         {/* Footer */}
@@ -135,9 +146,6 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeights.light,
     color: colors.text.secondary,
   },
-  form: {
-    gap: spacing.lg,
-  },
   inputContainer: {
     gap: spacing.sm,
   },
@@ -177,5 +185,18 @@ const styles = StyleSheet.create({
   footerText: {
     fontSize: typography.fontSizes.sm,
     color: colors.text.tertiary,
+  },
+  formWrapper: {
+    width: '100%',
+  },
+  
+  formWrapperWide: {
+    alignItems: 'center',
+  },
+  
+  form: {
+    width: '100%',
+    gap: spacing.lg,
+    maxWidth: 420,
   },
 });
