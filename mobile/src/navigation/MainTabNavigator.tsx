@@ -84,9 +84,13 @@ export default function MainTabNavigator() {
     try {
       const { count } = await supabase
         .from('notification_recipients')
-        .select('*', { count: 'exact', head: true })
+        .select('*, notifications!inner(related_entity_type)', {
+          count: 'exact',
+          head: true,
+        })
         .eq('user_id', employee.id)
-        .eq('is_read', false);
+        .eq('is_read', false)
+        .neq('notifications.related_entity_type', 'event_phase_assignment');
 
       setUnreadCount(count || 0);
     } catch (error) {

@@ -97,6 +97,12 @@ export default function NotificationsScreen() {
 
       const formattedNotifications = data
         .filter((item: any) => item.notification)
+        // Ukryj zdublowane zaproszenie fazowe — poprawne zaproszenie do
+        // wydarzenia przychodzi jako osobne powiadomienie (employee_assignments).
+        .filter(
+          (item: any) =>
+            item.notification.related_entity_type !== 'event_phase_assignment'
+        )
         .map((item: any) => ({
           ...item.notification,
           is_read: item.is_read,
