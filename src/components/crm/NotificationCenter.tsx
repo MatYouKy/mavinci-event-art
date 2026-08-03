@@ -21,12 +21,95 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { supabase } from '@/lib/supabase/browser';
 import { AbsenceRequestModal } from '@/components/crm/employee/modal/AbsenceRequestModal';
 
+const NOTIFICATION_CATEGORY_LABELS: Record<string, string> = {
+  meeting_invitation: 'Spotkanie',
+  tasks: 'Zadanie',
+  task_comment: 'Komentarz',
+  inquiry: 'Zapytanie',
+  event_assignment: 'Przypisanie do wydarzenia',
+  event_update: 'Aktualizacja wydarzenia',
+  absence_request: 'Wniosek urlopowy',
+  absence_approved: 'Urlop zaakceptowany',
+  absence_rejected: 'Urlop odrzucony',
+  email_received: 'Wiadomość e-mail',
+  contact_form: 'Formularz kontaktowy',
+  system: 'System',
+};
+
+const getBannerIcon = (relatedEntityType: string | null) => {
+  switch (relatedEntityType) {
+    case 'meeting':
+      return <Calendar className="h-4 w-4 text-[#d3bb73]" />;
+
+    case 'task':
+    case 'inquiry':
+      return <CheckCircle className="h-4 w-4 text-[#d3bb73]" />;
+
+    case 'event':
+      return <Calendar className="h-4 w-4 text-[#d3bb73]" />;
+
+    case 'contact_messages':
+      return <Mail className="h-4 w-4 text-[#d3bb73]" />;
+
+    default:
+      return <Bell className="h-4 w-4 text-[#d3bb73]" />;
+  }
+};
+
+function getNotificationActionUrl(notification: {
+  action_url?: string | null;
+  related_entity_type?: string | null;
+  related_entity_id?: string | null;
+  category?: string | null;
+  metadata?: any;
+}): string | null {
+  if (notification.action_url) {
+    return notification.action_url;
+  }
+
+  const entityType = notification.related_entity_type;
+  const entityId = notification.related_entity_id;
+
+  if (!entityId) {
+    return null;
+  }
+
+  switch (entityType) {
+    case 'event':
+      return `/crm/events/${entityId}`;
+
+    case 'meeting':
+      return `/crm/meetings?meetingId=${entityId}`;
+
+    case 'task':
+      return `/crm/tasks/${entityId}`;
+
+    case 'inquiry':
+      return `/crm/tasks/${entityId}`;
+
+    case 'absence':
+      return null;
+
+    case 'client':
+      return `/crm/clients/${entityId}`;
+
+    case 'employee':
+      return `/crm/employees/${entityId}`;
+
+    case 'vehicle':
+      return `/crm/fleet/vehicles/${entityId}`;
+
+    default:
+      return null;
+  }
+}
+
 interface NotificationBanner {
   id: string;
   title: string;
   message: string;
   actionUrl: string | null;
-  eventId: string | null;
+  relatedEntityType: string | null;
 }
 
 export interface Notification {
@@ -45,12 +128,18 @@ export interface Notification {
   read_at: string | null;
 }
 
-export default function NotificationCenter({ initialNotifications }: { initialNotifications: Notification[] }) {
+export default function NotificationCenter({
+  initialNotifications,
+}: {
+  initialNotifications: Notification[];
+}) {
   const router = useRouter();
   const { isAdmin } = useCurrentEmployee();
   const { showSnackbar } = useSnackbar();
   const [notifications, setNotifications] = useState<Notification[]>(initialNotifications);
-  const [unreadCount, setUnreadCount] = useState(initialNotifications.filter((n) => !n.is_read).length);
+  const [unreadCount, setUnreadCount] = useState(
+    initialNotifications.filter((n) => !n.is_read).length,
+  );
   const [showPanel, setShowPanel] = useState(false);
   const [loading, setLoading] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
@@ -69,24 +158,30 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
   const bannerTimeoutsRef = useRef<Record<string, NodeJS.Timeout>>({});
 
   const showBanner = useCallback((notification: Notification) => {
-    const eventId = notification.metadata?.event_id || null;
-    const actionUrl = notification.action_url || (eventId ? `/crm/events/${eventId}` : null);
+    const actionUrl = getNotificationActionUrl(notification);
+
     const banner: NotificationBanner = {
       id: notification.id,
       title: notification.title,
       message: notification.message,
       actionUrl,
-      eventId,
+      relatedEntityType: notification.related_entity_type,
     };
+
     setBanners((prev) => {
-      if (prev.some((b) => b.id === banner.id)) return prev;
+      if (prev.some((item) => item.id === banner.id)) {
+        return prev;
+      }
+
       return [banner, ...prev].slice(0, 3);
     });
+
     const timeout = setTimeout(() => {
-      setBanners((prev) => prev.filter((b) => b.id !== banner.id));
+      setBanners((prev) => prev.filter((item) => item.id !== banner.id));
       delete bannerTimeoutsRef.current[banner.id];
     }, 8000);
-    bannerTimeoutsRef.current[banner.id] = timeout;
+
+    bannerTimeoutsRef.current[banner.id] = timeout as unknown as NodeJS.Timeout;
   }, []);
 
   const dismissBanner = useCallback((bannerId: string) => {
@@ -113,19 +208,43 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
         (payload) => {
           const newRow = payload.new as any;
           const createdAt = newRow?.created_at;
-          if (createdAt && createdAt > sessionStartRef.current && readyForSoundRef.current && soundEnabledRef.current) {
+          if (
+            createdAt &&
+            createdAt > sessionStartRef.current &&
+            readyForSoundRef.current &&
+            soundEnabledRef.current
+          ) {
             playNotificationSound();
           }
           fetchNotifications().then(() => {
             if (newRow?.notification_id && createdAt && createdAt > sessionStartRef.current) {
               (async () => {
-                const { data: notifData } = await supabase
+                const { data: notifData, error: notifError } = await supabase
                   .from('notifications')
-                  .select('id, title, message, category, action_url, metadata, related_entity_type')
+                  .select(
+                    `
+                  id,
+                  title,
+                  message,
+                  type,
+                  category,
+                  action_url,
+                  created_at,
+                  metadata,
+                  related_entity_type,
+                  related_entity_id
+                `,
+                  )
                   .eq('id', newRow.notification_id)
                   .maybeSingle();
+
+                if (notifError) {
+                  console.error('Błąd pobierania nowego powiadomienia:', notifError);
+                  return;
+                }
+
                 if (notifData) {
-                  showBanner(notifData as unknown as Notification);
+                  showBanner(notifData as Notification);
                 }
               })();
             }
@@ -286,7 +405,7 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
         `,
         )
         .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
 
@@ -424,12 +543,11 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
     }
   };
 
-  const handleNotificationClick = (notification: Notification) => {
+  const handleNotificationClick = async (notification: Notification) => {
     if (!notification.is_read) {
-      markAsRead(notification.recipient_id);
+      await markAsRead(notification.recipient_id);
     }
 
-    // Handle absence notifications with modal
     if (
       notification.category === 'absence_request' &&
       notification.related_entity_type === 'absence' &&
@@ -440,10 +558,11 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
       return;
     }
 
-    // For other notifications, use action_url
-    if (notification.action_url) {
-      router.push(notification.action_url);
+    const actionUrl = getNotificationActionUrl(notification);
+
+    if (actionUrl) {
       setShowPanel(false);
+      router.push(actionUrl);
     }
   };
 
@@ -549,7 +668,7 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
             }}
           >
             <div className="flex-shrink-0 rounded-full bg-[#d3bb73]/20 p-2">
-              <Calendar className="h-4 w-4 text-[#d3bb73]" />
+            {getBannerIcon(banner.relatedEntityType)}
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold text-[#e5e4e2]">{banner.title}</p>
@@ -572,327 +691,339 @@ export default function NotificationCenter({ initialNotifications }: { initialNo
       </div>
 
       <div className="relative">
-      <button
-        onClick={() => setShowPanel(!showPanel)}
-        className="relative rounded-lg p-1.5 transition-colors hover:bg-[#1c1f33] md:p-2"
-      >
-        <Bell className="h-5 w-5 text-[#e5e4e2] md:h-6 md:w-6" />
-        {unreadCount > 0 && (
-          <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white">
-            {unreadCount > 99 ? '99+' : unreadCount}
-          </span>
-        )}
-      </button>
+        <button
+          onClick={() => setShowPanel(!showPanel)}
+          className="relative rounded-lg p-1.5 transition-colors hover:bg-[#1c1f33] md:p-2"
+        >
+          <Bell className="h-5 w-5 text-[#e5e4e2] md:h-6 md:w-6" />
+          {unreadCount > 0 && (
+            <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white">
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </span>
+          )}
+        </button>
 
-      {showPanel && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setShowPanel(false)} />
+        {showPanel && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setShowPanel(false)} />
 
-          <div className="fixed left-0 right-0 top-16 z-50 mx-auto flex max-h-[80vh] w-full max-w-md flex-col rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] shadow-2xl md:absolute md:left-auto md:right-0 md:top-12 md:mx-0 md:max-h-[600px] md:w-96 md:max-w-none">
-            <div className="border-b border-[#d3bb73]/20 p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-bold text-[#e5e4e2]">Powiadomienia</h3>
-                </div>
-                <button
-                  onClick={() => setShowPanel(false)}
-                  className="rounded p-1 transition-colors hover:bg-[#0f1119]"
-                >
-                  <X className="h-5 w-5 text-[#e5e4e2]" />
-                </button>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setFilter('all')}
-                  className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                    filter === 'all'
-                      ? 'bg-[#d3bb73] text-[#1c1f33]'
-                      : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#0f1119]/80'
-                  }`}
-                >
-                  Wszystkie ({notifications.length})
-                </button>
-                <button
-                  onClick={() => setFilter('unread')}
-                  className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                    filter === 'unread'
-                      ? 'bg-[#d3bb73] text-[#1c1f33]'
-                      : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#0f1119]/80'
-                  }`}
-                >
-                  Nieprzeczytane ({unreadCount})
-                </button>
-              </div>
-
-              <div className="mt-2 space-y-2">
-                {unreadCount > 0 && isAdmin && (
+            <div className="fixed left-0 right-0 top-16 z-50 mx-auto flex max-h-[80vh] w-full max-w-md flex-col rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] shadow-2xl md:absolute md:left-auto md:right-0 md:top-12 md:mx-0 md:max-h-[600px] md:w-96 md:max-w-none">
+              <div className="border-b border-[#d3bb73]/20 p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-bold text-[#e5e4e2]">Powiadomienia</h3>
+                  </div>
                   <button
-                    onClick={markAllAsRead}
-                    disabled={loading}
-                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#d3bb73]/20 px-3 py-1.5 text-sm font-medium text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30 disabled:opacity-50"
+                    onClick={() => setShowPanel(false)}
+                    className="rounded p-1 transition-colors hover:bg-[#0f1119]"
                   >
-                    <CheckCheck className="h-4 w-4" />
-                    Oznacz wszystkie jako przeczytane
+                    <X className="h-5 w-5 text-[#e5e4e2]" />
                   </button>
-                )}
-                {notifications.length > 0 && isAdmin && (
-                  <button
-                    onClick={() => setShowDeleteConfirm(true)}
-                    disabled={deletingAll}
-                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-500/20 px-3 py-1.5 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/30 disabled:opacity-50"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    Usuń wszystkie powiadomienia
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto">
-              {filteredNotifications.length === 0 ? (
-                <div className="p-8 text-center text-[#e5e4e2]/60">
-                  <Bell className="mx-auto mb-3 h-12 w-12 opacity-30" />
-                  <p>
-                    {filter === 'unread' ? 'Brak nieprzeczytanych powiadomień' : 'Brak powiadomień'}
-                  </p>
                 </div>
-              ) : (
-                <div className="divide-y divide-[#d3bb73]/10">
-                  {filteredNotifications.map((notification) => (
-                    <div
-                      key={notification.id}
-                      onClick={() => {
-                        if (notification.action_url) {
-                          handleNotificationClick(notification);
-                        }
-                      }}
-                      className={`p-4 transition-colors hover:bg-[#0f1119]/50 ${
-                        notification.action_url ? 'cursor-pointer' : ''
-                      } ${!notification.is_read ? 'bg-[#d3bb73]/5' : ''}`}
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setFilter('all')}
+                    className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                      filter === 'all'
+                        ? 'bg-[#d3bb73] text-[#1c1f33]'
+                        : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#0f1119]/80'
+                    }`}
+                  >
+                    Wszystkie ({notifications.length})
+                  </button>
+                  <button
+                    onClick={() => setFilter('unread')}
+                    className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                      filter === 'unread'
+                        ? 'bg-[#d3bb73] text-[#1c1f33]'
+                        : 'bg-[#0f1119] text-[#e5e4e2] hover:bg-[#0f1119]/80'
+                    }`}
+                  >
+                    Nieprzeczytane ({unreadCount})
+                  </button>
+                </div>
+
+                <div className="mt-2 space-y-2">
+                  {unreadCount > 0 && isAdmin && (
+                    <button
+                      onClick={markAllAsRead}
+                      disabled={loading}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#d3bb73]/20 px-3 py-1.5 text-sm font-medium text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/30 disabled:opacity-50"
                     >
-                      <div className="flex items-start gap-3">
-                        <div
-                          className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border ${getTypeColor(
-                            notification.type,
-                          )}`}
-                        >
-                          <span className="flex items-center justify-center text-sm">
-                            {getTypeIcon(notification)}
-                          </span>
-                        </div>
+                      <CheckCheck className="h-4 w-4" />
+                      Oznacz wszystkie jako przeczytane
+                    </button>
+                  )}
+                  {notifications.length > 0 && isAdmin && (
+                    <button
+                      onClick={() => setShowDeleteConfirm(true)}
+                      disabled={deletingAll}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-500/20 px-3 py-1.5 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/30 disabled:opacity-50"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Usuń wszystkie powiadomienia
+                    </button>
+                  )}
+                </div>
+              </div>
 
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-start justify-between gap-2">
-                            <h4
-                              className={`font-medium ${
-                                notification.is_read ? 'text-[#e5e4e2]/70' : 'text-[#e5e4e2]'
+              <div className="flex-1 overflow-y-auto">
+                {filteredNotifications.length === 0 ? (
+                  <div className="p-8 text-center text-[#e5e4e2]/60">
+                    <Bell className="mx-auto mb-3 h-12 w-12 opacity-30" />
+                    <p>
+                      {filter === 'unread'
+                        ? 'Brak nieprzeczytanych powiadomień'
+                        : 'Brak powiadomień'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-[#d3bb73]/10">
+                    {filteredNotifications.map((notification) => (
+                      <div
+                        key={notification.id}
+                        onClick={() => {
+                          const actionUrl = getNotificationActionUrl(notification);
+
+                          if (
+                            actionUrl ||
+                            (notification.category === 'absence_request' &&
+                              notification.related_entity_type === 'absence')
+                          ) {
+                            handleNotificationClick(notification);
+                          }
+                        }}
+                        className={`p-4 transition-colors hover:bg-[#0f1119]/50 ${
+                          getNotificationActionUrl(notification) ||
+                          (notification.category === 'absence_request' &&
+                            notification.related_entity_type === 'absence')
+                            ? 'cursor-pointer'
+                            : ''
+                        } ${!notification.is_read ? 'bg-[#d3bb73]/5' : ''}`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div
+                            className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border ${getTypeColor(
+                              notification.type,
+                            )}`}
+                          >
+                            <span className="flex items-center justify-center text-sm">
+                              {getTypeIcon(notification)}
+                            </span>
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-start justify-between gap-2">
+                              <h4
+                                className={`font-medium ${
+                                  notification.is_read ? 'text-[#e5e4e2]/70' : 'text-[#e5e4e2]'
+                                }`}
+                              >
+                                {notification.title}
+                              </h4>
+                              {!notification.is_read && (
+                                <div className="h-2 w-2 flex-shrink-0 rounded-full bg-[#d3bb73]" />
+                              )}
+                            </div>
+
+                            <p
+                              className={`mt-1 text-sm ${
+                                notification.is_read ? 'text-[#e5e4e2]/50' : 'text-[#e5e4e2]/70'
                               }`}
                             >
-                              {notification.title}
-                            </h4>
-                            {!notification.is_read && (
-                              <div className="h-2 w-2 flex-shrink-0 rounded-full bg-[#d3bb73]" />
-                            )}
-                          </div>
+                              {notification.message}
+                            </p>
 
-                          <p
-                            className={`mt-1 text-sm ${
-                              notification.is_read ? 'text-[#e5e4e2]/50' : 'text-[#e5e4e2]/70'
-                            }`}
-                          >
-                            {notification.message}
-                          </p>
+                            <div className="mt-2 flex items-center gap-2">
+                              <span className="text-xs text-[#e5e4e2]/40">
+                                {new Date(notification.created_at).toLocaleString('pl-PL', {
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </span>
 
-                          <div className="mt-2 flex items-center gap-2">
-                            <span className="text-xs text-[#e5e4e2]/40">
-                              {new Date(notification.created_at).toLocaleString('pl-PL', {
-                                day: '2-digit',
-                                month: '2-digit',
-                                year: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}
-                            </span>
-
-                            <span className="rounded bg-[#0f1119] px-2 py-0.5 text-xs text-[#e5e4e2]/60">
-                              {notification.category}
-                            </span>
-                          </div>
-
-                          {notification.metadata?.assignment_id && (
-                            <div className="mt-3 flex items-center gap-2">
-                              {notification.metadata?.requires_response ? (
-                                <>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleAssignmentResponse(
-                                        notification.metadata.assignment_id,
-                                        'accepted',
-                                        notification.recipient_id,
-                                      );
-                                    }}
-                                    className="flex items-center gap-1 rounded-lg bg-green-500/20 px-3 py-1.5 text-xs font-medium text-green-400 transition-colors hover:bg-green-500/30"
-                                  >
-                                    <CheckCircle className="h-3.5 w-3.5" />
-                                    Akceptuj
-                                  </button>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleAssignmentResponse(
-                                        notification.metadata.assignment_id,
-                                        'rejected',
-                                        notification.recipient_id,
-                                      );
-                                    }}
-                                    className="flex items-center gap-1 rounded-lg bg-red-500/20 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/30"
-                                  >
-                                    <XCircle className="h-3.5 w-3.5" />
-                                    Odrzuć
-                                  </button>
-                                </>
-                              ) : notification.metadata?.assignment_status === 'accepted' ? (
-                                <div className="flex items-center gap-1 rounded-lg bg-green-500/20 px-3 py-1.5 text-xs font-medium text-green-400">
-                                  <CheckCircle className="h-3.5 w-3.5" />
-                                  Zaakceptowano
-                                  {notification.metadata?.responded_at && (
-                                    <span className="ml-1 text-green-400/60">
-                                      {new Date(
-                                        notification.metadata.responded_at,
-                                      ).toLocaleDateString('pl-PL', {
-                                        day: '2-digit',
-                                        month: '2-digit',
-                                        hour: '2-digit',
-                                        minute: '2-digit',
-                                      })}
-                                    </span>
-                                  )}
-                                </div>
-                              ) : notification.metadata?.assignment_status === 'rejected' ? (
-                                <div className="flex items-center gap-1 rounded-lg bg-red-500/20 px-3 py-1.5 text-xs font-medium text-red-400">
-                                  <XCircle className="h-3.5 w-3.5" />
-                                  Odrzucono
-                                  {notification.metadata?.responded_at && (
-                                    <span className="ml-1 text-red-400/60">
-                                      {new Date(
-                                        notification.metadata.responded_at,
-                                      ).toLocaleDateString('pl-PL', {
-                                        day: '2-digit',
-                                        month: '2-digit',
-                                        hour: '2-digit',
-                                        minute: '2-digit',
-                                      })}
-                                    </span>
-                                  )}
-                                </div>
-                              ) : null}
+                              <span className="rounded bg-[#0f1119] px-2 py-0.5 text-xs text-[#e5e4e2]/60">
+                              {NOTIFICATION_CATEGORY_LABELS[notification.category] || notification.category}
+                              </span>
                             </div>
-                          )}
 
-                          <div className="mt-2 flex items-center gap-2">
-                            {notification.action_url && (
+                            {notification.metadata?.assignment_id && (
+                              <div className="mt-3 flex items-center gap-2">
+                                {notification.metadata?.requires_response ? (
+                                  <>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleAssignmentResponse(
+                                          notification.metadata.assignment_id,
+                                          'accepted',
+                                          notification.recipient_id,
+                                        );
+                                      }}
+                                      className="flex items-center gap-1 rounded-lg bg-green-500/20 px-3 py-1.5 text-xs font-medium text-green-400 transition-colors hover:bg-green-500/30"
+                                    >
+                                      <CheckCircle className="h-3.5 w-3.5" />
+                                      Akceptuj
+                                    </button>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleAssignmentResponse(
+                                          notification.metadata.assignment_id,
+                                          'rejected',
+                                          notification.recipient_id,
+                                        );
+                                      }}
+                                      className="flex items-center gap-1 rounded-lg bg-red-500/20 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/30"
+                                    >
+                                      <XCircle className="h-3.5 w-3.5" />
+                                      Odrzuć
+                                    </button>
+                                  </>
+                                ) : notification.metadata?.assignment_status === 'accepted' ? (
+                                  <div className="flex items-center gap-1 rounded-lg bg-green-500/20 px-3 py-1.5 text-xs font-medium text-green-400">
+                                    <CheckCircle className="h-3.5 w-3.5" />
+                                    Zaakceptowano
+                                    {notification.metadata?.responded_at && (
+                                      <span className="ml-1 text-green-400/60">
+                                        {new Date(
+                                          notification.metadata.responded_at,
+                                        ).toLocaleDateString('pl-PL', {
+                                          day: '2-digit',
+                                          month: '2-digit',
+                                          hour: '2-digit',
+                                          minute: '2-digit',
+                                        })}
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : notification.metadata?.assignment_status === 'rejected' ? (
+                                  <div className="flex items-center gap-1 rounded-lg bg-red-500/20 px-3 py-1.5 text-xs font-medium text-red-400">
+                                    <XCircle className="h-3.5 w-3.5" />
+                                    Odrzucono
+                                    {notification.metadata?.responded_at && (
+                                      <span className="ml-1 text-red-400/60">
+                                        {new Date(
+                                          notification.metadata.responded_at,
+                                        ).toLocaleDateString('pl-PL', {
+                                          day: '2-digit',
+                                          month: '2-digit',
+                                          hour: '2-digit',
+                                          minute: '2-digit',
+                                        })}
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : null}
+                              </div>
+                            )}
+
+                            <div className="mt-2 flex items-center gap-2">
+                              {getNotificationActionUrl(notification) && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleNotificationClick(notification);
+                                  }}
+                                  className="flex items-center gap-1 text-xs text-[#d3bb73] transition-colors hover:text-[#d3bb73]/80"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                  Przejdź
+                                </button>
+                              )}
+
+                              {!notification.is_read && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    markAsRead(notification.recipient_id);
+                                  }}
+                                  className="flex items-center gap-1 text-xs text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
+                                >
+                                  <Check className="h-3 w-3" />
+                                  Oznacz jako przeczytane
+                                </button>
+                              )}
+
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleNotificationClick(notification);
+                                  deleteNotification(notification.recipient_id);
                                 }}
-                                className="flex items-center gap-1 text-xs text-[#d3bb73] transition-colors hover:text-[#d3bb73]/80"
+                                className="ml-auto flex items-center gap-1 text-xs text-red-400/60 transition-colors hover:text-red-400"
                               >
-                                <ExternalLink className="h-3 w-3" />
-                                Przejdź
+                                <Trash2 className="h-3 w-3" />
+                                Usuń
                               </button>
-                            )}
-
-                            {!notification.is_read && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  markAsRead(notification.recipient_id);
-                                }}
-                                className="flex items-center gap-1 text-xs text-[#e5e4e2]/60 transition-colors hover:text-[#e5e4e2]"
-                              >
-                                <Check className="h-3 w-3" />
-                                Oznacz jako przeczytane
-                              </button>
-                            )}
-
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                deleteNotification(notification.recipient_id);
-                              }}
-                              className="ml-auto flex items-center gap-1 text-xs text-red-400/60 transition-colors hover:text-red-400"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                              Usuń
-                            </button>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Modal potwierdzenia usunięcia wszystkich */}
+        {showDeleteConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="w-full max-w-md rounded-xl border border-red-500/20 bg-[#1c1f33] p-6">
+              <div className="mb-4 flex items-start gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-500/20">
+                  <Trash2 className="h-5 w-5 text-red-400" />
                 </div>
-              )}
+                <div>
+                  <h3 className="text-lg font-medium text-[#e5e4e2]">
+                    Usuń wszystkie powiadomienia?
+                  </h3>
+                  <p className="mt-1 text-sm text-[#e5e4e2]/60">
+                    Ta akcja usunie wszystkie Twoje powiadomienia z bazy danych. Tej operacji nie
+                    można cofnąć.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  disabled={deletingAll}
+                  className="flex-1 rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm font-medium text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10 disabled:opacity-50"
+                >
+                  Anuluj
+                </button>
+                <button
+                  onClick={async () => {
+                    await deleteAllNotifications();
+                    setShowDeleteConfirm(false);
+                  }}
+                  disabled={deletingAll}
+                  className="flex-1 rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-600 disabled:opacity-50"
+                >
+                  {deletingAll ? 'Usuwanie...' : 'Usuń wszystkie'}
+                </button>
+              </div>
             </div>
           </div>
-        </>
-      )}
+        )}
 
-      {/* Modal potwierdzenia usunięcia wszystkich */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-xl border border-red-500/20 bg-[#1c1f33] p-6">
-            <div className="mb-4 flex items-start gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-500/20">
-                <Trash2 className="h-5 w-5 text-red-400" />
-              </div>
-              <div>
-                <h3 className="text-lg font-medium text-[#e5e4e2]">
-                  Usuń wszystkie powiadomienia?
-                </h3>
-                <p className="mt-1 text-sm text-[#e5e4e2]/60">
-                  Ta akcja usunie wszystkie Twoje powiadomienia z bazy danych. Tej operacji nie
-                  można cofnąć.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowDeleteConfirm(false)}
-                disabled={deletingAll}
-                className="flex-1 rounded-lg border border-[#d3bb73]/20 px-4 py-2 text-sm font-medium text-[#e5e4e2] transition-colors hover:bg-[#d3bb73]/10 disabled:opacity-50"
-              >
-                Anuluj
-              </button>
-              <button
-                onClick={async () => {
-                  await deleteAllNotifications();
-                  setShowDeleteConfirm(false);
-                }}
-                disabled={deletingAll}
-                className="flex-1 rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-600 disabled:opacity-50"
-              >
-                {deletingAll ? 'Usuwanie...' : 'Usuń wszystkie'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Absence Request Modal */}
-      {absenceModalId && (
-        <AbsenceRequestModal
-          absenceId={absenceModalId}
-          onClose={() => setAbsenceModalId(null)}
-          onSuccess={() => {
-            fetchNotifications();
-          }}
-        />
-      )}
-    </div>
+        {/* Absence Request Modal */}
+        {absenceModalId && (
+          <AbsenceRequestModal
+            absenceId={absenceModalId}
+            onClose={() => setAbsenceModalId(null)}
+            onSuccess={() => {
+              fetchNotifications();
+            }}
+          />
+        )}
+      </div>
     </>
   );
 }
