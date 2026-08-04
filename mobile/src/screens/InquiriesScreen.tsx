@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -15,6 +16,7 @@ import { colors, spacing, typography } from '../theme';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import NewInquiryModal from './NewInquiryModal';
+import SwipeableRow from '@/components/SwipeableRow';
 
 type InquiriesStackParamList = {
   InquiriesList: undefined;
@@ -65,8 +67,11 @@ export default function InquiriesScreen() {
     try {
       let query = supabase
         .from('tasks')
-        .select('id, title, description, priority, status, board_column, due_date, created_at, inquiry_details')
+        .select(
+          'id, title, description, priority, status, board_column, due_date, created_at, inquiry_details',
+        )
         .eq('is_inquiry', true)
+        .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
       if (filter === 'pending') {
@@ -83,6 +88,43 @@ export default function InquiriesScreen() {
     }
   }, [employee?.id, filter]);
 
+  const handleDeleteInquiry = useCallback(async (inquiry: Inquiry) => {
+    Alert.alert(
+      'Usuń zapytanie',
+      `Czy na pewno chcesz usunąć zapytanie „${inquiry.title.replace('Zapytanie: ', '')}”?`,
+      [
+        {
+          text: 'Anuluj',
+          style: 'cancel',
+        },
+        {
+          text: 'Usuń',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from('tasks')
+                .update({
+                  deleted_at: new Date().toISOString(),
+                })
+                .eq('id', inquiry.id);
+
+              if (error) {
+                throw error;
+              }
+
+              setInquiries((current) => current.filter((item) => item.id !== inquiry.id));
+            } catch (error) {
+              console.error('Error deleting inquiry:', error);
+
+              Alert.alert('Błąd', 'Nie udało się usunąć zapytania.');
+            }
+          },
+        },
+      ],
+    );
+  }, []);
+
   useEffect(() => {
     fetchInquiries();
   }, [fetchInquiries]);
@@ -94,11 +136,15 @@ export default function InquiriesScreen() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'tasks', filter: 'is_inquiry=eq.true' },
-        () => { fetchInquiries(); }
+        () => {
+          fetchInquiries();
+        },
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [employee?.id, fetchInquiries]);
 
   const getDaysAgo = (dateStr: string) => {
@@ -111,60 +157,159 @@ export default function InquiriesScreen() {
   const renderInquiry = ({ item }: { item: Inquiry }) => {
     const statusCfg = STATUS_CONFIG[item.board_column] || STATUS_CONFIG.todo;
     const details = item.inquiry_details;
-    const isOverdue = item.due_date && new Date(item.due_date) < new Date() && item.board_column !== 'completed';
-
+  
+    const isOverdue =
+      !!item.due_date &&
+      new Date(item.due_date).getTime() < Date.now() &&
+      item.board_column !== 'completed';
+  
     return (
-      <TouchableOpacity
-        style={[styles.card, isOverdue && styles.cardOverdue]}
-        activeOpacity={0.7}
-        onPress={() => navigation.navigate('InquiryDetail', { taskId: item.id })}
+      <SwipeableRow
+        onDelete={() => handleDeleteInquiry(item)}
+        actionLabel="Usuń"
+        actionIcon="trash-2"
+        actionColor="#DC2626"
       >
-        <View style={styles.cardHeader}>
-          <View style={[styles.priorityDot, { backgroundColor: '#ef4444' }]} />
-          <Text style={styles.cardTitle} numberOfLines={1}>{item.title.replace('Zapytanie: ', '')}</Text>
-          {isOverdue && (
-            <View style={styles.overdueBadge}>
-              <Feather name="alert-circle" size={12} color="#ef4444" />
+        <View style={styles.swipeRowContent}>
+          <TouchableOpacity
+            style={[styles.card, isOverdue && styles.cardOverdue]}
+            activeOpacity={0.7}
+            onPress={() =>
+              navigation.navigate('InquiryDetail', {
+                taskId: item.id,
+              })
+            }
+          >
+            <View style={styles.cardHeader}>
+              <View
+                style={[
+                  styles.priorityDot,
+                  {
+                    backgroundColor: '#ef4444',
+                  },
+                ]}
+              />
+  
+              <Text style={styles.cardTitle} numberOfLines={1}>
+                {item.title.replace('Zapytanie: ', '')}
+              </Text>
+  
+              {isOverdue && (
+                <View style={styles.overdueBadge}>
+                  <Feather
+                    name="alert-circle"
+                    size={12}
+                    color="#ef4444"
+                  />
+                </View>
+              )}
             </View>
-          )}
-        </View>
-
-        <View style={styles.cardDetails}>
-          {details?.client_phone && (
-            <View style={styles.detailRow}>
-              <Feather name="phone" size={12} color={colors.text.tertiary} />
-              <Text style={styles.detailText}>{details.client_phone}</Text>
+  
+            <View style={styles.cardDetails}>
+              {details?.client_phone && (
+                <View style={styles.detailRow}>
+                  <Feather
+                    name="phone"
+                    size={12}
+                    color={colors.text.tertiary}
+                  />
+  
+                  <Text style={styles.detailText}>
+                    {details.client_phone}
+                  </Text>
+                </View>
+              )}
+  
+              {details?.location_text && (
+                <View style={styles.detailRow}>
+                  <Feather
+                    name="map-pin"
+                    size={12}
+                    color={colors.text.tertiary}
+                  />
+  
+                  <Text style={styles.detailText}>
+                    {details.location_text}
+                  </Text>
+                </View>
+              )}
+  
+              {details?.scope && (
+                <View style={styles.detailRow}>
+                  <Feather
+                    name="briefcase"
+                    size={12}
+                    color={colors.text.tertiary}
+                  />
+  
+                  <Text
+                    style={styles.detailText}
+                    numberOfLines={1}
+                  >
+                    {details.scope}
+                  </Text>
+                </View>
+              )}
+  
+              {item.due_date && (
+                <View style={styles.detailRow}>
+                  <Feather
+                    name="calendar"
+                    size={12}
+                    color={
+                      isOverdue
+                        ? '#ef4444'
+                        : colors.text.tertiary
+                    }
+                  />
+  
+                  <Text
+                    style={[
+                      styles.detailText,
+                      isOverdue && styles.overdueText,
+                    ]}
+                  >
+                    {new Date(item.due_date).toLocaleDateString(
+                      'pl-PL',
+                      {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                      },
+                    )}
+                  </Text>
+                </View>
+              )}
             </View>
-          )}
-          {details?.location_text && (
-            <View style={styles.detailRow}>
-              <Feather name="map-pin" size={12} color={colors.text.tertiary} />
-              <Text style={styles.detailText}>{details.location_text}</Text>
-            </View>
-          )}
-          {details?.scope && (
-            <View style={styles.detailRow}>
-              <Feather name="briefcase" size={12} color={colors.text.tertiary} />
-              <Text style={styles.detailText} numberOfLines={1}>{details.scope}</Text>
-            </View>
-          )}
-          {item.due_date && (
-            <View style={styles.detailRow}>
-              <Feather name="calendar" size={12} color={isOverdue ? '#ef4444' : colors.text.tertiary} />
-              <Text style={[styles.detailText, isOverdue && { color: '#ef4444' }]}>
-                {new Date(item.due_date).toLocaleDateString('pl-PL', { day: 'numeric', month: 'short', year: 'numeric' })}
+  
+            <View style={styles.cardFooter}>
+              <View
+                style={[
+                  styles.statusBadge,
+                  {
+                    backgroundColor: `${statusCfg.color}20`,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.statusText,
+                    {
+                      color: statusCfg.color,
+                    },
+                  ]}
+                >
+                  {statusCfg.label}
+                </Text>
+              </View>
+  
+              <Text style={styles.timeAgo}>
+                {getDaysAgo(item.created_at)}
               </Text>
             </View>
-          )}
+          </TouchableOpacity>
         </View>
-
-        <View style={styles.cardFooter}>
-          <View style={[styles.statusBadge, { backgroundColor: statusCfg.color + '20' }]}>
-            <Text style={[styles.statusText, { color: statusCfg.color }]}>{statusCfg.label}</Text>
-          </View>
-          <Text style={styles.timeAgo}>{getDaysAgo(item.created_at)}</Text>
-        </View>
-      </TouchableOpacity>
+      </SwipeableRow>
     );
   };
 
@@ -198,7 +343,9 @@ export default function InquiriesScreen() {
           <Feather name="inbox" size={48} color={colors.text.tertiary} />
           <Text style={styles.emptyTitle}>Brak zapytań</Text>
           <Text style={styles.emptySubtitle}>
-            {filter === 'pending' ? 'Wszystkie zapytania zostały obsłużone' : 'Nie ma jeszcze żadnych zapytań'}
+            {filter === 'pending'
+              ? 'Wszystkie zapytania zostały obsłużone'
+              : 'Nie ma jeszcze żadnych zapytań'}
           </Text>
         </View>
       ) : (
@@ -208,7 +355,11 @@ export default function InquiriesScreen() {
           renderItem={renderInquiry}
           contentContainerStyle={styles.list}
           refreshControl={
-            <RefreshControl refreshing={isLoading} onRefresh={fetchInquiries} tintColor={colors.primary.gold} />
+            <RefreshControl
+              refreshing={isLoading}
+              onRefresh={fetchInquiries}
+              tintColor={colors.primary.gold}
+            />
           }
         />
       )}
@@ -276,13 +427,18 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     paddingBottom: spacing.xxl,
   },
+  swipeRowContent: {
+    backgroundColor: colors.background.primary,
+    paddingBottom: spacing.sm,
+  },
+  
   card: {
     backgroundColor: colors.background.secondary,
     borderRadius: 12,
     padding: spacing.md,
-    marginBottom: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border.default,
+    overflow: 'hidden',
   },
   cardOverdue: {
     borderColor: '#ef4444' + '60',
@@ -373,5 +529,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
+  },
+  overdueText: {
+    color: '#ef4444',
   },
 });

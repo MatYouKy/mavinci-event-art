@@ -14,6 +14,10 @@ export type RootStackParamList = {
   Login: undefined;
   Main: undefined;
   Notifications: undefined;
+  PdfViewer: { url: string };
+  EventDetail: {
+    eventId: string;
+  };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();

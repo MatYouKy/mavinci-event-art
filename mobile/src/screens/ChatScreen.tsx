@@ -11,7 +11,9 @@ import {
   Keyboard,
   Image,
   Alert,
-  Linking,
+  Modal,
+  Pressable,
+  Dimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -27,6 +29,7 @@ import { Conversation } from './ChatListScreen';
 import { setActiveChatConversation } from '../services/chatNotifications';
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
+import { WebView } from 'react-native-webview';
 
 interface MessageReaction {
   emoji: string;
@@ -67,7 +70,6 @@ interface Props {
   onBack: () => void;
 }
 
-
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
 
 function getMessageType(mimeType: string): string {
@@ -93,6 +95,8 @@ export default function ChatScreen({ conversation, onBack }: Props) {
   const [isSending, setIsSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [previewPdf, setPreviewPdf] = useState<string | null>(null);
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
@@ -583,10 +587,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     updatedMessages[msgIndex] = { ...msg, reactions: newReaction };
     setMessages(updatedMessages);
 
-    await supabase
-      .from('employee_messages')
-      .update({ reactions: newReaction })
-      .eq('id', messageId);
+    await supabase.from('employee_messages').update({ reactions: newReaction }).eq('id', messageId);
   };
 
   const removeReaction = async (messageId: string) => {
@@ -599,10 +600,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     updatedMessages[msgIndex] = { ...msg, reactions: null };
     setMessages(updatedMessages);
 
-    await supabase
-      .from('employee_messages')
-      .update({ reactions: null })
-      .eq('id', messageId);
+    await supabase.from('employee_messages').update({ reactions: null }).eq('id', messageId);
   };
 
   const handleLongPress = (id: string) => {
@@ -635,10 +633,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
 
     if (!permission.granted) {
-      Alert.alert(
-        'Brak uprawnień',
-        'Zezwól na dostęp do aparatu w ustawieniach.',
-      );
+      Alert.alert('Brak uprawnień', 'Zezwól na dostęp do aparatu w ustawieniach.');
       return;
     }
 
@@ -776,12 +771,29 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     });
   };
 
-  const renderAttachment = (item: Message, isMine: boolean) => {
-    if (!item.attachment_url) return null;
+  const openAttachment = (item: Message) => {
+    if (!item.attachment_url) return;
 
     if (item.message_type === 'image') {
+      setPreviewImage(item.attachment_url);
+      return;
+    }
+
+    if (item.attachment_filename?.toLowerCase().endsWith('.pdf') || item.message_type === 'file') {
+      setPreviewPdf(item.attachment_url);
+      return;
+    }
+  };
+
+  const renderAttachment = (item: Message, isMine: boolean) => {
+    if (!item.attachment_url) return null;
+  
+    if (item.message_type === 'image') {
       return (
-        <TouchableOpacity onPress={() => Linking.openURL(item.attachment_url!)} activeOpacity={0.8}>
+        <TouchableOpacity
+          onPress={() => setPreviewImage(item.attachment_url)}
+          activeOpacity={0.8}
+        >
           <Image
             source={{ uri: item.attachment_url }}
             style={styles.attachmentImage}
@@ -790,11 +802,11 @@ export default function ChatScreen({ conversation, onBack }: Props) {
         </TouchableOpacity>
       );
     }
-
+  
     if (item.message_type === 'video') {
       return (
         <TouchableOpacity
-          onPress={() => Linking.openURL(item.attachment_url!)}
+          onPress={() => openAttachment(item)}
           style={styles.videoPlaceholder}
           activeOpacity={0.7}
         >
@@ -803,28 +815,60 @@ export default function ChatScreen({ conversation, onBack }: Props) {
         </TouchableOpacity>
       );
     }
-
+  
+    const isPdf =
+      item.attachment_filename?.toLowerCase().endsWith('.pdf') ||
+      item.attachment_url.toLowerCase().includes('.pdf');
+  
     return (
       <TouchableOpacity
-        onPress={() => Linking.openURL(item.attachment_url!)}
+        onPress={() => {
+          if (isPdf) {
+            setPreviewPdf(item.attachment_url);
+          } else {
+            openAttachment(item);
+          }
+        }}
         style={[
           styles.fileAttachment,
           isMine ? styles.fileAttachmentMine : styles.fileAttachmentTheirs,
         ]}
         activeOpacity={0.7}
       >
-        <Feather name="file-text" size={18} color={isMine ? '#0f1119' : colors.primary.gold} />
+        <Feather
+          name={isPdf ? 'file-text' : 'file'}
+          size={18}
+          color={isMine ? '#0f1119' : colors.primary.gold}
+        />
+  
         <View style={styles.fileInfo}>
-          <Text style={[styles.fileName, isMine && styles.fileNameMine]} numberOfLines={1}>
+          <Text
+            style={[
+              styles.fileName,
+              isMine && styles.fileNameMine,
+            ]}
+            numberOfLines={1}
+          >
             {item.attachment_filename || 'Plik'}
           </Text>
+  
           {item.attachment_size ? (
-            <Text style={[styles.fileSize, isMine && styles.fileSizeMine]}>
+            <Text
+              style={[
+                styles.fileSize,
+                isMine && styles.fileSizeMine,
+              ]}
+            >
               {formatFileSize(item.attachment_size)}
             </Text>
           ) : null}
         </View>
-        <Feather name="download" size={14} color={isMine ? '#0f1119' : colors.text.tertiary} />
+  
+        <Feather
+          name={isPdf ? 'eye' : 'download'}
+          size={14}
+          color={isMine ? '#0f1119' : colors.text.tertiary}
+        />
       </TouchableOpacity>
     );
   };
@@ -975,7 +1019,9 @@ export default function ChatScreen({ conversation, onBack }: Props) {
                     onLongPress={() => setRemoveReactionMsgId(item.id)}
                     style={[
                       styles.reactionBadge,
-                      employee && item.reactions.user_id === employee.id && styles.reactionBadgeActive,
+                      employee &&
+                        item.reactions.user_id === employee.id &&
+                        styles.reactionBadgeActive,
                     ]}
                   >
                     <Text style={styles.reactionBadgeEmoji}>{item.reactions.emoji}</Text>
@@ -1018,10 +1064,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
                 </Text>
                 {isLastMine && receiptStatus && (
                   <Text
-                    style={[
-                      styles.receiptText,
-                      receiptStatus === 'read' && styles.receiptTextRead,
-                    ]}
+                    style={[styles.receiptText, receiptStatus === 'read' && styles.receiptTextRead]}
                   >
                     {receiptStatus === 'sending'
                       ? 'Wysyłanie...'
@@ -1101,7 +1144,10 @@ export default function ChatScreen({ conversation, onBack }: Props) {
           ref={flatListRef}
           data={visibleMessages}
           renderItem={renderMessage}
-          onScrollBeginDrag={() => { setReactionPickerMsgId(null); setRemoveReactionMsgId(null); }}
+          onScrollBeginDrag={() => {
+            setReactionPickerMsgId(null);
+            setRemoveReactionMsgId(null);
+          }}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.messagesList}
           showsVerticalScrollIndicator={false}
@@ -1162,6 +1208,64 @@ export default function ChatScreen({ conversation, onBack }: Props) {
           </TouchableOpacity>
         </View>
       )}
+
+      <Modal
+        visible={!!previewImage}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPreviewImage(null)}
+      >
+        <Pressable style={styles.previewOverlay} onPress={() => setPreviewImage(null)}>
+          {previewImage && (
+            <Image
+              source={{ uri: previewImage }}
+              style={styles.previewImageFull}
+              resizeMode="contain"
+            />
+          )}
+
+          <TouchableOpacity style={styles.previewClose} onPress={() => setPreviewImage(null)}>
+            <Feather name="x" size={28} color="#fff" />
+          </TouchableOpacity>
+        </Pressable>
+      </Modal>
+
+      <Modal
+  visible={!!previewPdf}
+  animationType="slide"
+  onRequestClose={() => setPreviewPdf(null)}
+>
+  <View style={styles.pdfModal}>
+
+    <View style={styles.pdfHeader}>
+      <Text style={styles.pdfTitle}>
+        Dokument PDF
+      </Text>
+
+      <TouchableOpacity
+        onPress={() => setPreviewPdf(null)}
+      >
+        <Feather
+          name="x"
+          size={26}
+          color={colors.text.primary}
+        />
+      </TouchableOpacity>
+    </View>
+
+
+    {previewPdf && (
+      <WebView
+        source={{
+          uri: previewPdf,
+        }}
+        style={styles.pdfViewer}
+        startInLoadingState
+      />
+    )}
+
+  </View>
+</Modal>
 
       {/* Input */}
       <View
@@ -1664,5 +1768,53 @@ const styles = StyleSheet.create({
   removeReactionText: {
     fontSize: 12,
     color: '#f87171',
+  },
+  previewOverlay: {
+    flex:1,
+    backgroundColor:'rgba(0,0,0,0.95)',
+    justifyContent:'center',
+    alignItems:'center',
+  },
+  
+  previewImageFull:{
+    width: Dimensions.get('window').width,
+    height: Dimensions.get('window').height * 0.8,
+  },
+  
+  previewClose:{
+    position:'absolute',
+    top:60,
+    right:20,
+    width:44,
+    height:44,
+    borderRadius:22,
+    backgroundColor:'rgba(255,255,255,0.15)',
+    alignItems:'center',
+    justifyContent:'center',
+  },
+  
+  
+  pdfModal:{
+    flex:1,
+    backgroundColor:colors.background.primary,
+  },
+  
+  pdfHeader:{
+    height:60,
+    flexDirection:'row',
+    alignItems:'center',
+    justifyContent:'space-between',
+    paddingHorizontal:16,
+    backgroundColor:colors.background.secondary,
+  },
+  
+  pdfTitle:{
+    fontSize:15,
+    fontWeight:'600',
+    color:colors.text.primary,
+  },
+  
+  pdfViewer:{
+    flex:1,
   },
 });

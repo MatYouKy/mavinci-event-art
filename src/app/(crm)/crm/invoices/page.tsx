@@ -42,7 +42,7 @@ import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
 import { useDialog } from '@/contexts/DialogContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { InvoiceSettingsTab } from '@/components/crm/invoices/tabs/InvoiceSettingsTab';
-import { ExternalInvoicesTab } from '@/components/crm/invoices/tabs/ExternalInvoicesTab';
+import { ExternalInvoicesTab } from '@/components/crm/invoices/tabs/ExternalInvoicesTab/ExternalInvoicesTab';
 import FinalInvoiceWizardModal from '@/components/crm/FinalInvoiceWizardModal';
 
 type SortKey =

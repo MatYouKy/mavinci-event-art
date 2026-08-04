@@ -19,6 +19,7 @@ import { supabase, Employee } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import PermissionGate from '../components/PermissionGate';
 import EmployeeAvatar from '../components/EmployeeAvatar';
+import SwipeableRow from '../components/SwipeableRow';
 
 export interface Conversation {
   id: string;
@@ -343,7 +344,7 @@ function ChatListContent({ onConversationPress, onNewChat }: Props) {
     const hasUnread = item.unread_count > 0;
 
     return (
-      <SwipeableConversationRow
+      <SwipeableRow
         onDelete={() => confirmDeleteConversation(item, name)}
       >
         <TouchableOpacity
@@ -405,7 +406,7 @@ function ChatListContent({ onConversationPress, onNewChat }: Props) {
             </View>
           </View>
         </TouchableOpacity>
-      </SwipeableConversationRow>
+      </SwipeableRow>
     );
   };
 
@@ -576,165 +577,6 @@ export default function ChatListScreen(props: Props) {
     </PermissionGate>
   );
 }
-
-const DELETE_BUTTON_WIDTH = 88;
-const SWIPE_ACTIVATION_THRESHOLD = 10;
-const SWIPE_OPEN_THRESHOLD = DELETE_BUTTON_WIDTH / 2;
-const SWIPE_VELOCITY_THRESHOLD = 0.3;
-
-interface SwipeableConversationRowProps {
-  children: React.ReactNode;
-  onDelete: () => void;
-}
-
-function SwipeableConversationRow({ children, onDelete }: SwipeableConversationRowProps) {
-  const translateX = useRef(new Animated.Value(0)).current;
-  const currentXRef = useRef(0);
-  const isOpenRef = useRef(false);
-  const animationRef = useRef<Animated.CompositeAnimation | null>(null);
-
-  useEffect(() => {
-    const id = translateX.addListener(({ value }) => {
-      currentXRef.current = value;
-    });
-    return () => {
-      translateX.removeListener(id);
-    };
-  }, [translateX]);
-
-  const animateTo = (toValue: number) => {
-    if (animationRef.current) {
-      animationRef.current.stop();
-    }
-    isOpenRef.current = toValue !== 0;
-    const anim = Animated.spring(translateX, {
-      toValue,
-      useNativeDriver: true,
-      bounciness: 0,
-      speed: 18,
-      overshootClamping: true,
-    });
-    animationRef.current = anim;
-    anim.start(() => {
-      if (animationRef.current === anim) {
-        animationRef.current = null;
-      }
-    });
-  };
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onStartShouldSetPanResponderCapture: () => false,
-      onMoveShouldSetPanResponder: (_evt, gestureState) => {
-        return (
-          Math.abs(gestureState.dx) > SWIPE_ACTIVATION_THRESHOLD &&
-          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5
-        );
-      },
-      onMoveShouldSetPanResponderCapture: (_evt, gestureState) => {
-        return (
-          Math.abs(gestureState.dx) > SWIPE_ACTIVATION_THRESHOLD &&
-          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5
-        );
-      },
-      onPanResponderGrant: () => {
-        if (animationRef.current) {
-          animationRef.current.stop();
-          animationRef.current = null;
-        }
-        translateX.stopAnimation((value) => {
-          currentXRef.current = value;
-          translateX.setOffset(value);
-          translateX.setValue(0);
-        });
-      },
-      onPanResponderMove: (_evt, gestureState) => {
-        const projected = currentXRef.current + gestureState.dx;
-        let next = gestureState.dx;
-        if (projected > 0) {
-          next = -currentXRef.current;
-        } else if (projected < -DELETE_BUTTON_WIDTH) {
-          const overshoot = projected + DELETE_BUTTON_WIDTH;
-          next = -DELETE_BUTTON_WIDTH - currentXRef.current + overshoot * 0.25;
-        }
-        translateX.setValue(next);
-      },
-      onPanResponderRelease: (_evt, gestureState) => {
-        translateX.flattenOffset();
-        const finalX = currentXRef.current;
-        const shouldOpen =
-          gestureState.vx < -SWIPE_VELOCITY_THRESHOLD ||
-          (gestureState.vx <= SWIPE_VELOCITY_THRESHOLD && finalX < -SWIPE_OPEN_THRESHOLD);
-        animateTo(shouldOpen ? -DELETE_BUTTON_WIDTH : 0);
-      },
-      onPanResponderTerminate: () => {
-        translateX.flattenOffset();
-        animateTo(isOpenRef.current ? -DELETE_BUTTON_WIDTH : 0);
-      },
-      onPanResponderTerminationRequest: () => false,
-    }),
-  ).current;
-
-  const handleDeletePress = () => {
-    animateTo(0);
-    onDelete();
-  };
-
-  return (
-    <View style={swipeStyles.container}>
-      <View style={swipeStyles.deleteBackground}>
-        <TouchableOpacity
-          style={swipeStyles.deleteButton}
-          onPress={handleDeletePress}
-          activeOpacity={0.8}
-        >
-          <Feather name="trash-2" size={20} color="#FFFFFF" />
-          <Text style={swipeStyles.deleteText}>Usuń</Text>
-        </TouchableOpacity>
-      </View>
-      <Animated.View
-        style={[swipeStyles.rowContent, { transform: [{ translateX }] }]}
-        {...panResponder.panHandlers}
-      >
-        {children}
-      </Animated.View>
-    </View>
-  );
-}
-
-const swipeStyles = StyleSheet.create({
-  container: {
-    position: 'relative',
-    overflow: 'hidden',
-    backgroundColor: '#DC2626',
-  },
-  deleteBackground: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    width: DELETE_BUTTON_WIDTH,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  deleteButton: {
-    flex: 1,
-    width: DELETE_BUTTON_WIDTH,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 4,
-  },
-  deleteText: {
-    color: '#FFFFFF',
-    fontSize: typography.fontSizes.xs,
-    fontWeight: typography.fontWeights.semibold,
-    marginTop: 4,
-  },
-  rowContent: {
-    backgroundColor: colors.background.primary,
-  },
-});
 
 const styles = StyleSheet.create({
   container: {

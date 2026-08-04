@@ -1,5 +1,5 @@
 // useEventEquipment.ts
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   useGetAllEventEquipmentForAvailabilityQuery,
   useGetEventEquipmentQuery,
@@ -108,27 +108,45 @@ export function useEventEquipment(eventId: string, event?: EventCore) {
   } = useGetAllEventEquipmentForAvailabilityQuery(eventId, { skip: !eventId });
 
   // Realtime subscription for instant is_loaded updates from mobile
-  useEffect(() => {
-    if (!eventId) return;
-    const channel = supabase
-      .channel(`event_equipment_loaded_${eventId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'event_equipment',
-          filter: `event_id=eq.${eventId}`,
-        },
-        () => {
-          refetch();
-        },
-      )
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [eventId, refetch]);
+
+// Realtime subscription for instant is_loaded updates from mobile
+useEffect(() => {
+  if (!eventId) return;
+
+  const channelName = `event_equipment_loaded_${eventId}`;
+
+  // zabezpieczenie przed duplikatem kanału
+  const existing = supabase
+    .getChannels()
+    .find((c) => c.topic === `realtime:${channelName}`);
+
+  if (existing) {
+    supabase.removeChannel(existing);
+  }
+
+  const channel = supabase
+    .channel(channelName)
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'event_equipment',
+        filter: `event_id=eq.${eventId}`,
+      },
+      () => {
+        refetch();
+      },
+    );
+
+  channel.subscribe((status) => {
+    console.log('[event_equipment realtime]', status);
+  });
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [eventId, refetch]);
 
   const [addMutation, { isLoading: isAdding }] = useAddEventEquipmentMutation();
   const [updateMutation, { isLoading: isUpdating }] = useUpdateEventEquipmentMutation();

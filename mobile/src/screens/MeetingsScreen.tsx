@@ -14,6 +14,7 @@ import {
   Platform,
   Switch,
 } from 'react-native';
+import SwipeableRow from '../components/SwipeableRow';
 
 import * as Notifications from 'expo-notifications';
 
@@ -564,49 +565,82 @@ export default function MeetingsScreen({ initialMeetingId, onBack }: MeetingsScr
   const upcomingMeetings = meetings.filter((m) => isUpcoming(m.datetime_start || ''));
   const pastMeetings = meetings.filter((m) => !isUpcoming(m.datetime_start || ''));
 
-  const renderMeetingCard = ({ item }: { item: Meeting }) => {
-    const upcoming = isUpcoming(item.datetime_start || '');
-    const hasAlerts = !!(
-      item.alert_1_minutes ||
-      item.alert_2_minutes ||
-      item.alert_critical_minutes
-    );
+const renderMeetingCard = ({ item }: { item: Meeting }) => {
+  const upcoming = isUpcoming(item.datetime_start || '');
+  const hasAlerts = !!(
+    item.alert_1_minutes ||
+    item.alert_2_minutes ||
+    item.alert_critical_minutes
+  );
 
-    return (
+  return (
+    <SwipeableRow onDelete={() => handleDeleteMeeting(item.id)}>
       <TouchableOpacity
         style={[styles.meetingCard, !upcoming && styles.meetingCardPast]}
         activeOpacity={0.7}
         onPress={() => setSelectedMeeting(item)}
       >
         <View
-          style={[styles.meetingStripe, { backgroundColor: item.color || colors.primary.gold }]}
+          style={[
+            styles.meetingStripe,
+            { backgroundColor: item.color || colors.primary.gold },
+          ]}
         />
+
         <View style={styles.meetingContent}>
           <View style={styles.meetingHeader}>
-            <Text style={[styles.meetingTitle, !upcoming && styles.textPast]} numberOfLines={1}>
+            <Text
+              style={[styles.meetingTitle, !upcoming && styles.textPast]}
+              numberOfLines={1}
+            >
               {item.title}
             </Text>
-            {hasAlerts && upcoming && <Feather name="bell" size={14} color={colors.primary.gold} />}
+
+            {hasAlerts && upcoming && (
+              <Feather
+                name="bell"
+                size={14}
+                color={colors.primary.gold}
+              />
+            )}
           </View>
+
           <View style={styles.meetingMeta}>
-            <Feather name="clock" size={12} color={colors.text.tertiary} />
+            <Feather
+              name="clock"
+              size={12}
+              color={colors.text.tertiary}
+            />
+
             <Text style={styles.meetingMetaText}>
-              {formatDate(item.datetime_start || '')} • {formatTime(item.datetime_start || '')}
-              {item.datetime_end && ` – ${formatTime(item.datetime_end || '')}`}
+              {formatDate(item.datetime_start || '')} •{' '}
+              {formatTime(item.datetime_start || '')}
+              {item.datetime_end &&
+                ` – ${formatTime(item.datetime_end || '')}`}
             </Text>
           </View>
+
           {item.location_text && (
             <View style={styles.meetingMeta}>
-              <Feather name="map-pin" size={12} color={colors.text.tertiary} />
-              <Text style={styles.meetingMetaText} numberOfLines={1}>
+              <Feather
+                name="map-pin"
+                size={12}
+                color={colors.text.tertiary}
+              />
+
+              <Text
+                style={styles.meetingMetaText}
+                numberOfLines={1}
+              >
                 {item.location_text}
               </Text>
             </View>
           )}
         </View>
       </TouchableOpacity>
-    );
-  };
+    </SwipeableRow>
+  );
+};
 
   const AlertTimePicker = ({
     type,

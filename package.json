@@ -34,6 +34,7 @@
     "lucide-react": "^0.344.0",
     "next": "^14.2.18",
     "pdf-parse": "^2.4.5",
+    "pdfjs-dist": "4.10.38",
     "pdfreader": "^3.0.8",
     "playwright": "^1.58.0",
     "quill": "^2.0.2",
@@ -42,6 +43,7 @@
     "react-draggable": "^4.4.6",
     "react-quill": "^2.0.0",
     "react-redux": "^9.2.0",
+    "react-zoom-pan-pinch": "^4.0.3",
     "yup": "^1.7.1"
   },
   "devDependencies": {

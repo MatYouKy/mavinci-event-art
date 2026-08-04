@@ -4,10 +4,12 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import EventsScreen, { EventListItem } from '../screens/EventsScreen';
 import EventDetailScreen from '../screens/EventDetailScreen';
 import PermissionGate from '../components/PermissionGate';
+import PdfViewerScreen from '../screens/PdfViewerScreen';
 
 export type EventsStackParamList = {
   EventsList: undefined;
   EventDetail: { eventId: string };
+  PdfViewer: { url: string };
 };
 
 const Stack = createNativeStackNavigator<EventsStackParamList>();
@@ -17,12 +19,7 @@ function EventDetailWrapper() {
   const navigation = useNavigation();
   const { eventId } = route.params as { eventId: string };
 
-  return (
-    <EventDetailScreen
-      eventId={eventId}
-      onBack={() => navigation.goBack()}
-    />
-  );
+  return <EventDetailScreen eventId={eventId} onBack={() => navigation.goBack()} />;
 }
 
 function EventsListWrapper() {
@@ -50,6 +47,13 @@ export default function EventsStackNavigator() {
           name="EventDetail"
           component={EventDetailWrapper}
           options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="PdfViewer"
+          component={PdfViewerScreen}
+          options={{
+            title: 'PDF',
+          }}
         />
       </Stack.Navigator>
     </PermissionGate>
