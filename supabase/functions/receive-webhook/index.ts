@@ -208,7 +208,9 @@ Deno.serve(async (req: Request) => {
           title,
           message: notifMessage,
           type: PRIORITY_TO_NOTIFICATION_TYPE[priority] || "info",
-          category: "system",
+          category: "webhook",
+          related_entity_type: "inbound_event",
+          related_entity_id: event.id,
           action_url: detailUrl || `/crm/settings/webhooks`,
           metadata: {
             origin: "webhook",

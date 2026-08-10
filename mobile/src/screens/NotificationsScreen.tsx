@@ -286,6 +286,11 @@ export default function NotificationsScreen() {
       navigation.navigate('Main', { screen: 'Equipment' });
       return;
     }
+
+    if (category === 'webhook') {
+      navigation.navigate('Main', { screen: 'Notifications' });
+      return;
+    }
   };
 
   const handleNotificationPress = (notification: Notification) => {
@@ -397,7 +402,8 @@ export default function NotificationsScreen() {
       item.category === 'contact_form' ||
       item.category === 'team' ||
       item.category === 'phase_assignment' ||
-      item.category === 'equipment'
+      item.category === 'equipment' ||
+      item.category === 'webhook'
     );
 
     return (
@@ -418,9 +424,11 @@ export default function NotificationsScreen() {
                   ? 'star'
                   : item.related_entity_type === 'task'
                     ? 'check-square'
-                    : item.is_read
-                      ? 'check-circle'
-                      : 'bell'
+                    : item.category === 'webhook'
+                      ? 'globe'
+                      : item.is_read
+                        ? 'check-circle'
+                        : 'bell'
             }
             color={
               hasInvitation && item.metadata?.requires_response
