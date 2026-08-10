@@ -514,7 +514,7 @@ function AddSourceModal({
       slug,
       api_key_hash: keyHash,
       is_active: true,
-      allowed_event_types: allowedTypes.length > 0 ? allowedTypes : null,
+      allowed_event_types: allowedTypes,
       default_notify_permissions: notifyPerms.length > 0 ? notifyPerms : ['messages_view', 'messages_manage'],
       description: form.description.trim() || null,
       created_by: employeeId || null,

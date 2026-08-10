@@ -102,6 +102,9 @@ Deno.serve(async (req: Request) => {
     if (externalEventId.length > 255) {
       return jsonResponse({ error: "external_event_id exceeds 255 characters" }, 400);
     }
+    if (eventTime && Number.isNaN(Date.parse(eventTime))) {
+      return jsonResponse({ error: "event_time must be a valid ISO date" }, 400);
+    }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -147,7 +150,7 @@ Deno.serve(async (req: Request) => {
       .eq("external_event_id", externalEventId)
       .maybeSingle();
 
-    if (existing) {
+    if (existing && existing.status !== "failed") {
       return jsonResponse(
         {
           status: "duplicate",
@@ -157,6 +160,18 @@ Deno.serve(async (req: Request) => {
         },
         200,
       );
+    }
+
+    if (existing?.status === "failed") {
+      const { error: deleteFailedEventError } = await supabase
+        .from("inbound_events")
+        .delete()
+        .eq("id", existing.id);
+
+      if (deleteFailedEventError) {
+        console.error("Failed to prepare webhook retry:", deleteFailedEventError);
+        return jsonResponse({ error: "Failed to retry event" }, 500);
+      }
     }
 
     const { data: event, error: insertErr } = await supabase
@@ -193,11 +208,11 @@ Deno.serve(async (req: Request) => {
           title,
           message: notifMessage,
           type: PRIORITY_TO_NOTIFICATION_TYPE[priority] || "info",
-          category: "webhook",
-          related_entity_type: "inbound_event",
-          related_entity_id: event.id,
+          category: "system",
           action_url: detailUrl || `/crm/settings/webhooks`,
           metadata: {
+            origin: "webhook",
+            inbound_event_id: event.id,
             source_slug: source.slug,
             source_name: source.name,
             event_type: eventType,
@@ -208,46 +223,58 @@ Deno.serve(async (req: Request) => {
         .single();
 
       if (notifErr || !notif) {
-        console.error("Insert notification failed:", notifErr);
-      } else {
-        notificationId = notif.id;
+        throw new Error(`Insert notification failed: ${notifErr?.message ?? "unknown error"}`);
+      }
 
-        const perms = source.default_notify_permissions ?? [
+      notificationId = notif.id;
+
+      const configuredPermissions = source.default_notify_permissions as string[] | null;
+      const perms = configuredPermissions && configuredPermissions.length > 0
+        ? configuredPermissions
+        : [
           "messages_view",
           "messages_manage",
         ];
 
-        const { data: employees } = await supabase
-          .from("employees")
-          .select("id, role, permissions")
-          .eq("is_active", true);
+      const { data: employees, error: employeesError } = await supabase
+        .from("employees")
+        .select("id, role, access_level, permissions")
+        .eq("is_active", true);
 
-        if (employees && employees.length > 0) {
-          const recipients = employees.filter(
-            (e: { id: string; role: string; permissions: string[] | null }) =>
-              e.role === "admin" ||
-              (e.permissions &&
-                e.permissions.some((p: string) => perms.includes(p))),
-          );
-
-          if (recipients.length > 0) {
-            const rows = recipients.map((r: { id: string }) => ({
-              notification_id: notif.id,
-              user_id: r.id,
-            }));
-
-            const { error: recipErr } = await supabase
-              .from("notification_recipients")
-              .insert(rows);
-
-            if (recipErr) {
-              console.error("Insert notification_recipients failed:", recipErr);
-            }
-          }
-        }
+      if (employeesError) {
+        throw new Error(`Fetch recipients failed: ${employeesError.message}`);
       }
 
-      await supabase
+      const recipients = (employees ?? []).filter(
+        (employee: {
+          id: string;
+          role: string | null;
+          access_level: string | null;
+          permissions: string[] | null;
+        }) =>
+          employee.role === "admin" ||
+          employee.access_level === "admin" ||
+          (employee.permissions?.some((permission) => perms.includes(permission)) ?? false),
+      );
+
+      if (recipients.length === 0) {
+        throw new Error("No active notification recipients found");
+      }
+
+      const rows = recipients.map((recipient: { id: string }) => ({
+        notification_id: notif.id,
+        user_id: recipient.id,
+      }));
+
+      const { error: recipientsError } = await supabase
+        .from("notification_recipients")
+        .insert(rows);
+
+      if (recipientsError) {
+        throw new Error(`Insert notification recipients failed: ${recipientsError.message}`);
+      }
+
+      const { error: processedError } = await supabase
         .from("inbound_events")
         .update({
           status: "processed",
@@ -255,12 +282,28 @@ Deno.serve(async (req: Request) => {
           processed_at: new Date().toISOString(),
         })
         .eq("id", event.id);
+
+      if (processedError) {
+        throw new Error(`Mark event as processed failed: ${processedError.message}`);
+      }
     } catch (notifyErr) {
       console.error("Notification pipeline error:", notifyErr);
+      if (notificationId) {
+        await supabase.from("notifications").delete().eq("id", notificationId);
+        notificationId = null;
+      }
       await supabase
         .from("inbound_events")
         .update({ status: "failed" })
         .eq("id", event.id);
+
+      return jsonResponse(
+        {
+          error: "Event stored but notification delivery failed",
+          event_id: event.id,
+        },
+        500,
+      );
     }
 
     return jsonResponse(
