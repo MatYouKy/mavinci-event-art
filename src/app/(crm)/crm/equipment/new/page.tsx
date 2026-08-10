@@ -351,7 +351,7 @@ export default function NewEquipmentPage() {
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <button
-          onClick={() => router.back()}
+          onClick={() => router.push('/crm/equipment')}
           className="rounded-lg p-2 transition-colors hover:bg-[#1c1f33]"
         >
           <ArrowLeft className="h-5 w-5 text-[#e5e4e2]" />

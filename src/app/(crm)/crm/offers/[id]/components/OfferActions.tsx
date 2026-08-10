@@ -1,7 +1,19 @@
 'use client';
 
 import { Dispatch, SetStateAction, useEffect, useState } from 'react';
-import { Pencil, X, Check, Calendar, FileText, Download, RefreshCw, Send, Eye, Lock, Trash2 } from 'lucide-react';
+import {
+  Pencil,
+  X,
+  Check,
+  Calendar,
+  FileText,
+  Download,
+  RefreshCw,
+  Send,
+  Eye,
+  Lock,
+  Trash2,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useRouter } from 'next/navigation';
@@ -104,7 +116,11 @@ export default function OfferActions({
   const handleDeletePdf = async () => {
     if (!offer?.id) return;
 
-    if (!confirm('Czy na pewno chcesz usunąć pliki PDF tej oferty?\n\nOferta zostanie zachowana, zostaną usunięte tylko wygenerowane pliki PDF.')) {
+    if (
+      !confirm(
+        'Czy na pewno chcesz usunąć pliki PDF tej oferty?\n\nOferta zostanie zachowana, zostaną usunięte tylko wygenerowane pliki PDF.',
+      )
+    ) {
       return;
     }
 
@@ -289,13 +305,19 @@ export default function OfferActions({
           </div>
 
           {/* Przycisk Zarezerwuj Sprzęt - tylko dla draft/sent */}
-          {(currentStatus === 'draft' || currentStatus === 'sent') && (
+          {(currentStatus === 'draft' ||
+            currentStatus === 'sent' ||
+            currentStatus === 'accepted') && (
             <button
               onClick={() => setShowReserveModal(true)}
               className="flex w-full items-center gap-2 rounded-lg bg-green-500/10 px-4 py-2 text-sm text-green-400 transition-colors hover:bg-green-500/20"
             >
-              <Lock className="h-4 w-4" />
-              Zarezerwuj Sprzęt
+              {currentStatus === 'accepted' ? (
+                <RefreshCw className="h-4 w-4" />
+              ) : (
+                <Lock className="h-4 w-4" />
+              )}
+              {currentStatus === 'accepted' ? 'Aktualizuj rezerwację' : 'Zarezerwuj sprzęt'}
             </button>
           )}
 
@@ -312,69 +334,11 @@ export default function OfferActions({
             Przejdź do eventu
           </button>
 
-        {!offer.generated_pdf_url || offer.modified_after_generation ? (
-          <button
-            disabled={generatingPdf}
-            onClick={handleGeneratePdf}
-            className="flex w-full items-center gap-2 rounded-lg bg-blue-500/10 px-4 py-2 text-sm text-blue-400 transition-colors hover:bg-blue-500/20"
-          >
-            {generatingPdf ? (
-              <>
-                <RefreshCw className="h-4 w-4 animate-spin" />
-                Generowanie...
-              </>
-            ) : (
-              <>
-                <FileText className="h-4 w-4" />
-                {offer.modified_after_generation ? 'Regeneruj PDF' : 'Generuj PDF'}
-              </>
-            )}
-          </button>
-        ) : (
-          <>
-            <button
-              onClick={async () => {
-                if (!offer.generated_pdf_url) return;
-                try {
-                  const { data } = await supabase.storage
-                    .from('generated-offers')
-                    .createSignedUrl(offer.generated_pdf_url, 3600);
-                  if (data?.signedUrl) {
-                    window.open(data.signedUrl, '_blank');
-                  }
-                } catch (err) {
-                  showSnackbar('Błąd podczas otwierania PDF', 'error');
-                }
-              }}
-              className="flex w-full items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"
-              title="Pokaż PDF"
-            >
-              <Eye className="h-4 w-4" />
-              Podgląd PDF
-            </button>
-            <button
-              onClick={handleDownloadPdf}
-              disabled={downloadingPdf}
-              className="flex w-full items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20 disabled:opacity-50"
-              title="Pobierz wygenerowany PDF"
-            >
-              {downloadingPdf ? (
-                <>
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                  Pobieranie...
-                </>
-              ) : (
-                <>
-                  <Download className="h-4 w-4" />
-                  Pobierz PDF
-                </>
-              )}
-            </button>
+          {!offer.generated_pdf_url || offer.modified_after_generation ? (
             <button
               disabled={generatingPdf}
               onClick={handleGeneratePdf}
-              className="flex w-full items-center gap-2 rounded-lg border border-blue-500/20 bg-blue-500/10 px-4 py-2 text-sm text-blue-400 transition-colors hover:bg-blue-500/20 disabled:opacity-50"
-              title="Wygeneruj ponownie PDF"
+              className="flex w-full items-center gap-2 rounded-lg bg-blue-500/10 px-4 py-2 text-sm text-blue-400 transition-colors hover:bg-blue-500/20"
             >
               {generatingPdf ? (
                 <>
@@ -383,65 +347,123 @@ export default function OfferActions({
                 </>
               ) : (
                 <>
-                  <RefreshCw className="h-4 w-4" />
-                  Regeneruj PDF
+                  <FileText className="h-4 w-4" />
+                  {offer.modified_after_generation ? 'Regeneruj PDF' : 'Generuj PDF'}
                 </>
               )}
             </button>
-            {canSendEmail && (
+          ) : (
+            <>
               <button
-                onClick={() => setShowSendEmailModal(true)}
-                className="flex w-full items-center gap-2 rounded-lg border border-green-500/20 bg-green-500/10 px-4 py-2 text-sm text-green-400 transition-colors hover:bg-green-500/20"
-                title="Wyślij ofertę e-mailem"
+                onClick={async () => {
+                  if (!offer.generated_pdf_url) return;
+                  try {
+                    const { data } = await supabase.storage
+                      .from('generated-offers')
+                      .createSignedUrl(offer.generated_pdf_url, 3600);
+                    if (data?.signedUrl) {
+                      window.open(data.signedUrl, '_blank');
+                    }
+                  } catch (err) {
+                    showSnackbar('Błąd podczas otwierania PDF', 'error');
+                  }
+                }}
+                className="flex w-full items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20"
+                title="Pokaż PDF"
               >
-                <Send className="h-4 w-4" />
-                Wyślij ofertę
+                <Eye className="h-4 w-4" />
+                Podgląd PDF
               </button>
-            )}
-          </>
-        )}
+              <button
+                onClick={handleDownloadPdf}
+                disabled={downloadingPdf}
+                className="flex w-full items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 px-4 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20 disabled:opacity-50"
+                title="Pobierz wygenerowany PDF"
+              >
+                {downloadingPdf ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    Pobieranie...
+                  </>
+                ) : (
+                  <>
+                    <Download className="h-4 w-4" />
+                    Pobierz PDF
+                  </>
+                )}
+              </button>
+              <button
+                disabled={generatingPdf}
+                onClick={handleGeneratePdf}
+                className="flex w-full items-center gap-2 rounded-lg border border-blue-500/20 bg-blue-500/10 px-4 py-2 text-sm text-blue-400 transition-colors hover:bg-blue-500/20 disabled:opacity-50"
+                title="Wygeneruj ponownie PDF"
+              >
+                {generatingPdf ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    Generowanie...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-4 w-4" />
+                    Regeneruj PDF
+                  </>
+                )}
+              </button>
+              {canSendEmail && (
+                <button
+                  onClick={() => setShowSendEmailModal(true)}
+                  className="flex w-full items-center gap-2 rounded-lg border border-green-500/20 bg-green-500/10 px-4 py-2 text-sm text-green-400 transition-colors hover:bg-green-500/20"
+                  title="Wyślij ofertę e-mailem"
+                >
+                  <Send className="h-4 w-4" />
+                  Wyślij ofertę
+                </button>
+              )}
+            </>
+          )}
 
-        {/* Przycisk usuwania PDF - tylko gdy PDF istnieje */}
-        {offer.generated_pdf_url && (
+          {/* Przycisk usuwania PDF - tylko gdy PDF istnieje */}
+          {offer.generated_pdf_url && (
+            <button
+              onClick={handleDeletePdf}
+              disabled={deletingPdf}
+              className="flex w-full items-center gap-2 rounded-lg border border-orange-500/20 bg-orange-500/10 px-4 py-2 text-sm text-orange-400 transition-colors hover:bg-orange-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {deletingPdf ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  Usuwanie PDF...
+                </>
+              ) : (
+                <>
+                  <X className="h-4 w-4" />
+                  Usuń PDF
+                </>
+              )}
+            </button>
+          )}
+
+          {/* Przycisk usuwania oferty */}
           <button
-            onClick={handleDeletePdf}
-            disabled={deletingPdf}
-            className="flex w-full items-center gap-2 rounded-lg border border-orange-500/20 bg-orange-500/10 px-4 py-2 text-sm text-orange-400 transition-colors hover:bg-orange-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={handleDeleteOffer}
+            disabled={deleting}
+            className="flex w-full items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-2 text-sm text-red-400 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {deletingPdf ? (
+            {deleting ? (
               <>
                 <RefreshCw className="h-4 w-4 animate-spin" />
-                Usuwanie PDF...
+                Usuwanie...
               </>
             ) : (
               <>
-                <X className="h-4 w-4" />
-                Usuń PDF
+                <Trash2 className="h-4 w-4" />
+                Usuń ofertę
               </>
             )}
           </button>
-        )}
-
-        {/* Przycisk usuwania oferty */}
-        <button
-          onClick={handleDeleteOffer}
-          disabled={deleting}
-          className="flex w-full items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-2 text-sm text-red-400 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {deleting ? (
-            <>
-              <RefreshCw className="h-4 w-4 animate-spin" />
-              Usuwanie...
-            </>
-          ) : (
-            <>
-              <Trash2 className="h-4 w-4" />
-              Usuń ofertę
-            </>
-          )}
-        </button>
+        </div>
       </div>
-    </div>
 
       {/* Modal rezerwacji sprzętu */}
       <ReserveEquipmentModal

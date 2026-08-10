@@ -752,7 +752,7 @@ export const offerWizardApi = createApi({
                 name,
                 description,
                 thumbnail_url,
-                rental_price_per_day,
+                rental_price_per_day:daily_rental_price,
                 quantity_available,
                 warehouse_category_id,
                 warehouse_categories(name)

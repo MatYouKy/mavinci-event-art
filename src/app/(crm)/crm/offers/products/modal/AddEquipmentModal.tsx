@@ -11,6 +11,13 @@ import { useKitByIdLazy } from '@/app/(crm)/crm/equipment/hooks/useKitByIdLazy';
 import Popover from '@/components/UI/Tooltip';
 import Image from 'next/image';
 
+type EquipmentType = 'item' | 'kit';
+
+type SelectedEquipment = {
+  id: string;
+  type: EquipmentType;
+};
+
 export function AddEquipmentModal({
   productId,
   existingEquipment,
@@ -22,30 +29,23 @@ export function AddEquipmentModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
-  const [mode, setMode] = useState<'item' | 'kit'>('kit');
-
-  const [selectedItemId, setSelectedItemId] = useState('');
-  const [selectedKitId, setSelectedKitId] = useState('');
-
+  const [showItems, setShowItems] = useState(true);
+  const [showKits, setShowKits] = useState(true);
+  const [selected, setSelected] = useState<SelectedEquipment | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [isOptional, setIsOptional] = useState(false);
   const [notes, setNotes] = useState('');
-
-  // osobne wyszukiwarki (żeby nie mieszać)
-  const [itemSearchQuery, setItemSearchQuery] = useState('');
-  const [kitSearchQuery, setKitSearchQuery] = useState('');
-
   const [loading, setLoading] = useState(false);
+
   const { showSnackbar } = useSnackbar();
-
   const { add } = useManageProduct({ productId });
-
   const { loadKit, kit: selectedKit, loading: kitLoading } = useKitByIdLazy();
 
   const { items, isLoading, loadMore } = useEquipmentCatalog({
-    q: mode === 'kit' ? kitSearchQuery : itemSearchQuery,
+    q: searchQuery,
     categoryId: null,
-    itemType: mode === 'kit' ? 'kits' : 'equipment',
+    itemType: 'all',
     showCablesOnly: false,
     limit: 500,
     activeOnly: true,
@@ -56,64 +56,113 @@ export function AddEquipmentModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const existingKitIdSet = useMemo(() => {
-    return new Set(existingEquipment.map((e) => e.equipment_kit_id).filter(Boolean) as string[]);
-  }, [existingEquipment]);
-
-  const kits = useMemo(() => {
-    return (items ?? []).filter((x) => x.is_kit === true && !existingKitIdSet.has(x.id));
-  }, [items, existingKitIdSet]);
-
-  const existingItemIds = useMemo(
-    () => existingEquipment.filter((e) => e.equipment_item_id).map((e) => e.equipment_item_id),
+  const existingKitIds = useMemo(
+    () =>
+      new Set(
+        existingEquipment
+          .map((entry) => entry.equipment_kit_id)
+          .filter((id): id is string => Boolean(id)),
+      ),
     [existingEquipment],
   );
 
-  const equipmentItems = useMemo(
-    () => (items ?? []).filter((x) => !x.is_kit && !x.is_cable && !existingItemIds.includes(x.id)),
-    [items, existingItemIds],
+  const existingItemIds = useMemo(
+    () =>
+      new Set(
+        existingEquipment
+          .map((entry) => entry.equipment_item_id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    [existingEquipment],
   );
 
-  // po wyborze kitu dociągnij pełne dane (lazy)
+  const selectableEquipment = useMemo<EquipmentCatalogItem[]>(() => {
+    return (items ?? []).filter((entry) => {
+      if (entry.is_cable) return false;
+
+      if (entry.is_kit) {
+        return !existingKitIds.has(entry.id);
+      }
+
+      return !existingItemIds.has(entry.id);
+    });
+  }, [items, existingItemIds, existingKitIds]);
+
+  const itemCount = useMemo(
+    () => selectableEquipment.filter((entry) => !entry.is_kit).length,
+    [selectableEquipment],
+  );
+
+  const kitCount = useMemo(
+    () => selectableEquipment.filter((entry) => entry.is_kit).length,
+    [selectableEquipment],
+  );
+
+  const visibleEquipment = useMemo(() => {
+    return selectableEquipment
+      .filter((entry) => (entry.is_kit ? showKits : showItems))
+      .sort((first, second) => {
+        if (Boolean(first.is_kit) !== Boolean(second.is_kit)) {
+          return first.is_kit ? 1 : -1;
+        }
+        return first.name.localeCompare(second.name, 'pl');
+      });
+  }, [selectableEquipment, showItems, showKits]);
+
+  const selectedEquipment = useMemo(
+    () => visibleEquipment.find((entry) => entry.id === selected?.id) ?? null,
+    [visibleEquipment, selected],
+  );
+
   useEffect(() => {
-    if (mode === 'kit' && selectedKitId) {
-      loadKit(selectedKitId);
+    if (selected?.type === 'kit') {
+      loadKit(selected.id);
     }
-  }, [mode, selectedKitId, loadKit]);
+  }, [selected, loadKit]);
+
+  const handleItemsFilter = (checked: boolean) => {
+    setShowItems(checked);
+    if (!checked && selected?.type === 'item') {
+      setSelected(null);
+    }
+  };
+
+  const handleKitsFilter = (checked: boolean) => {
+    setShowKits(checked);
+    if (!checked && selected?.type === 'kit') {
+      setSelected(null);
+    }
+  };
 
   const handleSubmit = async () => {
-    if (mode === 'item' && !selectedItemId) {
-      showSnackbar('Wybierz sprzęt', 'error');
-      return;
-    }
-    if (mode === 'kit' && !selectedKitId) {
-      showSnackbar('Wybierz pakiet', 'error');
+    if (!selected || !selectedEquipment) {
+      showSnackbar('Wybierz sprzęt lub zestaw', 'error');
       return;
     }
 
     setLoading(true);
     try {
-      await add(
-        mode === 'item'
-          ? {
-              mode: 'item',
-              product_id: productId,
-              equipment_item_id: selectedItemId,
-              quantity,
-              is_optional: isOptional,
-              notes: notes || null,
-            }
-          : {
-              mode: 'kit',
-              product_id: productId,
-              equipment_kit_id: selectedKitId,
-              quantity,
-              is_optional: isOptional,
-              notes: notes || null,
-            },
-      );
+      if (selected.type === 'item') {
+        await add({
+          mode: 'item',
+          product_id: productId,
+          equipment_item_id: selected.id,
+          quantity,
+          is_optional: isOptional,
+          notes: notes || null,
+        });
+      } else {
+        await add({
+          mode: 'kit',
+          product_id: productId,
+          equipment_kit_id: selected.id,
+          quantity,
+          is_optional: isOptional,
+          notes: notes || null,
+        });
+      }
 
-      showSnackbar(mode === 'kit' ? 'Pakiet dodany' : 'Sprzęt dodany', 'success');
+      showSnackbar(selected.type === 'kit' ? 'Zestaw dodany' : 'Sprzęt dodany', 'success');
       onSuccess();
     } catch (error) {
       console.error('Error adding equipment:', error);
@@ -128,288 +177,230 @@ export function AddEquipmentModal({
       <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33]">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#d3bb73]/10 bg-[#1c1f33] p-6">
           <h3 className="text-xl font-light text-[#e5e4e2]">Dodaj sprzęt do produktu</h3>
-          <button onClick={onClose} className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]">
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
+          >
             <X className="h-5 w-5" />
           </button>
         </div>
 
         <div className="space-y-6 p-6">
-          {/* Mode selection */}
           <div>
-            <label className="mb-3 block text-sm text-[#e5e4e2]/60">Wybierz typ</label>
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  setMode('kit');
-                  setSelectedItemId('');
-                }}
-                className={`flex-1 rounded-lg border px-4 py-3 transition-colors ${
-                  mode === 'kit'
-                    ? 'border-[#d3bb73] bg-[#d3bb73]/20 text-[#d3bb73]'
-                    : 'border-[#d3bb73]/10 bg-[#0a0d1a] text-[#e5e4e2]/60 hover:border-[#d3bb73]/30'
-                }`}
-              >
-                <Package className="mx-auto mb-1 h-5 w-5" />
-                <div className="text-sm font-medium">Pakiet sprzętu</div>
-                <div className="text-xs opacity-60">Zestaw gotowych itemów</div>
-              </button>
+            <label className="mb-3 block text-sm text-[#e5e4e2]/60">Pokaż w katalogu</label>
+            <div className="flex flex-wrap gap-3">
+              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-[#d3bb73]/15 bg-[#0a0d1a] px-4 py-2.5 text-sm text-[#e5e4e2] transition-colors hover:border-[#d3bb73]/30">
+                <input
+                  type="checkbox"
+                  checked={showItems}
+                  onChange={(event) => handleItemsFilter(event.target.checked)}
+                  className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73]"
+                />
+                <Wrench className="h-4 w-4 text-[#d3bb73]" />
+                <span>Pojedynczy sprzęt ({itemCount})</span>
+              </label>
 
-              <button
-                onClick={() => {
-                  setMode('item');
-                  setSelectedKitId('');
-                }}
-                className={`flex-1 rounded-lg border px-4 py-3 transition-colors ${
-                  mode === 'item'
-                    ? 'border-[#d3bb73] bg-[#d3bb73]/20 text-[#d3bb73]'
-                    : 'border-[#d3bb73]/10 bg-[#0a0d1a] text-[#e5e4e2]/60 hover:border-[#d3bb73]/30'
-                }`}
-              >
-                <Wrench className="mx-auto mb-1 h-5 w-5" />
-                <div className="text-sm font-medium">Pojedynczy sprzęt</div>
-                <div className="text-xs opacity-60">Wybierz jeden item</div>
-              </button>
+              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-[#d3bb73]/15 bg-[#0a0d1a] px-4 py-2.5 text-sm text-[#e5e4e2] transition-colors hover:border-[#d3bb73]/30">
+                <input
+                  type="checkbox"
+                  checked={showKits}
+                  onChange={(event) => handleKitsFilter(event.target.checked)}
+                  className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73]"
+                />
+                <Package className="h-4 w-4 text-[#d3bb73]" />
+                <span>Zestawy ({kitCount})</span>
+              </label>
             </div>
           </div>
 
-          {/* KIT selection (NOWA WERSJA: wyszukiwarka + lista) */}
-          {mode === 'kit' && (
-            <>
-              <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wyszukaj pakiet</label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#e5e4e2]/40" />
-                  <input
-                    type="text"
-                    value={kitSearchQuery}
-                    onChange={(e) => setKitSearchQuery(e.target.value)}
-                    placeholder="Szukaj po nazwie pakietu..."
-                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] py-2 pl-9 pr-4 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40"
-                  />
+          <div>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wyszukaj sprzęt</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#e5e4e2]/40" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(event) => {
+                  setSearchQuery(event.target.value);
+                  setSelected(null);
+                }}
+                placeholder="Szukaj po nazwie, marce lub modelu..."
+                className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] py-2 pl-9 pr-4 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm text-[#e5e4e2]/60">
+              Wybierz sprzęt lub zestaw * ({visibleEquipment.length} wyników)
+            </label>
+
+            <div className="max-h-72 overflow-y-auto rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a]">
+              {isLoading ? (
+                <div className="p-4 text-center text-sm text-[#e5e4e2]/60">Ładowanie...</div>
+              ) : !showItems && !showKits ? (
+                <div className="p-4 text-center text-sm text-[#e5e4e2]/60">
+                  Zaznacz przynajmniej jeden typ sprzętu
                 </div>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">
-                  Wybierz pakiet * ({kits.length} wyników)
-                </label>
-
-                <div className="max-h-60 overflow-y-auto rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a]">
-                  {isLoading ? (
-                    <div className="p-4 text-center text-sm text-[#e5e4e2]/60">Ładowanie...</div>
-                  ) : kits.length === 0 ? (
-                    <div className="p-4 text-center text-sm text-[#e5e4e2]/60">
-                      Brak wyników lub wszystkie pakiety już dodane
-                    </div>
-                  ) : (
-                    kits.map((k) => (
-                      <button
-                        key={k.id}
-                        type="button"
-                        onClick={() => setSelectedKitId(k.id)}
-                        className={`w-full border-b border-[#d3bb73]/10 px-4 py-3 text-left transition-colors ${
-                          selectedKitId === k.id ? 'bg-[#d3bb73]/20' : 'hover:bg-[#d3bb73]/10'
-                        }`}
-                      >
-                        <div className="flex items-start gap-3">
-                          <Thumb src={k.thumbnail_url} alt={k.name} isKitBadge />
-
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className="truncate font-medium text-[#e5e4e2]">{k.name}</div>
-                                {!!k.description && (
-                                  <div className="mt-1 line-clamp-2 text-xs text-[#e5e4e2]/60">
-                                    {k.description}
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="shrink-0 rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-2 py-0.5 text-[11px] text-[#d3bb73]">
-                                KIT
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </button>
-                    ))
-                  )}
+              ) : visibleEquipment.length === 0 ? (
+                <div className="p-4 text-center text-sm text-[#e5e4e2]/60">
+                  Brak wyników lub wszystkie elementy są już dodane
                 </div>
-              </div>
+              ) : (
+                visibleEquipment.map((entry) => {
+                  const type: EquipmentType = entry.is_kit ? 'kit' : 'item';
+                  const isSelected = selected?.id === entry.id && selected.type === type;
+                  const availableQuantity = entry.available_quantity ?? 0;
+                  const isUnavailable = !entry.is_kit && availableQuantity === 0;
 
-              {/* Podgląd zawartości wybranego kitu */}
-              {selectedKitId && (
-                <div className="rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a] p-4">
-                  <div className="mb-2 text-sm text-[#e5e4e2]/60">Zawartość pakietu:</div>
+                  const availabilityClass =
+                    availableQuantity === 0
+                      ? 'border-red-500/30 bg-red-500/20 text-red-400'
+                      : availableQuantity < 5
+                        ? 'border-yellow-500/30 bg-yellow-500/20 text-yellow-400'
+                        : 'border-green-500/30 bg-green-500/20 text-green-400';
 
-                  {kitLoading ? (
-                    <div className="text-sm text-[#e5e4e2]/60">Ładowanie zawartości...</div>
-                  ) : selectedKit?.equipment_kit_items?.length ? (
-                    <div className="space-y-1">
-                      {selectedKit.equipment_kit_items.map((it, idx) => (
-                        <div key={idx} className="flex items-center gap-2 text-sm text-[#e5e4e2]">
-                          <span className="text-[#d3bb73]">•</span>
-                          <span>
-                            {it.quantity}x{' '}
-                            {it.equipment_items?.name || it.cables?.name || 'Nieznany element'}
-                          </span>
-                          {it.equipment_items?.model && (
-                            <span className="text-xs text-[#e5e4e2]/60">
-                              ({it.equipment_items.model})
-                            </span>
-                          )}
-                          {it.cables?.length_meters && (
-                            <span className="text-xs text-[#e5e4e2]/60">
-                              ({it.cables.length_meters}m)
-                            </span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-sm text-[#e5e4e2]/60">Brak danych o zawartości.</div>
-                  )}
-                </div>
-              )}
-            </>
-          )}
+                  return (
+                    <button
+                      key={`${type}-${entry.id}`}
+                      type="button"
+                      onClick={() => setSelected({ id: entry.id, type })}
+                      disabled={isUnavailable}
+                      className={`w-full border-b border-[#d3bb73]/10 px-4 py-3 text-left transition-colors last:border-b-0 ${
+                        isSelected
+                          ? 'bg-[#d3bb73]/20'
+                          : isUnavailable
+                            ? 'cursor-not-allowed opacity-50'
+                            : 'hover:bg-[#d3bb73]/10'
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <Thumb
+                          src={entry.thumbnail_url}
+                          alt={entry.name}
+                          isKitBadge={Boolean(entry.is_kit)}
+                        />
 
-          {/* Item selection (zostaje jak było) */}
-          {mode === 'item' && (
-            <>
-              <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">Wyszukaj sprzęt</label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#e5e4e2]/40" />
-                  <input
-                    type="text"
-                    value={itemSearchQuery}
-                    onChange={(e) => setItemSearchQuery(e.target.value)}
-                    placeholder="Szukaj po nazwie, marce lub modelu..."
-                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] py-2 pl-9 pr-4 text-[#e5e4e2] placeholder:text-[#e5e4e2]/40"
-                  />
-                </div>
-              </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="truncate font-medium text-[#e5e4e2]">{entry.name}</div>
 
-              <div>
-                <label className="mb-2 block text-sm text-[#e5e4e2]/60">
-                  Wybierz sprzęt * ({equipmentItems.length} wyników)
-                </label>
-
-                <div className="max-h-60 overflow-y-auto rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a]">
-                  {isLoading ? (
-                    <div className="p-4 text-center text-sm text-[#e5e4e2]/60">Ładowanie...</div>
-                  ) : equipmentItems.length === 0 ? (
-                    <div className="p-4 text-center text-sm text-[#e5e4e2]/60">
-                      Brak wyników wyszukiwania
-                    </div>
-                  ) : (
-                    equipmentItems.map((item) => {
-                      const avail =
-                        (item as any).available_quantity ?? item.available_quantity ?? 0;
-                      const disabled = avail === 0;
-
-                      const badgeClass =
-                        avail === 0
-                          ? 'bg-red-500/20 text-red-400 border-red-500/30'
-                          : avail < 5
-                            ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
-                            : 'bg-green-500/20 text-green-400 border-green-500/30';
-
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => setSelectedItemId(item.id)}
-                          disabled={disabled}
-                          className={`w-full border-b border-[#d3bb73]/10 px-4 py-3 text-left transition-colors ${
-                            selectedItemId === item.id
-                              ? 'bg-[#d3bb73]/20'
-                              : disabled
-                                ? 'cursor-not-allowed opacity-50'
-                                : 'hover:bg-[#d3bb73]/10'
-                          }`}
-                        >
-                          <div className="flex items-start gap-3">
-                            <Thumb src={item.thumbnail_url} alt={item.name} />
-
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0">
-                                  <div className="truncate font-medium text-[#e5e4e2]">
-                                    {item.name}
-                                  </div>
-
-                                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#e5e4e2]/60">
-                                    {(item.brand || item.model) && (
-                                      <span className="truncate">
-                                        {item.brand ?? ''}
-                                        {item.model ? ` • ${item.model}` : ''}
-                                      </span>
-                                    )}
-
-                                    {item.warehouse_categories?.name && (
-                                      <span className="truncate">
-                                        • {item.warehouse_categories.name}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-
-                                <div
-                                  className={`shrink-0 rounded border px-2 py-0.5 text-[11px] ${badgeClass}`}
-                                >
-                                  {avail === 0 ? 'Brak' : `${avail} szt.`}
-                                </div>
-                              </div>
-
-                              {!!item.description && (
-                                <div className="mt-1 line-clamp-2 text-xs text-[#e5e4e2]/50">
-                                  {item.description}
+                              {!entry.is_kit && (
+                                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#e5e4e2]/60">
+                                  {(entry.brand || entry.model) && (
+                                    <span className="truncate">
+                                      {entry.brand ?? ''}
+                                      {entry.model ? ` • ${entry.model}` : ''}
+                                    </span>
+                                  )}
+                                  {entry.warehouse_categories?.name && (
+                                    <span className="truncate">
+                                      • {entry.warehouse_categories.name}
+                                    </span>
+                                  )}
                                 </div>
                               )}
                             </div>
+
+                            {entry.is_kit ? (
+                              <div className="shrink-0 rounded border border-[#d3bb73]/20 bg-[#1c1f33] px-2 py-0.5 text-[11px] text-[#d3bb73]">
+                                ZESTAW
+                              </div>
+                            ) : (
+                              <div
+                                className={`shrink-0 rounded border px-2 py-0.5 text-[11px] ${availabilityClass}`}
+                              >
+                                {availableQuantity === 0 ? 'Brak' : `${availableQuantity} szt.`}
+                              </div>
+                            )}
                           </div>
-                        </button>
-                      );
-                    })
-                  )}
+
+                          {!!entry.description && (
+                            <div className="mt-1 line-clamp-2 text-xs text-[#e5e4e2]/50">
+                              {entry.description}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {selected?.type === 'kit' && (
+            <div className="rounded-lg border border-[#d3bb73]/10 bg-[#0a0d1a] p-4">
+              <div className="mb-2 text-sm text-[#e5e4e2]/60">Zawartość zestawu:</div>
+
+              {kitLoading ? (
+                <div className="text-sm text-[#e5e4e2]/60">Ładowanie zawartości...</div>
+              ) : selectedKit?.equipment_kit_items?.length ? (
+                <div className="space-y-1">
+                  {selectedKit.equipment_kit_items.map((kitItem, index) => (
+                    <div
+                      key={`${selected.id}-${index}`}
+                      className="flex items-center gap-2 text-sm text-[#e5e4e2]"
+                    >
+                      <span className="text-[#d3bb73]">•</span>
+                      <span>
+                        {kitItem.quantity}x{' '}
+                        {kitItem.equipment_items?.name ||
+                          kitItem.cables?.name ||
+                          'Nieznany element'}
+                      </span>
+                      {kitItem.equipment_items?.model && (
+                        <span className="text-xs text-[#e5e4e2]/60">
+                          ({kitItem.equipment_items.model})
+                        </span>
+                      )}
+                      {kitItem.cables?.length_meters && (
+                        <span className="text-xs text-[#e5e4e2]/60">
+                          ({kitItem.cables.length_meters}m)
+                        </span>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              </div>
-            </>
+              ) : (
+                <div className="text-sm text-[#e5e4e2]/60">Brak danych o zawartości.</div>
+              )}
+            </div>
           )}
 
-          {/* Quantity */}
           <div>
             <label className="mb-2 block text-sm text-[#e5e4e2]/60">Ilość</label>
             <input
               type="number"
-              min="1"
+              min={1}
               value={quantity}
-              onChange={(e) => setQuantity(parseInt(e.target.value))}
+              onChange={(event) => {
+                const nextQuantity = Number(event.target.value);
+                setQuantity(Number.isFinite(nextQuantity) && nextQuantity >= 1 ? nextQuantity : 1);
+              }}
               className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
             />
           </div>
 
-          {/* Optional */}
           <div>
             <label className="flex cursor-pointer items-center gap-2">
               <input
                 type="checkbox"
                 checked={isOptional}
-                onChange={(e) => setIsOptional(e.target.checked)}
+                onChange={(event) => setIsOptional(event.target.checked)}
                 className="h-4 w-4 rounded border-[#d3bb73]/20 bg-[#0a0d1a] text-[#d3bb73] focus:ring-[#d3bb73]"
               />
               <span className="text-sm text-[#e5e4e2]">Opcjonalny (można usunąć z oferty)</span>
             </label>
           </div>
 
-          {/* Notes */}
           <div>
             <label className="mb-2 block text-sm text-[#e5e4e2]/60">Notatki (opcjonalnie)</label>
             <textarea
               value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              onChange={(event) => setNotes(event.target.value)}
               rows={3}
               placeholder="Dodatkowe informacje..."
               className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0a0d1a] px-4 py-2 text-[#e5e4e2]"
@@ -419,14 +410,16 @@ export function AddEquipmentModal({
 
         <div className="sticky bottom-0 flex justify-end gap-3 border-t border-[#d3bb73]/10 bg-[#1c1f33] p-6">
           <button
+            type="button"
             onClick={onClose}
             className="rounded-lg bg-[#e5e4e2]/10 px-6 py-2 text-[#e5e4e2] transition-colors hover:bg-[#e5e4e2]/20"
           >
             Anuluj
           </button>
           <button
+            type="button"
             onClick={handleSubmit}
-            disabled={loading || (mode === 'item' ? !selectedItemId : !selectedKitId)}
+            disabled={loading || !selectedEquipment}
             className="rounded-lg bg-[#d3bb73] px-6 py-2 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
           >
             {loading ? 'Dodawanie...' : 'Dodaj'}

@@ -28,7 +28,7 @@ import type { IEvent, SelectedItem } from '../../../type';
 import { EventEquipmentRow } from '../../../UI/RenderRowItem';
 import { buildEquipmentChecklistHtml } from '../../helpers/buildEquipmentChecklistPdf';
 import { supabase } from '@/lib/supabase/browser';
-import Image from 'next/image';
+
 import type {
   UUID,
   EquipmentItemDTO,
@@ -84,8 +84,8 @@ const KitItemRow = ({
             <NextImage
               src={thumb}
               alt={name}
-              width={300}
-              height={300}
+              width={500}
+              height={500}
               className="h-auto cursor-pointer rounded-lg object-contain transition-all"
             />
           }
@@ -1237,7 +1237,7 @@ export const EventEquipmentTab: React.FC<{
               <Popover
                 trigger={
                   <div className="relative h-10 w-10">
-                    <Image
+                    <NextImage
                       src={kitThumb}
                       alt={kitName}
                       width={40}
@@ -1250,11 +1250,11 @@ export const EventEquipmentTab: React.FC<{
                   </div>
                 }
                 content={
-                  <Image
+                  <NextImage
                     src={kitThumb ?? ''}
                     alt={kitName}
-                    width={100}
-                    height={100}
+                    width={400}
+                    height={400}
                     className="h-auto cursor-pointer rounded-lg object-contain transition-all"
                   />
                 }
@@ -2330,12 +2330,12 @@ export const EventEquipmentTab: React.FC<{
                   >
                     <div className="flex items-center gap-3">
                       {alt.thumbnail_url ? (
-                        <Image
+                        <NextImage
                           src={alt.thumbnail_url}
                           alt={alt.name}
                           className="h-12 w-12 rounded border border-[#d3bb73]/20 object-cover"
-                          width={48}
-                          height={48}
+                          width={400}
+                          height={400}
                         />
                       ) : (
                         <div className="flex h-12 w-12 items-center justify-center rounded border border-[#d3bb73]/20 bg-[#1c1f33]">
