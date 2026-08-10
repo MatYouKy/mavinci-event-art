@@ -14,7 +14,8 @@ interface NotificationData {
     | 'tasks'
     | 'event_assignment'
     | 'event_update'
-    | 'message_assignment';
+    | 'message_assignment'
+    | 'webhook';
   type?: 'info' | 'success' | 'warning' | 'error';
   relatedEntityType?:
     | 'client'
@@ -27,7 +28,8 @@ interface NotificationData {
     | 'vehicle'
     | 'maintenance_record'
     | 'insurance_policy'
-    | 'fuel_entry';
+    | 'fuel_entry'
+    | 'inbound_event';
   relatedEntityId?: string;
   actionUrl?: string;
 }

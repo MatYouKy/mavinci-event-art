@@ -13,6 +13,7 @@ import {
   MessageSquare,
   Mail,
   Calendar,
+  Webhook,
 } from 'lucide-react';
 
 import { useRouter } from 'next/navigation';
@@ -33,6 +34,7 @@ const NOTIFICATION_CATEGORY_LABELS: Record<string, string> = {
   absence_rejected: 'Urlop odrzucony',
   email_received: 'Wiadomość e-mail',
   contact_form: 'Formularz kontaktowy',
+  webhook: 'Webhook',
   system: 'System',
 };
 
@@ -50,6 +52,9 @@ const getBannerIcon = (relatedEntityType: string | null) => {
 
     case 'contact_messages':
       return <Mail className="h-4 w-4 text-[#d3bb73]" />;
+
+    case 'inbound_event':
+      return <Webhook className="h-4 w-4 text-[#d3bb73]" />;
 
     default:
       return <Bell className="h-4 w-4 text-[#d3bb73]" />;
@@ -98,6 +103,9 @@ function getNotificationActionUrl(notification: {
 
     case 'vehicle':
       return `/crm/fleet/vehicles/${entityId}`;
+
+    case 'inbound_event':
+      return `/crm/settings/webhooks`;
 
     default:
       return null;
@@ -635,6 +643,10 @@ export default function NotificationCenter({
 
     if (notification.category === 'email' || notification.category === 'contact_form') {
       return <Mail className="h-4 w-4" />;
+    }
+
+    if (notification.category === 'webhook') {
+      return <Webhook className="h-4 w-4" />;
     }
 
     switch (notification.type) {

@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Settings, Lock, Eye, Bell, LayoutGrid, LayoutList, Save, RefreshCw, Shield, Tag, ArrowRight, Mail, Plus, List, Table2, Building2, Key, Ligature as FileSignature, Upload, Volume2, Trash2 } from 'lucide-react';
+import { Settings, Lock, Eye, Bell, LayoutGrid, LayoutList, Save, RefreshCw, Shield, Tag, ArrowRight, Mail, Plus, List, Table2, Building2, Key, Ligature as FileSignature, Upload, Volume2, Trash2, Webhook } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import ChangePasswordModal from '@/components/crm/ChangePasswordModal';
@@ -987,6 +987,22 @@ export default function SettingsPage() {
                     <div className="font-medium text-[#e5e4e2]">Szablon wiadomości email</div>
                     <div className="text-xs text-[#e5e4e2]/60">
                       Edytuj szablon HTML treści wiadomości z brandbookiem firmy
+                    </div>
+                  </div>
+                </div>
+                <ArrowRight className="h-5 w-5 text-[#e5e4e2]/40" />
+              </button>
+
+              <button
+                onClick={() => router.push('/crm/settings/webhooks')}
+                className="flex w-full items-center justify-between rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4 transition-colors hover:bg-[#1c1f33]"
+              >
+                <div className="flex items-center gap-3">
+                  <Webhook className="h-5 w-5 text-[#d3bb73]" />
+                  <div className="text-left">
+                    <div className="font-medium text-[#e5e4e2]">Webhooki i integracje</div>
+                    <div className="text-xs text-[#e5e4e2]/60">
+                      Zarządzaj zewnętrznymi źródłami zdarzeń (strony, sklepy, formularze)
                     </div>
                   </div>
                 </div>
