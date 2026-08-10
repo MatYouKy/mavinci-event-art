@@ -21,6 +21,7 @@ import EquipmentStackNavigator from './EquipmentStackNavigator';
 import InquiriesStackNavigator from './InquiriesStackNavigator';
 import TimeTrackingScreen from '../screens/TimeTrackingScreen';
 import EmployeesScreen from '../screens/EmployeesScreen';
+import MessagesScreen from '../screens/MessagesScreen';
 import CustomDrawer from '../components/CustomDrawer';
 import { useUnreadChatCount } from '../services/chatNotifications';
 import { consumeNotificationTarget } from '../../App';
@@ -33,6 +34,7 @@ export type MainTabParamList = {
   Profile: undefined;
   Settings: undefined;
   Messages: undefined;
+  Inbox: undefined;
   Events: undefined;
   Tasks: undefined;
   Inquiries: undefined;
@@ -108,8 +110,9 @@ export default function MainTabNavigator() {
   useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data as NotificationTargetData;
-      const { meetingId } = routeNotification(data);
-      if (meetingId) openMeeting(meetingId);
+      void routeNotification(data).then(({ meetingId }) => {
+        if (meetingId) openMeeting(meetingId);
+      });
     });
 
     // Also handle a pending target captured before navigation was ready (cold start)
@@ -117,8 +120,9 @@ export default function MainTabNavigator() {
     if (coldStartTarget) {
       // Defer so the navigation container and nested stacks are mounted
       setTimeout(() => {
-        const { meetingId } = routeNotification(coldStartTarget);
-        if (meetingId) openMeeting(meetingId);
+        void routeNotification(coldStartTarget).then(({ meetingId }) => {
+          if (meetingId) openMeeting(meetingId);
+        });
       }, 400);
     }
 
@@ -269,6 +273,15 @@ export default function MainTabNavigator() {
         />
 
         {/* === Hidden from tab bar, accessible from drawer === */}
+        <Tab.Screen
+          name="Inbox"
+          component={MessagesScreen}
+          options={{
+            title: 'Wiadomości',
+            tabBarButton: () => null,
+            tabBarIcon: ({ color, size }) => <Feather name="inbox" color={color} size={size} />,
+          }}
+        />
         <Tab.Screen
           name="Events"
           component={EventsStackNavigator}

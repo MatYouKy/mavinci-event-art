@@ -28,6 +28,12 @@ interface RepairItem {
   part_cost: number;
 }
 
+const addOneYear = (dateValue: string) => {
+  const date = new Date(`${dateValue}T12:00:00`);
+  date.setFullYear(date.getFullYear() + 1);
+  return date.toISOString().split('T')[0];
+};
+
 export default function AddMaintenanceModal({
   vehicleId,
   vehicleName,
@@ -63,6 +69,7 @@ export default function AddMaintenanceModal({
   // Kontrola techniczna
   const [inspectionData, setInspectionData] = useState({
     inspection_date: new Date().toISOString().split('T')[0],
+    valid_until: addOneYear(new Date().toISOString().split('T')[0]),
     certificate_number: '',
     performed_by: '',
     service_provider: '',
@@ -150,32 +157,26 @@ export default function AddMaintenanceModal({
     try {
       if (serviceType === 'inspection') {
         // Kontrola techniczna
-        const validUntil = new Date(inspectionData.inspection_date);
-        validUntil.setFullYear(validUntil.getFullYear() + 1);
-
         const { error } = await supabase.from('periodic_inspections').insert([
           {
             vehicle_id: vehicleId,
             inspection_type: 'technical_inspection',
             inspection_date: inspectionData.inspection_date,
-            valid_until: validUntil.toISOString().split('T')[0],
+            valid_until: inspectionData.valid_until,
+            next_inspection_due: inspectionData.valid_until,
             certificate_number: inspectionData.certificate_number || null,
             performed_by: inspectionData.performed_by || null,
             service_provider: inspectionData.service_provider || null,
             cost: inspectionData.cost ? parseFloat(inspectionData.cost) : 0,
             odometer_reading: parseInt(inspectionData.odometer_reading.toString()),
             notes: inspectionData.notes || null,
+            passed: true,
+            result: 'passed',
+            is_current: true,
           },
         ]);
 
         if (error) throw error;
-
-        // Usuń stare alerty o przeglądzie dla tego pojazdu
-        await supabase
-          .from('vehicle_alerts')
-          .delete()
-          .eq('vehicle_id', vehicleId)
-          .eq('alert_type', 'inspection');
 
         showSnackbar('Kontrola techniczna została dodana', 'success');
       } else if (serviceType === 'oil_change') {
@@ -347,31 +348,54 @@ export default function AddMaintenanceModal({
                   <input
                     type="date"
                     value={inspectionData.inspection_date}
-                    onChange={(e) =>
-                      setInspectionData({ ...inspectionData, inspection_date: e.target.value })
-                    }
+                    onChange={(e) => {
+                      const inspectionDate = e.target.value;
+                      setInspectionData({
+                        ...inspectionData,
+                        inspection_date: inspectionDate,
+                        valid_until: addOneYear(inspectionDate),
+                      });
+                    }}
                     className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
                     required
                   />
-                  <p className="mt-1 text-xs text-[#e5e4e2]/40">Kolejny przegląd za 365 dni</p>
                 </div>
                 <div>
                   <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
-                    Przebieg (km) <span className="text-red-400">*</span>
+                    Ważny do / kolejny przegląd <span className="text-red-400">*</span>
                   </label>
                   <input
-                    type="number"
-                    value={inspectionData.odometer_reading}
+                    type="date"
+                    value={inspectionData.valid_until}
+                    min={inspectionData.inspection_date}
                     onChange={(e) =>
                       setInspectionData({
                         ...inspectionData,
-                        odometer_reading: parseInt(e.target.value),
+                        valid_until: e.target.value,
                       })
                     }
                     className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
                     required
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-[#e5e4e2]">
+                  Przebieg (km) <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="number"
+                  value={inspectionData.odometer_reading}
+                  onChange={(e) =>
+                    setInspectionData({
+                      ...inspectionData,
+                      odometer_reading: parseInt(e.target.value),
+                    })
+                  }
+                  className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
+                  required
+                />
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

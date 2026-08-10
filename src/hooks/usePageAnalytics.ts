@@ -1,15 +1,22 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
-import { useSnackbar } from '@/contexts/SnackbarContext';
+
+const ANALYTICS_SESSION_KEY = 'analytics_session_id';
+
+const getOrCreateSessionId = () => {
+  const existingSessionId = sessionStorage.getItem(ANALYTICS_SESSION_KEY);
+  if (existingSessionId) return existingSessionId;
+
+  const newSessionId = crypto.randomUUID();
+  sessionStorage.setItem(ANALYTICS_SESSION_KEY, newSessionId);
+  return newSessionId;
+};
 
 export function usePageAnalytics(pageTitle?: string, enabled: boolean = true) {
   const pathname = usePathname();
-  const sessionId = useRef<string>('');
-  const startTime = useRef<number>(0);
-  const { showSnackbar } = useSnackbar();
 
   useEffect(() => {
     if (typeof window === 'undefined' || !enabled) return;
@@ -22,15 +29,14 @@ export function usePageAnalytics(pageTitle?: string, enabled: boolean = true) {
       window.location.hostname === '::1';
 
     if (isLocalhost) {
-      showSnackbar('[Analytics] Skipped - running on localhost', 'info');
       return;
     }
 
-    if (!sessionId.current) {
-      sessionId.current = crypto.randomUUID();
-    }
-
-    startTime.current = Date.now();
+    const sessionId = getOrCreateSessionId();
+    const pageViewId = crypto.randomUUID();
+    const startTime = Date.now();
+    let pageViewSaved = false;
+    let effectDisposed = false;
 
     const trackPageView = async () => {
       try {
@@ -71,12 +77,13 @@ export function usePageAnalytics(pageTitle?: string, enabled: boolean = true) {
         const utmTerm = urlParams.get('utm_term');
         const utmContent = urlParams.get('utm_content');
 
-        await supabase.from('page_analytics').insert({
+        const { error } = await supabase.from('page_analytics').insert({
+          id: pageViewId,
           page_url: pathname,
           page_title: pageTitle || document.title,
           referrer: document.referrer || null,
           user_agent: ua,
-          session_id: sessionId.current,
+          session_id: sessionId,
           device_type: deviceType,
           browser,
           os,
@@ -90,6 +97,13 @@ export function usePageAnalytics(pageTitle?: string, enabled: boolean = true) {
           utm_content: utmContent,
           time_on_page: 0,
         });
+
+        if (error) {
+          console.error('Analytics tracking error:', error);
+          return;
+        }
+
+        if (!effectDisposed) pageViewSaved = true;
       } catch (error) {
         console.error('Analytics tracking error:', error);
       }
@@ -98,35 +112,39 @@ export function usePageAnalytics(pageTitle?: string, enabled: boolean = true) {
     trackPageView();
 
     const updateTimeOnPage = async () => {
-      const timeSpent = Math.floor((Date.now() - startTime.current) / 1000);
+      const timeSpent = Math.floor((Date.now() - startTime) / 1000);
 
-      if (timeSpent > 0) {
+      if (pageViewSaved && timeSpent > 0) {
         try {
-          await supabase
-            .from('page_analytics')
-            .update({ time_on_page: timeSpent })
-            .eq('session_id', sessionId.current)
-            .eq('page_url', pathname)
-            .order('created_at', { ascending: false })
-            .limit(1);
+          const { error } = await supabase.rpc('update_page_analytics_duration', {
+            p_id: pageViewId,
+            p_session_id: sessionId,
+            p_time_on_page: timeSpent,
+          });
+
+          if (error) console.error('Time tracking error:', error);
         } catch (error) {
           console.error('Time tracking error:', error);
         }
       }
     };
 
-    const handleBeforeUnload = () => {
-      updateTimeOnPage();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') void updateTimeOnPage();
     };
 
-    const intervalId = setInterval(updateTimeOnPage, 30000);
+    const handlePageHide = () => void updateTimeOnPage();
+    const intervalId = window.setInterval(() => void updateTimeOnPage(), 15000);
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', handlePageHide);
 
     return () => {
+      effectDisposed = true;
       clearInterval(intervalId);
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      updateTimeOnPage();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', handlePageHide);
+      void updateTimeOnPage();
     };
-  }, [pathname, pageTitle]);
+  }, [pathname, pageTitle, enabled]);
 }

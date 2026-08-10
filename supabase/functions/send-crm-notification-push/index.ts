@@ -21,6 +21,44 @@ interface WebhookPayload {
   old_record: null;
 }
 
+function htmlToPlainText(value: string | null): string {
+  if (!value) return "";
+  return value
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const messageTypeLabels: Record<string, string> = {
+  event_inquiry: "Zapytanie Event",
+  contact_form: "Formularz kontaktowy",
+  general: "Wiadomość ogólna",
+  team_join: "Rekrutacja",
+  portfolio: "Portfolio",
+  services: "Zapytanie o usługi",
+  quote_request: "Prośba o wycenę",
+  inquiry: "Zapytanie",
+  lead: "Nowy lead",
+  order: "Nowe zamówienie",
+  payment: "Płatność",
+  registration: "Rejestracja",
+  booking: "Rezerwacja",
+  newsletter_signup: "Zapis do newslettera",
+};
+
+function humanizeMessageEnums(value: string): string {
+  return value.replace(
+    /\b(event_inquiry|contact_form|team_join|quote_request|newsletter_signup|general|portfolio|services|inquiry|lead|order|payment|registration|booking)\b/g,
+    (match) => messageTypeLabels[match] || match,
+  );
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -55,7 +93,7 @@ Deno.serve(async (req: Request) => {
     // Get the notification details
     const { data: notification, error: notifError } = await supabase
       .from("notifications")
-      .select("title, message, category, related_entity_type, related_entity_id, action_url")
+      .select("title, message, category, related_entity_type, related_entity_id, action_url, metadata")
       .eq("id", recipient.notification_id)
       .maybeSingle();
 
@@ -85,8 +123,50 @@ Deno.serve(async (req: Request) => {
     }
 
     // Build notification content
-    const title = notification.title || "Mavinci CRM";
-    const body = notification.message || "";
+    let title = notification.title || "Mavinci CRM";
+    let body = notification.message || "";
+
+    // An email banner should explain what arrived, not only say that an email exists.
+    if (
+      notification.related_entity_type === "received_email" &&
+      notification.related_entity_id
+    ) {
+      const { data: email } = await supabase
+        .from("received_emails")
+        .select("from_address, subject, body_text, body_html")
+        .eq("id", notification.related_entity_id)
+        .maybeSingle();
+
+      if (email) {
+        const preview = (email.body_text?.trim() || htmlToPlainText(email.body_html)).slice(0, 180);
+        title = email.subject?.trim() || "Nowa wiadomość e-mail";
+        body = preview
+          ? `Od: ${email.from_address}\n${preview}${preview.length === 180 ? "…" : ""}`
+          : `Od: ${email.from_address}`;
+      }
+    }
+
+    if (
+      notification.related_entity_type === "contact_messages" &&
+      notification.related_entity_id
+    ) {
+      const { data: contactMessage } = await supabase
+        .from("contact_messages")
+        .select("name, email, subject, message")
+        .eq("id", notification.related_entity_id)
+        .maybeSingle();
+
+      if (contactMessage) {
+        const preview = (contactMessage.message || "").trim().slice(0, 180);
+        title = contactMessage.subject?.trim() || "Nowa wiadomość z mavinci.pl";
+        body = preview
+          ? `Od: ${contactMessage.name} (${contactMessage.email})\n${preview}${preview.length === 180 ? "…" : ""}`
+          : `Od: ${contactMessage.name} (${contactMessage.email})`;
+      }
+    }
+
+    title = humanizeMessageEnums(title);
+    body = humanizeMessageEnums(body);
 
     const data: Record<string, string> = {
       type: "crm_notification",
@@ -104,6 +184,13 @@ Deno.serve(async (req: Request) => {
     }
     if (notification.action_url) {
       data.action_url = notification.action_url;
+    }
+    if (
+      notification.metadata &&
+      typeof notification.metadata === "object" &&
+      typeof notification.metadata.inbound_event_id === "string"
+    ) {
+      data.inbound_event_id = notification.metadata.inbound_event_id;
     }
 
     // Build Expo push messages

@@ -9,11 +9,17 @@ import { colors } from '../theme';
 import LoginScreen from '../screens/LoginScreen';
 import MainTabNavigator from './MainTabNavigator';
 import NotificationsScreen from '../screens/NotificationsScreen';
+import EmailMessageDetailScreen from '../screens/EmailMessageDetailScreen';
+import InboundEventDetailScreen from '../screens/InboundEventDetailScreen';
+import ContactMessageDetailScreen from '../screens/ContactMessageDetailScreen';
 
 export type RootStackParamList = {
   Login: undefined;
   Main: undefined;
   Notifications: undefined;
+  EmailMessageDetail: { messageId: string };
+  InboundEventDetail: { eventId: string };
+  ContactMessageDetail: { messageId: string };
   PdfViewer: { url: string };
   EventDetail: {
     eventId: string;
@@ -61,6 +67,36 @@ export default function RootNavigator() {
                 headerStyle: {
                   backgroundColor: colors.background.secondary,
                 },
+                headerTintColor: colors.text.primary,
+              }}
+            />
+            <Stack.Screen
+              name="EmailMessageDetail"
+              component={EmailMessageDetailScreen}
+              options={{
+                headerShown: true,
+                title: 'Wiadomość e-mail',
+                headerStyle: { backgroundColor: colors.background.secondary },
+                headerTintColor: colors.text.primary,
+              }}
+            />
+            <Stack.Screen
+              name="InboundEventDetail"
+              component={InboundEventDetailScreen}
+              options={{
+                headerShown: true,
+                title: 'Wiadomość z formularza',
+                headerStyle: { backgroundColor: colors.background.secondary },
+                headerTintColor: colors.text.primary,
+              }}
+            />
+            <Stack.Screen
+              name="ContactMessageDetail"
+              component={ContactMessageDetailScreen}
+              options={{
+                headerShown: true,
+                title: 'Wiadomość kontaktowa',
+                headerStyle: { backgroundColor: colors.background.secondary },
                 headerTintColor: colors.text.primary,
               }}
             />

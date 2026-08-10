@@ -49,12 +49,15 @@ console.log('employee.role -> ', employee.role);
 console.log('event.expected_revenue -> ', event.expected_revenue);
 
 
-  const formatDate = (dateStr: string) =>
-    new Date(dateStr).toLocaleDateString('pl-PL', {
+  const formatDateTime = (dateStr: string) =>
+    new Date(dateStr).toLocaleString('pl-PL', {
       weekday: 'long',
       day: '2-digit',
       month: 'long',
       year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
     });
 
   const formatCurrency = (val: number) =>
@@ -66,12 +69,16 @@ console.log('event.expected_revenue -> ', event.expected_revenue);
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Data i miejsce</Text>
         <View style={styles.infoGrid}>
-          <InfoRow icon="calendar" label="Data" value={formatDate(event.event_date)} />
+          <InfoRow
+            icon="calendar"
+            label="Rozpoczęcie"
+            value={formatDateTime(event.event_date)}
+          />
           {event.event_end_date && (
             <InfoRow
-              icon="calendar"
-              label="Data zakończenia"
-              value={formatDate(event.event_end_date)}
+              icon="clock"
+              label="Zakończenie"
+              value={formatDateTime(event.event_end_date)}
             />
           )}
           {event.location_name && (

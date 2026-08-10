@@ -77,6 +77,11 @@ export interface VehicleAlertDB {
   is_active: boolean;
   related_id: string | null; // np. insurance_policies.id
   created_at: string;
+  title: string;
+  message: string;
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  is_blocking: boolean;
+  due_date: string | null;
 }
 
 export interface InsurancePolicyDB {

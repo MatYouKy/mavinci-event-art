@@ -14,12 +14,16 @@ import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { colors, spacing, typography, borderRadius } from '../theme';
+import { getMessageTypeLabel, humanizeMessageEnums } from '../lib/messageLabels';
 
 interface NotificationMetadata {
   assignment_id?: string;
   requires_response?: boolean;
   assignment_status?: string;
   responded_at?: string;
+  inbound_event_id?: string;
+  source_slug?: string;
+  event_type?: string;
   [key: string]: any;
 }
 
@@ -32,8 +36,10 @@ interface Notification {
   is_read: boolean;
   related_entity_type?: string;
   related_entity_id?: string;
+  action_url?: string;
   metadata?: NotificationMetadata;
   recipient_id: string;
+  message_type?: string;
 }
 
 export default function NotificationsScreen() {
@@ -86,6 +92,7 @@ export default function NotificationsScreen() {
             category,
             related_entity_type,
             related_entity_id,
+            action_url,
             created_at,
             metadata
           )
@@ -109,7 +116,25 @@ export default function NotificationsScreen() {
           recipient_id: item.id,
         }));
 
-      setNotifications(formattedNotifications);
+      const contactMessageIds = formattedNotifications
+        .filter((item: Notification) => item.related_entity_type === 'contact_messages' && item.related_entity_id)
+        .map((item: Notification) => item.related_entity_id as string);
+
+      let notificationsWithTypes = formattedNotifications;
+      if (contactMessageIds.length > 0) {
+        const { data: contactMessages } = await supabase
+          .from('contact_messages')
+          .select('id, category')
+          .in('id', contactMessageIds);
+
+        const typeById = new Map((contactMessages || []).map((item) => [item.id, item.category]));
+        notificationsWithTypes = formattedNotifications.map((item: Notification) => ({
+          ...item,
+          message_type: item.related_entity_id ? typeById.get(item.related_entity_id) : undefined,
+        }));
+      }
+
+      setNotifications(notificationsWithTypes);
     } catch (error) {
       console.error('Error fetching notifications:', error);
     } finally {
@@ -225,6 +250,37 @@ export default function NotificationsScreen() {
     const entityId = notification.related_entity_id;
     const category = notification.category;
 
+    if (notification.metadata?.inbound_event_id) {
+      navigation.navigate('InboundEventDetail', {
+        eventId: notification.metadata.inbound_event_id,
+      });
+      return;
+    }
+
+    if (entityType === 'contact_messages' && entityId) {
+      navigation.navigate('ContactMessageDetail', { messageId: entityId });
+      return;
+    }
+
+    const contactUrlMatch = notification.action_url?.match(
+      /\/crm\/messages\/([0-9a-f-]{36})\?[^#]*type=contact_form/i,
+    );
+    if (contactUrlMatch?.[1]) {
+      navigation.navigate('ContactMessageDetail', { messageId: contactUrlMatch[1] });
+      return;
+    }
+
+    if (entityType === 'received_email' && entityId) {
+      navigation.navigate('EmailMessageDetail', { messageId: entityId });
+      return;
+    }
+
+    const emailUrlMatch = notification.action_url?.match(/\/crm\/messages\/([0-9a-f-]{36})/i);
+    if (emailUrlMatch?.[1]) {
+      navigation.navigate('EmailMessageDetail', { messageId: emailUrlMatch[1] });
+      return;
+    }
+
     if (entityType === 'event' && entityId) {
       navigation.navigate('Main', {
         screen: 'Events',
@@ -244,6 +300,10 @@ export default function NotificationsScreen() {
           params: { taskId: entityId },
         },
       });
+      return;
+    }
+
+    if (entityType === 'vehicle') {
       return;
     }
 
@@ -278,7 +338,7 @@ export default function NotificationsScreen() {
     }
 
     if (category === 'messages' || category === 'contact_form') {
-      navigation.navigate('Main', { screen: 'Messages' });
+      navigation.navigate('Main', { screen: 'Inbox' });
       return;
     }
 
@@ -394,8 +454,12 @@ export default function NotificationsScreen() {
     }
 
     const hasInvitation = !!item.metadata?.assignment_id;
+    const messageType = item.message_type || item.metadata?.event_type ||
+      (item.category === 'contact_form' ? 'contact_form' : undefined);
     const isNavigable = !!(
       item.related_entity_id ||
+      item.metadata?.inbound_event_id ||
+      item.action_url?.includes('/crm/messages/') ||
       item.category === 'events' ||
       item.category === 'tasks' ||
       item.category === 'messages' ||
@@ -420,10 +484,16 @@ export default function NotificationsScreen() {
             name={
               hasInvitation && item.metadata?.requires_response
                 ? 'user-plus'
+                : item.metadata?.inbound_event_id
+                  ? 'file-text'
+                : item.related_entity_type === 'contact_messages'
+                  ? 'message-square'
                 : item.related_entity_type === 'event'
                   ? 'star'
-                  : item.related_entity_type === 'task'
+                : item.related_entity_type === 'task'
                     ? 'check-square'
+                    : item.related_entity_type === 'vehicle'
+                      ? 'truck'
                     : item.category === 'webhook'
                       ? 'globe'
                       : item.is_read
@@ -441,10 +511,15 @@ export default function NotificationsScreen() {
           />
         </View>
         <View style={styles.notificationContent}>
-          <Text style={styles.notificationTitle}>{item.title}</Text>
+          <Text style={styles.notificationTitle}>{humanizeMessageEnums(item.title)}</Text>
           <Text style={styles.notificationMessage} numberOfLines={2}>
-            {item.message}
+            {humanizeMessageEnums(item.message)}
           </Text>
+          {!!messageType && (
+            <View style={styles.messageTypeBadge}>
+              <Text style={styles.messageTypeBadgeText}>{getMessageTypeLabel(messageType)}</Text>
+            </View>
+          )}
           {renderInvitationActions(item)}
           <View style={styles.notificationFooter}>
             <Text style={styles.notificationTime}>{timeText}</Text>
@@ -578,6 +653,18 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     color: colors.text.secondary,
     lineHeight: 18,
+  },
+  messageTypeBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.primary.gold + '20',
+  },
+  messageTypeBadgeText: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.primary.gold,
   },
   notificationFooter: {
     flexDirection: 'row',

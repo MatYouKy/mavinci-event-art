@@ -258,20 +258,6 @@ export default function VehicleDetailPage() {
     return days;
   };
 
-  const upcomingMaintenance = allMaintenance.filter(
-    (r) =>
-      r.next_service_date &&
-      (getDaysUntil(r.next_service_date) ?? 0) > 0 &&
-      (getDaysUntil(r.next_service_date) ?? 0) <= 30,
-  );
-
-  const expiringInsurance = vehicleAlerts
-    .map((alert) => {
-      const policy = insurancePolicies.find((p) => p.id === alert.related_id);
-      return policy || null;
-    })
-    .filter(Boolean) as InsurancePolicy[];
-
   const totalFuelCost = fuelEntries.reduce((sum, f) => sum + (f.total_cost || 0), 0);
   const totalMaintenanceCost = allMaintenance.reduce((sum, m) => sum + (m.total_cost || 0), 0);
   const totalInsuranceCost = insurancePolicies
@@ -463,45 +449,34 @@ export default function VehicleDetailPage() {
       </div>
 
       {/* Alerty */}
-      {(upcomingMaintenance.length > 0 || expiringInsurance.length > 0) && (
+      {vehicleAlerts.length > 0 && (
         <div className="space-y-2">
-          {upcomingMaintenance.map((m) => {
-            const days = getDaysUntil(m.next_service_date!);
-            return (
-              <div
-                key={m.id}
-                className="flex items-center gap-3 rounded-lg border border-orange-500/20 bg-orange-500/10 p-4"
-              >
-                <AlertTriangle className="h-5 w-5 flex-shrink-0 text-orange-400" />
-                <div className="flex-1">
-                  <p className="font-medium text-orange-400">Zbliżający się przegląd</p>
-                  <p className="text-sm text-[#e5e4e2]/80">
-                    {m.title} - za {days} {days === 1 ? 'dzień' : 'dni'} (
-                    {formatDate(m.next_service_date!)})
-                  </p>
-                </div>
+          {vehicleAlerts.map((alert: any) => (
+            <div
+              key={alert.id}
+              className={`flex items-center gap-3 rounded-lg border p-4 ${
+                alert.is_blocking
+                  ? 'border-red-500/20 bg-red-500/10'
+                  : 'border-orange-500/20 bg-orange-500/10'
+              }`}
+            >
+              {alert.alert_type === 'insurance' ? (
+                <Shield
+                  className={`h-5 w-5 flex-shrink-0 ${alert.is_blocking ? 'text-red-400' : 'text-orange-400'}`}
+                />
+              ) : (
+                <AlertTriangle
+                  className={`h-5 w-5 flex-shrink-0 ${alert.is_blocking ? 'text-red-400' : 'text-orange-400'}`}
+                />
+              )}
+              <div className="flex-1">
+                <p className={alert.is_blocking ? 'font-medium text-red-400' : 'font-medium text-orange-400'}>
+                  {alert.title}
+                </p>
+                <p className="text-sm text-[#e5e4e2]/80">{alert.message}</p>
               </div>
-            );
-          })}
-
-          {expiringInsurance.map((i) => {
-            const days = getDaysUntil(i.end_date);
-            return (
-              <div
-                key={i.id}
-                className="flex items-center gap-3 rounded-lg border border-red-500/20 bg-red-500/10 p-4"
-              >
-                <Shield className="h-5 w-5 flex-shrink-0 text-red-400" />
-                <div className="flex-1">
-                  <p className="font-medium text-red-400">Wygasające ubezpieczenie</p>
-                  <p className="text-sm text-[#e5e4e2]/80">
-                    {i.type.toUpperCase()} ({i.insurance_company}) - za {days}{' '}
-                    {days === 1 ? 'dzień' : 'dni'} ({formatDate(i.end_date)})
-                  </p>
-                </div>
-              </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       )}
 

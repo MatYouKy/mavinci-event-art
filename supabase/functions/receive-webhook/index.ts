@@ -197,7 +197,97 @@ Deno.serve(async (req: Request) => {
     }
 
     let notificationId: string | null = null;
+    let recipientCount = 0;
     try {
+      const configuredPermissions = source.default_notify_permissions as string[] | null;
+      const requiredPermissions = configuredPermissions && configuredPermissions.length > 0
+        ? configuredPermissions
+        : ["messages_view", "messages_manage"];
+
+      const [employeesResult, settingsResult, sourceSettingsResult] = await Promise.all([
+        supabase
+          .from("employees")
+          .select("id, role, access_level, permissions")
+          .eq("is_active", true),
+        supabase
+          .from("employee_notification_settings")
+          .select("employee_id, webhook_notifications_enabled"),
+        supabase
+          .from("employee_webhook_notification_settings")
+          .select("employee_id, is_enabled")
+          .eq("source_id", source.id),
+      ]);
+
+      if (employeesResult.error) {
+        throw new Error(`Fetch recipients failed: ${employeesResult.error.message}`);
+      }
+      if (settingsResult.error) {
+        throw new Error(`Fetch notification settings failed: ${settingsResult.error.message}`);
+      }
+      if (sourceSettingsResult.error) {
+        throw new Error(`Fetch source settings failed: ${sourceSettingsResult.error.message}`);
+      }
+
+      const globalSettings = new Map(
+        (settingsResult.data ?? []).map((setting) => [
+          setting.employee_id,
+          setting.webhook_notifications_enabled,
+        ]),
+      );
+      const perSourceSettings = new Map(
+        (sourceSettingsResult.data ?? []).map((setting) => [
+          setting.employee_id,
+          setting.is_enabled,
+        ]),
+      );
+
+      const recipients = (employeesResult.data ?? []).filter((employee) => {
+        const permissions = (employee.permissions ?? []) as string[];
+        const isAdmin = employee.role === "admin" ||
+          employee.access_level === "admin" ||
+          permissions.includes("admin");
+        const hasDataAccess = isAdmin ||
+          permissions.includes("webhooks_view") ||
+          permissions.includes("webhooks_manage") ||
+          permissions.some((permission) => requiredPermissions.includes(permission));
+
+        if (!hasDataAccess) return false;
+
+        // Admins are subscribed by default but may explicitly opt out.
+        // Other employees require an explicit global and per-source opt-in.
+        const globalEnabled = globalSettings.get(employee.id) ?? isAdmin;
+        const sourceEnabled = perSourceSettings.get(employee.id) ?? isAdmin;
+        return globalEnabled && sourceEnabled;
+      });
+      recipientCount = recipients.length;
+
+      if (recipients.length === 0) {
+        const { error: processedWithoutRecipientsError } = await supabase
+          .from("inbound_events")
+          .update({
+            status: "processed",
+            notification_id: null,
+            processed_at: new Date().toISOString(),
+          })
+          .eq("id", event.id);
+
+        if (processedWithoutRecipientsError) {
+          throw new Error(
+            `Mark event without recipients as processed failed: ${processedWithoutRecipientsError.message}`,
+          );
+        }
+
+        return jsonResponse(
+          {
+            status: "accepted",
+            event_id: event.id,
+            notification_id: null,
+            recipients: 0,
+          },
+          201,
+        );
+      }
+
       const notifMessage = body
         ? `${body.slice(0, 300)}${body.length > 300 ? "..." : ""}`
         : `Zdarzenie typu "${eventType}" ze źródła "${source.name}"`;
@@ -208,10 +298,8 @@ Deno.serve(async (req: Request) => {
           title,
           message: notifMessage,
           type: PRIORITY_TO_NOTIFICATION_TYPE[priority] || "info",
-          category: "webhook",
-          related_entity_type: "inbound_event",
-          related_entity_id: event.id,
-          action_url: detailUrl || `/crm/settings/webhooks`,
+          category: "system",
+          action_url: `/crm/settings/webhooks`,
           metadata: {
             origin: "webhook",
             inbound_event_id: event.id,
@@ -230,50 +318,50 @@ Deno.serve(async (req: Request) => {
 
       notificationId = notif.id;
 
-      const configuredPermissions = source.default_notify_permissions as string[] | null;
-      const perms = configuredPermissions && configuredPermissions.length > 0
-        ? configuredPermissions
-        : [
-          "messages_view",
-          "messages_manage",
-        ];
-
-      const { data: employees, error: employeesError } = await supabase
-        .from("employees")
-        .select("id, role, access_level, permissions")
-        .eq("is_active", true);
-
-      if (employeesError) {
-        throw new Error(`Fetch recipients failed: ${employeesError.message}`);
-      }
-
-      const recipients = (employees ?? []).filter(
-        (employee: {
-          id: string;
-          role: string | null;
-          access_level: string | null;
-          permissions: string[] | null;
-        }) =>
-          employee.role === "admin" ||
-          employee.access_level === "admin" ||
-          (employee.permissions?.some((permission) => perms.includes(permission)) ?? false),
-      );
-
-      if (recipients.length === 0) {
-        throw new Error("No active notification recipients found");
-      }
-
       const rows = recipients.map((recipient: { id: string }) => ({
         notification_id: notif.id,
         user_id: recipient.id,
       }));
 
-      const { error: recipientsError } = await supabase
+      const { data: insertedRecipients, error: recipientsError } = await supabase
         .from("notification_recipients")
-        .insert(rows);
+        .insert(rows)
+        .select("id, notification_id, user_id, is_read");
 
       if (recipientsError) {
         throw new Error(`Insert notification recipients failed: ${recipientsError.message}`);
+      }
+
+      const pushResults = await Promise.allSettled(
+        (insertedRecipients ?? []).map(async (recipient) => {
+          const pushResponse = await fetch(
+            `${supabaseUrl}/functions/v1/send-crm-notification-push`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${serviceKey}`,
+                apikey: serviceKey,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                type: "INSERT",
+                table: "notification_recipients",
+                schema: "public",
+                record: recipient,
+                old_record: null,
+              }),
+            },
+          );
+
+          if (!pushResponse.ok) {
+            throw new Error(`Push function returned HTTP ${pushResponse.status}`);
+          }
+        }),
+      );
+
+      const failedPushes = pushResults.filter((result) => result.status === "rejected");
+      if (failedPushes.length > 0) {
+        console.error(`Push delivery failed for ${failedPushes.length} recipients`);
       }
 
       const { error: processedError } = await supabase
@@ -313,6 +401,7 @@ Deno.serve(async (req: Request) => {
         status: "accepted",
         event_id: event.id,
         notification_id: notificationId,
+        recipients: recipientCount,
       },
       201,
     );

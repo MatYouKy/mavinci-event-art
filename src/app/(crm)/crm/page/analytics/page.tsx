@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useGetAnalyticsStatsQuery, useGetOnlineUsersQuery } from '@/store/api/analyticsApi';
 import {
   BarChart3,
@@ -20,6 +21,8 @@ import { ResetAnalyticsModal } from '@/components/crm/ResetAnalyticsModal';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 
 export default function AnalyticsPage() {
+  const searchParams = useSearchParams();
+  const selectedPageUrl = searchParams.get('url') || undefined;
   const [dateRange, setDateRange] = useState(30);
   const [onlineUsers, setOnlineUsers] = useState(0);
   const [customDateMode, setCustomDateMode] = useState(false);
@@ -36,6 +39,7 @@ export default function AnalyticsPage() {
     dateRange,
     startDate: customDateMode ? customStartDate : undefined,
     endDate: customDateMode ? customEndDate : undefined,
+    pageUrl: selectedPageUrl,
   });
   const { data: initialOnlineUsers } = useGetOnlineUsersQuery();
 
@@ -100,6 +104,12 @@ export default function AnalyticsPage() {
     return `${minutes}m ${remainingSeconds}s`;
   };
 
+  const dateRangeLabel = customDateMode
+    ? `${customStartDate || '…'} – ${customEndDate || '…'}`
+    : dateRange === 1
+      ? 'Dzisiaj'
+      : `Ostatnie ${dateRange} dni`;
+
   let maxVisits = 1;
   if (stats?.dailyVisits && stats.dailyVisits.length > 0) {
     stats.dailyVisits.forEach((d) => {
@@ -112,8 +122,18 @@ export default function AnalyticsPage() {
       <div className="mx-auto max-w-7xl space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-light text-[#e5e4e2]">Analytics Dashboard</h1>
-            <p className="mt-1 text-[#e5e4e2]/60">Statystyki odwiedzin strony</p>
+            <h1 className="text-3xl font-light text-[#e5e4e2]">Analiza ruchu</h1>
+            <p className="mt-1 text-[#e5e4e2]/60">
+              {selectedPageUrl ? `Statystyki strony: ${selectedPageUrl}` : 'Statystyki wszystkich stron publicznych'}
+            </p>
+            {selectedPageUrl && (
+              <Link
+                href="/crm/page/analytics"
+                className="mt-2 inline-block text-sm text-[#d3bb73] hover:text-[#d3bb73]/80"
+              >
+                Pokaż wszystkie strony
+              </Link>
+            )}
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -260,7 +280,7 @@ export default function AnalyticsPage() {
                   <span className="text-sm text-[#e5e4e2]/60">Wizyty</span>
                 </div>
                 <div className="text-3xl font-light text-[#d3bb73]">{stats.totalVisits}</div>
-                <div className="mt-1 text-xs text-[#e5e4e2]/40">Ostatnie {dateRange} dni</div>
+                <div className="mt-1 text-xs text-[#e5e4e2]/40">{dateRangeLabel}</div>
               </div>
 
               <div className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
@@ -400,7 +420,9 @@ export default function AnalyticsPage() {
 
             <div className="rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-6">
               <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-xl font-light text-[#e5e4e2]">Top 10 podstron</h2>
+                <h2 className="text-xl font-light text-[#e5e4e2]">
+                  {selectedPageUrl ? 'Wybrana strona' : 'Top 10 podstron'}
+                </h2>
                 <Link
                   href="/crm/page"
                   className="flex items-center gap-1 text-sm text-[#d3bb73] hover:text-[#d3bb73]/80"

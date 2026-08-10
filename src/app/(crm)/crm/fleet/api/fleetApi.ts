@@ -68,6 +68,31 @@ export const fleetApi = createApi({
           return { error: { status: 'FETCH_ERROR', message: error.message } as any };
         }
 
+        const vehicleIds = (data ?? []).map((vehicle: any) => vehicle.id);
+        const activeAlerts = vehicleIds.length
+          ? await supabase
+              .from('vehicle_alerts')
+              .select('vehicle_id, alert_type')
+              .in('vehicle_id', vehicleIds)
+              .eq('is_active', true)
+          : { data: [], error: null };
+
+        if (activeAlerts.error) {
+          return {
+            error: { status: 'FETCH_ERROR', message: activeAlerts.error.message } as any,
+          };
+        }
+
+        const alertCounts = (activeAlerts.data ?? []).reduce(
+          (counts: Record<string, { insurance: number; inspection: number }>, alert: any) => {
+            counts[alert.vehicle_id] ??= { insurance: 0, inspection: 0 };
+            if (alert.alert_type === 'insurance') counts[alert.vehicle_id].insurance += 1;
+            if (alert.alert_type === 'inspection') counts[alert.vehicle_id].inspection += 1;
+            return counts;
+          },
+          {},
+        );
+
         const vehicles: IVehicle[] = (data ?? []).map((v: any) => {
           const images = Array.isArray(v.vehicle_images) ? v.vehicle_images : [];
           const assignments = Array.isArray(v.vehicle_assignments) ? v.vehicle_assignments : [];
@@ -107,6 +132,11 @@ export const fleetApi = createApi({
             assigned_employee_surname: activeAssignment?.employees?.surname ?? null,
             assigned_employee_avatar_url: activeAssignment?.employees?.avatar_url ?? null,
             assigned_employee_avatar_metadata: activeAssignment?.employees?.avatar_metadata ?? null,
+            expiring_insurance: alertCounts[v.id]?.insurance ?? 0,
+            upcoming_services: Math.max(
+              Number(v.upcoming_services) || 0,
+              alertCounts[v.id]?.inspection ?? 0,
+            ),
           } as IVehicle;
         });
 
@@ -251,7 +281,6 @@ export const fleetApi = createApi({
               .from('vehicle_alerts')
               .select('*')
               .eq('vehicle_id', vehicleId)
-              .eq('alert_type', 'insurance')
               .eq('is_active', true),
 
             supabase

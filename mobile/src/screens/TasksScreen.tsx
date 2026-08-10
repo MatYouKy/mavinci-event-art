@@ -84,6 +84,10 @@ const BOARD_COLUMNS = [
 ];
 
 const CARD_HEIGHT = 110;
+const COLUMN_SWIPE_THRESHOLD = Math.min(100, SCREEN_WIDTH * 0.24);
+const COLUMN_SWIPE_ACTIVATION = 8;
+const COLUMN_EDGE_SWITCH_ZONE = 44;
+const COLUMN_EDGE_UNLOCK_ZONE = 96;
 
 function DraggableTaskCard({
   task,
@@ -93,6 +97,10 @@ function DraggableTaskCard({
   onLongPress,
   onMoveUp,
   onMoveDown,
+  columnIndex,
+  onMoveToColumn,
+  onPreviewColumnChange,
+  onHorizontalDragStateChange,
   isReordering,
 }: {
   task: Task;
@@ -102,42 +110,227 @@ function DraggableTaskCard({
   onLongPress: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
+  columnIndex: number;
+  onMoveToColumn: (columnId: string) => void;
+  onPreviewColumnChange: (columnIndex: number) => void;
+  onHorizontalDragStateChange: (active: boolean) => void;
   isReordering: boolean;
 }) {
   const pan = useRef(new Animated.ValueXY()).current;
   const scale = useRef(new Animated.Value(1)).current;
   const [isDragging, setIsDragging] = useState(false);
+  const [dragTargetIndex, setDragTargetIndex] = useState<number | null>(null);
+
+  const latestPropsRef = useRef({
+    isReordering,
+    columnIndex,
+    onMoveUp,
+    onMoveDown,
+    onMoveToColumn,
+    onPreviewColumnChange,
+    onHorizontalDragStateChange,
+  });
+  latestPropsRef.current = {
+    isReordering,
+    columnIndex,
+    onMoveUp,
+    onMoveDown,
+    onMoveToColumn,
+    onPreviewColumnChange,
+    onHorizontalDragStateChange,
+  };
+
+  const longPressArmedRef = useRef(false);
+  const panActiveRef = useRef(false);
+  const horizontalDragRef = useRef(false);
+  const previewColumnIndexRef = useRef(columnIndex);
+  const edgeLockRef = useRef<'left' | 'right' | null>(null);
+
+  const finishHorizontalDrag = (animate = true, restoreSourceColumn = true) => {
+    if (
+      restoreSourceColumn &&
+      previewColumnIndexRef.current !== latestPropsRef.current.columnIndex
+    ) {
+      latestPropsRef.current.onPreviewColumnChange(latestPropsRef.current.columnIndex);
+    }
+
+    previewColumnIndexRef.current = latestPropsRef.current.columnIndex;
+    edgeLockRef.current = null;
+    longPressArmedRef.current = false;
+    panActiveRef.current = false;
+    horizontalDragRef.current = false;
+    setDragTargetIndex(null);
+    setIsDragging(false);
+    latestPropsRef.current.onHorizontalDragStateChange(false);
+
+    Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start();
+    if (animate) {
+      Animated.spring(pan, {
+        toValue: { x: 0, y: 0 },
+        useNativeDriver: true,
+      }).start();
+    } else {
+      pan.setValue({ x: 0, y: 0 });
+    }
+  };
+
+  const armHorizontalDrag = () => {
+    if (latestPropsRef.current.isReordering) return;
+
+    longPressArmedRef.current = true;
+    previewColumnIndexRef.current = latestPropsRef.current.columnIndex;
+    edgeLockRef.current = null;
+    setIsDragging(true);
+    latestPropsRef.current.onHorizontalDragStateChange(true);
+    Animated.spring(scale, { toValue: 1.03, useNativeDriver: true }).start();
+  };
+
+  const handlePressOut = () => {
+    setTimeout(() => {
+      if (longPressArmedRef.current && !panActiveRef.current) {
+        finishHorizontalDrag();
+      }
+    }, 0);
+  };
 
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => isReordering,
-      onMoveShouldSetPanResponder: (_, gestureState) =>
-        isReordering && Math.abs(gestureState.dy) > 5,
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        if (latestPropsRef.current.isReordering) {
+          return Math.abs(gestureState.dy) > 5 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
+        }
+
+        return (
+          longPressArmedRef.current &&
+          Math.abs(gestureState.dx) > COLUMN_SWIPE_ACTIVATION &&
+          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.2
+        );
+      },
+      onMoveShouldSetPanResponderCapture: (_, gestureState) =>
+        longPressArmedRef.current &&
+        Math.abs(gestureState.dx) > COLUMN_SWIPE_ACTIVATION &&
+        Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.2,
       onPanResponderGrant: () => {
+        panActiveRef.current = true;
+        horizontalDragRef.current = !latestPropsRef.current.isReordering;
         setIsDragging(true);
         Animated.spring(scale, { toValue: 1.03, useNativeDriver: true }).start();
       },
       onPanResponderMove: (_, gestureState) => {
-        pan.setValue({ x: 0, y: gestureState.dy });
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        setIsDragging(false);
-        Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start();
-
-        const movedSlots = Math.round(gestureState.dy / CARD_HEIGHT);
-        if (movedSlots < 0) {
-          for (let i = 0; i < Math.abs(movedSlots); i++) onMoveUp();
-        } else if (movedSlots > 0) {
-          for (let i = 0; i < movedSlots; i++) onMoveDown();
+        if (latestPropsRef.current.isReordering) {
+          pan.setValue({ x: 0, y: gestureState.dy });
+          return;
         }
 
-        Animated.spring(pan, {
-          toValue: { x: 0, y: 0 },
-          useNativeDriver: true,
-        }).start();
+        const sourceColumnIndex = latestPropsRef.current.columnIndex;
+        let previewColumnIndex = previewColumnIndexRef.current;
+        const movedEnough = Math.abs(gestureState.dx) > COLUMN_SWIPE_ACTIVATION;
+
+        if (
+          edgeLockRef.current &&
+          gestureState.moveX > COLUMN_EDGE_UNLOCK_ZONE &&
+          gestureState.moveX < SCREEN_WIDTH - COLUMN_EDGE_UNLOCK_ZONE
+        ) {
+          edgeLockRef.current = null;
+        }
+
+        if (
+          movedEnough &&
+          !edgeLockRef.current &&
+          gestureState.moveX <= COLUMN_EDGE_SWITCH_ZONE &&
+          previewColumnIndex < BOARD_COLUMNS.length - 1
+        ) {
+          previewColumnIndex += 1;
+          previewColumnIndexRef.current = previewColumnIndex;
+          edgeLockRef.current = 'left';
+          latestPropsRef.current.onPreviewColumnChange(previewColumnIndex);
+        } else if (
+          movedEnough &&
+          !edgeLockRef.current &&
+          gestureState.moveX >= SCREEN_WIDTH - COLUMN_EDGE_SWITCH_ZONE &&
+          previewColumnIndex > 0
+        ) {
+          previewColumnIndex -= 1;
+          previewColumnIndexRef.current = previewColumnIndex;
+          edgeLockRef.current = 'right';
+          latestPropsRef.current.onPreviewColumnChange(previewColumnIndex);
+        }
+
+        const pageCompensation = (previewColumnIndex - sourceColumnIndex) * SCREEN_WIDTH;
+        pan.setValue({ x: gestureState.dx + pageCompensation, y: 0 });
+
+        if (previewColumnIndex !== sourceColumnIndex) {
+          setDragTargetIndex(previewColumnIndex);
+        } else if (movedEnough) {
+          const directionalTarget = gestureState.dx < 0
+            ? sourceColumnIndex + 1
+            : sourceColumnIndex - 1;
+          setDragTargetIndex(
+            directionalTarget >= 0 && directionalTarget < BOARD_COLUMNS.length
+              ? directionalTarget
+              : null,
+          );
+        } else {
+          setDragTargetIndex(null);
+        }
       },
+      onPanResponderRelease: (_, gestureState) => {
+        if (latestPropsRef.current.isReordering) {
+          setIsDragging(false);
+          panActiveRef.current = false;
+          Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start();
+
+          const movedSlots = Math.round(gestureState.dy / CARD_HEIGHT);
+          if (movedSlots < 0) {
+            for (let i = 0; i < Math.abs(movedSlots); i++) {
+              latestPropsRef.current.onMoveUp();
+            }
+          } else if (movedSlots > 0) {
+            for (let i = 0; i < movedSlots; i++) {
+              latestPropsRef.current.onMoveDown();
+            }
+          }
+
+          Animated.spring(pan, {
+            toValue: { x: 0, y: 0 },
+            useNativeDriver: true,
+          }).start();
+          return;
+        }
+
+        const currentColumnIndex = latestPropsRef.current.columnIndex;
+        let targetIndex = previewColumnIndexRef.current;
+
+        if (targetIndex === currentColumnIndex && Math.abs(gestureState.dx) >= COLUMN_SWIPE_THRESHOLD) {
+          targetIndex = gestureState.dx < 0 ? currentColumnIndex + 1 : currentColumnIndex - 1;
+        }
+
+        const shouldMove = targetIndex >= 0 &&
+          targetIndex < BOARD_COLUMNS.length &&
+          targetIndex !== currentColumnIndex;
+
+        if (!shouldMove) {
+          finishHorizontalDrag();
+          return;
+        }
+
+        latestPropsRef.current.onMoveToColumn(BOARD_COLUMNS[targetIndex].id);
+        finishHorizontalDrag(false, false);
+      },
+      onPanResponderTerminate: () => finishHorizontalDrag(),
+      onPanResponderTerminationRequest: () => false,
     }),
   ).current;
+
+  useEffect(
+    () => () => {
+      if (longPressArmedRef.current || horizontalDragRef.current) {
+        latestPropsRef.current.onHorizontalDragStateChange(false);
+      }
+    },
+    [],
+  );
 
   const assignees = task.task_assignees ?? [];
 
@@ -146,19 +339,41 @@ function DraggableTaskCard({
       style={[
         styles.taskCard,
         isDragging && styles.taskCardDragging,
+        dragTargetIndex !== null && {
+          borderColor: BOARD_COLUMNS[dragTargetIndex].color,
+        },
         {
           transform: [{ translateX: pan.x }, { translateY: pan.y }, { scale }],
           zIndex: isDragging ? 100 : 1,
         },
       ]}
-      {...(isReordering ? panResponder.panHandlers : {})}
+      {...panResponder.panHandlers}
     >
       <TouchableOpacity
         onPress={isReordering ? undefined : onPress}
-        onLongPress={isReordering ? undefined : onLongPress}
-        delayLongPress={500}
+        onLongPress={isReordering ? undefined : armHorizontalDrag}
+        onPressOut={isReordering ? undefined : handlePressOut}
+        delayLongPress={400}
         activeOpacity={isReordering ? 1 : 0.7}
       >
+        {dragTargetIndex !== null && (
+          <View
+            style={[
+              styles.dragTargetBadge,
+              { borderColor: BOARD_COLUMNS[dragTargetIndex].color },
+            ]}
+          >
+            <Feather
+              name={dragTargetIndex > columnIndex ? 'arrow-right' : 'arrow-left'}
+              size={14}
+              color={BOARD_COLUMNS[dragTargetIndex].color}
+            />
+            <Text style={styles.dragTargetText}>
+              Przenieś do: {BOARD_COLUMNS[dragTargetIndex].title}
+            </Text>
+          </View>
+        )}
+
         <View style={styles.taskHeader}>
           <Text style={styles.taskTitle} numberOfLines={2}>
             {task.title}
@@ -234,6 +449,16 @@ function DraggableTaskCard({
               </TouchableOpacity>
             </View>
           )}
+
+          {!isReordering && !isDragging && (
+            <TouchableOpacity
+              style={styles.taskMoreButton}
+              onPress={onLongPress}
+              hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+            >
+              <Feather name="more-horizontal" size={18} color={colors.text.secondary} />
+            </TouchableOpacity>
+          )}
         </View>
       </TouchableOpacity>
     </Animated.View>
@@ -250,7 +475,9 @@ export default function TasksScreen() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [showColumnPicker, setShowColumnPicker] = useState(false);
   const [isReordering, setIsReordering] = useState(false);
+  const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
   const [customOrder, setCustomOrder] = useState<Record<string, string[]>>({});
+  const boardScrollRef = useRef<ScrollView>(null);
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -495,19 +722,61 @@ export default function TasksScreen() {
   };
 
   const moveTask = async (taskId: string, newColumn: string) => {
+    const previousTask = tasks.find((task) => task.id === taskId);
+    if (!previousTask || previousTask.board_column === newColumn) return;
+
+    const previousColumnIndex = BOARD_COLUMNS.findIndex(
+      (column) => column.id === previousTask.board_column,
+    );
+    const targetColumnIndex = BOARD_COLUMNS.findIndex((column) => column.id === newColumn);
+
+    setTasks((current) =>
+      current.map((task) =>
+        task.id === taskId
+          ? { ...task, board_column: newColumn, status: newColumn }
+          : task,
+      ),
+    );
+
+    if (targetColumnIndex >= 0) {
+      setTimeout(() => {
+        boardScrollRef.current?.scrollTo({
+          x: targetColumnIndex * SCREEN_WIDTH,
+          animated: true,
+        });
+      }, 40);
+    }
+
     try {
+      const updateData: Record<string, string | null> = {
+        board_column: newColumn,
+        status: newColumn,
+      };
+
+      if (newColumn !== 'in_progress') {
+        updateData.currently_working_by = null;
+      }
+
       const { error } = await supabase
         .from('tasks')
-        .update({ board_column: newColumn })
+        .update(updateData)
         .eq('id', taskId);
 
       if (error) throw error;
-
-      setTasks((prev) =>
-        prev.map((task) => (task.id === taskId ? { ...task, board_column: newColumn } : task)),
-      );
     } catch (error) {
       console.error('Error moving task:', error);
+      setTasks((current) =>
+        current.map((task) => (task.id === taskId ? previousTask : task)),
+      );
+
+      if (previousColumnIndex >= 0) {
+        boardScrollRef.current?.scrollTo({
+          x: previousColumnIndex * SCREEN_WIDTH,
+          animated: true,
+        });
+      }
+
+      Alert.alert('Błąd', 'Nie udało się przenieść zadania. Przywrócono poprzednią kolumnę.');
     }
   };
 
@@ -601,11 +870,13 @@ export default function TasksScreen() {
       </View>
 
       <ScrollView
+        ref={boardScrollRef}
         horizontal
         pagingEnabled
+        removeClippedSubviews={false}
         showsHorizontalScrollIndicator={false}
         style={styles.boardContainer}
-        scrollEnabled={!isReordering}
+        scrollEnabled={!isReordering && !draggingTaskId}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -629,7 +900,7 @@ export default function TasksScreen() {
                 style={styles.columnContent}
                 contentContainerStyle={styles.columnContentContainer}
                 showsVerticalScrollIndicator={false}
-                scrollEnabled={!isReordering}
+                scrollEnabled={!isReordering && !draggingTaskId}
               >
                 {columnTasks.length === 0 ? (
                   <View style={styles.emptyColumn}>
@@ -651,6 +922,21 @@ export default function TasksScreen() {
                       }}
                       onMoveUp={() => reorderTask(column.id, idx, idx - 1)}
                       onMoveDown={() => reorderTask(column.id, idx, idx + 1)}
+                      columnIndex={BOARD_COLUMNS.findIndex((item) => item.id === column.id)}
+                      onMoveToColumn={(targetColumnId) => {
+                        void moveTask(task.id, targetColumnId);
+                      }}
+                      onPreviewColumnChange={(targetColumnIndex) => {
+                        boardScrollRef.current?.scrollTo({
+                          x: targetColumnIndex * SCREEN_WIDTH,
+                          animated: false,
+                        });
+                      }}
+                      onHorizontalDragStateChange={(active) => {
+                        setDraggingTaskId((current) =>
+                          active ? task.id : current === task.id ? null : current,
+                        );
+                      }}
                     />
                   ))
                 )}
@@ -665,7 +951,9 @@ export default function TasksScreen() {
         <Text style={styles.hintText}>
           {isReordering
             ? 'Przeciągnij kartę lub użyj strzałek aby zmienić kolejność'
-            : 'Przytrzymaj zadanie, aby przenieść do innej kolumny'}
+            : draggingTaskId
+              ? 'Przeciągnij do krawędzi ekranu, aby przejść do kolejnej kolumny'
+              : 'Przytrzymaj zadanie i przesuń je w lewo lub w prawo'}
         </Text>
       </View>
 
@@ -1004,6 +1292,23 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
+  dragTargetBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
+    marginBottom: spacing.sm,
+    borderRadius: 8,
+    borderWidth: 1,
+    backgroundColor: colors.background.primary,
+  },
+  dragTargetText: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.medium,
+    color: colors.text.primary,
+  },
   taskHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1078,6 +1383,17 @@ const styles = StyleSheet.create({
   },
   reorderBtnDisabled: {
     opacity: 0.4,
+  },
+  taskMoreButton: {
+    width: 30,
+    height: 30,
+    marginLeft: spacing.sm,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.background.primary,
   },
   emptyColumn: {
     alignItems: 'center',

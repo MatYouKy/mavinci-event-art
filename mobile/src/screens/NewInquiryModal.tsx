@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Keyboard,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Feather } from '@expo/vector-icons';
@@ -65,6 +66,7 @@ export default function NewInquiryModal({
 }: NewInquiryModalProps) {
   const { employee } = useAuth();
   const [saving, setSaving] = useState(false);
+  const formScrollRef = useRef<ScrollView>(null);
 
   // Client data
   const [clientName, setClientName] = useState('');
@@ -299,8 +301,23 @@ export default function NewInquiryModal({
   };
 
   const handleClose = () => {
+    Keyboard.dismiss();
     resetForm();
     onClose();
+  };
+
+  const handleFormInputFocus = () => {
+    setShowDatePicker(false);
+  };
+
+  const openDatePicker = () => {
+    Keyboard.dismiss();
+    setOpenedDropdown(null);
+    setShowDatePicker(true);
+
+    requestAnimationFrame(() => {
+      formScrollRef.current?.scrollTo({ y: 0, animated: true });
+    });
   };
 
   return (
@@ -312,7 +329,8 @@ export default function NewInquiryModal({
     >
       <KeyboardAvoidingView
         style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
       >
         <View style={styles.header}>
           <TouchableOpacity onPress={handleClose} style={styles.closeBtn}>
@@ -329,9 +347,13 @@ export default function NewInquiryModal({
         </View>
 
         <ScrollView
+          ref={formScrollRef}
           style={styles.form}
           contentContainerStyle={styles.formContent}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+          showsVerticalScrollIndicator
           onScrollBeginDrag={() => {
             setOpenedDropdown(null);
           }}
@@ -348,7 +370,7 @@ export default function NewInquiryModal({
               <Text style={styles.label}>Termin wydarzenia</Text>
               <TouchableOpacity
                 style={styles.datePickerButton}
-                onPress={() => setShowDatePicker(true)}
+                onPress={openDatePicker}
               >
                 <Feather
                   name="calendar"
@@ -436,6 +458,7 @@ export default function NewInquiryModal({
             }}
             renderItem={(org) => (org.alias ? `${org.alias} (${org.name})` : org.name)}
             getFilterText={(org) => `${org.alias || ''} ${org.name}`}
+            onFocus={handleFormInputFocus}
           />
 
           <SearchableDropdown
@@ -479,6 +502,7 @@ export default function NewInquiryModal({
                 contact.email || ''
               } ${contact.phone || ''}`
             }
+            onFocus={handleFormInputFocus}
           />
 
           <Text style={[styles.sectionLabel, { marginTop: spacing.lg }]}>Dane kontaktowe</Text>
@@ -491,6 +515,7 @@ export default function NewInquiryModal({
               onChangeText={setClientName}
               placeholder="Jeśli brak organizacji/kontaktu"
               placeholderTextColor={colors.text.tertiary}
+              onFocus={handleFormInputFocus}
             />
           </View>
 
@@ -504,6 +529,7 @@ export default function NewInquiryModal({
                 placeholder="+48 ..."
                 placeholderTextColor={colors.text.tertiary}
                 keyboardType="phone-pad"
+                onFocus={handleFormInputFocus}
               />
             </View>
             <View style={[styles.inputGroup, { flex: 1 }]}>
@@ -516,6 +542,7 @@ export default function NewInquiryModal({
                 placeholderTextColor={colors.text.tertiary}
                 keyboardType="email-address"
                 autoCapitalize="none"
+                onFocus={handleFormInputFocus}
               />
             </View>
           </View>
@@ -550,6 +577,7 @@ export default function NewInquiryModal({
             getFilterText={(location) =>
               `${location.name} ${location.address || ''} ${location.city || ''}`
             }
+            onFocus={handleFormInputFocus}
           />
 
           {!selectedLocationId && (
@@ -561,6 +589,7 @@ export default function NewInquiryModal({
                 onChangeText={setLocationFreeText}
                 placeholder="Miasto, adres, miejsce..."
                 placeholderTextColor={colors.text.tertiary}
+                onFocus={handleFormInputFocus}
               />
             </View>
           )}
@@ -590,6 +619,7 @@ export default function NewInquiryModal({
             }}
             renderItem={(emp) => `${emp.name} ${emp.surname}`}
             getFilterText={(emp) => `${emp.name} ${emp.surname}`}
+            onFocus={handleFormInputFocus}
           />
 
           {/* Details */}
@@ -605,6 +635,7 @@ export default function NewInquiryModal({
               placeholderTextColor={colors.text.tertiary}
               multiline
               numberOfLines={3}
+              onFocus={handleFormInputFocus}
             />
           </View>
 
@@ -618,6 +649,7 @@ export default function NewInquiryModal({
                 placeholder="Np. 5000 PLN"
                 placeholderTextColor={colors.text.tertiary}
                 keyboardType="numeric"
+                onFocus={handleFormInputFocus}
               />
             </View>
           </View>
@@ -632,6 +664,7 @@ export default function NewInquiryModal({
               placeholderTextColor={colors.text.tertiary}
               multiline
               numberOfLines={3}
+              onFocus={handleFormInputFocus}
             />
           </View>
         </ScrollView>

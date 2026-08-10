@@ -63,6 +63,7 @@ export const MENU_ITEMS: MenuItem[] = [
   { icon: 'calendar', label: 'Kalendarz', screen: 'Calendar', module: 'calendar' },
   { icon: 'coffee', label: 'Spotkania', screen: 'Meetings', module: 'calendar' },
   { icon: 'message-circle', label: 'Komunikator', screen: 'Messages', module: 'chat' },
+  { icon: 'inbox', label: 'Wiadomości', screen: 'Inbox', module: 'messages' },
   { icon: 'star', label: 'Wydarzenia', screen: 'Events', module: 'events' },
   { icon: 'check-square', label: 'Zadania', screen: 'Tasks', module: 'tasks' },
   { icon: 'phone-call', label: 'Zapytania', screen: 'Inquiries', module: 'tasks' },

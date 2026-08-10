@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Shield, Save, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react';
+import { Shield, Save, RefreshCw, ChevronDown, ChevronRight, Bell, Webhook, Car } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { getAllScopes } from '@/lib/permissions';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -13,6 +13,13 @@ interface Props {
   isAdmin: boolean;
   targetEmployeeRole?: string;
   currentEmployeeId?: string;
+}
+
+interface WebhookSourceOption {
+  id: string;
+  name: string;
+  slug: string;
+  is_active: boolean;
 }
 
 interface ExtraPermission {
@@ -247,6 +254,12 @@ export default function EmployeePermissionsTab({
   const [myCompanyIds, setMyCompanyIds] = useState<string[]>([]);
   const [myCompanies, setMyCompanies] = useState<Array<{ id: string; name: string }>>([]);
   const [invoiceCompanyPerms, setInvoiceCompanyPerms] = useState<Record<string, string[]>>({});
+  const [contactFormNotifications, setContactFormNotifications] = useState(false);
+  const [webhookNotifications, setWebhookNotifications] = useState(false);
+  const [fleetComplianceNotifications, setFleetComplianceNotifications] = useState(false);
+  const [webhookSources, setWebhookSources] = useState<WebhookSourceOption[]>([]);
+  const [webhookSourceSettings, setWebhookSourceSettings] = useState<Record<string, boolean>>({});
+  const [notificationDefaultsEnabled, setNotificationDefaultsEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
@@ -264,18 +277,41 @@ export default function EmployeePermissionsTab({
     try {
       setLoading(true);
 
-      const [{ data, error }, companiesRes] = await Promise.all([
+      const [
+        { data, error },
+        companiesRes,
+        notificationSettingsRes,
+        webhookSourcesRes,
+        webhookSourceSettingsRes,
+      ] = await Promise.all([
         supabase
           .from('employees')
           .select(
-            'permissions, event_tabs, contact_tabs, organization_tabs, my_company_ids, invoice_company_permissions',
+            'role, access_level, permissions, event_tabs, contact_tabs, organization_tabs, my_company_ids, invoice_company_permissions',
           )
           .eq('id', employeeId)
           .maybeSingle(),
         supabase.from('my_companies').select('id, name').order('name'),
+        supabase
+          .from('employee_notification_settings')
+          .select('contact_form_enabled, webhook_notifications_enabled, fleet_compliance_enabled')
+          .eq('employee_id', employeeId)
+          .maybeSingle(),
+        supabase
+          .from('webhook_sources')
+          .select('id, name, slug, is_active')
+          .eq('is_active', true)
+          .order('name'),
+        supabase
+          .from('employee_webhook_notification_settings')
+          .select('source_id, is_enabled')
+          .eq('employee_id', employeeId),
       ]);
 
       if (error) throw error;
+      if (notificationSettingsRes.error) throw notificationSettingsRes.error;
+      if (webhookSourcesRes.error) throw webhookSourcesRes.error;
+      if (webhookSourceSettingsRes.error) throw webhookSourceSettingsRes.error;
 
       setPermissions(data?.permissions || []);
       setEventTabs(data?.event_tabs || []);
@@ -285,6 +321,40 @@ export default function EmployeePermissionsTab({
       setMyCompanies(companiesRes.data || []);
       setInvoiceCompanyPerms(
         (data?.invoice_company_permissions as Record<string, string[]>) || {},
+      );
+
+      const adminNotificationDefaults =
+        data?.role === 'admin' ||
+        data?.access_level === 'admin' ||
+        (data?.permissions || []).includes('admin');
+      setNotificationDefaultsEnabled(adminNotificationDefaults);
+
+      setContactFormNotifications(
+        notificationSettingsRes.data?.contact_form_enabled ?? adminNotificationDefaults,
+      );
+      setWebhookNotifications(
+        notificationSettingsRes.data?.webhook_notifications_enabled ?? adminNotificationDefaults,
+      );
+      setFleetComplianceNotifications(
+        notificationSettingsRes.data?.fleet_compliance_enabled ?? adminNotificationDefaults,
+      );
+
+      const sources = (webhookSourcesRes.data || []) as WebhookSourceOption[];
+      const savedSourceSettings = new Map(
+        (webhookSourceSettingsRes.data || []).map((setting) => [
+          setting.source_id,
+          setting.is_enabled,
+        ]),
+      );
+
+      setWebhookSources(sources);
+      setWebhookSourceSettings(
+        Object.fromEntries(
+          sources.map((source) => [
+            source.id,
+            savedSourceSettings.get(source.id) ?? adminNotificationDefaults,
+          ]),
+        ),
       );
     } catch (err) {
       console.error('Error fetching permissions:', err);
@@ -408,6 +478,33 @@ export default function EmployeePermissionsTab({
     setHasChanges(true);
   };
 
+  const toggleContactFormNotifications = () => {
+    if (!canEditThisEmployee) return;
+    setContactFormNotifications((current) => !current);
+    setHasChanges(true);
+  };
+
+  const toggleWebhookNotifications = () => {
+    if (!canEditThisEmployee) return;
+    setWebhookNotifications((current) => !current);
+    setHasChanges(true);
+  };
+
+  const toggleFleetComplianceNotifications = () => {
+    if (!canEditThisEmployee) return;
+    setFleetComplianceNotifications((current) => !current);
+    setHasChanges(true);
+  };
+
+  const toggleWebhookSource = (sourceId: string) => {
+    if (!canEditThisEmployee || !webhookNotifications) return;
+    setWebhookSourceSettings((current) => ({
+      ...current,
+      [sourceId]: !(current[sourceId] ?? notificationDefaultsEnabled),
+    }));
+    setHasChanges(true);
+  };
+
   const handleSave = async () => {
     if (!canEditThisEmployee) {
       if (targetIsAdmin) {
@@ -443,6 +540,34 @@ export default function EmployeePermissionsTab({
         .eq('id', employeeId);
 
       if (error) throw error;
+
+      const { error: notificationSettingsError } = await supabase
+        .from('employee_notification_settings')
+        .upsert({
+          employee_id: employeeId,
+          contact_form_enabled: contactFormNotifications,
+          webhook_notifications_enabled: webhookNotifications,
+          fleet_compliance_enabled: fleetComplianceNotifications,
+          updated_by: currentEmployeeId || null,
+        });
+
+      if (notificationSettingsError) throw notificationSettingsError;
+
+      if (webhookSources.length > 0) {
+        const { error: webhookSettingsError } = await supabase
+          .from('employee_webhook_notification_settings')
+          .upsert(
+            webhookSources.map((source) => ({
+              employee_id: employeeId,
+              source_id: source.id,
+              is_enabled: webhookSourceSettings[source.id] ?? notificationDefaultsEnabled,
+              updated_by: currentEmployeeId || null,
+            })),
+            { onConflict: 'employee_id,source_id' },
+          );
+
+        if (webhookSettingsError) throw webhookSettingsError;
+      }
 
       setHasChanges(false);
       showSnackbar('Uprawnienia zostały zapisane', 'success');
@@ -567,6 +692,108 @@ export default function EmployeePermissionsTab({
           </div>
         </div>
       )}
+
+      <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5">
+        <div className="mb-4 flex items-start gap-3">
+          <Bell className="mt-0.5 h-5 w-5 text-[#d3bb73]" />
+          <div>
+            <h4 className="font-medium text-[#e5e4e2]">Subskrypcje powiadomień</h4>
+            <p className="mt-1 text-xs text-[#e5e4e2]/60">
+              Te ustawienia sterują wyłącznie dostarczaniem powiadomień. Nie nadają ani nie
+              odbierają dostępu do wiadomości i zdarzeń.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <label className="flex items-center justify-between gap-4 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4">
+            <div>
+              <div className="text-sm font-medium text-[#e5e4e2]">Formularze kontaktowe</div>
+              <div className="mt-1 text-xs text-[#e5e4e2]/60">
+                Powiadomienia o nowych zapytaniach wysłanych z formularzy stron internetowych.
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              checked={contactFormNotifications}
+              onChange={toggleContactFormNotifications}
+              disabled={!canEditThisEmployee}
+              className="h-5 w-5 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+          </label>
+
+          <label className="flex items-center justify-between gap-4 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4">
+            <div className="flex items-start gap-3">
+              <Webhook className="mt-0.5 h-4 w-4 text-[#d3bb73]" />
+              <div>
+                <div className="text-sm font-medium text-[#e5e4e2]">Zewnętrzne źródła</div>
+                <div className="mt-1 text-xs text-[#e5e4e2]/60">
+                  Główny przełącznik powiadomień ze wszystkich webhooków.
+                </div>
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              checked={webhookNotifications}
+              onChange={toggleWebhookNotifications}
+              disabled={!canEditThisEmployee}
+              className="h-5 w-5 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+          </label>
+
+          <label className="flex items-center justify-between gap-4 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4">
+            <div className="flex items-start gap-3">
+              <Car className="mt-0.5 h-4 w-4 text-[#d3bb73]" />
+              <div>
+                <div className="text-sm font-medium text-[#e5e4e2]">Terminy floty</div>
+                <div className="mt-1 text-xs text-[#e5e4e2]/60">
+                  Przypomnienia o braku lub kończącej się polisie OC i przeglądzie technicznym.
+                </div>
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              checked={fleetComplianceNotifications}
+              onChange={toggleFleetComplianceNotifications}
+              disabled={!canEditThisEmployee}
+              className="h-5 w-5 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+          </label>
+
+          {webhookSources.length > 0 && (
+            <div className="ml-4 space-y-2 border-l border-[#d3bb73]/20 pl-4">
+              <div className="pb-1 text-xs font-medium uppercase tracking-wide text-[#e5e4e2]/40">
+                Źródła webhooków
+              </div>
+              {webhookSources.map((source) => (
+                <label
+                  key={source.id}
+                  className={`flex items-center justify-between gap-4 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-3 ${
+                    webhookNotifications ? '' : 'opacity-50'
+                  }`}
+                >
+                  <div>
+                    <div className="text-sm text-[#e5e4e2]">{source.name}</div>
+                    <code className="text-xs text-[#d3bb73]/70">{source.slug}</code>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={webhookSourceSettings[source.id] ?? notificationDefaultsEnabled}
+                    onChange={() => toggleWebhookSource(source.id)}
+                    disabled={!canEditThisEmployee || !webhookNotifications}
+                    className="h-5 w-5 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50 disabled:cursor-not-allowed disabled:opacity-50"
+                  />
+                </label>
+              ))}
+            </div>
+          )}
+
+          <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-3 text-xs text-blue-200">
+            Administrator zachowuje dostęp do wszystkich danych niezależnie od tych przełączników.
+            Pracownik bez odpowiednich uprawnień nie otrzyma danych nawet po włączeniu subskrypcji.
+          </div>
+        </div>
+      </div>
 
       <div className="space-y-3">
         {permissionCategories.map((category) => {

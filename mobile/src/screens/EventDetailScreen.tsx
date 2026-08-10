@@ -23,8 +23,12 @@ import {
 import { EventFile, FilesTab } from '@/components/Events/EventDetailScreen/FilesTab';
 import { AgendaData, AgendaTab } from '@/components/Events/EventDetailScreen/AgendaTab';
 import { DetailsTab, EventDetail } from '@/components/Events/EventDetailScreen/DetailsTab';
+import {
+  EventVehicleAssignment,
+  FleetTab,
+} from '@/components/Events/EventDetailScreen/FleetTab';
 
-type TabKey = 'details' | 'agenda' | 'checklist' | 'files';
+type TabKey = 'details' | 'agenda' | 'checklist' | 'fleet' | 'files';
 
 interface Props {
   eventId: string;
@@ -46,6 +50,7 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
   const [eventEquipment, setEventEquipment] = useState<EventEquipmentItem[]>([]);
   const [logistics, setLogistics] = useState<LogisticsItem[]>([]);
   const [files, setFiles] = useState<EventFile[]>([]);
+  const [fleetAssignments, setFleetAssignments] = useState<EventVehicleAssignment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [checklistPdfPath, setChecklistPdfPath] = useState<string | null>(null);
@@ -350,17 +355,61 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
     return (data || []) as EventFile[];
   }, [eventId]);
 
+  const fetchFleet = useCallback(async (): Promise<EventVehicleAssignment[]> => {
+    const { data, error } = await supabase
+      .from('event_vehicles')
+      .select(
+        `
+        id, event_id, vehicle_id, driver_id, role, status, is_external,
+        external_company_name, departure_location, departure_time, arrival_time,
+        return_departure_time, return_arrival_time, notes,
+        pickup_odometer, pickup_timestamp, return_odometer, return_timestamp,
+        return_notes, is_in_use,
+        vehicle:vehicles!event_vehicles_vehicle_id_fkey(
+          id, name, brand, model, registration_number, current_mileage
+        ),
+        driver:employees!event_vehicles_driver_id_fkey(id, name, surname)
+      `,
+      )
+      .eq('event_id', eventId)
+      .not('driver_id', 'is', null)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error('Error loading event fleet:', error);
+      return [];
+    }
+
+    return (data || [])
+      .filter(
+        (row: any) =>
+          row.driver_id && (row.vehicle_id || row.is_external || row.external_company_name),
+      )
+      .map((row: any) => ({
+        ...row,
+        is_external: row.is_external ?? false,
+        is_in_use: row.is_in_use ?? false,
+        vehicle: Array.isArray(row.vehicle) ? row.vehicle[0] || null : row.vehicle,
+        driver: Array.isArray(row.driver) ? row.driver[0] || null : row.driver,
+      })) as EventVehicleAssignment[];
+  }, [eventId]);
+
+  const refreshFleet = useCallback(async () => {
+    setFleetAssignments(await fetchFleet());
+  }, [fetchFleet]);
+
   const loadAll = useCallback(
     async (isRefresh = false) => {
       if (isRefresh) setRefreshing(true);
       else setIsLoading(true);
 
       try {
-        const [ev, ag, ch, fi, assignment] = await Promise.all([
+        const [ev, ag, ch, fi, fleet, assignment] = await Promise.all([
           fetchEvent(),
           fetchAgenda(),
           fetchChecklist(),
           fetchFiles(),
+          fetchFleet(),
           fetchMyAssignment(),
         ]);
         if (ev) setEvent(ev);
@@ -376,6 +425,7 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
           ),
         );
         setFiles(fi);
+        setFleetAssignments(fleet);
         setMyAssignment(assignment);
       } catch (err) {
         console.error('Error loading event detail:', err);
@@ -384,12 +434,51 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
         setRefreshing(false);
       }
     },
-    [fetchEvent, fetchAgenda, fetchChecklist, fetchFiles, fetchMyAssignment],
+    [fetchEvent, fetchAgenda, fetchChecklist, fetchFiles, fetchFleet, fetchMyAssignment],
   );
 
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  useEffect(() => {
+    const assignmentIds = new Set(fleetAssignments.map((item) => item.id));
+    const channel = supabase
+      .channel(`mobile-event-fleet-${eventId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'event_vehicles',
+          filter: `event_id=eq.${eventId}`,
+        },
+        () => {
+          void refreshFleet();
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'vehicle_handovers' },
+        (payload) => {
+          const row = (payload.new || payload.old) as { event_vehicle_id?: string };
+          if (row?.event_vehicle_id && assignmentIds.has(row.event_vehicle_id)) {
+            void refreshFleet();
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [eventId, fleetAssignments, refreshFleet]);
+
+  useEffect(() => {
+    if (activeTab === 'fleet' && fleetAssignments.length === 0) {
+      setActiveTab('details');
+    }
+  }, [activeTab, fleetAssignments.length]);
 
   const toggleLoadedItem = async (item: ChecklistItem) => {
     // If loading is locked, prevent unchecking
@@ -458,6 +547,16 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
       icon: 'check-square',
       count: checklist.length + logistics.length,
     },
+    ...(fleetAssignments.length > 0
+      ? ([
+          {
+            key: 'fleet',
+            label: 'Flota',
+            icon: 'truck',
+            count: fleetAssignments.length,
+          },
+        ] as const)
+      : []),
     { key: 'files', label: 'Pliki', icon: 'file', count: files.length },
   ];
 
@@ -593,6 +692,13 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
             event={event}
             employee={employee}
             onRefreshEvent={fetchEvent}
+          />
+        )}
+        {activeTab === 'fleet' && (
+          <FleetTab
+            assignments={fleetAssignments}
+            currentEmployeeId={employee?.id ?? null}
+            onChanged={refreshFleet}
           />
         )}
         {activeTab === 'files' && <FilesTab files={files} />}

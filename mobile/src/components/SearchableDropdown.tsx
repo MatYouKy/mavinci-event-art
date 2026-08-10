@@ -19,6 +19,7 @@ export function SearchableDropdown<T extends { id: string }>({
   getFilterText,
   selectedLabel,
   icon,
+  onFocus,
 }: {
   dropdownId: string;
   openedDropdown: string | null;
@@ -34,6 +35,7 @@ export function SearchableDropdown<T extends { id: string }>({
   getFilterText: (item: T) => string;
   selectedLabel: string | null;
   icon: string;
+  onFocus?: () => void;
 }) {
   const isOpen = openedDropdown === dropdownId;
 
@@ -85,6 +87,7 @@ export function SearchableDropdown<T extends { id: string }>({
               setOpenedDropdown(dropdownId);
             }}
             onFocus={() => {
+              onFocus?.();
               setOpenedDropdown(dropdownId);
             }}
             placeholder={placeholder}

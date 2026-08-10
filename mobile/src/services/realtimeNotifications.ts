@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import * as Notifications from 'expo-notifications';
 import { supabase } from '../lib/supabase';
+import { humanizeMessageEnums } from '../lib/messageLabels';
 
 type NotificationRecipientRow = {
   notification_id: string;
@@ -16,6 +17,20 @@ type EmployeeMessageRow = {
   message_type: string;
   created_at: string;
 };
+
+function htmlToNotificationText(value: string | null | undefined) {
+  if (!value) return '';
+  return value
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 export function useRealtimePushNotifications(
   employeeId: string | undefined
@@ -86,15 +101,63 @@ export function useRealtimePushNotifications(
 
             const { data: notification, error } = await supabase
               .from('notifications')
-              .select('title, message, category, related_entity_type, related_entity_id, action_url')
+              .select('title, message, category, related_entity_type, related_entity_id, action_url, metadata')
               .eq('id', recipientRow.notification_id)
               .maybeSingle();
 
             if (error || !notification) return;
 
+            const inboundEventId =
+              notification.metadata &&
+              typeof notification.metadata === 'object' &&
+              typeof (notification.metadata as Record<string, unknown>).inbound_event_id === 'string'
+                ? (notification.metadata as Record<string, string>).inbound_event_id
+                : '';
+
+            let localTitle = notification.title ?? 'Mavinci CRM';
+            let localBody = notification.message ?? '';
+
+            if (
+              notification.related_entity_type === 'received_email' &&
+              notification.related_entity_id
+            ) {
+              const { data: email } = await supabase
+                .from('received_emails')
+                .select('from_address, subject, body_text, body_html')
+                .eq('id', notification.related_entity_id)
+                .maybeSingle();
+
+              if (email) {
+                const preview = (email.body_text?.trim() || htmlToNotificationText(email.body_html)).slice(0, 180);
+                localTitle = email.subject?.trim() || 'Nowa wiadomość e-mail';
+                localBody = preview
+                  ? `Od: ${email.from_address}\n${preview}${preview.length === 180 ? '…' : ''}`
+                  : `Od: ${email.from_address}`;
+              }
+            }
+
+            if (
+              notification.related_entity_type === 'contact_messages' &&
+              notification.related_entity_id
+            ) {
+              const { data: contactMessage } = await supabase
+                .from('contact_messages')
+                .select('name, email, subject, message')
+                .eq('id', notification.related_entity_id)
+                .maybeSingle();
+
+              if (contactMessage) {
+                const preview = (contactMessage.message || '').trim().slice(0, 180);
+                localTitle = contactMessage.subject?.trim() || 'Nowa wiadomość z mavinci.pl';
+                localBody = preview
+                  ? `Od: ${contactMessage.name} (${contactMessage.email})\n${preview}${preview.length === 180 ? '…' : ''}`
+                  : `Od: ${contactMessage.name} (${contactMessage.email})`;
+              }
+            }
+
             await showLocalNotification({
-              title: notification.title ?? 'Mavinci CRM',
-              body: notification.message ?? '',
+              title: humanizeMessageEnums(localTitle),
+              body: humanizeMessageEnums(localBody),
               data: {
                 type: 'crm_notification',
                 entity_type: notification.related_entity_type ?? '',
@@ -102,6 +165,7 @@ export function useRealtimePushNotifications(
                 notification_id: recipientRow.notification_id,
                 category: notification.category ?? '',
                 action_url: notification.action_url ?? '',
+                inbound_event_id: inboundEventId,
               },
             });
           }

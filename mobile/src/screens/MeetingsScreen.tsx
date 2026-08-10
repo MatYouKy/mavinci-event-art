@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,8 @@ import {
   Alert,
   Platform,
   Switch,
+  Keyboard,
+  KeyboardAvoidingView,
 } from 'react-native';
 import SwipeableRow from '../components/SwipeableRow';
 
@@ -226,6 +228,30 @@ export default function MeetingsScreen({ initialMeetingId, onBack }: MeetingsScr
   const [activeMeetingPicker, setActiveMeetingPicker] = useState<MeetingPickerType | null>(null);
 
   const [activeAlertPicker, setActiveAlertPicker] = useState<AlertPickerType | null>(null);
+  const meetingFormScrollRef = useRef<ScrollView>(null);
+
+  const handleFormInputFocus = () => {
+    setActiveMeetingPicker(null);
+    setActiveAlertPicker(null);
+  };
+
+  const openMeetingPicker = (picker: MeetingPickerType) => {
+    Keyboard.dismiss();
+    setOpenedDropdown(null);
+    setActiveAlertPicker(null);
+    setActiveMeetingPicker(picker);
+
+    requestAnimationFrame(() => {
+      meetingFormScrollRef.current?.scrollTo({ y: 110, animated: true });
+    });
+  };
+
+  const openAlertPicker = (picker: AlertPickerType) => {
+    Keyboard.dismiss();
+    setOpenedDropdown(null);
+    setActiveMeetingPicker(null);
+    setActiveAlertPicker(picker);
+  };
 
   useEffect(() => {
     requestNotificationPermissions();
@@ -750,7 +776,7 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
 
               <TouchableOpacity
                 style={[styles.timePickerButton, isCritical && styles.timePickerButtonCritical]}
-                onPress={() => setActiveAlertPicker(type)}
+                onPress={() => openAlertPicker(type)}
               >
                 <Feather
                   name="clock"
@@ -854,7 +880,11 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
 
       {/* New Meeting Modal */}
       <Modal visible={showNewMeeting} animationType="slide" presentationStyle="pageSheet">
-        <View style={styles.modalContainer}>
+        <KeyboardAvoidingView
+          style={styles.modalContainer}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
+        >
           <View style={styles.modalHeader}>
             <TouchableOpacity
               onPress={() => {
@@ -873,7 +903,15 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            ref={meetingFormScrollRef}
+            style={styles.modalBody}
+            contentContainerStyle={styles.modalBodyContent}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+            automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+            showsVerticalScrollIndicator
+          >
             <Text style={styles.fieldLabel}>Tytuł *</Text>
             <TextInput
               style={styles.input}
@@ -881,6 +919,7 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
               onChangeText={(t) => setForm((f) => ({ ...f, title: t }))}
               placeholder="Nazwa spotkania"
               placeholderTextColor={colors.text.tertiary}
+              onFocus={handleFormInputFocus}
             />
 
             <Text style={styles.fieldLabel}>Termin *</Text>
@@ -892,7 +931,7 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
                 <View style={styles.dateTimeButtonsRow}>
                   <TouchableOpacity
                     style={[styles.dateTimeButton, styles.dateButton]}
-                    onPress={() => setActiveMeetingPicker('startDate')}
+                    onPress={() => openMeetingPicker('startDate')}
                     activeOpacity={0.7}
                   >
                     <Feather name="calendar" size={18} color={colors.primary.gold} />
@@ -912,7 +951,7 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
 
                   <TouchableOpacity
                     style={[styles.dateTimeButton, styles.hourButton]}
-                    onPress={() => setActiveMeetingPicker('startTime')}
+                    onPress={() => openMeetingPicker('startTime')}
                     activeOpacity={0.7}
                   >
                     <Feather name="clock" size={18} color={colors.primary.gold} />
@@ -938,7 +977,7 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
                 <View style={styles.dateTimeButtonsRow}>
                   <TouchableOpacity
                     style={[styles.dateTimeButton, styles.dateButton]}
-                    onPress={() => setActiveMeetingPicker('endDate')}
+                    onPress={() => openMeetingPicker('endDate')}
                     activeOpacity={0.7}
                   >
                     <Feather name="calendar" size={18} color={colors.primary.gold} />
@@ -958,7 +997,7 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
 
                   <TouchableOpacity
                     style={[styles.dateTimeButton, styles.hourButton]}
-                    onPress={() => setActiveMeetingPicker('endTime')}
+                    onPress={() => openMeetingPicker('endTime')}
                     activeOpacity={0.7}
                   >
                     <Feather name="clock" size={18} color={colors.primary.gold} />
@@ -1114,6 +1153,7 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
                   : null
               }
               icon="map-pin"
+              onFocus={handleFormInputFocus}
             />
 
             {/* Participants */}
@@ -1137,6 +1177,7 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
               getFilterText={(emp) => `${emp.name || ''} ${emp.surname || ''}`}
               selectedLabel={null}
               icon="user"
+              onFocus={handleFormInputFocus}
             />
             {selectedParticipants.length > 0 && (
               <View style={styles.participantChips}>
@@ -1168,6 +1209,7 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
               placeholderTextColor={colors.text.tertiary}
               multiline
               numberOfLines={3}
+              onFocus={handleFormInputFocus}
             />
 
             {/* Alert sliders */}
@@ -1235,7 +1277,7 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
 
             <View style={{ height: 60 }} />
           </ScrollView>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Meeting Detail Modal */}
@@ -1533,7 +1575,11 @@ const styles = StyleSheet.create({
 
   modalBody: {
     flex: 1,
+  },
+
+  modalBodyContent: {
     padding: spacing.lg,
+    paddingBottom: 120,
   },
 
   fieldLabel: {

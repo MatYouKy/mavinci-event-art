@@ -323,7 +323,7 @@ function SourcesList({
               )}
               <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#e5e4e2]/50">
                 <span>
-                  Powiadomienia:{' '}
+                  Wymagane uprawnienia:{' '}
                   {src.default_notify_permissions.join(', ') || 'brak'}
                 </span>
                 {src.allowed_event_types && src.allowed_event_types.length > 0 && (
@@ -639,15 +639,15 @@ function AddSourceModal({
           />
         </div>
         <div>
-          <label className={labelClass}>Uprawnienia odbiorców powiadomień (oddzielone przecinkiem)</label>
+          <label className={labelClass}>Uprawnienia wymagane do dostępu (oddzielone przecinkiem)</label>
           <input
             className={inputClass}
             value={form.default_notify_permissions}
             onChange={(e) => setForm({ ...form, default_notify_permissions: e.target.value })}
           />
           <p className="mt-1 text-xs text-[#e5e4e2]/40">
-            Pracownicy z tymi uprawnieniami (i adminii) otrzymają powiadomienie. Domyślnie:
-            messages_view, messages_manage
+            To ograniczenie dostępu do danych. Samą subskrypcję dla pracownika i źródła ustawisz
+            w profilu pracownika → Uprawnienia. Domyślnie: messages_view, messages_manage
           </p>
         </div>
       </div>
