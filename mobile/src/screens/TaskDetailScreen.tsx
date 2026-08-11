@@ -23,6 +23,7 @@ import { supabase } from '../lib/supabase';
 import { colors, spacing, typography, borderRadius } from '../theme';
 import EmployeeAvatar from '../components/EmployeeAvatar';
 import { SearchableDropdown } from '@/components/SearchableDropdown';
+import { sendTaskAssignmentPush } from '../services/taskAssignmentNotifications';
 
 interface TaskDetailScreenProps {
   route: {
@@ -433,9 +434,17 @@ export default function TaskDetailScreen({ route, navigation }: TaskDetailScreen
         const rows = toAdd.map((employee_id) => ({
           task_id: task.id,
           employee_id,
+          assigned_by: employee?.id,
         }));
-        const { error: insError } = await supabase.from('task_assignees').insert(rows);
+        const { data: insertedAssignments, error: insError } = await supabase
+          .from('task_assignees')
+          .insert(rows)
+          .select('id');
         if (insError) throw insError;
+
+        await sendTaskAssignmentPush(
+          (insertedAssignments || []).map((assignment) => assignment.id),
+        );
       }
 
       setShowEditModal(false);

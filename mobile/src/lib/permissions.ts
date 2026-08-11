@@ -7,6 +7,18 @@ export const isAdmin = (employee: PermissionEmployee): boolean => {
   return employee.access_level === 'admin' || employee.role === 'admin';
 };
 
+export const isManagerOrAdmin = (employee: PermissionEmployee): boolean => {
+  if (!employee) return false;
+  if (isAdmin(employee)) return true;
+
+  return (
+    employee.access_level === 'manager' ||
+    employee.role === 'manager' ||
+    employee.permissions?.includes('events_manage') === true ||
+    employee.permissions?.includes('fleet_manage') === true
+  );
+};
+
 export const hasPermission = (employee: PermissionEmployee, scope: string): boolean => {
   if (!employee) return false;
   if (isAdmin(employee)) return true;

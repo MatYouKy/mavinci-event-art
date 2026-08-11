@@ -26,6 +26,7 @@ import CustomDrawer from '../components/CustomDrawer';
 import { useUnreadChatCount } from '../services/chatNotifications';
 import { consumeNotificationTarget } from '../../App';
 import { routeNotification, navigateToCalendarTab, NotificationTargetData } from './navigationRef';
+import { handleEventInvitationNotificationAction } from '../services/pushNotifications';
 
 export type MainTabParamList = {
   Dashboard: undefined;
@@ -108,26 +109,59 @@ export default function MainTabNavigator() {
 
   // Handle notification taps - open the specific task / inquiry / event / meeting / chat
   useEffect(() => {
-    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
-      const data = response.notification.request.content.data as NotificationTargetData;
+    let cancelled = false;
+    let coldStartTimer: ReturnType<typeof setTimeout> | null = null;
+    const handledResponseIds = new Set<string>();
+
+    const handleTarget = (data: NotificationTargetData) => {
       void routeNotification(data).then(({ meetingId }) => {
-        if (meetingId) openMeeting(meetingId);
+        if (!cancelled && meetingId) openMeeting(meetingId);
       });
+    };
+
+    const handleResponse = async (response: Notifications.NotificationResponse) => {
+      const responseId = response.notification.request.identifier;
+      if (handledResponseIds.has(responseId)) return;
+      handledResponseIds.add(responseId);
+
+      const invitationHandled = await handleEventInvitationNotificationAction(
+        response,
+        employee?.id,
+      );
+      if (invitationHandled) return;
+
+      const data = response.notification.request.content.data as NotificationTargetData;
+      handleTarget(data);
+    };
+
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      void handleResponse(response);
     });
 
     // Also handle a pending target captured before navigation was ready (cold start)
     const coldStartTarget = consumeNotificationTarget();
     if (coldStartTarget) {
       // Defer so the navigation container and nested stacks are mounted
-      setTimeout(() => {
-        void routeNotification(coldStartTarget).then(({ meetingId }) => {
-          if (meetingId) openMeeting(meetingId);
-        });
+      coldStartTimer = setTimeout(() => {
+        handleTarget(coldStartTarget);
       }, 400);
+    } else {
+      // A tap that launched a previously closed app can happen before listeners
+      // mount. Expo keeps that response until it is explicitly cleared.
+      void Notifications.getLastNotificationResponseAsync().then((response) => {
+        if (cancelled || !response) return;
+        void handleResponse(response);
+        void Notifications.clearLastNotificationResponseAsync();
+        consumeNotificationTarget();
+      });
     }
 
-    return () => sub.remove();
-  }, []);
+    return () => {
+      cancelled = true;
+      if (coldStartTimer) clearTimeout(coldStartTimer);
+      sub.remove();
+    };
+  }, [employee?.id]);
 
   return (
     <>

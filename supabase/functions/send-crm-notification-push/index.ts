@@ -173,6 +173,15 @@ Deno.serve(async (req: Request) => {
       notification_id: recipient.notification_id,
     };
 
+    const metadata =
+      notification.metadata && typeof notification.metadata === "object"
+        ? notification.metadata as Record<string, unknown>
+        : null;
+    const invitationAssignmentId =
+      typeof metadata?.assignment_id === "string" ? metadata.assignment_id : "";
+    const isEventInvitation =
+      invitationAssignmentId.length > 0 && metadata?.requires_response === true;
+
     if (notification.related_entity_type) {
       data.entity_type = notification.related_entity_type;
     }
@@ -186,11 +195,23 @@ Deno.serve(async (req: Request) => {
       data.action_url = notification.action_url;
     }
     if (
-      notification.metadata &&
-      typeof notification.metadata === "object" &&
-      typeof notification.metadata.inbound_event_id === "string"
+      metadata &&
+      typeof metadata.inbound_event_id === "string"
     ) {
-      data.inbound_event_id = notification.metadata.inbound_event_id;
+      data.inbound_event_id = metadata.inbound_event_id;
+    }
+    if (
+      metadata &&
+      typeof metadata.initial_tab === "string"
+    ) {
+      data.initial_tab = metadata.initial_tab;
+    }
+    if (invitationAssignmentId) {
+      data.assignment_id = invitationAssignmentId;
+      data.requires_response = String(metadata?.requires_response === true);
+    }
+    if (typeof metadata?.event_id === "string") {
+      data.event_id = metadata.event_id;
     }
 
     // Build Expo push messages
@@ -200,6 +221,7 @@ Deno.serve(async (req: Request) => {
       title,
       body,
       data,
+      categoryId: isEventInvitation ? "event_invitation" : undefined,
       priority: "high",
       channelId: "default",
     }));

@@ -14,6 +14,10 @@ export type NotificationTargetData = {
   inbound_event_id?: string;
   notification_id?: string;
   meetingId?: string;
+  initial_tab?: string;
+  assignment_id?: string;
+  event_id?: string;
+  requires_response?: string;
 };
 
 export function navigateToChat(conversationId: string) {
@@ -40,11 +44,11 @@ export function navigateToInquiry(taskId: string) {
   }
 }
 
-export function navigateToEvent(eventId: string) {
+export function navigateToEvent(eventId: string, initialTab?: 'fleet') {
   if (navigationRef.isReady()) {
     navigationRef.navigate('Main', {
       screen: 'Events',
-      params: { screen: 'EventDetail', params: { eventId } },
+      params: { screen: 'EventDetail', params: { eventId, initialTab } },
     });
   }
 }
@@ -194,6 +198,7 @@ export async function routeNotification(d: NotificationTargetData): Promise<{ me
 
   if (
     target.type === 'task' ||
+    target.type === 'task_assignment' ||
     target.entity_type === 'task' ||
     target.category === 'tasks' ||
     url.includes('/crm/tasks/')
@@ -209,7 +214,9 @@ export async function routeNotification(d: NotificationTargetData): Promise<{ me
     target.category === 'team' ||
     url.includes('/crm/events/')
   ) {
-    if (target.entity_id) navigateToEvent(target.entity_id);
+    if (target.entity_id) {
+      navigateToEvent(target.entity_id, target.initial_tab === 'fleet' ? 'fleet' : undefined);
+    }
     return { meetingId: null };
   }
 

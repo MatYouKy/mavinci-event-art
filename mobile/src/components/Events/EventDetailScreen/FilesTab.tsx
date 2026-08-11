@@ -19,6 +19,7 @@ export interface EventFile {
   file_path: string;
   file_size: number | null;
   mime_type: string | null;
+  document_type: string | null;
   folder_id: string | null;
   folder?: { name: string } | null;
   created_at: string;

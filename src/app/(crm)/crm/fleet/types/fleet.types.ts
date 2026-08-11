@@ -1,5 +1,15 @@
 // types/fleet.types.ts
-export type VehicleStatus = 'active' | 'inactive' | 'in_service' | 'sold' | 'scrapped';
+export type VehicleStatus =
+  | 'active'
+  | 'available'
+  | 'in_use'
+  | 'inactive'
+  | 'in_service'
+  | 'under_repair'
+  | 'no_insurance'
+  | 'no_inspection'
+  | 'sold'
+  | 'scrapped';
 export type VehicleCategory = 'personal_car' | 'van' | 'truck' | 'bus' | 'motorcycle' | 'trailer';
 export type VehicleType = 'car' | 'trailer' | 'other'; // dopasuj do swojej kolumny vehicle_type
 export type InsuranceStatus = 'active' | 'expired' | 'scheduled' | 'inactive';

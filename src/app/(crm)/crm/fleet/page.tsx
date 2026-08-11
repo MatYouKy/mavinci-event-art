@@ -74,7 +74,9 @@ export default function FleetPage() {
 
   const stats = useMemo(() => {
     const total = vehicles.length;
-    const active = vehicles.filter((v) => v.status === 'active').length;
+    const active = vehicles.filter((v) =>
+      ['active', 'available', 'in_use'].includes(v.status),
+    ).length;
     const in_service = vehicles.filter((v) => v.status === 'in_service').length;
 
     const totalCost = vehicles.reduce(
@@ -105,7 +107,10 @@ export default function FleetPage() {
       v.registration_number?.toLowerCase().includes(search) ||
       v.vin?.toLowerCase().includes(search);
 
-    const matchesStatus = statusFilter === 'all' || v.status === statusFilter;
+    const matchesStatus =
+      statusFilter === 'all' ||
+      (statusFilter === 'available' && ['active', 'available'].includes(v.status)) ||
+      v.status === statusFilter;
     const matchesCategory = categoryFilter === 'all' || v.category === categoryFilter;
 
     return matchesSearch && matchesStatus && matchesCategory;
@@ -176,6 +181,14 @@ export default function FleetPage() {
         label: 'Dostępny',
         class: 'bg-black/55 text-green-300 ring-green-400/40 border border-green-400/30',
       },
+      available: {
+        label: 'Dostępny',
+        class: 'bg-black/55 text-green-300 ring-green-400/40 border border-green-400/30',
+      },
+      in_use: {
+        label: 'W użytkowaniu',
+        class: 'bg-black/55 text-[#f3e7b1] ring-[#d3bb73]/50 border border-[#d3bb73]/40',
+      },
       inactive: {
         label: 'Nieaktywny',
         class: 'bg-black/55 text-gray-200 ring-gray-400/35 border border-gray-400/25',
@@ -183,6 +196,18 @@ export default function FleetPage() {
       in_service: {
         label: 'W serwisie',
         class: 'bg-black/55 text-orange-300 ring-orange-400/40 border border-orange-400/30',
+      },
+      under_repair: {
+        label: 'W naprawie',
+        class: 'bg-black/55 text-orange-300 ring-orange-400/40 border border-orange-400/30',
+      },
+      no_insurance: {
+        label: 'Brak ważnego OC',
+        class: 'bg-black/55 text-red-300 ring-red-400/40 border border-red-400/30',
+      },
+      no_inspection: {
+        label: 'Brak ważnego przeglądu',
+        class: 'bg-black/55 text-red-300 ring-red-400/40 border border-red-400/30',
       },
       sold: {
         label: 'Sprzedany',
@@ -351,9 +376,13 @@ export default function FleetPage() {
             className="rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
           >
             <option value="all">Wszystkie statusy</option>
-            <option value="active">Dostępny</option>
+            <option value="available">Dostępny</option>
+            <option value="in_use">W użytkowaniu</option>
             <option value="inactive">Nieaktywny</option>
             <option value="in_service">W serwisie</option>
+            <option value="under_repair">W naprawie</option>
+            <option value="no_insurance">Brak ważnego OC</option>
+            <option value="no_inspection">Brak ważnego przeglądu</option>
             <option value="sold">Sprzedany</option>
             <option value="scrapped">Złomowany</option>
           </select>

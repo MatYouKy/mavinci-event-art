@@ -25,7 +25,13 @@ export function useFleet() {
       );
     }
 
-    if (statusFilter !== 'all') filtered = filtered.filter((v) => v.status === statusFilter);
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(
+        (v) =>
+          v.status === statusFilter ||
+          (statusFilter === 'available' && ['active', 'available'].includes(v.status)),
+      );
+    }
     if (categoryFilter !== 'all') filtered = filtered.filter((v) => v.category === categoryFilter);
 
     return filtered;
@@ -33,7 +39,9 @@ export function useFleet() {
 
   const stats = useMemo(() => {
     const total = vehicles.length;
-    const active = vehicles.filter((v) => v.status === 'active').length;
+    const active = vehicles.filter((v) =>
+      ['active', 'available', 'in_use'].includes(v.status),
+    ).length;
     const in_service = vehicles.filter((v) => v.status === 'in_service').length;
     const totalCost = vehicles.reduce((sum, v) => sum + (v.yearly_maintenance_cost || 0) + (v.yearly_fuel_cost || 0), 0);
     const averageMileage = Math.round(

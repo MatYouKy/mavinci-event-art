@@ -4,6 +4,33 @@ import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { Platform } from 'react-native';
 import { supabase } from '../lib/supabase';
 
+export const EVENT_INVITATION_CATEGORY = 'event_invitation';
+export const EVENT_INVITATION_ACCEPT_ACTION = 'event_invitation_accept';
+export const EVENT_INVITATION_REJECT_ACTION = 'event_invitation_reject';
+export const EVENT_INVITATION_DETAILS_ACTION = 'event_invitation_details';
+
+const handledInvitationResponses = new Set<string>();
+
+void Notifications.setNotificationCategoryAsync(EVENT_INVITATION_CATEGORY, [
+  {
+    identifier: EVENT_INVITATION_ACCEPT_ACTION,
+    buttonTitle: 'Akceptuj',
+    options: { opensAppToForeground: true },
+  },
+  {
+    identifier: EVENT_INVITATION_REJECT_ACTION,
+    buttonTitle: 'Odrzuć',
+    options: { opensAppToForeground: true, isDestructive: true },
+  },
+  {
+    identifier: EVENT_INVITATION_DETAILS_ACTION,
+    buttonTitle: 'Szczegóły',
+    options: { opensAppToForeground: true },
+  },
+]).catch((error) => {
+  console.error('[Push] Event invitation category setup failed:', error);
+});
+
 // Android notification channel setup (must run early, before any notification arrives)
 if (Platform.OS === 'android') {
   Notifications.setNotificationChannelAsync('default', {
@@ -188,4 +215,61 @@ export function addNotificationReceivedListener(
   handler: (notification: Notifications.Notification) => void
 ) {
   return Notifications.addNotificationReceivedListener(handler);
+}
+
+export async function handleEventInvitationNotificationAction(
+  response: Notifications.NotificationResponse,
+  employeeId: string | undefined,
+): Promise<boolean> {
+  const action = response.actionIdentifier;
+  if (
+    action !== EVENT_INVITATION_ACCEPT_ACTION &&
+    action !== EVENT_INVITATION_REJECT_ACTION
+  ) {
+    return false;
+  }
+
+  const data = response.notification.request.content.data as {
+    assignment_id?: string;
+    notification_id?: string;
+  };
+  const assignmentId = data?.assignment_id;
+
+  if (!assignmentId || !employeeId) {
+    console.warn('[Push] Invitation action ignored: missing assignment or employee id.');
+    return true;
+  }
+
+  const responseKey = `${response.notification.request.identifier}:${action}`;
+  if (handledInvitationResponses.has(responseKey)) return true;
+  handledInvitationResponses.add(responseKey);
+
+  const status =
+    action === EVENT_INVITATION_ACCEPT_ACTION ? 'accepted' : 'rejected';
+
+  const { error } = await supabase
+    .from('employee_assignments')
+    .update({
+      status,
+      responded_at: new Date().toISOString(),
+    })
+    .eq('id', assignmentId)
+    .eq('employee_id', employeeId)
+    .eq('status', 'pending');
+
+  if (error) {
+    handledInvitationResponses.delete(responseKey);
+    console.error('[Push] Event invitation response failed:', error);
+    return true;
+  }
+
+  if (data.notification_id) {
+    await supabase
+      .from('notification_recipients')
+      .update({ is_read: true, read_at: new Date().toISOString() })
+      .eq('notification_id', data.notification_id)
+      .eq('user_id', employeeId);
+  }
+
+  return true;
 }

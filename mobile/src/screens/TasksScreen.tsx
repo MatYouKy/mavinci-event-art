@@ -26,6 +26,7 @@ import { sortTasksByUrgency } from '../lib/taskSort';
 import { useAuth } from '../contexts/AuthContext';
 import EmployeeAvatar from '../components/EmployeeAvatar';
 import { SearchableDropdown } from '../components/SearchableDropdown';
+import { sendTaskAssignmentPush } from '../services/taskAssignmentNotifications';
 
 type TasksStackParamList = {
   Tasks: undefined;
@@ -687,12 +688,15 @@ export default function TasksScreen() {
   
       const assigneeId = selectedAssigneeId || employee.id;
   
-      const { error: assigneeError } = await supabase
+      const { data: assignment, error: assigneeError } = await supabase
         .from('task_assignees')
         .insert({
           task_id: inserted.id,
           employee_id: assigneeId,
-        });
+          assigned_by: employee.id,
+        })
+        .select('id')
+        .single();
   
       if (assigneeError) {
         console.error('Błąd przypisywania pracownika:', assigneeError);
@@ -704,6 +708,8 @@ export default function TasksScreen() {
           `Nie udało się przypisać pracownika: ${assigneeError.message}`,
         );
       }
+
+      await sendTaskAssignmentPush(assignment.id);
   
       resetCreateForm();
       setShowCreateModal(false);

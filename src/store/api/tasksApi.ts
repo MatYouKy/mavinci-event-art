@@ -1,5 +1,6 @@
 import { createApi, fakeBaseQuery } from '@reduxjs/toolkit/query/react';
 import { supabase } from '@/lib/supabase/browser';
+import { sendTaskAssignmentPush } from '@/lib/CRM/tasks/sendTaskAssignmentPush';
 
 export interface TaskListItem {
   id: string;
@@ -334,9 +335,14 @@ export const tasksApi = createApi({
               assigned_by: taskData.created_by,
             }));
 
-            const { error: assignError } = await supabase.from('task_assignees').insert(assignees);
+            const { data: insertedAssignments, error: assignError } = await supabase
+              .from('task_assignees')
+              .insert(assignees)
+              .select('id');
 
             if (assignError) return { error: assignError as any };
+
+            await sendTaskAssignmentPush((insertedAssignments || []).map((assignment) => assignment.id));
           }
 
           return { data: { ...task, task_assignees: [], comments_count: 0 } };
@@ -370,20 +376,51 @@ export const tasksApi = createApi({
           }
 
           if (assigned_employees !== undefined) {
-            await supabase.from('task_assignees').delete().eq('task_id', id);
+            const { data: currentAssignments, error: currentAssignmentsError } = await supabase
+              .from('task_assignees')
+              .select('employee_id')
+              .eq('task_id', id);
 
-            if (assigned_employees.length > 0) {
-              const assignees = assigned_employees.map((employee_id) => ({
+            if (currentAssignmentsError) return { error: currentAssignmentsError as any };
+
+            const currentEmployeeIds = new Set(
+              (currentAssignments || []).map((assignment) => assignment.employee_id),
+            );
+            const nextEmployeeIds = new Set(assigned_employees);
+            const employeeIdsToRemove = [...currentEmployeeIds].filter(
+              (employeeId) => !nextEmployeeIds.has(employeeId),
+            );
+            const employeeIdsToAdd = assigned_employees.filter(
+              (employeeId) => !currentEmployeeIds.has(employeeId),
+            );
+
+            if (employeeIdsToRemove.length > 0) {
+              const { error: removeError } = await supabase
+                .from('task_assignees')
+                .delete()
+                .eq('task_id', id)
+                .in('employee_id', employeeIdsToRemove);
+
+              if (removeError) return { error: removeError as any };
+            }
+
+            if (employeeIdsToAdd.length > 0) {
+              const assignees = employeeIdsToAdd.map((employee_id) => ({
                 task_id: id,
                 employee_id,
                 assigned_by,
               }));
 
-              const { error: assignError } = await supabase
+              const { data: insertedAssignments, error: assignError } = await supabase
                 .from('task_assignees')
-                .insert(assignees);
+                .insert(assignees)
+                .select('id');
 
               if (assignError) return { error: assignError as any };
+
+              await sendTaskAssignmentPush(
+                (insertedAssignments || []).map((assignment) => assignment.id),
+              );
             }
           }
 

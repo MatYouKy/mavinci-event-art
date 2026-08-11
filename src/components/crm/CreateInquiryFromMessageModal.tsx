@@ -5,6 +5,7 @@ import { X, User, ClipboardList } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { supabase } from '@/lib/supabase/browser';
 import type { MessageListItem } from '@/lib/CRM/messages/types';
+import { sendTaskAssignmentPush } from '@/lib/CRM/tasks/sendTaskAssignmentPush';
 
 interface Employee {
   id: string;
@@ -193,42 +194,19 @@ export default function CreateInquiryFromMessageModal({
       if (taskError) throw taskError;
 
       if (selectedEmployee && taskData) {
-        const { error: assignError } = await supabase.from('task_assignees').insert({
-          task_id: taskData.id,
-          employee_id: selectedEmployee,
-        });
+        const { data: assignment, error: assignError } = await supabase
+          .from('task_assignees')
+          .insert({
+            task_id: taskData.id,
+            employee_id: selectedEmployee,
+            assigned_by: userId,
+          })
+          .select('id')
+          .single();
 
-        if (assignError) {
-          console.error('Error assigning employee:', assignError);
-        }
+        if (assignError) throw assignError;
 
-        const emp = employees.find((e) => e.id === selectedEmployee);
-        const empUserId = emp?.auth_user_id;
-
-        if (empUserId) {
-          const { data: notif, error: notifError } = await supabase
-            .from('notifications')
-            .insert({
-              title: 'Nowe zapytanie',
-              message: `Przypisano Cię do zapytania: "${message.subject || 'Brak tematu'}"`,
-              type: 'info',
-              category: 'tasks',
-              related_entity_type: 'task',
-              related_entity_id: taskData.id,
-              action_url: `/crm/tasks/${taskData.id}`,
-              metadata: { is_inquiry: true },
-            })
-            .select('id')
-            .single();
-
-          if (!notifError && notif) {
-            await supabase.from('notification_recipients').insert({
-              notification_id: notif.id,
-              user_id: empUserId,
-              is_read: false,
-            });
-          }
-        }
+        await sendTaskAssignmentPush(assignment.id);
       }
 
       showSnackbar('Utworzono zapytanie z wiadomości', 'success');

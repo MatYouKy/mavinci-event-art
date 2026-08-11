@@ -27,12 +27,14 @@ import {
   EventVehicleAssignment,
   FleetTab,
 } from '@/components/Events/EventDetailScreen/FleetTab';
+import { isManagerOrAdmin } from '../lib/permissions';
 
 type TabKey = 'details' | 'agenda' | 'checklist' | 'fleet' | 'files';
 
 interface Props {
   eventId: string;
   onBack: () => void;
+  initialTab?: TabKey;
 }
 
 interface MyAssignment {
@@ -41,9 +43,10 @@ interface MyAssignment {
   role: string | null;
 }
 
-export default function EventDetailScreen({ eventId, onBack }: Props) {
+export default function EventDetailScreen({ eventId, onBack, initialTab }: Props) {
   const { employee } = useAuth();
-  const [activeTab, setActiveTab] = useState<TabKey>('details');
+  const canManageEvent = isManagerOrAdmin(employee);
+  const [activeTab, setActiveTab] = useState<TabKey>(initialTab ?? 'details');
   const [event, setEvent] = useState<EventDetail | null>(null);
   const [agenda, setAgenda] = useState<AgendaData | null>(null);
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
@@ -63,18 +66,11 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
     } = await supabase.auth.getUser();
     if (!user) return null;
 
-    const { data: emp } = await supabase
-      .from('employees')
-      .select('id')
-      .eq('user_id', user.id)
-      .maybeSingle();
-    if (!emp) return null;
-
     const { data: assignment } = await supabase
       .from('employee_assignments')
       .select('id, status, role')
       .eq('event_id', eventId)
-      .eq('employee_id', emp.id)
+      .eq('employee_id', user.id)
       .maybeSingle();
 
     return assignment
@@ -372,7 +368,6 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
       `,
       )
       .eq('event_id', eventId)
-      .not('driver_id', 'is', null)
       .order('created_at', { ascending: true });
 
     if (error) {
@@ -380,11 +375,8 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
       return [];
     }
 
-    return (data || [])
-      .filter(
-        (row: any) =>
-          row.driver_id && (row.vehicle_id || row.is_external || row.external_company_name),
-      )
+    const mapped = (data || [])
+      .filter((row: any) => row.vehicle_id || row.is_external || row.external_company_name)
       .map((row: any) => ({
         ...row,
         is_external: row.is_external ?? false,
@@ -392,7 +384,10 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
         vehicle: Array.isArray(row.vehicle) ? row.vehicle[0] || null : row.vehicle,
         driver: Array.isArray(row.driver) ? row.driver[0] || null : row.driver,
       })) as EventVehicleAssignment[];
-  }, [eventId]);
+
+    if (canManageEvent) return mapped;
+    return mapped.filter((row) => row.driver_id === employee?.id);
+  }, [canManageEvent, employee?.id, eventId]);
 
   const refreshFleet = useCallback(async () => {
     setFleetAssignments(await fetchFleet());
@@ -475,10 +470,13 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
   }, [eventId, fleetAssignments, refreshFleet]);
 
   useEffect(() => {
-    if (activeTab === 'fleet' && fleetAssignments.length === 0) {
+    if (!isLoading && activeTab === 'fleet' && fleetAssignments.length === 0) {
       setActiveTab('details');
     }
-  }, [activeTab, fleetAssignments.length]);
+    if (!isLoading && activeTab === 'files' && !canManageEvent && files.length === 0) {
+      setActiveTab('details');
+    }
+  }, [activeTab, canManageEvent, files.length, fleetAssignments.length, isLoading]);
 
   const toggleLoadedItem = async (item: ChecklistItem) => {
     // If loading is locked, prevent unchecking
@@ -557,7 +555,9 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
           },
         ] as const)
       : []),
-    { key: 'files', label: 'Pliki', icon: 'file', count: files.length },
+    ...(canManageEvent || files.length > 0
+      ? ([{ key: 'files', label: 'Pliki', icon: 'file', count: files.length }] as const)
+      : []),
   ];
 
   return (
@@ -644,27 +644,37 @@ export default function EventDetailScreen({ eventId, onBack }: Props) {
 
       {/* Tabs */}
       <View style={styles.tabBar}>
-        {tabs.map((tab) => (
-          <TouchableOpacity
-            key={tab.key}
-            style={[styles.tab, activeTab === tab.key && styles.tabActive]}
-            onPress={() => setActiveTab(tab.key)}
-          >
-            <Feather
-              name={tab.icon as any}
-              size={14}
-              color={activeTab === tab.key ? colors.primary.gold : colors.text.tertiary}
-            />
-            <Text style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}>
-              {tab.label}
-            </Text>
-            {tab.count !== undefined && tab.count > 0 && (
-              <View style={styles.tabBadge}>
-                <Text style={styles.tabBadgeText}>{tab.count}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        ))}
+        <ScrollView
+          horizontal
+          nestedScrollEnabled
+          directionalLockEnabled
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabBarContent}
+        >
+          {tabs.map((tab) => (
+            <TouchableOpacity
+              key={tab.key}
+              style={[styles.tab, activeTab === tab.key && styles.tabActive]}
+              onPress={() => setActiveTab(tab.key)}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: activeTab === tab.key }}
+            >
+              <Feather
+                name={tab.icon as any}
+                size={14}
+                color={activeTab === tab.key ? colors.primary.gold : colors.text.tertiary}
+              />
+              <Text style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}>
+                {tab.label}
+              </Text>
+              {tab.count !== undefined && tab.count > 0 && (
+                <View style={styles.tabBadge}>
+                  <Text style={styles.tabBadgeText}>{tab.count}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
 
       {/* Tab content */}
@@ -758,18 +768,24 @@ const styles = StyleSheet.create({
 
   // Tabs
   tabBar: {
-    flexDirection: 'row',
     backgroundColor: colors.background.secondary,
-    paddingHorizontal: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.border.default,
   },
+  tabBarContent: {
+    minWidth: '100%',
+    flexDirection: 'row',
+    paddingHorizontal: spacing.sm,
+  },
   tab: {
-    flex: 1,
+    minWidth: 104,
+    flexGrow: 1,
+    flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 10,
+    paddingHorizontal: 12,
     gap: 4,
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',

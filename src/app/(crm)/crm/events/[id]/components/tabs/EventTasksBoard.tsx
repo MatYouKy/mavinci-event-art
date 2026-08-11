@@ -20,6 +20,7 @@ import TaskCard from '../../../../../../../components/crm/TaskCard';
 import { Task } from '@/components/crm/TaskCard';
 import type { IEmployee } from '@/app/(crm)/crm/employees/type';
 import Image from 'next/image';
+import { sendTaskAssignmentPush } from '@/lib/CRM/tasks/sendTaskAssignmentPush';
 
 type EmployeeLite = {
   id: string;
@@ -778,11 +779,19 @@ export default function EventTasksBoard({ eventId, canManage }: EventTasksBoardP
         if (error) throw error;
         showSnackbar('Pracownik odłączony', 'success');
       } else {
-        const { error: assignError } = await supabase
+        const { data: assignment, error: assignError } = await supabase
           .from('task_assignees')
-          .insert([{ task_id: assigningTask.id, employee_id: employeeId }]);
+          .insert([{
+            task_id: assigningTask.id,
+            employee_id: employeeId,
+            assigned_by: currentEmployee?.id,
+          }])
+          .select('id')
+          .single();
 
         if (assignError) throw assignError;
+
+        await sendTaskAssignmentPush(assignment.id);
 
         // Automatycznie dodaj pracownika do zespołu wydarzenia
         // Najpierw sprawdź czy już istnieje

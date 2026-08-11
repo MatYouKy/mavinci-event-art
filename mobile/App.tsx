@@ -11,6 +11,7 @@ import {
   registerForPushNotifications,
   addNotificationResponseListener,
   addNotificationReceivedListener,
+  handleEventInvitationNotificationAction,
 } from './src/services/pushNotifications';
 
 import { useRealtimePushNotifications } from './src/services/realtimeNotifications';
@@ -78,11 +79,15 @@ function AppContent() {
     });
 
     const responseSubscription = addNotificationResponseListener((response) => {
-      const data = response.notification.request.content.data as NotificationTargetData;
-      // Store the tapped notification so MainTabNavigator can open the right screen,
-      // even if navigation is not ready yet (cold start). Live taps are also handled
-      // by MainTabNavigator's own response listener.
-      globalNotificationTarget = { ...(data ?? {}) };
+      void handleEventInvitationNotificationAction(response, employeeId).then((handled) => {
+        if (handled) return;
+
+        const data = response.notification.request.content.data as NotificationTargetData;
+        // Store the tapped notification so MainTabNavigator can open the right screen,
+        // even if navigation is not ready yet (cold start). Live taps are also handled
+        // by MainTabNavigator's own response listener.
+        globalNotificationTarget = { ...(data ?? {}) };
+      });
     });
 
     return () => {

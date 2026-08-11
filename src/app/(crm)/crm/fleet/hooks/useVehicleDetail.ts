@@ -55,6 +55,12 @@ export function useVehicleDetail(vehicleId: string) {
         total_cost: r.cost || 0,
         notes: r.notes,
         valid_until: r.valid_until,
+        status:
+          r.passed === false || r.result === 'failed'
+            ? 'failed'
+            : r.valid_until && new Date(`${r.valid_until}T23:59:59`) >= new Date()
+              ? 'active'
+              : 'expired',
         performed_by: r.performed_by,
         source: 'periodic_inspections' as const,
       })),
@@ -69,6 +75,7 @@ export function useVehicleDetail(vehicleId: string) {
         labor_cost: r.labor_cost || 0,
         parts_cost: r.parts_cost || 0,
         total_cost: r.total_cost || 0,
+        status: 'completed',
         notes: r.notes,
         source: 'oil_changes' as const,
       })),
@@ -83,6 +90,7 @@ export function useVehicleDetail(vehicleId: string) {
         labor_cost: r.labor_cost || 0,
         parts_cost: r.parts_cost || 0,
         total_cost: r.total_cost || 0,
+        status: 'completed',
         notes: r.notes,
         source: 'timing_belt_changes' as const,
       })),

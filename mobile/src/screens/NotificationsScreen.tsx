@@ -282,11 +282,12 @@ export default function NotificationsScreen() {
     }
 
     if (entityType === 'event' && entityId) {
+      const initialTab = notification.metadata?.kind === 'vehicle_pickup' ? 'fleet' : undefined;
       navigation.navigate('Main', {
         screen: 'Events',
         params: {
           screen: 'EventDetail',
-          params: { eventId: entityId },
+          params: { eventId: entityId, initialTab },
         },
       });
       return;

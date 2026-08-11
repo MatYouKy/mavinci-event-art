@@ -19,7 +19,11 @@ export function useFleetFilters(vehicles: IVehicle[]) {
     }
 
     if (statusFilter !== 'all') {
-      filtered = filtered.filter((v) => v.status === statusFilter);
+      filtered = filtered.filter(
+        (v) =>
+          v.status === statusFilter ||
+          (statusFilter === 'available' && ['active', 'available'].includes(v.status)),
+      );
     }
 
     if (categoryFilter !== 'all') {

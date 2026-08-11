@@ -167,6 +167,14 @@ export default function VehicleDetailPage() {
   const timing = grouped?.timing ?? [];
   const repairs = grouped?.repairs ?? [];
 
+  const getInspectionStatus = (inspection: any) => {
+    if (inspection.passed === false || inspection.result === 'failed') return 'failed';
+    if (!inspection.valid_until) return 'inactive';
+
+    const validUntil = new Date(`${inspection.valid_until}T23:59:59`);
+    return validUntil >= new Date() ? 'active' : 'expired';
+  };
+
   // spłaszcz do jednej listy (tak jak renderujesz)
   const allMaintenance: MaintenanceRecord[] = [
     ...maintenance?.map((r: any) => ({ ...r, source: 'maintenance_records' as const })),
@@ -184,6 +192,7 @@ export default function VehicleDetailPage() {
       total_cost: r.cost || 0,
       notes: r.notes,
       valid_until: r.valid_until,
+      status: getInspectionStatus(r),
       performed_by: r.performed_by,
       source: 'periodic_inspections' as const,
     })),
@@ -198,6 +207,7 @@ export default function VehicleDetailPage() {
       labor_cost: r.labor_cost || 0,
       parts_cost: r.parts_cost || 0,
       total_cost: r.total_cost || 0,
+      status: 'completed',
       notes: r.notes,
       source: 'oil_changes' as const,
     })),
@@ -212,6 +222,7 @@ export default function VehicleDetailPage() {
       labor_cost: r.labor_cost || 0,
       parts_cost: r.parts_cost || 0,
       total_cost: r.total_cost || 0,
+      status: 'completed',
       notes: r.notes,
       source: 'timing_belt_changes' as const,
     })),
@@ -288,6 +299,14 @@ export default function VehicleDetailPage() {
         label: 'Dostępny',
         class: 'text-green-300 ring-green-400/45 border border-green-400/25',
       },
+      available: {
+        label: 'Dostępny',
+        class: 'text-green-300 ring-green-400/45 border border-green-400/25',
+      },
+      in_use: {
+        label: 'W użytkowaniu',
+        class: 'text-[#f3e7b1] ring-[#d3bb73]/55 border border-[#d3bb73]/40',
+      },
       inactive: {
         label: 'Nieaktywny',
         class: 'text-gray-200 ring-gray-400/35 border border-gray-400/20',
@@ -296,6 +315,18 @@ export default function VehicleDetailPage() {
         label: 'W serwisie',
         class: 'text-orange-300 ring-orange-400/45 border border-orange-400/25',
       },
+      under_repair: {
+        label: 'W naprawie',
+        class: 'text-orange-300 ring-orange-400/45 border border-orange-400/25',
+      },
+      no_insurance: {
+        label: 'Brak ważnego OC',
+        class: 'text-red-300 ring-red-400/45 border border-red-400/25',
+      },
+      no_inspection: {
+        label: 'Brak ważnego przeglądu',
+        class: 'text-red-300 ring-red-400/45 border border-red-400/25',
+      },
       sold: {
         label: 'Sprzedany',
         class: 'text-blue-300 ring-blue-400/45 border border-blue-400/25',
@@ -303,6 +334,49 @@ export default function VehicleDetailPage() {
       scrapped: {
         label: 'Złomowany',
         class: 'text-red-300 ring-red-400/45 border border-red-400/25',
+      },
+    };
+
+    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.inactive;
+    return <span className={`${base} ${config.class}`}>{config.label}</span>;
+  };
+
+  const getMaintenanceStatusBadge = (status: string) => {
+    const base =
+      'inline-flex items-center whitespace-nowrap rounded-md border px-2.5 py-1 ' +
+      'text-xs font-semibold tracking-wide ring-1';
+    const statusConfig = {
+      active: {
+        label: 'Aktywny',
+        class: 'border-green-400/25 text-green-300 ring-green-400/45',
+      },
+      completed: {
+        label: 'Wykonany',
+        class: 'border-green-400/25 text-green-300 ring-green-400/45',
+      },
+      scheduled: {
+        label: 'Zaplanowany',
+        class: 'border-blue-400/25 text-blue-300 ring-blue-400/45',
+      },
+      in_progress: {
+        label: 'W trakcie',
+        class: 'border-orange-400/25 text-orange-300 ring-orange-400/45',
+      },
+      cancelled: {
+        label: 'Anulowany',
+        class: 'border-gray-400/20 text-gray-300 ring-gray-400/35',
+      },
+      expired: {
+        label: 'Po terminie',
+        class: 'border-red-400/25 text-red-300 ring-red-400/45',
+      },
+      failed: {
+        label: 'Negatywny',
+        class: 'border-red-400/25 text-red-300 ring-red-400/45',
+      },
+      inactive: {
+        label: 'Brak ważności',
+        class: 'border-gray-400/20 text-gray-300 ring-gray-400/35',
       },
     };
 
@@ -793,7 +867,7 @@ export default function VehicleDetailPage() {
                       <div className="flex-1">
                         <div className="mb-2 flex items-center gap-3">
                           <h3 className="font-medium text-[#e5e4e2]">{record.title}</h3>
-                          {getStatusBadge(record.status || '')}
+                          {getMaintenanceStatusBadge(record.status || '')}
                         </div>
 
                         <div className="flex items-center gap-4 text-sm text-[#e5e4e2]/60">
@@ -856,6 +930,16 @@ export default function VehicleDetailPage() {
                             lub przy {record.next_service_mileage?.toLocaleString()} km
                           </span>
                         )}
+                      </div>
+                    )}
+
+                    {record.source === 'periodic_inspections' && record.valid_until && (
+                      <div className="mt-3 flex items-center gap-2 border-t border-[#d3bb73]/10 pt-3 text-sm">
+                        <Calendar className="h-4 w-4 text-green-400" />
+                        <span className="text-[#e5e4e2]/60">Przegląd ważny do:</span>
+                        <span className="font-medium text-[#e5e4e2]">
+                          {formatDate(record.valid_until)}
+                        </span>
                       </div>
                     )}
                   </div>

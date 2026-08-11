@@ -69,7 +69,7 @@ export default function NewVehiclePage() {
     total_width_cm: '',
     total_height_cm: '',
     weight_kg: '',
-    status: 'active',
+    status: 'available',
     ownership_type: 'owned',
     category: 'van',
     purchase_price: '',
@@ -471,9 +471,10 @@ export default function NewVehiclePage() {
                 onChange={handleChange}
                 className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-2 text-[#e5e4e2]"
               >
-                <option value="active">Aktywny</option>
+                <option value="available">Dostępny</option>
                 <option value="inactive">Nieaktywny</option>
                 <option value="in_service">W serwisie</option>
+                <option value="under_repair">W naprawie</option>
                 <option value="sold">Sprzedany</option>
                 <option value="scrapped">Złomowany</option>
               </select>

@@ -21,6 +21,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { scheduleInquiryReminders } from '../services/inquiryReminders';
 import { SearchableDropdown } from '@/components/SearchableDropdown';
+import { sendTaskAssignmentPush } from '../services/taskAssignmentNotifications';
 
 interface NewInquiryModalProps {
   visible: boolean;
@@ -281,10 +282,19 @@ export default function NewInquiryModal({
       if (selectedEmployeeId && insertedTask?.id) {
         const emp = employees.find((e) => e.id === selectedEmployeeId);
         if (emp) {
-          await supabase.from('task_assignees').insert({
-            task_id: insertedTask.id,
-            employee_id: emp.id,
-          });
+          const { data: assignment, error: assignmentError } = await supabase
+            .from('task_assignees')
+            .insert({
+              task_id: insertedTask.id,
+              employee_id: emp.id,
+              assigned_by: employee?.id,
+            })
+            .select('id')
+            .single();
+
+          if (assignmentError) throw assignmentError;
+
+          await sendTaskAssignmentPush(assignment.id);
         }
       }
 

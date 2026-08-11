@@ -42,6 +42,7 @@ import {
 } from '@/store/api/tasksApi';
 import { IEmployee } from '../../employees/type';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
+import { sendTaskAssignmentPush } from '@/lib/CRM/tasks/sendTaskAssignmentPush';
 
 interface Task {
   id: string;
@@ -653,12 +654,19 @@ export default function TaskDetailPage({ initialTask }: { initialTask: Task | nu
 
   const handleAddAssignee = async (employeeId: string) => {
     try {
-      const { error } = await supabase.from('task_assignees').insert({
-        task_id: task?.id,
-        employee_id: employeeId,
-      });
+      const { data: assignment, error } = await supabase
+        .from('task_assignees')
+        .insert({
+          task_id: task?.id,
+          employee_id: employeeId,
+          assigned_by: currentEmployee?.id,
+        })
+        .select('id')
+        .single();
 
       if (error) throw error;
+
+      await sendTaskAssignmentPush(assignment.id);
 
       showSnackbar('Dodano osobę do zadania', 'success');
       refetch();

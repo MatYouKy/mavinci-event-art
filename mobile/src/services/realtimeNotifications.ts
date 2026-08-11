@@ -63,10 +63,12 @@ export function useRealtimePushNotifications(
         title,
         body,
         data,
+        categoryIdentifier,
       }: {
         title: string;
         body: string;
         data?: Record<string, string>;
+        categoryIdentifier?: string;
       }) => {
         try {
           await Notifications.scheduleNotificationAsync({
@@ -75,6 +77,7 @@ export function useRealtimePushNotifications(
               body,
               sound: 'default',
               data: data ?? {},
+              categoryIdentifier,
             },
             trigger: null,
           });
@@ -107,12 +110,33 @@ export function useRealtimePushNotifications(
 
             if (error || !notification) return;
 
+            const notificationMetadata =
+              notification.metadata && typeof notification.metadata === 'object'
+                ? notification.metadata as Record<string, unknown>
+                : null;
+
+            // Task assignment already sends a native remote push. Avoid showing
+            // the same banner twice while the app is in the foreground.
+            if (notificationMetadata?.kind === 'task_assignment') return;
+            if (notificationMetadata?.kind === 'vehicle_pickup') return;
+
             const inboundEventId =
-              notification.metadata &&
-              typeof notification.metadata === 'object' &&
-              typeof (notification.metadata as Record<string, unknown>).inbound_event_id === 'string'
-                ? (notification.metadata as Record<string, string>).inbound_event_id
+              typeof notificationMetadata?.inbound_event_id === 'string'
+                ? notificationMetadata.inbound_event_id
                 : '';
+            const invitationAssignmentId =
+              typeof notificationMetadata?.assignment_id === 'string'
+                ? notificationMetadata.assignment_id
+                : '';
+            const invitationEventId =
+              typeof notificationMetadata?.event_id === 'string'
+                ? notificationMetadata.event_id
+                : notification.related_entity_type === 'event'
+                  ? notification.related_entity_id ?? ''
+                  : '';
+            const isEventInvitation =
+              invitationAssignmentId.length > 0 &&
+              notificationMetadata?.requires_response === true;
 
             let localTitle = notification.title ?? 'Mavinci CRM';
             let localBody = notification.message ?? '';
@@ -166,7 +190,15 @@ export function useRealtimePushNotifications(
                 category: notification.category ?? '',
                 action_url: notification.action_url ?? '',
                 inbound_event_id: inboundEventId,
+                initial_tab:
+                  typeof notificationMetadata?.initial_tab === 'string'
+                    ? notificationMetadata.initial_tab
+                    : '',
+                assignment_id: invitationAssignmentId,
+                event_id: invitationEventId,
+                requires_response: isEventInvitation ? 'true' : 'false',
               },
+              categoryIdentifier: isEventInvitation ? 'event_invitation' : undefined,
             });
           }
         )

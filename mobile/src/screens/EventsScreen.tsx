@@ -118,13 +118,23 @@ export default function EventsScreen({ onEventPress }: Props) {
 
           if (createdError) throw createdError;
 
+          const { data: driverAssignments, error: driverAssignmentsError } = await supabase
+            .from('event_vehicles')
+            .select('event_id')
+            .eq('driver_id', employee.id);
+
+          if (driverAssignmentsError) throw driverAssignmentsError;
+
           const assignedIds = (assignments ?? [])
             .map((assignment) => assignment.event_id)
             .filter(Boolean);
 
           const createdIds = (created ?? []).map((event) => event.id).filter(Boolean);
+          const driverEventIds = (driverAssignments ?? [])
+            .map((assignment) => assignment.event_id)
+            .filter(Boolean);
 
-          eventIds = [...new Set([...assignedIds, ...createdIds])];
+          eventIds = [...new Set([...assignedIds, ...createdIds, ...driverEventIds])];
 
           if (eventIds.length === 0) {
             setEvents([]);
