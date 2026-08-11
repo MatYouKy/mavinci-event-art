@@ -26,7 +26,11 @@ import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import EmployeeAvatar from '../components/EmployeeAvatar';
 import { Conversation } from './ChatListScreen';
-import { setActiveChatConversation } from '../services/chatNotifications';
+import {
+  notifyChatConversationOpened,
+  notifyChatReadPersisted,
+  setActiveChatConversation,
+} from '../services/chatNotifications';
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
 import { WebView } from 'react-native-webview';
@@ -121,6 +125,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
   }, []);
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initialReadNotifiedRef = useRef(false);
 
   const otherParticipant = conversation.participants.find((p) => p.employee_id !== employee?.id);
 
@@ -169,12 +174,20 @@ export default function ChatScreen({ conversation, onBack }: Props) {
 
   const markAsRead = useCallback(async () => {
     if (!employee) return;
-    await supabase
+
+    if (!initialReadNotifiedRef.current) {
+      initialReadNotifiedRef.current = true;
+      notifyChatConversationOpened(conversation.unread_count);
+    }
+
+    const { error } = await supabase
       .from('employee_conversation_participants')
       .update({ last_read_at: new Date().toISOString() })
       .eq('conversation_id', conversation.id)
       .eq('employee_id', employee.id);
-  }, [employee, conversation.id]);
+
+    if (!error) notifyChatReadPersisted();
+  }, [employee, conversation.id, conversation.unread_count]);
 
   const markAsDelivered = useCallback(async () => {
     if (!employee) return;
@@ -207,10 +220,12 @@ export default function ChatScreen({ conversation, onBack }: Props) {
 
     const load = async () => {
       setIsLoading(true);
-      await fetchMessages();
-      await fetchParticipantsState();
-      await markAsRead();
-      await markAsDelivered();
+      await Promise.all([
+        fetchMessages(),
+        fetchParticipantsState(),
+        markAsRead(),
+        markAsDelivered(),
+      ]);
       setIsLoading(false);
     };
     load();

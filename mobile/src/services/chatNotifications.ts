@@ -14,7 +14,18 @@ interface ChatMessage {
 
 let _activeConversationId: string | null = null;
 let _onConversationLeave: (() => void) | null = null;
+let _onConversationRead:
+  | ((unreadCount: number, persisted: boolean) => void)
+  | null = null;
 const _recentlyNotifiedMessageIds = new Set<string>();
+
+export function notifyChatConversationOpened(unreadCount: number) {
+  _onConversationRead?.(Math.max(0, unreadCount), false);
+}
+
+export function notifyChatReadPersisted() {
+  _onConversationRead?.(0, true);
+}
 
 export function setActiveChatConversation(conversationId: string | null) {
   const wasActive = _activeConversationId;
@@ -182,6 +193,20 @@ export function useUnreadChatCount(employeeId: string | undefined) {
   }, [fetchUnreadCount]);
 
   useEffect(() => {
+    const handleConversationRead = (readCount: number, persisted: boolean) => {
+      if (readCount > 0) {
+        setUnreadCount((previous) => Math.max(0, previous - readCount));
+      }
+      if (persisted) void fetchUnreadCount();
+    };
+
+    _onConversationRead = handleConversationRead;
+    return () => {
+      if (_onConversationRead === handleConversationRead) _onConversationRead = null;
+    };
+  }, [fetchUnreadCount]);
+
+  useEffect(() => {
     const handleAppState = (nextState: AppStateStatus) => {
       if (nextState === 'active') {
         fetchUnreadCount();
@@ -235,11 +260,11 @@ export function useUnreadChatCount(employeeId: string | undefined) {
     const sub = Notifications.addNotificationReceivedListener((notification) => {
       const data = notification.request.content.data;
       if (data?.type === 'chat_message' && data.conversation_id !== _activeConversationId) {
-        setUnreadCount((prev) => prev + 1);
+        void fetchUnreadCount();
       }
     });
     return () => sub.remove();
-  }, []);
+  }, [fetchUnreadCount]);
 
   // Polling fallback every 60s (not 30s - less aggressive)
   useEffect(() => {

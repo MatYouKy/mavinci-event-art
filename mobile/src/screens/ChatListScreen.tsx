@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -47,44 +47,17 @@ interface ConversationParticipant {
   };
 }
 
-interface OnlineStatus {
-  employee_id: string;
-  is_online: boolean;
-  last_seen_at: string;
-}
-
 interface Props {
   onConversationPress: (conversation: Conversation) => void;
   onNewChat: () => void;
 }
 
 function ChatListContent({ onConversationPress, onNewChat }: Props) {
-  const { employee } = useAuth();
+  const { employee, onlineEmployeeIds } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [onlineStatuses, setOnlineStatuses] = useState<Map<string, OnlineStatus>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
-  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const updateOnlineStatus = useCallback(async () => {
-    if (!employee) return;
-    await supabase.from('employee_online_status').upsert({
-      employee_id: employee.id,
-      is_online: true,
-      last_seen_at: new Date().toISOString(),
-    });
-  }, [employee]);
-
-  const fetchOnlineStatuses = useCallback(async () => {
-    const { data } = await supabase.from('employee_online_status').select('*');
-    if (data) {
-      const map = new Map<string, OnlineStatus>();
-      data.forEach((s: OnlineStatus) => map.set(s.employee_id, s));
-      setOnlineStatuses(map);
-    }
-  }, []);
-
   const fetchConversations = useCallback(async () => {
     if (!employee) return;
 
@@ -159,34 +132,18 @@ function ChatListContent({ onConversationPress, onNewChat }: Props) {
       if (isRefresh) setRefreshing(true);
       else setIsLoading(true);
       try {
-        await Promise.all([fetchConversations(), fetchOnlineStatuses()]);
+        await fetchConversations();
       } finally {
         setIsLoading(false);
         setRefreshing(false);
       }
     },
-    [fetchConversations, fetchOnlineStatuses]
+    [fetchConversations]
   );
 
   useEffect(() => {
     loadAll();
   }, [loadAll]);
-
-  // Heartbeat for online status
-  useEffect(() => {
-    updateOnlineStatus();
-    heartbeatRef.current = setInterval(updateOnlineStatus, 30000);
-    return () => {
-      if (heartbeatRef.current) clearInterval(heartbeatRef.current);
-      if (employee) {
-        supabase.from('employee_online_status').upsert({
-          employee_id: employee.id,
-          is_online: false,
-          last_seen_at: new Date().toISOString(),
-        });
-      }
-    };
-  }, [employee, updateOnlineStatus]);
 
   // Realtime subscription for new messages
   useEffect(() => {
@@ -206,20 +163,6 @@ function ChatListContent({ onConversationPress, onNewChat }: Props) {
           const row = payload.new as { employee_id?: string };
           if (employee && row.employee_id === employee.id) {
             fetchConversations();
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'employee_online_status' },
-        (payload) => {
-          if (payload.new) {
-            const status = payload.new as OnlineStatus;
-            setOnlineStatuses((prev) => {
-              const next = new Map(prev);
-              next.set(status.employee_id, status);
-              return next;
-            });
           }
         }
       )
@@ -247,11 +190,7 @@ function ChatListContent({ onConversationPress, onNewChat }: Props) {
   };
 
   const isParticipantOnline = (employeeId: string): boolean => {
-    const status = onlineStatuses.get(employeeId);
-    if (!status) return false;
-    if (!status.is_online) return false;
-    const lastSeen = new Date(status.last_seen_at).getTime();
-    return Date.now() - lastSeen < 120000; // 2 min threshold
+    return onlineEmployeeIds.includes(employeeId);
   };
 
   const formatTime = (dateStr: string): string => {
@@ -448,7 +387,7 @@ function ChatListContent({ onConversationPress, onNewChat }: Props) {
 
       {/* Online now strip */}
       <OnlineStrip
-        onlineStatuses={onlineStatuses}
+        onlineEmployeeIds={onlineEmployeeIds}
         currentEmployeeId={employee?.id || ''}
         conversations={conversations}
         onConversationPress={onConversationPress}
@@ -489,44 +428,35 @@ function ChatListContent({ onConversationPress, onNewChat }: Props) {
 
 // Online users horizontal strip
 function OnlineStrip({
-  onlineStatuses,
+  onlineEmployeeIds,
   currentEmployeeId,
   conversations,
   onConversationPress,
 }: {
-  onlineStatuses: Map<string, OnlineStatus>;
+  onlineEmployeeIds: string[];
   currentEmployeeId: string;
   conversations: Conversation[];
   onConversationPress: (conv: Conversation) => void;
 }) {
-  const [onlineEmployees, setOnlineEmployees] = useState<any[]>([]);
+  const onlineIdSet = new Set(onlineEmployeeIds);
+  const onlineEmployeesById = new Map<
+    string,
+    NonNullable<ConversationParticipant['employee']>
+  >();
 
-  useEffect(() => {
-    const fetchOnline = async () => {
-      const onlineIds = Array.from(onlineStatuses.entries())
-        .filter(
-          ([id, s]) =>
-            id !== currentEmployeeId &&
-            s.is_online &&
-            Date.now() - new Date(s.last_seen_at).getTime() < 120000
-        )
-        .map(([id]) => id);
-
-      if (onlineIds.length === 0) {
-        setOnlineEmployees([]);
-        return;
+  conversations
+    .flatMap((conversation) => conversation.participants)
+    .forEach((participant) => {
+      if (
+        participant.employee_id !== currentEmployeeId &&
+        onlineIdSet.has(participant.employee_id) &&
+        participant.employee
+      ) {
+        onlineEmployeesById.set(participant.employee_id, participant.employee);
       }
+    });
 
-      const { data } = await supabase
-        .from('employees')
-        .select('id, name, surname, nickname, avatar_url, avatar_metadata')
-        .eq('is_active', true)
-        .in('id', onlineIds);
-
-      setOnlineEmployees(data || []);
-    };
-    fetchOnline();
-  }, [onlineStatuses, currentEmployeeId]);
+  const onlineEmployees = Array.from(onlineEmployeesById.values());
 
   if (onlineEmployees.length === 0) return null;
 
