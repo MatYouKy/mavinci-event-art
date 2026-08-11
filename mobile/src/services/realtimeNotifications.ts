@@ -3,6 +3,11 @@ import * as Notifications from 'expo-notifications';
 import { supabase } from '../lib/supabase';
 import { humanizeMessageEnums } from '../lib/messageLabels';
 
+// CRM banners are delivered remotely from the database for every recipient.
+// Realtime remains responsible for chat messages only, preventing duplicate
+// local + remote banners while the app is open.
+const REMOTE_CRM_PUSH_ENABLED = true;
+
 type NotificationRecipientRow = {
   notification_id: string;
   user_id: string;
@@ -100,7 +105,7 @@ export function useRealtimePushNotifications(
           },
           async (payload) => {
             const recipientRow = payload.new as NotificationRecipientRow;
-            if (recipientRow.is_read) return;
+            if (recipientRow.is_read || REMOTE_CRM_PUSH_ENABLED) return;
 
             const { data: notification, error } = await supabase
               .from('notifications')

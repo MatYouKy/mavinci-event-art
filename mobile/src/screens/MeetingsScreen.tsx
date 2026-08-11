@@ -25,7 +25,6 @@ import { colors, spacing, typography } from '../theme';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { SearchableDropdown } from '../components/SearchableDropdown';
-import { sendAssignmentNotification } from '../services/assignmentNotifications';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
 // --- Types ---
@@ -464,30 +463,6 @@ export default function MeetingsScreen({ initialMeetingId, onBack }: MeetingsScr
           if (participantsToInsert.length > 0) {
             await supabase.from('meeting_participants').insert(participantsToInsert);
           }
-          // Notify newly added participants
-          const previousParticipantIds = (editingMeeting.participants || []).map(
-            (p) => p.employee_id,
-          );
-          const senderName = `${employee.name || ''} ${employee.surname || ''}`.trim();
-          for (const p of selectedParticipants) {
-            if (p.id === employee.id) continue;
-            if (previousParticipantIds.includes(p.id)) continue;
-            await Promise.all(
-              selectedParticipants
-                .filter((p) => p.id !== employee.id)
-                .map((participant) =>
-                  sendAssignmentNotification({
-                    recipientEmployeeId: participant.id,
-                    senderName,
-                    title: 'Zaproszenie na spotkanie',
-                    message: `${senderName} zaprosił Cię na spotkanie "${form.title}"`,
-                    category: 'meeting_invitation',
-                    relatedEntityType: 'meeting',
-                    relatedEntityId: data.id,
-                  }),
-                ),
-            );
-          }
           await scheduleMeetingAlerts(data as Meeting);
         }
       } else {
@@ -519,21 +494,6 @@ export default function MeetingsScreen({ initialMeetingId, onBack }: MeetingsScr
 
           await scheduleMeetingAlerts(data as Meeting);
 
-          const senderName = `${employee.name ?? ''} ${employee.surname ?? ''}`.trim();
-
-          for (const participant of selectedParticipants) {
-            if (participant.id === employee.id) continue;
-
-            await sendAssignmentNotification({
-              recipientEmployeeId: participant.id,
-              senderName,
-              title: 'Zaproszenie na spotkanie',
-              message: `${senderName} zaprosił Cię na spotkanie "${form.title}"`,
-              category: 'meeting_invitation',
-              relatedEntityType: 'meeting',
-              relatedEntityId: data.id,
-            });
-          }
         }
       }
 

@@ -21,6 +21,8 @@ interface WebhookPayload {
   old_record: null;
 }
 
+type NotificationRecipient = WebhookPayload["record"];
+
 function htmlToPlainText(value: string | null): string {
   if (!value) return "";
   return value
@@ -73,11 +75,40 @@ Deno.serve(async (req: Request) => {
     });
 
     const payload: WebhookPayload = await req.json();
-    const recipient = payload.record;
+    const requestedRecipient = payload.record;
 
-    if (!recipient || !recipient.notification_id || !recipient.user_id) {
+    if (!requestedRecipient?.id) {
       return new Response(
         JSON.stringify({ error: "Invalid payload" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Never trust recipient/user identifiers supplied by the HTTP caller. The
+    // unguessable row id is resolved against the database and all push content
+    // is built from canonical CRM records.
+    const { data: canonicalRecipient, error: recipientError } = await supabase
+      .from("notification_recipients")
+      .select("id, notification_id, user_id, is_read")
+      .eq("id", requestedRecipient.id)
+      .maybeSingle();
+
+    if (recipientError || !canonicalRecipient) {
+      return new Response(
+        JSON.stringify({ error: "Notification recipient not found" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const recipient = canonicalRecipient as NotificationRecipient;
+
+    if (
+      (requestedRecipient.notification_id &&
+        requestedRecipient.notification_id !== recipient.notification_id) ||
+      (requestedRecipient.user_id && requestedRecipient.user_id !== recipient.user_id)
+    ) {
+      return new Response(
+        JSON.stringify({ error: "Recipient payload mismatch" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -90,6 +121,41 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Claim delivery before any external request. A database trigger and a
+    // legacy explicit caller may arrive at the same time; only one can win.
+    const { error: claimError } = await supabase
+      .from("notification_push_deliveries")
+      .insert({
+        notification_recipient_id: recipient.id,
+        status: "processing",
+        attempt_count: 1,
+      });
+
+    if (claimError?.code === "23505") {
+      return new Response(
+        JSON.stringify({ success: true, sent: 0, reason: "already_dispatched" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    if (claimError) {
+      throw new Error(`Unable to claim push delivery: ${claimError.message}`);
+    }
+
+    const updateDelivery = async (
+      status: "sent" | "skipped" | "failed",
+      lastError: string | null = null,
+    ) => {
+      await supabase
+        .from("notification_push_deliveries")
+        .update({
+          status,
+          last_error: lastError,
+          sent_at: status === "sent" ? new Date().toISOString() : null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("notification_recipient_id", recipient.id);
+    };
+
     // Get the notification details
     const { data: notification, error: notifError } = await supabase
       .from("notifications")
@@ -99,6 +165,7 @@ Deno.serve(async (req: Request) => {
 
     if (notifError || !notification) {
       console.error("[crm-push] Notification fetch error:", notifError);
+      await updateDelivery("failed", "Notification not found");
       return new Response(
         JSON.stringify({ error: "Notification not found" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -116,6 +183,7 @@ Deno.serve(async (req: Request) => {
     }
 
     if (!tokens || tokens.length === 0) {
+      await updateDelivery("skipped", "No registered push tokens");
       return new Response(
         JSON.stringify({ success: true, sent: 0, reason: "no_push_tokens" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -239,6 +307,7 @@ Deno.serve(async (req: Request) => {
     if (!response.ok) {
       const errText = await response.text();
       console.error(`[crm-push] Expo API error: ${response.status} - ${errText}`);
+      await updateDelivery("failed", `Expo API error: ${response.status}`);
       return new Response(
         JSON.stringify({ error: `Expo API error: ${response.status}` }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -266,6 +335,12 @@ Deno.serve(async (req: Request) => {
     // Remove invalid tokens
     if (invalidTokens.length > 0) {
       await supabase.from("push_tokens").delete().in("token", invalidTokens);
+    }
+
+    if (sent > 0) {
+      await updateDelivery("sent");
+    } else {
+      await updateDelivery("failed", "Expo did not accept any push ticket");
     }
 
     return new Response(

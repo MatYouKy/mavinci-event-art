@@ -257,16 +257,26 @@ export default function NotificationsScreen() {
       return;
     }
 
-    if (entityType === 'contact_messages' && entityId) {
-      navigation.navigate('ContactMessageDetail', { messageId: entityId });
+    // Prefer the explicit URL discriminator for older notifications that may
+    // have an incorrect related_entity_type.
+    const receivedEmailUrlMatch = notification.action_url?.match(
+      /\/crm\/messages\/([0-9a-f-]{36})\?[^#]*type=received(?:&|$)/i,
+    );
+    if (receivedEmailUrlMatch?.[1]) {
+      navigation.navigate('EmailMessageDetail', { messageId: receivedEmailUrlMatch[1] });
       return;
     }
 
     const contactUrlMatch = notification.action_url?.match(
-      /\/crm\/messages\/([0-9a-f-]{36})\?[^#]*type=contact_form/i,
+      /\/crm\/messages\/([0-9a-f-]{36})\?[^#]*type=contact_form(?:&|$)/i,
     );
     if (contactUrlMatch?.[1]) {
       navigation.navigate('ContactMessageDetail', { messageId: contactUrlMatch[1] });
+      return;
+    }
+
+    if (entityType === 'contact_messages' && entityId) {
+      navigation.navigate('ContactMessageDetail', { messageId: entityId });
       return;
     }
 

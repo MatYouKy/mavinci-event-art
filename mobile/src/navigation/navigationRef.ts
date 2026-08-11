@@ -163,6 +163,24 @@ export async function routeNotification(d: NotificationTargetData): Promise<{ me
 
   const url = target.action_url ?? '';
 
+  // The explicit message type in the URL is more reliable for legacy
+  // notifications whose related_entity_type was saved incorrectly.
+  const receivedEmailUrlMatch = url.match(
+    /\/crm\/messages\/([0-9a-f-]{36})\?[^#]*type=received(?:&|$)/i,
+  );
+  if (receivedEmailUrlMatch?.[1]) {
+    navigateToEmailMessage(receivedEmailUrlMatch[1]);
+    return { meetingId: null };
+  }
+
+  const contactUrlMatch = url.match(
+    /\/crm\/messages\/([0-9a-f-]{36})\?[^#]*type=contact_form(?:&|$)/i,
+  );
+  if (contactUrlMatch?.[1]) {
+    navigateToContactMessage(contactUrlMatch[1]);
+    return { meetingId: null };
+  }
+
   if (target.inbound_event_id) {
     navigateToInboundEvent(target.inbound_event_id);
     return { meetingId: null };
@@ -170,12 +188,6 @@ export async function routeNotification(d: NotificationTargetData): Promise<{ me
 
   if (target.entity_type === 'contact_messages' && target.entity_id) {
     navigateToContactMessage(target.entity_id);
-    return { meetingId: null };
-  }
-
-  const contactUrlMatch = url.match(/\/crm\/messages\/([0-9a-f-]{36})\?[^#]*type=contact_form/i);
-  if (contactUrlMatch?.[1]) {
-    navigateToContactMessage(contactUrlMatch[1]);
     return { meetingId: null };
   }
 

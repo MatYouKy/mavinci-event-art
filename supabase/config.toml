@@ -1,0 +1,4 @@
+project_id = "mavinci-event-art"
+
+[functions.send-crm-notification-push]
+verify_jwt = false

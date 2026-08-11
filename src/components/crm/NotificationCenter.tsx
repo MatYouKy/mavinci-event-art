@@ -142,7 +142,7 @@ export default function NotificationCenter({
   initialNotifications: Notification[];
 }) {
   const router = useRouter();
-  const { isAdmin } = useCurrentEmployee();
+  const { isAdmin, sessionUserId } = useCurrentEmployee();
   const { showSnackbar } = useSnackbar();
   const [notifications, setNotifications] = useState<Notification[]>(initialNotifications);
   const [unreadCount, setUnreadCount] = useState(
@@ -201,17 +201,25 @@ export default function NotificationCenter({
   }, []);
 
   useEffect(() => {
+    if (!sessionUserId) return;
+
     fetchNotifications();
     loadUserPreferences();
 
+    // More than one responsive shell can briefly mount during hydration or a
+    // breakpoint change. Every effect instance needs its own Realtime topic;
+    // otherwise Supabase may return an already subscribed channel.
+    const channelSuffix = `${sessionUserId}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
     const recipientsChannel = supabase
-      .channel('notification-recipients-changes')
+      .channel(`notification-recipients-changes-${channelSuffix}`)
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: 'notification_recipients',
+          filter: `user_id=eq.${sessionUserId}`,
         },
         (payload) => {
           const newRow = payload.new as any;
@@ -265,6 +273,7 @@ export default function NotificationCenter({
           event: 'UPDATE',
           schema: 'public',
           table: 'notification_recipients',
+          filter: `user_id=eq.${sessionUserId}`,
         },
         (payload) => {
           fetchNotifications();
@@ -276,6 +285,7 @@ export default function NotificationCenter({
           event: 'DELETE',
           schema: 'public',
           table: 'notification_recipients',
+          filter: `user_id=eq.${sessionUserId}`,
         },
         (payload) => {
           fetchNotifications();
@@ -284,7 +294,7 @@ export default function NotificationCenter({
       .subscribe();
 
     const notificationsChannel = supabase
-      .channel('notifications-changes')
+      .channel(`notifications-changes-${channelSuffix}`)
       .on(
         'postgres_changes',
         {
@@ -302,7 +312,7 @@ export default function NotificationCenter({
       supabase.removeChannel(recipientsChannel);
       supabase.removeChannel(notificationsChannel);
     };
-  }, []);
+  }, [sessionUserId, showBanner]);
 
   useEffect(() => {
     soundEnabledRef.current = soundEnabled;

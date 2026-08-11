@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { RouteProp, useRoute } from '@react-navigation/native';
+import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { supabase } from '../lib/supabase';
 import { colors, spacing, typography, borderRadius } from '../theme';
@@ -49,6 +49,7 @@ function htmlToText(value: string | null) {
 
 export default function EmailMessageDetailScreen() {
   const route = useRoute<EmailDetailRoute>();
+  const navigation = useNavigation<any>();
   const [message, setMessage] = useState<EmailMessage | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -62,9 +63,25 @@ export default function EmailMessageDetailScreen() {
         .from('received_emails')
         .select('id, from_address, to_address, subject, body_text, body_html, received_date, is_read')
         .eq('id', route.params.messageId)
-        .single();
+        .maybeSingle();
 
       if (fetchError) throw fetchError;
+      if (!data) {
+        const { data: contactMessage, error: contactLookupError } = await supabase
+          .from('contact_messages')
+          .select('id')
+          .eq('id', route.params.messageId)
+          .maybeSingle();
+
+        if (contactLookupError) throw contactLookupError;
+        if (contactMessage) {
+          navigation.replace('ContactMessageDetail', { messageId: contactMessage.id });
+          return;
+        }
+
+        setError('Nie znaleziono wiadomości lub nie masz do niej dostępu.');
+        return;
+      }
       setMessage(data);
 
       if (!data.is_read) {
@@ -81,7 +98,7 @@ export default function EmailMessageDetailScreen() {
     } finally {
       setLoading(false);
     }
-  }, [route.params.messageId]);
+  }, [navigation, route.params.messageId]);
 
   useEffect(() => {
     fetchMessage();

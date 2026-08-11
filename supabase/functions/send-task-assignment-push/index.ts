@@ -86,65 +86,58 @@ Deno.serve(async (req: Request) => {
       return json({ success: true, sent: 0, reason: "self_assignment" });
     }
 
-    const { data: tokens, error: tokensError } = await supabase
-      .from("push_tokens")
-      .select("token")
-      .eq("employee_id", assignment.employee_id);
+    const { data: notifications, error: notificationsError } = await supabase
+      .from("notifications")
+      .select("id")
+      .eq("related_entity_type", "task")
+      .eq("related_entity_id", task.id)
+      .contains("metadata", { kind: "task_assignment", task_assignment_id: assignment.id })
+      .order("created_at", { ascending: false })
+      .limit(1);
 
-    if (tokensError) throw new Error(`Push token query failed: ${tokensError.message}`);
-    if (!tokens?.length) return json({ success: true, sent: 0, reason: "no_push_tokens" });
+    if (notificationsError) {
+      throw new Error(`Notification query failed: ${notificationsError.message}`);
+    }
 
-    const actorName =
-      [caller.name, caller.surname].filter(Boolean).join(" ").trim() ||
-      caller.nickname?.trim() ||
-      "Użytkownik";
-    const body = `${actorName} przypisał(a) Cię do zadania „${task.title}”.`;
+    const notificationId = notifications?.[0]?.id;
+    if (!notificationId) return json({ error: "Assignment notification not found" }, 404);
 
-    const messages = tokens.map(({ token }: { token: string }) => ({
-      to: token,
-      sound: "default",
-      title: "Przypisano Cię do zadania",
-      body,
-      data: {
-        type: "task_assignment",
-        task_id: task.id,
-        entity_type: "task",
-        entity_id: task.id,
-        category: "tasks",
-        action_url: `/crm/tasks/${task.id}`,
-        assignment_id: assignment.id,
+    const { data: recipient, error: recipientError } = await supabase
+      .from("notification_recipients")
+      .select("id, notification_id, user_id, is_read")
+      .eq("notification_id", notificationId)
+      .eq("user_id", assignment.employee_id)
+      .maybeSingle();
+
+    if (recipientError || !recipient) {
+      return json({ error: "Assignment notification recipient not found" }, 404);
+    }
+
+    const pushResponse = await fetch(
+      `${supabaseUrl}/functions/v1/send-crm-notification-push`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${serviceRoleKey}`,
+          apikey: serviceRoleKey,
+        },
+        body: JSON.stringify({
+          type: "INSERT",
+          table: "notification_recipients",
+          schema: "public",
+          record: recipient,
+          old_record: null,
+        }),
       },
-      priority: "high",
-      channelId: "default",
-    }));
+    );
 
-    const expoResponse = await fetch("https://exp.host/--/api/v2/push/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify(messages),
-    });
-
-    if (!expoResponse.ok) {
-      throw new Error(`Expo API returned ${expoResponse.status}`);
+    const result = await pushResponse.json();
+    if (!pushResponse.ok) {
+      throw new Error(result?.error || `CRM push returned ${pushResponse.status}`);
     }
 
-    const expoResult = await expoResponse.json();
-    let sent = 0;
-    const invalidTokens: string[] = [];
-
-    for (let index = 0; index < (expoResult.data?.length ?? 0); index += 1) {
-      const ticket = expoResult.data[index];
-      if (ticket.status === "ok") sent += 1;
-      if (ticket.status === "error" && ticket.details?.error === "DeviceNotRegistered") {
-        invalidTokens.push(messages[index].to);
-      }
-    }
-
-    if (invalidTokens.length) {
-      await supabase.from("push_tokens").delete().in("token", invalidTokens);
-    }
-
-    return json({ success: true, sent, total_tokens: tokens.length });
+    return json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("[task-assignment-push]", message);

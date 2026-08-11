@@ -70,6 +70,10 @@ interface SuggestedTimes {
   explanation: string;
 }
 
+// `available` is the current fleet status. `active` is kept for vehicles that
+// still use the legacy value from before the status migration.
+const ASSIGNABLE_VEHICLE_STATUSES = ['available', 'active'];
+
 export default function AddEventVehicleModal({
   eventId,
   eventDate,
@@ -251,7 +255,7 @@ export default function AddEventVehicleModal({
         .select(
           'id, name, registration_number, brand, model, fuel_type, max_load_kg, category, vehicle_type, has_tow_hitch',
         )
-        .eq('status', 'active')
+        .in('status', ASSIGNABLE_VEHICLE_STATUSES)
         .eq('vehicle_type', 'car')
         .order('name');
 
@@ -271,7 +275,7 @@ export default function AddEventVehicleModal({
         .select(
           'id, name, registration_number, brand, model, fuel_type, max_load_kg, category, vehicle_type',
         )
-        .eq('status', 'active')
+        .in('status', ASSIGNABLE_VEHICLE_STATUSES)
         .eq('vehicle_type', 'trailer')
         .order('name');
 
