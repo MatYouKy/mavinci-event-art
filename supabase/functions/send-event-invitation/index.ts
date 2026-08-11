@@ -7,6 +7,14 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+const DEFAULT_EMAIL_LOGO_URL =
+  "https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/company-logos/brandbook/d4474f90-5e61-4ba4-928e-c25c0f0659b5/1779367661905.png";
+
+const toPublicCompanyLogoUrl = (value: string, supabaseUrl: string): string => {
+  if (/^https?:\/\//i.test(value) || value.startsWith("data:")) return value;
+  return `${supabaseUrl}/storage/v1/object/public/company-logos/${value.replace(/^\/+/, "")}`;
+};
+
 interface EventInvitationRequest {
   assignmentId: string;
 }
@@ -60,6 +68,7 @@ Deno.serve(async (req: Request) => {
           event_end_date,
           location,
           description,
+          my_company_id,
           event_categories(name, color)
         )
       `)
@@ -105,6 +114,22 @@ Deno.serve(async (req: Request) => {
 
     const employee = assignment.employees as any;
     const event = assignment.events as any;
+
+    let emailLogoUrl = DEFAULT_EMAIL_LOGO_URL;
+    if (event?.my_company_id) {
+      const { data: defaultBrandbookLogo } = await supabase
+        .from("company_brandbook_logos")
+        .select("url")
+        .eq("company_id", event.my_company_id)
+        .eq("is_default", true)
+        .order("order_index", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (defaultBrandbookLogo?.url) {
+        emailLogoUrl = toPublicCompanyLogoUrl(defaultBrandbookLogo.url, supabaseUrl);
+      }
+    }
 
     console.log('[send-event-invitation] Employee email:', employee?.email);
     console.log('[send-event-invitation] Employee personal_email:', employee?.personal_email);
@@ -562,7 +587,7 @@ Deno.serve(async (req: Request) => {
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
                 <tr>
                   <td class="header-logo">
-                    <img src="https://mavinci.pl/logo%20mavinci.svg" alt="Mavinci CRM" width="100" height="100">
+                    <img src="${emailLogoUrl}" alt="Mavinci CRM" width="120" style="display:block; width:120px; max-width:100%; height:auto; margin:0 auto;">
                   </td>
                 </tr>
                 <tr>

@@ -5,6 +5,9 @@ import { supabase } from '@/lib/supabase/browser';
 import { X, Send, Eye, Code, RefreshCw, Paperclip, Trash2 } from 'lucide-react';
 import { generateEmailSignature } from './EmailSignatureGenerator';
 
+const DEFAULT_EMAIL_LOGO_URL =
+  'https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/company-logos/brandbook/d4474f90-5e61-4ba4-928e-c25c0f0659b5/1779367661905.png';
+
 interface ComposeEmailModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -114,10 +117,8 @@ export default function ComposeEmailModal({
     const contentHtml = body.replace(/\n/g, '<br>');
 
     if (template && template.body_template) {
-      const logoUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/site-images/logo-mavinci.svg`;
-
       let html = template.body_template
-        .replace('{{LOGO_URL}}', logoUrl || '')
+        .replace('{{LOGO_URL}}', DEFAULT_EMAIL_LOGO_URL)
         .replace('{{CONTENT}}', contentHtml)
         .replace('{{SIGNATURE}}', signatureHtml);
 

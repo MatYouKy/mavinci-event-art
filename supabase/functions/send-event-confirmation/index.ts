@@ -8,6 +8,15 @@ const corsHeaders = {
     "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+const DEFAULT_COMPANY_ID = "d4474f90-5e61-4ba4-928e-c25c0f0659b5";
+const DEFAULT_EMAIL_LOGO_URL =
+  "https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/company-logos/brandbook/d4474f90-5e61-4ba4-928e-c25c0f0659b5/1779367661905.png";
+
+const toPublicCompanyLogoUrl = (value: string, supabaseUrl: string): string => {
+  if (/^https?:\/\//i.test(value) || value.startsWith("data:")) return value;
+  return `${supabaseUrl}/storage/v1/object/public/company-logos/${value.replace(/^\/+/, "")}`;
+};
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -56,6 +65,7 @@ Deno.serve(async (req: Request) => {
       categoryRes,
       offerRes,
       companyRes,
+      brandbookLogoRes,
     ] = await Promise.all([
       event.organization_id
         ? supabase
@@ -112,6 +122,16 @@ Deno.serve(async (req: Request) => {
             .eq("id", event.my_company_id)
             .maybeSingle()
         : Promise.resolve({ data: null }),
+      event.my_company_id
+        ? supabase
+            .from("company_brandbook_logos")
+            .select("url")
+            .eq("company_id", event.my_company_id)
+            .eq("is_default", true)
+            .order("order_index", { ascending: true })
+            .limit(1)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
     ]);
 
     const organization = organizationRes.data;
@@ -121,6 +141,7 @@ Deno.serve(async (req: Request) => {
     const category = categoryRes.data;
     const offer = offerRes.data;
     const company = companyRes.data;
+    const brandbookLogo = brandbookLogoRes.data;
 
     const recipientEmail =
       contact?.email || organization?.email;
@@ -201,8 +222,11 @@ Deno.serve(async (req: Request) => {
       : [];
 
     const companyName = company?.legal_name || "Mavinci";
-    const companyLogo = company?.logo_url
-      ? `${supabaseUrl}/storage/v1/object/public/company-logos/${company.logo_url}`
+    const rawCompanyLogo =
+      brandbookLogo?.url ||
+      (event.my_company_id === DEFAULT_COMPANY_ID ? DEFAULT_EMAIL_LOGO_URL : company?.logo_url);
+    const companyLogo = rawCompanyLogo
+      ? toPublicCompanyLogoUrl(rawCompanyLogo, supabaseUrl)
       : null;
 
     const emailBody = buildConfirmationEmailHtml({

@@ -165,7 +165,7 @@ export default function MessageDetailPage({ params }: PageProps) {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0f1119]">
+      <div className="flex h-full min-h-0 items-center justify-center bg-[#0f1119]">
         <div className="text-center">
           <Mail className="mx-auto mb-4 h-16 w-16 animate-pulse text-[#e5e4e2]/20" />
           <p className="text-[#e5e4e2]/60">Ładowanie wiadomości...</p>
@@ -176,7 +176,7 @@ export default function MessageDetailPage({ params }: PageProps) {
 
   if (error || !message) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#0f1119]">
+      <div className="flex h-full min-h-0 items-center justify-center bg-[#0f1119]">
         <div className="text-center">
           <Mail className="mx-auto mb-4 h-16 w-16 text-[#e5e4e2]/20" />
           <h2 className="mb-2 text-2xl font-bold text-white">Nie znaleziono wiadomości</h2>
@@ -210,10 +210,10 @@ export default function MessageDetailPage({ params }: PageProps) {
   const typeInfo = getTypeLabel(message.type);
 
   return (
-    <div className="min-h-screen bg-[#0f1119]">
-      <div className="mx-auto max-w-5xl p-3 sm:p-6">
-        <div className="rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl">
-          <div className="border-b border-[#d3bb73]/20 p-3 sm:p-6">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#0f1119]">
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col p-3 sm:p-6">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl">
+          <div className="shrink-0 border-b border-[#d3bb73]/20 p-3 sm:p-6">
             <div className="mb-4 flex items-center justify-between sm:mb-6">
               <button
                 onClick={() => router.push('/crm/messages')}
@@ -310,7 +310,7 @@ export default function MessageDetailPage({ params }: PageProps) {
             </div>
           </div>
 
-          <div className="p-3 sm:p-6">
+          <div className="min-h-0 flex-1 touch-pan-y overflow-x-hidden overflow-y-auto overscroll-contain p-3 sm:p-6">
             <div className="prose prose-invert prose-sm sm:prose-base max-w-none text-white">
               {message.bodyHtml && message.bodyHtml.trim() ? (
                 <div
