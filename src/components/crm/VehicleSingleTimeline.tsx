@@ -4,6 +4,11 @@ import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import {
+  getClippedTimelinePosition,
+  getFleetTimelineScale,
+  isWithinBounds,
+} from '@/lib/timeline';
+import {
   ChevronLeft,
   ChevronRight,
   ZoomIn,
@@ -43,13 +48,16 @@ export default function VehicleSingleTimeline({ vehicleId }: VehicleSingleTimeli
   const [isLoading, setIsLoading] = useState(true);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [zoomLevel, setZoomLevel] = useState<ZoomLevel>('week');
+  const timelineScale = useMemo(
+    () => getFleetTimelineScale(currentDate, zoomLevel),
+    [currentDate, zoomLevel],
+  );
 
   const fetchTimeline = async () => {
     try {
       setIsLoading(true);
 
-      const startDate = getStartDate();
-      const endDate = getEndDate();
+      const { start: startDate, end: endDate } = timelineScale;
 
       const { data, error } = await supabase.rpc('get_vehicle_timeline', {
         p_vehicle_id: vehicleId,
@@ -59,7 +67,21 @@ export default function VehicleSingleTimeline({ vehicleId }: VehicleSingleTimeli
 
       if (error) throw error;
 
-      setTimeline(data || []);
+      const entries = (data || []) as VehicleTimelineEntry[];
+      const eventIds = entries
+        .filter((entry) => entry.type === 'event')
+        .map((entry) => entry.related_id);
+      const { data: eventBounds, error: boundsError } = eventIds.length
+        ? await supabase.from('event_timeline_bounds').select('event_id, timeline_start, timeline_end').in('event_id', eventIds)
+        : { data: [], error: null };
+      if (boundsError) throw boundsError;
+      const boundsByEvent = new Map(
+        (eventBounds || []).map((bounds: any) => [bounds.event_id, bounds]),
+      );
+      setTimeline(entries.map((entry) => {
+        const bounds: any = entry.type === 'event' ? boundsByEvent.get(entry.related_id) : null;
+        return bounds ? { ...entry, start_date: bounds.timeline_start, end_date: bounds.timeline_end } : entry;
+      }));
     } catch (error) {
       console.error('Error fetching timeline:', error);
       showSnackbar('Błąd podczas ładowania timeline', 'error');
@@ -70,61 +92,9 @@ export default function VehicleSingleTimeline({ vehicleId }: VehicleSingleTimeli
 
   useEffect(() => {
     fetchTimeline();
-  }, [vehicleId, currentDate, zoomLevel]);
+  }, [vehicleId, timelineScale]);
 
-  const getStartDate = () => {
-    const date = new Date(currentDate);
-    if (zoomLevel === 'day') {
-      date.setDate(date.getDate() - 3);
-    } else if (zoomLevel === 'week') {
-      date.setDate(date.getDate() - 14);
-    } else {
-      date.setMonth(date.getMonth() - 1);
-    }
-    return date;
-  };
-
-  const getEndDate = () => {
-    const date = new Date(currentDate);
-    if (zoomLevel === 'day') {
-      date.setDate(date.getDate() + 4);
-    } else if (zoomLevel === 'week') {
-      date.setDate(date.getDate() + 14);
-    } else {
-      date.setMonth(date.getMonth() + 2);
-    }
-    return date;
-  };
-
-  const getDaysInView = () => {
-    if (zoomLevel === 'day') return 7;
-    if (zoomLevel === 'week') return 28;
-    return 90;
-  };
-
-  const generateTimelineColumns = () => {
-    const days = getDaysInView();
-    const startDate = getStartDate();
-    const columns = [];
-
-    for (let i = 0; i < days; i++) {
-      const date = new Date(startDate);
-      date.setDate(date.getDate() + i);
-      columns.push(date);
-    }
-
-    return columns;
-  };
-
-  const columns = useMemo(() => generateTimelineColumns(), [currentDate, zoomLevel]);
-
-  const getColumnWidth = () => {
-    if (zoomLevel === 'day') return 120;
-    if (zoomLevel === 'week') return 60;
-    return 30;
-  };
-
-  const columnWidth = getColumnWidth();
+  const { columns, columnWidth, totalWidth } = timelineScale;
 
   const navigatePrevious = () => {
     const newDate = new Date(currentDate);
@@ -154,21 +124,14 @@ export default function VehicleSingleTimeline({ vehicleId }: VehicleSingleTimeli
     setCurrentDate(new Date());
   };
 
-  const calculatePosition = (startDate: string) => {
-    const start = new Date(startDate);
-    const timelineStart = getStartDate();
-    const diffTime = start.getTime() - timelineStart.getTime();
-    const diffDays = diffTime / (1000 * 60 * 60 * 24);
-    return Math.max(0, diffDays * columnWidth);
-  };
-
-  const calculateWidth = (startDate: string, endDate: string) => {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    const diffTime = end.getTime() - start.getTime();
-    const diffDays = diffTime / (1000 * 60 * 60 * 24);
-    return Math.max(columnWidth * 0.8, diffDays * columnWidth);
-  };
+  const getEntryPosition = (startDate: string, endDate: string) =>
+    getClippedTimelinePosition(
+      new Date(startDate),
+      new Date(endDate),
+      timelineScale,
+      totalWidth,
+      columnWidth * 0.25,
+    );
 
   const isToday = (date: Date) => {
     const today = new Date();
@@ -299,7 +262,13 @@ export default function VehicleSingleTimeline({ vehicleId }: VehicleSingleTimeli
           <div className="relative min-h-[200px]">
             {/* Today indicator */}
             {(() => {
-              const todayPosition = calculatePosition(new Date().toISOString());
+              if (!isWithinBounds(new Date(), timelineScale)) return null;
+              const todayPosition = getClippedTimelinePosition(
+                new Date(),
+                new Date(Date.now() + 1),
+                timelineScale,
+                totalWidth,
+              )?.offset;
               return (
                 <div
                   className="pointer-events-none absolute top-0 z-20 h-full w-0.5 bg-red-500"
@@ -331,8 +300,8 @@ export default function VehicleSingleTimeline({ vehicleId }: VehicleSingleTimeli
               ) : (
                 <>
                   {timeline.map((entry, index) => {
-                    const left = calculatePosition(entry.start_date);
-                    const width = calculateWidth(entry.start_date, entry.end_date);
+                    const position = getEntryPosition(entry.start_date, entry.end_date);
+                    if (!position) return null;
                     const top = 20 + (index % 3) * 60;
 
                     return (
@@ -340,9 +309,9 @@ export default function VehicleSingleTimeline({ vehicleId }: VehicleSingleTimeli
                         key={entry.id}
                         className="absolute cursor-pointer overflow-hidden rounded px-2 py-2 text-xs text-white transition-all hover:z-10 hover:shadow-lg"
                         style={{
-                          left: `${left}px`,
+                          left: `${position.offset}px`,
                           top: `${top}px`,
-                          width: `${width}px`,
+                          width: `${position.size}px`,
                           backgroundColor: entry.color,
                         }}
                         onClick={() => handleEntryClick(entry)}
@@ -358,14 +327,14 @@ export default function VehicleSingleTimeline({ vehicleId }: VehicleSingleTimeli
                             <span className="truncate">{entry.title}</span>
                           </div>
 
-                          {entry.location && width > 100 && (
+                          {entry.location && position.size > 100 && (
                             <div className="flex items-center gap-1 text-[10px] opacity-80">
                               <MapPin className="h-2.5 w-2.5 flex-shrink-0" />
                               <span className="truncate">{entry.location}</span>
                             </div>
                           )}
 
-                          {entry.driver_name && width > 150 && (
+                          {entry.driver_name && position.size > 150 && (
                             <div className="flex items-center gap-1 text-[10px] opacity-80">
                               <User className="h-2.5 w-2.5 flex-shrink-0" />
                               <span className="truncate">{entry.driver_name}</span>

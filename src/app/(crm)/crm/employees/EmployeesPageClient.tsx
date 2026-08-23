@@ -36,9 +36,9 @@ export default function EmployeesPageClient({
   const { canCreateInModule, canViewModule, employee: currentEmployee } = useCurrentEmployee();
   const canAddEmployee = canCreateInModule('employees');
   const isAdmin =
+    currentEmployee?.role === 'admin' ||
     currentEmployee?.access_level === 'admin' ||
-    currentEmployee?.permissions?.includes('admin') ||
-    currentEmployee?.permissions?.includes('employees_manage');
+    currentEmployee?.permissions?.includes('admin');
 
   const canViewEmployees = canViewModule('employees');
 
@@ -106,8 +106,8 @@ export default function EmployeesPageClient({
     if (!isAdmin || deletingEmployeeId) return;
   
     const confirmed = await showConfirm(
-      `Czy na pewno chcesz zarchiwizować pracownika:\n\n${employee.name} ${employee.surname}?\n\nPracownik zniknie z list wyboru, ale pozostanie w historii kosztów, zadań i dokumentów.`,
-      'Archiwizuj pracownika',
+      `Czy na pewno chcesz trwale usunąć pracownika:\n\n${employee.name} ${employee.surname}?\n\nTej operacji nie można cofnąć. Autorstwo wydarzeń i wymaganych dokumentów przejmie Twoje konto administratora, a przypisania tego pracownika zostaną usunięte.`,
+      'Usuń trwale',
     );
   
     if (!confirmed) return;
@@ -115,7 +115,7 @@ export default function EmployeesPageClient({
     try {
       setDeletingEmployeeId(employee.id);
   
-      const { error } = await supabase.rpc('archive_employee', {
+      const { error } = await supabase.rpc('delete_employee_completely', {
         p_employee_id: employee.id,
       });
   
@@ -123,12 +123,12 @@ export default function EmployeesPageClient({
   
       router.refresh();
     } catch (err: unknown) {
-      console.error('Error archiving employee:', err);
+      console.error('Error deleting employee:', err);
   
       alert(
         err instanceof Error
           ? err.message
-          : 'Nie udało się zarchiwizować pracownika.',
+          : 'Nie udało się trwale usunąć pracownika.',
       );
     } finally {
       setDeletingEmployeeId(null);

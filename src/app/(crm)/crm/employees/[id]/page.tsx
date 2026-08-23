@@ -305,14 +305,14 @@ export default function EmployeeDetailPage() {
   const handleDeleteEmployee = async () => {
     if (!employee || isDeleting) return;
 
-    if (canEdit !== true) {
-      showSnackbar?.('Nie masz uprawnień do archiwizowania pracowników.', 'error');
+    if (isAdmin !== true) {
+      showSnackbar?.('Nie masz uprawnień do trwałego usuwania pracowników.', 'error');
       return;
     }
 
     const confirmed = await showConfirm(
-      `Czy na pewno chcesz zarchiwizować pracownika:\n\n${employee.name} ${employee.surname}?\n\nPracownik zniknie z aktywnych list, ale pozostanie w historii kosztów, zadań i dokumentów.`,
-      'Archiwizuj pracownika',
+      `Czy na pewno chcesz trwale usunąć pracownika:\n\n${employee.name} ${employee.surname}?\n\nTej operacji nie można cofnąć. Autorstwo wydarzeń i wymaganych dokumentów przejmie Twoje konto administratora, a przypisania tego pracownika zostaną usunięte.`,
+      'Usuń trwale',
     );
 
     if (!confirmed) return;
@@ -320,23 +320,23 @@ export default function EmployeeDetailPage() {
     try {
       setIsDeleting(true);
 
-      const { error } = await supabase.rpc('archive_employee', {
+      const { error } = await supabase.rpc('delete_employee_completely', {
         p_employee_id: employee.id,
       });
 
       if (error) {
-        console.error('RPC archive_employee error:', error);
+        console.error('RPC delete_employee_completely error:', error);
         throw error;
       }
 
-      showSnackbar?.('Pracownik został zarchiwizowany.', 'success');
+      showSnackbar?.('Pracownik został trwale usunięty.', 'success');
 
       router.push('/crm/employees');
     } catch (err: unknown) {
-      console.error('Error archiving employee:', err);
+      console.error('Error deleting employee:', err);
 
       const message =
-        err instanceof Error ? err.message : 'Nie udało się zarchiwizować pracownika.';
+        err instanceof Error ? err.message : 'Nie udało się trwale usunąć pracownika.';
 
       showSnackbar?.(message, 'error');
     } finally {
@@ -380,7 +380,7 @@ export default function EmployeeDetailPage() {
           <Trash2 className="h-4 w-4" />
         ),
         variant: 'danger',
-        show: canEdit === true && !isOwnProfile,
+        show: isAdmin === true && !isOwnProfile,
         disabled: isDeleting,
       },
       {
@@ -394,7 +394,7 @@ export default function EmployeeDetailPage() {
         show: true,
       },
     ];
-  }, [canEdit, isOwnProfile, isEditing, handleSave, handleDeleteEmployee, employee, isDeleting]);
+  }, [canEdit, isAdmin, isOwnProfile, isEditing, handleSave, handleDeleteEmployee, employee, isDeleting]);
 
   const handleSaveImage = async (
     imageType: 'avatar' | 'background',

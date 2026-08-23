@@ -2,22 +2,51 @@
 'use client';
 
 import Link from 'next/link';
-import { Calendar, Users, Clock, CheckCircle } from 'lucide-react';
+import {
+  AlertTriangle,
+  Calendar,
+  CheckCircle,
+  Clock,
+  FileText,
+  Inbox,
+  Package,
+  Settings2,
+  Users,
+  WalletCards,
+} from 'lucide-react';
 import { canView, canCreate, isAdmin, type Employee } from '@/lib/permissions';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
-import { RecentActivityDTO } from '@/lib/CRM/dashboard/dashboardData';
+import type {
+  DashboardAnalytics,
+  DashboardMonth,
+  RecentActivityDTO,
+} from '@/lib/CRM/dashboard/dashboardData';
+import {
+  DEFAULT_DASHBOARD_RANGE,
+  isDashboardWidgetEnabled,
+  type DashboardPreferences,
+  type DashboardWidgetId,
+} from '@/lib/CRM/dashboard/dashboardConfig';
+import {
+  formatDashboardMoney,
+  OperationalAttention,
+  SalesFunnel,
+  TrendChart,
+} from '@/components/crm/dashboard/DashboardCharts';
 import { IEmployee } from './employees/type';
 import { useRouter } from 'next/navigation';
 
 interface DashboardStats {
   totalEvents: number;
   upcomingEvents: number;
+  openInquiries: number;
   activeOffers: number;
   totalClients: number;
   activeEmployees: number;
   equipmentItems: number;
   pendingTasks: number;
   revenue: number;
+  overdueInvoices: number;
 }
 
 // export interface RecentActivity {
@@ -32,12 +61,29 @@ interface DashboardStats {
 export default function CRMDashboard({
   stats,
   recentActivity,
+  analytics,
+  dashboardPreferences,
 }: {
   stats: DashboardStats;
   recentActivity: RecentActivityDTO[];
+  analytics: DashboardAnalytics;
+  dashboardPreferences: DashboardPreferences;
 }) {
   const { employee, loading } = useCurrentEmployee();
   const router = useRouter();
+  const dashboardRange = dashboardPreferences.range ?? DEFAULT_DASHBOARD_RANGE;
+  const visibleMonths = dashboardRange === '12m' ? analytics.months : analytics.months.slice(-6);
+  const widgetEnabled = (widgetId: DashboardWidgetId) =>
+    isDashboardWidgetEnabled(dashboardPreferences, widgetId);
+
+  const getTrend = (
+    key: keyof Pick<DashboardMonth, 'inquiries' | 'offers' | 'events' | 'revenue'>,
+  ) => {
+    const current = Number(visibleMonths.at(-1)?.[key] ?? 0);
+    const previous = Number(visibleMonths.at(-2)?.[key] ?? 0);
+    if (previous === 0) return current === 0 ? 0 : 100;
+    return Math.round(((current - previous) / previous) * 100);
+  };
   const getTimeAgo = (dateString: string): string => {
     const date = new Date(dateString);
     const now = new Date();
@@ -62,6 +108,26 @@ export default function CRMDashboard({
 
   const allStatCards = [
     {
+      name: 'Zapytania do obsługi',
+      value: stats.openInquiries,
+      icon: Inbox,
+      color: 'text-amber-300',
+      bgColor: 'bg-amber-400/10',
+      href: '/crm/inquiries',
+      module: 'tasks',
+      trendKey: 'inquiries' as const,
+    },
+    {
+      name: 'Aktywne oferty',
+      value: stats.activeOffers,
+      icon: FileText,
+      color: 'text-emerald-400',
+      bgColor: 'bg-emerald-400/10',
+      href: '/crm/offers',
+      module: 'offers',
+      trendKey: 'offers' as const,
+    },
+    {
       name: 'Nadchodzące eventy',
       value: stats.upcomingEvents,
       total: stats.totalEvents,
@@ -70,6 +136,16 @@ export default function CRMDashboard({
       bgColor: 'bg-blue-400/10',
       href: '/crm/events',
       module: 'events',
+      trendKey: 'events' as const,
+    },
+    {
+      name: 'Faktury po terminie',
+      value: stats.overdueInvoices,
+      icon: AlertTriangle,
+      color: 'text-red-400',
+      bgColor: 'bg-red-400/10',
+      href: '/crm/invoices',
+      module: 'invoices',
     },
     {
       name: 'Klienci',
@@ -97,6 +173,29 @@ export default function CRMDashboard({
       bgColor: 'bg-red-400/10',
       href: '/crm/tasks',
       module: 'tasks',
+    },
+    {
+      name: 'Jednostki sprzętu',
+      value: stats.equipmentItems,
+      icon: Package,
+      color: 'text-cyan-400',
+      bgColor: 'bg-cyan-400/10',
+      href: '/crm/equipment',
+      module: 'equipment',
+    },
+    {
+      name: 'Wpływy z opłaconych faktur',
+      value: stats.revenue,
+      displayValue: `${stats.revenue.toLocaleString('pl-PL', {
+        maximumFractionDigits: 0,
+      })} zł`,
+      helper: `od początku ${new Date().getFullYear()} roku`,
+      icon: WalletCards,
+      color: 'text-[#d3bb73]',
+      bgColor: 'bg-[#d3bb73]/10',
+      href: '/crm/invoices',
+      module: 'invoices',
+      trendKey: 'revenue' as const,
     },
   ];
 
@@ -202,49 +301,110 @@ export default function CRMDashboard({
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-2xl font-light text-[#e5e4e2]">Witaj w systemie CRM</h2>
           <p className="mt-1 text-sm text-[#e5e4e2]/60">
             Przegląd działalności agencji eventowej Mavinci
           </p>
         </div>
-        {canView(employee, 'calendar') && (
+        <div className="flex flex-wrap gap-2">
           <Link
-            href="/crm/calendar"
-            className="rounded-lg bg-[#d3bb73] px-6 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+            href="/crm/settings?tab=dashboard"
+            className="inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-4 py-2 text-sm text-[#e5e4e2]/70 transition-colors hover:border-[#d3bb73]/40 hover:text-[#e5e4e2]"
           >
-            Otwórz kalendarz
+            <Settings2 className="h-4 w-4" />
+            Dostosuj dashboard
           </Link>
-        )}
+          {canView(employee, 'calendar') && (
+            <Link
+              href="/crm/calendar"
+              className="rounded-lg bg-[#d3bb73] px-6 py-2 text-sm font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+            >
+              Otwórz kalendarz
+            </Link>
+          )}
+        </div>
       </div>
 
-      {statCards.length > 0 && (
+      {widgetEnabled('kpi-overview') && statCards.length > 0 && (
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
-          {statCards.map((stat) => (
-            <Link
-              key={stat.name}
-              href={stat.href}
-              className="group rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6 transition-all duration-200 hover:border-[#d3bb73]/30"
-            >
-              <div className="mb-4 flex items-center justify-between">
-                <div className={`${stat.bgColor} rounded-lg p-3`}>
-                  <stat.icon className={`h-6 w-6 ${stat.color}`} />
+          {statCards.map((stat) => {
+            const trend = 'trendKey' in stat && stat.trendKey ? getTrend(stat.trendKey) : null;
+            return (
+              <Link
+                key={stat.name}
+                href={stat.href}
+                className="group rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-5 transition-all duration-200 hover:border-[#d3bb73]/30"
+              >
+                <div className="mb-4 flex items-center justify-between">
+                  <div className={`${stat.bgColor} rounded-lg p-3`}>
+                    <stat.icon className={`h-6 w-6 ${stat.color}`} />
+                  </div>
+                  {trend !== null && (
+                    <span className={`rounded-full px-2 py-1 text-xs ${trend >= 0 ? 'bg-emerald-400/10 text-emerald-400' : 'bg-red-400/10 text-red-400'}`}>
+                      {trend > 0 ? '+' : ''}{trend}%
+                    </span>
+                  )}
                 </div>
-              </div>
-              <div className="space-y-2">
-                <p className="text-sm font-light text-[#e5e4e2]/60">{stat.name}</p>
-                <div className="flex items-baseline gap-2">
-                  <p className="text-3xl font-light text-[#e5e4e2]">{stat.value}</p>
-                  {stat.total && <span className="text-sm text-[#e5e4e2]/40">/ {stat.total}</span>}
+                <div className="space-y-2">
+                  <p className="text-sm font-light text-[#e5e4e2]/60">{stat.name}</p>
+                  <div className="flex items-baseline gap-2">
+                    <p className="text-3xl font-light text-[#e5e4e2]">
+                      {'displayValue' in stat ? stat.displayValue : stat.value}
+                    </p>
+                    {'total' in stat && stat.total && <span className="text-sm text-[#e5e4e2]/40">/ {stat.total}</span>}
+                  </div>
+                  {'helper' in stat && stat.helper && (
+                    <p className="text-xs text-[#e5e4e2]/40">{stat.helper}</p>
+                  )}
+                  {trend !== null && (
+                    <p className="text-[11px] text-[#e5e4e2]/35">względem poprzedniego miesiąca</p>
+                  )}
                 </div>
-              </div>
-            </Link>
-          ))}
+              </Link>
+            );
+          })}
         </div>
       )}
 
+      {(widgetEnabled('sales-trends') || widgetEnabled('sales-funnel')) && (
+        <div className="grid gap-6 lg:grid-cols-3">
+          {widgetEnabled('sales-trends') && (
+            <div className={widgetEnabled('sales-funnel') ? 'lg:col-span-2' : 'lg:col-span-3'}>
+              <TrendChart
+                title="Trend sprzedażowy"
+                description={`Nowe rekordy · zakres ${dashboardRange === '12m' ? '12 miesięcy' : '6 miesięcy'}`}
+                months={visibleMonths}
+                series={[
+                  { key: 'inquiries', label: 'Zapytania', color: '#f59e0b' },
+                  { key: 'offers', label: 'Oferty', color: '#60a5fa' },
+                  { key: 'events', label: 'Wydarzenia', color: '#d3bb73' },
+                ]}
+              />
+            </div>
+          )}
+          {widgetEnabled('sales-funnel') && <SalesFunnel funnel={analytics.funnel} />}
+        </div>
+      )}
+
+      {widgetEnabled('financial-trends') && canView(employee, 'invoices') && (
+        <TrendChart
+          title="Przychód, koszty i marża"
+          description={`Rentowność wydarzeń według terminu realizacji · zakres ${dashboardRange === '12m' ? '12 miesięcy' : '6 miesięcy'}`}
+          months={visibleMonths}
+          series={[
+            { key: 'revenue', label: 'Przychód', color: '#34d399' },
+            { key: 'costs', label: 'Koszty', color: '#f87171' },
+            { key: 'margin', label: 'Marża', color: '#d3bb73' },
+          ]}
+          formatValue={formatDashboardMoney}
+        />
+      )}
+
+      {(widgetEnabled('recent-activity') || widgetEnabled('quick-actions') || widgetEnabled('operational-attention')) && (
       <div className="grid gap-6 lg:grid-cols-3">
+        {widgetEnabled('recent-activity') && (
         <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6 lg:col-span-2">
           <div className="mb-6 flex items-center justify-between">
             <h3 className="text-lg font-light text-[#e5e4e2]">Ostatnia aktywność</h3>
@@ -285,7 +445,13 @@ export default function CRMDashboard({
             </div>
           )}
         </div>
+        )}
 
+        <div className={`space-y-6 ${!widgetEnabled('recent-activity') ? 'lg:col-span-3 lg:grid lg:grid-cols-2 lg:gap-6 lg:space-y-0' : ''}`}>
+        {widgetEnabled('operational-attention') && (
+          <OperationalAttention attention={analytics.attention} />
+        )}
+        {widgetEnabled('quick-actions') && (
         <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
           <h3 className="mb-6 text-lg font-light text-[#e5e4e2]">Szybkie akcje</h3>
           {quickActions.length === 0 ? (
@@ -323,7 +489,10 @@ export default function CRMDashboard({
             </div>
           )}
         </div>
+        )}
+        </div>
       </div>
+      )}
     </div>
   );
 }

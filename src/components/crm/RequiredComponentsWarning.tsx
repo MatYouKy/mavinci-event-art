@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Package, AlertTriangle, X, CheckCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import Image from 'next/image';
 
 interface RequiredComponent {
   id: string;
@@ -17,17 +18,20 @@ interface RequiredComponent {
     name: string;
     model?: string;
     brand?: string;
+    thumbnail_url?: string | null;
   };
   compatible_kit?: {
     id: string;
     name: string;
     description?: string;
+    thumbnail_url?: string | null;
   };
   compatible_cable?: {
     id: string;
     name: string;
     description?: string;
     length_meters?: number;
+    thumbnail_url?: string | null;
   };
 }
 
@@ -35,6 +39,7 @@ interface ComponentGroup {
   groupName: string | null;
   components: RequiredComponent[];
   isGroupSatisfied: boolean;
+  isRequired: boolean;
 }
 
 interface RequiredComponentsWarningProps {
@@ -42,6 +47,9 @@ interface RequiredComponentsWarningProps {
   eventId: string;
   offerId?: string;
   onComponentsAdded?: () => void;
+  availabilityByKey?: Record<string, any>;
+  autoOpen?: boolean;
+  onReviewFinished?: (status: 'reviewed' | 'skipped' | 'not_applicable') => void;
 }
 
 export function RequiredComponentsWarning({
@@ -49,6 +57,9 @@ export function RequiredComponentsWarning({
   eventId,
   offerId,
   onComponentsAdded,
+  availabilityByKey,
+  autoOpen = false,
+  onReviewFinished,
 }: RequiredComponentsWarningProps) {
   const [componentGroups, setComponentGroups] = useState<ComponentGroup[]>([]);
   const [selectedAlternatives, setSelectedAlternatives] = useState<Record<string, string>>({});
@@ -60,6 +71,36 @@ export function RequiredComponentsWarning({
   useEffect(() => {
     checkRequiredComponents();
   }, [equipmentId]);
+
+  const getAvailability = (component: RequiredComponent) => {
+    const key = component.compatible_equipment_id
+      ? `item-${component.compatible_equipment_id}`
+      : component.compatible_kit_id
+        ? `kit-${component.compatible_kit_id}`
+        : null;
+    if (!key || !availabilityByKey?.[key]) return null;
+    const availability = availabilityByKey[key];
+    const available = Number(availability.max_add ?? availability.available_in_term ?? 0);
+    return { available, isAvailable: available > 0 };
+  };
+
+  const renderThumbnail = (item: { name: string; thumbnail_url?: string | null }) => (
+    <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#0f1119]">
+      {item.thumbnail_url ? (
+        <Image
+          src={item.thumbnail_url}
+          alt={item.name}
+          fill
+          sizes="48px"
+          className="object-cover"
+        />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center">
+          <Package className="h-5 w-5 text-[#e5e4e2]/35" />
+        </div>
+      )}
+    </div>
+  );
 
   const checkRequiredComponents = async () => {
     try {
@@ -74,12 +115,12 @@ export function RequiredComponentsWarning({
           compatible_cable_id,
           compatibility_type,
           compatibility_group,
-          compatible_equipment:equipment_items!compatible_equipment_id(id, name, model, brand),
-          compatible_kit:equipment_kits!compatible_kit_id(id, name, description),
-          compatible_cable:cables!compatible_cable_id(id, name, description, length_meters)
+          compatible_equipment:equipment_items!compatible_equipment_id(id, name, model, brand, thumbnail_url),
+          compatible_kit:equipment_kits!compatible_kit_id(id, name, description, thumbnail_url),
+          compatible_cable:cables!compatible_cable_id(id, name, description, length_meters, thumbnail_url)
         `)
         .eq('equipment_id', equipmentId)
-        .eq('compatibility_type', 'required');
+        .in('compatibility_type', ['required', 'recommended']);
 
       if (error) throw error;
 
@@ -173,6 +214,7 @@ export function RequiredComponentsWarning({
                 groupName: components[0].compatibility_group,
                 components,
                 isGroupSatisfied: false,
+                isRequired: components.some((item) => item.compatibility_type === 'required'),
               });
             }
           } else {
@@ -191,14 +233,17 @@ export function RequiredComponentsWarning({
                 groupName: null,
                 components: [comp],
                 isGroupSatisfied: false,
+                isRequired: comp.compatibility_type === 'required',
               });
             }
           }
         });
 
         setComponentGroups(unsatisfiedGroups);
+        if (autoOpen && unsatisfiedGroups.length > 0) setShowModal(true);
       } else {
         setComponentGroups([]);
+        onReviewFinished?.('not_applicable');
       }
     } catch (err: any) {
       console.error('Error checking required components:', err);
@@ -213,7 +258,7 @@ export function RequiredComponentsWarning({
 
       // Validate that all groups have a selection
       for (const group of componentGroups) {
-        if (group.groupName) {
+        if (group.groupName && group.isRequired) {
           const selected = selectedAlternatives[group.groupName];
           if (!selected) {
             showSnackbar(
@@ -238,6 +283,11 @@ export function RequiredComponentsWarning({
           );
 
           if (selectedComponent) {
+            const availability = getAvailability(selectedComponent);
+            if (availability && !availability.isAvailable) {
+              showSnackbar('Wybrany komponent nie jest dostępny w terminie wydarzenia', 'warning');
+              return;
+            }
             if (selectedComponent.compatible_equipment_id) {
               await supabase.from('event_equipment').insert({
                 event_id: eventId,
@@ -267,6 +317,14 @@ export function RequiredComponentsWarning({
         } else {
           // Add single required component
           const component = group.components[0];
+          const availability = getAvailability(component);
+          if (availability && !availability.isAvailable) {
+            showSnackbar(
+              `${component.compatible_equipment?.name || component.compatible_kit?.name || component.compatible_cable?.name || 'Komponent'} nie jest dostępny w terminie wydarzenia`,
+              'warning',
+            );
+            return;
+          }
           if (component.compatible_equipment_id) {
             await supabase.from('event_equipment').insert({
               event_id: eventId,
@@ -300,6 +358,7 @@ export function RequiredComponentsWarning({
       setComponentGroups([]);
       setSelectedAlternatives({});
       onComponentsAdded?.();
+      onReviewFinished?.('reviewed');
     } catch (err: any) {
       console.error('Error adding components:', err);
       showSnackbar(err.message || 'Błąd podczas dodawania komponentów', 'error');
@@ -321,10 +380,10 @@ export function RequiredComponentsWarning({
           <AlertTriangle className="h-5 w-5 flex-shrink-0 text-yellow-400" />
           <div className="flex-1">
             <div className="text-sm font-medium text-yellow-400">
-              Ten sprzęt wymaga dodatkowych komponentów
+              Ten sprzęt ma dodatkowe komponenty
             </div>
             <div className="mt-1 text-xs text-yellow-400/80">
-              {totalMissing} wymaganych {totalMissing === 1 ? 'komponent' : 'komponentów'} nie zostało dodanych
+              {totalMissing} {totalMissing === 1 ? 'komponent wymaga' : 'komponentów wymaga'} weryfikacji
             </div>
             <button
               onClick={() => setShowModal(true)}
@@ -341,13 +400,16 @@ export function RequiredComponentsWarning({
           <div className="relative w-full max-w-2xl rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] shadow-xl">
             <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-6">
               <div>
-                <h2 className="text-xl font-semibold text-[#e5e4e2]">Wymagane komponenty</h2>
+                <h2 className="text-xl font-semibold text-[#e5e4e2]">Komponenty zestawu</h2>
                 <p className="mt-1 text-sm text-[#e5e4e2]/60">
-                  Ten sprzęt wymaga następujących komponentów do prawidłowego działania
+                  Sprawdź elementy wymagane i rekomendowane oraz ich dostępność
                 </p>
               </div>
               <button
-                onClick={() => setShowModal(false)}
+                onClick={() => {
+                  setShowModal(false);
+                  onReviewFinished?.('skipped');
+                }}
                 className="rounded-lg p-2 text-[#e5e4e2]/60 transition-colors hover:bg-[#e5e4e2]/10 hover:text-[#e5e4e2]"
               >
                 <X className="h-5 w-5" />
@@ -359,8 +421,8 @@ export function RequiredComponentsWarning({
                 <div className="flex gap-3">
                   <AlertTriangle className="h-5 w-5 flex-shrink-0 text-yellow-400" />
                   <div className="text-sm text-yellow-400">
-                    Wybrany sprzęt nie będzie działać bez poniższych komponentów. Zalecamy ich
-                    dodanie.
+                    Elementy wymagane są niezbędne do działania. Rekomendowane warto dodać,
+                    jeśli będą potrzebne w tej realizacji.
                   </div>
                 </div>
               </div>
@@ -381,11 +443,13 @@ export function RequiredComponentsWarning({
                               {group.groupName}
                             </h4>
                             <span className="rounded bg-blue-500/20 px-2 py-0.5 text-xs text-blue-400">
-                              Wybierz JEDEN
+                              {group.isRequired ? 'Wybierz JEDEN' : 'Rekomendowane'}
                             </span>
                           </div>
                           <p className="ml-7 mt-1 text-xs text-[#e5e4e2]/60">
-                            Musisz wybrać jeden z poniższych komponentów alternatywnych
+                            {group.isRequired
+                              ? 'Musisz wybrać jeden z poniższych komponentów alternatywnych'
+                              : 'Możesz wybrać jeden z rekomendowanych wariantów'}
                           </p>
                         </div>
 
@@ -399,6 +463,7 @@ export function RequiredComponentsWarning({
                             if (!item || !itemId) return null;
 
                             const isSelected = selectedAlternatives[group.groupName!] === itemId;
+                            const availability = getAvailability(component);
 
                             return (
                               <label
@@ -421,12 +486,23 @@ export function RequiredComponentsWarning({
                                   }
                                   className="mt-0.5 h-4 w-4 text-[#d3bb73] focus:ring-[#d3bb73]"
                                 />
-                                <div className="flex-shrink-0 rounded-full bg-blue-500/20 p-2">
-                                  <Package className="h-4 w-4 text-blue-400" />
-                                </div>
+                                {renderThumbnail(item)}
                                 <div className="flex-1">
                                   <div className="flex items-center gap-2">
                                     <div className="font-medium text-[#e5e4e2]">{item.name}</div>
+                                    {availability && (
+                                      <span
+                                        className={`rounded px-2 py-0.5 text-xs ${
+                                          availability.isAvailable
+                                            ? 'bg-emerald-500/20 text-emerald-400'
+                                            : 'bg-red-500/20 text-red-400'
+                                        }`}
+                                      >
+                                        {availability.isAvailable
+                                          ? `Dostępne: ${availability.available}`
+                                          : 'Niedostępne'}
+                                      </span>
+                                    )}
                                     {isKit && (
                                       <span className="rounded bg-[#d3bb73]/20 px-2 py-0.5 text-xs text-[#d3bb73]">
                                         ZESTAW
@@ -468,6 +544,7 @@ export function RequiredComponentsWarning({
                     const item = component.compatible_equipment || component.compatible_kit || component.compatible_cable;
                     const isKit = !!component.compatible_kit;
                     const isCable = !!component.compatible_cable;
+                    const availability = getAvailability(component);
 
                     if (!item) return null;
 
@@ -477,12 +554,23 @@ export function RequiredComponentsWarning({
                         className="rounded-lg border border-green-500/20 bg-green-500/5 p-4"
                       >
                         <div className="flex items-start gap-3">
-                          <div className="flex-shrink-0 rounded-full bg-green-500/20 p-2">
-                            <CheckCircle className="h-5 w-5 text-green-400" />
-                          </div>
+                          {renderThumbnail(item)}
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
                               <div className="font-medium text-[#e5e4e2]">{item.name}</div>
+                              {availability && (
+                                <span
+                                  className={`rounded px-2 py-0.5 text-xs ${
+                                    availability.isAvailable
+                                      ? 'bg-emerald-500/20 text-emerald-400'
+                                      : 'bg-red-500/20 text-red-400'
+                                  }`}
+                                >
+                                  {availability.isAvailable
+                                    ? `Dostępne: ${availability.available}`
+                                    : 'Niedostępne'}
+                                </span>
+                              )}
                               {isKit && (
                                 <span className="rounded bg-[#d3bb73]/20 px-2 py-0.5 text-xs text-[#d3bb73]">
                                   ZESTAW
@@ -493,8 +581,14 @@ export function RequiredComponentsWarning({
                                   PRZEWÓD
                                 </span>
                               )}
-                              <span className="rounded bg-green-500/20 px-2 py-0.5 text-xs text-green-400">
-                                ZOSTANIE DODANY
+                              <span
+                                className={`rounded px-2 py-0.5 text-xs ${
+                                  group.isRequired
+                                    ? 'bg-red-500/20 text-red-400'
+                                    : 'bg-blue-500/20 text-blue-400'
+                                }`}
+                              >
+                                {group.isRequired ? 'WYMAGANY' : 'REKOMENDOWANY'}
                               </span>
                             </div>
                             {!isKit && !isCable && component.compatible_equipment && (
@@ -515,7 +609,9 @@ export function RequiredComponentsWarning({
                               </div>
                             )}
                             <div className="mt-2 text-xs text-green-400/80">
-                              Ten komponent zostanie automatycznie dodany po kliknięciu "Dodaj wybrane komponenty"
+                              {group.isRequired
+                                ? 'Ten komponent jest niezbędny i zostanie dodany po zatwierdzeniu.'
+                                : 'Ten komponent warto dodać, jeśli będzie potrzebny w tej realizacji.'}
                             </div>
                           </div>
                         </div>
@@ -528,7 +624,10 @@ export function RequiredComponentsWarning({
 
             <div className="flex items-center justify-between border-t border-[#d3bb73]/10 p-6">
               <button
-                onClick={() => setShowModal(false)}
+                onClick={() => {
+                  setShowModal(false);
+                  onReviewFinished?.('skipped');
+                }}
                 className="rounded-lg px-4 py-2 text-sm text-[#e5e4e2]/60 transition-colors hover:bg-[#e5e4e2]/10 hover:text-[#e5e4e2]"
               >
                 Anuluj

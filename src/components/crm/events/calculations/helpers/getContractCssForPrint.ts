@@ -11,7 +11,9 @@ export const getContractCssForPrint = () => `
   width: 210mm;
   margin: 0 auto 20px auto;
   padding: 20mm 25mm 5mm;
+  height: 297mm;
   min-height: 297mm !important;
+  overflow: hidden;
   background: white;
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
   font-family: Arial, sans-serif;
@@ -94,7 +96,7 @@ export const getContractCssForPrint = () => `
   padding: 0;
   text-align: justify;
   white-space: pre-wrap;
-  font-family: Arial, sans-serif;
+  font-family: inherit;
   font-size: 12pt;
   line-height: 1.6;
   border: none;
@@ -125,6 +127,49 @@ export const getContractCssForPrint = () => `
 .contract-content h1 { font-size: 18pt; text-align: center; }
 .contract-content h2 { font-size: 16pt; }
 .contract-content h3 { font-size: 14pt; }
+
+.contract-product-clauses { margin-top: 1em; }
+.contract-product-clauses h3 { break-after: avoid; page-break-after: avoid; }
+.product-contract-clause {
+  margin-bottom: 0.75em;
+  font: inherit;
+  color: inherit;
+  line-height: inherit;
+}
+.product-contract-clause p,
+.product-contract-clause li,
+.product-contract-clause blockquote {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  line-height: inherit;
+}
+.product-contract-clause p { margin: 0 0 0.45em; }
+.contract-paragraph-heading {
+  margin: 0.8em 0 0.35em !important;
+  text-align: center !important;
+  font: inherit !important;
+  font-weight: 700 !important;
+  color: inherit !important;
+  break-after: avoid;
+  page-break-after: avoid;
+}
+.product-contract-clause ol,
+.product-contract-clause ul { margin: 0.35em 0 0.65em; padding-left: 1.6em; }
+.product-contract-clause li { margin-bottom: 0.25em; }
+.product-contract-clause blockquote {
+  margin: 0.6em 0;
+  border-left: 2px solid #777;
+  padding-left: 0.8em;
+}
+.product-contract-clause .ql-indent-1 { margin-left: 1.5em; }
+.product-contract-clause .ql-indent-2 { margin-left: 3em; }
+.product-contract-clause .ql-indent-3 { margin-left: 4.5em; }
+.product-contract-clause .ql-indent-4 { margin-left: 6em; }
+.product-contract-clause .ql-align-center { text-align: center; }
+.product-contract-clause .ql-align-right { text-align: right; }
+.product-contract-clause .ql-align-justify { text-align: justify; }
+.product-contract-clause .ql-align-left { text-align: left; }
 
 .contract-content strong,
 .contract-content b { font-weight: bold; color: #000; }
@@ -218,11 +263,11 @@ html, body {
 /* ===== PATCH: zamiennik Tailwinda dla numeracji stron ===== */
 .contract-page-counter {
   position: absolute;
-  bottom: 4mm;
+  bottom: 1.5mm;
   left: 25mm;
   right: 25mm;
   text-align: center;
-  font-size: 10pt;
+  font-size: 8pt;
   color: rgba(0,0,0,0.5);
 }
 `;

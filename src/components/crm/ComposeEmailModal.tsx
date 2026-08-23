@@ -4,9 +4,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/browser';
 import { X, Send, Eye, Code, RefreshCw, Paperclip, Trash2 } from 'lucide-react';
 import { generateEmailSignature } from './EmailSignatureGenerator';
-
-const DEFAULT_EMAIL_LOGO_URL =
-  'https://fuuljhhuhfojtmmfmskq.supabase.co/storage/v1/object/public/company-logos/brandbook/d4474f90-5e61-4ba4-928e-c25c0f0659b5/1779367661905.png';
+import { buildCompanyEmailBody, buildCompanySignatureHtml } from '@/lib/buildCompanySignature';
 
 interface ComposeEmailModalProps {
   isOpen: boolean;
@@ -18,6 +16,8 @@ interface ComposeEmailModalProps {
     bodyHtml: string;
     attachments?: File[];
     fromAccountId?: string;
+    cc?: string;
+    bcc?: string;
   }) => Promise<void>;
   initialTo?: string;
   initialSubject?: string;
@@ -41,6 +41,8 @@ export default function ComposeEmailModal({
   const [to, setTo] = useState(initialTo);
   const [subject, setSubject] = useState(initialSubject);
   const [body, setBody] = useState('');
+  const [cc, setCc] = useState('');
+  const [bcc, setBcc] = useState('');
   const [sending, setSending] = useState(false);
   const [attachments, setAttachments] = useState<File[]>([]);
   const [showPreview, setShowPreview] = useState(false);
@@ -49,14 +51,22 @@ export default function ComposeEmailModal({
   const [previewHtml, setPreviewHtml] = useState('');
   const [employee, setEmployee] = useState<any>(null);
   const [fromAccountId, setFromAccountId] = useState<string>('');
+  const [companySignatureHtml, setCompanySignatureHtml] = useState('');
+  const [companySignatureEnabled, setCompanySignatureEnabled] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setTo(initialTo);
       setSubject(initialSubject);
       setBody(initialBody || forwardedBody || '');
+      setCc('');
+      setBcc('');
       setAttachments([]);
       fetchSignatureAndTemplate();
+      buildCompanySignatureHtml().then((result) => {
+        setCompanySignatureHtml(result.html);
+        setCompanySignatureEnabled(result.enabled);
+      });
 
       // Set default account
       if (emailAccounts.length > 0) {
@@ -68,8 +78,8 @@ export default function ComposeEmailModal({
   }, [isOpen, initialTo, initialSubject, initialBody, forwardedBody, selectedAccountId, emailAccounts]);
 
   useEffect(() => {
-    generatePreview();
-  }, [body, signature, template]);
+    void generatePreview();
+  }, [body, subject, signature, template, companySignatureHtml, companySignatureEnabled]);
 
   const fetchSignatureAndTemplate = async () => {
     try {
@@ -112,25 +122,17 @@ export default function ComposeEmailModal({
     return generateEmailSignature(sig);
   };
 
-  const generatePreview = () => {
-    const signatureHtml = generateSignatureHtml();
-    const contentHtml = body.replace(/\n/g, '<br>');
-
-    if (template && template.body_template) {
-      let html = template.body_template
-        .replace('{{LOGO_URL}}', DEFAULT_EMAIL_LOGO_URL)
-        .replace('{{CONTENT}}', contentHtml)
-        .replace('{{SIGNATURE}}', signatureHtml);
-
-      setPreviewHtml(html);
-    } else {
-      setPreviewHtml(`
-        <div style="font-family: Arial, sans-serif; padding: 20px;">
-          <div style="white-space: pre-wrap;">${contentHtml}</div>
-          ${signatureHtml}
-        </div>
-      `);
-    }
+  const generatePreview = async () => {
+    const signatureHtml = companySignatureEnabled
+      ? companySignatureHtml
+      : generateSignatureHtml();
+    const result = await buildCompanyEmailBody({
+      content: body,
+      subject,
+      signatureHtml,
+      purpose: 'general',
+    });
+    setPreviewHtml(result.html);
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -170,6 +172,8 @@ export default function ComposeEmailModal({
         bodyHtml: previewHtml,
         attachments,
         fromAccountId,
+        cc: cc.trim(),
+        bcc: bcc.trim(),
       });
       setTo('');
       setSubject('');
@@ -238,6 +242,28 @@ export default function ComposeEmailModal({
                   className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-white focus:border-[#d3bb73] focus:outline-none"
                 />
               </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/70">DW:</label>
+                  <input
+                    type="email"
+                    value={cc}
+                    onChange={(e) => setCc(e.target.value)}
+                    placeholder="Opcjonalnie"
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-white focus:border-[#d3bb73] focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm text-[#e5e4e2]/70">UDW:</label>
+                  <input
+                    type="email"
+                    value={bcc}
+                    onChange={(e) => setBcc(e.target.value)}
+                    placeholder="Opcjonalnie"
+                    className="w-full rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-white focus:border-[#d3bb73] focus:outline-none"
+                  />
+                </div>
+              </div>
               <div>
                 <label className="mb-2 block text-sm text-[#e5e4e2]/70">Temat:</label>
                 <input
@@ -257,7 +283,7 @@ export default function ComposeEmailModal({
                   rows={12}
                   className="w-full resize-none rounded-lg border border-[#d3bb73]/20 bg-[#0f1119] px-4 py-3 text-white focus:border-[#d3bb73] focus:outline-none"
                 />
-                {!signature ? (
+                {!signature && !companySignatureEnabled ? (
                   <div className="mt-2 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3">
                     <p className="text-xs text-yellow-400">
                       ⚠️ Nie masz skonfigurowanej stopki. Użyjemy podstawowych danych z profilu

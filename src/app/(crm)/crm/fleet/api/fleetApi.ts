@@ -83,6 +83,20 @@ export const fleetApi = createApi({
           };
         }
 
+        const activeUsages = vehicleIds.length
+          ? await supabase.rpc('get_current_vehicle_usages')
+          : { data: [], error: null };
+
+        if (activeUsages.error) {
+          return {
+            error: { status: 'FETCH_ERROR', message: activeUsages.error.message } as any,
+          };
+        }
+
+        const activeUsageByVehicle = new Map(
+          ((activeUsages.data ?? []) as any[]).map((usage) => [usage.vehicle_id, usage]),
+        );
+
         const alertCounts = (activeAlerts.data ?? []).reduce(
           (counts: Record<string, { insurance: number; inspection: number }>, alert: any) => {
             counts[alert.vehicle_id] ??= { insurance: 0, inspection: 0 };
@@ -98,6 +112,7 @@ export const fleetApi = createApi({
           const assignments = Array.isArray(v.vehicle_assignments) ? v.vehicle_assignments : [];
 
           const activeAssignment = assignments.find((a) => a?.status === 'active');
+          const activeUsage = activeUsageByVehicle.get(v.id) as any | undefined;
 
           // priorytet: primary -> sort_order -> created_at
           const sortedImages = [...images].sort((a, b) => {
@@ -137,6 +152,16 @@ export const fleetApi = createApi({
               Number(v.upcoming_services) || 0,
               alertCounts[v.id]?.inspection ?? 0,
             ),
+            in_use: Boolean(v.in_use || activeUsage),
+            in_use_by: activeUsage?.driver_name ?? v.in_use_by ?? null,
+            in_use_event: activeUsage
+              ? `Wyjazd doraźny: ${activeUsage.purpose}`
+              : v.in_use_event ?? null,
+            in_use_driver_id: activeUsage?.driver_id ?? v.in_use_driver_id ?? null,
+            in_use_driver_name:
+              activeUsage?.driver_first_name ?? v.in_use_driver_name ?? null,
+            in_use_driver_surname:
+              activeUsage?.driver_surname ?? v.in_use_driver_surname ?? null,
           } as IVehicle;
         });
 
@@ -201,6 +226,11 @@ export const fleetApi = createApi({
           in_use_event: string | null;
           in_use_event_id: string | null;
           pickup_timestamp: string | null;
+          in_use_driver_id: string | null;
+          in_use_event_vehicle_id: string | null;
+          in_use_source: 'event' | 'ad_hoc' | null;
+          in_use_purpose: string | null;
+          usage_session_id: string | null;
         };
         fuelEntries: FuelEntryDB[];
         maintenanceRecords: MaintenanceGrouped;
@@ -228,6 +258,7 @@ export const fleetApi = createApi({
             alertsRes,
             handoverRes,
             inUseRes,
+            adHocUsageRes,
           ] = await Promise.all([
             supabase.from('vehicles').select('*').eq('id', vehicleId).single(),
             supabase
@@ -307,6 +338,7 @@ export const fleetApi = createApi({
             .eq('vehicle_id', vehicleId)
             .eq('is_in_use', true)
             .maybeSingle(),
+            supabase.rpc('get_current_vehicle_usages'),
           ]);
 
           // obsługa błędów supabase
@@ -322,6 +354,7 @@ export const fleetApi = createApi({
             alertsRes,
             handoverRes,
             inUseRes,
+            adHocUsageRes,
           ];
           const firstError = all.find((r) => r.error);
           if (firstError?.error) {
@@ -331,24 +364,32 @@ export const fleetApi = createApi({
           }
 
           const inUseData = inUseRes.data as any | null;
+          const adHocUsage = ((adHocUsageRes.data ?? []) as any[]).find(
+            (usage) => usage.vehicle_id === vehicleId,
+          );
 
           // Pobierz dane kierowcy z embedded employees
           const driverData = inUseData?.employees;
 
           const vehicle = {
             ...(vehicleRes.data as VehicleDB),
-            in_use: !!inUseData,
+            in_use: Boolean(inUseData || adHocUsage),
           
-            in_use_by: driverData
+            in_use_by: adHocUsage?.driver_name ?? (driverData
               ? `${driverData.name} ${driverData.surname}`
-              : null,
+              : null),
           
-            in_use_driver_id: inUseData?.driver_id || null,
+            in_use_driver_id: adHocUsage?.driver_id ?? inUseData?.driver_id ?? null,
             in_use_event_vehicle_id: inUseData?.id || null,
+            in_use_source: adHocUsage ? 'ad_hoc' : inUseData ? 'event' : null,
+            in_use_purpose: adHocUsage?.purpose ?? null,
+            usage_session_id: adHocUsage?.usage_session_id ?? null,
           
-            in_use_event: inUseData?.event?.name || null,
+            in_use_event: adHocUsage
+              ? `Wyjazd doraźny: ${adHocUsage.purpose}`
+              : inUseData?.event?.name || null,
             in_use_event_id: inUseData?.event?.id || null,
-            pickup_timestamp: inUseData?.pickup_timestamp || null,
+            pickup_timestamp: adHocUsage?.pickup_timestamp ?? inUseData?.pickup_timestamp ?? null,
           };
 
           return {

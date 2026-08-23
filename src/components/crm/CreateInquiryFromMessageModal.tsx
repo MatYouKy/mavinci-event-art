@@ -186,6 +186,7 @@ export default function CreateInquiryFromMessageModal({
           order_index: 0,
           created_by: userId,
           is_inquiry: true,
+          inquiry_owner_id: selectedEmployee || null,
           inquiry_details: inquiryDetails,
         })
         .select('id')

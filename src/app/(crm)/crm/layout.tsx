@@ -27,15 +27,16 @@ export const metadata: Metadata = {
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const employee = await getCurrentEmployeeServerCached();
-  const initialUnreadMessagesCount = await fetchUnreadCountServer(); // pobieramy liczbę nieprzeczytanych wiadomości na początku
 
   if (!employee?.id) {
     redirect('/login');
   }
 
+  const initialUnreadMessagesCount = await fetchUnreadCountServer(employee.id);
+
   const preferences = await getEmployeePreferences();
   const cookieStore = cookies(); // ✅ w request scope
-  const { notifications, unreadCount } = await fetchNotificationsServer(cookieStore, 100);
+  const { notifications } = await fetchNotificationsServer(cookieStore, 100);
 
   const { navigation } = await getNavigationForUserServer();
 
@@ -48,7 +49,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <PreferencesClientProvider employeeId={employee.id} initialPreferences={preferences}>
               <CRMClientLayout
                 employee={employee}
-                initialUnreadMessagesCount={unreadCount}
+                initialUnreadMessagesCount={initialUnreadMessagesCount}
                 initialNotifications={notifications}
                 initialNavigation={navigation}
               >

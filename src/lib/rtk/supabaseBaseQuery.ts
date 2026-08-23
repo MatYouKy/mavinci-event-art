@@ -97,10 +97,9 @@ export const supabaseBaseQuery =
         }
 
         case "employees.deleteById": {
-          const { error } = await supabase
-            .from("employees")
-            .delete()
-            .eq("id", args.payload.id);
+          const { error } = await supabase.rpc("delete_employee_completely", {
+            p_employee_id: args.payload.id,
+          });
 
           if (error) throw error;
           return { data: { ok: true } };

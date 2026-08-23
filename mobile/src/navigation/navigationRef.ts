@@ -18,11 +18,16 @@ export type NotificationTargetData = {
   assignment_id?: string;
   event_id?: string;
   requires_response?: string;
+  inquiry_id?: string;
+  followup_kind?: string;
 };
 
 export function navigateToChat(conversationId: string) {
   if (navigationRef.isReady()) {
-    navigationRef.navigate('Main', { screen: 'Messages', params: { conversationId } });
+    navigationRef.navigate('Main', {
+      screen: 'Messages',
+      params: { conversationId, chatRequestId: Date.now() },
+    });
   }
 }
 
@@ -44,7 +49,7 @@ export function navigateToInquiry(taskId: string) {
   }
 }
 
-export function navigateToEvent(eventId: string, initialTab?: 'fleet') {
+export function navigateToEvent(eventId: string, initialTab?: 'fleet' | 'team') {
   if (navigationRef.isReady()) {
     navigationRef.navigate('Main', {
       screen: 'Events',
@@ -62,6 +67,12 @@ export function navigateToMessagesTab() {
 export function navigateToInbox() {
   if (navigationRef.isReady()) {
     navigationRef.navigate('Main', { screen: 'Inbox' });
+  }
+}
+
+export function navigateToClients() {
+  if (navigationRef.isReady()) {
+    navigationRef.navigate('Main', { screen: 'Clients' });
   }
 }
 
@@ -125,7 +136,9 @@ function isInquiryTarget(d: NotificationTargetData): boolean {
  * chat / task / inquiry / event / messages. Meetings need the Calendar tab's local
  * state, so this returns the meetingId and lets MainTabNavigator open it.
  */
-export async function routeNotification(d: NotificationTargetData): Promise<{ meetingId: string | null }> {
+export async function routeNotification(
+  d: NotificationTargetData,
+): Promise<{ meetingId: string | null }> {
   let target = d;
 
   // Older webhook banners did not contain inbound_event_id. Resolve it from the
@@ -203,7 +216,7 @@ export async function routeNotification(d: NotificationTargetData): Promise<{ me
   }
 
   if (isInquiryTarget(target)) {
-    const id = target.entity_id || target.task_id;
+    const id = target.inquiry_id || target.entity_id || target.task_id;
     if (id) navigateToInquiry(id);
     return { meetingId: null };
   }
@@ -237,7 +250,16 @@ export async function routeNotification(d: NotificationTargetData): Promise<{ me
     return { meetingId: null };
   }
 
-  if (target.category === 'messages' || target.category === 'contact_form' || url.includes('/crm/messages')) {
+  if (url.includes('/crm/contacts')) {
+    navigateToClients();
+    return { meetingId: null };
+  }
+
+  if (
+    target.category === 'messages' ||
+    target.category === 'contact_form' ||
+    url.includes('/crm/messages')
+  ) {
     navigateToInbox();
     return { meetingId: null };
   }

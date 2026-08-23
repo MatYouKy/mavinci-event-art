@@ -8,6 +8,8 @@ export interface IEmployee {
   permissions: any;
   my_company_ids?: string[] | null;
   invoice_company_permissions?: Record<string, string[]> | null;
+  sales_team_id?: string | null;
+  is_sales_team_manager?: boolean;
   id: string;
   name: string;
   surname: string;

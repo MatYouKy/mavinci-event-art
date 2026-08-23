@@ -1,5 +1,8 @@
 import { IContractTemplate } from './type';
 import { getContractCssForPrint } from '@/components/crm/events/calculations/helpers/getContractCssForPrint';
+import { paginateContractHtml } from '@/lib/CRM/contracts/contractPagination';
+import { resolveContractParagraphPlaceholders } from '@/lib/CRM/contracts/contractParagraphs';
+import { supabase } from '@/lib/supabase/browser';
 
 interface TemplateSettings {
   logoScale: number;
@@ -217,10 +220,7 @@ const buildPage = (
 ): string => {
   const header = pageIndex === 0 ? buildHeader(settings) : '';
   const minHeight = pageIndex === 0 ? '160mm' : '250mm';
-  const counter =
-    totalPages > 1
-      ? `<div class="contract-page-counter">${pageIndex + 1} z ${totalPages}</div>`
-      : '';
+  const counter = `<div class="contract-page-counter">${pageIndex + 1}/${totalPages}</div>`;
 
   return `
     <div class="contract-a4-page">
@@ -236,25 +236,73 @@ const buildPage = (
 
 // Buduje wyłącznie zawartość stron (bez opakowania .contract-a4-container),
 // tak jak innerHTML kontenera w zakładce Umowa. Backend owija je w kontener.
-const buildPagesHtml = (template: IContractTemplate): string => {
+const buildPagesHtml = async (template: IContractTemplate): Promise<string> => {
+  const { data: brandFonts } = await supabase
+    .from('company_brandbook_fonts')
+    .select('*')
+    .order('order_index');
+  const fontFaceCss = (brandFonts || [])
+    .filter((font: any) => font.file_url)
+    .map(
+      (font: any) =>
+        `@font-face{font-family:'${String(font.family).replace(/'/g, "\\'")}';src:url('${font.file_url}');font-weight:${font.weight || '400'};font-style:normal;font-display:swap;}`,
+    )
+    .join('');
+  const fontStyle = fontFaceCss ? `<style data-contract-fonts="true">${fontFaceCss}</style>` : '';
   const settings = getTemplateSettings(template.page_settings);
   const pages: string[] | undefined = template.page_settings?.pages;
 
   if (pages && pages.length > 0) {
-    return pages
-      .map((pageContent, index) => buildPage(pageContent, index, pages.length, settings))
+    const source = template.page_settings?.flowContent || pages.join('');
+    const draftContent = resolveContractParagraphPlaceholders(
+      replacePlaceholdersWithBlanks(source),
+    );
+    const paginatedPages = await paginateContractHtml(draftContent, settings);
+    return fontStyle + paginatedPages
+      .map((pageContent, index) => buildPage(pageContent, index, paginatedPages.length, settings))
       .join('');
   }
 
   const body = template.content_html
     ? template.content_html
     : `<pre style="white-space:pre-wrap;word-wrap:break-word;margin:0">${escapeHtml(template.content || '')}</pre>`;
-  return buildPage(body, 0, 1, settings);
+  const draftContent = resolveContractParagraphPlaceholders(replacePlaceholdersWithBlanks(body));
+  const paginatedPages = await paginateContractHtml(draftContent, settings);
+  return fontStyle + paginatedPages
+    .map((pageContent, index) => buildPage(pageContent, index, paginatedPages.length, settings))
+    .join('');
 };
 
 interface DraftResult {
   ok: boolean;
   error?: 'popup' | string;
+}
+
+export async function createContractDraftPdf(template: IContractTemplate): Promise<Blob> {
+  const pagesHtml = await buildPagesHtml(template);
+  const cssText = getContractCssForPrint() + DRAFT_EXTRA_STYLES;
+  const res = await fetch('/bridge/contract-templates/draft-pdf', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      pagesHtml,
+      cssText,
+      title: `${template.name} - wersja robocza`,
+    }),
+  });
+
+  if (!res.ok) {
+    let message = 'Błąd generowania PDF';
+    try {
+      const payload = await res.json();
+      message = payload?.error || message;
+    } catch {
+      // Odpowiedź serwera nie zawiera JSON.
+    }
+    throw new Error(message);
+  }
+
+  return res.blob();
 }
 
 // Generuje draft PDF przez ten sam silnik Chromium co zakładka Umowa w evencie,
@@ -271,32 +319,7 @@ export async function printContractDraft(template: IContractTemplate): Promise<D
   printWindow.document.close();
 
   try {
-    const pagesHtml = buildPagesHtml(template);
-    const cssText = getContractCssForPrint() + DRAFT_EXTRA_STYLES;
-
-    const res = await fetch('/bridge/contract-templates/draft-pdf', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        pagesHtml,
-        cssText,
-        title: `${template.name} - wersja robocza`,
-      }),
-    });
-
-    if (!res.ok) {
-      let msg = 'Błąd generowania PDF';
-      try {
-        const j = await res.json();
-        msg = j?.error || msg;
-      } catch {
-        // brak treści JSON
-      }
-      printWindow.close();
-      return { ok: false, error: msg };
-    }
-
-    const blob = await res.blob();
+    const blob = await createContractDraftPdf(template);
     const url = URL.createObjectURL(blob);
     printWindow.location.href = url;
     return { ok: true };

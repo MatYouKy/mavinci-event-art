@@ -12,12 +12,14 @@ import {
   addNotificationResponseListener,
   addNotificationReceivedListener,
   handleEventInvitationNotificationAction,
+  handleInquiryFollowupNotificationAction,
 } from './src/services/pushNotifications';
 
 import { useRealtimePushNotifications } from './src/services/realtimeNotifications';
 import { useChatNotifications, setupChatNotificationFilter } from './src/services/chatNotifications';
-import { scheduleInquiryReminders } from './src/services/inquiryReminders';
 import { NotificationTargetData } from './src/navigation/navigationRef';
+import { syncCrmContactsIfEnabled } from './src/services/crmContactSync';
+import { canView } from './src/lib/permissions';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -72,8 +74,11 @@ function AppContent() {
     };
 
     void initializePushNotifications();
-    void scheduleInquiryReminders();
-
+    if (canView(employee, 'contacts')) {
+      void syncCrmContactsIfEnabled().catch((error) => {
+        console.warn('[Contacts] Background CRM sync failed:', error);
+      });
+    }
     const notificationSubscription = addNotificationReceivedListener((notification) => {
       console.log('Notification received:', notification.request.content);
     });
@@ -81,12 +86,14 @@ function AppContent() {
     const responseSubscription = addNotificationResponseListener((response) => {
       void handleEventInvitationNotificationAction(response, employeeId).then((handled) => {
         if (handled) return;
-
-        const data = response.notification.request.content.data as NotificationTargetData;
-        // Store the tapped notification so MainTabNavigator can open the right screen,
-        // even if navigation is not ready yet (cold start). Live taps are also handled
-        // by MainTabNavigator's own response listener.
-        globalNotificationTarget = { ...(data ?? {}) };
+        void handleInquiryFollowupNotificationAction(response, employeeId).then((inquiryHandled) => {
+          if (inquiryHandled) return;
+          const data = response.notification.request.content.data as NotificationTargetData;
+          // Store the tapped notification so MainTabNavigator can open the right screen,
+          // even if navigation is not ready yet (cold start). Live taps are also handled
+          // by MainTabNavigator's own response listener.
+          globalNotificationTarget = { ...(data ?? {}) };
+        });
       });
     });
 
@@ -95,7 +102,7 @@ function AppContent() {
       notificationSubscription.remove();
       responseSubscription.remove();
     };
-  }, [employeeId]);
+  }, [employee, employeeId]);
 
   return <RootNavigator />;
 }

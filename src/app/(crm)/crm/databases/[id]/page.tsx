@@ -8,6 +8,7 @@ import {
   Trash2,
   Download,
   FileText,
+  Printer,
   Edit2,
   Save,
   X,
@@ -68,6 +69,7 @@ export default function DatabaseDetailPage() {
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
   const [resizingColumn, setResizingColumn] = useState<{ id: string; startX: number; startWidth: number } | null>(null);
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
+  const [isDownloadingPDF, setIsDownloadingPDF] = useState(false);
 
   useEffect(() => {
     if (database) {
@@ -319,7 +321,95 @@ export default function DatabaseDetailPage() {
     showSnackbar('Eksportowano do CSV', 'success');
   };
 
-  const exportToPDF = () => {
+  const escapeHTML = (value: unknown) =>
+    String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+
+  const buildPrintableTable = () => `
+    <div style="font-family: Arial, sans-serif; color: #222; padding: 20px;">
+      <h1 style="margin: 0; font-size: 24px;">${escapeHTML(database?.name || 'Baza danych')}</h1>
+      ${database?.description ? `<p style="color: #555;">${escapeHTML(database.description)}</p>` : ''}
+      <table style="width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 11px;">
+        <thead>
+          <tr>
+            <th style="border: 1px solid #bbb; padding: 6px; text-align: left; background: #eee;">#</th>
+            ${columns
+              .map(
+                (column) =>
+                  `<th style="border: 1px solid #bbb; padding: 6px; text-align: left; background: #eee;">${escapeHTML(column.name)}</th>`,
+              )
+              .join('')}
+          </tr>
+        </thead>
+        <tbody>
+          ${records
+            .map(
+              (record, index) => `
+                <tr style="break-inside: avoid; page-break-inside: avoid;">
+                  <td style="border: 1px solid #ccc; padding: 6px;">${index + 1}</td>
+                  ${columns
+                    .map(
+                      (column) =>
+                        `<td style="border: 1px solid #ccc; padding: 6px; overflow-wrap: anywhere;">${escapeHTML(record.data[column.id])}</td>`,
+                    )
+                    .join('')}
+                </tr>`,
+            )
+            .join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  const getSafeFileName = () =>
+    String(database?.name || 'baza-danych')
+      .trim()
+      .replace(/[^a-zA-Z0-9ąćęłńóśźżĄĆĘŁŃÓŚŹŻ_-]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'baza-danych';
+
+  const downloadPDF = async () => {
+    if (columns.length === 0) {
+      showSnackbar('Brak kolumn do pobrania', 'error');
+      return;
+    }
+
+    setIsDownloadingPDF(true);
+
+    try {
+      const { default: html2pdf } = await import('html2pdf.js');
+      const element = document.createElement('div');
+      element.innerHTML = buildPrintableTable();
+
+      await (html2pdf as any)()
+        .from(element)
+        .set({
+          margin: [8, 8, 8, 8],
+          filename: `${getSafeFileName()}.pdf`,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true },
+          jsPDF: {
+            unit: 'mm',
+            format: 'a4',
+            orientation: columns.length > 5 ? 'landscape' : 'portrait',
+          },
+          pagebreak: { mode: ['css', 'legacy'] },
+        })
+        .save();
+
+      showSnackbar('Pobrano plik PDF', 'success');
+    } catch (error) {
+      console.error('Error downloading PDF:', error);
+      showSnackbar('Nie udało się pobrać pliku PDF', 'error');
+    } finally {
+      setIsDownloadingPDF(false);
+    }
+  };
+
+  const printDatabase = () => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
       showSnackbar('Zablokowano okno eksportu. Sprawdź ustawienia przeglądarki.', 'error');
@@ -328,49 +418,16 @@ export default function DatabaseDetailPage() {
 
     const tableHTML = `
       <!DOCTYPE html>
-      <html>
+      <html lang="pl">
         <head>
-          <title>${database?.name || 'Baza danych'}</title>
+          <title>${escapeHTML(database?.name || 'Baza danych')}</title>
           <style>
-            body { font-family: Arial, sans-serif; padding: 20px; }
-            h1 { color: #333; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-            th { background-color: #f2f2f2; font-weight: bold; }
-            tr:nth-child(even) { background-color: #f9f9f9; }
-            @media print {
-              button { display: none; }
-            }
+            @page { size: ${columns.length > 5 ? 'landscape' : 'portrait'}; margin: 10mm; }
+            body { margin: 0; }
           </style>
         </head>
         <body>
-          <h1>${database?.name || 'Baza danych'}</h1>
-          ${database?.description ? `<p>${database.description}</p>` : ''}
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                ${columns.map((col) => `<th>${col.name} (${col.column_type})</th>`).join('')}
-              </tr>
-            </thead>
-            <tbody>
-              ${records
-                .map(
-                  (record, index) => `
-                <tr>
-                  <td>${index + 1}</td>
-                  ${columns
-                    .map((col) => {
-                      const value = record.data[col.id] || '';
-                      return `<td>${String(value)}</td>`;
-                    })
-                    .join('')}
-                </tr>
-              `,
-                )
-                .join('')}
-            </tbody>
-          </table>
+          ${buildPrintableTable()}
           <script>
             window.onload = function() {
               window.print();
@@ -420,9 +477,17 @@ export default function DatabaseDetailPage() {
       show: true,
     },
     {
-      label: 'Eksportuj PDF',
-      onClick: exportToPDF,
+      label: isDownloadingPDF ? 'Tworzenie PDF…' : 'Pobierz PDF',
+      onClick: downloadPDF,
       icon: <Download className="h-4 w-4" />,
+      variant: 'primary' as const,
+      disabled: isDownloadingPDF,
+      show: true,
+    },
+    {
+      label: 'Drukuj',
+      onClick: printDatabase,
+      icon: <Printer className="h-4 w-4" />,
       variant: 'default' as const,
       show: true,
     },

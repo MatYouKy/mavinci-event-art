@@ -8,7 +8,7 @@ import PdfViewerScreen from '../screens/PdfViewerScreen';
 
 export type EventsStackParamList = {
   EventsList: undefined;
-  EventDetail: { eventId: string; initialTab?: 'fleet' };
+  EventDetail: { eventId: string; initialTab?: 'fleet' | 'team' };
   PdfViewer: { url: string };
 };
 
@@ -17,7 +17,10 @@ const Stack = createNativeStackNavigator<EventsStackParamList>();
 function EventDetailWrapper() {
   const route = useRoute<any>();
   const navigation = useNavigation();
-  const { eventId, initialTab } = route.params as { eventId: string; initialTab?: 'fleet' };
+  const { eventId, initialTab } = route.params as {
+    eventId: string;
+    initialTab?: 'fleet' | 'team';
+  };
 
   return (
     <EventDetailScreen

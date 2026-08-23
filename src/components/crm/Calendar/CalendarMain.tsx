@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ChevronLeft,
@@ -31,6 +31,7 @@ import {
   useGetCalendarFilterOptionsQuery,
   useGetTimelineResourcesQuery,
 } from '@/store/api/calendarApi';
+import { getWeekBounds } from '@/lib/timeline';
 
 export default function CalendarMain({
   initialCalendarEvents,
@@ -83,8 +84,13 @@ export default function CalendarMain({
   const { data: filterOptions, isLoading: filterOptionsLoading } =
     useGetCalendarFilterOptionsQuery();
 
+  const timelineRange = useMemo(() => {
+    const { start, end } = getWeekBounds(currentDate);
+    return { startDate: start.toISOString(), endDate: end.toISOString() };
+  }, [currentDate]);
+
   const { data: timelineResources, isLoading: timelineResourcesLoading } =
-    useGetTimelineResourcesQuery(undefined, {
+    useGetTimelineResourcesQuery(timelineRange, {
       skip: view !== 'timeline',
     });
 

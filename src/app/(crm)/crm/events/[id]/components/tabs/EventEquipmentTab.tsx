@@ -42,6 +42,7 @@ import { ISimpleContact } from '../../EventDetailPageClient';
 import SelectRentalEquipmentModal from '@/components/crm/SelectRentalEquipmentModal';
 import { EmployeeAvatar } from '@/components/EmployeeAvatar';
 import NextImage from 'next/image';
+import { RequiredComponentsWarning } from '@/components/crm/RequiredComponentsWarning';
 
 const KitItemRow = ({
   thumb,
@@ -329,12 +330,39 @@ export const EventEquipmentTab: React.FC<{
     }>
   >([]);
   const [resolvedConflictIndices, setResolvedConflictIndices] = useState<Set<number>>(new Set());
+  const [componentReviewQueue, setComponentReviewQueue] = useState<
+    Array<{ reviewId?: string; equipmentId: string; name: string; source: 'manual' | 'import' }>
+  >([]);
 
   const { showSnackbar } = useSnackbar();
   const { event, refetch: refetchEvent } = useEvent(initialEvent);
   const { employee, isAdmin } = useCurrentEmployee();
   const { showConfirm } = useDialog();
   const router = useRouter();
+
+  const fetchComponentReviewQueue = useCallback(async () => {
+    if (!eventId) return;
+    const { data, error } = await supabase
+      .from('event_equipment_component_reviews')
+      .select('id, equipment_id, source, equipment:equipment_items(name)')
+      .eq('event_id', eventId)
+      .eq('status', 'pending')
+      .order('created_at');
+    if (error) {
+      console.error('Error fetching component review queue:', error);
+      return;
+    }
+    setComponentReviewQueue((data || []).map((row: any) => ({
+      reviewId: row.id,
+      equipmentId: row.equipment_id,
+      name: (Array.isArray(row.equipment) ? row.equipment[0]?.name : row.equipment?.name) || 'Sprzęt',
+      source: row.source,
+    })));
+  }, [eventId]);
+
+  useEffect(() => {
+    fetchComponentReviewQueue();
+  }, [fetchComponentReviewQueue]);
 
   // Sprawdzenie czy są nierozwiązane konflikty
   const [hasUnresolvedConflicts, setHasUnresolvedConflicts] = useState(false);
@@ -603,6 +631,31 @@ export const EventEquipmentTab: React.FC<{
     await markChecklistAsModified();
   };
 
+  const enqueueComponentReviews = (
+    selectedItems: SelectedItem[],
+    source: 'manual' | 'import',
+  ) => {
+    const items = selectedItems
+      .filter((item) => item.type === 'item')
+      .map((item) => ({
+        equipmentId: item.id,
+        name: availableEquipment.find((equipmentItem: any) => equipmentItem.id === item.id)?.name ||
+          'Sprzęt',
+        source,
+      }));
+
+    setComponentReviewQueue((current) => {
+      const existing = new Set(current.map((item) => item.equipmentId));
+      return [...current, ...items.filter((item) => !existing.has(item.equipmentId))];
+    });
+  };
+
+  const handleManualAddEquipment = async (selectedItems: SelectedItem[]) => {
+    await handleAddEquipment(selectedItems);
+    enqueueComponentReviews(selectedItems, 'manual');
+    await fetchComponentReviewQueue();
+  };
+
   const handleImportFromCalculation = async () => {
     if (!eventId || !acceptedCalcId) return;
 
@@ -753,6 +806,20 @@ export const EventEquipmentTab: React.FC<{
       await refetch();
       await fetchAvailableEquipment();
       await markChecklistAsModified();
+
+      enqueueComponentReviews(merged, 'import');
+      const importedEquipmentIds = merged
+        .filter((item) => item.type === 'item')
+        .map((item) => item.id);
+      if (importedEquipmentIds.length > 0) {
+        await supabase
+          .from('event_equipment_component_reviews')
+          .update({ source: 'import', updated_at: new Date().toISOString() })
+          .eq('event_id', eventId)
+          .in('equipment_id', importedEquipmentIds)
+          .eq('status', 'pending');
+      }
+      await fetchComponentReviewQueue();
 
       if (conflicts.length > 0) {
         setImportConflicts(conflicts);
@@ -1016,6 +1083,57 @@ export const EventEquipmentTab: React.FC<{
 
       const eventDateFormatted = new Date(eventDate).toLocaleDateString('pl-PL');
 
+      const resolveChecklistCompanyLogo = async (): Promise<string | null> => {
+        let companyQuery = supabase
+          .from('my_companies')
+          .select('id, logo_url')
+          .eq('is_active', true);
+
+        if (event?.my_company_id) {
+          companyQuery = companyQuery.eq('id', event.my_company_id);
+        } else {
+          companyQuery = companyQuery.order('is_default', { ascending: false });
+        }
+
+        const { data: companies } = await companyQuery.limit(1);
+        const company = companies?.[0];
+        if (!company) return null;
+
+        const { data: logos } = await supabase
+          .from('company_brandbook_logos')
+          .select('url, is_default, order_index')
+          .eq('company_id', company.id)
+          .order('is_default', { ascending: false })
+          .order('order_index', { ascending: true });
+
+        const rawLogo = logos?.find((logo) => logo.is_default)?.url || logos?.[0]?.url || company.logo_url;
+        if (!rawLogo) return null;
+
+        const publicUrl = /^https?:\/\//i.test(rawLogo) || rawLogo.startsWith('data:')
+          ? rawLogo
+          : `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/company-logos/${rawLogo.replace(/^\/+/, '')}`;
+
+        if (publicUrl.startsWith('data:')) return publicUrl;
+
+        try {
+          const response = await fetch(publicUrl);
+          if (!response.ok) return publicUrl;
+          const blob = await response.blob();
+          const buffer = await blob.arrayBuffer();
+          const base64 = btoa(
+            new Uint8Array(buffer).reduce(
+              (result, byte) => result + String.fromCharCode(byte),
+              '',
+            ),
+          );
+          return `data:${blob.type || 'image/png'};base64,${base64}`;
+        } catch {
+          return publicUrl;
+        }
+      };
+
+      const companyLogoUrl = await resolveChecklistCompanyLogo();
+
       // ✅ Pobierz dane kontaktu w zależności od typu klienta
       let contactName = contact?.full_name || '-';
       let contactPhone = contact?.phone || '-';
@@ -1029,6 +1147,7 @@ export const EventEquipmentTab: React.FC<{
         authorNumber: (employee as any)?.phone_number || '-',
         contactName,
         contactPhone,
+        companyLogoUrl,
         externalItems: unresolvedExternalItems.length > 0 ? unresolvedExternalItems : undefined,
       });
 
@@ -1927,6 +2046,60 @@ export const EventEquipmentTab: React.FC<{
         </div>
       )}
 
+      {componentReviewQueue.length > 0 && (
+        <div className="mb-6 rounded-lg border border-sky-500/20 bg-sky-500/5 p-4">
+          <div className="mb-3 flex items-start gap-3">
+            <Package className="mt-0.5 h-5 w-5 shrink-0 text-sky-400" />
+            <div>
+              <h3 className="text-sm font-medium text-sky-300">
+                Kolejka weryfikacji zestawów ({componentReviewQueue.length})
+              </h3>
+              <p className="mt-1 text-xs text-sky-300/70">
+                Sprawdź elementy wymagane i rekomendowane oraz ich dostępność przed zamknięciem
+                listy sprzętu.
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-sky-500/10 bg-[#0f1119]/50 p-3">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <span className="text-sm font-medium text-[#e5e4e2]">
+                {componentReviewQueue[0].name}
+              </span>
+              <span className="rounded bg-sky-500/15 px-2 py-0.5 text-[11px] text-sky-300">
+                {componentReviewQueue[0].source === 'manual' ? 'Dodano ręcznie' : 'Import'}
+              </span>
+            </div>
+            <RequiredComponentsWarning
+              equipmentId={componentReviewQueue[0].equipmentId}
+              eventId={eventId}
+              availabilityByKey={availabilityByKey}
+              autoOpen={componentReviewQueue[0].source === 'manual'}
+              onComponentsAdded={async () => {
+                await refetch();
+                await fetchAvailableEquipment();
+                await markChecklistAsModified();
+              }}
+              onReviewFinished={async (status) => {
+                const review = componentReviewQueue[0];
+                if (review.reviewId) {
+                  await supabase
+                    .from('event_equipment_component_reviews')
+                    .update({
+                      status,
+                      reviewed_by: employee?.id || null,
+                      reviewed_at: new Date().toISOString(),
+                      updated_at: new Date().toISOString(),
+                    })
+                    .eq('id', review.reviewId);
+                }
+                setComponentReviewQueue((queue) => queue.slice(1));
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {externalItems.length > 0 && (
         <div className="mb-6 rounded-lg border border-amber-500/20 bg-amber-500/5 p-4">
           <div className="mb-3 flex items-center gap-2">
@@ -2261,7 +2434,7 @@ export const EventEquipmentTab: React.FC<{
           onAdd={
             replacingExternalIdx !== null
               ? handleAddEquipmentWithExternalResolve
-              : handleAddEquipment
+              : handleManualAddEquipment
           }
           availableEquipment={availableEquipment}
           availableKits={availableKits}

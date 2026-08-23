@@ -24,6 +24,7 @@ export async function fetchTasksServer() {
       due_date, created_by, created_at, updated_at, thumbnail_url, currently_working_by
     `)
     .eq('is_private', false)
+    .eq('is_inquiry', false)
     .is('event_id', null);
 
   if (tasksError) throw tasksError;

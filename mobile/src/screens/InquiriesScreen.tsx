@@ -17,6 +17,8 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import NewInquiryModal from './NewInquiryModal';
 import SwipeableRow from '@/components/SwipeableRow';
+import { useCrmCall } from '../hooks/useCrmCall';
+import CallOutcomeModal from '../components/CallOutcomeModal';
 
 type InquiriesStackParamList = {
   InquiriesList: undefined;
@@ -59,6 +61,7 @@ export default function InquiriesScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState<'pending' | 'all'>('pending');
   const [showNewModal, setShowNewModal] = useState(false);
+  const { startCall, pendingCall, showOutcome, closeOutcome } = useCrmCall();
 
   const fetchInquiries = useCallback(async () => {
     if (!employee?.id) return;
@@ -302,6 +305,23 @@ export default function InquiriesScreen() {
                   {statusCfg.label}
                 </Text>
               </View>
+
+              {details?.client_phone && (
+                <TouchableOpacity
+                  style={styles.callButton}
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    void startCall({
+                      phoneNumber: details.client_phone!,
+                      displayName: details.client_text || item.title.replace('Zapytanie: ', ''),
+                      inquiryId: item.id,
+                    });
+                  }}
+                >
+                  <Feather name="phone" size={14} color={colors.background.primary} />
+                  <Text style={styles.callButtonText}>Zadzwoń</Text>
+                </TouchableOpacity>
+              )}
   
               <Text style={styles.timeAgo}>
                 {getDaysAgo(item.created_at)}
@@ -380,6 +400,7 @@ export default function InquiriesScreen() {
           fetchInquiries();
         }}
       />
+      <CallOutcomeModal call={pendingCall} visible={showOutcome} onClose={closeOutcome} onSaved={() => void fetchInquiries()} />
     </View>
   );
 }
@@ -491,6 +512,20 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 11,
     fontWeight: '600',
+  },
+  callButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: colors.primary.gold,
+  },
+  callButtonText: {
+    color: colors.background.primary,
+    fontSize: typography.fontSizes.xs,
+    fontWeight: '700',
   },
   timeAgo: {
     fontSize: typography.fontSizes.xs,

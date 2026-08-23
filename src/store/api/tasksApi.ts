@@ -105,6 +105,7 @@ export const tasksApi = createApi({
             `,
             )
             .eq('is_private', false)
+            .eq('is_inquiry', false)
             .is('event_id', null);
 
           if (error) return { error: error as any };

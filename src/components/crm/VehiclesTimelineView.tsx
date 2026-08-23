@@ -1,8 +1,13 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
+import {
+  getClippedTimelinePosition,
+  getFleetTimelineScale,
+  isWithinBounds,
+} from '@/lib/timeline';
 import {
   ChevronLeft,
   ChevronRight,
@@ -55,6 +60,18 @@ export default function VehiclesTimelineView() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [zoomLevel, setZoomLevel] = useState<ZoomLevel>('week');
   const [showFilters, setShowFilters] = useState(false);
+  const timelineGridRef = useRef<HTMLDivElement>(null);
+  const [availableTimelineWidth, setAvailableTimelineWidth] = useState(0);
+  const timelineScale = useMemo(
+    () => getFleetTimelineScale(currentDate, zoomLevel),
+    [currentDate, zoomLevel],
+  );
+  // Dane pobieramy zawsze dla najszerszego zakresu. Przyciski lupy zmieniają
+  // wyłącznie skalę renderowania, bez ponownego zapytania i pełnego loadera.
+  const dataRange = useMemo(
+    () => getFleetTimelineScale(currentDate, 'month'),
+    [currentDate],
+  );
 
   // Filtry
   const [filters, setFilters] = useState({
@@ -65,8 +82,6 @@ export default function VehiclesTimelineView() {
 
   const fetchVehiclesWithTimeline = async () => {
     try {
-      setIsLoading(true);
-
       // Pobierz pojazdy
       const { data: vehiclesData, error: vehiclesError } = await supabase
         .from('vehicles')
@@ -76,8 +91,7 @@ export default function VehiclesTimelineView() {
       if (vehiclesError) throw vehiclesError;
 
       // Oblicz zakres dat
-      const startDate = getStartDate();
-      const endDate = getEndDate();
+      const { start: startDate, end: endDate } = dataRange;
 
       // Pobierz timeline dla każdego pojazdu
       const vehiclesWithTimeline = await Promise.all(
@@ -100,7 +114,30 @@ export default function VehiclesTimelineView() {
         }),
       );
 
-      setVehicles(vehiclesWithTimeline);
+      const eventIds = Array.from(
+        new Set(
+          vehiclesWithTimeline.flatMap((vehicle) =>
+            vehicle.timeline
+              .filter((entry: VehicleTimelineEntry) => entry.type === 'event')
+              .map((entry: VehicleTimelineEntry) => entry.related_id),
+          ),
+        ),
+      );
+      const { data: eventBounds, error: boundsError } = eventIds.length
+        ? await supabase.from('event_timeline_bounds').select('event_id, timeline_start, timeline_end').in('event_id', eventIds)
+        : { data: [], error: null };
+      if (boundsError) throw boundsError;
+      const boundsByEvent = new Map(
+        (eventBounds || []).map((bounds: any) => [bounds.event_id, bounds]),
+      );
+
+      setVehicles(vehiclesWithTimeline.map((vehicle) => ({
+        ...vehicle,
+        timeline: vehicle.timeline.map((entry: VehicleTimelineEntry) => {
+          const bounds: any = entry.type === 'event' ? boundsByEvent.get(entry.related_id) : null;
+          return bounds ? { ...entry, start_date: bounds.timeline_start, end_date: bounds.timeline_end } : entry;
+        }),
+      })));
     } catch (error) {
       console.error('Error fetching vehicles:', error);
       showSnackbar('Błąd podczas ładowania pojazdów', 'error');
@@ -111,61 +148,25 @@ export default function VehiclesTimelineView() {
 
   useEffect(() => {
     fetchVehiclesWithTimeline();
-  }, [currentDate, zoomLevel]);
+  }, [dataRange]);
 
-  const getStartDate = () => {
-    const date = new Date(currentDate);
-    if (zoomLevel === 'day') {
-      date.setDate(date.getDate() - 3);
-    } else if (zoomLevel === 'week') {
-      date.setDate(date.getDate() - 14);
-    } else {
-      date.setMonth(date.getMonth() - 1);
-    }
-    return date;
-  };
+  const { columns, columnWidth, totalWidth } = timelineScale;
+  const displayTotalWidth = Math.max(totalWidth, availableTimelineWidth);
+  const displayColumnWidth = displayTotalWidth / columns.length;
 
-  const getEndDate = () => {
-    const date = new Date(currentDate);
-    if (zoomLevel === 'day') {
-      date.setDate(date.getDate() + 4);
-    } else if (zoomLevel === 'week') {
-      date.setDate(date.getDate() + 14);
-    } else {
-      date.setMonth(date.getMonth() + 2);
-    }
-    return date;
-  };
+  useEffect(() => {
+    const grid = timelineGridRef.current;
+    if (!grid) return;
 
-  const getDaysInView = () => {
-    if (zoomLevel === 'day') return 7;
-    if (zoomLevel === 'week') return 28;
-    return 90;
-  };
+    const updateAvailableWidth = () => {
+      setAvailableTimelineWidth(Math.max(0, grid.clientWidth - 256));
+    };
+    updateAvailableWidth();
 
-  const generateTimelineColumns = () => {
-    const days = getDaysInView();
-    const startDate = getStartDate();
-    const columns = [];
-
-    for (let i = 0; i < days; i++) {
-      const date = new Date(startDate);
-      date.setDate(date.getDate() + i);
-      columns.push(date);
-    }
-
-    return columns;
-  };
-
-  const columns = useMemo(() => generateTimelineColumns(), [currentDate, zoomLevel]);
-
-  const getColumnWidth = () => {
-    if (zoomLevel === 'day') return 120;
-    if (zoomLevel === 'week') return 60;
-    return 30;
-  };
-
-  const columnWidth = getColumnWidth();
+    const observer = new ResizeObserver(updateAvailableWidth);
+    observer.observe(grid);
+    return () => observer.disconnect();
+  }, []);
 
   const navigatePrevious = () => {
     const newDate = new Date(currentDate);
@@ -195,21 +196,14 @@ export default function VehiclesTimelineView() {
     setCurrentDate(new Date());
   };
 
-  const calculatePosition = (startDate: string) => {
-    const start = new Date(startDate);
-    const timelineStart = getStartDate();
-    const diffTime = start.getTime() - timelineStart.getTime();
-    const diffDays = diffTime / (1000 * 60 * 60 * 24);
-    return Math.max(0, diffDays * columnWidth);
-  };
-
-  const calculateWidth = (startDate: string, endDate: string) => {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    const diffTime = end.getTime() - start.getTime();
-    const diffDays = diffTime / (1000 * 60 * 60 * 24);
-    return Math.max(columnWidth * 0.8, diffDays * columnWidth);
-  };
+  const getEntryPosition = (startDate: string, endDate: string) =>
+    getClippedTimelinePosition(
+      new Date(startDate),
+      new Date(endDate),
+      timelineScale,
+      displayTotalWidth,
+      displayColumnWidth * 0.25,
+    );
 
   const isToday = (date: Date) => {
     const today = new Date();
@@ -375,14 +369,17 @@ export default function VehiclesTimelineView() {
       </div>
 
       {/* Timeline Grid */}
-      <div className="flex flex-1 overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33]">
+      <div
+        ref={timelineGridRef}
+        className="flex flex-1 overflow-auto rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33]"
+      >
         {/* Sidebar z nazwami */}
-        <div className="w-64 flex-shrink-0 border-r border-[#d3bb73]/20 bg-[#0f1119]">
+        <div className="sticky left-0 z-30 w-64 flex-shrink-0 self-start border-r border-[#d3bb73]/20 bg-[#0f1119]">
           <div className="sticky top-0 z-10 border-b border-[#d3bb73]/20 bg-[#0f1119] p-4">
             <div className="text-sm font-medium text-[#e5e4e2]">Pojazdy</div>
           </div>
 
-          <div className="overflow-y-auto" style={{ height: 'calc(100% - 57px)' }}>
+          <div>
             {filteredVehicles.map((vehicle) => (
               <div
                 key={vehicle.id}
@@ -403,7 +400,7 @@ export default function VehiclesTimelineView() {
         </div>
 
         {/* Timeline Content */}
-        <div className="flex-1 overflow-x-auto">
+        <div className="flex-shrink-0" style={{ width: `${displayTotalWidth}px` }}>
           {/* Header z datami */}
           <div className="sticky top-0 z-10 flex border-b border-[#d3bb73]/20 bg-[#0f1119]">
             {columns.map((date, idx) => (
@@ -412,7 +409,7 @@ export default function VehiclesTimelineView() {
                 className={`flex-shrink-0 border-r border-[#d3bb73]/10 p-2 text-center ${
                   isToday(date) ? 'bg-[#d3bb73]/20' : ''
                 }`}
-                style={{ width: `${columnWidth}px` }}
+                style={{ width: `${displayColumnWidth}px` }}
               >
                 <div className="text-xs font-medium text-[#e5e4e2]">
                   {date.toLocaleDateString('pl-PL', { day: 'numeric', month: 'short' })}
@@ -428,7 +425,13 @@ export default function VehiclesTimelineView() {
           <div className="relative">
             {/* Today indicator */}
             {(() => {
-              const todayPosition = calculatePosition(new Date().toISOString());
+              if (!isWithinBounds(new Date(), timelineScale)) return null;
+              const todayPosition = getClippedTimelinePosition(
+                new Date(),
+                new Date(Date.now() + 1),
+                timelineScale,
+                displayTotalWidth,
+              )?.offset;
               return (
                 <div
                   className="pointer-events-none absolute top-0 z-20 h-full w-0.5 bg-red-500"
@@ -442,29 +445,32 @@ export default function VehiclesTimelineView() {
               <div
                 key={vehicle.id}
                 className="relative h-16 border-b border-[#d3bb73]/10"
-                style={{ width: `${columns.length * columnWidth}px` }}
+                style={{ width: `${displayTotalWidth}px` }}
               >
                 {/* Grid lines */}
                 {columns.map((_, idx) => (
                   <div
                     key={idx}
                     className="absolute top-0 h-full border-r border-[#d3bb73]/5"
-                    style={{ left: `${idx * columnWidth}px`, width: `${columnWidth}px` }}
+                    style={{
+                      left: `${idx * displayColumnWidth}px`,
+                      width: `${displayColumnWidth}px`,
+                    }}
                   />
                 ))}
 
                 {/* Timeline entries */}
                 {vehicle.timeline.map((entry) => {
-                  const left = calculatePosition(entry.start_date);
-                  const width = calculateWidth(entry.start_date, entry.end_date);
+                  const position = getEntryPosition(entry.start_date, entry.end_date);
+                  if (!position) return null;
 
                   return (
                     <div
                       key={entry.id}
                       className="absolute top-2 h-12 cursor-pointer overflow-hidden rounded px-2 py-1 text-xs text-white transition-all hover:z-10 hover:shadow-lg"
                       style={{
-                        left: `${left}px`,
-                        width: `${width}px`,
+                        left: `${position.offset}px`,
+                        width: `${position.size}px`,
                         backgroundColor: entry.color,
                       }}
                       title={`${entry.title}\n${entry.description}`}
@@ -479,14 +485,14 @@ export default function VehiclesTimelineView() {
                           <span className="truncate">{entry.title}</span>
                         </div>
 
-                        {entry.location && width > 100 && (
+                        {entry.location && position.size > 100 && (
                           <div className="mt-0.5 flex items-center gap-1 text-[10px] opacity-80">
                             <MapPin className="h-2.5 w-2.5 flex-shrink-0" />
                             <span className="truncate">{entry.location}</span>
                           </div>
                         )}
 
-                        {entry.driver_name && width > 150 && (
+                        {entry.driver_name && position.size > 150 && (
                           <div className="mt-0.5 flex items-center gap-1 text-[10px] opacity-80">
                             <User className="h-2.5 w-2.5 flex-shrink-0" />
                             <span className="truncate">{entry.driver_name}</span>

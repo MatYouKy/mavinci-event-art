@@ -595,8 +595,8 @@ export default function InvoicesPage() {
 
   return (
     <PermissionGuard module="invoices">
-      <div className="min-h-screen bg-[#0a0d1a] p-6">
-        <div className="mx-auto max-w-[1800px]">
+      <div className="min-h-screen min-w-0 overflow-x-hidden bg-[#0a0d1a] p-3 sm:p-6">
+        <div className="mx-auto min-w-0 max-w-[1800px]">
           {/* Header */}
           <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
             <div>
@@ -604,29 +604,34 @@ export default function InvoicesPage() {
               <p className="text-[#e5e4e2]/60">Zarządzaj fakturami i dokumentami finansowymi</p>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="ml-auto flex w-full min-w-0 items-center justify-end gap-2 sm:w-auto sm:gap-3">
               {/* Global company multi-select */}
               {myCompanies.length > 1 && (
-                <div className="relative" ref={companyDropdownRef}>
+                <div
+                  className="relative min-w-0 max-w-[calc(100%-3rem)] sm:max-w-80"
+                  ref={companyDropdownRef}
+                >
                   <button
                     onClick={() => setShowCompanyDropdown((prev) => !prev)}
-                    className={`flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm transition-colors ${
+                    className={`flex max-w-full min-w-0 items-center gap-2 rounded-lg border px-3 py-2.5 text-sm transition-colors sm:px-4 ${
                       selectedCompanyIds.size > 0
                         ? 'border-[#d3bb73] bg-[#d3bb73]/10 text-[#d3bb73]'
                         : 'border-[#d3bb73]/20 bg-[#1c1f33] text-[#e5e4e2]/70 hover:border-[#d3bb73]/40'
                     }`}
                   >
-                    <Building2 className="h-4 w-4" />
-                    {selectedCompanyIds.size === 0
-                      ? 'Wszystkie firmy'
-                      : selectedCompanyIds.size === 1
-                        ? myCompanies.find((c) => selectedCompanyIds.has(c.id))?.name || '1 firma'
-                        : `${selectedCompanyIds.size} firm`}
-                    <ChevronDown className="h-3.5 w-3.5" />
+                    <Building2 className="h-4 w-4 shrink-0" />
+                    <span className="min-w-0 truncate">
+                      {selectedCompanyIds.size === 0
+                        ? 'Wszystkie firmy'
+                        : selectedCompanyIds.size === 1
+                          ? myCompanies.find((c) => selectedCompanyIds.has(c.id))?.name || '1 firma'
+                          : `${selectedCompanyIds.size} firm`}
+                    </span>
+                    <ChevronDown className="h-3.5 w-3.5 shrink-0" />
                   </button>
 
                   {showCompanyDropdown && (
-                    <div className="absolute right-0 top-full z-50 mt-2 w-72 rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-2 shadow-2xl">
+                    <div className="absolute right-0 top-full z-50 mt-2 w-[min(18rem,calc(100vw-1.5rem))] rounded-xl border border-[#d3bb73]/20 bg-[#1c1f33] p-2 shadow-2xl">
                       <button
                         onClick={() => {
                           setSelectedCompanyIds(new Set());
@@ -689,30 +694,33 @@ export default function InvoicesPage() {
                 </div>
               )}
 
-              <ResponsiveActionBar
-                actions={
-                  canManageInvoices || canIssueAny
-                    ? [
-                        {
-                          label: 'Faktura końcowa',
-                          onClick: () => setShowFinalInvoiceWizard(true),
-                          icon: <FileText className="h-5 w-5" />,
-                          variant: 'default',
-                        },
-                        {
-                          label: 'Wystaw fakturę',
-                          onClick: () => router.push('/crm/invoices/new'),
-                          icon: <Plus className="h-5 w-5" />,
-                          variant: 'primary',
-                        },
-                      ]
-                    : []
-                }
-              />
+              <div className="shrink-0">
+                <ResponsiveActionBar
+                  mobileBreakpoint={1180}
+                  actions={
+                    canManageInvoices || canIssueAny
+                      ? [
+                          {
+                            label: 'Faktura końcowa',
+                            onClick: () => setShowFinalInvoiceWizard(true),
+                            icon: <FileText className="h-5 w-5" />,
+                            variant: 'default',
+                          },
+                          {
+                            label: 'Wystaw fakturę',
+                            onClick: () => router.push('/crm/invoices/new'),
+                            icon: <Plus className="h-5 w-5" />,
+                            variant: 'primary',
+                          },
+                        ]
+                      : []
+                  }
+                />
+              </div>
             </div>
           </div>
 
-          <div className="mb-6 flex gap-2 overflow-x-auto border-b border-[#d3bb73]/10">
+          <div className="mb-6 flex snap-x snap-mandatory gap-2 overflow-x-auto overscroll-x-contain border-b border-[#d3bb73]/10 scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {[
               { id: 'dashboard', label: 'Dashboard', icon: DollarSign },
               { id: 'ksef', label: 'KSeF', icon: FileText },
@@ -731,7 +739,7 @@ export default function InvoicesPage() {
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id as any)}
-                    className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
+                    className={`flex shrink-0 snap-start items-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
                       activeTab === tab.id
                         ? 'border-[#d3bb73] text-[#d3bb73]'
                         : 'border-transparent text-[#e5e4e2]/60 hover:text-[#e5e4e2]'

@@ -509,7 +509,7 @@ export default function SendCalculationEmailModal({
                   <strong>Podgląd:</strong> Tak będzie wyglądać Twoja wiadomość u odbiorcy
                 </p>
               </div>
-              <div className="rounded-lg bg-white p-4">
+              <div className="rounded-lg bg-white p-4 text-[#1c1f33] [color-scheme:light]">
                 <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
               </div>
             </div>

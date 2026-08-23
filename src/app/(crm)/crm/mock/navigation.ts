@@ -4,6 +4,7 @@ export interface NavigationItem {
   href: string;
   iconKey: string; // 👈 string, NIE komponent
   module?: string;
+  children?: NavigationItem[];
 }
 
 export const allNavigation: NavigationItem[] = [
@@ -11,14 +12,27 @@ export const allNavigation: NavigationItem[] = [
 
   { key: 'calendar', name: 'Kalendarz', href: '/crm/calendar', iconKey: 'calendar', module: 'calendar' },
   { key: 'messages', name: 'Wiadomości', href: '/crm/messages', iconKey: 'messages', module: 'messages' },
+  { key: 'marketing-campaigns', name: 'Kampanie', href: '/crm/campaigns', iconKey: 'campaigns', module: 'marketing_campaigns' },
   { key: 'contacts', name: 'Kontakty', href: '/crm/contacts', iconKey: 'contacts', module: 'clients' },
   { key: 'events', name: 'Eventy', href: '/crm/events', iconKey: 'events', module: 'events' },
+  { key: 'mavinci-live', name: 'Mavinci LIVE', href: '/crm/mavinci-live', iconKey: 'mavinciLive', module: 'mavinci_live' },
   { key: 'offers', name: 'Oferty', href: '/crm/offers', iconKey: 'offers', module: 'offers' },
-  { key: 'contracts', name: 'Umowy', href: '/crm/contracts', iconKey: 'contracts', module: 'contracts' },
+  {
+    key: 'contracts',
+    name: 'Umowy',
+    href: '/crm/contracts',
+    iconKey: 'contracts',
+    module: 'contracts',
+    children: [
+      { key: 'contracts', name: 'Umowy', href: '/crm/contracts', iconKey: 'fileText', module: 'contracts' },
+      { key: 'contracts', name: 'Szablony umów', href: '/crm/contract-templates', iconKey: 'fileType', module: 'contracts' },
+    ],
+  },
   { key: 'invoices', name: 'Faktury', href: '/crm/invoices', iconKey: 'invoices', module: 'finances' },
   { key: 'employees', name: 'Pracownicy', href: '/crm/employees', iconKey: 'employees', module: 'employees' },
   { key: 'equipment', name: 'Magazyn', href: '/crm/equipment', iconKey: 'equipment', module: 'equipment' },
   { key: 'fleet', name: 'Flota', href: '/crm/fleet', iconKey: 'fleet', module: 'fleet' },
+  { key: 'inquiries', name: 'Zapytania', href: '/crm/inquiries', iconKey: 'tasks', module: 'tasks' },
   { key: 'tasks', name: 'Zadania', href: '/crm/tasks', iconKey: 'tasks', module: 'tasks' },
   { key: 'time-tracking', name: 'Czas pracy', href: '/crm/time-tracking', iconKey: 'time', module: 'time_tracking' },
   { key: 'page', name: 'Strona', href: '/crm/page', iconKey: 'page', module: 'page' },
@@ -42,12 +56,14 @@ import {
   BookUser,
   FileSignature,
   FileSearch,
+  Megaphone,
   } from 'lucide-react';
 
 export const NavigationIcons: Record<string, unknown> = {
   dashboard: LayoutDashboard,
   calendar: Calendar,
   messages: Mail,
+  campaigns: Megaphone,
   contacts: BookUser,
   events: Calendar,
   offers: FileText,

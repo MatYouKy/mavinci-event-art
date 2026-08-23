@@ -9,7 +9,10 @@ export type NavKey =
   | 'calendar'
   | 'meetings'
   | 'events'
+  | 'mavinci-live'
   | 'messages'
+  | 'marketing-campaigns'
+  | 'inquiries'
   | 'tasks'
   | 'employees'
   | 'offers'
@@ -66,12 +69,36 @@ export const allNavigation: NavigationItemDTO[] = [
     permissions: ['events_view'],
   },
   {
+    key: 'mavinci-live',
+    name: 'Mavinci LIVE',
+    href: '/crm/mavinci-live',
+    iconKey: 'mavinciLive',
+    module: 'mavinci_live',
+    permissions: ['mavinci_live_view'],
+  },
+  {
     key: 'messages',
     name: 'Wiadomości',
     href: '/crm/messages',
     iconKey: 'messages',
     module: 'messages',
     permissions: ['messages_view'],
+  },
+  {
+    key: 'marketing-campaigns',
+    name: 'Kampanie',
+    href: '/crm/campaigns',
+    iconKey: 'campaigns',
+    module: 'marketing_campaigns',
+    permissions: ['marketing_campaigns_view'],
+  },
+  {
+    key: 'inquiries',
+    name: 'Zapytania',
+    href: '/crm/inquiries',
+    iconKey: 'inquiries',
+    module: 'inquiries',
+    permissions: ['inquiries_view'],
   },
   {
     key: 'tasks',
@@ -138,6 +165,24 @@ export const allNavigation: NavigationItemDTO[] = [
     iconKey: 'contracts',
     module: 'contracts',
     permissions: ['contracts_view'],
+    children: [
+      {
+        key: 'contracts',
+        name: 'Umowy',
+        href: '/crm/contracts',
+        iconKey: 'fileText',
+        module: 'contracts',
+        permissions: ['contracts_view'],
+      },
+      {
+        key: 'contracts',
+        name: 'Szablony umów',
+        href: '/crm/contract-templates',
+        iconKey: 'fileType',
+        module: 'contracts',
+        permissions: ['contracts_view'],
+      },
+    ],
   },
   {
     key: 'equipment',

@@ -2,3 +2,21 @@ project_id = "mavinci-event-art"
 
 [functions.send-crm-notification-push]
 verify_jwt = false
+
+[functions.qualify-incoming-email]
+verify_jwt = true
+
+[functions.send-marketing-campaign-test]
+verify_jwt = true
+
+[functions.sync-email-read-state]
+verify_jwt = true
+
+[functions.process-marketing-campaigns]
+verify_jwt = false
+
+[functions.unsubscribe-marketing]
+verify_jwt = false
+
+[functions.track-marketing-event]
+verify_jwt = false

@@ -31,6 +31,8 @@ import {
   List,
   RefreshCw,
   Copy,
+  HeartHandshake,
+  MonitorPlay,
 } from 'lucide-react';
 import * as Icons from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
@@ -45,6 +47,10 @@ import EventLogisticsPanel from '@/app/(crm)/crm/events/[id]/components/tabs/Eve
 import OfferWizard from '@/app/(crm)/crm/offers/[id]/components/OfferWizzard/OfferWizard';
 import EventFinancesTab from '@/app/(crm)/crm/events/[id]/components/tabs/EventFinancesTab';
 import EventAgendaTab from '@/app/(crm)/crm/events/[id]/components/tabs/EventAgendaTab';
+import EventWeddingCardTab from '@/app/(crm)/crm/events/[id]/components/tabs/EventWeddingCardTab';
+import EventMavinciLiveTab, {
+  type MavinciLiveModuleRequirement,
+} from '@/app/(crm)/crm/events/[id]/components/tabs/EventMavinciLiveTab';
 import EventCalculationsTab from '@/components/crm/events/calculations/EventCalculationsTab';
 import { EventPhasesTimeline } from '@/app/(crm)/crm/events/[id]/components/tabs/EventPhasesTimeline';
 
@@ -82,6 +88,7 @@ import { IEmployee } from '../../employees/type';
 import { hasScope } from './helpers/hasScope';
 import { EventCategoryRow } from '@/lib/CRM/events/eventsData.server';
 import { EventContractTab } from '@/components/crm/events/contract/EventContractTab';
+import EventWorkflowReadinessPanel from '@/components/crm/events/EventWorkflowReadinessPanel';
 
 export const ADMIN_EVENT_TABS = [
   'overview',
@@ -98,6 +105,7 @@ export const ADMIN_EVENT_TABS = [
   'files',
   'tasks',
   'history',
+  'mavinci-live',
 ];
 
 export const CREATOR_EVENT_TABS = [
@@ -115,6 +123,7 @@ export const CREATOR_EVENT_TABS = [
   'files',
   'tasks',
   'history',
+  'mavinci-live',
 ];
 
 interface Equipment {
@@ -310,6 +319,12 @@ export default function EventDetailPageClient({
 
   const [event, setEvent] = useState<IEvent>(initialData);
 
+  const isWeddingEvent = useMemo(() => {
+    const categoryName =
+      event?.category?.name || categories.find((category) => category.id === event?.category_id)?.name;
+    return categoryName?.trim().toLocaleLowerCase('pl-PL').startsWith('wesel') ?? false;
+  }, [categories, event?.category?.name, event?.category_id]);
+
   const [updateEventMutation] = useUpdateEventMutation();
   const [deleteOfferMutation] = useDeleteEventOfferMutation();
 
@@ -377,6 +392,7 @@ export default function EventDetailPageClient({
     | 'agenda'
     | 'calculations'
     | 'history'
+    | 'mavinci-live'
   >('overview');
 
   const [showAddChecklistModal, setShowAddChecklistModal] = useState(false);
@@ -409,6 +425,36 @@ export default function EventDetailPageClient({
   const { data: offersData, isFetching: offersFetching } = useGetEventOffersQuery(eventId, {
     skip: !canViewCommercials,
   });
+
+  const [requiredMavinciLiveModules, setRequiredMavinciLiveModules] = useState<
+    MavinciLiveModuleRequirement[]
+  >([]);
+
+  const loadRequiredMavinciLiveModules = useCallback(async () => {
+    const { data, error } = await supabase.rpc('get_event_required_mavinci_live_modules', {
+      p_event_id: eventId,
+    });
+
+    if (error) {
+      if (!/does not exist|schema cache|PGRST202|42883/i.test(error.message)) {
+        console.error('Error loading required Mavinci LIVE modules:', error);
+      }
+      setRequiredMavinciLiveModules([]);
+      return;
+    }
+
+    setRequiredMavinciLiveModules((data || []) as MavinciLiveModuleRequirement[]);
+  }, [eventId]);
+
+  useEffect(() => {
+    void loadRequiredMavinciLiveModules();
+  }, [loadRequiredMavinciLiveModules, offersData]);
+
+  useEffect(() => {
+    if (activeTab === 'mavinci-live' && requiredMavinciLiveModules.length === 0) {
+      setActiveTab('overview');
+    }
+  }, [activeTab, requiredMavinciLiveModules.length]);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleDeleteEvent = async () => {
@@ -808,7 +854,11 @@ export default function EventDetailPageClient({
           { id: 'offer', label: 'Oferta', icon: DollarSign },
           { id: 'finances', label: 'Finanse', icon: DollarSign },
           { id: 'contract', label: 'Umowa', icon: FileText },
-          { id: 'agenda', label: 'Agenda', icon: ClipboardList },
+          {
+            id: 'agenda',
+            label: isWeddingEvent ? 'Karta weselna' : 'Agenda',
+            icon: isWeddingEvent ? HeartHandshake : ClipboardList,
+          },
           { id: 'calculations', label: 'Kalkulacje', icon: ClipboardList },
           { id: 'equipment', label: 'Sprzęt', icon: Package },
           { id: 'team', label: 'Zespół', icon: Users },
@@ -817,6 +867,7 @@ export default function EventDetailPageClient({
           { id: 'files', label: 'Pliki', icon: FileText },
           { id: 'tasks', label: 'Zadania', icon: CheckSquare },
           { id: 'history', label: 'Historia', icon: History },
+          { id: 'mavinci-live', label: 'Mavinci LIVE', icon: MonitorPlay },
         ]
           .filter((tab) => {
             if (hasLimitedAccess && !isCreator && !isAdmin) {
@@ -824,6 +875,10 @@ export default function EventDetailPageClient({
             }
 
             if (tab.id === 'finances' && !canViewCommercials) {
+              return false;
+            }
+
+            if (tab.id === 'mavinci-live' && requiredMavinciLiveModules.length === 0) {
               return false;
             }
 
@@ -931,6 +986,13 @@ export default function EventDetailPageClient({
                   </div>
                 </div>
               </div>
+            )}
+            {canEventManage && (
+              <EventWorkflowReadinessPanel
+                eventId={eventId}
+                canManage={canEventManage}
+                canConfigure={isAdmin}
+              />
             )}
             <EventsDetailsTab
               initialEvent={event}
@@ -1161,7 +1223,11 @@ export default function EventDetailPageClient({
 
       {activeTab === 'contract' && <EventContractTab eventId={eventId} />}
 
-      {activeTab === 'agenda' && (
+      {activeTab === 'agenda' && isWeddingEvent && (
+        <EventWeddingCardTab eventId={eventId} canManage={canEventManage} />
+      )}
+
+      {activeTab === 'agenda' && !isWeddingEvent && (
         <EventAgendaTab
           contact={contact as ContactRow | ISimpleContact}
           organization={organization as OrganizationRow}
@@ -1176,6 +1242,16 @@ export default function EventDetailPageClient({
 
       {activeTab === 'calculations' && (
         <EventCalculationsTab eventId={eventId} contactPerson={contact as any} />
+      )}
+
+      {activeTab === 'mavinci-live' && (
+        <EventMavinciLiveTab
+          eventId={eventId}
+          eventName={event?.name || 'Wydarzenie'}
+          canManage={Boolean(canEventManage)}
+          employees={employees}
+          requiredModules={requiredMavinciLiveModules}
+        />
       )}
 
       {activeTab === 'history' && (

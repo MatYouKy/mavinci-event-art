@@ -39,6 +39,12 @@
         }
       ],
       "@react-native-community/datetimepicker",
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "Mavinci CRM synchronizuje wyłącznie kontakty służbowe dostępne dla Ciebie w CRM, aby telefon rozpoznawał klientów podczas połączeń."
+        }
+      ],
       "expo-font"
     ],
     "ios": {

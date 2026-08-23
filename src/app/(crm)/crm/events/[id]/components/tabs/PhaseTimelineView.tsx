@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Trash2, GripVertical, AlertTriangle } from 'lucide-react';
 import { EventPhase } from '@/store/api/eventPhasesApi';
 import { TimelineTooltip, TooltipContent } from './TimelineTooltip';
+import { generateTimeMarkers, getClippedTimelinePosition } from '@/lib/timeline';
 
 interface PhaseTimelineViewProps {
   phases: EventPhase[];
@@ -40,6 +41,13 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
     phaseId: '',
     handle: null,
   });
+  const [resizePreview, setResizePreview] = useState<{
+    phaseId: string;
+    start: Date;
+    end: Date;
+  } | null>(null);
+  const resizePreviewRef = useRef<typeof resizePreview>(null);
+  const resizeFrameRef = useRef<number | null>(null);
   const [hoveredPhase, setHoveredPhase] = useState<string | null>(null);
   const [tooltipState, setTooltipState] = useState<{ x: number; y: number; phase: EventPhase | null }>({ x: 0, y: 0, phase: null });
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -47,13 +55,17 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
   const totalDuration = timelineBounds.end.getTime() - timelineBounds.start.getTime();
 
   const getPhasePosition = (phase: EventPhase) => {
-    const start = new Date(phase.start_time).getTime();
-    const end = new Date(phase.end_time).getTime();
-
-    const left = ((start - timelineBounds.start.getTime()) / totalDuration) * 100;
-    const width = ((end - start) / totalDuration) * 100;
-
-    return { left: `${Math.max(0, left)}%`, width: `${Math.max(1, width)}%` };
+    const preview = resizePreview?.phaseId === phase.id ? resizePreview : null;
+    const position = getClippedTimelinePosition(
+      preview?.start ?? new Date(phase.start_time),
+      preview?.end ?? new Date(phase.end_time),
+      timelineBounds,
+      100,
+      1,
+    );
+    return position
+      ? { left: `${position.offset}%`, width: `${position.size}%` }
+      : { left: '0%', width: '0%' };
   };
 
   const formatTimeLabel = (date: Date): string => {
@@ -72,30 +84,10 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
     }
   };
 
-  const generateTimeMarkers = () => {
-    const markers: Date[] = [];
-    const start = new Date(timelineBounds.start);
-    const end = new Date(timelineBounds.end);
-
-    let interval: number;
-    if (zoomLevel === 'days') {
-      interval = 24 * 60 * 60 * 1000;
-    } else if (zoomLevel === 'hours') {
-      interval = 60 * 60 * 1000;
-    } else {
-      interval = 15 * 60 * 1000;
-    }
-
-    let current = new Date(Math.ceil(start.getTime() / interval) * interval);
-    while (current <= end) {
-      markers.push(new Date(current));
-      current = new Date(current.getTime() + interval);
-    }
-
-    return markers;
-  };
-
-  const timeMarkers = generateTimeMarkers();
+  const timeMarkers = useMemo(
+    () => generateTimeMarkers(timelineBounds, zoomLevel),
+    [timelineBounds, zoomLevel],
+  );
 
   // Update current time every 60 seconds
   useEffect(() => {
@@ -157,16 +149,34 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
 
       if (resizing.handle === 'start') {
         if (newTime < endTime) {
-          onPhaseResize(resizing.phaseId, newTime, endTime);
+          const preview = { phaseId: resizing.phaseId, start: newTime, end: endTime };
+          resizePreviewRef.current = preview;
+          if (resizeFrameRef.current === null) {
+            resizeFrameRef.current = requestAnimationFrame(() => {
+              setResizePreview(resizePreviewRef.current);
+              resizeFrameRef.current = null;
+            });
+          }
         }
       } else {
         if (newTime > startTime) {
-          onPhaseResize(resizing.phaseId, startTime, newTime);
+          const preview = { phaseId: resizing.phaseId, start: startTime, end: newTime };
+          resizePreviewRef.current = preview;
+          if (resizeFrameRef.current === null) {
+            resizeFrameRef.current = requestAnimationFrame(() => {
+              setResizePreview(resizePreviewRef.current);
+              resizeFrameRef.current = null;
+            });
+          }
         }
       }
     };
 
     const handleMouseUp = () => {
+      const preview = resizePreviewRef.current;
+      if (preview) onPhaseResize(preview.phaseId, preview.start, preview.end);
+      resizePreviewRef.current = null;
+      setResizePreview(null);
       setResizing({ phaseId: '', handle: null });
     };
 
@@ -176,6 +186,7 @@ export const PhaseTimelineView: React.FC<PhaseTimelineViewProps> = ({
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      if (resizeFrameRef.current !== null) cancelAnimationFrame(resizeFrameRef.current);
     };
   }, [resizing, phases, timelineBounds, totalDuration, onPhaseResize]);
 

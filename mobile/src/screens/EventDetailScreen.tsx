@@ -23,13 +23,11 @@ import {
 import { EventFile, FilesTab } from '@/components/Events/EventDetailScreen/FilesTab';
 import { AgendaData, AgendaTab } from '@/components/Events/EventDetailScreen/AgendaTab';
 import { DetailsTab, EventDetail } from '@/components/Events/EventDetailScreen/DetailsTab';
-import {
-  EventVehicleAssignment,
-  FleetTab,
-} from '@/components/Events/EventDetailScreen/FleetTab';
+import { EventVehicleAssignment, FleetTab } from '@/components/Events/EventDetailScreen/FleetTab';
+import { TeamTab } from '@/components/Events/EventDetailScreen/TeamTab';
 import { isManagerOrAdmin } from '../lib/permissions';
 
-type TabKey = 'details' | 'agenda' | 'checklist' | 'fleet' | 'files';
+type TabKey = 'details' | 'agenda' | 'checklist' | 'team' | 'fleet' | 'files';
 
 interface Props {
   eventId: string;
@@ -59,6 +57,8 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
   const [checklistPdfPath, setChecklistPdfPath] = useState<string | null>(null);
   const [myAssignment, setMyAssignment] = useState<MyAssignment | null>(null);
   const [respondingInvitation, setRespondingInvitation] = useState(false);
+  const [showAcceptedFeedback, setShowAcceptedFeedback] = useState(false);
+  const [canViewPrivateFiles, setCanViewPrivateFiles] = useState(false);
 
   const fetchMyAssignment = useCallback(async () => {
     const {
@@ -93,6 +93,9 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
       }
 
       setMyAssignment({ ...myAssignment, status: newStatus });
+      if (newStatus === 'accepted') {
+        setShowAcceptedFeedback(true);
+      }
 
       // Notify event creator
       if (event) {
@@ -174,12 +177,12 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
       .from('events')
       .select(
         `
-        id, name, description, event_date, event_end_date, status, notes,
+        id, name, description, event_date, event_end_date, status, notes, created_by,
         expected_revenue, budget, equipment_checklist_pdf_path, loading_locked,
         event_categories(name, color),
         locations(name, formatted_address, address, city),
-        organizations(name, alias),
-        contacts(first_name, last_name, phone, email),
+        organizations(id, name, alias),
+        contacts(id, first_name, last_name, phone, mobile, email),
         creator:employees!created_by(name, surname)
       `,
       )
@@ -191,9 +194,12 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
     setChecklistPdfPath((data as any).equipment_checklist_pdf_path || null);
 
     const { data: assignments } = await supabase
-      .from('employee_event_assignments')
-      .select('role, employees(id, name, surname)')
-      .eq('event_id', eventId);
+      .from('employee_assignments')
+      .select(
+        'role, responsibilities, status, employee:employees!employee_assignments_employee_id_fkey(id, name, surname, nickname, occupation, avatar_url, avatar_metadata)',
+      )
+      .eq('event_id', eventId)
+      .order('created_at', { ascending: true });
 
     const loc = (data as any).locations;
     const org = (data as any).organizations;
@@ -220,18 +226,29 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
       location_address:
         loc?.formatted_address || loc?.address || (loc?.city ? `${loc.city}` : null),
       organization_name: org?.alias || org?.name || null,
+      organization_id: org?.id ?? null,
       contact_name: contact
         ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim()
         : null,
-      contact_phone: contact?.phone ?? null,
+      contact_id: contact?.id ?? null,
+      contact_phone: contact?.mobile || contact?.phone || null,
       contact_email: contact?.email ?? null,
       creator_name: creatorName,
-      employees: (assignments || []).map((a: any) => ({
-        id: a.employees?.id,
-        name: a.employees?.name ?? '',
-        surname: a.employees?.surname ?? '',
-        role: a.role,
-      })),
+      created_by: (data as any).created_by ?? null,
+      employees: (assignments || [])
+        .map((a: any) => ({
+          id: a.employee?.id,
+          name: a.employee?.name ?? '',
+          surname: a.employee?.surname ?? '',
+          nickname: a.employee?.nickname ?? null,
+          occupation: a.employee?.occupation ?? null,
+          avatar_url: a.employee?.avatar_url ?? null,
+          avatar_metadata: a.employee?.avatar_metadata ?? null,
+          role: a.role,
+          responsibilities: a.responsibilities ?? null,
+          status: a.status ?? null,
+        }))
+        .filter((member: any) => Boolean(member.id)),
     } as EventDetail;
   }, [eventId]);
 
@@ -340,16 +357,29 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
     return { checklist: mappedChecklist, logistics: mappedLogistics, equipment: mappedEquipment };
   }, [eventId]);
 
-  const fetchFiles = useCallback(async () => {
-    const { data } = await supabase
-      .from('event_files')
-      .select(
-        '*, uploaded_by_employee:employees!uploaded_by(name, surname), folder:event_folders!folder_id(name)',
-      )
-      .eq('event_id', eventId)
-      .order('created_at', { ascending: false });
-    return (data || []) as EventFile[];
-  }, [eventId]);
+  const fetchFiles = useCallback(
+    async (canViewSubfolders: boolean) => {
+      let query = supabase
+        .from('event_files')
+        .select(
+          '*, uploaded_by_employee:employees!uploaded_by(name, surname), folder:event_folders!folder_id(name)',
+        )
+        .eq('event_id', eventId)
+        .order('created_at', { ascending: false });
+
+      if (!canViewSubfolders) {
+        query = query.is('folder_id', null);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        console.error('Error loading event files:', error);
+        return [];
+      }
+      return (data || []) as EventFile[];
+    },
+    [eventId],
+  );
 
   const fetchFleet = useCallback(async (): Promise<EventVehicleAssignment[]> => {
     const { data, error } = await supabase
@@ -399,11 +429,20 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
       else setIsLoading(true);
 
       try {
-        const [ev, ag, ch, fi, fleet, assignment] = await Promise.all([
-          fetchEvent(),
+        const ev = await fetchEvent();
+        const isEventAuthor = Boolean(employee?.id && ev?.created_by === employee.id);
+        const canViewSubfolders =
+          employee?.role === 'admin' ||
+          employee?.role === 'manager' ||
+          employee?.access_level === 'admin' ||
+          employee?.access_level === 'manager' ||
+          isEventAuthor;
+        setCanViewPrivateFiles(canViewSubfolders);
+
+        const [ag, ch, fi, fleet, assignment] = await Promise.all([
           fetchAgenda(),
           fetchChecklist(),
-          fetchFiles(),
+          fetchFiles(canViewSubfolders),
           fetchFleet(),
           fetchMyAssignment(),
         ]);
@@ -429,12 +468,29 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
         setRefreshing(false);
       }
     },
-    [fetchEvent, fetchAgenda, fetchChecklist, fetchFiles, fetchFleet, fetchMyAssignment],
+    [
+      employee?.access_level,
+      employee?.id,
+      employee?.role,
+      fetchEvent,
+      fetchAgenda,
+      fetchChecklist,
+      fetchFiles,
+      fetchFleet,
+      fetchMyAssignment,
+    ],
   );
 
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  useEffect(() => {
+    if (!showAcceptedFeedback) return;
+
+    const timeout = setTimeout(() => setShowAcceptedFeedback(false), 3000);
+    return () => clearTimeout(timeout);
+  }, [showAcceptedFeedback]);
 
   useEffect(() => {
     const assignmentIds = new Set(fleetAssignments.map((item) => item.id));
@@ -470,13 +526,37 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
   }, [eventId, fleetAssignments, refreshFleet]);
 
   useEffect(() => {
+    const channel = supabase
+      .channel(`mobile-event-team-${eventId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'employee_assignments',
+          filter: `event_id=eq.${eventId}`,
+        },
+        () => {
+          void fetchEvent().then((nextEvent) => {
+            if (nextEvent) setEvent(nextEvent);
+          });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [eventId, fetchEvent]);
+
+  useEffect(() => {
     if (!isLoading && activeTab === 'fleet' && fleetAssignments.length === 0) {
       setActiveTab('details');
     }
-    if (!isLoading && activeTab === 'files' && !canManageEvent && files.length === 0) {
+    if (!isLoading && activeTab === 'files' && !canViewPrivateFiles && files.length === 0) {
       setActiveTab('details');
     }
-  }, [activeTab, canManageEvent, files.length, fleetAssignments.length, isLoading]);
+  }, [activeTab, canViewPrivateFiles, files.length, fleetAssignments.length, isLoading]);
 
   const toggleLoadedItem = async (item: ChecklistItem) => {
     // If loading is locked, prevent unchecking
@@ -545,6 +625,7 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
       icon: 'check-square',
       count: checklist.length + logistics.length,
     },
+    { key: 'team', label: 'Zespół', icon: 'users', count: event.employees.length },
     ...(fleetAssignments.length > 0
       ? ([
           {
@@ -555,7 +636,7 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
           },
         ] as const)
       : []),
-    ...(canManageEvent || files.length > 0
+    ...(canViewPrivateFiles || files.length > 0
       ? ([{ key: 'files', label: 'Pliki', icon: 'file', count: files.length }] as const)
       : []),
   ];
@@ -629,7 +710,7 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
           </View>
         </View>
       )}
-      {myAssignment?.status === 'accepted' && (
+      {showAcceptedFeedback && (
         <View style={styles.invitationAcceptedBanner}>
           <Feather name="check-circle" size={16} color="#22c55e" />
           <Text style={styles.invitationAcceptedText}>Zaproszenie zaakceptowane</Text>
@@ -703,6 +784,9 @@ export default function EventDetailScreen({ eventId, onBack, initialTab }: Props
             employee={employee}
             onRefreshEvent={fetchEvent}
           />
+        )}
+        {activeTab === 'team' && (
+          <TeamTab employees={event.employees} currentEmployeeId={employee?.id ?? null} />
         )}
         {activeTab === 'fleet' && (
           <FleetTab

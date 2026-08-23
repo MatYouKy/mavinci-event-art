@@ -545,13 +545,12 @@ export const messagesApi = api.injectEndpoints({
               return { error: { status: 'CUSTOM_ERROR', error: error.message } };
             }
           } else if (type === 'received') {
-            const { error } = await supabase
-              .from('received_emails')
-              .update({ is_read: true })
-              .eq('id', id);
+            const { error } = await supabase.functions.invoke('sync-email-read-state', {
+              body: { messageId: id, mode: 'mark_read' },
+            });
 
             if (error) {
-              console.error('Error marking email as read:', error);
+              console.error('Error synchronizing email read state with IMAP:', error);
               return { error: { status: 'CUSTOM_ERROR', error: error.message } };
             }
           }
@@ -1016,27 +1015,78 @@ export const messagesApi = api.injectEndpoints({
         try {
           const { supabase } = await import('@/lib/supabase/browser');
 
-          // Get current user email
           const { data: { user } } = await supabase.auth.getUser();
-          if (!user?.email) {
+          if (!user) {
             return { data: 0 };
           }
 
-          // Use optimized RPC function
-          const { data, error } = await supabase.rpc('get_unread_messages_count', {
-            user_email: user.email,
+          // Thunderbird i inne klienty zapisują stan na IMAP. Przed zliczeniem
+          // odświeżamy lokalny cache, aby badge pokazywał ten sam stan skrzynki.
+          const { error: syncError } = await supabase.functions.invoke('sync-email-read-state', {
+            body: { mode: 'sync' },
           });
-
-          if (error) {
-            console.error('Error fetching unread count via RPC:', error);
-            return { data: 0 };
+          if (syncError) {
+            console.warn('Could not refresh read state from IMAP:', syncError);
           }
 
-          // Function returns array with one row
-          const result = Array.isArray(data) && data.length > 0 ? data[0] : null;
-          const total = result?.total_unread || 0;
+          const [{ data: employee }, { data: personalAccounts }, { data: assignments }] =
+            await Promise.all([
+              supabase
+                .from('employees')
+                .select('permissions, can_receive_contact_forms')
+                .eq('id', user.id)
+                .maybeSingle(),
+              supabase
+                .from('employee_email_accounts')
+                .select('id')
+                .eq('employee_id', user.id)
+                .eq('is_active', true),
+              supabase
+                .from('employee_email_account_assignments')
+                .select('email_account_id')
+                .eq('employee_id', user.id),
+            ]);
 
-          return { data: Number(total) };
+          const accountIds = Array.from(new Set([
+            ...(personalAccounts || []).map((account) => account.id),
+            ...(assignments || []).map((assignment) => assignment.email_account_id),
+          ]));
+
+          const permissions: string[] = employee?.permissions || [];
+          const canViewContactForms =
+            permissions.includes('admin') ||
+            permissions.includes('messages_manage') ||
+            employee?.can_receive_contact_forms === true;
+
+          const emailCountPromise = accountIds.length
+            ? supabase
+                .from('received_emails')
+                .select('id', { count: 'exact', head: true })
+                .in('email_account_id', accountIds)
+                .eq('is_read', false)
+                .is('deleted_at', null)
+            : Promise.resolve({ count: 0, error: null });
+
+          const contactCountPromise = canViewContactForms
+            ? supabase
+                .from('contact_messages')
+                .select('id', { count: 'exact', head: true })
+                .eq('status', 'new')
+                .is('deleted_at', null)
+            : Promise.resolve({ count: 0, error: null });
+
+          const [emailResult, contactResult] = await Promise.all([
+            emailCountPromise,
+            contactCountPromise,
+          ]);
+
+          if (emailResult.error || contactResult.error) {
+            const error = emailResult.error || contactResult.error;
+            console.error('Error fetching exact unread count:', error);
+            return { error: { status: 'CUSTOM_ERROR', error: error?.message || 'Unknown error' } };
+          }
+
+          return { data: (emailResult.count || 0) + (contactResult.count || 0) };
         } catch (error) {
           console.error('Error fetching unread count:', error);
           return { error: { status: 'CUSTOM_ERROR', error: String(error) } };

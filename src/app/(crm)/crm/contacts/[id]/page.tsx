@@ -45,6 +45,10 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import AddLocationModal from '@/components/crm/AddLocationModal';
 import SubcontractorServicesPanel from '@/components/crm/SubcontractorServicesPanel';
 import { formatNip } from '@/components/crm/contacts/organization/organizationForm.helpers';
+import Customer360Panel from '@/components/crm/contacts/Customer360Panel';
+import Organization360Panel from '@/components/crm/contacts/Organization360Panel';
+import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
+import ComposeEmailModal from '@/components/crm/ComposeEmailModal';
 
 export interface Organization {
   primary_contact: any;
@@ -85,6 +89,8 @@ export interface Organization {
   subcontractor_id: string | null;
   created_at: string;
   updated_at: string;
+  owner_id?: string | null;
+  lifecycle_status?: string | null;
 }
 
 interface Contact {
@@ -113,6 +119,8 @@ interface Contact {
   avatar_url: string | null;
   created_at: string;
   updated_at: string;
+  owner_id?: string | null;
+  lifecycle_status?: string | null;
 }
 
 interface ContactPerson {
@@ -159,7 +167,15 @@ interface ContactHistory {
   next_action: string | null;
 }
 
-type TabType = 'details' | 'contacts' | 'notes' | 'history' | 'invoices' | 'events' | 'services';
+type TabType =
+  | 'customer360'
+  | 'details'
+  | 'contacts'
+  | 'notes'
+  | 'history'
+  | 'invoices'
+  | 'events'
+  | 'services';
 
 const businessTypeLabels = {
   company: 'Firma',
@@ -214,6 +230,13 @@ export default function OrganizationDetailPage() {
   const [editedContactData, setEditedContactData] = useState<Partial<Contact>>({});
   const [editedOrganizationData, setEditedOrganizationData] = useState<Partial<Organization>>({});
   const [saving, setSaving] = useState(false);
+  const [showContactEmailModal, setShowContactEmailModal] = useState(false);
+  const [contactEmailAccounts, setContactEmailAccounts] = useState<any[]>([]);
+  const [emailRecipient, setEmailRecipient] = useState({
+    email: '',
+    name: '',
+    firstName: '',
+  });
 
   const [formErrors, setFormErrors] = useState<OrganizationFormErrors>({});
 
@@ -237,7 +260,10 @@ export default function OrganizationDetailPage() {
 
   const [isAdmin, setIsAdmin] = useState(false);
   const [allowedContactTabs, setAllowedContactTabs] = useState<string[]>(['details']);
-  const [allowedOrganizationTabs, setAllowedOrganizationTabs] = useState<string[]>(['details']);
+  const [allowedOrganizationTabs, setAllowedOrganizationTabs] = useState<string[]>([
+    'customer360',
+    'details',
+  ]);
 
   const [decisionMakers, setDecisionMakers] = useState<DecisionMaker[]>([]);
   const [showAddDecisionMakerModal, setShowAddDecisionMakerModal] = useState(false);
@@ -313,8 +339,9 @@ export default function OrganizationDetailPage() {
     setIsAdmin(userIsAdmin);
 
     if (userIsAdmin) {
-      setAllowedContactTabs(['details', 'notes', 'history']);
+      setAllowedContactTabs(['customer360', 'details', 'notes', 'history']);
       setAllowedOrganizationTabs([
+        'customer360',
         'details',
         'contacts',
         'invoices',
@@ -332,7 +359,7 @@ export default function OrganizationDetailPage() {
     } else if ((employee?.access_levels as any)?.contact_tabs) {
       contactTabs = (employee?.access_levels as any).contact_tabs;
     }
-    setAllowedContactTabs(contactTabs);
+    setAllowedContactTabs(Array.from(new Set(['customer360', ...contactTabs])));
 
     let organizationTabs: string[] = ['details'];
     if (employee?.organization_tabs && employee.organization_tabs.length > 0) {
@@ -340,7 +367,7 @@ export default function OrganizationDetailPage() {
     } else if ((employee?.access_levels as any)?.organization_tabs) {
       organizationTabs = (employee?.access_levels as any).organization_tabs;
     }
-    setAllowedOrganizationTabs(organizationTabs);
+    setAllowedOrganizationTabs(Array.from(new Set(['customer360', ...organizationTabs])));
   };
 
   useEffect(() => {
@@ -441,12 +468,14 @@ export default function OrganizationDetailPage() {
         // To jest kontakt/osoba prywatna
         setEntityType('contact');
         setContact(entityData);
+        setActiveTab('customer360');
         setLoading(false);
         return; // Ważne - zakończ tutaj!
       } else if (entityType === 'organization') {
         // To jest organizacja
         setEntityType('organization');
         setOrganization(entityData);
+        setActiveTab('customer360');
 
         // Mapuj kontakty
         const mappedContacts = (fullData.contacts || []).map((c: any) => ({
@@ -864,6 +893,124 @@ export default function OrganizationDetailPage() {
     fetchData();
   };
 
+  const openContactEmailModal = async (recipient: {
+    email?: string | null;
+    name: string;
+    firstName?: string | null;
+  }) => {
+    if (!recipient.email) {
+      showSnackbar('Kontakt nie ma uzupełnionego adresu e-mail', 'warning');
+      return;
+    }
+
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error('Brak zalogowanego użytkownika');
+
+      const { data, error } = await supabase
+        .from('employee_email_accounts')
+        .select('id, email_address, from_name, is_default')
+        .eq('employee_id', user.id)
+        .eq('is_active', true)
+        .order('is_default', { ascending: false });
+
+      if (error) throw error;
+      if (!data?.length) {
+        showSnackbar('Nie masz skonfigurowanego aktywnego konta e-mail', 'warning');
+        return;
+      }
+
+      setContactEmailAccounts(
+        data.map((account: any) => ({
+          ...account,
+          display_name: account.from_name
+            ? `${account.from_name} (${account.email_address})`
+            : account.email_address,
+        })),
+      );
+      setEmailRecipient({
+        email: recipient.email,
+        name: recipient.name,
+        firstName: recipient.firstName || '',
+      });
+      setShowContactEmailModal(true);
+    } catch (error: any) {
+      console.error('Error loading contact email accounts:', error);
+      showSnackbar(error?.message || 'Nie udało się przygotować wiadomości', 'error');
+    }
+  };
+
+  const sendContactEmail = async (message: {
+    to: string;
+    subject: string;
+    body: string;
+    bodyHtml: string;
+    attachments?: File[];
+    fromAccountId?: string;
+    cc?: string;
+    bcc?: string;
+  }) => {
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) throw new Error('Brak aktywnej sesji użytkownika');
+      if (!message.fromAccountId) throw new Error('Wybierz konto nadawcy');
+
+      const attachments = await Promise.all(
+        (message.attachments || []).map(async (file) => {
+          const buffer = await file.arrayBuffer();
+          const content = btoa(
+            new Uint8Array(buffer).reduce(
+              (result, byte) => result + String.fromCharCode(byte),
+              '',
+            ),
+          );
+          return {
+            filename: file.name,
+            content,
+            contentType: file.type || 'application/octet-stream',
+            contentDisposition: 'attachment',
+          };
+        }),
+      );
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-email`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            emailAccountId: message.fromAccountId,
+            to: message.to.trim(),
+            subject: message.subject.trim(),
+            body: message.bodyHtml,
+            attachments,
+            cc: message.cc || '',
+            bcc: message.bcc || '',
+          }),
+        },
+      );
+
+      const result = await response.json().catch(() => null);
+      if (!response.ok || result?.success === false) {
+        throw new Error(result?.error || result?.message || 'Nie udało się wysłać wiadomości');
+      }
+
+      showSnackbar('Wiadomość została wysłana', 'success');
+      setShowContactEmailModal(false);
+    } catch (error: any) {
+      console.error('Error sending contact email:', error);
+      showSnackbar(error?.message || 'Nie udało się wysłać wiadomości', 'error');
+      throw error;
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -906,51 +1053,119 @@ export default function OrganizationDetailPage() {
 
             <div className="flex items-center gap-3">
               {!editMode ? (
-                <>
-                  <button
-                    onClick={() => {
-                      setEditMode(true);
-                      setEditedContactData(contact);
-                    }}
-                    className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-[#1a1d2e] transition-colors hover:bg-[#d3bb73]/90"
-                  >
-                    <Edit className="h-4 w-4" />
-                    Edytuj
-                  </button>
-                  <button
-                    onClick={() => handleDelete()}
-                    className="flex items-center gap-2 rounded-lg bg-red-500/20 px-4 py-2 text-red-400 transition-colors hover:bg-red-500/30"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    Usuń
-                  </button>
-                </>
+                <ResponsiveActionBar
+                  disabledBackground
+                  actions={[
+                      {
+                        label: 'Zadzwoń',
+                        icon: <Phone className="h-4 w-4" />,
+                        onClick: () => {
+                          const phone = contact.mobile || contact.phone;
+                          if (phone) window.location.href = `tel:${phone}`;
+                        },
+                        disabled: !contact.mobile && !contact.phone,
+                        variant: 'primary',
+                      },
+                      {
+                        label: 'Napisz e-mail',
+                        icon: <Mail className="h-4 w-4" />,
+                        onClick: () =>
+                          void openContactEmailModal({
+                            email: contact.email,
+                            name: contact.full_name,
+                            firstName: contact.first_name,
+                          }),
+                        disabled: !contact.email,
+                      },
+                      {
+                        label: 'Nowe spotkanie',
+                        icon: <Calendar className="h-4 w-4" />,
+                        onClick: () =>
+                          router.push(`/crm/calendar/meetings?new=1&contactId=${contact.id}`),
+                      },
+                      {
+                        label: 'Oferty',
+                        icon: <FileText className="h-4 w-4" />,
+                        onClick: () => router.push('/crm/offers?tab=offers'),
+                      },
+                      {
+                        label: 'Edytuj',
+                        icon: <Edit className="h-4 w-4" />,
+                        onClick: () => {
+                          setEditMode(true);
+                          setEditedContactData(contact);
+                        },
+                      },
+                      {
+                        label: 'Usuń',
+                        icon: <Trash2 className="h-4 w-4" />,
+                        onClick: () => void handleDelete(),
+                        variant: 'danger',
+                        show: isAdmin,
+                      },
+                  ]}
+                />
               ) : (
-                <>
-                  <button
-                    onClick={handleSaveContact}
-                    disabled={saving}
-                    className="flex items-center gap-2 rounded-lg bg-green-500 px-4 py-2 text-white transition-colors hover:bg-green-600 disabled:opacity-50"
-                  >
-                    <Save className="h-4 w-4" />
-                    {saving ? 'Zapisywanie...' : 'Zapisz'}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setEditMode(false);
-                      setEditedContactData({});
-                    }}
-                    className="flex items-center gap-2 rounded-lg bg-gray-600 px-4 py-2 text-white transition-colors hover:bg-gray-700"
-                  >
-                    <X className="h-4 w-4" />
-                    Anuluj
-                  </button>
-                </>
+                <ResponsiveActionBar
+                  disabledBackground
+                  actions={[
+                    {
+                      label: saving ? 'Zapisywanie…' : 'Zapisz',
+                      icon: saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />,
+                      onClick: () => void handleSaveContact(),
+                      disabled: saving,
+                      variant: 'primary',
+                    },
+                    {
+                      label: 'Anuluj',
+                      icon: <X className="h-4 w-4" />,
+                      onClick: () => {
+                        setEditMode(false);
+                        setEditedContactData({});
+                      },
+                      disabled: saving,
+                    },
+                  ]}
+                />
               )}
             </div>
           </div>
 
+          <div className="mb-6 flex gap-2 overflow-x-auto border-b border-gray-700">
+            {[
+              { key: 'customer360' as TabType, label: 'Klient 360°', icon: History },
+              { key: 'details' as TabType, label: 'Dane kontaktowe', icon: FileText },
+            ].map(({ key, label, icon: TabIcon }) => (
+              <button
+                key={key}
+                onClick={() => setActiveTab(key)}
+                className={`flex shrink-0 items-center gap-2 px-4 py-3 font-medium transition-colors ${
+                  activeTab === key
+                    ? 'border-b-2 border-[#d3bb73] text-[#d3bb73]'
+                    : 'text-gray-400 hover:text-gray-200'
+                }`}
+              >
+                <TabIcon className="h-4 w-4" />
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {activeTab === 'customer360' && <Customer360Panel contact={contact} />}
+
+          <ComposeEmailModal
+            isOpen={showContactEmailModal}
+            onClose={() => setShowContactEmailModal(false)}
+            onSend={sendContactEmail}
+            initialTo={emailRecipient.email}
+            initialSubject={`Wiadomość od Mavinci dla ${emailRecipient.name}`}
+            initialBody={`Dzień dobry${emailRecipient.firstName ? ` ${emailRecipient.firstName}` : ''},\n\n`}
+            selectedAccountId={contactEmailAccounts[0]?.id}
+            emailAccounts={contactEmailAccounts}
+          />
+
           {/* Dane kontaktu */}
+          {activeTab === 'details' && (
           <div className="rounded-lg border border-gray-700 bg-[#1a1d2e] p-6">
             <h2 className="mb-4 text-xl font-semibold text-white">Dane kontaktowe</h2>
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
@@ -1201,6 +1416,7 @@ export default function OrganizationDetailPage() {
               )}
             </div>
           </div>
+          )}
         </div>
       </div>
     );
@@ -1255,49 +1471,82 @@ export default function OrganizationDetailPage() {
             </div>
           </div>
           {!editMode ? (
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handleEdit}
-                className="flex items-center space-x-2 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#0f1119] transition-colors hover:bg-[#c4a859]"
-              >
-                <Edit className="h-5 w-5" />
-                <span>Edytuj</span>
-              </button>
-              <button
-                onClick={() => handleDelete()}
-                className="flex items-center space-x-2 rounded-lg bg-red-500/20 px-4 py-2 font-medium text-red-400 transition-colors hover:bg-red-500/30"
-              >
-                <Trash2 className="h-5 w-5" />
-                <span>Usuń</span>
-              </button>
-            </div>
+            <ResponsiveActionBar
+              disabledBackground
+              actions={[
+                {
+                  label: 'Zadzwoń',
+                  icon: <Phone className="h-4 w-4" />,
+                  onClick: () => {
+                    if (organization.phone) window.location.href = `tel:${organization.phone}`;
+                  },
+                  disabled: !organization.phone,
+                  variant: 'primary',
+                },
+                {
+                  label: 'Napisz e-mail',
+                  icon: <Mail className="h-4 w-4" />,
+                  onClick: () =>
+                    void openContactEmailModal({
+                      email: organization.email,
+                      name: displayName,
+                    }),
+                  disabled: !organization.email,
+                },
+                {
+                  label: 'Edytuj',
+                  icon: <Edit className="h-4 w-4" />,
+                  onClick: handleEdit,
+                },
+                {
+                  label: 'Usuń',
+                  icon: <Trash2 className="h-4 w-4" />,
+                  onClick: () => void handleDelete(),
+                  variant: 'danger',
+                  show: isAdmin,
+                },
+              ]}
+            />
           ) : (
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={handleCancelEdit}
-                disabled={saving}
-                className="rounded-lg border border-gray-700 px-4 py-2 text-gray-300 transition-colors hover:bg-[#1a1d2e]"
-              >
-                Anuluj
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="flex items-center space-x-2 rounded-lg bg-[#d3bb73] px-4 py-2 font-medium text-[#0f1119] transition-colors hover:bg-[#c4a859] disabled:opacity-50"
-              >
-                {saving ? (
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                ) : (
-                  <Save className="h-5 w-5" />
-                )}
-                <span>Zapisz</span>
-              </button>
-            </div>
+            <ResponsiveActionBar
+              disabledBackground
+              actions={[
+                {
+                  label: saving ? 'Zapisywanie…' : 'Zapisz',
+                  icon: saving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  ),
+                  onClick: () => void handleSave(),
+                  disabled: saving,
+                  variant: 'primary',
+                },
+                {
+                  label: 'Anuluj',
+                  icon: <X className="h-4 w-4" />,
+                  onClick: handleCancelEdit,
+                  disabled: saving,
+                },
+              ]}
+            />
           )}
         </div>
 
+        <ComposeEmailModal
+          isOpen={showContactEmailModal}
+          onClose={() => setShowContactEmailModal(false)}
+          onSend={sendContactEmail}
+          initialTo={emailRecipient.email}
+          initialSubject={`Wiadomość od Mavinci dla ${emailRecipient.name}`}
+          initialBody="Dzień dobry,\n\n"
+          selectedAccountId={contactEmailAccounts[0]?.id}
+          emailAccounts={contactEmailAccounts}
+        />
+
         <div className="mb-6 flex space-x-2 overflow-x-auto border-b border-gray-700">
           {[
+            { key: 'customer360' as TabType, label: 'Klient 360°', icon: History },
             { key: 'details' as TabType, label: 'Szczegóły', icon: FileText },
             {
               key: 'contacts' as TabType,
@@ -1332,6 +1581,10 @@ export default function OrganizationDetailPage() {
               </button>
             ))}
         </div>
+
+        {activeTab === 'customer360' && (
+          <Organization360Panel organization={organization} />
+        )}
 
         {activeTab === 'details' && (
           <OrganizationDetailsSection

@@ -19,7 +19,6 @@ import { Feather } from '@expo/vector-icons';
 import { colors, spacing, typography } from '../theme';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { scheduleInquiryReminders } from '../services/inquiryReminders';
 import { SearchableDropdown } from '@/components/SearchableDropdown';
 import { sendTaskAssignmentPush } from '../services/taskAssignmentNotifications';
 
@@ -67,6 +66,7 @@ export default function NewInquiryModal({
 }: NewInquiryModalProps) {
   const { employee } = useAuth();
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const formScrollRef = useRef<ScrollView>(null);
 
   // Client data
@@ -170,6 +170,8 @@ export default function NewInquiryModal({
   };
 
   const handleSave = async () => {
+    if (savingRef.current) return;
+
     if (
       !clientName.trim() &&
       !clientPhone.trim() &&
@@ -184,6 +186,7 @@ export default function NewInquiryModal({
       return;
     }
 
+    savingRef.current = true;
     setSaving(true);
     try {
       const {
@@ -303,14 +306,16 @@ export default function NewInquiryModal({
       onSaved?.();
       onClose();
       Alert.alert('Zapisano', 'Zapytanie zostało dodane do listy zadań z najwyższym priorytetem.');
-      scheduleInquiryReminders();
     } catch (e: any) {
       Alert.alert('Błąd', e?.message || 'Nieznany błąd');
+    } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
 
   const handleClose = () => {
+    if (savingRef.current) return;
     Keyboard.dismiss();
     resetForm();
     onClose();
@@ -343,11 +348,19 @@ export default function NewInquiryModal({
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
       >
         <View style={styles.header}>
-          <TouchableOpacity onPress={handleClose} style={styles.closeBtn}>
+          <TouchableOpacity
+            onPress={handleClose}
+            disabled={saving}
+            style={[styles.closeBtn, saving && styles.actionDisabled]}
+          >
             <Feather name="x" size={24} color={colors.text.primary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Nowe zapytanie</Text>
-          <TouchableOpacity onPress={handleSave} disabled={saving} style={styles.saveBtn}>
+          <TouchableOpacity
+            onPress={handleSave}
+            disabled={saving}
+            style={[styles.saveBtn, saving && styles.actionDisabled]}
+          >
             {saving ? (
               <ActivityIndicator size="small" color={colors.primary.gold} />
             ) : (
@@ -718,6 +731,9 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     fontWeight: '600',
     color: colors.primary.gold,
+  },
+  actionDisabled: {
+    opacity: 0.55,
   },
   form: {
     flex: 1,

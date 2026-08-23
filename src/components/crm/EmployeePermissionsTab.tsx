@@ -22,6 +22,11 @@ interface WebhookSourceOption {
   is_active: boolean;
 }
 
+interface SalesTeamOption {
+  id: string;
+  name: string;
+}
+
 interface ExtraPermission {
   key: string;
   label: string;
@@ -33,6 +38,14 @@ interface PermissionCategory {
   label: string;
   extraPermissions?: ExtraPermission[];
 }
+
+const mavinciLiveSectionScopes = [
+  'mavinci_live_light_magic',
+  'mavinci_live_quiz_show',
+  'mavinci_live_familiada',
+  'mavinci_live_wedding_show',
+  'mavinci_live_streaming',
+] as const;
 
 const invoiceCompanyScopes: Array<{ key: string; label: string; description: string }> = [
   {
@@ -149,6 +162,52 @@ const permissionCategories: PermissionCategory[] = [
     label: 'Zadania',
   },
   {
+    key: 'inquiries',
+    label: 'Zapytania i sprzedaż',
+    extraPermissions: [
+      {
+        key: 'inquiries_view_pool',
+        label: 'Wspólna kolejka',
+        description: 'Widzi nowe, jeszcze nieprzypisane zapytania sprzedażowe.',
+      },
+      {
+        key: 'inquiries_view_own',
+        label: 'Własne zapytania',
+        description: 'Widzi zapytania, których jest opiekunem.',
+      },
+      {
+        key: 'inquiries_manage_own',
+        label: 'Obsługa własnych zapytań',
+        description: 'Może zmieniać etapy, terminy i dane swoich zapytań.',
+      },
+      {
+        key: 'inquiries_view_team',
+        label: 'Podgląd zespołu',
+        description: 'Widzi zapytania opiekunów z tego samego zespołu sprzedaży.',
+      },
+      {
+        key: 'inquiries_manage_team',
+        label: 'Zarządzanie zespołem',
+        description: 'Jako menedżer może obsługiwać zapytania swojego zespołu.',
+      },
+      {
+        key: 'inquiries_view_all',
+        label: 'Podgląd wszystkich',
+        description: 'Widzi zapytania wszystkich zespołów.',
+      },
+      {
+        key: 'inquiries_manage_all',
+        label: 'Zarządzanie wszystkimi',
+        description: 'Może obsługiwać zapytania wszystkich zespołów.',
+      },
+      {
+        key: 'inquiries_assign',
+        label: 'Przejmowanie i przypisywanie',
+        description: 'Może przejąć zapytanie z kolejki lub przypisać opiekuna.',
+      },
+    ],
+  },
+  {
     key: 'offers',
     label: 'Oferty',
   },
@@ -164,6 +223,17 @@ const permissionCategories: PermissionCategory[] = [
         key: 'messages_assign',
         label: 'Przypisywanie wiadomości',
         description: 'Może przypisywać wiadomości do pracowników',
+      },
+    ],
+  },
+  {
+    key: 'marketing_campaigns',
+    label: 'Kampanie marketingowe',
+    extraPermissions: [
+      {
+        key: 'marketing_campaigns_approve',
+        label: 'Zatwierdzanie kampanii',
+        description: 'Może zatwierdzić przygotowaną i przetestowaną kampanię przed wysyłką.',
       },
     ],
   },
@@ -185,6 +255,37 @@ const permissionCategories: PermissionCategory[] = [
   {
     key: 'databases',
     label: 'Bazy danych',
+  },
+  {
+    key: 'mavinci_live',
+    label: 'Mavinci LIVE',
+    extraPermissions: [
+      {
+        key: 'mavinci_live_light_magic',
+        label: 'Light Magic (dostęp podstawowy)',
+        description: 'Obowiązkowa sekcja każdego użytkownika Mavinci LIVE: sterowanie CUE, EXEC, faderami i MIDI.',
+      },
+      {
+        key: 'mavinci_live_quiz_show',
+        label: 'Quiz Show',
+        description: 'Prowadzenie quizów, kategorie, pytania i ekran widowni.',
+      },
+      {
+        key: 'mavinci_live_familiada',
+        label: 'Familiada',
+        description: 'Prowadzenie Familiady i dostęp do przypisanych baz pytań.',
+      },
+      {
+        key: 'mavinci_live_wedding_show',
+        label: 'Wedding Show',
+        description: 'Scenariusze weselne, muzyka, ekrany i automatyka realizacji.',
+      },
+      {
+        key: 'mavinci_live_streaming',
+        label: 'Streaming',
+        description: 'Transmisje prywatne i zarządzanie dostępem uczestników.',
+      },
+    ],
   },
   {
     key: 'time_tracking',
@@ -257,7 +358,13 @@ export default function EmployeePermissionsTab({
   const [contactFormNotifications, setContactFormNotifications] = useState(false);
   const [webhookNotifications, setWebhookNotifications] = useState(false);
   const [fleetComplianceNotifications, setFleetComplianceNotifications] = useState(false);
+  const [inquiryAssignmentNotifications, setInquiryAssignmentNotifications] = useState(true);
+  const [inquiryFollowupNotifications, setInquiryFollowupNotifications] = useState(true);
+  const [inquiryEscalationNotifications, setInquiryEscalationNotifications] = useState(true);
   const [webhookSources, setWebhookSources] = useState<WebhookSourceOption[]>([]);
+  const [salesTeams, setSalesTeams] = useState<SalesTeamOption[]>([]);
+  const [salesTeamId, setSalesTeamId] = useState('');
+  const [isSalesTeamManager, setIsSalesTeamManager] = useState(false);
   const [webhookSourceSettings, setWebhookSourceSettings] = useState<Record<string, boolean>>({});
   const [notificationDefaultsEnabled, setNotificationDefaultsEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -283,18 +390,19 @@ export default function EmployeePermissionsTab({
         notificationSettingsRes,
         webhookSourcesRes,
         webhookSourceSettingsRes,
+        salesTeamsRes,
       ] = await Promise.all([
         supabase
           .from('employees')
           .select(
-            'role, access_level, permissions, event_tabs, contact_tabs, organization_tabs, my_company_ids, invoice_company_permissions',
+            'role, access_level, permissions, event_tabs, contact_tabs, organization_tabs, my_company_ids, invoice_company_permissions, sales_team_id, is_sales_team_manager',
           )
           .eq('id', employeeId)
           .maybeSingle(),
         supabase.from('my_companies').select('id, name').order('name'),
         supabase
           .from('employee_notification_settings')
-          .select('contact_form_enabled, webhook_notifications_enabled, fleet_compliance_enabled')
+          .select('contact_form_enabled, webhook_notifications_enabled, fleet_compliance_enabled, inquiry_assignments_enabled, inquiry_followups_enabled, inquiry_escalations_enabled')
           .eq('employee_id', employeeId)
           .maybeSingle(),
         supabase
@@ -306,12 +414,14 @@ export default function EmployeePermissionsTab({
           .from('employee_webhook_notification_settings')
           .select('source_id, is_enabled')
           .eq('employee_id', employeeId),
+        supabase.from('sales_teams').select('id, name').eq('is_active', true).order('name'),
       ]);
 
       if (error) throw error;
       if (notificationSettingsRes.error) throw notificationSettingsRes.error;
       if (webhookSourcesRes.error) throw webhookSourcesRes.error;
       if (webhookSourceSettingsRes.error) throw webhookSourceSettingsRes.error;
+      if (salesTeamsRes.error) throw salesTeamsRes.error;
 
       setPermissions(data?.permissions || []);
       setEventTabs(data?.event_tabs || []);
@@ -322,6 +432,9 @@ export default function EmployeePermissionsTab({
       setInvoiceCompanyPerms(
         (data?.invoice_company_permissions as Record<string, string[]>) || {},
       );
+      setSalesTeams((salesTeamsRes.data || []) as SalesTeamOption[]);
+      setSalesTeamId(data?.sales_team_id || '');
+      setIsSalesTeamManager(data?.is_sales_team_manager || false);
 
       const adminNotificationDefaults =
         data?.role === 'admin' ||
@@ -337,6 +450,15 @@ export default function EmployeePermissionsTab({
       );
       setFleetComplianceNotifications(
         notificationSettingsRes.data?.fleet_compliance_enabled ?? adminNotificationDefaults,
+      );
+      setInquiryAssignmentNotifications(
+        notificationSettingsRes.data?.inquiry_assignments_enabled ?? true,
+      );
+      setInquiryFollowupNotifications(
+        notificationSettingsRes.data?.inquiry_followups_enabled ?? true,
+      );
+      setInquiryEscalationNotifications(
+        notificationSettingsRes.data?.inquiry_escalations_enabled ?? true,
       );
 
       const sources = (webhookSourcesRes.data || []) as WebhookSourceOption[];
@@ -376,21 +498,30 @@ export default function EmployeePermissionsTab({
   };
 
   const getPermissionLevel = (module: string): 'none' | 'view' | 'manage' => {
+    if (targetIsAdmin) return 'manage';
     if (permissions.includes(`${module}_manage`)) return 'manage';
     if (permissions.includes(`${module}_view`)) return 'view';
     return 'none';
   };
 
   const setPermissionLevel = (module: string, level: 'none' | 'view' | 'manage') => {
-    if (!canEditThisEmployee) return;
+    if (!canEditThisEmployee || targetIsAdmin) return;
 
     setPermissions((prev) => {
-      const filtered = prev.filter((p) => p !== `${module}_view` && p !== `${module}_manage`);
+      const filtered = prev.filter((p) =>
+        p !== `${module}_view`
+        && p !== `${module}_manage`
+        && !(module === 'mavinci_live' && level === 'none' && mavinciLiveSectionScopes.includes(p as typeof mavinciLiveSectionScopes[number]))
+      );
 
       if (level === 'view') {
-        return [...filtered, `${module}_view`];
+        return module === 'mavinci_live'
+          ? Array.from(new Set([...filtered, `${module}_view`, 'mavinci_live_light_magic']))
+          : [...filtered, `${module}_view`];
       } else if (level === 'manage') {
-        return [...filtered, `${module}_manage`];
+        return module === 'mavinci_live'
+          ? Array.from(new Set([...filtered, `${module}_manage`, 'mavinci_live_light_magic']))
+          : [...filtered, `${module}_manage`];
       }
       return filtered;
     });
@@ -398,7 +529,12 @@ export default function EmployeePermissionsTab({
   };
 
   const toggleExtraPermission = (permissionKey: string) => {
-    if (!canEditThisEmployee) return;
+    if (!canEditThisEmployee || targetIsAdmin) return;
+
+    if (permissionKey === 'mavinci_live_light_magic' && getPermissionLevel('mavinci_live') !== 'none') {
+      showSnackbar('Light Magic jest wymaganym, podstawowym modułem Mavinci LIVE.', 'info');
+      return;
+    }
 
     setPermissions((prev) => {
       if (prev.includes(permissionKey)) {
@@ -536,6 +672,8 @@ export default function EmployeePermissionsTab({
           organization_tabs: organizationTabs.length > 0 ? organizationTabs : null,
           my_company_ids: myCompanyIds,
           invoice_company_permissions: invoiceCompanyPerms,
+          sales_team_id: salesTeamId || null,
+          is_sales_team_manager: isSalesTeamManager,
         })
         .eq('id', employeeId);
 
@@ -548,6 +686,9 @@ export default function EmployeePermissionsTab({
           contact_form_enabled: contactFormNotifications,
           webhook_notifications_enabled: webhookNotifications,
           fleet_compliance_enabled: fleetComplianceNotifications,
+          inquiry_assignments_enabled: inquiryAssignmentNotifications,
+          inquiry_followups_enabled: inquiryFollowupNotifications,
+          inquiry_escalations_enabled: inquiryEscalationNotifications,
           updated_by: currentEmployeeId || null,
         });
 
@@ -611,6 +752,16 @@ export default function EmployeePermissionsTab({
 
     const level = getPermissionLevel(category.key);
 
+    if (category.key === 'mavinci_live') {
+      if (level === 'none') return 'Brak';
+      const selectedCount = targetIsAdmin
+        ? mavinciLiveSectionScopes.length
+        : mavinciLiveSectionScopes.filter((scope) =>
+            scope === 'mavinci_live_light_magic' || permissions.includes(scope),
+          ).length;
+      return `${level === 'manage' ? 'Zarządzanie' : 'Dostęp'} · ${selectedCount} sekcji`;
+    }
+
     if (level === 'none') return 'Brak';
     if (level === 'view') return 'Przeglądanie';
     if (level === 'manage') {
@@ -660,6 +811,13 @@ export default function EmployeePermissionsTab({
           <p className="text-sm text-red-200">
             Nie możesz edytować uprawnień administratora. Tylko inny administrator może to zrobić.
           </p>
+        </div>
+      )}
+
+      {targetIsAdmin && (
+        <div className="rounded-lg border border-[#d3bb73]/25 bg-[#d3bb73]/10 p-4">
+          <p className="text-sm font-medium text-[#e5e4e2]">Administrator ma nieograniczony dostęp do Mavinci LIVE.</p>
+          <p className="mt-1 text-xs text-[#e5e4e2]/60">Rola <code>admin</code> automatycznie udostępnia wszystkie sekcje, wydarzenia, presety i funkcje zarządzania — niezależnie od zapisanych checkboxów.</p>
         </div>
       )}
 
@@ -717,6 +875,42 @@ export default function EmployeePermissionsTab({
               type="checkbox"
               checked={contactFormNotifications}
               onChange={toggleContactFormNotifications}
+              disabled={!canEditThisEmployee}
+              className="h-5 w-5 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+          </label>
+
+          <label className="flex items-center justify-between gap-4 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4">
+            <div>
+              <div className="text-sm font-medium text-[#e5e4e2]">Follow-upy zapytań</div>
+              <div className="mt-1 text-xs text-[#e5e4e2]/60">Przypomnienia o pierwszym kontakcie, kolejnej akcji i kontakcie po ofercie.</div>
+            </div>
+            <input type="checkbox" checked={inquiryFollowupNotifications} onChange={() => { if (!canEditThisEmployee) return; setInquiryFollowupNotifications((current) => !current); setHasChanges(true); }} disabled={!canEditThisEmployee} className="h-5 w-5 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50 disabled:cursor-not-allowed disabled:opacity-50" />
+          </label>
+
+          <label className="flex items-center justify-between gap-4 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4">
+            <div>
+              <div className="text-sm font-medium text-[#e5e4e2]">Eskalacje sprzedażowe</div>
+              <div className="mt-1 text-xs text-[#e5e4e2]/60">Alerty managerskie, gdy zapytanie nadal nie zostało obsłużone po przypomnieniach.</div>
+            </div>
+            <input type="checkbox" checked={inquiryEscalationNotifications} onChange={() => { if (!canEditThisEmployee) return; setInquiryEscalationNotifications((current) => !current); setHasChanges(true); }} disabled={!canEditThisEmployee} className="h-5 w-5 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50 disabled:cursor-not-allowed disabled:opacity-50" />
+          </label>
+
+          <label className="flex items-center justify-between gap-4 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4">
+            <div>
+              <div className="text-sm font-medium text-[#e5e4e2]">Przypisanie zapytania</div>
+              <div className="mt-1 text-xs text-[#e5e4e2]/60">
+                Banner i notyfikacja, gdy menedżer przypisze temu pracownikowi zapytanie.
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              checked={inquiryAssignmentNotifications}
+              onChange={() => {
+                if (!canEditThisEmployee) return;
+                setInquiryAssignmentNotifications((current) => !current);
+                setHasChanges(true);
+              }}
               disabled={!canEditThisEmployee}
               className="h-5 w-5 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50 disabled:cursor-not-allowed disabled:opacity-50"
             />
@@ -835,7 +1029,7 @@ export default function EmployeePermissionsTab({
                             e.target.value as 'none' | 'view' | 'manage',
                           )
                         }
-                        disabled={!canEditThisEmployee}
+                        disabled={!canEditThisEmployee || targetIsAdmin}
                         className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:ring-2 focus:ring-[#d3bb73]/50 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <option value="none">Brak</option>
@@ -850,6 +1044,16 @@ export default function EmployeePermissionsTab({
                       <p className="text-xs text-blue-200">
                         Uprawnienia do faktur są zarządzane przez checkboxy poniżej (integracja z
                         KSeF)
+                      </p>
+                    </div>
+                  )}
+
+                  {category.key === 'mavinci_live' && level !== 'none' && (
+                    <div className="rounded-lg border border-[#d3bb73]/20 bg-[#d3bb73]/10 p-3">
+                      <p className="text-xs leading-relaxed text-[#e5e4e2]/75">
+                        Dostęp działa dwustopniowo: tutaj wybierasz dostępne sekcje aplikacji,
+                        a na karcie wydarzenia określasz projekty, poziom obsługi i okres dostępu.
+                        Light Magic pozostaje zawsze dostępny jako moduł podstawowy.
                       </p>
                     </div>
                   )}
@@ -959,6 +1163,54 @@ export default function EmployeePermissionsTab({
                     </div>
                   )}
 
+                  {category.key === 'inquiries' && level !== 'none' && (
+                    <div className="space-y-3 border-t border-[#d3bb73]/10 pt-3">
+                      <div>
+                        <div className="text-sm font-medium text-[#e5e4e2]/80">
+                          Zespół sprzedaży
+                        </div>
+                        <p className="mt-1 text-xs text-[#e5e4e2]/60">
+                          Zespół ogranicza zakres widoku i zarządzania menedżera. Nie włącza
+                          automatycznie powiadomień.
+                        </p>
+                      </div>
+                      <select
+                        value={salesTeamId}
+                        onChange={(event) => {
+                          setSalesTeamId(event.target.value);
+                          setHasChanges(true);
+                        }}
+                        disabled={!canEditThisEmployee}
+                        className="w-full rounded-lg border border-[#d3bb73]/30 bg-[#0f1119] px-3 py-2 text-sm text-[#e5e4e2] focus:outline-none focus:ring-2 focus:ring-[#d3bb73]/50 disabled:opacity-50"
+                      >
+                        <option value="">Bez zespołu</option>
+                        {salesTeams.map((team) => (
+                          <option key={team.id} value={team.id}>{team.name}</option>
+                        ))}
+                      </select>
+                      <label className="flex items-start gap-3 rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-3">
+                        <input
+                          type="checkbox"
+                          checked={isSalesTeamManager}
+                          onChange={(event) => {
+                            setIsSalesTeamManager(event.target.checked);
+                            setHasChanges(true);
+                          }}
+                          disabled={!canEditThisEmployee || !salesTeamId}
+                          className="mt-0.5 h-4 w-4 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50 disabled:opacity-50"
+                        />
+                        <span>
+                          <span className="block text-sm font-medium text-[#e5e4e2]">
+                            Menedżer tego zespołu
+                          </span>
+                          <span className="mt-0.5 block text-xs text-[#e5e4e2]/60">
+                            Wymaga również uprawnienia „Zarządzanie zespołem”.
+                          </span>
+                        </span>
+                      </label>
+                    </div>
+                  )}
+
                   {category.key === 'clients' && level !== 'none' && (
                     <>
                       <div className="space-y-3 border-t border-[#d3bb73]/10 pt-3">
@@ -1032,7 +1284,11 @@ export default function EmployeePermissionsTab({
                   {category.extraPermissions && category.extraPermissions.length > 0 && (
                     <div className="space-y-3 border-t border-[#d3bb73]/10 pt-3">
                       <div className="mb-2 text-sm font-medium text-[#e5e4e2]/80">
-                        {category.key === 'invoices' ? 'Uprawnienia' : 'Dodatkowe uprawnienia'}
+                        {category.key === 'invoices'
+                          ? 'Uprawnienia'
+                          : category.key === 'mavinci_live'
+                            ? 'Dostępne sekcje aplikacji'
+                            : 'Dodatkowe uprawnienia'}
                       </div>
                       {category.extraPermissions.map((extra) => (
                         <label
@@ -1041,9 +1297,25 @@ export default function EmployeePermissionsTab({
                         >
                           <input
                             type="checkbox"
-                            checked={permissions.includes(extra.key)}
+                            checked={
+                              targetIsAdmin
+                              || permissions.includes(extra.key)
+                              || (
+                                category.key === 'mavinci_live'
+                                && extra.key === 'mavinci_live_light_magic'
+                                && level !== 'none'
+                              )
+                            }
                             onChange={() => toggleExtraPermission(extra.key)}
-                            disabled={!canEditThisEmployee}
+                            disabled={
+                              !canEditThisEmployee
+                              || targetIsAdmin
+                              || (category.key === 'mavinci_live' && level === 'none')
+                              || (
+                                category.key === 'mavinci_live'
+                                && extra.key === 'mavinci_live_light_magic'
+                              )
+                            }
                             className="mt-1 h-4 w-4 rounded border-[#d3bb73]/30 bg-[#0f1119] text-[#d3bb73] focus:ring-[#d3bb73]/50 focus:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
                           />
                           <div className="flex-1">

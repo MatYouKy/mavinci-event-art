@@ -249,6 +249,12 @@ Deno.serve(async (req: Request) => {
       typeof metadata?.assignment_id === "string" ? metadata.assignment_id : "";
     const isEventInvitation =
       invitationAssignmentId.length > 0 && metadata?.requires_response === true;
+    const isInquiryFollowup = metadata?.kind === "inquiry_followup";
+    const isInquiryActionable = isInquiryFollowup && metadata?.actionable === true;
+
+    if (isInquiryFollowup) {
+      data.type = "inquiry_reminder";
+    }
 
     if (notification.related_entity_type) {
       data.entity_type = notification.related_entity_type;
@@ -281,6 +287,14 @@ Deno.serve(async (req: Request) => {
     if (typeof metadata?.event_id === "string") {
       data.event_id = metadata.event_id;
     }
+    if (typeof metadata?.inquiry_id === "string") {
+      data.entity_id = metadata.inquiry_id;
+      data.entity_type = "inquiry";
+      data.inquiry_id = metadata.inquiry_id;
+    }
+    if (typeof metadata?.followup_kind === "string") {
+      data.followup_kind = metadata.followup_kind;
+    }
 
     // Build Expo push messages
     const messages = tokens.map((t: { token: string }) => ({
@@ -289,7 +303,11 @@ Deno.serve(async (req: Request) => {
       title,
       body,
       data,
-      categoryId: isEventInvitation ? "event_invitation" : undefined,
+      categoryId: isEventInvitation
+        ? "event_invitation"
+        : isInquiryActionable
+          ? "inquiry_followup"
+          : undefined,
       priority: "high",
       channelId: "default",
     }));

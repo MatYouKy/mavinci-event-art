@@ -33,6 +33,7 @@ export const buildEquipmentChecklistHtml = ({
   authorNumber,
   contactName,
   contactPhone,
+  companyLogoUrl,
   externalItems,
 }: {
   eventName: string;
@@ -43,6 +44,7 @@ export const buildEquipmentChecklistHtml = ({
   authorNumber: string;
   contactName?: string;
   contactPhone?: string;
+  companyLogoUrl?: string | null;
   externalItems?: Array<{ name: string; quantity: number; unit: string }>;
 }) => {
   const esc = (s: any) =>
@@ -197,7 +199,9 @@ export const buildEquipmentChecklistHtml = ({
                     }
                   </td>
                   <td class="qty muted">${Number(k.quantity ?? 1)}</td>
-                  <td class="tick muted" colspan="3"></td>
+                  <td class="tick"><span class="cb"></span></td>
+                  <td class="tick"><span class="cb"></span></td>
+                  <td class="notes"></td>
                 </tr>
               `;
             })
@@ -245,7 +249,7 @@ export const buildEquipmentChecklistHtml = ({
                 </div>
 
                 <div class="right">
-                  <img src="/shape-mavinci-black.png" alt="Logo" class="logo" />
+                  ${companyLogoUrl ? `<img src="${esc(companyLogoUrl)}" alt="Logo" class="logo" />` : ''}
                   <div class="meta">
                     <div class="meta-row"><strong>Opiekun:</strong> ${esc(authorName || '-')}</div>
                     <div class="meta-row"><strong>Tel. opiekun:</strong> ${esc(authorNumber || '-')}</div>
@@ -384,9 +388,10 @@ export const buildEquipmentChecklistHtml = ({
 
     .logo {
       max-width: 105px;
+      max-height: 34mm;
       height: auto;
       margin-bottom: 4px;
-      filter: grayscale(100%);
+      object-fit: contain;
     }
 
     table {

@@ -2,14 +2,21 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { Settings, Lock, Eye, Bell, LayoutGrid, LayoutList, Save, RefreshCw, Shield, Tag, ArrowRight, Mail, Plus, List, Table2, Building2, Key, Ligature as FileSignature, Upload, Volume2, Trash2, Webhook } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Settings, Lock, Eye, Bell, LayoutGrid, LayoutList, Save, RefreshCw, Shield, Tag, ArrowRight, Mail, Plus, List, Table2, Building2, Key, Ligature as FileSignature, Upload, Volume2, Trash2, Webhook, Database, BarChart3, Workflow } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import ChangePasswordModal from '@/components/crm/ChangePasswordModal';
 import AddSystemEmailModal from '@/components/crm/AddSystemEmailModal';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { CalendarSettings } from './calendar-icam/CalendarSettings';
+import {
+  DASHBOARD_WIDGETS,
+  DEFAULT_DASHBOARD_RANGE,
+  type DashboardPreferences,
+  type DashboardRange,
+  type DashboardWidgetId,
+} from '@/lib/CRM/dashboard/dashboardConfig';
 
 export type ViewMode = 'list' | 'grid' | 'table' | 'timeline';
 
@@ -41,6 +48,7 @@ export interface Preferences {
   fleet?: ViewModePreference;
   employees?: ViewModePreference;
   notifications?: NotificationPreferences;
+  dashboard?: DashboardPreferences;
 }
 
 const modules = [
@@ -65,12 +73,13 @@ const notificationCategories = [
 
 export default function SettingsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { showSnackbar } = useSnackbar();
   const { employee, loading: employeeLoading } = useCurrentEmployee();
 
   const [activeTab, setActiveTab] = useState<
-    'general' | 'password' | 'notifications' | 'system-email' | 'admin'
-  >('general');
+    'general' | 'dashboard' | 'password' | 'notifications' | 'system-email' | 'admin'
+  >(searchParams.get('tab') === 'dashboard' ? 'dashboard' : 'general');
   const [preferences, setPreferences] = useState<Preferences>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -176,6 +185,29 @@ export default function SettingsPage() {
     setPreferences((prev) => ({
       ...prev,
       [module]: { viewMode },
+    }));
+  };
+
+  const updateDashboardWidget = (widgetId: DashboardWidgetId, enabled: boolean) => {
+    setPreferences((prev) => ({
+      ...prev,
+      dashboard: {
+        ...prev.dashboard,
+        widgets: {
+          ...prev.dashboard?.widgets,
+          [widgetId]: enabled,
+        },
+      },
+    }));
+  };
+
+  const updateDashboardRange = (range: DashboardRange) => {
+    setPreferences((prev) => ({
+      ...prev,
+      dashboard: {
+        ...prev.dashboard,
+        range,
+      },
     }));
   };
 
@@ -385,7 +417,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <div className="mb-6 flex gap-4 border-b border-[#d3bb73]/10">
+      <div className="mb-6 flex gap-4 overflow-x-auto border-b border-[#d3bb73]/10">
         <button
           onClick={() => setActiveTab('general')}
           className={`relative px-4 py-3 text-sm font-medium transition-colors ${
@@ -397,6 +429,23 @@ export default function SettingsPage() {
             Preferencje wyświetlania
           </div>
           {activeTab === 'general' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
+          )}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('dashboard')}
+          className={`relative whitespace-nowrap px-4 py-3 text-sm font-medium transition-colors ${
+            activeTab === 'dashboard'
+              ? 'text-[#d3bb73]'
+              : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4" />
+            Dashboard
+          </div>
+          {activeTab === 'dashboard' && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#d3bb73]" />
           )}
         </button>
@@ -545,6 +594,107 @@ export default function SettingsPage() {
             >
               <RefreshCw className="h-4 w-4" />
               Przywróć domyślne
+            </button>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'dashboard' && (
+        <div className="space-y-6">
+          <div className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-6">
+            <div className="mb-6">
+              <h3 className="text-lg font-light text-[#e5e4e2]">Widok dashboardu</h3>
+              <p className="mt-1 text-sm text-[#e5e4e2]/60">
+                Wybierz informacje, które mają być widoczne na Twoim dashboardzie. Ustawienia są
+                przypisane do Twojego konta i działają na wszystkich urządzeniach.
+              </p>
+            </div>
+
+            <div className="mb-6 rounded-lg bg-[#0f1119] p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-sm font-medium text-[#e5e4e2]">Domyślny zakres wykresów</div>
+                  <div className="mt-1 text-xs text-[#e5e4e2]/45">
+                    Zakres można później rozszerzyć o własne daty i porównania okresów.
+                  </div>
+                </div>
+                <div className="flex rounded-lg border border-[#d3bb73]/15 bg-[#1c1f33] p-1">
+                  {(['6m', '12m'] as DashboardRange[]).map((range) => (
+                    <button
+                      key={range}
+                      type="button"
+                      onClick={() => updateDashboardRange(range)}
+                      className={`rounded-md px-4 py-2 text-sm transition-colors ${
+                        (preferences.dashboard?.range ?? DEFAULT_DASHBOARD_RANGE) === range
+                          ? 'bg-[#d3bb73] text-[#1c1f33]'
+                          : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
+                      }`}
+                    >
+                      {range === '6m' ? '6 miesięcy' : '12 miesięcy'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              {DASHBOARD_WIDGETS.map((widget) => {
+                const enabled = preferences.dashboard?.widgets?.[widget.id] !== false;
+                return (
+                  <button
+                    key={widget.id}
+                    type="button"
+                    onClick={() => updateDashboardWidget(widget.id, !enabled)}
+                    className={`flex items-start gap-3 rounded-lg border p-4 text-left transition-colors ${
+                      enabled
+                        ? 'border-[#d3bb73]/30 bg-[#d3bb73]/10'
+                        : 'border-[#d3bb73]/10 bg-[#0f1119] hover:border-[#d3bb73]/20'
+                    }`}
+                  >
+                    <span
+                      className={`mt-0.5 flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors ${
+                        enabled ? 'bg-[#d3bb73]' : 'bg-[#e5e4e2]/15'
+                      }`}
+                    >
+                      <span
+                        className={`h-4 w-4 rounded-full bg-[#1c1f33] transition-transform ${
+                          enabled ? 'translate-x-4' : 'translate-x-0'
+                        }`}
+                      />
+                    </span>
+                    <span>
+                      <span className="block text-sm font-medium text-[#e5e4e2]">{widget.label}</span>
+                      <span className="mt-1 block text-xs leading-5 text-[#e5e4e2]/50">
+                        {widget.description}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
+            >
+              <Save className="h-4 w-4" />
+              {saving ? 'Zapisywanie...' : 'Zapisz dashboard'}
+            </button>
+            <button
+              onClick={() =>
+                setPreferences((prev) => ({
+                  ...prev,
+                  dashboard: {},
+                }))
+              }
+              disabled={saving}
+              className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 bg-[#0f1119] px-6 py-3 text-[#e5e4e2] transition-colors hover:bg-[#1c1f33] disabled:opacity-50"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Ustaw domyślny widok
             </button>
           </div>
         </div>
@@ -835,6 +985,36 @@ export default function SettingsPage() {
             </p>
 
             <div className="space-y-3">
+              <button
+                onClick={() => router.push('/crm/settings/workflows')}
+                className="flex w-full items-center justify-between rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4 transition-colors hover:bg-[#1c1f33]"
+              >
+                <div className="flex items-center gap-3">
+                  <Workflow className="h-5 w-5 text-[#d3bb73]" />
+                  <div className="text-left">
+                    <div className="font-medium text-[#e5e4e2]">Procesy wydarzeń</div>
+                    <div className="text-xs text-[#e5e4e2]/60">
+                      Etapy, terminy, bramki gotowości i automatyczne zadania
+                    </div>
+                  </div>
+                </div>
+                <ArrowRight className="h-5 w-5 text-[#e5e4e2]/40" />
+              </button>
+
+              <button
+                onClick={() => router.push('/crm/settings/storage')}
+                className="flex w-full items-center justify-between rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4 transition-colors hover:bg-[#1c1f33]"
+              >
+                <div className="flex items-center gap-3">
+                  <Database className="h-5 w-5 text-[#d3bb73]" />
+                  <div className="text-left">
+                    <div className="font-medium text-[#e5e4e2]">Pliki Supabase</div>
+                    <div className="text-xs text-[#e5e4e2]/60">Przeglądaj wszystkie buckety, katalogi i pliki systemowe</div>
+                  </div>
+                </div>
+                <ArrowRight className="h-5 w-5 text-[#e5e4e2]/40" />
+              </button>
+
               <button
                 onClick={() => router.push('/crm/settings/access-levels')}
                 className="flex w-full items-center justify-between rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4 transition-colors hover:bg-[#1c1f33]"

@@ -1,9 +1,11 @@
 import { View, Text, StyleSheet, TouchableOpacity, Linking } from 'react-native';
-import { Feather } from '@expo/vector-icons';
 import { colors, spacing } from '../../../theme';
 
 import { InfoRow } from './InfoRow';
 import { Employee } from '../../../lib/supabase';
+import { EventTeamMember } from './TeamTab';
+import { useCrmCall } from '../../../hooks/useCrmCall';
+import CallOutcomeModal from '../../CallOutcomeModal';
 
 export interface EventDetail {
   id: string;
@@ -20,34 +22,31 @@ export interface EventDetail {
   location_name: string | null;
   location_address: string | null;
   organization_name: string | null;
+  organization_id: string | null;
   contact_name: string | null;
+  contact_id: string | null;
   contact_phone: string | null;
   contact_email: string | null;
   creator_name: string | null;
-  employees: { id: string; name: string; surname: string; role: string | null }[];
+  created_by: string | null;
+  employees: EventTeamMember[];
 }
 
-export function DetailsTab({
-  event,
-  employee,
-}: {
-  event: EventDetail;
-  employee: Employee;
-}) {
+export function DetailsTab({ event, employee }: { event: EventDetail; employee: Employee }) {
+  const { startCall, pendingCall, showOutcome, closeOutcome } = useCrmCall();
   const permissions = employee?.permissions ?? [];
-  
-  const canViewFinances =
-  permissions.includes('finances_manage') ||
-  permissions.includes('finances_view') ||
-  permissions.includes('offers_manage') ||
-  permissions.includes('offers_view') ||
-  permissions.includes('invoices_manage') ||
-  permissions.includes('invoices_view') ||
-  employee.role === 'admin';
-console.log('canViewFinances -> ', canViewFinances);
-console.log('employee.role -> ', employee.role);
-console.log('event.expected_revenue -> ', event.expected_revenue);
 
+  const canViewFinances =
+    permissions.includes('finances_manage') ||
+    permissions.includes('finances_view') ||
+    permissions.includes('offers_manage') ||
+    permissions.includes('offers_view') ||
+    permissions.includes('invoices_manage') ||
+    permissions.includes('invoices_view') ||
+    employee.role === 'admin';
+  console.log('canViewFinances -> ', canViewFinances);
+  console.log('employee.role -> ', employee.role);
+  console.log('event.expected_revenue -> ', event.expected_revenue);
 
   const formatDateTime = (dateStr: string) =>
     new Date(dateStr).toLocaleString('pl-PL', {
@@ -69,11 +68,7 @@ console.log('event.expected_revenue -> ', event.expected_revenue);
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Data i miejsce</Text>
         <View style={styles.infoGrid}>
-          <InfoRow
-            icon="calendar"
-            label="Rozpoczęcie"
-            value={formatDateTime(event.event_date)}
-          />
+          <InfoRow icon="calendar" label="Rozpoczęcie" value={formatDateTime(event.event_date)} />
           {event.event_end_date && (
             <InfoRow
               icon="clock"
@@ -102,7 +97,7 @@ console.log('event.expected_revenue -> ', event.expected_revenue);
               <InfoRow icon="user" label="Osoba kontaktowa" value={event.contact_name} />
             )}
             {event.contact_phone && (
-              <TouchableOpacity onPress={() => Linking.openURL(`tel:${event.contact_phone}`)}>
+              <TouchableOpacity onPress={() => void startCall({ phoneNumber: event.contact_phone!, displayName: event.contact_name || event.organization_name || event.name, contactId: event.contact_id, organizationId: event.organization_id, eventId: event.id })}>
                 <InfoRow icon="phone" label="Telefon" value={event.contact_phone} highlight />
               </TouchableOpacity>
             )}
@@ -137,24 +132,6 @@ console.log('event.expected_revenue -> ', event.expected_revenue);
         </View>
       )}
 
-      {/* Team */}
-      {event.employees.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Zespół ({event.employees.length})</Text>
-          {event.employees.map((emp) => (
-            <View key={emp.id} style={styles.teamRow}>
-              <View style={styles.teamAvatar}>
-                <Feather name="user" size={12} color={colors.primary.gold} />
-              </View>
-              <Text style={styles.teamName}>
-                {emp.name} {emp.surname}
-              </Text>
-              {emp.role && <Text style={styles.teamRole}>{emp.role}</Text>}
-            </View>
-          ))}
-        </View>
-      )}
-
       {/* Description */}
       {event.description && (
         <View style={styles.section}>
@@ -170,6 +147,7 @@ console.log('event.expected_revenue -> ', event.expected_revenue);
           <Text style={styles.descriptionText}>{event.notes}</Text>
         </View>
       )}
+      <CallOutcomeModal call={pendingCall} visible={showOutcome} onClose={closeOutcome} />
     </View>
   );
 }
@@ -189,28 +167,5 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   infoGrid: { gap: 8 },
-  teamRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    gap: 10,
-  },
-  teamAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.primary.gold + '20',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  teamName: { flex: 1, fontSize: 13, color: colors.text.primary, fontWeight: '500' },
-  teamRole: {
-    fontSize: 11,
-    color: colors.text.tertiary,
-    backgroundColor: colors.background.tertiary,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
   descriptionText: { fontSize: 13, color: colors.text.secondary, lineHeight: 20 },
 });

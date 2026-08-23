@@ -75,6 +75,7 @@ interface Props {
 }
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
+const MESSAGE_PAGE_SIZE = 20;
 
 function getMessageType(mimeType: string): string {
   if (mimeType.startsWith('image/')) return 'image';
@@ -89,13 +90,15 @@ function formatFileSize(bytes: number): string {
 }
 
 export default function ChatScreen({ conversation, onBack }: Props) {
-  const { employee } = useAuth();
+  const { employee, onlineEmployeeIds } = useAuth();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const [messages, setMessages] = useState<Message[]>([]);
   const [senders, setSenders] = useState<Map<string, SenderInfo>>(new Map());
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingOlder, setIsLoadingOlder] = useState(false);
+  const [hasOlderMessages, setHasOlderMessages] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [pendingAttachment, setPendingAttachment] = useState<PendingAttachment | null>(null);
@@ -126,8 +129,14 @@ export default function ChatScreen({ conversation, onBack }: Props) {
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialReadNotifiedRef = useRef(false);
+  const sendersRef = useRef<Map<string, SenderInfo>>(new Map());
+  const loadingOlderRef = useRef(false);
+  const userHasScrolledRef = useRef(false);
 
   const otherParticipant = conversation.participants.find((p) => p.employee_id !== employee?.id);
+  const otherParticipantOnline = otherParticipant
+    ? onlineEmployeeIds.includes(otherParticipant.employee_id)
+    : false;
 
   const conversationTitle =
     conversation.title ||
@@ -151,13 +160,15 @@ export default function ChatScreen({ conversation, onBack }: Props) {
       .from('employee_messages')
       .select('*')
       .eq('conversation_id', conversation.id)
-      .order('created_at', { ascending: true })
-      .limit(100);
+      .order('created_at', { ascending: false })
+      .limit(MESSAGE_PAGE_SIZE);
 
     if (!error && data) {
-      setMessages(data);
+      const latestMessages = [...data].reverse();
+      setMessages(latestMessages);
+      setHasOlderMessages(data.length === MESSAGE_PAGE_SIZE);
 
-      const senderIds = [...new Set(data.map((m) => m.sender_id))];
+      const senderIds = [...new Set(latestMessages.map((m) => m.sender_id))];
       const { data: sendersData } = await supabase
         .from('employees')
         .select('id, name, surname, nickname, avatar_url, avatar_metadata')
@@ -167,10 +178,64 @@ export default function ChatScreen({ conversation, onBack }: Props) {
       if (sendersData) {
         const map = new Map<string, SenderInfo>();
         sendersData.forEach((s) => map.set(s.id, s));
+        sendersRef.current = map;
         setSenders(map);
       }
     }
   }, [conversation.id, employee]);
+
+  const loadOlderMessages = useCallback(async () => {
+    if (isLoading || loadingOlderRef.current || !hasOlderMessages || messages.length === 0) return;
+
+    const oldestMessage = messages[0];
+    loadingOlderRef.current = true;
+    setIsLoadingOlder(true);
+
+    const { data, error } = await supabase
+      .from('employee_messages')
+      .select('*')
+      .eq('conversation_id', conversation.id)
+      .lt('created_at', oldestMessage.created_at)
+      .order('created_at', { ascending: false })
+      .limit(MESSAGE_PAGE_SIZE);
+
+    if (!error && data) {
+      const olderMessages = [...data].reverse() as Message[];
+      setHasOlderMessages(data.length === MESSAGE_PAGE_SIZE);
+      setMessages((current) => {
+        const currentIds = new Set(current.map((message) => message.id));
+        return [...olderMessages.filter((message) => !currentIds.has(message.id)), ...current];
+      });
+
+      const missingSenderIds = [
+        ...new Set(
+          olderMessages
+            .map((message) => message.sender_id)
+            .filter((senderId) => !sendersRef.current.has(senderId)),
+        ),
+      ];
+
+      if (missingSenderIds.length > 0) {
+        const { data: sendersData } = await supabase
+          .from('employees')
+          .select('id, name, surname, nickname, avatar_url, avatar_metadata')
+          .eq('is_active', true)
+          .in('id', missingSenderIds);
+
+        if (sendersData) {
+          setSenders((current) => {
+            const next = new Map(current);
+            sendersData.forEach((sender) => next.set(sender.id, sender));
+            sendersRef.current = next;
+            return next;
+          });
+        }
+      }
+    }
+
+    loadingOlderRef.current = false;
+    setIsLoadingOlder(false);
+  }, [conversation.id, hasOlderMessages, isLoading, messages]);
 
   const markAsRead = useCallback(async () => {
     if (!employee) return;
@@ -217,6 +282,8 @@ export default function ChatScreen({ conversation, onBack }: Props) {
 
   useEffect(() => {
     setActiveChatConversation(conversation.id);
+    userHasScrolledRef.current = false;
+    setHasOlderMessages(true);
 
     const load = async () => {
       setIsLoading(true);
@@ -256,7 +323,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
             return [...prev, newMsg];
           });
 
-          if (!senders.has(newMsg.sender_id)) {
+          if (!sendersRef.current.has(newMsg.sender_id)) {
             const { data } = await supabase
               .from('employees')
               .select('id, name, surname, nickname, avatar_url, avatar_metadata')
@@ -264,7 +331,11 @@ export default function ChatScreen({ conversation, onBack }: Props) {
               .eq('is_active', true)
               .maybeSingle();
             if (data) {
-              setSenders((prev) => new Map(prev).set(data.id, data));
+              setSenders((prev) => {
+                const next = new Map(prev).set(data.id, data);
+                sendersRef.current = next;
+                return next;
+              });
             }
           }
 
@@ -334,7 +405,7 @@ export default function ChatScreen({ conversation, onBack }: Props) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [conversation.id, markAsRead, markAsDelivered, senders, employee?.id]);
+  }, [conversation.id, markAsRead, markAsDelivered, employee?.id]);
 
   const uploadAttachment = async (
     attachment: PendingAttachment,
@@ -1124,7 +1195,14 @@ export default function ChatScreen({ conversation, onBack }: Props) {
               {conversationTitle}
             </Text>
             {!conversation.is_group && (
-              <Text style={styles.headerSubtitle}>{isTyping ? 'pisze...' : 'aktywny(a)'}</Text>
+              <Text
+                style={[
+                  styles.headerSubtitle,
+                  !isTyping && !otherParticipantOnline && styles.headerSubtitleOffline,
+                ]}
+              >
+                {isTyping ? 'pisze...' : otherParticipantOnline ? 'aktywny(a)' : 'offline'}
+              </Text>
             )}
           </View>
         </View>
@@ -1159,16 +1237,43 @@ export default function ChatScreen({ conversation, onBack }: Props) {
           ref={flatListRef}
           data={visibleMessages}
           renderItem={renderMessage}
+          initialNumToRender={MESSAGE_PAGE_SIZE}
           onScrollBeginDrag={() => {
+            userHasScrolledRef.current = true;
             setReactionPickerMsgId(null);
             setRemoveReactionMsgId(null);
           }}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.messagesList}
           showsVerticalScrollIndicator={false}
-          onContentSizeChange={() => {
-            flatListRef.current?.scrollToEnd({ animated: false });
+          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+          onScroll={({ nativeEvent }) => {
+            if (userHasScrolledRef.current && nativeEvent.contentOffset.y <= 80) {
+              loadOlderMessages();
+            }
           }}
+          scrollEventThrottle={100}
+          onLayout={() => {
+            if (!userHasScrolledRef.current) {
+              requestAnimationFrame(() => {
+                flatListRef.current?.scrollToEnd({ animated: false });
+              });
+            }
+          }}
+          onContentSizeChange={() => {
+            if (!userHasScrolledRef.current) {
+              requestAnimationFrame(() => {
+                flatListRef.current?.scrollToEnd({ animated: false });
+              });
+            }
+          }}
+          ListHeaderComponent={
+            isLoadingOlder ? (
+              <View style={{ paddingVertical: spacing.sm }}>
+                <ActivityIndicator size="small" color={colors.primary.gold} />
+              </View>
+            ) : null
+          }
           ListEmptyComponent={
             <View style={styles.emptyMessages}>
               <Feather name="message-circle" size={40} color={colors.text.tertiary} />
@@ -1367,6 +1472,9 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: typography.fontSizes.xs,
     color: colors.status.success,
+  },
+  headerSubtitleOffline: {
+    color: colors.text.tertiary,
   },
   headerAction: {
     padding: spacing.sm,

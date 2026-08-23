@@ -2,7 +2,8 @@
 
 import { useState, useMemo } from 'react';
 import { CalendarEvent } from './types';
-import { Truck, User, Box, Calendar, MapPin, Clock } from 'lucide-react';
+import { Truck, User, Box, MapPin } from 'lucide-react';
+import { getClippedTimelinePosition, getWeekBounds } from '@/lib/timeline';
 
 interface TimelineViewProps {
   currentDate: Date;
@@ -68,20 +69,8 @@ export default function TimelineView({
     equipment: true,
   });
 
-  // KRYTYCZNE: Jeśli eventsWithAssignments jest puste, Timeline nie zadziała!
-  if (eventsWithAssignments.length === 0) {
-    console.warn('⚠️ WARNING: eventsWithAssignments is empty! Timeline will show no resource assignments.');
-  }
-
-  // Generuj zakres dat dla tygodnia
-  const weekStart = useMemo(() => {
-    const date = new Date(currentDate);
-    const day = date.getDay();
-    const diff = date.getDate() - day + (day === 0 ? -6 : 1);
-    date.setDate(diff);
-    date.setHours(0, 0, 0, 0);
-    return date;
-  }, [currentDate]);
+  const weekBounds = useMemo(() => getWeekBounds(currentDate), [currentDate]);
+  const weekStart = weekBounds.start;
 
   const weekDays = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => {
@@ -102,10 +91,6 @@ export default function TimelineView({
       const assignments = timelineEvents.filter((event: any) => {
         const eventVehicles = event.event_vehicles || [];
         const hasVehicle = eventVehicles.some((ev: any) => ev.vehicle_id === vehicle.id);
-
-        if (hasVehicle) {
-          console.error(`Vehicle ${vehicle.name} assigned to event:`, event.name, event.event_date);
-        }
 
         return hasVehicle;
       });
@@ -133,10 +118,6 @@ export default function TimelineView({
       const assignments = timelineEvents.filter((event: any) => {
         const assignedEmployees = event.employee_assignments || [];
         const hasEmployee = assignedEmployees.some((a: any) => a.employee_id === employee.id);
-
-        if (hasEmployee) {
-            console.error(`Employee ${employee.name} assigned to event:`, event.name, event.event_date);
-        }
 
         return hasEmployee;
       });
@@ -192,25 +173,15 @@ export default function TimelineView({
 
   // Oblicz pozycję i szerokość paska wydarzenia na timeline
   const getEventPosition = (startDate: Date, endDate: Date) => {
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekStart.getDate() + 7);
-
-    const totalWeekMs = weekEnd.getTime() - weekStart.getTime();
-    const startMs = Math.max(startDate.getTime(), weekStart.getTime());
-    const endMs = Math.min(endDate.getTime(), weekEnd.getTime());
-
-    const left = ((startMs - weekStart.getTime()) / totalWeekMs) * 100;
-    const width = ((endMs - startMs) / totalWeekMs) * 100;
-
-    return { left: `${left}%`, width: `${width}%` };
+    const position = getClippedTimelinePosition(startDate, endDate, weekBounds, 100, 0.5);
+    return position
+      ? { left: `${position.offset}%`, width: `${position.size}%` }
+      : null;
   };
 
   // Sprawdź czy wydarzenie jest w zakresie tygodnia
   const isEventInWeek = (startDate: Date, endDate: Date) => {
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekStart.getDate() + 7);
-
-    return startDate < weekEnd && endDate > weekStart;
+    return startDate < weekBounds.end && endDate > weekBounds.start;
   };
 
   const getResourceIcon = (type: string) => {
@@ -286,7 +257,7 @@ export default function TimelineView({
           <div className="w-48 flex-shrink-0 border-r border-[#d3bb73]/10 pr-4">
             <span className="text-sm font-medium text-[#e5e4e2]">Zasób</span>
           </div>
-          <div className="flex-1 pl-4">
+          <div className="flex-1">
             <div className="grid grid-cols-7 gap-px">
               {weekDays.map((day, idx) => (
                 <div key={idx} className="text-center">
@@ -314,15 +285,6 @@ export default function TimelineView({
             <p className="text-sm text-[#e5e4e2]/60">
               Brak zasobów do wyświetlenia.
             </p>
-            <div className="mt-4 text-xs text-[#e5e4e2]/40">
-              <div>Pojazdy: {vehicles.length} (filtr: {resourceFilters.vehicles ? 'włączony' : 'wyłączony'})</div>
-              <div>Pracownicy: {employees.length} (filtr: {resourceFilters.employees ? 'włączony' : 'wyłączony'})</div>
-              <div>Sprzęt: {equipment.length} (filtr: {resourceFilters.equipment ? 'włączony' : 'wyłączony'})</div>
-              <div className="mt-2">Wydarzenia z przypisaniami: {eventsWithAssignments.length}</div>
-              <div>vehicleTimeline: {vehicleTimeline.length}</div>
-              <div>employeeTimeline: {employeeTimeline.length}</div>
-              <div>equipmentTimeline: {equipmentTimeline.length}</div>
-            </div>
           </div>
         ) : (
           allResources.map((resource) => (
@@ -359,7 +321,7 @@ export default function TimelineView({
                 </div>
 
                 {/* Timeline z wydarzeniami */}
-                <div className="relative flex-1 pl-4">
+                <div className="relative flex-1">
                   {/* Linie pionowe dla dni */}
                   <div className="absolute inset-0 grid grid-cols-7 gap-px">
                     {weekDays.map((_, idx) => (
@@ -381,6 +343,7 @@ export default function TimelineView({
                           assignment.startDate,
                           assignment.endDate
                         );
+                        if (!position) return null;
                         const colorClass = STATUS_COLORS[assignment.status as keyof typeof STATUS_COLORS] || STATUS_COLORS.pending;
 
                         // Przygotuj obiekt CalendarEvent dla kliknięcia

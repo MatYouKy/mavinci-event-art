@@ -154,6 +154,8 @@ Deno.serve(async (req: Request) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    let persistedSentEmailId: string | null = null;
+
     if (emailAccountId) {
       let employeeId: string | null = null;
 
@@ -179,21 +181,65 @@ Deno.serve(async (req: Request) => {
       }
 
       if (employeeId) {
-        const { error: insertError } = await supabase.from("sent_emails").insert({
-          employee_id: employeeId,
-          email_account_id: emailAccountId,
-          to_address: to,
-          subject: subject,
-          body: body,
-          reply_to: replyTo,
-          message_id: info.messageId,
-          sent_at: new Date().toISOString(),
-        });
+        const { data: sentEmail, error: insertError } = await supabase
+          .from("sent_emails")
+          .insert({
+            employee_id: employeeId,
+            email_account_id: emailAccountId,
+            to_address: to,
+            subject: subject,
+            body: body,
+            reply_to: replyTo,
+            message_id: info.messageId,
+            sent_at: new Date().toISOString(),
+          })
+          .select("id")
+          .single();
         if (insertError) {
           console.error('[send-email] Failed to insert sent_emails record:', insertError);
+        } else {
+          persistedSentEmailId = sentEmail.id;
         }
       } else {
         console.warn('[send-email] No employee_id resolved; skipping sent_emails persistence');
+      }
+    }
+
+    if (persistedSentEmailId && attachments?.length) {
+      for (const attachment of attachments) {
+        try {
+          const encoded = attachment.content.includes(",")
+            ? attachment.content.split(",").pop() || ""
+            : attachment.content;
+          const binary = atob(encoded);
+          const bytes = new Uint8Array(binary.length);
+          for (let index = 0; index < binary.length; index += 1) {
+            bytes[index] = binary.charCodeAt(index);
+          }
+
+          const safeFilename = attachment.filename.replace(/[^a-zA-Z0-9._-]+/g, "_");
+          const storagePath = `sent/${persistedSentEmailId}/${crypto.randomUUID()}-${safeFilename}`;
+          const contentType = attachment.contentType || "application/octet-stream";
+          const { error: uploadError } = await supabase.storage
+            .from("email-attachments")
+            .upload(storagePath, bytes, { contentType, upsert: false });
+          if (uploadError) throw uploadError;
+
+          const { error: attachmentError } = await supabase.from("email_attachments").insert({
+            email_id: persistedSentEmailId,
+            email_type: "sent",
+            filename: attachment.filename,
+            content_type: contentType,
+            size_bytes: bytes.byteLength,
+            storage_path: storagePath,
+          });
+          if (attachmentError) {
+            await supabase.storage.from("email-attachments").remove([storagePath]);
+            throw attachmentError;
+          }
+        } catch (attachmentError) {
+          console.error("[send-email] Failed to persist attachment:", attachment.filename, attachmentError);
+        }
       }
     }
 
@@ -211,7 +257,8 @@ Deno.serve(async (req: Request) => {
       JSON.stringify({ 
         success: true, 
         messageId: info.messageId,
-        message: "Email sent successfully"
+        message: "Email sent successfully",
+        sentEmailId: persistedSentEmailId
       }),
       {
         headers: {

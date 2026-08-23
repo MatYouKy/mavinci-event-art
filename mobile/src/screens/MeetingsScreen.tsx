@@ -25,11 +25,9 @@ import { colors, spacing, typography } from '../theme';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { SearchableDropdown } from '../components/SearchableDropdown';
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 // --- Types ---
-type AlertPickerType = 'alert_1' | 'alert_2' | 'alert_critical';
-
 type MeetingPickerType = 'startDate' | 'startTime' | 'endDate' | 'endTime';
 interface Employee {
   id: string;
@@ -62,6 +60,7 @@ interface Meeting {
 
 interface NewMeetingForm {
   title: string;
+  color: string;
   location_text: string;
   datetime_start: Date;
   datetime_end: Date;
@@ -76,7 +75,31 @@ interface NewMeetingForm {
 
 // --- Helpers ---
 
-const SLIDER_MIN = 15;
+const DEFAULT_MEETING_COLOR = '#d3bb73';
+
+const MEETING_COLORS = [
+  { value: '#d3bb73', label: 'Złoty' },
+  { value: '#3b82f6', label: 'Niebieski' },
+  { value: '#22c55e', label: 'Zielony' },
+  { value: '#a855f7', label: 'Fioletowy' },
+  { value: '#ec4899', label: 'Różowy' },
+  { value: '#f97316', label: 'Pomarańczowy' },
+  { value: '#ef4444', label: 'Czerwony' },
+  { value: '#64748b', label: 'Szary' },
+];
+
+const ALERT_OPTIONS = [
+  { value: 15, label: '15 min' },
+  { value: 30, label: '30 min' },
+  { value: 60, label: '1 godz.' },
+  { value: 120, label: '2 godz.' },
+  { value: 360, label: '6 godz.' },
+  { value: 720, label: '12 godz.' },
+  { value: 1440, label: '1 dzień' },
+  { value: 2880, label: '2 dni' },
+  { value: 4320, label: '3 dni' },
+  { value: 10080, label: '7 dni' },
+];
 
 function minutesToLabel(minutes: number): string {
   if (minutes >= 1440) {
@@ -90,16 +113,6 @@ function minutesToLabel(minutes: number): string {
     return `${hours} godz. ${mins} min`;
   }
   return `${minutes} min`;
-}
-
-function minutesToPickerDate(minutes: number): Date {
-  const date = new Date();
-  date.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
-  return date;
-}
-
-function pickerDateToMinutes(date: Date): number {
-  return date.getHours() * 60 + date.getMinutes();
 }
 
 // Notification handler is set globally in App.tsx - do not duplicate here
@@ -182,6 +195,7 @@ export default function MeetingsScreen({ initialMeetingId, onBack }: MeetingsScr
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [isSavingMeeting, setIsSavingMeeting] = useState(false);
   const [showNewMeeting, setShowNewMeeting] = useState(false);
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
@@ -201,6 +215,7 @@ export default function MeetingsScreen({ initialMeetingId, onBack }: MeetingsScr
 
     return {
       title: '',
+      color: DEFAULT_MEETING_COLOR,
       location_text: '',
       datetime_start: start,
       datetime_end: new Date(start.getTime() + 60 * 60 * 1000),
@@ -226,30 +241,21 @@ export default function MeetingsScreen({ initialMeetingId, onBack }: MeetingsScr
 
   const [activeMeetingPicker, setActiveMeetingPicker] = useState<MeetingPickerType | null>(null);
 
-  const [activeAlertPicker, setActiveAlertPicker] = useState<AlertPickerType | null>(null);
   const meetingFormScrollRef = useRef<ScrollView>(null);
+  const savingMeetingRef = useRef(false);
 
   const handleFormInputFocus = () => {
     setActiveMeetingPicker(null);
-    setActiveAlertPicker(null);
   };
 
   const openMeetingPicker = (picker: MeetingPickerType) => {
     Keyboard.dismiss();
     setOpenedDropdown(null);
-    setActiveAlertPicker(null);
     setActiveMeetingPicker(picker);
 
     requestAnimationFrame(() => {
       meetingFormScrollRef.current?.scrollTo({ y: 110, animated: true });
     });
-  };
-
-  const openAlertPicker = (picker: AlertPickerType) => {
-    Keyboard.dismiss();
-    setOpenedDropdown(null);
-    setActiveMeetingPicker(null);
-    setActiveAlertPicker(picker);
   };
 
   useEffect(() => {
@@ -356,7 +362,6 @@ export default function MeetingsScreen({ initialMeetingId, onBack }: MeetingsScr
     setParticipantSearch('');
     setOpenedDropdown(null);
     setActiveMeetingPicker(null);
-    setActiveAlertPicker(null);
     setSelectedLocation(null);
     setLocationSearch('');
   };
@@ -378,6 +383,7 @@ export default function MeetingsScreen({ initialMeetingId, onBack }: MeetingsScr
 
     setForm({
       title: meeting.title || '',
+      color: meeting.color || DEFAULT_MEETING_COLOR,
       location_text: matchedLocation?.name || meeting.location_text || '',
       datetime_start: start,
       datetime_end: end,
@@ -394,7 +400,6 @@ export default function MeetingsScreen({ initialMeetingId, onBack }: MeetingsScr
     setSelectedMeeting(null);
     setShowNewMeeting(true);
     setActiveMeetingPicker(null);
-    setActiveAlertPicker(null);
 
     // Load participants for this meeting
     const participantIds = (meeting.participants || []).map((p) => p.employee_id);
@@ -405,6 +410,8 @@ export default function MeetingsScreen({ initialMeetingId, onBack }: MeetingsScr
   };
 
   const handleSaveMeeting = async () => {
+    if (savingMeetingRef.current) return;
+
     if (!employee || !form.title.trim()) {
       Alert.alert('Błąd', 'Podaj tytuł spotkania');
       return;
@@ -428,8 +435,12 @@ export default function MeetingsScreen({ initialMeetingId, onBack }: MeetingsScr
       return;
     }
 
+    savingMeetingRef.current = true;
+    setIsSavingMeeting(true);
+
     const payload = {
       title: form.title.trim(),
+      color: form.color,
       location_text: form.location_text.trim() || null,
       datetime_start: form.datetime_start.toISOString(),
       datetime_end: form.datetime_end.toISOString(),
@@ -507,6 +518,9 @@ export default function MeetingsScreen({ initialMeetingId, onBack }: MeetingsScr
         err.message ||
           (editingMeeting ? 'Nie udało się zapisać zmian' : 'Nie udało się utworzyć spotkania'),
       );
+    } finally {
+      savingMeetingRef.current = false;
+      setIsSavingMeeting(false);
     }
   };
 
@@ -550,6 +564,11 @@ export default function MeetingsScreen({ initialMeetingId, onBack }: MeetingsScr
 
   const upcomingMeetings = meetings.filter((m) => isUpcoming(m.datetime_start || ''));
   const pastMeetings = meetings.filter((m) => !isUpcoming(m.datetime_start || ''));
+  const availableMeetingColors = MEETING_COLORS.some(
+    (option) => option.value.toLowerCase() === form.color.toLowerCase(),
+  )
+    ? MEETING_COLORS
+    : [{ value: form.color, label: 'Obecny' }, ...MEETING_COLORS];
 
 const renderMeetingCard = ({ item }: { item: Meeting }) => {
   const upcoming = isUpcoming(item.datetime_start || '');
@@ -629,7 +648,6 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
 };
 
   const AlertTimePicker = ({
-    type,
     label,
     enabled,
     onToggle,
@@ -637,7 +655,6 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
     onValueChange,
     isCritical,
   }: {
-    type: AlertPickerType;
     label: string;
     enabled: boolean;
     onToggle: (value: boolean) => void;
@@ -645,30 +662,20 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
     onValueChange: (value: number) => void;
     isCritical?: boolean;
   }) => {
-    const days = Math.floor(value / 1440);
-    const remainingMinutes = value % 1440;
-    const pickerDate = minutesToPickerDate(remainingMinutes);
-
-    const setDays = (newDays: number) => {
-      const safeDays = Math.max(0, Math.min(7, newDays));
-      onValueChange(safeDays * 1440 + remainingMinutes);
-    };
-
-    const handleTimeChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
-      if (Platform.OS === 'android') {
-        setActiveAlertPicker(null);
-      }
-
-      if (event.type === 'dismissed' || !selectedDate) return;
-
-      const selectedMinutes = pickerDateToMinutes(selectedDate);
-      const totalMinutes = days * 1440 + selectedMinutes;
-
-      onValueChange(Math.max(SLIDER_MIN, totalMinutes));
-    };
+    const availableAlertOptions = ALERT_OPTIONS.some((option) => option.value === value)
+      ? ALERT_OPTIONS
+      : [{ value, label: minutesToLabel(value) }, ...ALERT_OPTIONS].sort(
+          (first, second) => first.value - second.value,
+        );
 
     return (
-      <View style={styles.alertPickerBlock}>
+      <View
+        style={[
+          styles.alertPickerBlock,
+          isCritical && styles.alertPickerBlockCritical,
+          enabled && styles.alertPickerBlockEnabled,
+        ]}
+      >
         <View style={styles.alertSliderHeader}>
           <View style={styles.alertSliderLabelRow}>
             <Feather
@@ -687,9 +694,15 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
             >
               {label}
             </Text>
+            {enabled && (
+              <Text style={[styles.alertCurrentValue, isCritical && styles.alertCriticalText]}>
+                {minutesToLabel(value)} przed
+              </Text>
+            )}
           </View>
 
           <Switch
+            style={styles.alertSwitch}
             value={enabled}
             onValueChange={onToggle}
             trackColor={{
@@ -707,81 +720,40 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
         </View>
 
         {enabled && (
-          <View style={styles.alertPickerBody}>
-            <Text style={styles.alertPickerDescription}>Powiadomienie:</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.alertOptions}
+          >
+            {availableAlertOptions.map((option) => {
+              const selected = option.value === value;
 
-            <View style={styles.alertTimeControls}>
-              <View style={styles.daysControl}>
+              return (
                 <TouchableOpacity
-                  style={styles.daysButton}
-                  onPress={() => setDays(days - 1)}
-                  disabled={days === 0}
-                >
-                  <Feather
-                    name="minus"
-                    size={16}
-                    color={days === 0 ? colors.text.tertiary : colors.primary.gold}
-                  />
-                </TouchableOpacity>
-
-                <View style={styles.daysValue}>
-                  <Text style={styles.daysValueNumber}>{days}</Text>
-                  <Text style={styles.daysValueLabel}>{days === 1 ? 'dzień' : 'dni'}</Text>
-                </View>
-
-                <TouchableOpacity style={styles.daysButton} onPress={() => setDays(days + 1)}>
-                  <Feather name="plus" size={16} color={colors.primary.gold} />
-                </TouchableOpacity>
-              </View>
-
-              <TouchableOpacity
-                style={[styles.timePickerButton, isCritical && styles.timePickerButtonCritical]}
-                onPress={() => openAlertPicker(type)}
-              >
-                <Feather
-                  name="clock"
-                  size={17}
-                  color={isCritical ? colors.status.error : colors.primary.gold}
-                />
-
-                <Text
+                  key={option.value}
                   style={[
-                    styles.timePickerButtonText,
-                    isCritical && {
-                      color: colors.status.error,
-                    },
+                    styles.alertOption,
+                    selected && styles.alertOptionSelected,
+                    selected && isCritical && styles.alertOptionCriticalSelected,
                   ]}
+                  onPress={() => onValueChange(option.value)}
+                  activeOpacity={0.75}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={`${label}: ${option.label} przed spotkaniem`}
                 >
-                  {String(Math.floor(remainingMinutes / 60)).padStart(2, '0')}:
-                  {String(remainingMinutes % 60).padStart(2, '0')}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <Text
-              style={[
-                styles.alertSliderValue,
-                isCritical && {
-                  color: colors.status.error,
-                },
-              ]}
-            >
-              {minutesToLabel(value)} przed spotkaniem
-            </Text>
-
-            {activeAlertPicker === type && (
-              <DateTimePicker
-                value={pickerDate}
-                locale="pl-PL"
-                mode="time"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                is24Hour
-                minuteInterval={5}
-                onChange={handleTimeChange}
-                themeVariant="dark"
-              />
-            )}
-          </View>
+                  <Text
+                    style={[
+                      styles.alertOptionText,
+                      selected && styles.alertOptionTextSelected,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         )}
       </View>
     );
@@ -839,7 +811,14 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
       />
 
       {/* New Meeting Modal */}
-      <Modal visible={showNewMeeting} animationType="slide" presentationStyle="pageSheet">
+      <Modal
+        visible={showNewMeeting}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => {
+          if (!savingMeetingRef.current) setShowNewMeeting(false);
+        }}
+      >
         <KeyboardAvoidingView
           style={styles.modalContainer}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -847,6 +826,8 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
         >
           <View style={styles.modalHeader}>
             <TouchableOpacity
+              disabled={isSavingMeeting}
+              style={isSavingMeeting ? styles.modalActionDisabled : undefined}
               onPress={() => {
                 setShowNewMeeting(false);
                 setEditingMeeting(null);
@@ -858,8 +839,16 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
             <Text style={styles.modalTitle}>
               {editingMeeting ? 'Edytuj spotkanie' : 'Nowe spotkanie'}
             </Text>
-            <TouchableOpacity onPress={handleSaveMeeting}>
-              <Text style={styles.modalSave}>{editingMeeting ? 'Zapisz' : 'Dodaj'}</Text>
+            <TouchableOpacity
+              onPress={handleSaveMeeting}
+              disabled={isSavingMeeting}
+              style={[styles.modalSaveButton, isSavingMeeting && styles.modalActionDisabled]}
+            >
+              {isSavingMeeting ? (
+                <ActivityIndicator size="small" color={colors.primary.gold} />
+              ) : (
+                <Text style={styles.modalSave}>{editingMeeting ? 'Zapisz' : 'Dodaj'}</Text>
+              )}
             </TouchableOpacity>
           </View>
 
@@ -1172,12 +1161,45 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
               onFocus={handleFormInputFocus}
             />
 
-            {/* Alert sliders */}
+            <Text style={styles.fieldLabel}>Kolor spotkania</Text>
+            <View style={styles.colorPicker}>
+              {availableMeetingColors.map((option) => {
+                const selected = form.color.toLowerCase() === option.value.toLowerCase();
+
+                return (
+                  <TouchableOpacity
+                    key={option.value}
+                    style={[styles.colorOption, selected && styles.colorOptionSelected]}
+                    onPress={() => setForm((current) => ({ ...current, color: option.value }))}
+                    activeOpacity={0.75}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Kolor spotkania: ${option.label}`}
+                    accessibilityState={{ selected }}
+                  >
+                    <View style={[styles.colorSwatch, { backgroundColor: option.value }]}>
+                      {selected && <Feather name="check" size={16} color="#ffffff" />}
+                    </View>
+                    <Text style={[styles.colorLabel, selected && styles.colorLabelSelected]}>
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Alerts */}
             <View style={styles.alertsSection}>
-              <Text style={styles.alertsSectionTitle}>Alerty (opcjonalne)</Text>
+              <View style={styles.alertsSectionHeader}>
+                <Feather name="bell" size={15} color={colors.primary.gold} />
+                <View>
+                  <Text style={styles.alertsSectionTitle}>Przypomnienia</Text>
+                  <Text style={styles.alertsSectionDescription}>
+                    Włącz i wybierz, kiedy przypomnieć.
+                  </Text>
+                </View>
+              </View>
 
               <AlertTimePicker
-                type="alert_1"
                 label="Alert 1"
                 enabled={form.alert_1_enabled}
                 onToggle={(value) =>
@@ -1196,7 +1218,6 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
               />
 
               <AlertTimePicker
-                type="alert_2"
                 label="Alert 2"
                 enabled={form.alert_2_enabled}
                 onToggle={(value) =>
@@ -1215,7 +1236,6 @@ const renderMeetingCard = ({ item }: { item: Meeting }) => {
               />
 
               <AlertTimePicker
-                type="alert_critical"
                 label="Alert krytyczny"
                 enabled={form.alert_critical_enabled}
                 onToggle={(value) =>
@@ -1533,6 +1553,17 @@ const styles = StyleSheet.create({
     color: colors.primary.gold,
   },
 
+  modalSaveButton: {
+    minWidth: 56,
+    minHeight: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  modalActionDisabled: {
+    opacity: 0.55,
+  },
+
   modalBody: {
     flex: 1,
   },
@@ -1564,20 +1595,77 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
 
+  colorPicker: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+    borderRadius: 12,
+    backgroundColor: colors.background.secondary,
+  },
+
+  colorOption: {
+    width: 66,
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+
+  colorOptionSelected: {
+    backgroundColor: `${colors.primary.gold}12`,
+  },
+
+  colorSwatch: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.22)',
+  },
+
+  colorLabel: {
+    fontSize: 10,
+    color: colors.text.tertiary,
+  },
+
+  colorLabelSelected: {
+    color: colors.text.primary,
+    fontWeight: typography.fontWeights.semibold as any,
+  },
+
   alertsSection: {
-    marginTop: spacing.xl,
-    padding: spacing.md,
+    marginTop: spacing.lg,
+    padding: spacing.sm,
     backgroundColor: colors.background.secondary,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border.default,
   },
 
+  alertsSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+
   alertsSectionTitle: {
-    fontSize: typography.fontSizes.md,
+    fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.semibold as any,
-    color: colors.primary.gold,
-    marginBottom: spacing.md,
+    color: colors.text.primary,
+  },
+
+  alertsSectionDescription: {
+    marginTop: 1,
+    fontSize: 10,
+    color: colors.text.tertiary,
   },
 
   alertSliderHeader: {
@@ -1587,23 +1675,26 @@ const styles = StyleSheet.create({
   },
 
   alertSliderLabelRow: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    flexWrap: 'wrap',
   },
 
   alertSliderLabel: {
-    fontSize: typography.fontSizes.md,
+    fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.medium as any,
     color: colors.text.secondary,
   },
 
-  alertSliderValue: {
-    fontSize: typography.fontSizes.xs,
-    fontWeight: typography.fontWeights.semibold as any,
+  alertCurrentValue: {
+    fontSize: 10,
     color: colors.primary.gold,
-    textAlign: 'center',
-    marginTop: spacing.sm,
+  },
+
+  alertCriticalText: {
+    color: colors.status.error,
   },
 
   detailTitle: {
@@ -1691,26 +1782,61 @@ const styles = StyleSheet.create({
   },
 
   alertPickerBlock: {
-    marginBottom: spacing.md,
-    paddingBottom: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border.default,
+    marginBottom: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+    borderRadius: 10,
+    backgroundColor: colors.background.primary,
   },
 
-  alertPickerBody: {
-    marginTop: spacing.md,
+  alertPickerBlockEnabled: {
+    borderColor: `${colors.primary.gold}30`,
   },
 
-  alertPickerDescription: {
-    fontSize: typography.fontSizes.xs,
+  alertPickerBlockCritical: {
+    borderColor: `${colors.status.error}28`,
+  },
+
+  alertSwitch: {
+    transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }],
+  },
+
+  alertOptions: {
+    gap: 6,
+    paddingTop: spacing.sm,
+    paddingRight: spacing.sm,
+  },
+
+  alertOption: {
+    minHeight: 30,
+    justifyContent: 'center',
+    paddingHorizontal: 11,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+    backgroundColor: colors.background.secondary,
+  },
+
+  alertOptionSelected: {
+    borderColor: colors.primary.gold,
+    backgroundColor: `${colors.primary.gold}22`,
+  },
+
+  alertOptionCriticalSelected: {
+    borderColor: colors.status.error,
+    backgroundColor: `${colors.status.error}18`,
+  },
+
+  alertOptionText: {
+    fontSize: 11,
     color: colors.text.tertiary,
-    marginBottom: spacing.sm,
   },
 
-  alertTimeControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
+  alertOptionTextSelected: {
+    color: colors.text.primary,
+    fontWeight: typography.fontWeights.semibold as any,
   },
 
   daysControl: {

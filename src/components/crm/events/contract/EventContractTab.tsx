@@ -15,6 +15,11 @@ import { UnifiedContact } from '@/store/slices/contactsSlice';
 import { ILocation } from '@/app/(crm)/crm/locations/type';
 import { Organization } from '@/app/(crm)/crm/contacts/[id]/page';
 import { getContractCssForPrint } from '../calculations/helpers/getContractCssForPrint';
+import { paginateContractHtml } from '@/lib/CRM/contracts/contractPagination';
+import {
+  normalizeContractParagraphPlaceholders,
+  resolveContractParagraphPlaceholders,
+} from '@/lib/CRM/contracts/contractParagraphs';
 
 export interface DecisionMaker {
   id: string;
@@ -44,6 +49,51 @@ const formatPrefixedValue = (
       : cleanValue;
 
   return suffix ? `${baseValue}${suffix}` : baseValue;
+};
+
+const escapeContractText = (value: string) =>
+  value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+const CONTRACT_CLAUSE_CATEGORY_KEYS = [
+  'requirements',
+  'obligations',
+  'risks',
+  'general',
+] as const;
+
+const placeProductClauses = (flow: string, sourceVariables: Record<string, string>) => {
+  const nextVariables = { ...sourceVariables };
+  const unplacedSections = CONTRACT_CLAUSE_CATEGORY_KEYS.filter(
+    (category) =>
+      !new RegExp(`\\{\\{\\s*contract_clauses_${category}\\s*\\}\\}`, 'i').test(flow),
+  ).map((category) => nextVariables[`contract_clauses_${category}`]);
+
+  nextVariables.contract_clauses_all = unplacedSections.filter(Boolean).join('');
+  const hasCatchAllSlot = /\{\{\s*contract_clauses_all\s*\}\}/i.test(flow);
+  const flowContent =
+    nextVariables.contract_clauses_all && !hasCatchAllSlot
+      ? `${flow}<div data-auto-product-clauses="true">{{contract_clauses_all}}</div>`
+      : flow;
+
+  return { flowContent, variables: nextVariables };
+};
+
+const deduplicateProductClauseSections = (html: string) => {
+  if (typeof document === 'undefined' || !html.includes('contract-product-clauses')) return html;
+  const container = document.createElement('div');
+  container.innerHTML = html;
+  const seenSections = new Set<string>();
+  container.querySelectorAll<HTMLElement>('.contract-product-clauses').forEach((section) => {
+    const signature = section.innerHTML.replace(/\s+/g, ' ').trim();
+    if (seenSections.has(signature)) section.remove();
+    else seenSections.add(signature);
+  });
+  return container.innerHTML;
+};
+
+const includeContractFonts = (flow: string, variables: Record<string, string>) => {
+  const fontFaces = variables.__contract_font_faces || '';
+  return fontFaces && !flow.includes('data-contract-fonts') ? `${fontFaces}${flow}` : flow;
 };
 
 
@@ -321,11 +371,13 @@ export function EventContractTab({ eventId }: { eventId: string }) {
       setSelectedTemplateId(template.id);
 
       let templateToStore = template.content_html || template.content;
-      let pageSettingsToStore = template.page_settings;
 
       if (template.page_settings?.pages) {
+        const baseFlow = template.page_settings.flowContent || template.page_settings.pages.join('');
+        const { flowContent } = placeProductClauses(baseFlow, variables);
         templateToStore = JSON.stringify({
           pages: template.page_settings.pages,
+          flowContent,
           settings: {
             logoScale: template.page_settings.logoScale || 80,
             logoPositionX: template.page_settings.logoPositionX || 50,
@@ -351,6 +403,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         .from('offers')
         .select('id, total_amount, offer_number, valid_until')
         .eq('event_id', eventId)
+        .eq('status', 'accepted')
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -359,7 +412,13 @@ export function EventContractTab({ eventId }: { eventId: string }) {
       if (offers?.id) {
         const { data: items } = await supabase
           .from('offer_items')
-          .select('*')
+          .select(`
+            *,
+            product:offer_products!product_id(
+              recommended_contract_clauses,
+              recommended_contract_clause_category
+            )
+          `)
           .eq('offer_id', offers.id)
           .order('display_order', { ascending: true });
         offerItems = items;
@@ -422,6 +481,68 @@ export function EventContractTab({ eventId }: { eventId: string }) {
       const parsedLocation = parseLocationString(locationString);
 
       const offerItemsArray = offerItems || [];
+      const { data: contractFonts } = await supabase
+        .from('company_brandbook_fonts')
+        .select('*')
+        .order('order_index');
+      await Promise.all(
+        (contractFonts || []).filter((font: any) => font.file_url).map(async (font: any) => {
+          const loadedFont = new FontFace(font.family, `url(${font.file_url})`, {
+            weight: font.weight || '400',
+          });
+          await loadedFont.load();
+          document.fonts.add(loadedFont);
+        }),
+      );
+      const clausesByCategory: Record<string, string[]> = {
+        requirements: [],
+        obligations: [],
+        risks: [],
+        general: [],
+      };
+      const inheritClauseTypography = (html: string) =>
+        html.replace(/style=(['"])(.*?)\1/gi, (_match, quote: string, styles: string) => {
+          const inheritedStyles = styles
+            .split(';')
+            .map((style) => style.trim())
+            .filter(Boolean)
+            .filter(
+              (style) =>
+                !/^(?:line-height|color)\s*:/i.test(style),
+            )
+            .join('; ');
+          return inheritedStyles ? `style=${quote}${inheritedStyles}${quote}` : '';
+        }).replace(/class=(['"])(.*?)\1/gi, (_match, quote: string, classes: string) => {
+          const inheritedClasses = classes
+            .split(/\s+/)
+            .filter(Boolean)
+            .filter((className) => !/^ql-color-/i.test(className))
+            .join(' ');
+          return inheritedClasses ? `class=${quote}${inheritedClasses}${quote}` : '';
+        });
+
+      offerItemsArray.forEach((item: any) => {
+        const product = Array.isArray(item.product) ? item.product[0] : item.product;
+        const clause = product?.recommended_contract_clauses?.trim();
+        if (!clause) return;
+        const category = clausesByCategory[product.recommended_contract_clause_category]
+          ? product.recommended_contract_clause_category
+          : 'requirements';
+        clausesByCategory[category].push(
+          `<div class="product-contract-clause" data-product-name="${escapeContractText(item.name || 'Produkt')}" style="font:inherit;color:inherit;line-height:inherit">${inheritClauseTypography(clause)}</div>`,
+        );
+      });
+
+      const clauseSection = (clauses: string[]) =>
+        clauses.length
+          ? `<div class="contract-product-clauses" style="font:inherit;color:inherit;line-height:inherit">${clauses.join('')}</div>`
+          : '';
+      const rawClauseSections = {
+        contract_clauses_requirements: clauseSection(clausesByCategory.requirements),
+        contract_clauses_obligations: clauseSection(clausesByCategory.obligations),
+        contract_clauses_risks: clauseSection(clausesByCategory.risks),
+        contract_clauses_general: clauseSection(clausesByCategory.general),
+      };
       const offerItemsHtml =
         offerItemsArray.length > 0
           ? `<ul style="margin: 0; padding-left: 20px; list-style-type: none;">
@@ -445,6 +566,15 @@ export function EventContractTab({ eventId }: { eventId: string }) {
       );
 
       const varsMap: Record<string, string> = {
+        __contract_font_faces: contractFonts?.some((font: any) => font.file_url)
+          ? `<style data-contract-fonts="true">${contractFonts
+              .filter((font: any) => font.file_url)
+              .map(
+                (font: any) =>
+                  `@font-face{font-family:'${String(font.family).replace(/'/g, "\\'")}';src:url('${font.file_url}');font-weight:${font.weight || '400'};font-style:normal;font-display:swap;}`,
+              )
+              .join('')}</style>`
+          : '',
         contact_first_name: contact?.first_name || '',
         contact_last_name: contact?.last_name || '',
         contact_full_name: contact?.full_name || '',
@@ -544,6 +674,23 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         OFFER_ITEMS_TABLE: offerItemsTable,
       };
 
+      Object.entries(rawClauseSections).forEach(([key, value]) => {
+        varsMap[key] = replaceVariables(value, varsMap);
+      });
+      const templateFlow = includeContractFonts(
+        template.page_settings?.flowContent ||
+          template.page_settings?.pages?.join('') || template.content_html || template.content,
+        varsMap,
+      );
+      const clausePlacement = placeProductClauses(templateFlow, varsMap);
+      const flowWithAutomaticClauses = clausePlacement.flowContent;
+      Object.assign(varsMap, clausePlacement.variables);
+      setOriginalTemplate(JSON.stringify({
+        flowContent: flowWithAutomaticClauses,
+        pages: template.page_settings?.pages || [flowWithAutomaticClauses],
+        settings: getTemplateSettings(template.page_settings),
+      }));
+
       setVariables(varsMap);
       setEditedVariables(varsMap);
       const templateSettings = getTemplateSettings(template.page_settings);
@@ -554,8 +701,18 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         try {
           const parsedContract = JSON.parse(existingContract.content);
           if (parsedContract.pages && Array.isArray(parsedContract.pages)) {
+            const flowContent = resolveContractParagraphPlaceholders(
+              normalizeContractParagraphPlaceholders(
+                deduplicateProductClauseSections(
+                  parsedContract.flowContent || parsedContract.pages.join(''),
+                ),
+              ),
+            );
+            const resolvedPages = await paginateContractHtml(flowContent, templateSettings);
             contentToSet = JSON.stringify({
               ...parsedContract,
+              flowContent,
+              pages: resolvedPages,
               settings: templateSettings,
             });
           } else {
@@ -566,16 +723,20 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         }
       } else if (template.page_settings?.pages) {
         // Jeśli nie ma umowy, wygeneruj z szablonu
-        const pages = template.page_settings.pages.map((page: string) =>
-          replaceVariables(page, varsMap),
-        );
+        const source = flowWithAutomaticClauses;
+        const flowContent = resolveContractParagraphPlaceholders(replaceVariables(source, varsMap));
+        const pages = await paginateContractHtml(flowContent, templateSettings);
         contentToSet = JSON.stringify({
+          flowContent,
           pages,
           settings: templateSettings,
         });
       } else {
-        const templateToUse = template.content_html || template.content;
-        contentToSet = replaceVariables(templateToUse, varsMap);
+        const flowContent = resolveContractParagraphPlaceholders(
+          replaceVariables(flowWithAutomaticClauses, varsMap),
+        );
+        const pages = await paginateContractHtml(flowContent, templateSettings);
+        contentToSet = JSON.stringify({ flowContent, pages, settings: templateSettings });
       }
       setContractContent(contentToSet);
     } catch (err) {
@@ -586,7 +747,7 @@ export function EventContractTab({ eventId }: { eventId: string }) {
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const updatedVariables = { ...editedVariables };
 
     const extractNumber = (value: string) => {
@@ -615,9 +776,13 @@ export function EventContractTab({ eventId }: { eventId: string }) {
     try {
       const parsed = JSON.parse(originalTemplate);
       if (parsed.pages && Array.isArray(parsed.pages)) {
-        const pages = parsed.pages.map((page: string) => replaceVariables(page, updatedVariables));
+        const flowContent = resolveContractParagraphPlaceholders(
+          replaceVariables(parsed.flowContent || parsed.pages.join(''), updatedVariables),
+        );
+        const pages = await paginateContractHtml(flowContent, parsed.settings || {});
         setContractContent(
           JSON.stringify({
+            flowContent,
             pages,
             settings: parsed.settings,
           }),
@@ -673,8 +838,15 @@ export function EventContractTab({ eventId }: { eventId: string }) {
       let templateToStore = template.content_html || template.content;
 
       if (template.page_settings?.pages) {
+        const baseFlow = includeContractFonts(
+          template.page_settings.flowContent || template.page_settings.pages.join(''),
+          variables,
+        );
+        const clausePlacement = placeProductClauses(baseFlow, variables);
+        const flowContent = clausePlacement.flowContent;
         templateToStore = JSON.stringify({
           pages: template.page_settings.pages,
+          flowContent,
           settings: {
             logoScale: template.page_settings.logoScale || 80,
             logoPositionX: template.page_settings.logoPositionX || 50,
@@ -698,16 +870,27 @@ export function EventContractTab({ eventId }: { eventId: string }) {
 
       let contentToSet = '';
       if (template.page_settings?.pages) {
-        const pages = template.page_settings.pages.map((page: string) =>
-          replaceVariables(page, variables),
+        const parsedTemplate = JSON.parse(templateToStore);
+        const source = parsedTemplate.flowContent;
+        const clausePlacement = placeProductClauses(source, variables);
+        const flowContent = resolveContractParagraphPlaceholders(
+          replaceVariables(clausePlacement.flowContent, clausePlacement.variables),
         );
+        const settings = getTemplateSettings(template.page_settings);
+        const pages = await paginateContractHtml(flowContent, settings);
         contentToSet = JSON.stringify({
+          flowContent,
           pages,
-          settings: getTemplateSettings(template.page_settings),
+          settings,
         });
       } else {
         const templateToUse = template.content_html || template.content;
-        contentToSet = replaceVariables(templateToUse, variables);
+        const flowContent = resolveContractParagraphPlaceholders(
+          replaceVariables(templateToUse, variables),
+        );
+        const settings = getTemplateSettings(template.page_settings);
+        const pages = await paginateContractHtml(flowContent, settings);
+        contentToSet = JSON.stringify({ flowContent, pages, settings });
       }
       setContractContent(contentToSet);
 
@@ -1429,11 +1612,9 @@ export function EventContractTab({ eventId }: { eventId: string }) {
                       </div>
                     )}
 
-                    {pages.length > 1 && (
-                      <div className="absolute bottom-4 mx-auto w-[calc(100%-50mm)] text-center text-xs text-[#000]/50">
-                        {pageIndex + 1} z {pages.length}
-                      </div>
-                    )}
+                    <div className="contract-page-counter">
+                      {pageIndex + 1}/{pages.length}
+                    </div>
                   </div>
                 ));
               }

@@ -1,0 +1,544 @@
+'use client';
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  CheckCircle2,
+  Clock3,
+  HeartHandshake,
+  Edit3,
+  Loader2,
+  Music2,
+  Save,
+  Sparkles,
+  X,
+} from 'lucide-react';
+import { supabase } from '@/lib/supabase/browser';
+import { useSnackbar } from '@/contexts/SnackbarContext';
+import WeddingPeopleSchedulePanel from './WeddingPeopleSchedulePanel';
+
+type WeddingCard = {
+  id: string;
+  status: 'not_started' | 'in_progress' | 'submitted' | 'approved' | 'changes_requested';
+  progress: number;
+  submitted_at: string | null;
+  updated_at: string;
+};
+
+type Answer = {
+  id: string;
+  section: string;
+  field_key: string;
+  value: unknown;
+};
+
+type Track = {
+  id: string;
+  list_type: 'play' | 'do_not_play' | 'special';
+  title: string;
+  artist: string | null;
+  url: string | null;
+  notes: string | null;
+};
+
+type Attraction = {
+  id: string;
+  attraction_name: string;
+  choice: 'undecided' | 'interested' | 'selected' | 'rejected';
+  notes: string | null;
+};
+
+const SECTIONS = [
+  {
+    id: 'technical',
+    title: 'Przebieg i logistyka',
+    icon: Clock3,
+    fields: [
+      ['guest_count', 'Liczba gości'],
+      ['ceremony', 'Ceremonia'],
+      ['venue_arrival_time', 'Przyjazd na salę'],
+      ['venue_access', 'Dostęp i schody'],
+      ['hot_vodka', 'Ciepła wódka'],
+      ['first_dance', 'Pierwszy taniec'],
+      ['special_toasts', 'Specjalne toasty'],
+    ],
+  },
+  {
+    id: 'cake',
+    title: 'Tort weselny',
+    icon: Sparkles,
+    fields: [
+      ['cake_time', 'Godzina podania'],
+      ['cake_presentation', 'Aranżacja podania'],
+      ['cake_location', 'Miejsce podania'],
+    ],
+  },
+  {
+    id: 'parents_thanks',
+    title: 'Podziękowania dla rodziców',
+    icon: HeartHandshake,
+    fields: [
+      ['parents_thanks_enabled', 'Czy planowane'],
+      ['parents_thanks_recipients', 'Komu dziękujemy'],
+      ['parents_thanks_plan', 'Forma podziękowań'],
+    ],
+  },
+  {
+    id: 'oczepiny',
+    title: 'Oczepiny',
+    icon: CheckCircle2,
+    fields: [
+      ['oczepiny_enabled', 'Czy planowane'],
+      ['oczepiny_notes', 'Uwagi'],
+    ],
+  },
+  {
+    id: 'music',
+    title: 'Playlisty',
+    icon: Music2,
+    fields: [
+      ['spotify_playlist_url', 'Playlista Spotify'],
+      ['youtube_playlist_url', 'Playlista YouTube'],
+    ],
+  },
+  {
+    id: 'notes',
+    title: 'Dodatkowe informacje',
+    icon: Edit3,
+    fields: [['general_notes', 'Uwagi dla zespołu']],
+  },
+] as const;
+
+const ALL_FIELDS = SECTIONS.flatMap((section) =>
+  section.fields.map(([key, label]) => ({ key, label, section: section.id })),
+);
+const BOOLEAN_FIELDS = new Set(['hot_vodka', 'parents_thanks_enabled', 'oczepiny_enabled']);
+const SHORT_FIELDS = new Set([
+  'bride_name',
+  'groom_name',
+  'guest_count',
+  'venue_arrival_time',
+  'cake_time',
+]);
+
+const STATUS_LABELS: Record<WeddingCard['status'], string> = {
+  not_started: 'Nie rozpoczęto',
+  in_progress: 'W trakcie uzupełniania',
+  submitted: 'Przesłana do weryfikacji',
+  approved: 'Zatwierdzona',
+  changes_requested: 'Wymaga uzupełnienia',
+};
+
+const formatValue = (value: unknown) => {
+  if (value === null || value === undefined || value === '') return '—';
+  if (typeof value === 'boolean') return value ? 'Tak' : 'Nie';
+  if (Array.isArray(value)) return value.length ? value.join(', ') : '—';
+  if (typeof value === 'object') {
+    const entries = Object.values(value as Record<string, unknown>).filter(Boolean);
+    return entries.length ? entries.join(' · ') : '—';
+  }
+  return String(value);
+};
+
+export default function EventWeddingCardTab({
+  eventId,
+  canManage,
+}: {
+  eventId: string;
+  canManage: boolean;
+}) {
+  const { showSnackbar } = useSnackbar();
+  const [card, setCard] = useState<WeddingCard | null>(null);
+  const [answers, setAnswers] = useState<Answer[]>([]);
+  const [tracks, setTracks] = useState<Track[]>([]);
+  const [attractions, setAttractions] = useState<Attraction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [draft, setDraft] = useState<Record<string, string | boolean>>({});
+
+  const loadCard = useCallback(async () => {
+    const { data: cardData, error: cardError } = await supabase
+      .from('wedding_cards')
+      .select('id,status,progress,submitted_at,updated_at')
+      .eq('event_id', eventId)
+      .maybeSingle();
+
+    if (cardError) throw cardError;
+    if (!cardData) {
+      setCard(null);
+      setAnswers([]);
+      setTracks([]);
+      setAttractions([]);
+      return;
+    }
+
+    const [answersResult, tracksResult, attractionsResult] = await Promise.all([
+      supabase
+        .from('wedding_card_answers')
+        .select('id,section,field_key,value')
+        .eq('wedding_card_id', cardData.id),
+      supabase
+        .from('wedding_music_tracks')
+        .select('id,list_type,title,artist,url,notes')
+        .eq('wedding_card_id', cardData.id)
+        .order('sort_order'),
+      supabase
+        .from('wedding_attraction_choices')
+        .select('id,attraction_name,choice,notes')
+        .eq('wedding_card_id', cardData.id)
+        .order('attraction_name'),
+    ]);
+
+    if (answersResult.error) throw answersResult.error;
+    if (tracksResult.error) throw tracksResult.error;
+    if (attractionsResult.error) throw attractionsResult.error;
+
+    setCard(cardData as WeddingCard);
+    setAnswers((answersResult.data || []) as Answer[]);
+    setTracks((tracksResult.data || []) as Track[]);
+    setAttractions((attractionsResult.data || []) as Attraction[]);
+  }, [eventId]);
+
+  useEffect(() => {
+    let mounted = true;
+    setLoading(true);
+    loadCard()
+      .catch((error) => {
+        console.error('Error loading wedding card:', error);
+        if (mounted) showSnackbar('Nie udało się pobrać karty weselnej', 'error');
+      })
+      .finally(() => mounted && setLoading(false));
+
+    const channel = supabase
+      .channel(`wedding-card-${eventId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'wedding_cards', filter: `event_id=eq.${eventId}` },
+        () => void loadCard(),
+      )
+      .subscribe();
+
+    return () => {
+      mounted = false;
+      void supabase.removeChannel(channel);
+    };
+  }, [eventId, loadCard, showSnackbar]);
+
+  useEffect(() => {
+    if (!card?.id) return;
+    const childTables = [
+      'wedding_card_answers',
+      'wedding_music_tracks',
+      'wedding_attraction_choices',
+    ];
+    const channel = supabase.channel(`wedding-card-content-${card.id}`);
+    childTables.forEach((table) => {
+      channel.on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table, filter: `wedding_card_id=eq.${card.id}` },
+        () => void loadCard(),
+      );
+    });
+    channel.subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [card?.id, loadCard]);
+
+  const answersByKey = useMemo(
+    () => new Map(answers.map((answer) => [answer.field_key, answer.value])),
+    [answers],
+  );
+
+  const beginEditing = () => {
+    setDraft(
+      Object.fromEntries(
+        answers.map((answer) => [
+          answer.field_key,
+          typeof answer.value === 'boolean' ? answer.value : String(answer.value ?? ''),
+        ]),
+      ),
+    );
+    setEditing(true);
+  };
+
+  const saveCard = async () => {
+    if (!card || saving) return;
+    setSaving(true);
+    const { data: sessionData } = await supabase.auth.getSession();
+    const employeeId = sessionData.session?.user.id ?? null;
+    const rows = ALL_FIELDS.map((field) => ({
+      wedding_card_id: card.id,
+      section: field.section,
+      field_key: field.key,
+      value: draft[field.key] ?? '',
+      source: 'crm',
+      updated_by: employeeId,
+    }));
+
+    const { error: answersError } = await supabase
+      .from('wedding_card_answers')
+      .upsert(rows, { onConflict: 'wedding_card_id,field_key' });
+
+    if (answersError) {
+      setSaving(false);
+      console.error('Error saving wedding card answers:', answersError);
+      showSnackbar('Nie udało się zapisać Karty Weselnej', 'error');
+      return;
+    }
+
+    const filled = rows.filter((row) => row.value !== '' && row.value !== null).length;
+    const progress = Math.round((filled / ALL_FIELDS.length) * 100);
+    const { error: cardError } = await supabase
+      .from('wedding_cards')
+      .update({
+        progress,
+        status: card.status === 'not_started' ? 'in_progress' : card.status,
+      })
+      .eq('id', card.id);
+
+    setSaving(false);
+    if (cardError) {
+      console.error('Error updating wedding card:', cardError);
+      showSnackbar('Odpowiedzi zapisano, ale nie udało się zaktualizować postępu', 'error');
+      return;
+    }
+
+    setEditing(false);
+    await loadCard();
+    showSnackbar('Karta Weselna została zapisana', 'success');
+  };
+
+  const createCard = async () => {
+    if (creating) return;
+    setCreating(true);
+    const { error } = await supabase
+      .from('wedding_cards')
+      .upsert({ event_id: eventId, status: 'not_started', progress: 0 }, { onConflict: 'event_id' });
+    setCreating(false);
+    if (error) {
+      console.error('Error creating wedding card:', error);
+      showSnackbar('Nie udało się utworzyć karty weselnej', 'error');
+      return;
+    }
+    await loadCard();
+    setDraft({});
+    setEditing(true);
+    showSnackbar('Karta weselna została utworzona', 'success');
+  };
+
+  if (loading) {
+    return (
+      <div className="flex min-h-64 items-center justify-center">
+        <Loader2 className="h-7 w-7 animate-spin text-[#d3bb73]" />
+      </div>
+    );
+  }
+
+  if (!card) {
+    return (
+      <div className="rounded-2xl border border-[#d3bb73]/20 bg-[#1e2035]/70 p-8 text-center">
+        <HeartHandshake className="mx-auto mb-4 h-10 w-10 text-[#d3bb73]" />
+        <h2 className="text-xl font-semibold text-white">Karta weselna nie została jeszcze rozpoczęta</h2>
+        <p className="mx-auto mt-2 max-w-xl text-sm text-[#e5e4e2]/65">
+          To tutaj pojawią się ustalenia uzupełniane przez Parę Młodą w Event Rulers.
+          Para nie otrzymuje dostępu ani konta do CRM.
+        </p>
+        {canManage && (
+          <button
+            type="button"
+            disabled={creating}
+            onClick={createCard}
+            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#d3bb73] px-5 py-2.5 font-medium text-[#111320] disabled:opacity-60"
+          >
+            {creating && <Loader2 className="h-4 w-4 animate-spin" />}
+            Utwórz i edytuj kartę
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-[#d3bb73]/20 bg-[#1e2035]/70 p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <HeartHandshake className="h-5 w-5 text-[#d3bb73]" />
+              <h2 className="text-lg font-semibold text-white">Karta weselna</h2>
+            </div>
+            <p className="mt-1 text-sm text-[#e5e4e2]/60">{STATUS_LABELS[card.status]}</p>
+          </div>
+          <div className="flex flex-col gap-3 sm:items-end">
+            <div className="min-w-48">
+              <div className="mb-1.5 flex justify-between text-xs text-[#e5e4e2]/65">
+                <span>Uzupełnienie</span>
+                <span>{card.progress}%</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full bg-[#d3bb73] transition-[width]"
+                  style={{ width: `${card.progress}%` }}
+                />
+              </div>
+            </div>
+            {canManage && (
+              <div className="flex gap-2">
+                {editing ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setEditing(false)}
+                      disabled={saving}
+                      className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-[#e5e4e2]/65 disabled:opacity-50"
+                    >
+                      <X className="h-4 w-4" /> Anuluj
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void saveCard()}
+                      disabled={saving}
+                      className="inline-flex items-center gap-2 rounded-lg bg-[#d3bb73] px-3 py-2 text-xs font-medium text-[#111320] disabled:opacity-50"
+                    >
+                      {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                      Zapisz
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={beginEditing}
+                    className="inline-flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-3 py-2 text-xs text-[#d3bb73] hover:bg-[#d3bb73]/10"
+                  >
+                    <Edit3 className="h-4 w-4" /> Edytuj kartę
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <div className="xl:col-span-2">
+          <WeddingPeopleSchedulePanel cardId={card.id} canManage={canManage} />
+        </div>
+        {SECTIONS.map((section) => {
+          const Icon = section.icon;
+          return (
+            <section key={section.id} className="rounded-2xl border border-white/10 bg-[#171927] p-5">
+              <h3 className="mb-4 flex items-center gap-2 font-semibold text-white">
+                <Icon className="h-4 w-4 text-[#d3bb73]" />
+                {section.title}
+              </h3>
+              <dl className="space-y-3">
+                {section.fields.map(([key, label]) => (
+                  <div key={key} className="grid gap-1 border-b border-white/5 pb-3 sm:grid-cols-[150px_1fr]">
+                    <dt className="text-xs text-[#e5e4e2]/50">{label}</dt>
+                    <dd className="whitespace-pre-wrap text-sm text-[#e5e4e2]">
+                      {editing ? (
+                        BOOLEAN_FIELDS.has(key) ? (
+                          <div className="flex gap-2">
+                            {[true, false].map((value) => (
+                              <button
+                                key={String(value)}
+                                type="button"
+                                onClick={() => setDraft((current) => ({ ...current, [key]: value }))}
+                                className={`rounded-lg border px-3 py-2 text-xs ${
+                                  draft[key] === value
+                                    ? 'border-[#d3bb73] bg-[#d3bb73]/10 text-[#d3bb73]'
+                                    : 'border-white/10 text-[#e5e4e2]/55'
+                                }`}
+                              >
+                                {value ? 'Tak' : 'Nie'}
+                              </button>
+                            ))}
+                          </div>
+                        ) : SHORT_FIELDS.has(key) ? (
+                          <input
+                            type={key === 'guest_count' ? 'number' : key.endsWith('_time') ? 'time' : 'text'}
+                            min={key === 'guest_count' ? 0 : undefined}
+                            value={String(draft[key] ?? '')}
+                            onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))}
+                            className="w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none focus:border-[#d3bb73]/60"
+                          />
+                        ) : (
+                          <textarea
+                            rows={3}
+                            value={String(draft[key] ?? '')}
+                            onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))}
+                            className="w-full resize-y rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none focus:border-[#d3bb73]/60"
+                          />
+                        )
+                      ) : (
+                        formatValue(answersByKey.get(key))
+                      )}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          );
+        })}
+
+        <section className="rounded-2xl border border-white/10 bg-[#171927] p-5">
+          <h3 className="mb-4 flex items-center gap-2 font-semibold text-white">
+            <Sparkles className="h-4 w-4 text-[#d3bb73]" />
+            Atrakcje i dodatki
+          </h3>
+          {attractions.length ? (
+            <div className="space-y-2">
+              {attractions.map((attraction) => (
+                <div key={attraction.id} className="flex items-center justify-between gap-3 rounded-lg bg-white/[0.03] px-3 py-2">
+                  <span className="text-sm text-[#e5e4e2]">{attraction.attraction_name}</span>
+                  <span className="text-xs text-[#d3bb73]">
+                    {attraction.choice === 'selected'
+                      ? 'Wybrano'
+                      : attraction.choice === 'interested'
+                        ? 'Rozważane'
+                        : attraction.choice === 'rejected'
+                          ? 'Odrzucono'
+                          : 'Bez decyzji'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-[#e5e4e2]/50">Brak wybranych atrakcji.</p>
+          )}
+        </section>
+
+        <section className="rounded-2xl border border-white/10 bg-[#171927] p-5">
+          <h3 className="mb-4 flex items-center gap-2 font-semibold text-white">
+            <Music2 className="h-4 w-4 text-[#d3bb73]" />
+            Muzyka
+          </h3>
+          {tracks.length ? (
+            <div className="space-y-2">
+              {tracks.map((track) => (
+                <div key={track.id} className="rounded-lg bg-white/[0.03] px-3 py-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="text-sm text-[#e5e4e2]">
+                      {track.artist ? `${track.artist} — ` : ''}{track.title}
+                    </span>
+                    <span className="whitespace-nowrap text-xs text-[#d3bb73]">
+                      {track.list_type === 'play'
+                        ? 'Zagrać'
+                        : track.list_type === 'do_not_play'
+                          ? 'Nie grać'
+                          : 'Moment specjalny'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-[#e5e4e2]/50">Lista utworów nie została jeszcze dodana.</p>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}

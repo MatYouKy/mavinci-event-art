@@ -2,6 +2,7 @@ import React, { createContext, useState, useEffect, useContext, useRef } from 'r
 import { AppState, AppStateStatus } from 'react-native';
 import { supabase, Employee } from '../lib/supabase';
 import { Session } from '@supabase/supabase-js';
+import { removeSyncedCrmContactsFromDevice } from '../services/crmContactSync';
 
 interface AuthContextType {
   session: Session | null;
@@ -136,6 +137,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
+    await removeSyncedCrmContactsFromDevice();
     const { error } = await supabase.auth.signOut({ scope: 'local' });
     if (error) throw error;
     setEmployee(null);

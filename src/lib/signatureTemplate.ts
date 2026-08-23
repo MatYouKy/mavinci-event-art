@@ -56,7 +56,108 @@ export function renderSignatureTemplate(
     const re = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
     out = out.replace(re, String(values[key] ?? ''));
   }
-  return out;
+  return normalizeSignatureHtml(out);
+}
+
+const mergeInlineStyle = (tag: string, requiredStyle: string): string => {
+  if (/\sstyle\s*=\s*["']/i.test(tag)) {
+    return tag.replace(
+      /(\sstyle\s*=\s*["'])([^"']*)(["'])/i,
+      (_match, opening: string, current: string, closing: string) =>
+        `${opening}${current.replace(/\s*;?\s*$/, '; ')}${requiredStyle}${closing}`,
+    );
+  }
+  return tag.replace(/>$/, ` style="${requiredStyle}">`);
+};
+
+const lockImageDimensions = (tag: string, spacingStyle = ''): string => {
+  const width =
+    tag.match(/\swidth\s*=\s*["']?(\d+)["']?/i)?.[1] ||
+    tag.match(/style\s*=\s*["'][^"']*\bwidth\s*:\s*(\d+)px/i)?.[1];
+  const height =
+    tag.match(/\sheight\s*=\s*["']?(\d+)["']?/i)?.[1] ||
+    tag.match(/style\s*=\s*["'][^"']*\bheight\s*:\s*(\d+)px/i)?.[1];
+  const fixedSize = [
+    width ? `width:${width}px !important; min-width:${width}px !important; max-width:${width}px !important;` : '',
+    height ? `height:${height}px !important; min-height:${height}px !important; max-height:${height}px !important;` : '',
+  ].join('');
+
+  return mergeInlineStyle(
+    tag,
+    `${fixedSize} display:inline-block !important; vertical-align:middle; border:0; outline:none; object-fit:contain; ${spacingStyle}`,
+  );
+};
+
+/**
+ * Ujednolica zapisane wcześniej stopki bez zmuszania użytkownika do ręcznej
+ * przebudowy ich HTML. Klienci pocztowi potrafią nadawać obrazom display:block,
+ * dlatego układ ikon musi być określony bezpośrednio w każdym tagu.
+ */
+export function normalizeSignatureHtml(html: string): string {
+  if (!html) return '';
+
+  const socialLinkPattern =
+    /<a\b[^>]*href\s*=\s*["'][^"']*(?:facebook\.com|instagram\.com|linkedin\.com|mavinci\.pl)[^"']*["'][^>]*>/gi;
+  const contactLinkPattern = /<a\b[^>]*href\s*=\s*["'](?:tel:|mailto:)[^"']*["'][^>]*>/gi;
+
+  let normalized = html
+    .replace(/href\s*=\s*(["'])www\./gi, 'href=$1https://www.')
+    .replace(socialLinkPattern, (tag) =>
+      mergeInlineStyle(
+        tag,
+        'display:inline-block !important; vertical-align:middle; line-height:0; white-space:nowrap; padding-right:8px;',
+      ),
+    )
+    .replace(contactLinkPattern, (tag) =>
+      mergeInlineStyle(
+        tag,
+        'display:inline-block !important; vertical-align:middle; line-height:1.3; white-space:nowrap;',
+      ),
+    );
+
+  normalized = normalized.replace(
+    /(<a\b[^>]*href\s*=\s*["'][^"']*(?:facebook\.com|instagram\.com|linkedin\.com|mavinci\.pl)[^"']*["'][^>]*>)([\s\S]*?)(<\/a>)/gi,
+    (_match, opening: string, content: string, closing: string) => {
+      const inlineImages = content.replace(/<img\b[^>]*>/gi, (tag) =>
+        lockImageDimensions(tag),
+      );
+      return `${opening}${inlineImages}${closing}`;
+    },
+  );
+
+  normalized = normalized.replace(
+    /(<a\b[^>]*href\s*=\s*["'](?:tel:|mailto:)[^"']*["'][^>]*>)([\s\S]*?)(<\/a>)/gi,
+    (_match, opening: string, content: string, closing: string) => {
+      const inlineImages = content.replace(/<img\b[^>]*>/gi, (tag) =>
+        lockImageDimensions(tag, 'margin-right:10px; margin-bottom:6px;'),
+      );
+      return `${opening}${inlineImages}${closing}`;
+    },
+  );
+
+  // Obsługuje też starsze szablony, w których ikona jest osobnym obrazem
+  // umieszczonym bezpośrednio przed linkiem telefonu lub adresu e-mail.
+  normalized = normalized.replace(
+    /(<img\b[^>]*>)(\s*)(<a\b[^>]*href\s*=\s*["'](?:tel:|mailto:)[^"']*["'][^>]*>)/gi,
+    (_match, image: string, _spacing: string, link: string) =>
+      `${lockImageDimensions(image, 'margin-right:10px; margin-bottom:6px;')}${mergeInlineStyle(
+        link,
+        'display:inline-block !important; vertical-align:middle; line-height:1.3; white-space:nowrap;',
+      )}`,
+  );
+
+  // Ikona i wartość bywają zapisane jako dwa osobne linki rozdzielone <br>.
+  // W stopce kontaktowej taki separator powinien być odstępem poziomym.
+  normalized = normalized.replace(
+    /<\/a>\s*(?:<br\s*\/?>\s*)?(?=<a\b[^>]*href\s*=\s*["'](?:tel:|mailto:))/gi,
+    '</a><span style="display:inline-block; width:8px; line-height:1px;">&nbsp;</span>',
+  );
+
+  // Białe znaki pomiędzy ikonami nie mogą stać się miejscem łamania wiersza.
+  return normalized.replace(
+    /<\/a>\s+(?=<a\b[^>]*href\s*=\s*["'][^"']*(?:facebook\.com|instagram\.com|linkedin\.com|mavinci\.pl))/gi,
+    '</a>',
+  );
 }
 
 export const DEFAULT_SIGNATURE_TEMPLATE = `<div style="font-family: system-ui, -apple-system, sans-serif; color: #1c1f33; max-width: 560px;">

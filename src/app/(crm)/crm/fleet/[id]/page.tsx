@@ -18,6 +18,7 @@ import {
   User,
   Trash2,
   Activity,
+  Navigation,
   Image as ImageIcon,
   X,
   TrendingUp,
@@ -66,6 +67,11 @@ interface Vehicle {
   in_use_by?: string | null;
   in_use_event?: string | null;
   in_use_event_id?: string | null;
+  in_use_driver_id?: string | null;
+  in_use_event_vehicle_id?: string | null;
+  in_use_source?: 'event' | 'ad_hoc' | null;
+  in_use_purpose?: string | null;
+  usage_session_id?: string | null;
   pickup_timestamp?: string | null;
   has_tow_hitch?: boolean;
 }
@@ -125,11 +131,14 @@ interface VehicleHandover {
   odometer_reading: number;
   timestamp: string;
   notes: string | null;
-  event_name: string;
-  event_date: string;
-  event_location: string;
+  event_name: string | null;
+  event_date: string | null;
+  event_location: string | null;
   driver_name: string;
   driver_email: string;
+  usage_source?: 'event' | 'ad_hoc';
+  usage_session_id?: string | null;
+  purpose?: string | null;
 }
 
 export default function VehicleDetailPage() {
@@ -138,7 +147,7 @@ export default function VehicleDetailPage() {
 
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
-  const { canManageModule, isAdmin } = useCurrentEmployee();
+  const { canManageModule, isAdmin, employee } = useCurrentEmployee();
   const canManage = canManageModule('fleet');
 
   const vehicleId = params.id as string;
@@ -146,7 +155,15 @@ export default function VehicleDetailPage() {
 
   const [handoverModalOpen, setHandoverModalOpen] = useState(false);
 
-  const vehicle = (data as any)?.vehicle?.data ?? (data as any)?.vehicle ?? null;
+  const vehicle = ((data as any)?.vehicle?.data ?? (data as any)?.vehicle ?? null) as Vehicle | null;
+
+  const isAdHocUsage =
+    Boolean(vehicle?.in_use) &&
+    (vehicle?.in_use_source === 'ad_hoc' || !vehicle?.in_use_event_vehicle_id);
+  const canEndCurrentUsage = Boolean(
+    vehicle?.in_use &&
+      (isAdHocUsage ? employee?.id === vehicle.in_use_driver_id : canManage),
+  );
 
   const fuelEntries = (data as any)?.fuelEntries?.data ?? (data as any)?.fuelEntries ?? [];
 
@@ -423,8 +440,16 @@ export default function VehicleDetailPage() {
   };
 
   const handleEndUsage = async () => {
-    if (!vehicle?.in_use_event_vehicle_id || !vehicle?.in_use_driver_id) {
-      return showSnackbar('Nie znaleziono aktywnego przypisania pojazdu', 'error');
+    if (!vehicle?.in_use || !vehicle.in_use_driver_id) {
+      return showSnackbar('Nie znaleziono aktywnego użytkowania pojazdu', 'error');
+    }
+
+    if (isAdHocUsage && employee?.id !== vehicle.in_use_driver_id) {
+      return showSnackbar('Pojazd może zdać osoba, która go odebrała', 'error');
+    }
+
+    if (!isAdHocUsage && !vehicle.in_use_event_vehicle_id) {
+      return showSnackbar('Nie znaleziono aktywnego przypisania pojazdu do wydarzenia', 'error');
     }
     setHandoverModalOpen(true);
   };
@@ -449,10 +474,10 @@ export default function VehicleDetailPage() {
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="min-w-0 space-y-6 p-4 sm:p-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <button
             onClick={() => router.push('/crm/fleet')}
             className="mb-4 flex items-center gap-2 text-[#e5e4e2]/60 hover:text-[#e5e4e2]"
@@ -461,8 +486,10 @@ export default function VehicleDetailPage() {
             Powrót do listy
           </button>
 
-          <div className="flex items-center gap-4">
-            <h1 className="text-3xl font-bold text-[#e5e4e2]">{vehicle.name}</h1>
+          <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+            <h1 className="min-w-0 break-words text-2xl font-bold text-[#e5e4e2] sm:text-3xl">
+              {vehicle.name}
+            </h1>
             {getStatusBadge(vehicle.status, vehicle.in_use || false)}
           </div>
 
@@ -471,7 +498,7 @@ export default function VehicleDetailPage() {
           </p>
 
           {vehicle.in_use && vehicle.in_use_by && (
-            <div className="mt-2 flex items-center gap-3 rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/10 p-3">
+            <div className="mt-2 flex flex-col items-start gap-3 rounded-lg border border-[#d3bb73]/30 bg-[#d3bb73]/10 p-3 sm:flex-row sm:items-center">
               <div className="flex-1">
                 <p className="flex items-center gap-2 text-sm text-[#d3bb73]">
                   <User className="h-4 w-4" />
@@ -479,12 +506,16 @@ export default function VehicleDetailPage() {
                   {vehicle.in_use_event && (
                     <span className="text-[#e5e4e2]/60">
                       {' • '}
-                      <button
-                        onClick={() => router.push(`/crm/events/${vehicle.in_use_event_id}`)}
-                        className="hover:underline"
-                      >
-                        {vehicle.in_use_event}
-                      </button>
+                      {vehicle.in_use_event_id ? (
+                        <button
+                          onClick={() => router.push(`/crm/events/${vehicle.in_use_event_id}`)}
+                          className="hover:underline"
+                        >
+                          {vehicle.in_use_event}
+                        </button>
+                      ) : (
+                        vehicle.in_use_event
+                      )}
                     </span>
                   )}
                 </p>
@@ -497,7 +528,7 @@ export default function VehicleDetailPage() {
                 )}
               </div>
 
-              {canManage && (
+              {canEndCurrentUsage && (
                 <button
                   onClick={handleEndUsage}
                   className="flex items-center gap-2 rounded-lg bg-red-500/20 px-3 py-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/30"
@@ -514,7 +545,7 @@ export default function VehicleDetailPage() {
         {canManage && (
           <button
             onClick={() => router.push(`/crm/fleet/${vehicleId}/edit`)}
-            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-3 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90"
+            className="flex self-start items-center gap-2 rounded-lg bg-[#d3bb73] px-5 py-2.5 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 sm:px-6 sm:py-3"
           >
             <Edit className="h-5 w-5" />
             Edytuj
@@ -602,8 +633,8 @@ export default function VehicleDetailPage() {
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-[#d3bb73]/10">
-        <div className="flex gap-4">
+      <div className="-mx-4 min-w-0 overflow-hidden border-b border-[#d3bb73]/10 sm:mx-0">
+        <div className="flex snap-x snap-mandatory gap-1 overflow-x-auto overscroll-x-contain scroll-smooth px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:px-0">
           {[
             { id: 'overview', label: 'Informacje', icon: Car },
             { id: 'timeline', label: 'Timeline', icon: TrendingUp },
@@ -618,7 +649,7 @@ export default function VehicleDetailPage() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center gap-2 border-b-2 px-4 py-3 transition-colors ${
+              className={`flex shrink-0 snap-start items-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 transition-colors ${
                 activeTab === tab.id
                   ? 'border-[#d3bb73] text-[#d3bb73]'
                   : 'border-transparent text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
@@ -1081,6 +1112,11 @@ export default function VehicleDetailPage() {
                             >
                               {handover.handover_type === 'pickup' ? 'Odbiór' : 'Zdanie'}
                             </span>
+                            {handover.usage_source === 'ad_hoc' && (
+                              <span className="rounded bg-[#d3bb73]/15 px-2 py-1 text-xs font-medium text-[#d3bb73]">
+                                Wyjazd doraźny
+                              </span>
+                            )}
                             <span className="font-medium text-[#e5e4e2]">
                               {handover.odometer_reading.toLocaleString('pl-PL')} km
                             </span>
@@ -1103,10 +1139,17 @@ export default function VehicleDetailPage() {
                               </span>
                             </div>
 
-                            <div className="flex items-center gap-2 text-[#e5e4e2]/80">
-                              <Activity className="h-4 w-4 text-[#d3bb73]" />
-                              <span>{handover.event_name}</span>
-                            </div>
+                            {handover.usage_source === 'ad_hoc' ? (
+                              <div className="flex items-center gap-2 text-[#e5e4e2]/80">
+                                <Navigation className="h-4 w-4 text-[#d3bb73]" />
+                                <span>Cel: {handover.purpose || 'Wyjazd służbowy'}</span>
+                              </div>
+                            ) : handover.event_name ? (
+                              <div className="flex items-center gap-2 text-[#e5e4e2]/80">
+                                <Activity className="h-4 w-4 text-[#d3bb73]" />
+                                <span>{handover.event_name}</span>
+                              </div>
+                            ) : null}
 
                             {handover.event_location && (
                               <div className="flex items-center gap-2 text-[#e5e4e2]/60">
@@ -1177,11 +1220,13 @@ export default function VehicleDetailPage() {
       {handoverModalOpen && (
         <VehicleHandoverModal
           vehicle={{
-            id: vehicle.in_use_event_vehicle_id, // ← event_vehicles.id
+            id: vehicle.in_use_event_vehicle_id ?? null, // ← event_vehicles.id albo null dla wyjazdu doraźnego
             vehicle_id: vehicle.id, // ← vehicles.id
             is_in_use: vehicle.in_use,
             pickup_timestamp: vehicle.pickup_timestamp,
             return_timestamp: null,
+            usage_source: isAdHocUsage ? 'ad_hoc' : 'event',
+            purpose: vehicle.in_use_purpose,
             vehicles: {
               name: vehicle.name,
               registration_number: vehicle.registration_number,

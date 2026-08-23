@@ -30,6 +30,7 @@ interface FilterConfig {
   locations: string[];
   sources: string[];
   min_relevance_score: number;
+  notification_score_threshold: number;
   max_days_to_deadline: number;
   is_active: boolean;
 }
@@ -85,6 +86,7 @@ export default function FilterConfigPage() {
         locations: selected.locations,
         sources: selected.sources,
         min_relevance_score: selected.min_relevance_score,
+        notification_score_threshold: selected.notification_score_threshold,
         max_days_to_deadline: selected.max_days_to_deadline,
         is_active: selected.is_active,
         updated_at: new Date().toISOString(),
@@ -316,7 +318,7 @@ export default function FilterConfigPage() {
                 <h2 className="text-base font-medium text-[#e5e4e2]">Ustawienia podstawowe</h2>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="col-span-2">
                   <label className="mb-1 block text-xs text-[#e5e4e2]/50">Nazwa konfiguracji</label>
                   <input
@@ -355,6 +357,27 @@ export default function FilterConfigPage() {
                     }
                     className="w-full rounded-lg border border-[#d3bb73]/15 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none"
                   />
+                </div>
+                <div>
+                  <label className="mb-1 flex items-center gap-1.5 text-xs text-[#e5e4e2]/50">
+                    <Gauge className="h-3 w-3" /> Powiadom od oceny
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={selected.notification_score_threshold ?? 70}
+                    onChange={(e) =>
+                      setSelected({
+                        ...selected,
+                        notification_score_threshold: Number(e.target.value),
+                      })
+                    }
+                    className="w-full rounded-lg border border-[#d3bb73]/15 bg-[#0a0d1a] px-3 py-2 text-sm text-[#e5e4e2] focus:border-[#d3bb73]/40 focus:outline-none"
+                  />
+                  <p className="mt-1 text-[11px] text-[#e5e4e2]/35">
+                    Dla nowych przetargów z taką oceną CRM utworzy powiadomienie i banner push.
+                  </p>
                 </div>
                 <div className="col-span-2">
                   <label className="flex items-center gap-2 text-sm text-[#e5e4e2]/60">

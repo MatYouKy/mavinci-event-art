@@ -22,6 +22,7 @@ import {
   ArrowUpDown,
   Trash2,
   Star,
+  Search,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -32,6 +33,12 @@ import BankMatchingSimple from './BankMatchingSimple';
 import CompanySelector from './CompanySelector';
 import { useDialog } from '@/contexts/DialogContext';
 import FullScreenLoader from '../UI/Loader/CustomModalLoader';
+import {
+  TableColumnOption,
+  TablePreferencesControl,
+  tableDensityClasses,
+  useStoredTablePreferences,
+} from './invoices/TablePreferencesControl';
 
 type KSeFViewMode = 'table' | 'list';
 
@@ -110,6 +117,20 @@ interface SyncLog {
   started_at: string;
   completed_at?: string;
 }
+
+const KSEF_TABLE_COLUMNS: TableColumnOption[] = [
+  { id: 'number', label: 'Numer faktury', required: true },
+  { id: 'reference', label: 'Numer referencyjny KSeF' },
+  { id: 'contractor', label: 'Kontrahent' },
+  { id: 'date', label: 'Data' },
+  { id: 'net', label: 'Netto' },
+  { id: 'gross', label: 'Brutto' },
+  { id: 'vat', label: 'Stawka VAT' },
+  { id: 'type', label: 'Typ faktury' },
+  { id: 'payment', label: 'Status płatności' },
+  { id: 'sync', label: 'Status KSeF' },
+  { id: 'actions', label: 'Akcje' },
+];
 
 const getInvoiceTypeLabel = (invoiceNumber: string | null | undefined): string => {
   if (!invoiceNumber) return 'VAT';
@@ -216,6 +237,46 @@ interface KSeFIntegrationPanelProps {
   filterCompanyIds?: string[] | null;
 }
 
+const normalizeSearchText = (value: unknown) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('pl-PL');
+
+const getInvoiceItemsSearchText = (items: unknown): string => {
+  if (!items) return '';
+
+  if (typeof items === 'string') return items;
+
+  if (Array.isArray(items)) {
+    return items
+      .map((item) => {
+        if (!item || typeof item !== 'object') return String(item ?? '');
+        const record = item as Record<string, unknown>;
+        return [
+          record.name,
+          record.description,
+          record.serviceName,
+          record.productName,
+          record.label,
+          record.P_7,
+          record.P_7A,
+        ]
+          .filter(Boolean)
+          .join(' ');
+      })
+      .join(' ');
+  }
+
+  if (typeof items === 'object') {
+    return Object.values(items as Record<string, unknown>)
+      .map((value) => (typeof value === 'object' ? getInvoiceItemsSearchText(value) : String(value ?? '')))
+      .join(' ');
+  }
+
+  return String(items);
+};
+
 export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrationPanelProps) {
   const [allCredentials, setAllCredentials] = useState<KSeFCredentials[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
@@ -245,6 +306,11 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
     null,
   );
   const [matchInvoice, setMatchInvoice] = useState<KSeFInvoice | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const tablePreferences = useStoredTablePreferences(
+    'crm.ksef-invoices.table-preferences.v1',
+    KSEF_TABLE_COLUMNS,
+  );
 
   const { canManageModule, employee: currentEmployee, isAdmin } = useCurrentEmployee();
   const { showSnackbar } = useSnackbar();
@@ -280,13 +346,34 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
     return activeTab === 'issued' ? issuedInvoices : receivedInvoices;
   }, [activeTab, issuedInvoices, receivedInvoices]);
 
+  const filteredInvoices = useMemo(() => {
+    const query = normalizeSearchText(searchQuery.trim());
+    if (!query) return currentInvoices;
+
+    return currentInvoices.filter((invoice) => {
+      const searchableText = [
+        invoice.invoice_number,
+        invoice.ksef_reference_number,
+        invoice.buyer_name,
+        invoice.seller_name,
+        invoice.buyer_nip,
+        invoice.seller_nip,
+        getInvoiceItemsSearchText(invoice.invoice_items),
+      ]
+        .map(normalizeSearchText)
+        .join(' ');
+
+      return searchableText.includes(query);
+    });
+  }, [currentInvoices, searchQuery]);
+
   const totalNetAmount = useMemo(() => {
-    return currentInvoices.reduce((sum, inv) => sum + Number(inv.net_amount || 0), 0);
-  }, [currentInvoices]);
+    return filteredInvoices.reduce((sum, inv) => sum + Number(inv.net_amount || 0), 0);
+  }, [filteredInvoices]);
 
   const totalGrossAmount = useMemo(() => {
-    return currentInvoices.reduce((sum, inv) => sum + Number(inv.gross_amount || 0), 0);
-  }, [currentInvoices]);
+    return filteredInvoices.reduce((sum, inv) => sum + Number(inv.gross_amount || 0), 0);
+  }, [filteredInvoices]);
 
   const handleSort = (key: KSeFSortKey) => {
     if (sortKey === key) {
@@ -309,7 +396,7 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
       sensitivity: 'base',
     });
 
-    return [...currentInvoices].sort((a, b) => {
+    return [...filteredInvoices].sort((a, b) => {
       const direction = sortDirection === 'asc' ? 1 : -1;
 
       if (sortKey === 'invoice_number') {
@@ -348,7 +435,7 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
 
       return 0;
     });
-  }, [activeTab, currentInvoices, sortDirection, sortKey]);
+  }, [activeTab, filteredInvoices, sortDirection, sortKey]);
 
   const isSessionActive = useCallback(() => {
     if (!selectedCredentials?.access_token_valid_until) return false;
@@ -937,6 +1024,7 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
     (invoice: KSeFInvoice) => (
       <ResponsiveActionBar
         disabledBackground
+        compact
         mobileBreakpoint={4000}
         actions={getInvoiceActions(invoice)}
       />
@@ -955,7 +1043,7 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
   }) => (
     <th
       onClick={() => handleSort(sort)}
-      className={`cursor-pointer px-4 py-3 text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60 transition-colors hover:text-[#d3bb73] ${
+      className={`cursor-pointer px-2.5 py-2 text-[11px] font-medium uppercase tracking-wide text-[#e5e4e2]/60 transition-colors hover:text-[#d3bb73] ${
         align === 'right' ? 'text-right' : 'text-left'
       }`}
     >
@@ -966,7 +1054,7 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
   );
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm text-[#e5e4e2]/60">
@@ -991,11 +1079,50 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
       )}
 
       {allCredentials.length > 0 && (
-        <div className="rounded-xl border border-[#d3bb73]/20 bg-[#252945] p-3">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <div className="grid flex-1 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[minmax(260px,360px)_auto_auto] xl:items-center">
+        <div className="min-w-0 overflow-hidden rounded-xl border border-[#d3bb73]/20 bg-[#252945] p-3">
+          <div className="mb-3 flex items-center justify-between gap-3 border-b border-[#d3bb73]/10 pb-3 xl:hidden">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-[#e5e4e2]">Połączenie z KSeF</p>
+              <p className="mt-0.5 text-xs text-[#e5e4e2]/45">
+                Autoryzacja, synchronizacja i konfiguracja
+              </p>
+            </div>
+            <div className="shrink-0">
+              <ResponsiveActionBar
+                mobileBreakpoint={4000}
+                actions={[
+                  ...(canManageKSeF
+                    ? [
+                        {
+                          label: 'Konfiguracja',
+                          onClick: () => setShowSetup(true),
+                          icon: <Settings className="h-4 w-4" />,
+                          variant: 'default' as const,
+                        },
+                      ]
+                    : []),
+                  {
+                    label: loading ? 'Uwierzytelnianie...' : 'Uwierzytelnij',
+                    onClick: handleAuthenticate,
+                    icon: <Key className="h-4 w-4" />,
+                    variant: 'primary' as const,
+                    disabled: loading || !selectedCredentials,
+                  },
+                  {
+                    label: syncing ? 'Synchronizacja...' : 'Synchronizuj',
+                    onClick: handleSyncInvoices,
+                    icon: <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />,
+                    variant: 'primary' as const,
+                    disabled: syncing || !isSessionActive(),
+                  },
+                ]}
+              />
+            </div>
+          </div>
+          <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[minmax(260px,360px)_auto_auto] xl:items-center">
               {!filterCompanyIds ? (
-              <div>
+              <div className="min-w-0">
                 <label className="mb-1 block text-xs text-[#e5e4e2]/50">Firma KSeF</label>
                 <select
                   value={selectedCompanyId ?? ''}
@@ -1014,7 +1141,7 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
               ) : null}
 
               {selectedCredentials && (
-                <div>
+                <div className="min-w-0">
                   <label className="mb-1 block text-xs text-[#e5e4e2]/50">
                     {' '}
                     <div className="flex items-center gap-2 text-xs text-[#e5e4e2]/50">
@@ -1042,7 +1169,7 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
                 </div>
               )}
 
-              <div>
+              <div className="min-w-0">
                 <label className="mb-1 block text-xs text-[#e5e4e2]/50">Status sesji</label>
 
                 <div className="flex h-10 items-center gap-2 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-3">
@@ -1060,16 +1187,16 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
                 </div>
               </div>
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="mb-1 block text-xs text-[#e5e4e2]/50">Zakres dat</label>
-              <div className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-3 py-2">
-                <Calendar className="h-4 w-4 text-[#d3bb73]" />
+              <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 rounded-lg border border-[#d3bb73]/10 bg-[#1c1f33] px-2 py-2 sm:flex sm:px-3">
+                <Calendar className="hidden h-4 w-4 shrink-0 text-[#d3bb73] sm:block" />
 
                 <input
                   type="date"
                   value={dateFrom}
                   onChange={(e) => setDateFrom(e.target.value)}
-                  className="w-[135px] bg-transparent text-sm text-[#e5e4e2] outline-none"
+                  className="min-w-0 w-full bg-transparent text-xs text-[#e5e4e2] outline-none sm:w-[135px] sm:text-sm"
                 />
 
                 <span className="text-xs text-[#e5e4e2]/40">—</span>
@@ -1078,11 +1205,11 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
                   type="date"
                   value={dateTo}
                   onChange={(e) => setDateTo(e.target.value)}
-                  className="w-[135px] bg-transparent text-sm text-[#e5e4e2] outline-none"
+                  className="min-w-0 w-full bg-transparent text-xs text-[#e5e4e2] outline-none sm:w-[135px] sm:text-sm"
                 />
               </div>
             </div>
-            <div>
+            <div className="hidden xl:block">
               <label className="mb-1 block text-xs text-[#e5e4e2]/50">Akcje</label>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end xl:items-center">
                 <ResponsiveActionBar
@@ -1120,10 +1247,10 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
         </div>
       )}
 
-      <div className="flex gap-1 rounded-lg border border-[#d3bb73]/20 bg-[#252945]">
+      <div className="flex snap-x snap-mandatory gap-1 overflow-x-auto overscroll-x-contain rounded-lg border border-[#d3bb73]/20 bg-[#252945] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <button
           onClick={() => setActiveTab('issued')}
-          className={`flex-1 rounded px-4 py-2 text-sm font-medium transition-colors ${
+          className={`shrink-0 snap-start whitespace-nowrap rounded px-4 py-2 text-sm font-medium transition-colors sm:flex-1 ${
             activeTab === 'issued'
               ? 'bg-[#d3bb73] text-[#1c1f33]'
               : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
@@ -1135,7 +1262,7 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
 
         <button
           onClick={() => setActiveTab('received')}
-          className={`flex-1 rounded px-4 py-2 text-sm font-medium transition-colors ${
+          className={`shrink-0 snap-start whitespace-nowrap rounded px-4 py-2 text-sm font-medium transition-colors sm:flex-1 ${
             activeTab === 'received'
               ? 'bg-[#d3bb73] text-[#1c1f33]'
               : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
@@ -1147,7 +1274,7 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
 
         <button
           onClick={() => setActiveTab('logs')}
-          className={`flex-1 rounded px-4 py-2 text-sm font-medium transition-colors ${
+          className={`shrink-0 snap-start whitespace-nowrap rounded px-4 py-2 text-sm font-medium transition-colors sm:flex-1 ${
             activeTab === 'logs'
               ? 'bg-[#d3bb73] text-[#1c1f33]'
               : 'text-[#e5e4e2]/60 hover:text-[#e5e4e2]'
@@ -1159,38 +1286,80 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
       </div>
 
       <div className="rounded-xl border border-[#d3bb73]/20 bg-[#252945]">
-        <div className="flex items-center justify-between border-b border-[#d3bb73]/10 p-4">
-          <h3 className="font-medium text-[#e5e4e2]">
-            {activeTab === 'issued' && 'Faktury wystawione'}
-            {activeTab === 'received' && 'Faktury otrzymane'}
-            {activeTab === 'logs' && 'Historia synchronizacji'}
-          </h3>
+        <div className="flex flex-col gap-3 border-b border-[#d3bb73]/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <h3 className="font-medium text-[#e5e4e2]">
+              {activeTab === 'issued' && 'Faktury wystawione'}
+              {activeTab === 'received' && 'Faktury otrzymane'}
+              {activeTab === 'logs' && 'Historia synchronizacji'}
+            </h3>
+            {activeTab !== 'logs' && searchQuery.trim() && (
+              <p className="mt-1 text-xs text-[#e5e4e2]/45">
+                Znaleziono {sortedInvoices.length} z {currentInvoices.length}
+              </p>
+            )}
+          </div>
 
           {activeTab !== 'logs' && (
-            <div className="flex overflow-hidden rounded-lg border border-[#d3bb73]/20">
-              <button
-                onClick={() => setViewMode('table')}
-                className={`flex items-center gap-1.5 px-3 py-2 text-sm transition-colors ${
-                  viewMode === 'table'
-                    ? 'bg-[#d3bb73]/20 text-[#d3bb73]'
-                    : 'text-[#e5e4e2]/50 hover:text-[#e5e4e2]'
-                }`}
-                title="Widok tabeli"
-              >
-                <Table2 className="h-4 w-4" />
-              </button>
+            <div className="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 sm:w-auto sm:flex-nowrap">
+              <div className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 sm:w-80 sm:flex-none">
+                <Search className="h-4 w-4 shrink-0 text-[#e5e4e2]/40" />
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Numer, klient lub usługa…"
+                  className="min-w-0 flex-1 bg-transparent text-sm text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/35"
+                  aria-label="Szukaj faktury KSeF"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="shrink-0 rounded p-1 text-[#e5e4e2]/40 transition-colors hover:text-[#e5e4e2]"
+                    aria-label="Wyczyść wyszukiwanie"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
 
-              <button
-                onClick={() => setViewMode('list')}
-                className={`flex items-center gap-1.5 border-l border-[#d3bb73]/20 px-3 py-2 text-sm transition-colors ${
-                  viewMode === 'list'
-                    ? 'bg-[#d3bb73]/20 text-[#d3bb73]'
-                    : 'text-[#e5e4e2]/50 hover:text-[#e5e4e2]'
-                }`}
-                title="Widok listy"
-              >
-                <LayoutGrid className="h-4 w-4" />
-              </button>
+              {viewMode === 'table' && (
+                <TablePreferencesControl
+                  columns={KSEF_TABLE_COLUMNS}
+                  density={tablePreferences.density}
+                  visibleColumns={tablePreferences.visibleColumns}
+                  onToggleColumn={tablePreferences.toggleColumn}
+                  onDensityChange={tablePreferences.setDensity}
+                  onReset={tablePreferences.reset}
+                />
+              )}
+
+              <div className="flex shrink-0 overflow-hidden rounded-lg border border-[#d3bb73]/20">
+                <button
+                  onClick={() => setViewMode('table')}
+                  className={`flex items-center gap-1.5 px-3 py-2 text-sm transition-colors ${
+                    viewMode === 'table'
+                      ? 'bg-[#d3bb73]/20 text-[#d3bb73]'
+                      : 'text-[#e5e4e2]/50 hover:text-[#e5e4e2]'
+                  }`}
+                  title="Widok tabeli"
+                >
+                  <Table2 className="h-4 w-4" />
+                </button>
+
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={`flex items-center gap-1.5 border-l border-[#d3bb73]/20 px-3 py-2 text-sm transition-colors ${
+                    viewMode === 'list'
+                      ? 'bg-[#d3bb73]/20 text-[#d3bb73]'
+                      : 'text-[#e5e4e2]/50 hover:text-[#e5e4e2]'
+                  }`}
+                  title="Widok listy"
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -1198,28 +1367,37 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
         {(activeTab === 'issued' || activeTab === 'received') && (
           <>
             {sortedInvoices.length === 0 ? (
-              <div className="p-8 text-center text-[#e5e4e2]/40">Brak faktur do wyświetlenia</div>
+              <div className="p-8 text-center text-[#e5e4e2]/40">
+                {searchQuery.trim()
+                  ? 'Nie znaleziono faktury pasującej do wyszukiwania'
+                  : 'Brak faktur do wyświetlenia'}
+              </div>
             ) : viewMode === 'table' ? (
               <div className="overflow-x-auto">
-                <table className="min-w-full border-collapse">
+                <table
+                  className={`min-w-[760px] border-collapse ${tableDensityClasses[tablePreferences.density]}`}
+                >
                   <thead>
                     <tr className="border-b border-[#d3bb73]/10 bg-[#1c1f33]/40">
                       <SortableHeader label="Numer faktury" sort="invoice_number" />
-                      <SortableHeader label="Kontrahent" sort="contractor" />
-                      <SortableHeader label="Data" sort="issue_date" />
-                      <SortableHeader label="Netto" sort="net_amount" align="right" />
-                      <SortableHeader label="Brutto" sort="gross_amount" align="right" />
-                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
-                        Stawka VAT
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
-                        Typ faktury
-                      </th>
-                      <SortableHeader label="Status płatności" sort="payment_status" />
-                      <SortableHeader label="Status KSeF" sort="sync_status" />
-                      <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
-                        Akcje
-                      </th>
+                      {tablePreferences.isColumnVisible('reference') && (
+                        <th className="px-2.5 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-[#e5e4e2]/60">Nr KSeF</th>
+                      )}
+                      {tablePreferences.isColumnVisible('contractor') && <SortableHeader label="Kontrahent" sort="contractor" />}
+                      {tablePreferences.isColumnVisible('date') && <SortableHeader label="Data" sort="issue_date" />}
+                      {tablePreferences.isColumnVisible('net') && <SortableHeader label="Netto" sort="net_amount" align="right" />}
+                      {tablePreferences.isColumnVisible('gross') && <SortableHeader label="Brutto" sort="gross_amount" align="right" />}
+                      {tablePreferences.isColumnVisible('vat') && (
+                        <th className="px-2.5 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-[#e5e4e2]/60">VAT</th>
+                      )}
+                      {tablePreferences.isColumnVisible('type') && (
+                        <th className="px-2.5 py-2 text-left text-[11px] font-medium uppercase tracking-wide text-[#e5e4e2]/60">Typ</th>
+                      )}
+                      {tablePreferences.isColumnVisible('payment') && <SortableHeader label="Płatność" sort="payment_status" />}
+                      {tablePreferences.isColumnVisible('sync') && <SortableHeader label="KSeF" sort="sync_status" />}
+                      {tablePreferences.isColumnVisible('actions') && (
+                        <th className="px-2.5 py-2 text-right text-[11px] font-medium uppercase tracking-wide text-[#e5e4e2]/60">Akcje</th>
+                      )}
                     </tr>
                   </thead>
 
@@ -1248,124 +1426,86 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
                       return (
                         <tr
                           key={invoice.id}
-                          className="border-b border-[#d3bb73]/10 transition-colors hover:bg-[#1c1f33]/40"
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => setSelectedInvoice(invoice)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              setSelectedInvoice(invoice);
+                            }
+                          }}
+                          className="cursor-pointer border-b border-[#d3bb73]/10 transition-colors hover:bg-[#1c1f33]/60 focus:bg-[#1c1f33]/60 focus:outline-none"
                         >
-                          <td className="px-4 py-3 text-sm font-medium text-[#e5e4e2]">
-                            <div>{invoice.invoice_number || 'Brak numeru faktury'}</div>
-                            <div className="mt-1 text-xs text-[#e5e4e2]/40">
-                              KSeF: {invoice.ksef_reference_number}
-                            </div>
+                          <td className="px-2.5 py-2 text-xs font-medium text-[#e5e4e2]">
+                            {invoice.invoice_number || 'Brak numeru faktury'}
                           </td>
 
-                          <td className="px-4 py-3 text-sm text-[#e5e4e2]/80">
-                            <div>{contractorName}</div>
-                            <div className="mt-1 text-xs text-[#e5e4e2]/40">
-                              NIP: {contractorNip}
-                            </div>
-                          </td>
+                          {tablePreferences.isColumnVisible('reference') && (
+                            <td className="max-w-[180px] truncate px-2.5 py-2 font-mono text-[#e5e4e2]/45" title={invoice.ksef_reference_number}>
+                              {invoice.ksef_reference_number}
+                            </td>
+                          )}
 
-                          <td className="px-4 py-3 text-sm text-[#e5e4e2]/80">
-                            {invoiceDate ? new Date(invoiceDate).toLocaleDateString('pl-PL') : '—'}
-                          </td>
+                          {tablePreferences.isColumnVisible('contractor') && (
+                            <td className="px-2.5 py-2 text-[#e5e4e2]/80">
+                              {contractorName} <span className="text-[#e5e4e2]/35">· {contractorNip}</span>
+                            </td>
+                          )}
 
-                          <td className="px-4 py-3 text-right text-sm text-[#e5e4e2]/80">
-                            {invoice.net_amount != null
-                              ? `${Number(invoice.net_amount).toFixed(2)} PLN`
-                              : '—'}
-                          </td>
+                          {tablePreferences.isColumnVisible('date') && (
+                            <td className="whitespace-nowrap px-2.5 py-2 text-[#e5e4e2]/80">
+                              {invoiceDate ? new Date(invoiceDate).toLocaleDateString('pl-PL') : '—'}
+                            </td>
+                          )}
 
-                          <td className="px-4 py-3 text-right text-sm font-medium text-[#e5e4e2]">
-                            {invoice.gross_amount != null
-                              ? `${Number(invoice.gross_amount).toFixed(2)} PLN`
-                              : '—'}
-                          </td>
+                          {tablePreferences.isColumnVisible('net') && (
+                            <td className="whitespace-nowrap px-2.5 py-2 text-right text-[#e5e4e2]/80">
+                              {invoice.net_amount != null ? `${Number(invoice.net_amount).toFixed(2)} PLN` : '—'}
+                            </td>
+                          )}
 
-                          <td className="px-4 py-3">
-                            <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-400/10 px-3 py-1 text-xs font-medium text-blue-400">
-                              {getVatRateLabel(invoice)}
-                            </span>
-                          </td>
+                          {tablePreferences.isColumnVisible('gross') && (
+                            <td className="whitespace-nowrap px-2.5 py-2 text-right font-medium text-[#e5e4e2]">
+                              {invoice.gross_amount != null ? `${Number(invoice.gross_amount).toFixed(2)} PLN` : '—'}
+                            </td>
+                          )}
 
-                          <td className="px-4 py-3">
-                            <span
-                              className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${typeBadgeColor}`}
-                            >
-                              {invoiceType}
-                            </span>
-                          </td>
+                          {tablePreferences.isColumnVisible('vat') && (
+                            <td className="px-2.5 py-2 text-blue-400">{getVatRateLabel(invoice)}</td>
+                          )}
 
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              <PaymentIcon className="h-4 w-4" />
-                              <div>
-                                <div
-                                  className={`text-sm font-medium ${
-                                    paymentStatus.color.split(' ')[0]
-                                  }`}
-                                >
-                                  {paymentStatus.label}
-                                </div>
-                                {invoice.payment_due_date && paymentStatus.status !== 'paid' && (
-                                  <div className="mt-1 text-xs text-[#e5e4e2]/40">
-                                    Termin:{' '}
-                                    {new Date(invoice.payment_due_date).toLocaleDateString('pl-PL')}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </td>
+                          {tablePreferences.isColumnVisible('type') && (
+                            <td className={`px-2.5 py-2 font-medium ${typeBadgeColor.split(' ')[0]}`}>{invoiceType}</td>
+                          )}
 
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              {invoice.sync_status === 'synced' && (
-                                <>
-                                  <CheckCircle className="h-4 w-4 text-green-400" />
-                                  <span className="text-sm text-green-400">OK</span>
-                                </>
-                              )}
+                          {tablePreferences.isColumnVisible('payment') && (
+                            <td className={`whitespace-nowrap px-2.5 py-2 font-medium ${paymentStatus.color.split(' ')[0]}`}>
+                              <PaymentIcon className="mr-1 inline h-3 w-3" />
+                              {paymentStatus.label}
+                            </td>
+                          )}
 
-                              {invoice.sync_status === 'error' && (
-                                <>
-                                  <AlertCircle className="h-4 w-4 text-red-400" />
-                                  <span className="text-sm text-red-400">Błąd</span>
-                                </>
-                              )}
+                          {tablePreferences.isColumnVisible('sync') && (
+                            <td className="px-2.5 py-2">
+                              {invoice.sync_status === 'synced' && <span className="text-green-400">✓ OK</span>}
+                              {invoice.sync_status === 'error' && <span className="text-red-400">⚠ Błąd</span>}
+                              {invoice.sync_status === 'pending' && <span className="text-yellow-400">↻ Oczekuje</span>}
+                            </td>
+                          )}
 
-                              {invoice.sync_status === 'pending' && (
-                                <>
-                                  <RefreshCw className="h-4 w-4 text-yellow-400" />
-                                  <span className="text-sm text-yellow-400">Pending</span>
-                                </>
-                              )}
-                            </div>
-
-                            {invoice.sync_error && (
-                              <div className="mt-1 text-xs text-red-400">{invoice.sync_error}</div>
-                            )}
-                          </td>
-
-                          <td className="px-4 py-3 text-right">{renderActions(invoice)}</td>
+                          {tablePreferences.isColumnVisible('actions') && (
+                            <td className="px-2.5 py-2 text-right">{renderActions(invoice)}</td>
+                          )}
                         </tr>
                       );
                     })}
-
-                    <tr className="border-t-2 border-[#d3bb73]/30 bg-[#d3bb73]/5">
-                      <td
-                        colSpan={3}
-                        className="px-4 py-4 text-right text-sm font-medium text-[#e5e4e2]"
-                      >
-                        SUMA:
-                      </td>
-                      <td className="px-4 py-4 text-right text-sm font-medium text-[#e5e4e2]">
-                        {totalNetAmount.toFixed(2)} PLN
-                      </td>
-                      <td className="px-4 py-4 text-right text-sm font-bold text-[#d3bb73]">
-                        {totalGrossAmount.toFixed(2)} PLN
-                      </td>
-                      <td colSpan={5}></td>
-                    </tr>
                   </tbody>
                 </table>
+                <div className="sticky left-0 flex items-center justify-end gap-4 border-t border-[#d3bb73]/20 bg-[#d3bb73]/5 px-2 py-1.5 text-[10px]">
+                  <span className="text-[#e5e4e2]/55">Netto: {totalNetAmount.toFixed(2)} PLN</span>
+                  <span className="font-semibold text-[#d3bb73]">Brutto: {totalGrossAmount.toFixed(2)} PLN</span>
+                </div>
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2 xl:grid-cols-3">
@@ -1393,7 +1533,16 @@ export default function KSeFIntegrationPanel({ filterCompanyIds }: KSeFIntegrati
                   return (
                     <div
                       key={invoice.id}
-                      className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4 transition-colors hover:border-[#d3bb73]/30"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setSelectedInvoice(invoice)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          setSelectedInvoice(invoice);
+                        }
+                      }}
+                      className="cursor-pointer rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4 transition-colors hover:border-[#d3bb73]/30 focus:border-[#d3bb73]/30 focus:outline-none"
                     >
                       <div className="mb-3 flex items-start justify-between gap-3">
                         <div>

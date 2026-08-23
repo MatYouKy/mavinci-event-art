@@ -61,7 +61,10 @@ export default function NavigationManager({
     onClose?.();
   };
 
-  const { data: unreadMessagesCount = initialUnreadMessagesCount } = useGetUnreadCountQuery(
+  const {
+    data: unreadMessagesCount = initialUnreadMessagesCount,
+    refetch: refetchUnreadMessagesCount,
+  } = useGetUnreadCountQuery(
     undefined,
     {
       pollingInterval: 60000, // co minutę
@@ -107,6 +110,7 @@ export default function NavigationManager({
             `Nowa wiadomość z formularza: ${newMessage.subject || 'Wiadomość z formularza'}`,
             'info',
           );
+          void refetchUnreadMessagesCount();
         },
       )
       .subscribe();
@@ -119,15 +123,31 @@ export default function NavigationManager({
         (payload) => {
           const newEmail = payload.new as any;
           showSnackbar(`Nowy email: ${newEmail.subject || '(No subject)'}`, 'info');
+          void refetchUnreadMessagesCount();
         },
+      )
+      .subscribe();
+
+    const readStateChannel = supabase
+      .channel('messages-read-state')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'contact_messages' },
+        () => void refetchUnreadMessagesCount(),
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'received_emails' },
+        () => void refetchUnreadMessagesCount(),
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(contactChannel);
       supabase.removeChannel(receivedChannel);
+      supabase.removeChannel(readStateChannel);
     };
-  }, [showSnackbar]);
+  }, [refetchUnreadMessagesCount, showSnackbar]);
 
   const handleDragStart = (e: DragEvent<HTMLLIElement>, index: number) => {
     if (!isEditMode) return;

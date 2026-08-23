@@ -1,0 +1,386 @@
+'use client';
+
+import { type ChangeEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Activity,
+  BookOpenCheck,
+  Check,
+  ChevronRight,
+  Cloud,
+  Database,
+  Download,
+  Edit3,
+  FileQuestion,
+  Lightbulb,
+  MonitorCheck,
+  Plus,
+  RefreshCw,
+  Search,
+  Trash2,
+  Upload,
+  Users,
+  X,
+} from 'lucide-react';
+import { supabase } from '@/lib/supabase/browser';
+import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
+import { useSnackbar } from '@/contexts/SnackbarContext';
+import { useDialog } from '@/contexts/DialogContext';
+
+type HubTab = 'overview' | 'familiada' | 'presets' | 'users' | 'sync';
+
+type FamiliadaAnswer = { text: string; points: number };
+type FamiliadaQuestion = {
+  id: string;
+  event_id: string | null;
+  category: string;
+  question: string;
+  answers: FamiliadaAnswer[];
+  tags: string[];
+  is_active: boolean;
+  usage_count: number;
+  source: string;
+  updated_at: string;
+};
+type LightMagicPreset = {
+  id: string;
+  event_id: string | null;
+  name: string;
+  description: string;
+  schema_version: number;
+  snapshot: Record<string, unknown>;
+  updated_at: string;
+};
+type DesktopSession = {
+  id: string;
+  instance_id: string;
+  employee_id: string;
+  device_name: string;
+  platform: string;
+  app_version: string;
+  active_event_id: string | null;
+  active_module: string | null;
+  sync_status: 'online' | 'idle' | 'offline' | 'error';
+  sync_summary: Record<string, unknown>;
+  last_sync_at: string | null;
+  last_seen_at: string;
+  employee_name: string;
+  employee_email: string;
+  event_name: string | null;
+};
+type CloudProject = {
+  id: string;
+  event_id: string;
+  name: string;
+  enabled_modules: string[];
+  version: number;
+  published_manifest: Record<string, unknown> | null;
+  updated_at: string;
+  event_name: string;
+  event_date: string | null;
+  event_status: string | null;
+};
+type EventOption = { id: string; name: string; event_date: string | null; status: string | null };
+
+const MODULE_LABELS: Record<string, string> = {
+  quiz_show: 'Quiz Show',
+  familiada: 'Familiada',
+  wedding_show: 'Wedding Show',
+  light_magic: 'Light Magic',
+  streaming: 'Streaming',
+};
+
+const emptyAnswers = (): FamiliadaAnswer[] => Array.from({ length: 6 }, () => ({ text: '', points: 0 }));
+const emptyQuestion = () => ({ id: '', category: 'Ogólne', question: '', answers: emptyAnswers(), tags: '' });
+
+const formatDate = (value?: string | null) => value
+  ? new Date(value).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' })
+  : '—';
+
+const downloadJson = (filename: string, payload: unknown) => {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+};
+
+export default function MavinciLiveHubClient() {
+  const { canManageModule, canViewModule, hasScope, isAdmin, loading: employeeLoading } = useCurrentEmployee();
+  const canViewHub = isAdmin || canViewModule('mavinci_live');
+  const canManage = isAdmin || canManageModule('mavinci_live');
+  const canUseFamiliada = isAdmin || hasScope('mavinci_live_familiada');
+  const canManageFamiliada = canUseFamiliada && canManage;
+  const { showSnackbar } = useSnackbar();
+  const { showConfirm } = useDialog();
+  const importPresetRef = useRef<HTMLInputElement>(null);
+
+  const [tab, setTab] = useState<HubTab>('overview');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [migrationMissing, setMigrationMissing] = useState(false);
+  const [search, setSearch] = useState('');
+  const [questions, setQuestions] = useState<FamiliadaQuestion[]>([]);
+  const [presets, setPresets] = useState<LightMagicPreset[]>([]);
+  const [sessions, setSessions] = useState<DesktopSession[]>([]);
+  const [projects, setProjects] = useState<CloudProject[]>([]);
+  const [events, setEvents] = useState<EventOption[]>([]);
+  const [questionEditorOpen, setQuestionEditorOpen] = useState(false);
+  const [questionDraft, setQuestionDraft] = useState(emptyQuestion);
+  const [savingQuestion, setSavingQuestion] = useState(false);
+
+  const loadData = useCallback(async (quiet = false) => {
+    if (!canViewHub) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+    if (!quiet) setLoading(true);
+    else setRefreshing(true);
+    const [questionsResult, presetsResult, sessionsResult, projectsResult, eventsResult] = await Promise.all([
+      supabase.from('mavinci_familiada_questions').select('*').order('updated_at', { ascending: false }),
+      supabase.from('mavinci_light_magic_presets').select('id,event_id,name,description,schema_version,snapshot,updated_at').order('updated_at', { ascending: false }),
+      supabase.rpc('mavinci_hub_desktop_sessions'),
+      supabase.rpc('mavinci_hub_projects'),
+      supabase.from('events').select('id,name,event_date,status').order('event_date', { ascending: false }).limit(250),
+    ]);
+
+    const schemaError = [questionsResult.error, sessionsResult.error].find((error) => error?.code === '42P01' || error?.code === 'PGRST205');
+    setMigrationMissing(Boolean(schemaError));
+    setQuestions((questionsResult.data || []) as unknown as FamiliadaQuestion[]);
+    setPresets((presetsResult.data || []) as unknown as LightMagicPreset[]);
+    setSessions((sessionsResult.data || []) as unknown as DesktopSession[]);
+    setProjects((projectsResult.data || []) as unknown as CloudProject[]);
+    setEvents((eventsResult.data || []) as unknown as EventOption[]);
+
+    const firstError = [questionsResult.error, presetsResult.error, sessionsResult.error, projectsResult.error].find(Boolean);
+    if (firstError && !schemaError) showSnackbar(`Nie udało się pobrać części danych Mavinci LIVE: ${firstError.message}`, 'error');
+    setLoading(false);
+    setRefreshing(false);
+  }, [canViewHub, showSnackbar]);
+
+  useEffect(() => { void loadData(); }, [loadData]);
+
+  useEffect(() => {
+    if (!canUseFamiliada && tab === 'familiada') setTab('overview');
+  }, [canUseFamiliada, tab]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('mavinci-live-hub')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mavinci_light_magic_presets' }, () => void loadData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mavinci_familiada_questions' }, () => void loadData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mavinci_desktop_sessions' }, () => void loadData(true))
+      .subscribe();
+    const timer = window.setInterval(() => void loadData(true), 30000);
+    return () => { window.clearInterval(timer); void supabase.removeChannel(channel); };
+  }, [loadData]);
+
+  const eventMap = useMemo(() => new Map(events.map((event) => [event.id, event])), [events]);
+  const now = Date.now();
+  const activeSessions = sessions.filter((session) => now - new Date(session.last_seen_at).getTime() < 90000 && session.sync_status !== 'offline');
+  const onlineEmployeeIds = new Set(activeSessions.map((session) => session.employee_id));
+
+  const filteredQuestions = questions.filter((question) => {
+    const term = search.trim().toLocaleLowerCase('pl-PL');
+    return !term || question.question.toLocaleLowerCase('pl-PL').includes(term)
+      || question.category.toLocaleLowerCase('pl-PL').includes(term)
+      || question.tags.some((tag) => tag.toLocaleLowerCase('pl-PL').includes(term));
+  });
+  const filteredPresets = presets.filter((preset) => {
+    const term = search.trim().toLocaleLowerCase('pl-PL');
+    return !term || preset.name.toLocaleLowerCase('pl-PL').includes(term)
+      || preset.description.toLocaleLowerCase('pl-PL').includes(term);
+  });
+
+  const openQuestionEditor = (question?: FamiliadaQuestion) => {
+    setQuestionDraft(question ? {
+      id: question.id,
+      category: question.category,
+      question: question.question,
+      answers: question.answers.map((answer) => ({ ...answer })),
+      tags: question.tags.join(', '),
+    } : emptyQuestion());
+    setQuestionEditorOpen(true);
+  };
+
+  const distributePoints = () => {
+    const activeAnswers = questionDraft.answers.filter((answer) => answer.text.trim());
+    if (!activeAnswers.length) {
+      showSnackbar('Najpierw wpisz odpowiedzi.', 'warning');
+      return;
+    }
+    const weightSum = activeAnswers.reduce((sum, _answer, index) => sum + activeAnswers.length - index, 0);
+    let used = 0;
+    const points = activeAnswers.map((_answer, index) => {
+      const value = Math.floor((100 * (activeAnswers.length - index)) / weightSum);
+      used += value;
+      return value;
+    });
+    points[0] += 100 - used;
+    let activeIndex = 0;
+    setQuestionDraft((current) => ({
+      ...current,
+      answers: current.answers.map((answer) => answer.text.trim()
+        ? { ...answer, points: points[activeIndex++] }
+        : answer),
+    }));
+  };
+
+  const saveQuestion = async () => {
+    const answers = questionDraft.answers
+      .map((answer) => ({ text: answer.text.trim(), points: Math.max(0, Math.round(Number(answer.points) || 0)) }))
+      .filter((answer) => answer.text);
+    const sum = answers.reduce((total, answer) => total + answer.points, 0);
+    if (!questionDraft.question.trim() || !answers.length) {
+      showSnackbar('Wpisz pytanie i przynajmniej jedną odpowiedź.', 'warning');
+      return;
+    }
+    if (sum > 100) {
+      showSnackbar(`Suma punktów wynosi ${sum}. Nie może przekraczać 100.`, 'error');
+      return;
+    }
+    setSavingQuestion(true);
+    const payload = {
+      category: questionDraft.category.trim() || 'Ogólne',
+      question: questionDraft.question.trim(),
+      answers,
+      tags: questionDraft.tags.split(',').map((tag) => tag.trim()).filter(Boolean),
+      source: 'crm',
+    };
+    const result = questionDraft.id
+      ? await supabase.from('mavinci_familiada_questions').update(payload).eq('id', questionDraft.id)
+      : await supabase.from('mavinci_familiada_questions').insert(payload);
+    setSavingQuestion(false);
+    if (result.error) {
+      showSnackbar(result.error.message, 'error');
+      return;
+    }
+    setQuestionEditorOpen(false);
+    showSnackbar(questionDraft.id ? 'Pytanie zostało zaktualizowane.' : 'Pytanie dodane do wspólnej bazy.', 'success');
+    await loadData(true);
+  };
+
+  const removeQuestion = async (question: FamiliadaQuestion) => {
+    if (!await showConfirm(`Usunąć pytanie „${question.question}”?`, 'Usuń')) return;
+    const { error } = await supabase.from('mavinci_familiada_questions').delete().eq('id', question.id);
+    if (error) showSnackbar(error.message, 'error');
+    else { showSnackbar('Pytanie usunięte.', 'success'); await loadData(true); }
+  };
+
+  const importPreset = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+      const parsed = JSON.parse(await file.text()) as Record<string, any>;
+      const snapshot = parsed.snapshot && typeof parsed.snapshot === 'object' ? parsed.snapshot : parsed;
+      if (snapshot.schema !== 'mavinci-light-magic-preset') throw new Error('Plik nie jest presetem Light Magic Mavinci LIVE.');
+      const { error } = await supabase.from('mavinci_light_magic_presets').insert({
+        event_id: null,
+        name: String(snapshot.name || file.name.replace(/\.(mvlmpreset|json)$/i, '')),
+        description: String(snapshot.description || 'Import z panelu CRM'),
+        schema_version: Number(snapshot.schemaVersion || 1),
+        snapshot,
+      });
+      if (error) throw error;
+      showSnackbar('Preset zaimportowany do wspólnej bazy.', 'success');
+      await loadData(true);
+    } catch (error) {
+      showSnackbar(error instanceof Error ? error.message : 'Import presetu nie powiódł się.', 'error');
+    }
+  };
+
+  const removePreset = async (preset: LightMagicPreset) => {
+    if (!await showConfirm(`Usunąć preset „${preset.name}”?`, 'Usuń')) return;
+    const { error } = await supabase.from('mavinci_light_magic_presets').delete().eq('id', preset.id);
+    if (error) showSnackbar(error.message, 'error');
+    else { showSnackbar('Preset usunięty.', 'success'); await loadData(true); }
+  };
+
+  const tabs: Array<{ id: HubTab; label: string; icon: typeof Database; count?: number }> = [
+    { id: 'overview', label: 'Przegląd', icon: Activity },
+    ...(canUseFamiliada ? [{ id: 'familiada' as const, label: 'Baza Familiady', icon: FileQuestion, count: questions.length }] : []),
+    { id: 'presets', label: 'Presety Light Magic', icon: Lightbulb, count: presets.length },
+    { id: 'users', label: 'Aktywni użytkownicy', icon: Users, count: activeSessions.length },
+    { id: 'sync', label: 'Synchronizacja', icon: Cloud, count: projects.length },
+  ];
+
+  if (employeeLoading || loading) return <div className="flex min-h-[420px] items-center justify-center text-[#d3bb73]"><RefreshCw className="mr-3 h-5 w-5 animate-spin" /> Wczytuję Mavinci LIVE…</div>;
+  if (!canViewHub) return <div className="mx-auto mt-12 max-w-2xl rounded-2xl border border-red-400/20 bg-red-400/10 p-8 text-center text-red-100"><h1 className="text-2xl font-semibold">Brak dostępu do Mavinci LIVE</h1><p className="mt-2 text-sm text-red-100/70">Administrator musi nadać temu pracownikowi główne uprawnienie Mavinci LIVE.</p></div>;
+
+  return (
+    <div className="mx-auto w-full max-w-[1700px] space-y-5 text-[#e5e4e2]">
+      <header className="overflow-hidden rounded-2xl border border-[#d3bb73]/20 bg-gradient-to-br from-[#20243a] via-[#171b2b] to-[#111522] p-6 shadow-2xl shadow-black/20">
+        <div className="flex flex-wrap items-center justify-between gap-5">
+          <div className="flex items-center gap-4">
+            <span className="rounded-2xl border border-[#d3bb73]/25 bg-[#d3bb73]/10 p-4 text-[#d3bb73]"><MonitorCheck className="h-8 w-8" /></span>
+            <div><p className="text-xs font-bold uppercase tracking-[.24em] text-[#d3bb73]">Centrum zarządzania</p><h1 className="mt-1 text-3xl font-semibold">Mavinci LIVE</h1><p className="mt-1 text-sm text-[#e5e4e2]/55">Jedno źródło pytań, presetów, dostępów i zsynchronizowanych realizacji.</p></div>
+          </div>
+          <button type="button" onClick={() => void loadData(true)} disabled={refreshing} className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold hover:border-[#d3bb73]/40 hover:text-[#d3bb73] disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} /> Odśwież dane</button>
+        </div>
+      </header>
+
+      {migrationMissing && <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-100">Nowy magazyn danych nie jest jeszcze dostępny. Zastosuj migrację <strong>20260826090000_create_mavinci_live_hub.sql</strong> w Supabase.</div>}
+
+      <nav className="flex gap-2 overflow-x-auto rounded-2xl border border-white/10 bg-[#171b2b] p-2">
+        {tabs.map((item) => { const Icon = item.icon; return <button key={item.id} type="button" onClick={() => { setTab(item.id); setSearch(''); }} className={`flex min-w-max items-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition ${tab === item.id ? 'bg-[#d3bb73] text-[#111522]' : 'text-[#e5e4e2]/55 hover:bg-white/5 hover:text-[#e5e4e2]'}`}><Icon className="h-4 w-4" />{item.label}{item.count !== undefined && <span className={`rounded-full px-2 py-0.5 text-xs ${tab === item.id ? 'bg-black/15' : 'bg-white/5'}`}>{item.count}</span>}</button>; })}
+      </nav>
+
+      {tab === 'overview' && <div className="space-y-5">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            ...(canUseFamiliada ? [{ label: 'Pytania Familiady', value: questions.length, detail: `${questions.filter((item) => item.is_active).length} aktywnych`, icon: BookOpenCheck, color: 'text-amber-300' }] : []),
+            { label: 'Presety Light Magic', value: presets.length, detail: `${presets.filter((item) => item.event_id).length} przypisanych do eventów`, icon: Lightbulb, color: 'text-cyan-300' },
+            { label: 'Użytkownicy online', value: activeSessions.length, detail: `${onlineEmployeeIds.size} pracowników`, icon: Users, color: 'text-emerald-300' },
+            { label: 'Projekty w chmurze', value: projects.length, detail: `${projects.filter((item) => item.version > 0).length} opublikowanych`, icon: Cloud, color: 'text-violet-300' },
+          ].map((card) => { const Icon = card.icon; return <article key={card.label} className="rounded-2xl border border-white/10 bg-[#171b2b] p-5"><div className="flex items-start justify-between"><div><p className="text-xs font-bold uppercase tracking-[.14em] text-[#e5e4e2]/40">{card.label}</p><strong className="mt-3 block text-4xl font-semibold">{card.value}</strong><span className="mt-2 block text-xs text-[#e5e4e2]/40">{card.detail}</span></div><Icon className={`h-6 w-6 ${card.color}`} /></div></article>; })}
+        </section>
+        <section className="grid gap-5 xl:grid-cols-[1.4fr_1fr]">
+          <div className="rounded-2xl border border-white/10 bg-[#171b2b] p-5"><div className="mb-4 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[.16em] text-[#d3bb73]">Ostatnia aktywność</p><h2 className="mt-1 text-xl font-semibold">Uruchomione instalacje</h2></div><button onClick={() => setTab('users')} className="flex items-center gap-1 text-sm text-[#d3bb73]">Zobacz wszystkie <ChevronRight className="h-4 w-4" /></button></div><div className="space-y-2">{sessions.slice(0, 5).map((session) => { const online = now - new Date(session.last_seen_at).getTime() < 90000 && session.sync_status !== 'offline'; return <div key={session.id} className="flex items-center justify-between rounded-xl border border-white/5 bg-[#111522] px-4 py-3"><div className="flex items-center gap-3"><span className={`h-2.5 w-2.5 rounded-full ${online ? 'bg-emerald-400 shadow-[0_0_10px_#34d399]' : 'bg-slate-600'}`} /><div><strong className="text-sm">{session.employee_name || session.device_name}</strong><p className="text-xs text-[#e5e4e2]/40">{session.device_name} · {session.active_module ? MODULE_LABELS[session.active_module] || session.active_module : 'Pulpit'}</p></div></div><small className="text-[#e5e4e2]/35">{online ? 'teraz' : formatDate(session.last_seen_at)}</small></div>; })}{sessions.length === 0 && <EmptyState text="Żadna instalacja Mavinci LIVE nie wysłała jeszcze statusu." />}</div></div>
+          <div className="rounded-2xl border border-white/10 bg-[#171b2b] p-5"><p className="text-xs font-bold uppercase tracking-[.16em] text-[#d3bb73]">Spójność danych</p><h2 className="mt-1 text-xl font-semibold">Stan publikacji</h2><div className="mt-5 space-y-3"><StatusRow label="Projekty opublikowane" value={`${projects.filter((item) => item.version > 0).length}/${projects.length}`} ok={!projects.length || projects.every((item) => item.version > 0)} /><StatusRow label="Sesje zsynchronizowane" value={`${sessions.filter((item) => item.last_sync_at).length}/${sessions.length}`} ok={!sessions.length || sessions.every((item) => item.last_sync_at)} /><StatusRow label="Presety z opisem" value={`${presets.filter((item) => item.description.trim()).length}/${presets.length}`} ok={!presets.length || presets.every((item) => item.description.trim())} /></div></div>
+        </section>
+      </div>}
+
+      {tab === 'familiada' && <section className="rounded-2xl border border-white/10 bg-[#171b2b] p-5">
+        <SectionHeader eyebrow="Familiada" title="Centralna baza pytań" description="Pytania zapisane tutaj są gotowe do przypisania do wydarzenia i synchronizacji z aplikacją desktopową." actions={<>{canManageFamiliada && <button onClick={() => openQuestionEditor()} className="flex items-center gap-2 rounded-xl bg-[#d3bb73] px-4 py-3 text-sm font-bold text-[#111522]"><Plus className="h-4 w-4" /> Dodaj pytanie</button>}</>} />
+        <SearchBox value={search} onChange={setSearch} placeholder="Szukaj po pytaniu, kategorii lub tagu…" />
+        <div className="mt-4 space-y-3">{filteredQuestions.map((question) => <article key={question.id} className="rounded-xl border border-white/8 bg-[#111522] p-4"><div className="flex flex-wrap items-start justify-between gap-4"><div className="min-w-0 flex-1"><div className="mb-2 flex flex-wrap items-center gap-2"><span className="rounded-full bg-[#d3bb73]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#d3bb73]">{question.category}</span>{question.tags.map((tag) => <span key={tag} className="text-xs text-[#e5e4e2]/35">#{tag}</span>)}</div><h3 className="text-base font-semibold">{question.question}</h3><div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">{question.answers.map((answer, index) => <div key={`${answer.text}-${index}`} className="flex items-center justify-between rounded-lg border border-white/5 bg-white/[.025] px-3 py-2 text-sm"><span><b className="mr-2 text-[#d3bb73]">{index + 1}.</b>{answer.text}</span><strong className="text-[#d3bb73]">{answer.points}</strong></div>)}</div></div>{canManage && <div className="flex shrink-0 gap-2"><button onClick={() => openQuestionEditor(question)} className="rounded-lg border border-white/10 p-2 text-[#e5e4e2]/60 hover:text-[#d3bb73]" title="Edytuj"><Edit3 className="h-4 w-4" /></button><button onClick={() => void removeQuestion(question)} className="rounded-lg border border-red-400/20 p-2 text-red-300/70 hover:bg-red-400/10" title="Usuń"><Trash2 className="h-4 w-4" /></button></div>}</div><footer className="mt-3 flex items-center justify-between border-t border-white/5 pt-3 text-[11px] text-[#e5e4e2]/35"><span>Suma: {question.answers.reduce((sum, answer) => sum + answer.points, 0)} pkt · użyto {question.usage_count}×</span><span>{formatDate(question.updated_at)}</span></footer></article>)}{filteredQuestions.length === 0 && <EmptyState text="Brak pytań spełniających wybrane kryteria." />}</div>
+      </section>}
+
+      {tab === 'presets' && <section className="rounded-2xl border border-white/10 bg-[#171b2b] p-5">
+        <SectionHeader eyebrow="Light Magic" title="Baza presetów" description="Presety globalne i przypisane do wydarzeń. Plik można bezpiecznie przenieść między macOS i Windows." actions={<>{canManage && <><input ref={importPresetRef} type="file" accept=".mvlmpreset,.json,application/json" className="hidden" onChange={(event) => void importPreset(event)} /><button onClick={() => importPresetRef.current?.click()} className="flex items-center gap-2 rounded-xl bg-[#d3bb73] px-4 py-3 text-sm font-bold text-[#111522]"><Upload className="h-4 w-4" /> Importuj preset</button></>}</>} />
+        <SearchBox value={search} onChange={setSearch} placeholder="Szukaj presetu…" />
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">{filteredPresets.map((preset) => <article key={preset.id} className="rounded-xl border border-white/8 bg-[#111522] p-4"><div className="flex items-start justify-between gap-3"><span className="rounded-xl bg-cyan-400/10 p-3 text-cyan-300"><Lightbulb className="h-5 w-5" /></span><div className="flex gap-2"><button onClick={() => downloadJson(`${preset.name.replace(/[^a-z0-9-_]+/gi, '-')}.mvlmpreset`, preset.snapshot)} className="rounded-lg border border-white/10 p-2 text-[#e5e4e2]/55 hover:text-cyan-300" title="Eksportuj"><Download className="h-4 w-4" /></button>{canManage && <button onClick={() => void removePreset(preset)} className="rounded-lg border border-red-400/20 p-2 text-red-300/70 hover:bg-red-400/10" title="Usuń"><Trash2 className="h-4 w-4" /></button>}</div></div><h3 className="mt-4 font-semibold">{preset.name}</h3><p className="mt-1 min-h-10 text-sm text-[#e5e4e2]/45">{preset.description || 'Bez opisu'}</p><div className="mt-4 flex items-center justify-between border-t border-white/5 pt-3 text-[11px] text-[#e5e4e2]/35"><span>{preset.event_id ? eventMap.get(preset.event_id)?.name || 'Preset wydarzenia' : 'Preset globalny'}</span><span>v{preset.schema_version} · {formatDate(preset.updated_at)}</span></div></article>)}{filteredPresets.length === 0 && <div className="md:col-span-2 xl:col-span-3"><EmptyState text="Brak zapisanych presetów Light Magic." /></div>}</div>
+      </section>}
+
+      {tab === 'users' && <section className="rounded-2xl border border-white/10 bg-[#171b2b] p-5">
+        <SectionHeader eyebrow="Aplikacje desktopowe" title="Aktywni użytkownicy" description="Instalacja jest online, jeśli wysłała status w ciągu ostatnich 90 sekund." />
+        <div className="mt-5 overflow-hidden rounded-xl border border-white/8"><div className="hidden grid-cols-[1.2fr_1.2fr_.7fr_1fr_.8fr] gap-3 bg-white/[.035] px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-[#e5e4e2]/35 md:grid"><span>Użytkownik</span><span>Komputer</span><span>Wersja</span><span>Aktywny obszar</span><span>Status</span></div>{sessions.map((session) => { const online = now - new Date(session.last_seen_at).getTime() < 90000 && session.sync_status !== 'offline'; return <div key={session.id} className="grid gap-2 border-t border-white/5 px-4 py-4 first:border-0 md:grid-cols-[1.2fr_1.2fr_.7fr_1fr_.8fr] md:items-center md:gap-3"><div><strong className="text-sm">{session.employee_name || 'Nieznany pracownik'}</strong><small className="block text-[#e5e4e2]/35">{session.employee_email || session.employee_id}</small></div><div className="text-sm">{session.device_name}<small className="block text-[#e5e4e2]/35">{session.platform}</small></div><span className="text-sm">{session.app_version || '—'}</span><div className="text-sm">{session.active_module ? MODULE_LABELS[session.active_module] || session.active_module : 'Pulpit'}<small className="block text-[#e5e4e2]/35">{session.active_event_id ? session.event_name || 'Wydarzenie' : 'Bez wydarzenia'}</small></div><div><span className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ${online ? 'bg-emerald-400/10 text-emerald-300' : 'bg-slate-500/10 text-slate-400'}`}><i className={`h-2 w-2 rounded-full ${online ? 'bg-emerald-400' : 'bg-slate-500'}`} />{online ? 'Online' : 'Offline'}</span><small className="mt-1 block text-[#e5e4e2]/30">{formatDate(session.last_seen_at)}</small></div></div>; })}{sessions.length === 0 && <EmptyState text="Brak zarejestrowanych instalacji Mavinci LIVE." />}</div>
+      </section>}
+
+      {tab === 'sync' && <section className="rounded-2xl border border-white/10 bg-[#171b2b] p-5">
+        <SectionHeader eyebrow="Chmura wydarzeń" title="Zsynchronizowane dane" description="Wersja jest zwiększana przy każdej publikacji projektu w wydarzeniu." />
+        <div className="mt-5 space-y-3">{projects.map((project) => <article key={project.id} className="grid gap-4 rounded-xl border border-white/8 bg-[#111522] p-4 lg:grid-cols-[1.2fr_.8fr_.8fr_auto] lg:items-center"><div><span className="text-[10px] font-bold uppercase tracking-wider text-[#d3bb73]">{project.event_name || 'Wydarzenie'}</span><h3 className="mt-1 font-semibold">{project.name}</h3><small className="text-[#e5e4e2]/35">{project.event_date ? new Date(project.event_date).toLocaleDateString('pl-PL') : 'Bez daty'}</small></div><div><span className="text-xs text-[#e5e4e2]/35">Moduły</span><div className="mt-2 flex flex-wrap gap-1">{project.enabled_modules.map((module) => <span key={module} className="rounded-full bg-white/5 px-2 py-1 text-[10px]">{MODULE_LABELS[module] || module}</span>)}</div></div><div><span className="text-xs text-[#e5e4e2]/35">Ostatnia aktualizacja</span><strong className="mt-1 block text-sm">{formatDate(project.updated_at)}</strong></div><span className={`rounded-full px-3 py-2 text-center text-xs font-bold ${project.version > 0 && project.published_manifest ? 'bg-emerald-400/10 text-emerald-300' : 'bg-amber-400/10 text-amber-300'}`}>{project.version > 0 && project.published_manifest ? `Opublikowano v${project.version}` : 'Tylko szkic'}</span></article>)}{projects.length === 0 && <EmptyState text="Brak projektów Mavinci LIVE przypisanych do wydarzeń." />}</div>
+      </section>}
+
+      {questionEditorOpen && <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setQuestionEditorOpen(false); }}><div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-[#d3bb73]/25 bg-[#171b2b] shadow-2xl"><header className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-[#171b2b]/95 px-6 py-5 backdrop-blur"><div><p className="text-xs font-bold uppercase tracking-[.16em] text-[#d3bb73]">Baza Familiady</p><h2 className="mt-1 text-xl font-semibold">{questionDraft.id ? 'Edytuj pytanie' : 'Nowe pytanie'}</h2></div><button onClick={() => setQuestionEditorOpen(false)} className="rounded-lg border border-white/10 p-2 text-[#e5e4e2]/55"><X className="h-5 w-5" /></button></header><div className="space-y-5 p-6"><div className="grid gap-4 md:grid-cols-[1fr_2fr]"><label className="text-sm text-[#e5e4e2]/65">Kategoria<input value={questionDraft.category} onChange={(event) => setQuestionDraft((current) => ({ ...current, category: event.target.value }))} className="mt-2 w-full rounded-xl border border-white/10 bg-[#111522] px-4 py-3 text-[#e5e4e2] outline-none focus:border-[#d3bb73]" /></label><label className="text-sm text-[#e5e4e2]/65">Tagi, oddzielone przecinkami<input value={questionDraft.tags} onChange={(event) => setQuestionDraft((current) => ({ ...current, tags: event.target.value }))} className="mt-2 w-full rounded-xl border border-white/10 bg-[#111522] px-4 py-3 text-[#e5e4e2] outline-none focus:border-[#d3bb73]" /></label></div><label className="block text-sm text-[#e5e4e2]/65">Treść pytania<textarea value={questionDraft.question} onChange={(event) => setQuestionDraft((current) => ({ ...current, question: event.target.value }))} rows={3} className="mt-2 w-full resize-none rounded-xl border border-white/10 bg-[#111522] px-4 py-3 text-[#e5e4e2] outline-none focus:border-[#d3bb73]" /></label><div><div className="mb-3 flex items-center justify-between"><div><h3 className="font-semibold">Odpowiedzi i punkty</h3><p className="text-xs text-[#e5e4e2]/40">Maksymalnie 8 odpowiedzi, suma nie większa niż 100.</p></div><button onClick={distributePoints} className="rounded-lg border border-[#d3bb73]/25 px-3 py-2 text-xs font-semibold text-[#d3bb73]">Rozłóż 100 pkt</button></div><div className="space-y-2">{questionDraft.answers.map((answer, index) => <div key={index} className="grid grid-cols-[auto_1fr_90px_auto] items-center gap-2"><span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#d3bb73]/10 text-sm font-bold text-[#d3bb73]">{index + 1}</span><input value={answer.text} onChange={(event) => setQuestionDraft((current) => ({ ...current, answers: current.answers.map((item, itemIndex) => itemIndex === index ? { ...item, text: event.target.value } : item) }))} placeholder="Odpowiedź" className="rounded-lg border border-white/10 bg-[#111522] px-3 py-2.5 outline-none focus:border-[#d3bb73]" /><input type="number" min={0} max={100} value={answer.points} onChange={(event) => setQuestionDraft((current) => ({ ...current, answers: current.answers.map((item, itemIndex) => itemIndex === index ? { ...item, points: Number(event.target.value) } : item) }))} className="rounded-lg border border-white/10 bg-[#111522] px-3 py-2.5 text-center outline-none focus:border-[#d3bb73]" /><button disabled={questionDraft.answers.length <= 1} onClick={() => setQuestionDraft((current) => ({ ...current, answers: current.answers.filter((_item, itemIndex) => itemIndex !== index) }))} className="rounded-lg p-2 text-red-300/60 disabled:opacity-20"><Trash2 className="h-4 w-4" /></button></div>)}</div>{questionDraft.answers.length < 8 && <button onClick={() => setQuestionDraft((current) => ({ ...current, answers: [...current.answers, { text: '', points: 0 }] }))} className="mt-3 flex items-center gap-2 text-xs font-semibold text-[#d3bb73]"><Plus className="h-4 w-4" /> Dodaj odpowiedź</button>}<div className="mt-4 flex items-center justify-end gap-3"><span className={`mr-auto text-sm ${questionDraft.answers.reduce((sum, answer) => sum + (Number(answer.points) || 0), 0) > 100 ? 'text-red-300' : 'text-[#e5e4e2]/45'}`}>Suma: <strong>{questionDraft.answers.reduce((sum, answer) => sum + (Number(answer.points) || 0), 0)} / 100</strong></span><button onClick={() => setQuestionEditorOpen(false)} className="rounded-xl border border-white/10 px-5 py-3 text-sm">Anuluj</button><button onClick={() => void saveQuestion()} disabled={savingQuestion} className="rounded-xl bg-[#d3bb73] px-5 py-3 text-sm font-bold text-[#111522] disabled:opacity-50">{savingQuestion ? 'Zapisywanie…' : 'Zapisz pytanie'}</button></div></div></div></div></div>}
+    </div>
+  );
+}
+
+function SearchBox({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder: string }) {
+  return <label className="mt-5 flex items-center gap-3 rounded-xl border border-white/10 bg-[#111522] px-4 py-3"><Search className="h-4 w-4 text-[#e5e4e2]/35" /><input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="w-full bg-transparent text-sm outline-none placeholder:text-[#e5e4e2]/25" /></label>;
+}
+
+function SectionHeader({ eyebrow, title, description, actions }: { eyebrow: string; title: string; description: string; actions?: ReactNode }) {
+  return <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[.18em] text-[#d3bb73]">{eyebrow}</p><h2 className="mt-1 text-2xl font-semibold">{title}</h2><p className="mt-1 text-sm text-[#e5e4e2]/45">{description}</p></div><div>{actions}</div></div>;
+}
+
+function EmptyState({ text }: { text: string }) {
+  return <div className="rounded-xl border border-dashed border-white/10 p-8 text-center text-sm text-[#e5e4e2]/35">{text}</div>;
+}
+
+function StatusRow({ label, value, ok }: { label: string; value: string; ok: boolean }) {
+  return <div className="flex items-center justify-between rounded-xl border border-white/5 bg-[#111522] px-4 py-3"><span className="flex items-center gap-2 text-sm"><span className={`rounded-full p-1 ${ok ? 'bg-emerald-400/10 text-emerald-300' : 'bg-amber-400/10 text-amber-300'}`}>{ok ? <Check className="h-3.5 w-3.5" /> : <Database className="h-3.5 w-3.5" />}</span>{label}</span><strong className="text-sm">{value}</strong></div>;
+}

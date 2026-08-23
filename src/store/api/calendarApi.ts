@@ -391,19 +391,15 @@ export const calendarApi = createApi({
         equipment: any[];
         eventsWithAssignments: any[];
       },
-      void
+      { startDate: string; endDate: string }
     >({
-      async queryFn() {
+      async queryFn({ startDate, endDate }) {
         try {
-          const now = new Date();
-          const startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-          const endDate = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
-
           const { data: timelineData, error: timelineError } = await supabase.rpc(
             'get_calendar_timeline_resources',
             {
-              p_start_date: startDate.toISOString(),
-              p_end_date: endDate.toISOString(),
+              p_start_date: startDate,
+              p_end_date: endDate,
             },
           );
 
@@ -417,6 +413,19 @@ export const calendarApi = createApi({
                 eventsWithAssignments: [],
               },
             };
+          }
+
+          const eventIds = Array.from(
+            new Set((timelineData || []).map((row: any) => row.event_id).filter(Boolean)),
+          );
+          const boundsByEvent = new Map<string, any>();
+          if (eventIds.length > 0) {
+            const { data: boundsData, error: boundsError } = await supabase
+              .from('event_timeline_bounds')
+              .select('event_id, timeline_start, timeline_end')
+              .in('event_id', eventIds);
+            if (boundsError) throw boundsError;
+            (boundsData || []).forEach((bounds: any) => boundsByEvent.set(bounds.event_id, bounds));
           }
 
           const vehicles = new Map();
@@ -456,13 +465,14 @@ export const calendarApi = createApi({
             }
 
             if (row.event_id && !eventsMap.has(row.event_id)) {
+              const bounds = boundsByEvent.get(row.event_id);
               eventsMap.set(row.event_id, {
                 id: row.event_id,
                 name: row.event_name,
-                event_date: row.event_start,
-                event_end_date: row.event_end,
-                event_start_datetime: row.event_start,
-                event_end_datetime: row.event_end,
+                event_date: bounds?.timeline_start || row.event_start,
+                event_end_date: bounds?.timeline_end || row.event_end,
+                event_start_datetime: bounds?.timeline_start || row.event_start,
+                event_end_datetime: bounds?.timeline_end || row.event_end,
                 status: row.event_status,
                 event_vehicles: [],
                 event_equipment: [],

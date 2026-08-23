@@ -37,6 +37,7 @@ interface SenderInfo {
 }
 
 const MAX_FILE_SIZE = 20 * 1024 * 1024;
+const MESSAGE_PAGE_SIZE = 20;
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/webm'];
 
@@ -62,6 +63,8 @@ export default function ChatConversationView({
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(true);
+  const [isLoadingOlder, setIsLoadingOlder] = useState(false);
+  const [hasOlderMessages, setHasOlderMessages] = useState(true);
   const [senders, setSenders] = useState<Map<string, SenderInfo>>(new Map());
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [pendingPreview, setPendingPreview] = useState<string | null>(null);
@@ -70,14 +73,20 @@ export default function ChatConversationView({
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [showMenu, setShowMenu] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
 
   const [reactionPickerMsgId, setReactionPickerMsgId] = useState<string | null>(null);
   const [participantsState, setParticipantsState] = useState<
     Map<string, { last_read_at: string | null; last_delivered_at: string | null }>
   >(new Map());
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const loadingOlderRef = useRef(false);
+  const initialScrollCompletedRef = useRef(false);
+  const userHasScrolledRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragDepthRef = useRef(0);
 
   const otherParticipant = conversation.participants.find(
     (p) => p.employee_id !== currentEmployeeId,
@@ -96,6 +105,8 @@ export default function ChatConversationView({
   const otherIsOnline = otherParticipant ? isOnline(otherParticipant.employee_id) : false;
 
   useEffect(() => {
+    initialScrollCompletedRef.current = false;
+    userHasScrolledRef.current = false;
     fetchMessages();
     fetchParticipantsState();
     markAsRead();
@@ -114,9 +125,12 @@ export default function ChatConversationView({
         (payload) => {
           const msg = payload.new as ChatMessage;
           setMessages((prev) => {
-            if (prev.some((m) => m.id === msg.id)) return prev;
+            if (prev.some((m) => m.id === msg.id)) {
+              return prev.map((message) => (message.id === msg.id ? msg : message));
+            }
             return [...prev, msg];
           });
+          window.requestAnimationFrame(() => scrollToBottom());
           if (msg.sender_id !== currentEmployeeId) {
             markAsRead();
             markAsDelivered();
@@ -155,17 +169,18 @@ export default function ChatConversationView({
   }, [conversation.id]);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  useEffect(() => {
     return () => {
       if (pendingPreview) URL.revokeObjectURL(pendingPreview);
     };
   }, [pendingPreview]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.scrollTo({ top: container.scrollHeight, behavior });
+      return;
+    }
+    messagesEndRef.current?.scrollIntoView({ behavior });
   };
 
   const fetchMessages = async () => {
@@ -184,12 +199,14 @@ export default function ChatConversationView({
       .from('employee_messages')
       .select('*')
       .eq('conversation_id', conversation.id)
-      .order('created_at', { ascending: true })
-      .limit(100);
+      .order('created_at', { ascending: false })
+      .limit(MESSAGE_PAGE_SIZE);
 
-    setMessages(data || []);
+    const latestMessages = [...(data || [])].reverse() as ChatMessage[];
+    setMessages(latestMessages);
+    setHasOlderMessages((data || []).length === MESSAGE_PAGE_SIZE);
 
-    const senderIds = Array.from(new Set((data || []).map((m: ChatMessage) => m.sender_id)));
+    const senderIds = Array.from(new Set(latestMessages.map((m: ChatMessage) => m.sender_id)));
     if (senderIds.length > 0) {
       const { data: emps } = await supabase
         .from('employees')
@@ -200,6 +217,69 @@ export default function ChatConversationView({
     }
 
     setIsLoadingMessages(false);
+    window.requestAnimationFrame(() => {
+      scrollToBottom('auto');
+      initialScrollCompletedRef.current = true;
+    });
+  };
+
+  const loadOlderMessages = async () => {
+    if (
+      isLoadingMessages ||
+      loadingOlderRef.current ||
+      !hasOlderMessages ||
+      messages.length === 0
+    ) {
+      return;
+    }
+
+    const container = messagesContainerRef.current;
+    const previousScrollHeight = container?.scrollHeight ?? 0;
+    const oldestMessage = messages[0];
+    loadingOlderRef.current = true;
+    setIsLoadingOlder(true);
+
+    const { data, error } = await supabase
+      .from('employee_messages')
+      .select('*')
+      .eq('conversation_id', conversation.id)
+      .lt('created_at', oldestMessage.created_at)
+      .order('created_at', { ascending: false })
+      .limit(MESSAGE_PAGE_SIZE);
+
+    if (!error && data) {
+      const olderMessages = [...data].reverse() as ChatMessage[];
+      setHasOlderMessages(data.length === MESSAGE_PAGE_SIZE);
+      setMessages((current) => {
+        const currentIds = new Set(current.map((message) => message.id));
+        return [...olderMessages.filter((message) => !currentIds.has(message.id)), ...current];
+      });
+
+      const senderIds = Array.from(new Set(olderMessages.map((message) => message.sender_id)));
+      if (senderIds.length > 0) {
+        const { data: employees } = await supabase
+          .from('employees')
+          .select('id, name, surname, nickname, avatar_url')
+          .in('id', senderIds);
+
+        if (employees) {
+          setSenders((current) => {
+            const next = new Map(current);
+            employees.forEach((sender: SenderInfo) => next.set(sender.id, sender));
+            return next;
+          });
+        }
+      }
+
+      window.requestAnimationFrame(() => {
+        if (container) {
+          container.scrollTop = container.scrollHeight - previousScrollHeight;
+        }
+      });
+    }
+
+    loadingOlderRef.current = false;
+    setIsLoadingOlder(false);
   };
 
   const markAsRead = async () => {
@@ -309,7 +389,7 @@ export default function ChatConversationView({
     const { data: inserted, error } = await supabase
       .from('employee_messages')
       .insert(insertPayload)
-      .select('id, conversation_id, sender_id, content, message_type, created_at')
+      .select('*')
       .maybeSingle();
 
     if (error) {
@@ -317,6 +397,11 @@ export default function ChatConversationView({
       if (content) setNewMessage(content);
       if (file) setPendingFile(file);
     } else if (inserted) {
+      setMessages((current) => {
+        if (current.some((message) => message.id === inserted.id)) return current;
+        return [...current, inserted as ChatMessage];
+      });
+      window.requestAnimationFrame(() => scrollToBottom());
       triggerPushNotification(inserted);
     }
     setIsSending(false);
@@ -346,12 +431,13 @@ export default function ChatConversationView({
     }).catch((err) => console.warn('[Chat] Push trigger failed:', err));
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const preparePendingFile = (file: File) => {
     if (file.size > MAX_FILE_SIZE) {
       alert(`Plik jest zbyt duży. Maksymalny rozmiar: ${formatFileSize(MAX_FILE_SIZE)}`);
-      return;
+      return false;
+    }
+    if (pendingPreview) {
+      URL.revokeObjectURL(pendingPreview);
     }
     setPendingFile(file);
     if (file.type.startsWith('image/')) {
@@ -360,7 +446,41 @@ export default function ChatConversationView({
       setPendingPreview(null);
     }
     inputRef.current?.focus();
+    return true;
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    preparePendingFile(file);
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    dragDepthRef.current += 1;
+    setIsDraggingFile(true);
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setIsDraggingFile(false);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    dragDepthRef.current = 0;
+    setIsDraggingFile(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) preparePendingFile(file);
   };
 
   const removePendingFile = () => {
@@ -574,7 +694,24 @@ export default function ChatConversationView({
 
   return (
     <>
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div
+      className="relative flex flex-1 flex-col overflow-hidden"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {isDraggingFile && (
+        <div className="pointer-events-none absolute inset-2 z-[60] flex items-center justify-center rounded-xl border-2 border-dashed border-[#d3bb73] bg-[#0f1119]/90 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-2 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#d3bb73]/15">
+              <Paperclip className="h-5 w-5 text-[#d3bb73]" />
+            </div>
+            <p className="text-sm font-medium text-[#e5e4e2]">Upuść plik, aby dodać załącznik</p>
+            <p className="text-xs text-[#e5e4e2]/50">Maksymalny rozmiar pliku: 20 MB</p>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center gap-3 border-b border-[#d3bb73]/10 px-3 py-2">
         <button
@@ -660,13 +797,34 @@ export default function ChatConversationView({
 
       {/* Messages */}
       <div
+        ref={messagesContainerRef}
         className="flex-1 overflow-y-auto px-3 py-2"
+        onWheel={() => {
+          userHasScrolledRef.current = true;
+        }}
+        onTouchStart={() => {
+          userHasScrolledRef.current = true;
+        }}
+        onScroll={(event) => {
+          if (
+            initialScrollCompletedRef.current &&
+            userHasScrolledRef.current &&
+            event.currentTarget.scrollTop <= 80
+          ) {
+            loadOlderMessages();
+          }
+        }}
         onClick={() => {
           if (showMenu) setShowMenu(false);
           if (reactionPickerMsgId) setReactionPickerMsgId(null);
           if (removeReactionMsgId) setRemoveReactionMsgId(null);
         }}
       >
+        {isLoadingOlder && (
+          <div className="flex justify-center py-2">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#d3bb73]/20 border-t-[#d3bb73]" />
+          </div>
+        )}
         {isLoadingMessages ? (
           <div className="flex h-full items-center justify-center">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#d3bb73]/20 border-t-[#d3bb73]" />

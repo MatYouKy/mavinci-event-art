@@ -14,7 +14,7 @@ export default function MessagesStackNavigator() {
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
   const [showNewChat, setShowNewChat] = useState(false);
   const hasCheckedTarget = useRef(false);
-  const lastNavigatedConvId = useRef<string | null>(null);
+  const lastNavigationRequest = useRef<string | null>(null);
 
   useEffect(() => {
     setActiveChatConversation(activeConversation?.id ?? null);
@@ -22,13 +22,30 @@ export default function MessagesStackNavigator() {
   }, [activeConversation?.id]);
 
   const navigateToConversation = useCallback(async (conversationId: string) => {
-    const { data } = await supabase
-      .from('employee_conversations')
-      .select('id, title, is_group, created_by, last_message_at, last_message_preview, created_at')
-      .eq('id', conversationId)
-      .maybeSingle();
+    const [{ data }, { data: participantRows }] = await Promise.all([
+      supabase
+        .from('employee_conversations')
+        .select(
+          'id, title, is_group, created_by, last_message_at, last_message_preview, created_at',
+        )
+        .eq('id', conversationId)
+        .maybeSingle(),
+      supabase
+        .from('employee_conversation_participants')
+        .select('id, conversation_id, employee_id, last_read_at')
+        .eq('conversation_id', conversationId),
+    ]);
 
     if (data) {
+      const employeeIds = (participantRows || []).map((participant) => participant.employee_id);
+      const { data: employees } = employeeIds.length
+        ? await supabase
+            .from('employees')
+            .select('id, name, surname, nickname, avatar_url, avatar_metadata')
+            .in('id', employeeIds)
+        : { data: [] };
+      const employeesById = new Map((employees || []).map((item) => [item.id, item]));
+
       setActiveConversation({
         id: data.id,
         title: data.title || 'Rozmowa',
@@ -37,7 +54,10 @@ export default function MessagesStackNavigator() {
         last_message_at: data.last_message_at ?? data.created_at,
         last_message_preview: data.last_message_preview ?? null,
         created_at: data.created_at,
-        participants: [],
+        participants: (participantRows || []).map((participant) => ({
+          ...participant,
+          employee: employeesById.get(participant.employee_id),
+        })),
         unread_count: 0,
       });
     }
@@ -46,11 +66,13 @@ export default function MessagesStackNavigator() {
   // Handle conversationId passed via navigation params
   useEffect(() => {
     const convId = route.params?.conversationId;
-    if (convId && convId !== lastNavigatedConvId.current) {
-      lastNavigatedConvId.current = convId;
+    const requestId = route.params?.chatRequestId ?? 'initial';
+    const requestKey = convId ? `${convId}:${requestId}` : null;
+    if (convId && requestKey !== lastNavigationRequest.current) {
+      lastNavigationRequest.current = requestKey;
       navigateToConversation(convId);
     }
-  }, [route.params?.conversationId, navigateToConversation]);
+  }, [route.params?.chatRequestId, route.params?.conversationId, navigateToConversation]);
 
   // Check for pending notification target on mount
   useEffect(() => {
@@ -76,10 +98,7 @@ export default function MessagesStackNavigator() {
 
   if (activeConversation) {
     return (
-      <ChatScreen
-        conversation={activeConversation}
-        onBack={() => setActiveConversation(null)}
-      />
+      <ChatScreen conversation={activeConversation} onBack={() => setActiveConversation(null)} />
     );
   }
 
@@ -100,4 +119,3 @@ export default function MessagesStackNavigator() {
     </>
   );
 }
-

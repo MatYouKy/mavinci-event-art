@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { FileText, Save, Eye, CreditCard as Edit3, ChevronDown, Plus } from 'lucide-react';
 import dynamic from 'next/dynamic';
+import { supabase } from '@/lib/supabase/browser';
 
 const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
 import 'react-quill/dist/quill.snow.css';
@@ -11,25 +12,22 @@ const ReactQuillWithRef = ReactQuill as React.ComponentType<any>;
 interface Props {
   productId: string;
   initialClauses: string | null;
+  initialCategory: 'requirements' | 'obligations' | 'risks' | 'general';
   canEdit: boolean;
-  onSave: (clauses: string) => Promise<void>;
+  onSave: (clauses: string, category: 'requirements' | 'obligations' | 'risks' | 'general') => Promise<void>;
 }
-
-const toolbarOptions = [
-  [{ header: [1, 2, 3, false] }],
-  ['bold', 'italic', 'underline'],
-  [{ list: 'ordered' }, { list: 'bullet' }],
-  [{ align: [] }],
-  ['clean'],
-];
 
 const formats = [
   'header',
+  'font',
+  'size',
   'bold',
   'italic',
   'underline',
+  'blockquote',
   'list',
   'bullet',
+  'indent',
   'align',
 ];
 
@@ -86,24 +84,104 @@ const PLACEHOLDERS = [
   ]},
 ];
 
-export function ProductContractClauses({ productId, initialClauses, canEdit, onSave }: Props) {
+export function ProductContractClauses({ productId, initialClauses, initialCategory, canEdit, onSave }: Props) {
   const [isEditing, setIsEditing] = useState(false);
   const [clauses, setClauses] = useState(initialClauses || '');
+  const [category, setCategory] = useState(initialCategory);
   const [isSaving, setIsSaving] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<string>('');
   const [cursorPosition, setCursorPosition] = useState<number | null>(null);
+  const [availableFonts, setAvailableFonts] = useState<Array<{ family: string; file_url?: string | null; weight?: string }>>([]);
   const quillRef = useRef<any>(null);
 
   useEffect(() => {
     setClauses(initialClauses || '');
-  }, [initialClauses]);
+    setCategory(initialCategory);
+  }, [initialClauses, initialCategory]);
+
+  useEffect(() => {
+    let active = true;
+    const configureFonts = async () => {
+      try {
+        // `select('*')` zachowuje zgodność także przed migracją dodającą file_url.
+        const { data, error } = await supabase
+          .from('company_brandbook_fonts')
+          .select('*')
+          .order('order_index');
+
+        if (!active) return;
+        if (error) {
+          console.warn('Nie udało się pobrać fontów księgi znaku:', error.message);
+        }
+
+        const fonts = ((data || []) as Array<{
+          family?: string | null;
+          file_url?: string | null;
+          weight?: string | null;
+        }>)
+          .filter((font): font is { family: string; file_url?: string | null; weight?: string | null } =>
+            Boolean(font.family?.trim()),
+          )
+          .map((font) => ({ ...font, family: font.family.trim() }));
+
+        setAvailableFonts(fonts);
+
+        if (typeof FontFace !== 'undefined' && document.fonts) {
+          await Promise.allSettled(
+            fonts.filter((font) => font.file_url).map(async (font) => {
+              const loadedFont = new FontFace(font.family, `url(${font.file_url})`, {
+                weight: font.weight || '400',
+              });
+              await loadedFont.load();
+              document.fonts.add(loadedFont);
+            }),
+          );
+        }
+
+        const reactQuillModule = await import('react-quill');
+        const Quill =
+          (reactQuillModule as any).Quill ||
+          (reactQuillModule as any).default?.Quill;
+
+        if (!Quill?.import || !Quill?.register) {
+          console.warn('Nie udało się skonfigurować dodatkowych fontów edytora Quill.');
+          return;
+        }
+
+        const FontStyle = Quill.import('attributors/style/font');
+        FontStyle.whitelist = [
+          'Arial',
+          'Georgia',
+          'Verdana',
+          'Tahoma',
+          'Garamond',
+          'Times New Roman',
+          'Courier New',
+          ...fonts.map((font) => font.family),
+        ];
+        const SizeStyle = Quill.import('attributors/style/size');
+        SizeStyle.whitelist = [
+          '8pt', '9pt', '10pt', '11pt', '12pt', '14pt', '16pt', '18pt', '20pt', '24pt',
+          '28pt', '32pt', '36pt', '48pt', '64pt', '72pt',
+        ];
+        Quill.register(FontStyle, true);
+        Quill.register(SizeStyle, true);
+      } catch (error) {
+        console.error('Błąd konfiguracji fontów edytora klauzul:', error);
+      }
+    };
+    void configureFonts();
+    return () => {
+      active = false;
+    };
+  }, []);
 
 
   const handleSave = async () => {
     setIsSaving(true);
     try {
       const trimmedClauses = clauses.trim();
-      await onSave(trimmedClauses);
+      await onSave(trimmedClauses, category);
       setIsEditing(false);
     } catch (error) {
       console.error('Error saving clauses:', error);
@@ -114,6 +192,7 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
 
   const handleCancel = () => {
     setClauses(initialClauses || '');
+    setCategory(initialCategory);
     setIsEditing(false);
   };
 
@@ -285,6 +364,12 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
                 margin-bottom: 0.5em;
               }
 
+              .contract-clauses-editor .ql-editor blockquote {
+                margin: 1em 0;
+                border-left: 3px solid #9ca3af;
+                padding-left: 1em;
+              }
+
               /* Dark theme for prose */
               .prose-invert p {
                 color: #e5e7eb;
@@ -312,11 +397,32 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
             `}</style>
 
             <div className="mb-3 space-y-2">
+              <label className="block text-sm text-gray-300">
+                Miejsce klauzuli w umowie
+                <select
+                  value={category}
+                  onChange={(event) => setCategory(event.target.value as typeof category)}
+                  className="mt-1 w-full rounded-md border border-gray-600 bg-gray-700 px-3 py-2 text-gray-100"
+                >
+                  <option value="requirements">Wymagania organizacyjne i techniczne</option>
+                  <option value="obligations">Obowiązki zamawiającego</option>
+                  <option value="risks">Ryzyka i odpowiedzialność</option>
+                  <option value="general">Postanowienia ogólne</option>
+                </select>
+              </label>
               <div className="flex flex-wrap items-center gap-3 rounded-lg border border-gray-700 bg-gray-800 p-3">
                 <div className="flex items-center gap-2 text-sm text-gray-300">
                   <Plus className="h-4 w-4 text-blue-400" />
                   <span className="font-medium">Wstaw zmienną:</span>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => insertPlaceholder('§n')}
+                  className="rounded-md border border-blue-500/50 bg-blue-500/10 px-3 py-1.5 text-sm font-semibold text-blue-300 hover:bg-blue-500/20"
+                  title="Numer zostanie wyliczony w gotowej umowie"
+                >
+                  §n — automatyczny paragraf
+                </button>
                 <select
                   value={selectedGroup}
                   onChange={(e) => setSelectedGroup(e.target.value)}
@@ -360,6 +466,7 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
             </div>
 
             <ReactQuillWithRef
+              key={availableFonts.map((font) => font.family).join('|') || 'system-fonts'}
               ref={quillRef}
               theme="snow"
               value={clauses}
@@ -378,7 +485,19 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
                   setCursorPosition(range.index);
                 }
               }}
-              modules={{ toolbar: toolbarOptions }}
+              modules={{
+                toolbar: [
+                  [{ header: [1, 2, 3, false] }],
+                  [{ font: ['Arial', 'Georgia', 'Verdana', 'Tahoma', 'Garamond', 'Times New Roman', 'Courier New', ...availableFonts.map((font) => font.family)] }],
+                  [{ size: ['8pt', '9pt', '10pt', '11pt', '12pt', '14pt', '16pt', '18pt', '20pt', '24pt', '28pt', '32pt', '36pt', '48pt', '64pt', '72pt'] }],
+                  ['bold', 'italic', 'underline'],
+                  ['blockquote'],
+                  [{ list: 'ordered' }, { list: 'bullet' }],
+                  [{ indent: '-1' }, { indent: '+1' }],
+                  [{ align: [] }],
+                  ['clean'],
+                ],
+              }}
               formats={formats}
               placeholder="Wpisz rekomendowane klauzule umowy..."
             />
@@ -386,6 +505,10 @@ export function ProductContractClauses({ productId, initialClauses, canEdit, onS
               <p className="text-sm text-blue-300">
                 <strong className="text-blue-200">Wskazówka:</strong> Te klauzule będą automatycznie dodawane do umów,
                 które zawierają ten produkt. Użyj dropdownów &quot;Wstaw zmienną&quot; powyżej, aby dodać dynamiczne pola.
+              </p>
+              <p className="text-xs text-blue-200">
+                Wstaw <strong>§n</strong> na początku nowego paragrafu. W gotowej umowie system
+                zastąpi kolejne wystąpienia przez §1, §2, §3 itd.
               </p>
               <p className="text-xs text-gray-400">
                 Zmienne są automatycznie wypełniane danymi z wydarzenia, klienta i organizacji podczas generowania umowy.

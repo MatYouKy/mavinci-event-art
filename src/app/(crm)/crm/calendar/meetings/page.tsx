@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
 import { Calendar, MapPin, Users, Plus, Search, Filter, Clock } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
@@ -43,6 +43,7 @@ interface Meeting {
 
 export default function MeetingsListPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { showSnackbar } = useSnackbar();
 
   const [meetings, setMeetings] = useState<Meeting[]>([]);
@@ -55,6 +56,10 @@ export default function MeetingsListPage() {
   useEffect(() => {
     fetchMeetings();
   }, []);
+
+  useEffect(() => {
+    if (searchParams.get('new') === '1') setIsModalOpen(true);
+  }, [searchParams]);
 
   useEffect(() => {
     applyFilters();
@@ -318,6 +323,7 @@ export default function MeetingsListPage() {
         {isModalOpen && (
           <NewMeetingModal
             isOpen={isModalOpen}
+            initialContactId={searchParams.get('contactId') || undefined}
             onClose={() => {
               setIsModalOpen(false);
               fetchMeetings();

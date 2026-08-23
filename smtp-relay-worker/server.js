@@ -1,6 +1,7 @@
 import express from 'express';
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
+import { ImapFlow } from 'imapflow';
 
 dotenv.config();
 
@@ -166,6 +167,70 @@ app.post('/api/send-email', verifyAuth, async (req, res) => {
       success: false,
       error: error.message,
     });
+  }
+});
+
+app.post('/api/imap/read-state', verifyAuth, async (req, res) => {
+  const { imapConfig, messages, markAsRead } = req.body;
+
+  if (!imapConfig?.host || !imapConfig?.username || !imapConfig?.password) {
+    return res.status(400).json({ success: false, error: 'Missing IMAP configuration' });
+  }
+
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return res.json({ success: true, states: [] });
+  }
+
+  const client = new ImapFlow({
+    host: imapConfig.host,
+    port: Number(imapConfig.port || 993),
+    secure: imapConfig.secure !== false,
+    auth: {
+      user: imapConfig.username,
+      pass: imapConfig.password,
+    },
+    logger: false,
+  });
+
+  try {
+    await client.connect();
+    await client.mailboxOpen('INBOX');
+    const states = [];
+
+    if (markAsRead === true) {
+      for (const message of messages.slice(0, 10)) {
+        if (!message?.messageId) continue;
+        const matches = await client.search(
+          { header: { 'message-id': message.messageId } },
+          { uid: true },
+        );
+        const uid = matches.at(-1);
+        if (!uid) {
+          states.push({ id: message.id, found: false });
+          continue;
+        }
+        await client.messageFlagsAdd(uid, ['\\Seen'], { uid: true });
+        states.push({ id: message.id, found: true, isRead: true });
+      }
+    } else {
+      const idsByMessageId = new Map(
+        messages.map((message) => [String(message.messageId).replace(/[<>]/g, ''), message.id]),
+      );
+      const start = Math.max(1, Number(client.mailbox.exists || 0) - 499);
+      for await (const email of client.fetch(`${start}:*`, { envelope: true, flags: true })) {
+        const normalizedMessageId = String(email.envelope?.messageId || '').replace(/[<>]/g, '');
+        const id = idsByMessageId.get(normalizedMessageId);
+        if (!id) continue;
+        states.push({ id, found: true, isRead: email.flags?.has('\\Seen') || false });
+      }
+    }
+
+    return res.json({ success: true, states });
+  } catch (error) {
+    console.error('❌ IMAP read-state synchronization failed:', error.message);
+    return res.status(500).json({ success: false, error: error.message });
+  } finally {
+    await client.logout().catch(() => undefined);
   }
 });
 

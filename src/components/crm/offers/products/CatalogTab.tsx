@@ -1,8 +1,21 @@
 import { Grid3x3, List, Package, Plus, Search } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import Image from 'next/image';
 import Popover from '@/components/UI/Tooltip';
+
+const THUMBNAIL_BUCKET = 'offer-product-pages';
+
+const normalizeThumbnailPath = (value: unknown) => {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  if (/^(?:https?:|data:|blob:)/i.test(trimmed)) return trimmed;
+
+  return trimmed
+    .replace(/^\/+/, '')
+    .replace(new RegExp(`^(?:public/)?${THUMBNAIL_BUCKET}/`), '');
+};
 
 export function CatalogTab({
   products,
@@ -15,40 +28,24 @@ export function CatalogTab({
   setViewMode,
   router,
 }: any) {
-  const bucket = useMemo(() => supabase.storage.from('offer-product-pages'), []);
-  const [thumbUrls, setThumbUrls] = useState<Record<string, string>>({});
+  const bucket = useMemo(() => supabase.storage.from(THUMBNAIL_BUCKET), []);
+  const [failedThumbUrls, setFailedThumbUrls] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
-    let cancelled = false;
+  const thumbUrls = useMemo(
+    () => Object.fromEntries(
+      products.map((product: any) => {
+        const normalized = normalizeThumbnailPath(product?.pdf_thumbnail_url);
+        if (!normalized) return [product.id, ''];
+        if (/^(?:https?:|data:|blob:)/i.test(normalized)) return [product.id, normalized];
+        return [product.id, bucket.getPublicUrl(normalized).data.publicUrl];
+      }),
+    ),
+    [bucket, products],
+  );
 
-    const loadThumbs = async () => {
-      const entries = await Promise.all(
-        products.map(async (product: any) => {
-          if (!product?.pdf_thumbnail_url) return [product.id, ''] as const;
-
-          const publicUrl = bucket.getPublicUrl(product.pdf_thumbnail_url).data.publicUrl;
-
-          try {
-            const res = await fetch(publicUrl, { method: 'HEAD' });
-            if (res.ok) return [product.id, publicUrl] as const;
-          } catch {}
-
-          const { data } = await bucket.createSignedUrl(product.pdf_thumbnail_url, 3600);
-          return [product.id, data?.signedUrl ?? ''] as const;
-        }),
-      );
-
-      if (!cancelled) {
-        setThumbUrls(Object.fromEntries(entries));
-      }
-    };
-
-    loadThumbs();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [bucket, products]);
+  const markThumbnailAsFailed = (url: string) => {
+    setFailedThumbUrls((current) => (current[url] ? current : { ...current, [url]: true }));
+  };
 
   return (
     <>
@@ -118,7 +115,8 @@ export function CatalogTab({
         ) : viewMode === 'grid' ? (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {products.map((product: any) => {
-              const thumbPublicUrl = thumbUrls[product.id] || null;
+              const candidateUrl = thumbUrls[product.id] || '';
+              const thumbPublicUrl = candidateUrl && !failedThumbUrls[candidateUrl] ? candidateUrl : null;
 
               return (
                 <div
@@ -146,6 +144,7 @@ export function CatalogTab({
                           className="h-21 w-10 object-cover"
                           width={40}
                           height={40}
+                          onError={() => markThumbnailAsFailed(thumbPublicUrl)}
                         />
                       }
                       content={
@@ -155,6 +154,7 @@ export function CatalogTab({
                           className="h-auto w-auto object-cover"
                           width={200}
                           height={100}
+                          onError={() => markThumbnailAsFailed(thumbPublicUrl)}
                         />
                       }
                       openOn="hover"
@@ -213,7 +213,8 @@ export function CatalogTab({
         ) : (
           <div className="space-y-3">
             {products.map((product: any) => {
-              const thumbPublicUrl = thumbUrls[product.id] || null;
+              const candidateUrl = thumbUrls[product.id] || '';
+              const thumbPublicUrl = candidateUrl && !failedThumbUrls[candidateUrl] ? candidateUrl : null;
               return (
                 <div
                   key={product.id}
@@ -232,6 +233,7 @@ export function CatalogTab({
                                 className="h-21 w-10 object-cover"
                                 width={40}
                                 height={40}
+                                onError={() => markThumbnailAsFailed(thumbPublicUrl)}
                               />
                             }
                             content={
@@ -241,6 +243,7 @@ export function CatalogTab({
                                 className="h-auto w-auto object-cover"
                                 width={200}
                                 height={100}
+                                onError={() => markThumbnailAsFailed(thumbPublicUrl)}
                               />
                             }
                             openOn="hover"

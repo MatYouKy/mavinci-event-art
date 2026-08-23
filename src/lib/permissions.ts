@@ -12,10 +12,12 @@
  * - events_view, events_manage, events_create, event_categories_manage
  * - calendar_view, calendar_manage
  * - tasks_view, tasks_manage, tasks_create
+ * - inquiries_view, inquiries_manage oraz zakresy own/pool/team/all/assign
  * - offers_view, offers_manage, offers_create
  * - contracts_view, contracts_manage, contracts_create
  * - attractions_view, attractions_manage, attractions_create
  * - messages_view, messages_manage, messages_assign
+ * - marketing_campaigns_view, marketing_campaigns_manage, marketing_campaigns_approve
  * - chat_view, chat_manage, chat_create_group
  * - finances_view, finances_manage
  * - fleet_view, fleet_manage, fleet_create
@@ -24,10 +26,14 @@
  * - time_tracking_view, time_tracking_manage
  * - databases_view, databases_manage
  * - invoices_view, invoices_manage - faktury KSeF
+ * - mavinci_live_view, mavinci_live_manage - panel i biblioteki Mavinci LIVE
+ * - mavinci_live_light_magic, mavinci_live_quiz_show, mavinci_live_familiada,
+ *   mavinci_live_wedding_show, mavinci_live_streaming - sekcje aplikacji desktopowej
  * - website_edit - edycja strony WWW (portfolio, usługi, zespół, itp.)
  */
 
 import { IEmployee } from '@/app/(crm)/crm/employees/type';
+import { ALL_PERMISSION_SCOPES } from '@/lib/permissionCatalog';
 export type Employee = IEmployee;
 type PermissionEmployee = Pick<IEmployee, 'access_level' | 'role' | 'permissions'> | null | undefined;
 
@@ -105,10 +111,12 @@ export const MODULES = [
   'events',
   'calendar',
   'tasks',
+  'inquiries',
   'offers',
   'contracts',
   'attractions',
   'messages',
+  'marketing_campaigns',
   'finances',
   'fleet',
   'page',
@@ -116,46 +124,16 @@ export const MODULES = [
   'time_tracking',
   'databases',
   'invoices',
+  'mavinci_live',
 ] as const;
 
 export type ModuleName = (typeof MODULES)[number];
 
 /**
- * Moduły które mają dostępny scope _create
- */
-const MODULES_WITH_CREATE = [
-  'equipment',
-  'employees',
-  'clients',
-  'contacts',
-  'events',
-  'tasks',
-  'offers',
-  'contracts',
-  'attractions',
-  'fleet',
-  'locations',
-] as const;
-
-/**
  * Zwraca wszystkie możliwe scope permissions
  */
 export const getAllScopes = (): string[] => {
-  const scopes: string[] = [];
-  MODULES.forEach((module) => {
-    scopes.push(`${module}_view`, `${module}_manage`);
-    if (MODULES_WITH_CREATE.includes(module as any)) {
-      scopes.push(`${module}_create`);
-    }
-  });
-  scopes.push('employees_permissions');
-  scopes.push('messages_assign');
-  scopes.push('contacts_manage');
-  scopes.push('event_categories_manage');
-  scopes.push('website_edit');
-  scopes.push('invoices_view');
-  scopes.push('invoices_manage');
-  return scopes;
+  return [...ALL_PERMISSION_SCOPES];
 };
 
 /**

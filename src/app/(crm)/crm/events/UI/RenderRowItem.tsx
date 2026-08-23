@@ -342,6 +342,7 @@ export function EventEquipmentRow({
             equipmentId={row.equipment_id}
             eventId={eventId}
             offerId={offerId}
+            availabilityByKey={availabilityByKey}
             onComponentsAdded={onComponentsAdded}
           />
         </div>

@@ -338,7 +338,7 @@ export default function EmailSignatureSettingsPage() {
             </pre>
           ) : (
             <div
-              className="overflow-auto rounded-lg bg-white p-6"
+              className="overflow-auto rounded-lg bg-white p-6 text-[#1c1f33] [color-scheme:light]"
               dangerouslySetInnerHTML={{
                 __html: renderSignatureTemplate(template, previewValues),
               }}

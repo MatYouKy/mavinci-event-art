@@ -28,7 +28,9 @@ interface FilterConfig {
   positive_keywords: string[];
   negative_keywords: string[];
   cpv_codes: string[];
+  sources?: string[];
   min_relevance_score: number;
+  notification_score_threshold?: number;
   max_days_to_deadline: number;
 }
 
@@ -360,149 +362,142 @@ async function fetchTEDNotices(
 
 async function fetchBazaKonkurencyjnosci(
   cpvCodes: string[],
-  _pageSize = 100
+  pageSize = 50
 ): Promise<TenderRecord[]> {
-  const tenders: TenderRecord[] = [];
+  const tendersById = new Map<string, TenderRecord>();
+  const cpvBatches: Array<string | null> = cpvCodes.length > 0 ? cpvCodes : [null];
 
-  // Baza Konkurencyjnosci (bazakonkurencyjnosci.funduszeeuropejskie.gov.pl)
-  // requires OAuth2 authentication via Keycloak (id.funduszeeuropejskie.gov.pl).
-  // There is no public API. This function attempts to use the API with optional
-  // credentials from environment variables.
-  const clientId = Deno.env.get("BAZA_KONKURENCYJNOSCI_CLIENT_ID");
-  const clientSecret = Deno.env.get("BAZA_KONKURENCYJNOSCI_CLIENT_SECRET");
+  for (const cpvCode of cpvBatches) {
+    let page = 1;
+    let totalPages = 1;
 
-  if (!clientId || !clientSecret) {
-    console.warn(
-      "Baza Konkurencyjnosci: Brak konfiguracji API (BAZA_KONKURENCYJNOSCI_CLIENT_ID, BAZA_KONKURENCYJNOSCI_CLIENT_SECRET). Pomijam."
-    );
-    return tenders;
-  }
+    // Limit the initial backfill per CPV. Subsequent scheduled runs always scan
+    // the newest records first and upsert them by the external announcement id.
+    while (page <= Math.min(totalPages, 3)) {
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(pageSize),
+        sort: "publicationDate",
+      });
+      params.append("status[]", "PUBLISHED");
+      if (cpvCode) params.append("cpvItem[]", cpvCode);
 
-  try {
-    // Obtain OAuth2 token from Keycloak
-    const tokenResponse = await fetch(
-      "https://id.funduszeeuropejskie.gov.pl/realms/39465bb8-204c-446c-aeed-70db65bc9607/protocol/openid-connect/token",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          grant_type: "client_credentials",
-          client_id: clientId,
-          client_secret: clientSecret,
-        }),
+      const searchUrl =
+        `https://bazakonkurencyjnosci.funduszeeuropejskie.gov.pl/api/announcements/search?${params.toString()}`;
+      const response = await fetch(searchUrl, {
+        headers: { Accept: "application/json" },
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          `Baza Konkurencyjnosci API: ${response.status} - ${await response.text().catch(() => "")}`
+        );
       }
-    );
 
-    if (!tokenResponse.ok) {
-      console.warn(
-        `Baza Konkurencyjnosci: Token error ${tokenResponse.status}`
-      );
-      return tenders;
-    }
+      const payload = await response.json();
+      if (payload?.status !== "OK") {
+        throw new Error(
+          `Baza Konkurencyjnosci API: ${payload?.message || "nieprawidlowa odpowiedz"}`
+        );
+      }
 
-    const tokenData = await tokenResponse.json();
-    const accessToken = tokenData.access_token;
+      const notices = payload?.data?.advertisements;
+      if (!Array.isArray(notices)) {
+        throw new Error("Baza Konkurencyjnosci API: brak listy ogloszen");
+      }
 
-    if (!accessToken) {
-      console.warn("Baza Konkurencyjnosci: Nie otrzymano tokenu");
-      return tenders;
-    }
+      const total = Number(payload?.data?.meta?.total || notices.length);
+      totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-    // Fetch announcements with the token
-    const params = new URLSearchParams({
-      page: "1",
-      limit: "100",
-    });
-
-    if (cpvCodes.length > 0) {
-      params.set("cpvList", cpvCodes.join(","));
-    }
-
-    const searchUrl = `https://bazakonkurencyjnosci.funduszeeuropejskie.gov.pl/api/announcements?${params.toString()}`;
-
-    const response = await fetch(searchUrl, {
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
-
-    if (!response.ok) {
-      console.warn(
-        `Baza Konkurencyjnosci API: ${response.status} - ${await response.text().catch(() => "")}`
-      );
-      return tenders;
-    }
-
-    const data = await response.json();
-    const notices =
-      data.data || data.announcements || data.items || data.results || [];
-
-    if (Array.isArray(notices)) {
-      const seenIds = new Set<string>();
       for (const notice of notices) {
-        const externalId =
-          notice.id || notice.number || notice.announcementId || "";
-        if (!externalId || seenIds.has(String(externalId))) continue;
-        seenIds.add(String(externalId));
+        if (!notice?.id) continue;
+        const externalId = String(notice.id);
+        const existing = tendersById.get(externalId);
+        const matchedCodes = new Set(existing?.cpv_codes || []);
+        if (cpvCode) matchedCodes.add(cpvCode);
 
-        const cpvCodesArr: string[] = [];
-        if (notice.cpvCodes && Array.isArray(notice.cpvCodes)) {
-          cpvCodesArr.push(
-            ...notice.cpvCodes.map((c: unknown) =>
-              String(
-                typeof c === "object" && c !== null && "code" in c
-                  ? (c as Record<string, unknown>).code
-                  : c
-              )
-            )
-          );
-        }
-        if (notice.cpvCode) cpvCodesArr.push(String(notice.cpvCode));
-
-        tenders.push({
-          external_id: String(externalId),
+        tendersById.set(externalId, {
+          external_id: externalId,
           source: "baza_konkurencyjnosci",
-          title: notice.title || notice.name || notice.subject || "",
-          description:
-            notice.description || notice.content || notice.text || "",
-          contracting_authority:
-            notice.beneficiary ||
-            notice.publisher ||
-            notice.company ||
-            notice.organizationName ||
-            "",
-          cpv_codes: cpvCodesArr,
-          location:
-            notice.location ||
-            notice.province ||
-            notice.city ||
-            notice.voivodeship ||
-            "",
-          publication_date:
-            notice.publicationDate ||
-            notice.createdAt ||
-            notice.publishDate ||
-            null,
-          submission_deadline:
-            notice.submissionDeadline ||
-            notice.offerDeadline ||
-            notice.applicationDeadline ||
-            null,
-          estimated_value: Number(
-            notice.value || notice.estimatedValue || notice.orderValue || 0
-          ),
-          currency: notice.currency || "PLN",
-          source_url: `https://bazakonkurencyjnosci.funduszeeuropejskie.gov.pl/ogloszenia/${encodeURIComponent(String(externalId))}`,
+          title: String(notice.title || ""),
+          description: String(notice.content || ""),
+          contracting_authority: String(notice.advertiser_name || ""),
+          cpv_codes: [...matchedCodes],
+          location: String(notice.fulfillment_place || ""),
+          publication_date: notice.publication_date || null,
+          submission_deadline: notice.submission_deadline || null,
+          estimated_value: 0,
+          currency: "PLN",
+          source_url:
+            `https://bazakonkurencyjnosci.funduszeeuropejskie.gov.pl/ogloszenia/${encodeURIComponent(externalId)}`,
           raw_data: notice,
         });
       }
+
+      if (notices.length === 0) break;
+      page += 1;
     }
-  } catch (error) {
-    console.error("Baza Konkurencyjnosci fetch error:", error);
   }
 
-  return tenders;
+  return [...tendersById.values()];
+}
+
+async function notifyAboutHighScoreTender(
+  supabase: ReturnType<typeof createClient>,
+  tenderId: string,
+  tender: TenderRecord,
+  relevanceScore: number
+) {
+  const { data: recipients, error: recipientsError } = await supabase
+    .from("employees")
+    .select("id, role, access_level, permissions")
+    .eq("is_active", true);
+
+  if (recipientsError) throw recipientsError;
+
+  const recipientIds = (recipients || [])
+    .filter((employee) =>
+      employee.role === "admin" ||
+      employee.access_level === "admin" ||
+      (Array.isArray(employee.permissions) && employee.permissions.includes("tenders_view"))
+    )
+    .map((employee) => employee.id);
+
+  if (recipientIds.length === 0) return;
+
+  const { data: notification, error: notificationError } = await supabase
+    .from("notifications")
+    .insert({
+      title: `Nowy trafny przetarg (${relevanceScore}/100)`,
+      message: tender.title,
+      type: "info",
+      category: "system",
+      related_entity_id: tenderId,
+      action_url: `/crm/tenders?tender=${tenderId}`,
+      metadata: {
+        kind: "high_score_tender",
+        tender_id: tenderId,
+        source: tender.source,
+        source_url: tender.source_url,
+        relevance_score: relevanceScore,
+      },
+    })
+    .select("id")
+    .single();
+
+  if (notificationError) throw notificationError;
+
+  const { error: recipientInsertError } = await supabase
+    .from("notification_recipients")
+    .insert(
+      recipientIds.map((userId) => ({
+        notification_id: notification.id,
+        user_id: userId,
+        is_read: false,
+      }))
+    );
+
+  if (recipientInsertError) throw recipientInsertError;
 }
 
 Deno.serve(async (req: Request) => {
@@ -528,13 +523,17 @@ Deno.serve(async (req: Request) => {
       positive_keywords: [],
       negative_keywords: [],
       cpv_codes: [],
+      sources: ["bzp", "ted", "baza_konkurencyjnosci"],
       min_relevance_score: 30,
+      notification_score_threshold: 70,
       max_days_to_deadline: 60,
     };
 
     const sources = sourceParam
       ? [sourceParam]
-      : ["bzp", "ted", "baza_konkurencyjnosci"];
+      : config.sources?.length
+        ? config.sources
+        : ["bzp", "ted", "baza_konkurencyjnosci"];
 
     const results: Record<
       string,
@@ -625,8 +624,34 @@ Deno.serve(async (req: Request) => {
               .eq("id", existing.id);
             updatedCount++;
           } else {
-            await supabase.from("tenders").insert(record);
+            const { data: insertedTender, error: insertError } = await supabase
+              .from("tenders")
+              .insert(record)
+              .select("id")
+              .single();
+
+            if (insertError) throw insertError;
             newCount++;
+
+            const notificationThreshold = Math.max(
+              config.min_relevance_score,
+              config.notification_score_threshold ?? 70
+            );
+            if (isMatched && relevanceScore >= notificationThreshold) {
+              try {
+                await notifyAboutHighScoreTender(
+                  supabase,
+                  insertedTender.id,
+                  tender,
+                  relevanceScore
+                );
+              } catch (notificationError) {
+                console.error(
+                  `Tender notification error (${insertedTender.id}):`,
+                  notificationError
+                );
+              }
+            }
           }
         }
 
@@ -679,9 +704,21 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    return new Response(JSON.stringify({ success: true, results }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    const failedSources = Object.entries(results)
+      .filter(([, result]) => !result.success)
+      .map(([source, result]) => `${source}: ${result.error || "blad importu"}`);
+
+    return new Response(
+      JSON.stringify({
+        success: failedSources.length === 0,
+        results,
+        error: failedSources.length > 0 ? failedSources.join("; ") : undefined,
+      }),
+      {
+        status: failedSources.length > 0 ? 502 : 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     console.error("Fatal error in fetch-tenders:", errorMsg);

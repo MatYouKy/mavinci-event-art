@@ -14,6 +14,7 @@ interface NewMeetingModalProps {
   onClose: () => void;
   onSuccess?: () => void;
   initialDate?: Date;
+  initialContactId?: string;
 }
 
 interface MeetingParticipant {
@@ -69,6 +70,7 @@ export default function NewMeetingModal({
   onClose,
   onSuccess,
   initialDate,
+  initialContactId,
 }: NewMeetingModalProps) {
   const [title, setTitle] = useState('');
   const [locationId, setLocationId] = useState<string | null>(null);
@@ -138,14 +140,19 @@ export default function NewMeetingModal({
   };
 
   const fetchContacts = async () => {
-    const { data, error } = await supabase.from('contacts').select('id, name').order('name');
+    const { data, error } = await supabase
+      .from('contacts')
+      .select('id, full_name')
+      .order('last_name');
 
     if (error) {
       console.error('[NewMeetingModal] Contacts error:', error);
       return;
     }
 
-    setContacts(data ?? []);
+    setContacts(
+      (data ?? []).map((contact: any) => ({ id: contact.id, name: contact.full_name })),
+    );
   };
 
   const handleAddEmployee = (employee: EmployeeOption) => {
@@ -191,6 +198,12 @@ export default function NewMeetingModal({
     setShowContactList(false);
     setParticipantSearch('');
   };
+
+  useEffect(() => {
+    if (!isOpen || !initialContactId || contacts.length === 0) return;
+    const initialContact = contacts.find((contact) => contact.id === initialContactId);
+    if (initialContact) handleAddContact(initialContact);
+  }, [contacts, initialContactId, isOpen]);
 
   const handleRemoveParticipant = (index: number) => {
     setParticipants((current) =>

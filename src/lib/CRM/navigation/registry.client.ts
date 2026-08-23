@@ -8,6 +8,7 @@ import {
   CalendarClock,
   CalendarCheck,
   Mail,
+  Inbox,
   CheckSquare,
   Users,
   FileText,
@@ -28,6 +29,8 @@ import {
   FolderTree,
   FileType,
   Plug,
+  Megaphone,
+  MonitorPlay,
 } from 'lucide-react';
 
 /**
@@ -43,7 +46,10 @@ export const NavigationIcons = {
   calendar: CalendarDays,
   meetings: CalendarCheck,
   events: CalendarClock,
+  mavinciLive: MonitorPlay,
   messages: Mail,
+  campaigns: Megaphone,
+  inquiries: Inbox,
   tasks: CheckSquare,
   employees: Users,
   offers: FileText,

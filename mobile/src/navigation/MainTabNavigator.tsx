@@ -21,12 +21,14 @@ import EquipmentStackNavigator from './EquipmentStackNavigator';
 import InquiriesStackNavigator from './InquiriesStackNavigator';
 import TimeTrackingScreen from '../screens/TimeTrackingScreen';
 import EmployeesScreen from '../screens/EmployeesScreen';
+import FleetScreen from '../screens/FleetScreen';
+import ClientsScreen from '../screens/ClientsScreen';
 import MessagesScreen from '../screens/MessagesScreen';
 import CustomDrawer from '../components/CustomDrawer';
 import { useUnreadChatCount } from '../services/chatNotifications';
 import { consumeNotificationTarget } from '../../App';
 import { routeNotification, navigateToCalendarTab, NotificationTargetData } from './navigationRef';
-import { handleEventInvitationNotificationAction } from '../services/pushNotifications';
+import { handleEventInvitationNotificationAction, handleInquiryFollowupNotificationAction } from '../services/pushNotifications';
 
 export type MainTabParamList = {
   Dashboard: undefined;
@@ -42,6 +44,8 @@ export type MainTabParamList = {
   Equipment: undefined;
   TimeTracking: undefined;
   Employees: undefined;
+  Fleet: undefined;
+  Clients: undefined;
 };
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -129,6 +133,8 @@ export default function MainTabNavigator() {
         employee?.id,
       );
       if (invitationHandled) return;
+      const inquiryHandled = await handleInquiryFollowupNotificationAction(response, employee?.id);
+      if (inquiryHandled) return;
 
       const data = response.notification.request.content.data as NotificationTargetData;
       handleTarget(data);
@@ -370,6 +376,24 @@ export default function MainTabNavigator() {
             title: 'Pracownicy',
             tabBarButton: () => null,
             tabBarIcon: ({ color, size }) => <Feather name="users" color={color} size={size} />,
+          }}
+        />
+        <Tab.Screen
+          name="Clients"
+          component={ClientsScreen}
+          options={{
+            title: 'Kontakty',
+            tabBarButton: () => null,
+            tabBarIcon: ({ color, size }) => <Feather name="book-open" color={color} size={size} />,
+          }}
+        />
+        <Tab.Screen
+          name="Fleet"
+          component={FleetScreen}
+          options={{
+            title: 'Flota',
+            tabBarButton: () => null,
+            tabBarIcon: ({ color, size }) => <Feather name="truck" color={color} size={size} />,
           }}
         />
       </Tab.Navigator>

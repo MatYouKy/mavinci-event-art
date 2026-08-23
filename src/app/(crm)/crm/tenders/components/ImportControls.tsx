@@ -38,7 +38,13 @@ export default function ImportControls({ onImportComplete }: { onImportComplete:
       const data: ImportResult = await response.json();
 
       if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Blad importu');
+        const sourceErrors = data.results
+          ? Object.entries(data.results)
+              .filter(([, sourceResult]) => !sourceResult.success)
+              .map(([source, sourceResult]) => `${source}: ${sourceResult.error || 'błąd importu'}`)
+              .join('; ')
+          : '';
+        throw new Error(data.error || sourceErrors || 'Błąd importu');
       }
 
       setResult(data);

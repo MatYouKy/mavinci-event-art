@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/browser';
 import TenderList from './components/TenderList';
 import TenderFilters from './components/TenderFilters';
@@ -63,6 +64,9 @@ const defaultFilters: TenderFiltersState = {
 };
 
 export default function TendersPage() {
+  const searchParams = useSearchParams();
+  const requestedTenderId = searchParams.get('tender');
+  const openedTenderIdRef = useRef<string | null>(null);
   const [tenders, setTenders] = useState<Tender[]>([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState<TenderFiltersState>(defaultFilters);
@@ -148,6 +152,25 @@ export default function TendersPage() {
   useEffect(() => {
     fetchTenders();
   }, [fetchTenders]);
+
+  useEffect(() => {
+    if (!requestedTenderId || openedTenderIdRef.current === requestedTenderId) return;
+
+    const openRequestedTender = async () => {
+      const { data, error } = await supabase
+        .from('tenders')
+        .select('*')
+        .eq('id', requestedTenderId)
+        .maybeSingle();
+
+      if (!error && data) {
+        openedTenderIdRef.current = requestedTenderId;
+        setSelectedTender(data as Tender);
+      }
+    };
+
+    openRequestedTender();
+  }, [requestedTenderId]);
 
   const handleExport = () => {
     const csvRows = [

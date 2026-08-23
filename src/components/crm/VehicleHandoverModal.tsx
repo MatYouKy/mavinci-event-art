@@ -7,7 +7,7 @@ import { useSnackbar } from '@/contexts/SnackbarContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 
 interface Vehicle {
-  id: string;
+  id: string | null;
   vehicle_id: string | null;
   is_in_use: boolean;
   pickup_timestamp: string | null;
@@ -17,6 +17,8 @@ interface Vehicle {
     registration_number: string | null;
   } | null;
   external_company_name?: string | null;
+  usage_source?: 'event' | 'ad_hoc';
+  purpose?: string | null;
 }
 
 interface VehicleHandoverModalProps {
@@ -35,6 +37,7 @@ export default function VehicleHandoverModal({
 
   // Automatycznie określ typ operacji na podstawie flagi is_in_use
   const handoverType: 'pickup' | 'return' = vehicle.is_in_use ? 'return' : 'pickup';
+  const isAdHocUsage = vehicle.usage_source === 'ad_hoc';
 
   const [odometerReading, setOdometerReading] = useState('');
   const [notes, setNotes] = useState('');
@@ -72,7 +75,7 @@ export default function VehicleHandoverModal({
 
       if (vehicleError) throw vehicleError;
 
-      if (vehicleData?.current_mileage) {
+      if (vehicleData?.current_mileage != null) {
         setLastOdometer(vehicleData.current_mileage);
         setOdometerReading(vehicleData.current_mileage.toString());
       } else {
@@ -119,8 +122,19 @@ export default function VehicleHandoverModal({
       return;
     }
 
-    if (!vehicle?.id) {
+    if (!vehicle.vehicle_id) {
+      showSnackbar('Brak identyfikatora pojazdu', 'error');
+      return;
+    }
+
+    if (!isAdHocUsage && !vehicle.id) {
       showSnackbar('Brak identyfikatora przypisania pojazdu do wydarzenia', 'error');
+      return;
+    }
+
+    const mileage = parseInt(odometerReading, 10);
+    if (lastOdometer != null && mileage < lastOdometer) {
+      showSnackbar(`Stan licznika nie może być niższy niż ${lastOdometer} km`, 'error');
       return;
     }
 
@@ -128,10 +142,25 @@ export default function VehicleHandoverModal({
 
     try {
       const nowIso = new Date().toISOString();
-      const mileage = parseInt(odometerReading, 10);
+
+      if (isAdHocUsage) {
+        const { error } = await supabase.rpc('record_ad_hoc_vehicle_handover', {
+          p_vehicle_id: vehicle.vehicle_id,
+          p_handover_type: 'return',
+          p_odometer_reading: mileage,
+          p_purpose: vehicle.purpose ?? null,
+          p_notes: notes.trim() || null,
+        });
+
+        if (error) throw error;
+
+        showSnackbar('Pojazd został zdany', 'success');
+        onSuccess();
+        return;
+      }
 
       // event_vehicles.id (rekord przypisania do eventu)
-      const eventVehicleId = vehicle.id;
+      const eventVehicleId = vehicle.id as string;
 
       // vehicles.id (flota)
       const fleetVehicleId = vehicle.vehicle_id;
@@ -249,6 +278,13 @@ export default function VehicleHandoverModal({
           {vehicle.vehicles?.name || vehicle.external_company_name}
           {vehicle.vehicles?.registration_number && <> ({vehicle.vehicles.registration_number})</>}
         </p>
+
+        {isAdHocUsage && vehicle.purpose && (
+          <div className="mb-4 rounded border border-[#d3bb73]/20 bg-[#0f1119]/50 px-3 py-2">
+            <p className="text-xs uppercase tracking-wide text-[#e5e4e2]/40">Cel wyjazdu</p>
+            <p className="mt-1 text-sm text-[#e5e4e2]">{vehicle.purpose}</p>
+          </div>
+        )}
 
         <div className="space-y-4">
           <div>

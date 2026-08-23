@@ -53,6 +53,8 @@ interface BrandbookFont {
   weight: string;
   role: string;
   order_index: number;
+  file_url?: string | null;
+  storage_path?: string | null;
 }
 
 interface BrandbookStyle {
@@ -625,6 +627,51 @@ function FontsPanel({
 }) {
   const { showSnackbar } = useSnackbar();
   const { showConfirm } = useDialog();
+  const fontInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingFont, setUploadingFont] = useState(false);
+
+  const uploadFont = async (file: File) => {
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    if (!extension || !['woff', 'woff2', 'ttf', 'otf'].includes(extension)) {
+      showSnackbar('Obsługiwane formaty fontów: WOFF, WOFF2, TTF i OTF', 'error');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      showSnackbar('Maksymalny rozmiar fontu to 10 MB', 'error');
+      return;
+    }
+
+    setUploadingFont(true);
+    try {
+      const baseName = file.name.replace(/\.[^.]+$/, '');
+      const family = baseName.replace(/[-_]+/g, ' ').trim();
+      const storagePath = `brandbook/${companyId}/fonts/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '-')}`;
+      const { error: uploadError } = await supabase.storage
+        .from(LOGOS_BUCKET)
+        .upload(storagePath, file, { contentType: file.type || undefined, upsert: false });
+      if (uploadError) throw uploadError;
+
+      const { data: publicData } = supabase.storage.from(LOGOS_BUCKET).getPublicUrl(storagePath);
+      const { error: insertError } = await supabase.from('company_brandbook_fonts').insert({
+        company_id: companyId,
+        label: baseName,
+        family,
+        weight: '400',
+        role: 'body',
+        order_index: fonts.length,
+        file_url: publicData.publicUrl,
+        storage_path: storagePath,
+      });
+      if (insertError) throw insertError;
+      showSnackbar('Font został wgrany i jest dostępny w edytorach', 'success');
+      await reload();
+    } catch (error: any) {
+      showSnackbar(error.message || 'Nie udało się wgrać fontu', 'error');
+    } finally {
+      setUploadingFont(false);
+      if (fontInputRef.current) fontInputRef.current.value = '';
+    }
+  };
 
   const addFont = async () => {
     const { error } = await supabase.from('company_brandbook_fonts').insert({
@@ -663,6 +710,9 @@ function FontsPanel({
       cancelText: 'Anuluj',
     });
     if (!ok) return;
+    if (font.storage_path) {
+      await supabase.storage.from(LOGOS_BUCKET).remove([font.storage_path]);
+    }
     const { error } = await supabase.from('company_brandbook_fonts').delete().eq('id', font.id);
     if (error) {
       showSnackbar(error.message || 'Błąd usuwania', 'error');
@@ -677,13 +727,33 @@ function FontsPanel({
         <p className="text-sm text-[#e5e4e2]/60">
           Rodziny fontów wykorzystywane w komunikacji marki
         </p>
-        <button
-          onClick={addFont}
-          className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90"
-        >
-          <Plus className="h-4 w-4" />
-          Dodaj font
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <input
+            ref={fontInputRef}
+            type="file"
+            accept=".woff,.woff2,.ttf,.otf,font/woff,font/woff2,font/ttf,font/otf"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void uploadFont(file);
+            }}
+          />
+          <button
+            onClick={() => fontInputRef.current?.click()}
+            disabled={uploadingFont}
+            className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#1c1f33] hover:bg-[#d3bb73]/90 disabled:opacity-50"
+          >
+            <Upload className="h-4 w-4" />
+            {uploadingFont ? 'Wgrywanie…' : 'Wgraj font'}
+          </button>
+          <button
+            onClick={addFont}
+            className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-4 py-2 text-sm text-[#d3bb73] hover:bg-[#d3bb73]/10"
+          >
+            <Plus className="h-4 w-4" />
+            Dodaj font systemowy
+          </button>
+        </div>
       </div>
 
       <div className="space-y-3">
@@ -692,6 +762,9 @@ function FontsPanel({
             key={font.id}
             className="rounded-xl border border-[#d3bb73]/10 bg-[#1c1f33] p-4"
           >
+            {font.file_url && (
+              <style>{`@font-face { font-family: '${font.family.replace(/'/g, "\\'")}'; src: url('${font.file_url}') format('${font.file_url.endsWith('.woff2') ? 'woff2' : font.file_url.endsWith('.woff') ? 'woff' : font.file_url.endsWith('.otf') ? 'opentype' : 'truetype'}'); font-weight: ${font.weight || '400'}; font-style: normal; font-display: swap; }`}</style>
+            )}
             <div className="grid gap-3 md:grid-cols-[1fr_2fr_120px_120px_auto]">
               <input
                 type="text"

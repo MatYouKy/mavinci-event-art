@@ -18,13 +18,148 @@ import {
   List,
   ListOrdered,
   Type,
-  Trash2,
   Columns,
+  Eye,
+  Printer,
+  Download,
+  Loader2,
+  ChevronRight,
 } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import Image from 'next/image';
+import { paginateContractHtml } from '@/lib/CRM/contracts/contractPagination';
+import { normalizeContractParagraphPlaceholders } from '@/lib/CRM/contracts/contractParagraphs';
+import { createContractDraftPdf } from '../../printDraft';
 
 const DEFAULT_LOGO = '/erulers_logo_vect.png';
+
+const SYSTEM_FONTS = [
+  { label: 'Arial', family: 'Arial, sans-serif' },
+  { label: 'Helvetica', family: "'Helvetica Neue', Helvetica, sans-serif" },
+  { label: 'Times New Roman', family: "'Times New Roman', Times, serif" },
+  { label: 'Georgia', family: 'Georgia, serif' },
+  { label: 'Verdana', family: 'Verdana, sans-serif' },
+  { label: 'Tahoma', family: 'Tahoma, sans-serif' },
+  { label: 'Trebuchet MS', family: "'Trebuchet MS', sans-serif" },
+  { label: 'Courier New', family: "'Courier New', monospace" },
+  { label: 'Palatino', family: "Palatino, 'Palatino Linotype', serif" },
+  { label: 'Garamond', family: 'Garamond, serif' },
+  { label: 'Systemowy', family: 'system-ui, -apple-system, BlinkMacSystemFont, sans-serif' },
+];
+
+const CONTRACT_CLAUSE_SLOTS = [
+  { key: '{{contract_clauses_requirements}}', label: 'Wymagania organizacyjne i techniczne' },
+  { key: '{{contract_clauses_obligations}}', label: 'Obowiązki zamawiającego' },
+  { key: '{{contract_clauses_risks}}', label: 'Ryzyka i odpowiedzialność' },
+  { key: '{{contract_clauses_general}}', label: 'Postanowienia dodatkowe' },
+  { key: '{{contract_clauses_all}}', label: 'Wszystkie klauzule produktowe' },
+] as const;
+
+const PLACEHOLDER_CONTEXT_GROUPS = [
+  {
+    label: 'Dokument',
+    items: [{ key: '§n', label: 'Automatyczny numer paragrafu' }],
+  },
+  {
+    label: 'Oferta',
+    items: [
+      { key: '{{offer_number}}', label: 'Numer oferty' },
+      { key: '{{offer_scope}}', label: 'Zakres oferty' },
+      { key: '{{offer_valid_until}}', label: 'Oferta ważna do' },
+      { key: '{{offer_items}}', label: 'Pozycje z oferty' },
+      { key: '{{OFFER_ITEMS_TABLE}}', label: 'Tabela pozycji' },
+    ],
+  },
+  {
+    label: 'Kontakt',
+    items: [
+      { key: '{{contact_first_name}}', label: 'Imię' },
+      { key: '{{contact_last_name}}', label: 'Nazwisko' },
+      { key: '{{contact_full_name}}', label: 'Imię i nazwisko' },
+      { key: '{{contact_email}}', label: 'E-mail' },
+      { key: '{{contact_phone}}', label: 'Telefon' },
+      { key: '{{contact_pesel}}', label: 'PESEL' },
+      { key: '{{contact_address}}', label: 'Adres' },
+      { key: '{{contact_city}}', label: 'Miasto' },
+      { key: '{{contact_postal_code}}', label: 'Kod pocztowy' },
+    ],
+  },
+  {
+    label: 'Firma',
+    items: [
+      { key: '{{organization_name}}', label: 'Nazwa firmy' },
+      { key: '{{organization_nip}}', label: 'NIP' },
+      { key: '{{organization_legal_form}}', label: 'Forma prawna' },
+      { key: '{{organization_krs}}', label: 'KRS' },
+      { key: '{{organization_regon}}', label: 'REGON' },
+      { key: '{{organization_full_address}}', label: 'Pełny adres' },
+      { key: '{{primary_contact_full_name}}', label: 'Osoba kontaktowa' },
+      { key: '{{legal_representative_full_name}}', label: 'Reprezentant prawny' },
+      { key: '{{decision_makers_list}}', label: 'Osoby decyzyjne' },
+    ],
+  },
+  {
+    label: 'Wydarzenie',
+    items: [
+      { key: '{{event_name}}', label: 'Nazwa wydarzenia' },
+      { key: '{{event_date}}', label: 'Data i czas rozpoczęcia' },
+      { key: '{{event_end_date}}', label: 'Data i czas zakończenia' },
+      { key: '{{event_date_only}}', label: 'Data rozpoczęcia' },
+      { key: '{{event_end_date_only}}', label: 'Data zakończenia' },
+      { key: '{{event_time_start}}', label: 'Godzina rozpoczęcia' },
+      { key: '{{event_time_end}}', label: 'Godzina zakończenia' },
+    ],
+  },
+  {
+    label: 'Lokalizacja',
+    items: [
+      { key: '{{location_name}}', label: 'Nazwa lokalizacji' },
+      { key: '{{location_address}}', label: 'Adres' },
+      { key: '{{location_city}}', label: 'Miasto' },
+      { key: '{{location_postal_code}}', label: 'Kod pocztowy' },
+      { key: '{{location_full}}', label: 'Pełny adres' },
+    ],
+  },
+  {
+    label: 'Finanse i umowa',
+    items: [
+      { key: '{{budget}}', label: 'Budżet' },
+      { key: '{{budget_words}}', label: 'Budżet słownie' },
+      { key: '{{deposit_amount}}', label: 'Zadatek' },
+      { key: '{{deposit_words}}', label: 'Zadatek słownie' },
+      { key: '{{contract_number}}', label: 'Numer umowy' },
+      { key: '{{contract_date}}', label: 'Data umowy' },
+    ],
+  },
+  {
+    label: 'Wykonawca',
+    items: [
+      { key: '{{executor_name}}', label: 'Nazwa firmy' },
+      { key: '{{executor_address}}', label: 'Adres' },
+      { key: '{{executor_postal_code}}', label: 'Kod pocztowy' },
+      { key: '{{executor_city}}', label: 'Miasto' },
+      { key: '{{executor_nip}}', label: 'NIP' },
+      { key: '{{executor_phone}}', label: 'Telefon' },
+      { key: '{{executor_email}}', label: 'E-mail' },
+    ],
+  },
+  { label: 'Sekcje klauzul', items: CONTRACT_CLAUSE_SLOTS, clauseSlots: true },
+] as const;
+
+const decorateClauseSlots = (html: string): string => {
+  let decorated = html;
+  CONTRACT_CLAUSE_SLOTS.forEach(({ key, label }) => {
+    const slotName = key.replace(/[{}]/g, '');
+    if (!decorated.includes(key) || decorated.includes(`data-contract-clause-slot="${slotName}"`)) {
+      return;
+    }
+    decorated = decorated.replace(
+      key,
+      `<div data-contract-clause-slot="${slotName}" data-clause-label="${label}"><span data-clause-placeholder="true">${key}</span></div>`,
+    );
+  });
+  return decorated;
+};
 
 export default function EditTemplateWYSIWYGPage() {
   const params = useParams();
@@ -35,6 +170,7 @@ export default function EditTemplateWYSIWYGPage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [draftAction, setDraftAction] = useState<'preview' | 'print' | 'download' | null>(null);
   const [template, setTemplate] = useState<any>(null);
   const [contentHtml, setContentHtml] = useState('');
   const [logoScale, setLogoScale] = useState(80);
@@ -47,6 +183,9 @@ export default function EditTemplateWYSIWYGPage() {
   const [footerTemplates, setFooterTemplates] = useState<any[]>([]);
   const [brandLogos, setBrandLogos] = useState<
     Array<{ url: string; label: string; companyName: string }>
+  >([]);
+  const [brandFonts, setBrandFonts] = useState<
+    Array<{ id: string; label: string; family: string; weight: string; file_url?: string | null }>
   >([]);
   const [showFooterEditor, setShowFooterEditor] = useState(false);
   const [footerLogoScale, setFooterLogoScale] = useState(80);
@@ -64,16 +203,36 @@ export default function EditTemplateWYSIWYGPage() {
   const [showPlaceholders, setShowPlaceholders] = useState(false);
   const [placeholderCategory, setPlaceholderCategory] = useState<string>('offer');
   const [pages, setPages] = useState<string[]>(['']);
-  const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [editingName, setEditingName] = useState(false);
   const [tempName, setTempName] = useState('');
   const updateTimeoutRef = useRef<number | null>(null);
+  const contextRangeRef = useRef<Range | null>(null);
+  const formatRangeRef = useRef<Range | null>(null);
+  const [placeholderContextMenu, setPlaceholderContextMenu] = useState<{
+    x: number;
+    y: number;
+    pageIndex: number;
+    openLeft: boolean;
+  } | null>(null);
+
+  const paginationSettings = () => ({
+    logoScale,
+    logoPositionX,
+    logoPositionY,
+    lineHeight,
+    selectedFont,
+    selectedLogo,
+    selectedFooter,
+    footerContent,
+    footerLogoScale,
+  });
 
   useEffect(() => {
     fetchTemplate();
     fetchFooterTemplates();
     fetchBrandLogos();
+    fetchBrandFonts();
   }, [templateId]);
 
   useEffect(() => {
@@ -99,6 +258,24 @@ export default function EditTemplateWYSIWYGPage() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!placeholderContextMenu) return;
+    const close = () => setPlaceholderContextMenu(null);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') close();
+    };
+    window.addEventListener('click', close);
+    window.addEventListener('resize', close);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      window.removeEventListener('click', close);
+      window.removeEventListener('resize', close);
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [placeholderContextMenu]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -156,6 +333,7 @@ export default function EditTemplateWYSIWYGPage() {
             .join('');
         }
 
+        initialHtml = normalizeContractParagraphPlaceholders(decorateClauseSlots(initialHtml));
         setContentHtml(initialHtml);
         const settings = data.page_settings || {};
 
@@ -177,9 +355,18 @@ export default function EditTemplateWYSIWYGPage() {
           if (data.page_settings.footerContent) setFooterContent(data.page_settings.footerContent);
           if (data.page_settings.footerLogoScale)
             setFooterLogoScale(data.page_settings.footerLogoScale);
-          if (data.page_settings.pages && Array.isArray(data.page_settings.pages)) {
-            setPages(data.page_settings.pages);
-            setHistory([data.page_settings.pages]);
+          if (data.page_settings.flowContent || (data.page_settings.pages && Array.isArray(data.page_settings.pages))) {
+            const source = normalizeContractParagraphPlaceholders(
+              decorateClauseSlots(
+                data.page_settings.flowContent || data.page_settings.pages.join(''),
+              ),
+            );
+            const initialPages = await paginateContractHtml(source, {
+              ...settings,
+              selectedFooter: settings.selectedFooter || 'default',
+            });
+            setPages(initialPages);
+            setHistory([initialPages]);
             setHistoryIndex(0);
           } else if (initialHtml) {
             setPages([initialHtml]);
@@ -229,7 +416,9 @@ export default function EditTemplateWYSIWYGPage() {
       return;
     }
 
-    const allContent = pages.join('\n\n--- PAGE BREAK ---\n\n');
+    const flowContent = normalizeContractParagraphPlaceholders(pages.join(''));
+    const paginatedPages = await paginateContractHtml(flowContent, paginationSettings());
+    const allContent = paginatedPages.join('');
     const plainText = allContent.replace(/<[^>]*>/g, '').trim();
 
     if (!allContent || plainText === '') {
@@ -239,6 +428,7 @@ export default function EditTemplateWYSIWYGPage() {
 
     try {
       setSaving(true);
+      setPages(paginatedPages);
 
       const updateData = {
         content: plainText || 'Szablon umowy',
@@ -254,7 +444,9 @@ export default function EditTemplateWYSIWYGPage() {
           selectedFooterTemplateId,
           footerContent,
           footerLogoScale,
-          pages,
+          flowContent,
+          pages: paginatedPages,
+          paginationMode: 'automatic',
           marginTop: 50,
           marginBottom: 50,
           marginLeft: 50,
@@ -343,6 +535,59 @@ export default function EditTemplateWYSIWYGPage() {
     } catch (err: any) {
       console.error('Error fetching brand logos:', err);
     }
+  };
+
+  const fetchBrandFonts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('company_brandbook_fonts')
+        .select('id, label, family, weight, file_url')
+        .order('order_index');
+      if (error) throw error;
+      const nextFonts = data || [];
+      setBrandFonts(nextFonts);
+      await Promise.all(
+        nextFonts
+          .filter((font: any) => font.file_url)
+          .map(async (font: any) => {
+            const loadedFont = new FontFace(font.family, `url(${font.file_url})`, {
+              weight: font.weight || '400',
+            });
+            await loadedFont.load();
+            document.fonts.add(loadedFont);
+          }),
+      );
+    } catch (error) {
+      console.error('Error fetching brand fonts:', error);
+    }
+  };
+
+  const rememberEditorSelection = () => {
+    const selection = window.getSelection();
+    if (!selection?.rangeCount) return;
+    const range = selection.getRangeAt(0);
+    const node = range.commonAncestorContainer;
+    const element = node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as Element);
+    if (element?.closest('.contract-content')) formatRangeRef.current = range.cloneRange();
+  };
+
+  const restoreEditorSelection = () => {
+    const range = formatRangeRef.current;
+    if (!range) return null;
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    return range;
+  };
+
+  const persistFormattedEditor = () => {
+    const range = formatRangeRef.current;
+    if (!range) return;
+    const node = range.commonAncestorContainer;
+    const element = node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as Element);
+    const editor = element?.closest('.contract-content') as HTMLDivElement | null;
+    const pageIndex = pageRefs.current.findIndex((page) => page === editor);
+    if (editor && pageIndex >= 0) updatePageContent(pageIndex, editor.innerHTML);
   };
 
   const handleFooterTemplateSelect = (templateId: string) => {
@@ -619,6 +864,114 @@ export default function EditTemplateWYSIWYGPage() {
     updatePageContent(pageIndex, editorElement.innerHTML);
   };
 
+  const insertClauseSlot = (placeholder: string, label: string) => {
+    if (pages.join('').includes(placeholder)) {
+      showSnackbar(`Sekcja „${label}” jest już umieszczona w szablonie`, 'info');
+      return;
+    }
+
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) {
+      showSnackbar('Kliknij w treści umowy w miejscu, w którym ma znaleźć się sekcja', 'info');
+      return;
+    }
+
+    const range = selection.getRangeAt(0);
+    const container = range.commonAncestorContainer;
+    let editorElement =
+      container.nodeType === Node.TEXT_NODE ? container.parentElement : (container as HTMLElement);
+
+    while (editorElement && !editorElement.classList.contains('contract-content')) {
+      editorElement = editorElement.parentElement;
+    }
+    if (!editorElement) {
+      showSnackbar('Najpierw ustaw kursor w treści umowy', 'info');
+      return;
+    }
+
+    const pageIndex = pageRefs.current.findIndex((ref) => ref === editorElement);
+    if (pageIndex === -1) return;
+
+    const slot = document.createElement('div');
+    slot.setAttribute('data-contract-clause-slot', placeholder.replace(/[{}]/g, ''));
+    slot.setAttribute('data-clause-label', label);
+    slot.innerHTML = `<span data-clause-placeholder="true">${placeholder}</span>`;
+
+    range.deleteContents();
+    range.insertNode(slot);
+    range.setStartAfter(slot);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    updatePageContent(pageIndex, editorElement.innerHTML);
+  };
+
+  const openPlaceholderContextMenu = (
+    event: React.MouseEvent<HTMLDivElement>,
+    pageIndex: number,
+  ) => {
+    event.preventDefault();
+
+    const documentWithCaret = document as Document & {
+      caretRangeFromPoint?: (x: number, y: number) => Range | null;
+      caretPositionFromPoint?: (x: number, y: number) => CaretPosition | null;
+    };
+    let range = documentWithCaret.caretRangeFromPoint?.(event.clientX, event.clientY) || null;
+    if (!range) {
+      const position = documentWithCaret.caretPositionFromPoint?.(event.clientX, event.clientY);
+      if (position) {
+        range = document.createRange();
+        range.setStart(position.offsetNode, position.offset);
+      }
+    }
+    if (!range || !event.currentTarget.contains(range.startContainer)) return;
+
+    range.collapse(true);
+    contextRangeRef.current = range.cloneRange();
+    setPlaceholderContextMenu({
+      x: Math.min(event.clientX, window.innerWidth - 230),
+      y: Math.min(event.clientY, window.innerHeight - 330),
+      pageIndex,
+      openLeft: event.clientX > window.innerWidth - 520,
+    });
+  };
+
+  const insertPlaceholderFromContext = (
+    placeholder: string,
+    label: string,
+    clauseSlot = false,
+  ) => {
+    const menu = placeholderContextMenu;
+    const range = contextRangeRef.current;
+    const editor = menu ? pageRefs.current[menu.pageIndex] : null;
+    if (!menu || !range || !editor || !editor.contains(range.startContainer)) return;
+
+    if (clauseSlot && pages.join('').includes(placeholder)) {
+      showSnackbar(`Sekcja „${label}” jest już umieszczona w szablonie`, 'info');
+      setPlaceholderContextMenu(null);
+      return;
+    }
+
+    range.deleteContents();
+    const node = clauseSlot ? document.createElement('div') : document.createTextNode(placeholder);
+    if (node instanceof HTMLDivElement) {
+      node.setAttribute('data-contract-clause-slot', placeholder.replace(/[{}]/g, ''));
+      node.setAttribute('data-clause-label', label);
+      node.innerHTML = `<span data-clause-placeholder="true">${placeholder}</span>`;
+    }
+    range.insertNode(node);
+    range.setStartAfter(node);
+    range.collapse(true);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    updatePageContent(menu.pageIndex, editor.innerHTML);
+    contextRangeRef.current = null;
+    setPlaceholderContextMenu(null);
+  };
+
   const insertLogo = () => {
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return;
@@ -671,15 +1024,12 @@ export default function EditTemplateWYSIWYGPage() {
     const pageIndex = pageRefs.current.findIndex((ref) => ref === editorElement);
     if (pageIndex === -1) return;
 
-    const existingParagraphs = editorElement.querySelectorAll('p[data-paragraph-number]');
-    const nextNumber = existingParagraphs.length + 1;
-
     const p = document.createElement('p');
     p.style.fontWeight = 'bold';
     p.style.textAlign = 'center';
     p.style.margin = '1.5em 0';
-    p.setAttribute('data-paragraph-number', String(nextNumber));
-    p.innerHTML = `§${nextNumber}. `;
+    p.setAttribute('data-contract-paragraph', 'true');
+    p.innerHTML = '§n ';
 
     range.insertNode(p);
     range.setStart(p.firstChild!, p.innerHTML.length);
@@ -690,11 +1040,58 @@ export default function EditTemplateWYSIWYGPage() {
     updatePageContent(pageIndex, editorElement.innerHTML);
   };
 
-  const addNewPage = () => {
-    const newPages = [...pages, ''];
-    setPages(newPages);
-    setCurrentPageIndex(newPages.length - 1);
-    showSnackbar('Dodano nową stronę', 'success');
+  const repaginate = async (sourcePages = pages) => {
+    const normalizedContent = normalizeContractParagraphPlaceholders(sourcePages.join(''));
+    const nextPages = await paginateContractHtml(normalizedContent, paginationSettings());
+    setPages(nextPages);
+    pageRefs.current = [];
+  };
+
+  const currentDraftTemplate = () => ({
+    ...template,
+    name: template?.name || 'Szablon umowy',
+    content_html: pages.join(''),
+    page_settings: {
+      ...(template?.page_settings || {}),
+      ...paginationSettings(),
+      flowContent: pages.join(''),
+      pages,
+      paginationMode: 'automatic',
+    },
+  });
+
+  const handleDraftAction = async (action: 'preview' | 'print' | 'download') => {
+    const previewWindow = action !== 'download' ? window.open('', '_blank') : null;
+    if (action !== 'download' && !previewWindow) {
+      showSnackbar('Zezwól przeglądarce na otwieranie nowych kart.', 'error');
+      return;
+    }
+
+    try {
+      setDraftAction(action);
+      const blob = await createContractDraftPdf(currentDraftTemplate());
+      const url = URL.createObjectURL(blob);
+
+      if (action === 'download') {
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${template?.name || 'szablon-umowy'}-draft.pdf`;
+        link.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+        return;
+      }
+
+      previewWindow!.location.href = url;
+      if (action === 'print') {
+        previewWindow!.addEventListener('load', () => previewWindow!.print(), { once: true });
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (error: any) {
+      previewWindow?.close();
+      showSnackbar(error?.message || 'Nie udało się przygotować draftu', 'error');
+    } finally {
+      setDraftAction(null);
+    }
   };
 
   const updatePageContent = (pageIndex: number, content: string) => {
@@ -710,20 +1107,6 @@ export default function EditTemplateWYSIWYGPage() {
       addToHistory(newPages);
       updateTimeoutRef.current = null;
     }, 500);
-  };
-
-  const deletePage = (pageIndex: number) => {
-    if (pages.length <= 1) {
-      showSnackbar('Nie można usunąć ostatniej strony', 'error');
-      return;
-    }
-    const newPages = pages.filter((_, i) => i !== pageIndex);
-    setPages(newPages);
-    addToHistory(newPages);
-    if (currentPageIndex >= newPages.length) {
-      setCurrentPageIndex(newPages.length - 1);
-    }
-    showSnackbar('Usunięto stronę', 'success');
   };
 
   const justifySelection = () => {
@@ -769,9 +1152,10 @@ export default function EditTemplateWYSIWYGPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0b14]">
+    <div className="-m-2 min-h-screen bg-[#0a0b14] sm:-m-4 md:-m-6">
+      <div className="sticky -top-2 z-40 max-h-[calc(100dvh-73px)] overflow-y-auto overscroll-contain bg-[#1c1f33] shadow-xl sm:-top-4 md:-top-6">
       {/* Header */}
-      <div className="sticky top-0 z-40 border-b border-[#d3bb73]/20 bg-[#1c1f33]">
+      <div className="border-b border-[#d3bb73]/20 bg-[#1c1f33]">
         <div className="mx-auto max-w-[1400px] px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -830,20 +1214,58 @@ export default function EditTemplateWYSIWYGPage() {
               </div>
             </div>
 
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-2 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
-            >
-              <Save className="h-4 w-4" />
-              {saving ? 'Zapisywanie...' : 'Zapisz'}
-            </button>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <button
+                onClick={() => void handleDraftAction('preview')}
+                disabled={draftAction !== null}
+                className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-3 py-2 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10 disabled:opacity-50"
+              >
+                {draftAction === 'preview' ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+                Zobacz draft
+              </button>
+              <button
+                onClick={() => void handleDraftAction('print')}
+                disabled={draftAction !== null}
+                className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-3 py-2 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10 disabled:opacity-50"
+              >
+                {draftAction === 'print' ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Printer className="h-4 w-4" />
+                )}
+                Drukuj draft
+              </button>
+              <button
+                onClick={() => void handleDraftAction('download')}
+                disabled={draftAction !== null}
+                className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/30 px-3 py-2 text-sm text-[#e5e4e2] hover:bg-[#d3bb73]/10 disabled:opacity-50"
+              >
+                {draftAction === 'download' ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4" />
+                )}
+                Pobierz draft
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-6 py-2 font-medium text-[#1c1f33] transition-colors hover:bg-[#d3bb73]/90 disabled:opacity-50"
+              >
+                <Save className="h-4 w-4" />
+                {saving ? 'Zapisywanie...' : 'Zapisz'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Toolbar */}
-      <div className="sticky top-[73px] z-30 border-b border-[#d3bb73]/20 bg-[#1c1f33]">
+      <div className="border-b border-[#d3bb73]/20 bg-[#1c1f33]">
         <div className="mx-auto max-w-[1400px] px-6 py-3">
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -936,21 +1358,24 @@ export default function EditTemplateWYSIWYGPage() {
             <div className="mx-2 h-6 w-px bg-[#d3bb73]/30" />
 
             <select
-              onMouseDown={(e) => e.preventDefault()}
+              onMouseDown={rememberEditorSelection}
               onChange={(e) => {
                 const size = e.target.value;
+                if (!size || !restoreEditorSelection()) return;
                 document.execCommand('fontSize', false, '7');
-                const fontElements = document.getElementsByTagName('font');
+                const fontElements = document.querySelectorAll<HTMLFontElement>(
+                  '.contract-content font[size="7"]',
+                );
                 for (let i = 0; i < fontElements.length; i++) {
-                  if (fontElements[i].size === '7') {
-                    fontElements[i].removeAttribute('size');
-                    fontElements[i].style.fontSize = size + 'pt';
-                  }
+                  fontElements[i].removeAttribute('size');
+                  fontElements[i].style.fontSize = `${size}pt`;
                 }
+                persistFormattedEditor();
+                e.target.value = '';
               }}
               className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1 text-sm text-[#e5e4e2]"
             >
-              <option value="">Czcionka</option>
+              <option value="">Rozmiar</option>
               <option value="6">6pt</option>
               <option value="8">8pt</option>
               <option value="9">9pt</option>
@@ -976,23 +1401,46 @@ export default function EditTemplateWYSIWYGPage() {
             <div className="ml-2 flex items-center gap-2">
               <span className="text-xs text-[#e5e4e2]/60">Czcionka:</span>
               <select
-                onMouseDown={(e) => e.preventDefault()}
+                onMouseDown={rememberEditorSelection}
                 value={selectedFont}
                 onChange={(e) => {
-                  setSelectedFont(e.target.value);
-                  if (editorRef.current) {
-                    editorRef.current.style.fontFamily = e.target.value;
+                  const family = e.target.value;
+                  const range = restoreEditorSelection();
+                  if (range && !range.collapsed) {
+                    document.execCommand('fontName', false, family);
+                    document
+                      .querySelectorAll<HTMLFontElement>('.contract-content font[face]')
+                      .forEach((fontElement) => {
+                        fontElement.style.fontFamily = fontElement.getAttribute('face') || family;
+                        fontElement.removeAttribute('face');
+                      });
+                    persistFormattedEditor();
+                  } else {
+                    setSelectedFont(family);
                   }
                 }}
                 className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-2 py-1 text-sm text-[#e5e4e2]"
               >
-                <option value="Georgia, serif">Georgia</option>
-                <option value="'Times New Roman', Times, serif">Times New Roman</option>
-                <option value="'Crimson Text', Georgia, serif">Crimson Text</option>
-                <option value="'Lora', Georgia, serif">Lora</option>
-                <option value="'Merriweather', Georgia, serif">Merriweather</option>
-                <option value="Arial, sans-serif">Arial</option>
-                <option value="'Helvetica Neue', Helvetica, sans-serif">Helvetica</option>
+                <optgroup label="Fonty systemowe i przeglądarki">
+                  {SYSTEM_FONTS.map((font) => (
+                    <option key={font.family} value={font.family} style={{ fontFamily: font.family }}>
+                      {font.label}
+                    </option>
+                  ))}
+                </optgroup>
+                {brandFonts.length > 0 && (
+                  <optgroup label="Fonty brandbooka">
+                    {brandFonts.map((font) => (
+                      <option
+                        key={font.id}
+                        value={`'${font.family}', sans-serif`}
+                        style={{ fontFamily: font.family }}
+                      >
+                        {font.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             </div>
 
@@ -1024,15 +1472,15 @@ export default function EditTemplateWYSIWYGPage() {
               className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-sm font-medium text-[#d3bb73] hover:bg-[#d3bb73]/10"
               title="Nowy paragraf (§)"
             >
-              § Paragraf
+              §n Paragraf automatyczny
             </button>
 
             <button
-              onClick={addNewPage}
+              onClick={() => void repaginate()}
               className="rounded border border-[#d3bb73]/20 bg-[#0f1119] px-3 py-1.5 text-sm font-medium text-[#d3bb73] hover:bg-[#d3bb73]/10"
-              title="Dodaj nową stronę"
+              title="Przelicz podział stron z uwzględnieniem nagłówka i stopki"
             >
-              📄 Dodaj stronę
+              📄 Przelicz strony
             </button>
 
             <div className="mx-2 h-6 w-px bg-[#d3bb73]/30" />
@@ -1181,6 +1629,7 @@ export default function EditTemplateWYSIWYGPage() {
                   location: 'Lokalizacja',
                   financial: 'Finanse',
                   executor: 'Wykonawca',
+                  clauses: 'Klauzule',
                 }[placeholderCategory]
               }
               )
@@ -1191,7 +1640,12 @@ export default function EditTemplateWYSIWYGPage() {
 
       {/* Placeholders Panel */}
       {showPlaceholders && (
-        <div className="border-b border-[#d3bb73]/20 bg-[#16171d] px-4 py-3">
+        <div
+          className="border-b border-[#d3bb73]/20 bg-[#16171d] px-4 py-3"
+          onMouseDown={(event) => {
+            if ((event.target as HTMLElement).closest('button')) event.preventDefault();
+          }}
+        >
           <div className="mx-auto max-w-[230mm]">
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <span className="text-xs font-semibold text-[#d3bb73]">Zmienne:</span>
@@ -1203,6 +1657,7 @@ export default function EditTemplateWYSIWYGPage() {
                 { key: 'location', label: 'Lokalizacja' },
                 { key: 'financial', label: 'Finanse' },
                 { key: 'executor', label: 'Wykonawca' },
+                { key: 'clauses', label: 'Klauzule' },
               ].map((cat) => (
                 <button
                   key={cat.key}
@@ -1235,6 +1690,17 @@ export default function EditTemplateWYSIWYGPage() {
                     title={p.key}
                   >
                     {p.label}
+                  </button>
+                ))}
+              {placeholderCategory === 'clauses' &&
+                CONTRACT_CLAUSE_SLOTS.map((p) => (
+                  <button
+                    key={p.key}
+                    onClick={() => insertClauseSlot(p.key, p.label)}
+                    className="rounded border border-blue-400/30 bg-blue-500/10 px-3 py-1.5 text-xs text-blue-200 hover:bg-blue-500/20"
+                    title={`Wstaw miejsce: ${p.label}`}
+                  >
+                    Wstaw sekcję: {p.label}
                   </button>
                 ))}
               {placeholderCategory === 'contact' &&
@@ -1364,6 +1830,7 @@ export default function EditTemplateWYSIWYGPage() {
           </div>
         </div>
       )}
+      </div>
 
       {/* Footer Editor Panel */}
       {selectedFooter !== 'none' && showFooterEditor && (
@@ -1548,19 +2015,26 @@ export default function EditTemplateWYSIWYGPage() {
                     updatePageContent(pageIndex, e.currentTarget.innerHTML);
                   }
                 }}
+                onContextMenu={(event) => openPlaceholderContextMenu(event, pageIndex)}
                 contentEditable={true}
                 suppressContentEditableWarning
                 dir="ltr"
                 onInput={(e) => updatePageContent(pageIndex, e.currentTarget.innerHTML)}
-                onBlur={(e) => updatePageContent(pageIndex, e.currentTarget.innerHTML)}
-                className="contract-content"
+                onBlur={(e) => {
+                  const nextPages = [...pages];
+                  nextPages[pageIndex] = e.currentTarget.innerHTML;
+                  updatePageContent(pageIndex, e.currentTarget.innerHTML);
+                  void repaginate(nextPages);
+                }}
+                className="contract-content contract-template-editor"
                 style={{
                   outline: 'none',
                   direction: 'ltr',
                   unicodeBidi: 'embed',
                   lineHeight: String(lineHeight),
                   fontFamily: selectedFont,
-                  minHeight: pageIndex === 0 ? '160mm' : '250mm',
+                  minHeight: 0,
+                  overflow: 'hidden',
                 }}
               />
 
@@ -1595,25 +2069,55 @@ export default function EditTemplateWYSIWYGPage() {
                 </div>
               )}
 
-              {pages.length > 1 && (
-                <button
-                  onClick={() => deletePage(pageIndex)}
-                  className="absolute right-2 top-2 rounded-lg bg-red-500/10 p-2 text-red-500 transition-colors hover:bg-red-500/20"
-                  title="Usuń stronę"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              )}
-
-              {pages.length > 1 && (
-                <div className="absolute bottom-4 mx-auto w-[calc(100%-50mm)] text-center text-xs text-[#000]/50">
-                  {pageIndex + 1} z {pages.length}
-                </div>
-              )}
+              <div className="contract-page-counter">
+                {pageIndex + 1}/{pages.length}
+              </div>
             </div>
           ))}
         </div>
       </div>
+
+      {placeholderContextMenu && (
+        <div
+          className="fixed z-[100] w-56 rounded-lg border border-[#d3bb73]/30 bg-[#16171d] py-1 text-sm text-[#e5e4e2] shadow-2xl"
+          style={{ left: placeholderContextMenu.x, top: placeholderContextMenu.y }}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={(event) => event.stopPropagation()}
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          <div className="border-b border-[#d3bb73]/15 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-[#d3bb73]">
+            Wstaw zmienną
+          </div>
+          {PLACEHOLDER_CONTEXT_GROUPS.map((group) => (
+            <div key={group.label} className="group relative">
+              <button className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-[#d3bb73]/10">
+                <span>{group.label}</span>
+                <ChevronRight className="h-4 w-4 text-[#d3bb73]" />
+              </button>
+              <div
+                className={`invisible absolute top-0 z-[101] max-h-[360px] w-64 overflow-y-auto rounded-lg border border-[#d3bb73]/30 bg-[#16171d] py-1 opacity-0 shadow-2xl transition-opacity group-hover:visible group-hover:opacity-100 ${placeholderContextMenu.openLeft ? 'right-full' : 'left-full'}`}
+              >
+                {group.items.map((item) => (
+                  <button
+                    key={item.key}
+                    onClick={() =>
+                      insertPlaceholderFromContext(
+                        item.key,
+                        item.label,
+                        'clauseSlots' in group && group.clauseSlots,
+                      )
+                    }
+                    className="block w-full px-3 py-2 text-left hover:bg-[#d3bb73]/10 hover:text-[#d3bb73]"
+                    title={item.key}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Custom Styles
       <style jsx global>{`

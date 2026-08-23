@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase/browser';
 import {
   DEFAULT_SIGNATURE_TEMPLATE,
+  normalizeSignatureHtml,
   renderSignatureTemplate,
   SignaturePlaceholderValues,
 } from '@/lib/signatureTemplate';
@@ -174,7 +175,8 @@ export async function buildCompanySignatureHtml(opts: BuildOptions = {}): Promis
 
 export async function buildCompanyEmailBody(opts: BuildBodyOptions): Promise<BuildBodyResult> {
   const ctx = await loadCompanyContext(opts);
-  const contentHtml = opts.content.replace(/\n/g, '<br>');
+  const rawContentHtml = opts.content.replace(/\n/g, '<br>');
+  const contentHtml = `<div style="margin:0; padding:0; color:#1c1f33 !important; background-color:#ffffff !important; font-family:Arial, sans-serif; font-size:14px; line-height:1.6;">${rawContentHtml}</div>`;
 
   if (!ctx) {
     return {
@@ -193,6 +195,7 @@ export async function buildCompanyEmailBody(opts: BuildBodyOptions): Promise<Bui
     const sigTemplate = ctx.company.email_signature_template || DEFAULT_SIGNATURE_TEMPLATE;
     signatureHtml = renderSignatureTemplate(sigTemplate, buildSignatureValues(ctx));
   }
+  signatureHtml = normalizeSignatureHtml(signatureHtml);
 
   const values: EmailBodyPlaceholderValues = {
     content: contentHtml,
@@ -244,7 +247,7 @@ export async function buildCompanyEmailBody(opts: BuildBodyOptions): Promise<Bui
 
   if (!assignedTemplateHtml) {
     return {
-      html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;"><div style="white-space: pre-wrap;">${contentHtml}</div>${opts.pdfLink ?? ''}${signatureHtml}</div>`,
+      html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color:#1c1f33; background-color:#ffffff;"><div style="white-space: pre-wrap; color:#1c1f33; background-color:#ffffff;">${contentHtml}</div>${opts.pdfLink ?? ''}${signatureHtml}</div>`,
       templateEnabled: false,
       companyId: ctx.company.id,
       signatureHtml,

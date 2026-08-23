@@ -1,15 +1,30 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, FileText, RefreshCw, Repeat, AlertTriangle } from 'lucide-react';
+import {
+  Plus,
+  FileText,
+  RefreshCw,
+  Repeat,
+  AlertTriangle,
+  Search,
+  X,
+  Table2,
+  LayoutGrid,
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useDialog } from '@/contexts/DialogContext';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import { InvoiceFormModal } from './InvoiceFormModal';
-import { GroupedInvoices } from './GroupedInvoices';
+import { EXTERNAL_INVOICE_COLUMNS, GroupedInvoices } from './GroupedInvoices';
 import { SubscriptionsList } from './SubscriptionsList';
 import { SubscriptionFormModal } from './SubscriptionFormModal';
+import ResponsiveActionBar from '../../../ResponsiveActionBar';
+import {
+  TablePreferencesControl,
+  useStoredTablePreferences,
+} from '../../TablePreferencesControl';
 
 export interface ExternalInvoice {
   id: string;
@@ -136,6 +151,12 @@ export function ExternalInvoicesTab() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(true);
   const [schemaMissing, setSchemaMissing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState<'table' | 'list'>('table');
+  const tablePreferences = useStoredTablePreferences(
+    'crm.external-invoices.table-preferences.v1',
+    EXTERNAL_INVOICE_COLUMNS,
+  );
 
   const [invoiceModal, setInvoiceModal] = useState<{
     open: boolean;
@@ -301,10 +322,86 @@ export function ExternalInvoicesTab() {
 
   const today = new Date().toISOString().slice(0, 10);
 
+  const normalizedSearch = searchQuery
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('pl-PL');
+
+  const matchesSearch = useCallback(
+    (values: Array<string | number | null | undefined>) => {
+      if (!normalizedSearch) return true;
+      return values
+        .filter((value) => value !== null && value !== undefined)
+        .map((value) =>
+          String(value)
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLocaleLowerCase('pl-PL'),
+        )
+        .some((value) => value.includes(normalizedSearch));
+    },
+    [normalizedSearch],
+  );
+
+  const filteredInvoices = useMemo(
+    () =>
+      invoices.filter((invoice) =>
+        matchesSearch([
+          invoice.invoice_number,
+          invoice.label,
+          invoice.seller_name,
+          invoice.seller_nip,
+          invoice.notes,
+          invoice.payment_method,
+          invoice.currency,
+          invoice.amount_net,
+          invoice.amount_gross,
+        ]),
+      ),
+    [invoices, matchesSearch],
+  );
+
+  const filteredSubscriptions = useMemo(
+    () =>
+      subscriptions.filter((subscription) =>
+        matchesSearch([
+          subscription.name,
+          subscription.seller_name,
+          subscription.seller_nip,
+          subscription.notes,
+          subscription.payment_method,
+          subscription.currency,
+        ]),
+      ),
+    [matchesSearch, subscriptions],
+  );
+
+  const actionItems = [
+    {
+      label: 'Odśwież',
+      onClick: fetchData,
+      icon: <RefreshCw className="h-4 w-4" />,
+    },
+    ...(canManage && !schemaMissing
+      ? [
+          {
+            label: subTab === 'invoices' ? 'Dodaj fakturę' : 'Dodaj subskrypcję',
+            onClick: () =>
+              subTab === 'invoices'
+                ? setInvoiceModal({ open: true, prefill: null, invoice: null })
+                : setShowSubModal(true),
+            icon: <Plus className="h-4 w-4" />,
+            variant: 'primary' as const,
+          },
+        ]
+      : []),
+  ];
+
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex gap-2">
+      <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-center">
+        <div className="flex w-full shrink-0 items-center gap-2 lg:w-auto">
           <button
             onClick={() => setSubTab('invoices')}
             className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
@@ -327,33 +424,73 @@ export function ExternalInvoicesTab() {
             <Repeat className="h-4 w-4" />
             Subskrypcje
           </button>
+
+          <div className="ml-auto shrink-0 lg:hidden">
+            <ResponsiveActionBar
+              disabledBackground
+              mobileBreakpoint={10000}
+              actions={actionItems}
+            />
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={fetchData}
-            className="flex items-center gap-2 rounded-lg border border-[#d3bb73]/20 px-3 py-2 text-sm text-[#e5e4e2]/70 hover:text-[#e5e4e2]"
-          >
-            <RefreshCw className="h-4 w-4" />
-            Odśwież
-          </button>
-          {canManage && !schemaMissing && (
-            <button
-              onClick={() =>
-                subTab === 'invoices'
-                  ? setInvoiceModal({
-                      open: true,
-                      prefill: null,
-                      invoice: null,
-                    })
-                  : setShowSubModal(true)
-              }
-              className="flex items-center gap-2 rounded-lg bg-[#d3bb73] px-4 py-2 text-sm font-medium text-[#0a0d1a] hover:bg-[#d3bb73]/90"
-            >
-              <Plus className="h-4 w-4" />
-              {subTab === 'invoices' ? 'Dodaj fakturę' : 'Dodaj subskrypcję'}
-            </button>
+        <div className="ml-auto flex w-full min-w-0 flex-wrap items-center justify-end gap-2 lg:w-auto lg:flex-nowrap">
+          <div className="flex h-9 min-w-[190px] flex-1 items-center gap-2 rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33] px-3 lg:w-64 lg:flex-none">
+            <Search className="h-4 w-4 shrink-0 text-[#e5e4e2]/40" />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder={subTab === 'invoices' ? 'Numer, nazwa, NIP, sprzedawca…' : 'Nazwa, NIP, sprzedawca…'}
+              className="min-w-0 flex-1 bg-transparent text-xs text-[#e5e4e2] outline-none placeholder:text-[#e5e4e2]/35"
+              aria-label="Szukaj faktury spoza KSeF"
+            />
+            {searchQuery && (
+              <button type="button" onClick={() => setSearchQuery('')} aria-label="Wyczyść wyszukiwanie">
+                <X className="h-4 w-4 text-[#e5e4e2]/40" />
+              </button>
+            )}
+          </div>
+
+          {subTab === 'invoices' && viewMode === 'table' && (
+            <TablePreferencesControl
+              columns={EXTERNAL_INVOICE_COLUMNS}
+              density={tablePreferences.density}
+              visibleColumns={tablePreferences.visibleColumns}
+              onToggleColumn={tablePreferences.toggleColumn}
+              onDensityChange={tablePreferences.setDensity}
+              onReset={tablePreferences.reset}
+            />
           )}
+
+          {subTab === 'invoices' && (
+            <div className="flex h-9 shrink-0 overflow-hidden rounded-lg border border-[#d3bb73]/20 bg-[#1c1f33]">
+              <button
+                type="button"
+                onClick={() => setViewMode('table')}
+                className={`px-2.5 transition-colors ${viewMode === 'table' ? 'bg-[#d3bb73]/20 text-[#d3bb73]' : 'text-[#e5e4e2]/45 hover:text-[#e5e4e2]'}`}
+                title="Widok tabeli"
+              >
+                <Table2 className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('list')}
+                className={`border-l border-[#d3bb73]/20 px-2.5 transition-colors ${viewMode === 'list' ? 'bg-[#d3bb73]/20 text-[#d3bb73]' : 'text-[#e5e4e2]/45 hover:text-[#e5e4e2]'}`}
+                title="Widok listy"
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
+          <div className="hidden shrink-0 lg:block">
+            <ResponsiveActionBar
+              disabledBackground
+              mobileBreakpoint={900}
+              actions={actionItems}
+            />
+          </div>
         </div>
       </div>
 
@@ -373,17 +510,21 @@ export function ExternalInvoicesTab() {
         <div className="py-16 text-center text-[#e5e4e2]/50">Ładowanie...</div>
       ) : subTab === 'invoices' ? (
         <GroupedInvoices
-          invoices={invoices}
-          subscriptions={subscriptions}
+          invoices={filteredInvoices}
+          subscriptions={filteredSubscriptions}
           canManage={canManage}
           onPreview={openFile}
           onDelete={deleteInvoice}
           onEdit={editInvoice}
           onAddForPlaceholder={openPlaceholder}
+          viewMode={viewMode}
+          density={tablePreferences.density}
+          isColumnVisible={tablePreferences.isColumnVisible}
+          hasSearchQuery={Boolean(searchQuery.trim())}
         />
       ) : (
         <SubscriptionsList
-          subscriptions={subscriptions}
+          subscriptions={filteredSubscriptions}
           today={today}
           canManage={canManage}
           onPreview={openFile}

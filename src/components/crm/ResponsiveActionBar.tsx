@@ -17,12 +17,14 @@ interface ResponsiveActionBarProps {
   actions: Action[];
   mobileBreakpoint?: number;
   disabledBackground?: boolean;
+  compact?: boolean;
 }
 
 export default function ResponsiveActionBar({
   actions,
   mobileBreakpoint = 768,
   disabledBackground = false,
+  compact = false,
 }: ResponsiveActionBarProps) {
   const [isMobile, setIsMobile] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -88,7 +90,9 @@ export default function ResponsiveActionBar({
   if (filteredActions.length === 0) return null;
 
   const getButtonClasses = (variant?: string) => {
-    const baseClasses = 'flex items-center gap-2 rounded-lg px-4 py-2 transition-colors';
+    const baseClasses = compact
+      ? 'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors'
+      : 'flex items-center gap-2 rounded-lg px-4 py-2 transition-colors';
 
     switch (variant) {
       case 'primary':
@@ -149,12 +153,16 @@ export default function ResponsiveActionBar({
           onClick={openMenu}
           className={
             disabledBackground
-              ? 'flex h-10 w-10 items-center justify-center rounded-lg bg-transparent text-[#e5e4e2]/70 transition-colors hover:text-[#e5e4e2]'
-              : 'flex h-10 w-10 items-center justify-center rounded-lg bg-[#d3bb73]/10 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20'
+              ? `flex items-center justify-center bg-transparent text-[#e5e4e2]/70 transition-colors hover:text-[#e5e4e2] ${
+                  compact ? 'h-8 w-8 rounded-md' : 'h-10 w-10 rounded-lg'
+                }`
+              : `flex items-center justify-center bg-[#d3bb73]/10 text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/20 ${
+                  compact ? 'h-8 w-8 rounded-md' : 'h-10 w-10 rounded-lg'
+                }`
           }
           aria-label="Akcje"
         >
-          <MoreVertical className="h-5 w-5" />
+          <MoreVertical className={compact ? 'h-4 w-4' : 'h-5 w-5'} />
         </button>
 
         <PortalDropdownMenu

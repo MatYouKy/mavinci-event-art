@@ -8,8 +8,13 @@ export const EVENT_INVITATION_CATEGORY = 'event_invitation';
 export const EVENT_INVITATION_ACCEPT_ACTION = 'event_invitation_accept';
 export const EVENT_INVITATION_REJECT_ACTION = 'event_invitation_reject';
 export const EVENT_INVITATION_DETAILS_ACTION = 'event_invitation_details';
+export const INQUIRY_FOLLOWUP_CATEGORY = 'inquiry_followup';
+export const INQUIRY_FOLLOWUP_DONE_ACTION = 'inquiry_followup_done';
+export const INQUIRY_FOLLOWUP_SNOOZE_ACTION = 'inquiry_followup_snooze';
+export const INQUIRY_FOLLOWUP_DETAILS_ACTION = 'inquiry_followup_details';
 
 const handledInvitationResponses = new Set<string>();
+const handledInquiryResponses = new Set<string>();
 
 void Notifications.setNotificationCategoryAsync(EVENT_INVITATION_CATEGORY, [
   {
@@ -29,6 +34,14 @@ void Notifications.setNotificationCategoryAsync(EVENT_INVITATION_CATEGORY, [
   },
 ]).catch((error) => {
   console.error('[Push] Event invitation category setup failed:', error);
+});
+
+void Notifications.setNotificationCategoryAsync(INQUIRY_FOLLOWUP_CATEGORY, [
+  { identifier: INQUIRY_FOLLOWUP_DONE_ACTION, buttonTitle: 'Kontakt wykonany', options: { opensAppToForeground: true } },
+  { identifier: INQUIRY_FOLLOWUP_SNOOZE_ACTION, buttonTitle: 'Odłóż 1h', options: { opensAppToForeground: true } },
+  { identifier: INQUIRY_FOLLOWUP_DETAILS_ACTION, buttonTitle: 'Szczegóły', options: { opensAppToForeground: true } },
+]).catch((error) => {
+  console.error('[Push] Inquiry follow-up category setup failed:', error);
 });
 
 // Android notification channel setup (must run early, before any notification arrives)
@@ -271,5 +284,45 @@ export async function handleEventInvitationNotificationAction(
       .eq('user_id', employeeId);
   }
 
+  return true;
+}
+
+export async function handleInquiryFollowupNotificationAction(
+  response: Notifications.NotificationResponse,
+  employeeId: string | undefined,
+): Promise<boolean> {
+  const action = response.actionIdentifier;
+  if (action !== INQUIRY_FOLLOWUP_DONE_ACTION && action !== INQUIRY_FOLLOWUP_SNOOZE_ACTION) {
+    return false;
+  }
+
+  const data = response.notification.request.content.data as {
+    inquiry_id?: string;
+    entity_id?: string;
+    notification_id?: string;
+  };
+  const inquiryId = data.inquiry_id || data.entity_id;
+  if (!inquiryId || !employeeId) return true;
+
+  const responseKey = `${response.notification.request.identifier}:${action}`;
+  if (handledInquiryResponses.has(responseKey)) return true;
+  handledInquiryResponses.add(responseKey);
+
+  const { error } = action === INQUIRY_FOLLOWUP_DONE_ACTION
+    ? await supabase.rpc('complete_inquiry_followup', { p_inquiry_id: inquiryId, p_next_action_at: null })
+    : await supabase.rpc('snooze_inquiry_followup', { p_inquiry_id: inquiryId, p_minutes: 60 });
+
+  if (error) {
+    handledInquiryResponses.delete(responseKey);
+    console.error('[Push] Inquiry follow-up action failed:', error);
+    return true;
+  }
+
+  if (data.notification_id) {
+    await supabase.from('notification_recipients').update({
+      is_read: true,
+      read_at: new Date().toISOString(),
+    }).eq('notification_id', data.notification_id).eq('user_id', employeeId);
+  }
   return true;
 }

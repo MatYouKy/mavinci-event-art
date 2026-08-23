@@ -86,6 +86,34 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    let accessLevelDefaults: {
+      default_permissions: string[] | null;
+      event_tabs: string[] | null;
+      contact_tabs: string[] | null;
+      organization_tabs: string[] | null;
+    } | null = null;
+
+    if (body.access_level_id) {
+      const { data: accessLevel, error: accessLevelError } = await supabaseAdmin
+        .from('access_levels')
+        .select('default_permissions, event_tabs, contact_tabs, organization_tabs')
+        .eq('id', body.access_level_id)
+        .maybeSingle();
+
+      if (accessLevelError || !accessLevel) {
+        await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+        return new Response(
+          JSON.stringify({ error: 'Wybrany poziom dostępu nie istnieje lub jest niedostępny' }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          },
+        );
+      }
+
+      accessLevelDefaults = accessLevel;
+    }
+
     // Step 2: Insert employee data
     const employeeData = {
       id: authData.user.id,
@@ -96,6 +124,10 @@ Deno.serve(async (req: Request) => {
       phone_number: body.phone_number || null,
       role: body.role || 'unassigned',
       access_level_id: body.access_level_id || null,
+      permissions: accessLevelDefaults?.default_permissions || [],
+      event_tabs: accessLevelDefaults?.event_tabs || null,
+      contact_tabs: accessLevelDefaults?.contact_tabs || null,
+      organization_tabs: accessLevelDefaults?.organization_tabs || null,
       occupation: body.occupation || null,
       is_active: true,
       show_on_website: false,

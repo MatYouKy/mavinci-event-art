@@ -29,6 +29,7 @@ import { Building2, ExternalLink } from 'lucide-react';
 import { ProductEquipment } from '../components/ProductEquipment';
 import { ProductStaffSection } from '../components/ProductStuffSection';
 import { ProductContractClauses } from '../components/ProductContractClauses';
+import { ProductMavinciLiveModules } from '../components/ProductMavinciLiveModules';
 import { AddEquipmentModal } from '../modal/AddEquipmentModal';
 import { useManageProduct } from '../hooks/useManageProduct';
 import ResponsiveActionBar, { Action } from '@/components/crm/ResponsiveActionBar';
@@ -70,6 +71,7 @@ interface IProduct {
   pdf_page_url?: string | null;
   pdf_thumbnail_url?: string | null;
   recommended_contract_clauses?: string | null;
+  recommended_contract_clause_category?: 'requirements' | 'obligations' | 'risks' | 'general';
   category?: IEventCategory;
   is_subcontractor_service?: boolean;
   subcontractor_id?: string | null;
@@ -1621,6 +1623,11 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
         <ProductEquipment canEdit={canEdit} setShowAddEquipmentModal={setShowAddEquipmentModal} />
       )}
 
+      {/* Mavinci LIVE */}
+      {productId !== 'new' && (
+        <ProductMavinciLiveModules productId={productId} canEdit={canEdit} />
+      )}
+
       {/* Staff */}
       {productId !== 'new' && (
         <ProductStaffSection
@@ -1636,18 +1643,26 @@ export default function ProductDetailPage({ initialProduct, initialCategories }:
         <ProductContractClauses
           productId={productId}
           initialClauses={product.recommended_contract_clauses || null}
+          initialCategory={product.recommended_contract_clause_category || 'requirements'}
           canEdit={canEdit}
-          onSave={async (clauses) => {
+          onSave={async (clauses, category) => {
             try {
               const { error } = await supabase
                 .from('offer_products')
-                .update({ recommended_contract_clauses: clauses })
+                .update({
+                  recommended_contract_clauses: clauses,
+                  recommended_contract_clause_category: category,
+                })
                 .eq('id', productId);
 
               if (error) throw error;
 
               setProduct((prev) =>
-                prev ? { ...prev, recommended_contract_clauses: clauses } : prev,
+                prev ? {
+                  ...prev,
+                  recommended_contract_clauses: clauses,
+                  recommended_contract_clause_category: category,
+                } : prev,
               );
 
               showSnackbar('Zapisano klauzule umowy', 'success');
