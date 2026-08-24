@@ -184,12 +184,12 @@ export default function CRMDashboard({
       module: 'equipment',
     },
     {
-      name: 'Wpływy z opłaconych faktur',
+      name: 'Wpływy faktyczne',
       value: stats.revenue,
       displayValue: `${stats.revenue.toLocaleString('pl-PL', {
         maximumFractionDigits: 0,
       })} zł`,
-      helper: `od początku ${new Date().getFullYear()} roku`,
+      helper: `bank, potwierdzone płatności i gotówka od początku ${new Date().getFullYear()} roku`,
       icon: WalletCards,
       color: 'text-[#d3bb73]',
       bgColor: 'bg-[#d3bb73]/10',
@@ -390,13 +390,13 @@ export default function CRMDashboard({
 
       {widgetEnabled('financial-trends') && canView(employee, 'invoices') && (
         <TrendChart
-          title="Przychód, koszty i marża"
-          description={`Rentowność wydarzeń według terminu realizacji · zakres ${dashboardRange === '12m' ? '12 miesięcy' : '6 miesięcy'}`}
+          title="Wpływy, wydatki i wynik kasowy"
+          description={`Rzeczywiste przepływy według daty płatności · zakres ${dashboardRange === '12m' ? '12 miesięcy' : '6 miesięcy'}`}
           months={visibleMonths}
           series={[
-            { key: 'revenue', label: 'Przychód', color: '#34d399' },
-            { key: 'costs', label: 'Koszty', color: '#f87171' },
-            { key: 'margin', label: 'Marża', color: '#d3bb73' },
+            { key: 'revenue', label: 'Wpływy', color: '#34d399' },
+            { key: 'costs', label: 'Wydatki', color: '#f87171' },
+            { key: 'margin', label: 'Wynik kasowy', color: '#d3bb73' },
           ]}
           formatValue={formatDashboardMoney}
         />

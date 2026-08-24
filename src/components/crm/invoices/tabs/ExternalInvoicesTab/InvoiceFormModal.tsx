@@ -47,15 +47,22 @@ export function InvoiceFormModal({
     currency: invoice?.currency ?? prefill?.currency ?? 'PLN',
 
     notes: invoice?.notes ?? '',
+    my_company_id: invoice?.my_company_id ?? '',
+    category_id: invoice?.category_id ?? '',
+    payment_status: invoice?.payment_status ?? 'paid',
+    payment_date:
+      invoice?.payment_date ?? invoice?.invoice_date ?? prefill?.invoice_date ?? new Date().toISOString().slice(0, 10),
   });
   const [file, setFile] = useState<File | null>(null);
+  const [companies, setCompanies] = useState<Array<{ id: string; name: string }>>([]);
+  const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
   
 
   const isSubscriptionInvoice = !!prefill?.subscription_id;
 
   const submit = async () => {
-    if (!form.seller_name.trim() || !form.invoice_number.trim() || !form.invoice_date) {
-      showSnackbar('Uzupełnij sprzedającego, numer i datę faktury', 'error');
+    if (!form.seller_name.trim() || !form.invoice_number.trim() || !form.invoice_date || !form.my_company_id) {
+      showSnackbar('Uzupełnij działalność, sprzedającego, numer i datę faktury', 'error');
       return;
     }
     setSaving(true);
@@ -85,6 +92,10 @@ export function InvoiceFormModal({
         ? null
         : filePath ?? invoice?.file_url ?? null,
       notes: form.notes.trim() || null,
+      my_company_id: form.my_company_id || null,
+      category_id: form.category_id || null,
+      payment_status: form.payment_status,
+      payment_date: form.payment_status === 'paid' ? (form.payment_date || form.invoice_date) : null,
     };
 
     let result;
@@ -109,6 +120,19 @@ export function InvoiceFormModal({
     );
     onSaved();
   };
+
+  useEffect(() => {
+    Promise.all([
+      supabase.from('my_companies').select('id,name').eq('is_active', true).order('name'),
+      supabase.from('finance_categories').select('id,name').eq('is_active', true).in('kind', ['expense', 'both']).order('sort_order'),
+    ]).then(([companiesResult, categoriesResult]) => {
+      setCompanies(companiesResult.data || []);
+      setCategories(categoriesResult.data || []);
+      if (companiesResult.data?.length === 1) {
+        setForm((current) => ({ ...current, my_company_id: current.my_company_id || companiesResult.data[0].id }));
+      }
+    });
+  }, []);
 
   useEffect(() => {
     const loadFile = async () => {
@@ -142,6 +166,20 @@ export function InvoiceFormModal({
         </div>
       )}
       <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className={labelClass}>Działalność *</label>
+          <select className={inputClass} value={form.my_company_id} onChange={(e) => setForm({ ...form, my_company_id: e.target.value })}>
+            <option value="">Wybierz działalność</option>
+            {companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className={labelClass}>Kategoria kosztu</label>
+          <select className={inputClass} value={form.category_id} onChange={(e) => setForm({ ...form, category_id: e.target.value })}>
+            <option value="">Rozpoznaj automatycznie</option>
+            {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+          </select>
+        </div>
         <div>
           <label className={labelClass}>Nazwa sprzedającego *</label>
           <input
@@ -197,6 +235,25 @@ export function InvoiceFormModal({
             ))}
           </select>
         </div>
+        <div>
+          <label className={labelClass}>Status płatności</label>
+          <select
+            className={inputClass}
+            value={form.payment_status}
+            onChange={(e) => setForm({ ...form, payment_status: e.target.value as typeof form.payment_status })}
+          >
+            <option value="paid">Zapłacona</option>
+            <option value="unpaid">Nieopłacona</option>
+            <option value="partially_paid">Częściowo opłacona</option>
+            <option value="cancelled">Anulowana</option>
+          </select>
+        </div>
+        {form.payment_status === 'paid' && (
+          <div>
+            <label className={labelClass}>Data zapłaty</label>
+            <input type="date" className={inputClass} value={form.payment_date} onChange={(e) => setForm({ ...form, payment_date: e.target.value })} />
+          </div>
+        )}
         <div>
           <label className={labelClass}>Kwota netto</label>
           <input

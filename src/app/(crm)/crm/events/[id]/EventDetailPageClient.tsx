@@ -89,6 +89,7 @@ import { hasScope } from './helpers/hasScope';
 import { EventCategoryRow } from '@/lib/CRM/events/eventsData.server';
 import { EventContractTab } from '@/components/crm/events/contract/EventContractTab';
 import EventWorkflowReadinessPanel from '@/components/crm/events/EventWorkflowReadinessPanel';
+import EventPreflightPanel from '@/components/crm/events/EventPreflightPanel';
 
 export const ADMIN_EVENT_TABS = [
   'overview',
@@ -986,6 +987,9 @@ export default function EventDetailPageClient({
                   </div>
                 </div>
               </div>
+            )}
+            {canEventManage && (
+              <EventPreflightPanel eventId={eventId} onNavigate={(tab) => setActiveTab(tab as any)} />
             )}
             {canEventManage && (
               <EventWorkflowReadinessPanel

@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Settings, Lock, Eye, Bell, LayoutGrid, LayoutList, Save, RefreshCw, Shield, Tag, ArrowRight, Mail, Plus, List, Table2, Building2, Key, Ligature as FileSignature, Upload, Volume2, Trash2, Webhook, Database, BarChart3, Workflow } from 'lucide-react';
+import { Settings, Lock, Eye, Bell, LayoutGrid, LayoutList, Save, RefreshCw, Shield, Tag, ArrowRight, Mail, Plus, List, Table2, Building2, Key, Ligature as FileSignature, Upload, Volume2, Trash2, Webhook, Database, BarChart3, Workflow, Activity } from 'lucide-react';
 import { supabase } from '@/lib/supabase/browser';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import ChangePasswordModal from '@/components/crm/ChangePasswordModal';
@@ -985,6 +985,22 @@ export default function SettingsPage() {
             </p>
 
             <div className="space-y-3">
+              <button
+                onClick={() => router.push('/crm/settings/system-health')}
+                className="flex w-full items-center justify-between rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4 transition-colors hover:bg-[#1c1f33]"
+              >
+                <div className="flex items-center gap-3">
+                  <Activity className="h-5 w-5 text-[#d3bb73]" />
+                  <div className="text-left">
+                    <div className="font-medium text-[#e5e4e2]">Stan systemu i jakość danych</div>
+                    <div className="text-xs text-[#e5e4e2]/60">
+                      Integracje, kolejki, braki danych i kontrola bezpieczeństwa
+                    </div>
+                  </div>
+                </div>
+                <ArrowRight className="h-5 w-5 text-[#e5e4e2]/40" />
+              </button>
+
               <button
                 onClick={() => router.push('/crm/settings/workflows')}
                 className="flex w-full items-center justify-between rounded-lg border border-[#d3bb73]/10 bg-[#0f1119] p-4 transition-colors hover:bg-[#1c1f33]"

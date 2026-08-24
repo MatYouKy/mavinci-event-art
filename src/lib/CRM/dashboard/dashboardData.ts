@@ -85,6 +85,7 @@ export async function fetchStatsServer(): Promise<DashboardStats> {
     equipmentItemsRes,
     paidInvoicesRes,
     overdueInvoicesRes,
+    financialReportRes,
   ] = await Promise.all([
     supabase.from('events').select('id', { count: 'exact', head: true }),
     supabase
@@ -120,6 +121,11 @@ export async function fetchStatsServer(): Promise<DashboardStats> {
       .select('id', { count: 'exact', head: true })
       .eq('status', 'overdue')
       .eq('is_proforma', false),
+    supabase.rpc('get_financial_report', {
+      p_date_from: yearStartIso,
+      p_date_to: new Date().toISOString().slice(0, 10),
+      p_company_ids: null,
+    }),
   ]);
 
   // Jeśli RLS blokuje - dostaniesz error i od razu go zobaczysz (zamiast pętli)
@@ -134,10 +140,13 @@ export async function fetchStatsServer(): Promise<DashboardStats> {
   if (paidInvoicesRes.error) throw paidInvoicesRes.error;
   if (overdueInvoicesRes.error) throw overdueInvoicesRes.error;
 
-  const paidRevenue = (paidInvoicesRes.data ?? []).reduce(
+  const legacyPaidRevenue = (paidInvoicesRes.data ?? []).reduce(
     (sum, invoice) => sum + Number(invoice.total_gross ?? 0),
     0,
   );
+  const paidRevenue = financialReportRes.error
+    ? legacyPaidRevenue
+    : Number((financialReportRes.data as any)?.totals?.cash_revenue ?? legacyPaidRevenue);
 
   return {
     totalEvents: totalEventsRes.count ?? 0,
@@ -186,7 +195,7 @@ export async function fetchDashboardAnalyticsServer(): Promise<DashboardAnalytic
   const next30Days = new Date(now);
   next30Days.setDate(next30Days.getDate() + 30);
 
-  const [inquiriesRes, offersRes, eventsRes, overdueTasksRes, overdueInquiriesRes, overdueInvoicesRes, nextEventsRes, unownedContactsRes, unownedOrganizationsRes, neglectedInquiriesRes, workflowRisksRes] =
+  const [inquiriesRes, offersRes, eventsRes, overdueTasksRes, overdueInquiriesRes, overdueInvoicesRes, nextEventsRes, unownedContactsRes, unownedOrganizationsRes, neglectedInquiriesRes, workflowRisksRes, financialReportRes] =
     await Promise.all([
       supabase
         .from('tasks')
@@ -241,6 +250,11 @@ export async function fetchDashboardAnalyticsServer(): Promise<DashboardAnalytic
         .eq('is_inquiry', true)
         .not('inquiry_stage', 'in', '(won,lost)'),
       supabase.rpc('get_event_workflow_attention_count'),
+      supabase.rpc('get_financial_report', {
+        p_date_from: months[0].key + '-01',
+        p_date_to: endOfCurrentMonth.toISOString().slice(0, 10),
+        p_company_ids: null,
+      }),
     ]);
 
   if (inquiriesRes.error) throw inquiriesRes.error;
@@ -274,6 +288,16 @@ export async function fetchDashboardAnalyticsServer(): Promise<DashboardAnalytic
     bucket.costs += Number(item.actual_costs ?? 0);
     bucket.margin = bucket.revenue - bucket.costs;
   });
+
+  if (!financialReportRes.error && Array.isArray((financialReportRes.data as any)?.months)) {
+    for (const month of (financialReportRes.data as any).months) {
+      const bucket = buckets.get(month.key);
+      if (!bucket) continue;
+      bucket.revenue = Number(month.cash_revenue ?? 0);
+      bucket.costs = Number(month.cash_costs ?? 0);
+      bucket.margin = Number(month.cash_result ?? bucket.revenue - bucket.costs);
+    }
+  }
 
   const pipelineInquiries = inquiriesRes.data ?? [];
   const offerStages = new Set(['proposal', 'negotiation', 'won']);

@@ -260,7 +260,7 @@ export const allNavigation: NavigationItemDTO[] = [
   },
   {
     key: 'invoices',
-    name: 'Faktury',
+    name: 'Finanse',
     href: '/crm/invoices',
     iconKey: 'invoices',
     module: 'invoices',

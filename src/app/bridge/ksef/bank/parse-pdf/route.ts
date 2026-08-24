@@ -50,7 +50,17 @@ interface BankStatement {
   transactions: BankTransaction[];
   rawText?: string;
   lines?: string[];
+  periodFrom?: string;
+  periodTo?: string;
+  parserVersion: number;
+  integrity: {
+    checkedTransitions: number;
+    failedTransitions: number;
+  };
 }
+
+type PdfCell = { page: number; x: number; y: number; text: string };
+type PdfRow = { page: number; y: number; cells: PdfCell[] };
 
 function sanitizeText(value?: string | null): string {
   return (value || '')
@@ -229,134 +239,104 @@ function extractCounterpartyName(block: string): string | undefined {
   return cleaned || undefined;
 }
 
-function isTransactionHeaderLine(line: string): boolean {
-  const normalized = sanitizeText(line);
-  return /\b\d{2}\.\d{2}\.\d{4}\b/.test(normalized) && /-?\d[\d\s]*,\d{2}\b/.test(normalized);
-}
-
-function extractTransactionHeaderData(line: string) {
-  const clean = sanitizeText(line);
-
-  const dates = [...clean.matchAll(/\b\d{2}\.\d{2}\.\d{4}\b/g)].map((m) => m[0]);
-  const amounts = [...clean.matchAll(/(-?\d[\d\s]*,\d{2})/g)].map((m) => m[1]);
-
-  if (!dates.length || !amounts.length) return null;
-
-  const transactionDate = formatIsoDateFromPolish(dates[0]);
-  const postingDate = dates[1] ? formatIsoDateFromPolish(dates[1]) || undefined : undefined;
-  const amountRaw = amounts[amounts.length - 1];
-  const amount = parsePolishAmount(amountRaw);
-
-  if (!transactionDate || amount == null) return null;
-
-  return {
-    transactionDate,
-    postingDate,
-    amount: Math.abs(amount),
-    type: amountRaw.trim().startsWith('-') ? ('debit' as const) : ('credit' as const),
-  };
-}
-
-function parsePKOPdfText(rawText: string): BankStatement {
-  const lines = rawText
-    .split('\n')
-    .map((line) => sanitizeText(line))
-    .filter(Boolean);
-
+function parsePKOPdfRows(rows: PdfRow[]): BankStatement {
+  const lines = rows.map((row) => sanitizeText(row.cells.map((cell) => cell.text).join(' '))).filter(Boolean);
+  const rawText = lines.join('\n');
   const transactions: BankTransaction[] = [];
-  let currentBlock: string[] = [];
+  const transactionRows: Array<{ rowIndex: number; date: string; amountRaw: string; amount: number; balance: number }> = [];
 
-  const flushBlock = () => {
-    if (!currentBlock.length) return;
+  rows.forEach((row, rowIndex) => {
+    const dateCell = row.cells.find((cell) => cell.x < 6 && /^\d{2}\.\d{2}\.\d{4}$/.test(cell.text.trim()));
+    const moneyCells = row.cells
+      .filter((cell) => cell.x > 20 && /^-?[\d\s]+,\d{2}$/.test(cell.text.trim()))
+      .sort((a, b) => a.x - b.x);
 
-    const header = currentBlock[0];
-    const details = currentBlock.slice(1).join(' ');
-    const headerData = extractTransactionHeaderData(header);
+    // PKO umieszcza kwotę operacji przed saldem. Bez obu kolumn rekord jest odrzucany.
+    if (!dateCell || moneyCells.length < 2) return;
+    const amountCell = moneyCells[0];
+    const balanceCell = moneyCells[moneyCells.length - 1];
+    const date = formatIsoDateFromPolish(dateCell.text);
+    const amount = parsePolishAmount(amountCell.text);
+    const balance = parsePolishAmount(balanceCell.text);
+    if (!date || amount == null || balance == null) return;
+    transactionRows.push({ rowIndex, date, amountRaw: amountCell.text, amount, balance });
+  });
 
-    if (!headerData) {
-      currentBlock = [];
-      return;
-    }
+  let previousBalance: number | null = null;
+  let checkedTransitions = 0;
+  let failedTransitions = 0;
 
-    const combined = sanitizeText(`${header} ${details}`);
-
+  transactionRows.forEach((transactionRow, index) => {
+    const nextRowIndex = transactionRows[index + 1]?.rowIndex ?? rows.length;
+    const detailCells = rows
+      .slice(transactionRow.rowIndex + 1, nextRowIndex)
+      .flatMap((row) => row.cells)
+      .filter((cell) => cell.x < 26);
+    const details = sanitizeText(detailCells.map((cell) => cell.text).join(' '));
+    const combined = sanitizeText(`${transactionRow.date} ${details}`);
+    const postingDateCell = detailCells.find((cell) => cell.x < 6 && /^\d{2}\.\d{2}\.\d{4}$/.test(cell.text.trim()));
     const original = extractOriginalAmountAndCurrency(combined);
-    const exchangeDate = extractExchangeDate(combined);
-    const nip = extractNip(combined);
-    const cardMasked = extractMaskedCard(combined);
     const transactionKind = detectTransactionKind(combined);
-    
     const rawCounterparty = extractCounterpartyName(combined);
-    const rawTitle = details || header;
-    
+    const type = transactionRow.amountRaw.trim().startsWith('-') ? ('debit' as const) : ('credit' as const);
+    const absoluteAmount = Math.abs(transactionRow.amount);
+
+    if (previousBalance !== null) {
+      checkedTransitions += 1;
+      const expectedBalance = previousBalance + (type === 'credit' ? absoluteAmount : -absoluteAmount);
+      if (Math.abs(expectedBalance - transactionRow.balance) > 0.02) failedTransitions += 1;
+    }
+    previousBalance = transactionRow.balance;
+
     transactions.push({
-      transactionDate: headerData.transactionDate,
-      postingDate: headerData.postingDate,
-      amount: headerData.amount,
+      transactionDate: transactionRow.date,
+      postingDate: postingDateCell ? formatIsoDateFromPolish(postingDateCell.text) || undefined : undefined,
+      amount: absoluteAmount,
       currency: 'PLN',
-      type: headerData.type,
-    
+      type,
       counterpartyName: cleanupCounterpartyName(rawCounterparty || combined),
       counterpartyAccount: extractAccountNumber(combined),
-      title: cleanupTransactionTitle(rawTitle),
+      title: cleanupTransactionTitle(details || transactionRow.date),
       referenceNumber: extractReferenceNumber(combined),
-    
       transactionKind,
       originalAmount: original.originalAmount,
       originalCurrency: original.originalCurrency,
-      exchangeDate,
-    
-      nip,
-      cardMasked,
+      exchangeDate: extractExchangeDate(combined),
+      nip: extractNip(combined),
+      cardMasked: extractMaskedCard(combined),
       splitPayment: transactionKind === 'split_payment',
       taxOffice: /URZAD SKARBOWY|US VAT|PODATEK/i.test(combined),
       zusPayment: /ZUS/i.test(combined),
       salaryPayment: /WYNAGRODZEN/i.test(combined),
     });
+  });
 
-    currentBlock = [];
-  };
-
-  for (const line of lines) {
-    const upper = line.toUpperCase();
-
-    if (
-      upper.includes('HISTORIA OPERACJI') ||
-      upper.includes('SALDO POCZATKOWE') ||
-      upper.includes('SALDO KOŃCOWE') ||
-      upper.includes('SALDO KONCOWE') ||
-      upper.includes('STRONA ') ||
-      upper.includes('DATA OPERACJI') ||
-      upper.includes('DATA KSIEGOWANIA') ||
-      upper.includes('OPIS OPERACJI')
-    ) {
-      continue;
-    }
-
-    if (isTransactionHeaderLine(line)) {
-      flushBlock();
-      currentBlock = [line];
-      continue;
-    }
-
-    if (currentBlock.length) {
-      currentBlock.push(line);
-    }
+  if (!transactions.length) throw new Error('Nie znaleziono poprawnych operacji w tabeli wyciągu PKO');
+  if (checkedTransitions > 0 && failedTransitions > 0) {
+    throw new Error('Kontrola ciągłości salda nie powiodła się. Plik nie został zaimportowany.');
   }
 
-  flushBlock();
+  const periodMatch = rawText.match(/WYCIĄG\s+za\s+okres\s+(\d{2}\.\d{2}\.\d{4})\s*-\s*(\d{2}\.\d{2}\.\d{4})/i);
+  const firstSignedAmount = transactions[0].type === 'credit' ? transactions[0].amount : -transactions[0].amount;
 
   return {
+    openingBalance: transactionRows[0] ? transactionRows[0].balance - firstSignedAmount : undefined,
+    closingBalance: transactionRows.at(-1)?.balance,
     currency: 'PLN',
     transactions,
     rawText,
     lines,
+    periodFrom: periodMatch ? formatIsoDateFromPolish(periodMatch[1]) || undefined : undefined,
+    periodTo: periodMatch ? formatIsoDateFromPolish(periodMatch[2]) || undefined : undefined,
+    parserVersion: 2,
+    integrity: { checkedTransitions, failedTransitions },
   };
 }
 
-function extractTextFromPdfBuffer(buffer: Buffer): Promise<string> {
+function extractPdfRows(buffer: Buffer): Promise<PdfRow[]> {
   return new Promise((resolve, reject) => {
-    const rows = new Map<number, string[]>();
+    const rows = new Map<string, PdfCell[]>();
+    let page = 0;
 
     new PdfReader().parseBuffer(buffer, (err, item) => {
       if (err) {
@@ -365,20 +345,24 @@ function extractTextFromPdfBuffer(buffer: Buffer): Promise<string> {
       }
 
       if (!item) {
-        const text = [...rows.entries()]
-          .sort((a, b) => a[0] - b[0])
-          .map(([, parts]) => parts.join(' '))
-          .join('\n');
+        resolve([...rows.values()]
+          .map((cells) => ({ page: cells[0].page, y: cells[0].y, cells: cells.sort((a, b) => a.x - b.x) }))
+          .sort((a, b) => a.page - b.page || a.y - b.y));
+        return;
+      }
 
-        resolve(text);
+      if ('page' in item && typeof item.page === 'number') {
+        page = item.page;
         return;
       }
 
       if ('text' in item && typeof item.text === 'string') {
-        const y = Math.round(Number(item.y) * 100);
-        const row = rows.get(y) || [];
-        row.push(item.text);
-        rows.set(y, row);
+        const x = Number(item.x);
+        const y = Number(item.y);
+        const key = `${page}:${Math.round(y * 100)}`;
+        const row = rows.get(key) || [];
+        row.push({ page, x, y, text: item.text });
+        rows.set(key, row);
       }
     });
   });
@@ -404,8 +388,8 @@ export async function POST(req: Request) {
     }
 
     const arrayBuffer = await file.arrayBuffer();
-    const rawText = await extractTextFromPdfBuffer(Buffer.from(arrayBuffer));
-    const parsed = parsePKOPdfText(rawText);
+    const rows = await extractPdfRows(Buffer.from(arrayBuffer));
+    const parsed = parsePKOPdfRows(rows);
 
     return NextResponse.json({
       success: true,

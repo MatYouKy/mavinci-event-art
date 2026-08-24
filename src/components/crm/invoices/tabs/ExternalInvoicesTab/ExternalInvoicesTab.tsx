@@ -44,6 +44,11 @@ export interface ExternalInvoice {
   subscription_id: string | null;
   period_year: number | null;
   period_month: number | null;
+  my_company_id: string | null;
+  event_id: string | null;
+  category_id: string | null;
+  payment_status: 'unpaid' | 'partially_paid' | 'paid' | 'cancelled';
+  payment_date: string | null;
   created_at: string;
 }
 

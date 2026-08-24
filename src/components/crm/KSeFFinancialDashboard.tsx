@@ -56,6 +56,9 @@ interface BankStatementRecord {
   file_storage_path: string | null;
   transactions_count: number;
   processed: boolean;
+  validation_status?: 'pending' | 'valid' | 'rejected';
+  validation_message?: string | null;
+  parser_version?: number | null;
   created_at: string;
   my_companies?: { name: string } | null;
 }
@@ -110,6 +113,8 @@ function MonthActions({
         .select('account_type, file_storage_path')
         .eq('statement_month', summary.month)
         .eq('statement_year', summary.year)
+        .eq('processed', true)
+        .eq('validation_status', 'valid')
         .not('file_storage_path', 'is', null);
 
       if (selectedCompanyId) {
@@ -344,7 +349,7 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
       let query = supabase
         .from('bank_statements')
         .select(
-          'id, file_name, account_type, statement_month, statement_year, my_company_id, file_storage_path, transactions_count, processed, created_at, my_companies(name)',
+          'id, file_name, account_type, statement_month, statement_year, my_company_id, file_storage_path, transactions_count, processed, validation_status, validation_message, parser_version, created_at, my_companies(name)',
         )
         .order('statement_year', { ascending: false })
         .order('statement_month', { ascending: false });
@@ -575,7 +580,7 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
         throw new Error('Obsługiwane są wyłącznie pliki PDF');
       }
 
-      const fileType: 'MT940' = 'MT940';
+      const fileType: 'MT940' | 'PDF' = isMt940 ? 'MT940' : 'PDF';
 
       setUploadProgress({
         step: isMt940 ? 'Parsowanie pliku MT940...' : 'Parsowanie PDF...',
@@ -606,6 +611,27 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
 
         parsedStatement = result.data;
         fileContent = parsedStatement?.rawText || '[PDF parsed]';
+
+        const expectedPeriod = `${year}-${String(month).padStart(2, '0')}`;
+        const parsedPeriod = parsedStatement?.periodFrom?.slice(0, 7);
+        if (!parsedPeriod || parsedPeriod !== expectedPeriod) {
+          throw new Error(
+            `Wyciąg dotyczy okresu ${parsedPeriod || 'nierozpoznanego'}, a wybrano ${expectedPeriod}. Import został zatrzymany.`,
+          );
+        }
+
+        const outOfPeriod = (parsedStatement?.transactions || []).filter(
+          (transaction: any) => !String(transaction.transactionDate || '').startsWith(expectedPeriod),
+        );
+        if (outOfPeriod.length > 0) {
+          throw new Error(
+            `Wyciąg zawiera ${outOfPeriod.length} operacji spoza wybranego miesiąca. Import został zatrzymany.`,
+          );
+        }
+
+        if (parsedStatement?.integrity?.failedTransitions > 0) {
+          throw new Error('Kontrola ciągłości salda wykryła nieprawidłowe kwoty. Import został zatrzymany.');
+        }
       }
 
       const transactions = parsedStatement?.transactions || [];
@@ -713,6 +739,10 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
           closing_balance: parsedStatement?.closingBalance ?? null,
           currency: parsedStatement?.currency || 'PLN',
           transactions_count: transactions.length,
+          import_format: fileType,
+          parser_version: isMt940 ? 1 : Number(parsedStatement?.parserVersion || 2),
+          validation_status: 'pending',
+          validation_message: null,
           uploaded_by: user?.id,
           processed: false,
         })
@@ -796,6 +826,8 @@ export default function KSeFFinancialDashboard({ filterCompanyIds }: KSeFFinanci
         .update({
           processed: true,
           processed_at: new Date().toISOString(),
+          validation_status: 'valid',
+          validation_message: null,
         })
         .eq('id', statement.id);
 

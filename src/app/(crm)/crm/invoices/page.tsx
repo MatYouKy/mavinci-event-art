@@ -32,10 +32,11 @@ import {
   ChevronUp,
   ChevronDown,
   Receipt,
+  WalletCards,
 } from 'lucide-react';
 import KSeFIntegrationPanel from '@/components/crm/KSeFIntegrationPanel';
-import FinancialDashboard from '@/components/crm/FinancialDashboard';
-import KSeFFinancialDashboard from '@/components/crm/KSeFFinancialDashboard';
+import CanonicalFinancialDashboard from '@/components/crm/CanonicalFinancialDashboard';
+import FinancialEntriesTab from '@/components/crm/FinancialEntriesTab';
 import PermissionGuard from '@/components/crm/PermissionGuard';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import ResponsiveActionBar from '@/components/crm/ResponsiveActionBar';
@@ -214,7 +215,7 @@ export default function InvoicesPage() {
   const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    'dashboard' | 'local' | 'ksef' | 'external' | 'settings'
+    'dashboard' | 'local' | 'ksef' | 'external' | 'expenses' | 'settings'
   >('dashboard');
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
   const [myCompanies, setMyCompanies] = useState<any[]>([]);
@@ -600,8 +601,8 @@ export default function InvoicesPage() {
           {/* Header */}
           <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
             <div>
-              <h1 className="mb-2 text-3xl font-light text-[#e5e4e2]">Faktury VAT</h1>
-              <p className="text-[#e5e4e2]/60">Zarządzaj fakturami i dokumentami finansowymi</p>
+              <h1 className="mb-2 text-3xl font-light text-[#e5e4e2]">Finanse</h1>
+              <p className="text-[#e5e4e2]/60">Analizuj wyniki, przepływy, koszty i dokumenty finansowe</p>
             </div>
 
             <div className="ml-auto flex w-full min-w-0 items-center justify-end gap-2 sm:w-auto sm:gap-3">
@@ -722,10 +723,11 @@ export default function InvoicesPage() {
 
           <div className="mb-6 flex snap-x snap-mandatory gap-2 overflow-x-auto overscroll-x-contain border-b border-[#d3bb73]/10 scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {[
-              { id: 'dashboard', label: 'Dashboard', icon: DollarSign },
+              { id: 'dashboard', label: 'Przegląd finansowy', icon: DollarSign },
               { id: 'ksef', label: 'KSeF', icon: FileText },
               { id: 'local', label: 'Lokalne faktury', icon: Building },
               { id: 'external', label: 'Faktury spoza KSeF', icon: Receipt },
+              { id: 'expenses', label: 'Koszty i wypłaty', icon: WalletCards },
               ...(canManageInvoices
                 ? [{ id: 'settings', label: 'Ustawienia faktur', icon: Settings }]
                 : []),
@@ -753,7 +755,7 @@ export default function InvoicesPage() {
           </div>
 
           {activeTab === 'dashboard' ? (
-            <KSeFFinancialDashboard
+            <CanonicalFinancialDashboard
               filterCompanyIds={selectedCompanyIds.size > 0 ? Array.from(selectedCompanyIds) : null}
             />
           ) : activeTab === 'ksef' ? (
@@ -762,6 +764,8 @@ export default function InvoicesPage() {
             />
           ) : activeTab === 'external' ? (
             <ExternalInvoicesTab />
+          ) : activeTab === 'expenses' ? (
+            <FinancialEntriesTab />
           ) : activeTab === 'settings' ? (
             <InvoiceSettingsTab />
           ) : (

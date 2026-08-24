@@ -16,8 +16,8 @@ export const DASHBOARD_WIDGETS = [
   },
   {
     id: 'financial-trends',
-    label: 'Przychód, koszty i marża',
-    description: 'Miesięczny obraz rentowności wydarzeń.',
+    label: 'Wpływy, wydatki i wynik kasowy',
+    description: 'Miesięczne, rzeczywiste przepływy pieniężne.',
   },
   {
     id: 'operational-attention',

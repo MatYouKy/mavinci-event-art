@@ -142,6 +142,9 @@ export function EventContractTab({ eventId }: { eventId: string }) {
   const [editedVariables, setEditedVariables] = useState<Record<string, string>>({});
   const [contractStatus, setContractStatus] = useState<ContractStatus>('draft');
   const [contractId, setContractId] = useState<string | null>(null);
+  const [contractVersion, setContractVersion] = useState(1);
+  const [contractLockedAt, setContractLockedAt] = useState<string | null>(null);
+  const [companySignedAt, setCompanySignedAt] = useState<string | null>(null);
   const [templateId, setTemplateId] = useState<string | null>(null);
   const [contractCreatedBy, setContractCreatedBy] = useState<string | null>(null);
   const [showSendEmailModal, setShowSendEmailModal] = useState(false);
@@ -270,15 +273,29 @@ export function EventContractTab({ eventId }: { eventId: string }) {
         decisionMakers = data;
       }
 
-      const { data: existingContract } = await supabase
+      const contractResult = await supabase
         .from('contracts')
         .select(
-          'id, status, issued_at, sent_at, signed_by_client_at, signed_returned_at, cancelled_at, created_by, generated_pdf_path, modified_after_generation, content',
+          'id, status, issued_at, sent_at, signed_by_client_at, signed_returned_at, cancelled_at, created_by, generated_pdf_path, modified_after_generation, content, version_number, locked_at, company_signed_at',
         )
         .eq('event_id', eventId)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
+
+      let existingContract = contractResult.data;
+      if (contractResult.error && ['42703', 'PGRST204'].includes(contractResult.error.code ?? '')) {
+        const fallbackResult = await supabase
+          .from('contracts')
+          .select(
+            'id, status, issued_at, sent_at, signed_by_client_at, signed_returned_at, cancelled_at, created_by, generated_pdf_path, modified_after_generation, content',
+          )
+          .eq('event_id', eventId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        existingContract = fallbackResult.data as typeof existingContract;
+      }
 
       const organization = event.organizations as unknown as OrganizationWithRelations | null;
       const legalRepresentative = organization?.legal_representative || null;
@@ -303,6 +320,9 @@ export function EventContractTab({ eventId }: { eventId: string }) {
       if (existingContract) {
         setContractId(existingContract.id);
         setContractStatus(existingContract.status as ContractStatus);
+        setContractVersion(existingContract.version_number || 1);
+        setContractLockedAt(existingContract.locked_at || null);
+        setCompanySignedAt(existingContract.company_signed_at || null);
         setContractCreatedBy(existingContract.created_by);
         setGeneratedPdfPath(existingContract.generated_pdf_path || null);
         setModifiedAfterGeneration(existingContract.modified_after_generation || false);
@@ -1210,9 +1230,10 @@ export function EventContractTab({ eventId }: { eventId: string }) {
   };
 
   const canEdit = useMemo(() => {
+    if (contractLockedAt) return false;
     if (isAdmin) return true;
     return contractStatus === 'draft' || contractStatus === 'cancelled';
-  }, [isAdmin, contractStatus]);
+  }, [contractLockedAt, isAdmin, contractStatus]);
 
   const canSendEmail = useMemo(() => {
     if (!contractId) return false;
@@ -1220,6 +1241,22 @@ export function EventContractTab({ eventId }: { eventId: string }) {
     if (employee?.id && contractCreatedBy === employee.id) return true;
     return false;
   }, [isAdmin, employee, contractId, contractCreatedBy]);
+
+  const confirmCompanySignature = async () => {
+    if (!contractId || !employee?.id) return;
+    const signedAt = new Date().toISOString();
+    const { error } = await supabase
+      .from('contracts')
+      .update({ company_signed_at: signedAt, company_signed_by: employee.id })
+      .eq('id', contractId);
+
+    if (error) {
+      showSnackbar(`Nie udało się potwierdzić podpisu firmy: ${error.message}`, 'error');
+      return;
+    }
+    setCompanySignedAt(signedAt);
+    showSnackbar('Podpis firmy został potwierdzony', 'success');
+  };
 
   const actions = useMemo(() => {
     if (editMode) {
@@ -1420,6 +1457,22 @@ export function EventContractTab({ eventId }: { eventId: string }) {
                 Status umowy
               </label>
 
+              <div className="mb-3 flex flex-wrap gap-2 text-xs">
+                <span className="rounded-full bg-[#d3bb73]/10 px-2.5 py-1 text-[#d3bb73]">
+                  Wersja {contractVersion}
+                </span>
+                {contractLockedAt && (
+                  <span className="rounded-full bg-green-500/10 px-2.5 py-1 text-green-300">
+                    Dokument zablokowany po podpisaniu
+                  </span>
+                )}
+                {companySignedAt && (
+                  <span className="rounded-full bg-blue-500/10 px-2.5 py-1 text-blue-300">
+                    Podpis firmy potwierdzony
+                  </span>
+                )}
+              </div>
+
               <select
                 value={contractStatus}
                 onChange={(e) => handleStatusChange(e.target.value as ContractStatus)}
@@ -1468,6 +1521,16 @@ export function EventContractTab({ eventId }: { eventId: string }) {
                     {getStatusDate(contractStatus)}
                   </div>
                 </div>
+              )}
+
+              {isAdmin && contractId && !companySignedAt && contractStatus !== 'draft' && contractStatus !== 'cancelled' && (
+                <button
+                  type="button"
+                  onClick={confirmCompanySignature}
+                  className="mt-3 w-full rounded-lg border border-[#d3bb73]/25 px-3 py-2 text-sm text-[#d3bb73] transition-colors hover:bg-[#d3bb73]/10"
+                >
+                  Potwierdź podpis firmy
+                </button>
               )}
             </div>
           </div>

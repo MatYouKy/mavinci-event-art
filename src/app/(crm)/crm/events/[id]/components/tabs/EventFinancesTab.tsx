@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase/browser';
 import { DollarSign, TrendingUp, TrendingDown, Receipt, Plus, Trash2, CreditCard as Edit, Check, X, FileText, Calendar, Fuel, Users, Package, Truck, Upload, Eye, AlertCircle, Building2, User, Info, Calculator } from 'lucide-react';
 import { useSnackbar } from '@/contexts/SnackbarContext';
 import FinalInvoiceWizardModal from '@/components/crm/FinalInvoiceWizardModal';
+import EventFinancialControls from '@/components/crm/events/EventFinancialControls';
 
 interface FinancialSummary {
   expected_revenue: number;
@@ -327,6 +328,7 @@ export default function EventFinancesTab({ eventId }: Props) {
 
   return (
     <div className="space-y-6">
+      <EventFinancialControls eventId={eventId} invoices={invoices} canManage={isAdmin} />
       {/* Client Info Banner */}
       {clientInfo && (
         <div

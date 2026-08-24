@@ -18,6 +18,9 @@ export interface BankStatementRecord {
   file_storage_path: string | null;
   transactions_count: number;
   processed: boolean;
+  validation_status?: 'pending' | 'valid' | 'rejected';
+  validation_message?: string | null;
+  parser_version?: number | null;
   created_at: string;
   my_companies?: { name: string } | null;
 }
@@ -196,6 +199,9 @@ export default function BankStatementsListModal({
                   <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
                     Transakcje
                   </th>
+                  <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
+                    Status danych
+                  </th>
                   <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-[#e5e4e2]/60">
                     Akcje
                   </th>
@@ -276,6 +282,25 @@ export default function BankStatementsListModal({
                     <td className="px-4 py-3 text-center">
                       <span className="text-sm text-[#e5e4e2]/70">
                         {stmt.transactions_count}
+                      </span>
+                    </td>
+
+                    <td className="px-4 py-3 text-center">
+                      <span
+                        title={stmt.validation_message || undefined}
+                        className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${
+                          stmt.validation_status === 'valid'
+                            ? 'bg-emerald-500/15 text-emerald-300'
+                            : stmt.validation_status === 'rejected'
+                              ? 'bg-amber-500/15 text-amber-300'
+                              : 'bg-sky-500/15 text-sky-300'
+                        }`}
+                      >
+                        {stmt.validation_status === 'valid'
+                          ? 'Zweryfikowany'
+                          : stmt.validation_status === 'rejected'
+                            ? 'Importuj ponownie'
+                            : 'Oczekuje'}
                       </span>
                     </td>
 

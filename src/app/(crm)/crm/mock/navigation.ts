@@ -28,7 +28,7 @@ export const allNavigation: NavigationItem[] = [
       { key: 'contracts', name: 'Szablony umów', href: '/crm/contract-templates', iconKey: 'fileType', module: 'contracts' },
     ],
   },
-  { key: 'invoices', name: 'Faktury', href: '/crm/invoices', iconKey: 'invoices', module: 'finances' },
+  { key: 'invoices', name: 'Finanse', href: '/crm/invoices', iconKey: 'invoices', module: 'finances' },
   { key: 'employees', name: 'Pracownicy', href: '/crm/employees', iconKey: 'employees', module: 'employees' },
   { key: 'equipment', name: 'Magazyn', href: '/crm/equipment', iconKey: 'equipment', module: 'equipment' },
   { key: 'fleet', name: 'Flota', href: '/crm/fleet', iconKey: 'fleet', module: 'fleet' },
